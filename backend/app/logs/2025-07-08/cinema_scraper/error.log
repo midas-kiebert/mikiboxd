@@ -1,0 +1,86 @@
+[14:49:39] [ERROR] runner:<module>:34 - Error running cinema scraper
+Traceback (most recent call last):
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+
+> File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 34, in <module>
+    try: run()
+         └ <function run at 0x7f56181da0c0>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 23, in run
+    scraper: BaseCinemaScraper = scraper_cls()
+                                 └ <class 'app.scraping.cinemas.amsterdam.eye.EyeScraper'>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/cinemas/amsterdam/eye.py", line 31, in __init__
+    self.cinema_id = crud.get_cinema_id_by_name(CINEMA)
+    │                │    │                     └ 'Eye'
+    │                │    └ <function get_cinema_id_by_name at 0x7f561c2d9b20>
+    │                └ <module 'app.crud' from '/home/midas/cinema-agenda-fastapi/backend/app/crud/__init__.py'>
+    └ <app.scraping.cinemas.amsterdam.eye.EyeScraper object at 0x7f561815ffd0>
+
+TypeError: get_cinema_id_by_name() takes 0 positional arguments but 1 was given
+[14:52:47] [ERROR] runner:run:26 - Error running cinema scraper for filmhallen
+Traceback (most recent call last):
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 34, in <module>
+    try: run()
+         └ <function run at 0x7f912699e0c0>
+
+> File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 27, in run
+    scraper.scrape()
+    │       └ <function GenericEagerlyScraper.scrape at 0x7f91269144a0>
+    └ <app.scraping.cinemas.amsterdam.filmhallen.FilmHallenScraper object at 0x7f9134407950>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/cinemas/generic/eagerly.py", line 40, in scrape
+    logger.trace(f"Running {self.cinema} scraper...")
+    │      └ <function Logger.trace at 0x7f913b0c9800>
+    └ <loguru.logger handlers=[(id=6, level=5, sink='app/logs/2025-07-08/cinema_scraper/trace.log'), (id=7, level=10, sink='app/log...
+
+AttributeError: 'FilmHallenScraper' object has no attribute 'cinema'
+[14:52:47] [ERROR] eagerly:__init__:29 - Cinema Kino not found in database
+[14:52:47] [ERROR] runner:<module>:34 - Error running cinema scraper
+Traceback (most recent call last):
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+
+> File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 34, in <module>
+    try: run()
+         └ <function run at 0x7f912699e0c0>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 23, in run
+    scraper: BaseCinemaScraper = scraper_cls()
+    │                            └ <class 'app.scraping.cinemas.rotterdam.kino.KinoScraper'>
+    └ <app.scraping.cinemas.amsterdam.filmhallen.FilmHallenScraper object at 0x7f9134407950>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/cinemas/rotterdam/kino.py", line 5, in __init__
+    super().__init__(cinema="Kino", url_base="https://kinorotterdam.nl/")
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/cinemas/generic/eagerly.py", line 30, in __init__
+    raise ValueError(f"Cinema {cinema} not found in database")
+
+ValueError: Cinema Kino not found in database
+[15:06:06] [ERROR] uitkijk:__init__:33 - Cinema Uitkijk not found in database
+[15:06:06] [ERROR] runner:<module>:34 - Error running cinema scraper
+Traceback (most recent call last):
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+
+> File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 34, in <module>
+    try: run()
+         └ <function run at 0x7f1601dc20c0>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 23, in run
+    scraper: BaseCinemaScraper = scraper_cls()
+    │                            └ <class 'app.scraping.cinemas.amsterdam.uitkijk.UitkijkScraper'>
+    └ <app.scraping.cinemas.amsterdam.themovies.TheMoviesScraper object at 0x7f1600591c10>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/cinemas/amsterdam/uitkijk.py", line 34, in __init__
+    raise ValueError(f"Cinema {CINEMA} not found in database")
+
+ValueError: Cinema Uitkijk not found in database

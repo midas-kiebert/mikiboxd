@@ -1,0 +1,1101 @@
+[14:59:13] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: eye
+[14:59:13] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: filmhallen
+[14:59:13] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: kino
+[14:59:13] [INFO] runner:run:25 - Running scraper for cinema: kriterion...
+[14:59:14] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1106904 for Totto-chan: The Little Girl at the Window
+[14:59:14] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1433791 for Flophouse America
+[14:59:15] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1012241 for The Village Next to Paradise
+[14:59:15] [DEBUG] kriterion:get_movie:105 - Found TMDB id 3782 for Ikiru
+[14:59:16] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1367997 for Perla
+[14:59:16] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1137350 for The Phoenician Scheme
+[14:59:17] [DEBUG] kriterion:get_movie:105 - Found TMDB id 12493 for High and Low
+[14:59:17] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1161879 for Motel Destino
+[14:59:18] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1100988 for 28 Years Later
+[14:59:18] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1161879 for Motel Destino
+[14:59:18] [DEBUG] kriterion:get_movie:105 - Found TMDB id 346 for Seven Samurai
+[14:59:19] [DEBUG] kriterion:get_movie:105 - Found TMDB id 309 for The Celebration
+[14:59:19] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1012241 for The Village Next to Paradise
+[14:59:19] [DEBUG] kriterion:get_movie:105 - Found TMDB id 11878 for Yojimbo
+[14:59:19] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1106904 for Totto-chan: The Little Girl at the Window
+[14:59:19] [DEBUG] kriterion:get_movie:105 - Found TMDB id 346 for Seven Samurai
+[14:59:19] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1367997 for Perla
+[14:59:19] [WARNING] tmdb:get_person_ids:31 - Various directors could not be found on TMDB.
+[14:59:19] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'SNEAK PREVIEW' with director 'Various directors' and actor 'None'.
+[14:59:19] [DEBUG] kriterion:get_movie:97 - No TMDB id found for SNEAK PREVIEW
+[14:59:19] [WARNING] kriterion:scrape:54 - Could not process show SNEAK PREVIEW
+[14:59:20] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1001684 for Niki
+[14:59:20] [DEBUG] kriterion:get_movie:105 - Found TMDB id 3782 for Ikiru
+[14:59:20] [DEBUG] kriterion:get_movie:105 - Found TMDB id 12493 for High and Low
+[14:59:20] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1254246 for I Am the River, the River Is Me
+[14:59:20] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: kriterion.
+[14:59:20] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: lab111
+[14:59:20] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: themovies
+[14:59:20] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: uitkijk
+[14:59:20] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: filmkoepel
+[14:59:20] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: louishartloopercomplex
+[14:59:20] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: slachtstraat
+[14:59:20] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: springhaver
+[14:59:20] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: trianon
+[14:59:20] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: lido
+[14:59:20] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: kijkhuis
+[14:59:20] [INFO] runner:run:25 - Running scraper for cinema: fchyena...
+[14:59:21] [DEBUG] fchyena:scrape:51 - Could not find actor for flophouse america in FC Hyena
+[14:59:22] [DEBUG] fchyena:scrape:63 - Found TMDB id 1433791 for Flophouse America
+[14:59:23] [DEBUG] fchyena:scrape:63 - Found TMDB id 590 for The Hours
+[14:59:24] [DEBUG] fchyena:scrape:63 - Found TMDB id 1087192 for How to Train Your Dragon
+[14:59:24] [DEBUG] fchyena:scrape:63 - Found TMDB id 1087192 for How to Train Your Dragon
+[14:59:26] [DEBUG] fchyena:scrape:63 - Found TMDB id 1234821 for Jurassic World Rebirth
+[14:59:27] [DEBUG] fchyena:scrape:63 - Found TMDB id 10363 for Purple Noon
+[14:59:28] [DEBUG] fchyena:scrape:63 - Found TMDB id 9603 for Clueless
+[14:59:29] [DEBUG] fchyena:scrape:63 - Found TMDB id 235 for Stand by Me
+[14:59:30] [DEBUG] fchyena:scrape:63 - Found TMDB id 1700 for Misery
+[14:59:31] [DEBUG] fchyena:scrape:63 - Found TMDB id 7340 for Carrie
+[14:59:32] [DEBUG] fchyena:scrape:51 - Could not find actor for de a’dammer in FC Hyena
+[14:59:32] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'de a’dammer' with director 'Harro Henkemans' and actor 'None'.
+[14:59:32] [WARNING] fchyena:scrape:59 - No TMDB id found for de a’dammer, skipping
+[14:59:33] [DEBUG] fchyena:scrape:63 - Found TMDB id 278 for The Shawshank Redemption
+[14:59:34] [DEBUG] fchyena:scrape:63 - Found TMDB id 552524 for Lilo & Stitch
+[14:59:34] [DEBUG] fchyena:scrape:63 - Found TMDB id 552524 for Lilo & Stitch
+[14:59:37] [DEBUG] fchyena:scrape:63 - Found TMDB id 842924 for The Life of Chuck
+[14:59:38] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'the life of chuck - scream editie' with director 'Mike Flanagan' and actor 'Mark Hamill'. Fuzzy matching...
+[14:59:38] [DEBUG] fchyena:scrape:63 - Found TMDB id 842924 for The Life of Chuck
+[14:59:38] [WARNING] tmdb:get_person_ids:31 - Alessandro Cassigoli, Casey Kauffman could not be found on TMDB.
+[14:59:38] [DEBUG] fchyena:scrape:63 - Found TMDB id 1295517 for Vittoria
+[14:59:39] [WARNING] tmdb:get_person_ids:31 - Madeline Sharafian, Adrian Molina could not be found on TMDB.
+[14:59:39] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'elio' with director 'Madeline Sharafian, Adrian Molina' and actor ''.
+[14:59:39] [WARNING] fchyena:scrape:59 - No TMDB id found for elio, skipping
+[14:59:39] [DEBUG] fchyena:scrape:63 - Found TMDB id 1100988 for 28 Years Later
+[14:59:41] [DEBUG] fchyena:scrape:63 - Found TMDB id 911430 for F1
+[14:59:42] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'the salt path' with director 'Rebecca Lenkiewicz' and actor 'Gillian Anderson'.
+[14:59:42] [WARNING] fchyena:scrape:59 - No TMDB id found for the salt path, skipping
+[14:59:45] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'sneak preview' with director '?' and actor '?'. Fuzzy matching...
+[14:59:45] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (My Belle I Love You) for 'sneak preview' is below threshold: 32.25806451612904.
+[14:59:45] [WARNING] fchyena:scrape:59 - No TMDB id found for sneak preview, skipping
+[14:59:45] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: fchyena.
+[14:59:45] [INFO] runner:run:29 - Loading Letterboxd slugs...
+[14:59:45] [INFO] load_letterboxd_slugs:load_letterboxd_slugs:34 - No movies found without Letterboxd slug.
+[14:59:45] [SUCCESS] runner:run:31 - Successfully loaded Letterboxd slugs.
+[15:00:52] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: eye
+[15:00:52] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: filmhallen
+[15:00:52] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: kino
+[15:00:52] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: kriterion
+[15:00:52] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: lab111
+[15:00:52] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: themovies
+[15:00:52] [INFO] runner:run:25 - Running scraper for cinema: uitkijk...
+[15:00:54] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 1448497 for Ocean with David Attenborough
+[15:00:54] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 309 for The Celebration
+[15:00:55] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 3782 for Ikiru
+[15:00:56] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 2011 for Persepolis
+[15:00:58] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 1064486 for Memoir of a Snail
+[15:00:59] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 468 for My Own Private Idaho
+[15:01:00] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wijnklassieker: druk' with director 'Thomas Vinterberg' and actor 'Mads Mikkelsen'. Fuzzy matching...
+[15:01:00] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 580175 for Another Round
+[15:01:01] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 1082900 for Loveable
+[15:01:02] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 11104 for Chungking Express
+[15:01:03] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 12548 for I Vitelloni
+[15:01:04] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 12493 for High and Low
+[15:01:05] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 29698 for Ratcatcher
+[15:01:07] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 125257 for Muddy River
+[15:01:08] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 5544 for Hiroshima Mon Amour
+[15:01:09] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 83440 for Brief Encounters
+[15:01:09] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 10363 for Purple Noon
+[15:01:10] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'pottenkijkers: la amiga de mi amiga' with director 'Zaida Carmona' and actor 'Zaida Carmona'. Fuzzy matching...
+[15:01:10] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 948340 for Girlfriends and Girlfriends
+[15:01:11] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 843 for In the Mood for Love
+[15:01:12] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 3116 for Midnight Cowboy
+[15:01:13] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 25468 for My Dinner with Andre
+[15:01:14] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 27019 for Céline and Julie Go Boating
+[15:01:15] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 373765 for History's Future
+[15:01:16] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 406 for La Haine
+[15:01:17] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'mijn familie - dat u in interessante tijden moge leven' with director 'Fiona Tan' and actor 'None'. Fuzzy matching...
+[15:01:17] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 1055051 for May You Live in Interesting Times
+[15:01:17] [DEBUG] uitkijk:get_movie:113 - Found TMDB id 1063594 for Dearest Fiona
+[15:01:17] [ERROR] runner:run:26 - Error running cinema scraper for uitkijk
+Traceback (most recent call last):
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 34, in <module>
+    try: run()
+         └ <function run at 0x7fd640551a80>
+
+> File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 27, in run
+    scraper.scrape()
+    │       └ <function UitkijkScraper.scrape at 0x7fd6406c40e0>
+    └ <app.scraping.cinemas.amsterdam.uitkijk.UitkijkScraper object at 0x7fd64050e8d0>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/cinemas/amsterdam/uitkijk.py", line 56, in scrape
+    movie =  get_movie(slug=slug, title_query=title_query)
+             │              │                 └ 'zomergasten op het witte doek'
+             │              └ 'zomergasten-op-het-witte-doek'
+             └ <function get_movie at 0x7fd6406bbf60>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/cinemas/amsterdam/uitkijk.py", line 84, in get_movie
+    director_element = soup.find_all("strong", string="Regie:")[0]
+                       │    └ <function Tag.find_all at 0x7fd640744e00>
+                       └ <!DOCTYPE html>
+                         <html lang="nl"> <head><meta content="6e7f24e5ec565ff0ade55a5f33a468e4-66cf7e987a2460ee-0" name="sentry-trace...
+
+IndexError: list index out of range
+[15:01:17] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: filmkoepel
+[15:01:17] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: louishartloopercomplex
+[15:01:17] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: slachtstraat
+[15:01:17] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: springhaver
+[15:01:17] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: trianon
+[15:01:17] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: lido
+[15:01:17] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: kijkhuis
+[15:01:17] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: fchyena
+[15:01:17] [INFO] runner:run:29 - Loading Letterboxd slugs...
+[15:01:17] [INFO] load_letterboxd_slugs:load_letterboxd_slugs:34 - No movies found without Letterboxd slug.
+[15:01:17] [SUCCESS] runner:run:31 - Successfully loaded Letterboxd slugs.
+[15:03:18] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: eye
+[15:03:18] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: filmhallen
+[15:03:18] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: kino
+[15:03:18] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: kriterion
+[15:03:18] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: lab111
+[15:03:18] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: themovies
+[15:03:18] [INFO] runner:run:25 - Running scraper for cinema: uitkijk...
+[15:03:19] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 1448497 for Ocean with David Attenborough
+[15:03:19] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 309 for The Celebration
+[15:03:20] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 3782 for Ikiru
+[15:03:20] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 2011 for Persepolis
+[15:03:21] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 1064486 for Memoir of a Snail
+[15:03:22] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 468 for My Own Private Idaho
+[15:03:22] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wijnklassieker: druk' with director 'Thomas Vinterberg' and actor 'Mads Mikkelsen'. Fuzzy matching...
+[15:03:22] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 580175 for Another Round
+[15:03:23] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 1082900 for Loveable
+[15:03:23] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 11104 for Chungking Express
+[15:03:23] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 12548 for I Vitelloni
+[15:03:24] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 12493 for High and Low
+[15:03:24] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 29698 for Ratcatcher
+[15:03:25] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 125257 for Muddy River
+[15:03:25] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 5544 for Hiroshima Mon Amour
+[15:03:25] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 83440 for Brief Encounters
+[15:03:26] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 10363 for Purple Noon
+[15:03:26] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'pottenkijkers: la amiga de mi amiga' with director 'Zaida Carmona' and actor 'Zaida Carmona'. Fuzzy matching...
+[15:03:26] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 948340 for Girlfriends and Girlfriends
+[15:03:27] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 843 for In the Mood for Love
+[15:03:27] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 3116 for Midnight Cowboy
+[15:03:27] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 25468 for My Dinner with Andre
+[15:03:28] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 27019 for Céline and Julie Go Boating
+[15:03:28] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 373765 for History's Future
+[15:03:29] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 406 for La Haine
+[15:03:29] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'mijn familie - dat u in interessante tijden moge leven' with director 'Fiona Tan' and actor 'None'. Fuzzy matching...
+[15:03:29] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 1055051 for May You Live in Interesting Times
+[15:03:29] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 1063594 for Dearest Fiona
+[15:03:29] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:30] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 409106 for Ascent
+[15:03:30] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:31] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 11645 for Ran
+[15:03:31] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'het rijk der schimmen' with director 'Fiona Tan' and actor 'None'. Fuzzy matching...
+[15:03:31] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Dearest Fiona) for 'het rijk der schimmen' is below threshold: 47.05882352941177.
+[15:03:31] [WARNING] uitkijk:get_movie:108 - No TMDB id found for het rijk der schimmen, skipping
+[15:03:32] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:32] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:32] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:32] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'het rijk der schimmen' with director 'Fiona Tan' and actor 'None'. Fuzzy matching...
+[15:03:32] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Dearest Fiona) for 'het rijk der schimmen' is below threshold: 47.05882352941177.
+[15:03:32] [WARNING] uitkijk:get_movie:108 - No TMDB id found for het rijk der schimmen, skipping
+[15:03:33] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:33] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: uitkijk.
+[15:03:33] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: filmkoepel
+[15:03:33] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: louishartloopercomplex
+[15:03:33] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: slachtstraat
+[15:03:33] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: springhaver
+[15:03:33] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: trianon
+[15:03:33] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: lido
+[15:03:33] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: kijkhuis
+[15:03:33] [DEBUG] runner:run:17 - Skipping disabled cinema scraper: fchyena
+[15:03:33] [INFO] runner:run:29 - Loading Letterboxd slugs...
+[15:03:33] [INFO] load_letterboxd_slugs:load_letterboxd_slugs:34 - No movies found without Letterboxd slug.
+[15:03:33] [SUCCESS] runner:run:31 - Successfully loaded Letterboxd slugs.
+[16:45:07] [INFO] runner:run:25 - Running scraper for cinema: eye...
+[16:45:09] [DEBUG] eye:get_movie:132 - Found TMDB id 1161108 for The Second Act
+[16:45:10] [DEBUG] eye:get_movie:132 - Found TMDB id 1161879 for Motel Destino
+[16:45:11] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'Mifune: The Last Samurai' with director 'Robert Okazaki' and actor 'None'.
+[16:45:11] [WARNING] eye:get_movie:128 - No TMDB id found for Mifune: The Last Samurai, skipping
+[16:45:12] [DEBUG] eye:get_movie:132 - Found TMDB id 12888 for Belly
+[16:45:12] [DEBUG] eye:get_movie:132 - Found TMDB id 1100988 for 28 Years Later
+[16:45:13] [DEBUG] eye:get_movie:132 - Found TMDB id 1245728 for Peacock
+[16:45:14] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'Festen (Dogma 95)' with director 'Thomas Vinterberg' and actor 'None'. Fuzzy matching...
+[16:45:14] [DEBUG] eye:get_movie:132 - Found TMDB id 309 for The Celebration
+[16:45:15] [DEBUG] eye:get_movie:132 - Found TMDB id 1469275 for Twinkle Twinkle Little Elephant
+[16:45:16] [DEBUG] eye:get_movie:132 - Found TMDB id 3782 for Ikiru
+[16:45:17] [DEBUG] eye:get_movie:132 - Found TMDB id 24238 for Mary and Max
+[16:45:17] [DEBUG] eye:get_movie:120 - Did not find original title for shaun het schaap - elke dag feest
+[16:45:18] [WARNING] tmdb:get_person_ids:31 - Verschillende regisseurs could not be found on TMDB.
+[16:45:18] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'shaun het schaap - elke dag feest' with director 'Verschillende regisseurs' and actor 'None'.
+[16:45:18] [WARNING] eye:get_movie:128 - No TMDB id found for shaun het schaap - elke dag feest, skipping
+[16:45:18] [DEBUG] eye:get_movie:132 - Found TMDB id 1172244 for Moon
+[16:45:19] [DEBUG] eye:get_movie:132 - Found TMDB id 966 for The Magnificent Seven
+[16:45:20] [DEBUG] eye:get_movie:132 - Found TMDB id 548 for Rashomon
+[16:45:21] [DEBUG] eye:get_movie:132 - Found TMDB id 1358640 for Key to Heaven
+[16:45:22] [DEBUG] eye:get_movie:132 - Found TMDB id 346 for Seven Samurai
+[16:45:22] [DEBUG] eye:get_movie:132 - Found TMDB id 1137350 for The Phoenician Scheme
+[16:45:23] [DEBUG] eye:get_movie:132 - Found TMDB id 1000432 for Fanon
+[16:45:24] [DEBUG] eye:get_movie:132 - Found TMDB id 1082900 for Loveable
+[16:45:24] [DEBUG] eye:get_movie:120 - Did not find original title for shaun het schaap - elke dag feest
+[16:45:24] [WARNING] tmdb:get_person_ids:31 - Verschillende regisseurs could not be found on TMDB.
+[16:45:24] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'shaun het schaap - elke dag feest' with director 'Verschillende regisseurs' and actor 'None'.
+[16:45:24] [WARNING] eye:get_movie:128 - No TMDB id found for shaun het schaap - elke dag feest, skipping
+[16:45:28] [DEBUG] eye:get_movie:132 - Found TMDB id 32716 for 3 Bad Men
+[16:45:29] [DEBUG] eye:get_movie:132 - Found TMDB id 975324 for Afternoons of Solitude
+[16:45:30] [DEBUG] eye:get_movie:132 - Found TMDB id 11878 for Yojimbo
+[16:45:31] [DEBUG] eye:get_movie:132 - Found TMDB id 1315138 for Drowning Dry
+[16:45:31] [DEBUG] eye:get_movie:132 - Found TMDB id 1106904 for Totto-chan: The Little Girl at the Window
+[16:45:32] [DEBUG] eye:get_movie:132 - Found TMDB id 12493 for High and Low
+[16:45:32] [DEBUG] eye:get_movie:132 - Found TMDB id 5544 for Hiroshima Mon Amour
+[16:45:33] [DEBUG] eye:get_movie:132 - Found TMDB id 1309126 for The Garden of Earthly Delights
+[16:45:34] [DEBUG] eye:get_movie:132 - Found TMDB id 962 for The Gold Rush
+[16:45:35] [DEBUG] eye:get_movie:132 - Found TMDB id 996087 for Hoard
+[16:45:36] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'Naomi Osaka' with director 'Garrett Bradley' and actor 'None'. Fuzzy matching...
+[16:45:36] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (America) for 'Naomi Osaka' is below threshold: 44.44444444444444.
+[16:45:36] [WARNING] eye:get_movie:128 - No TMDB id found for Naomi Osaka, skipping
+[16:45:36] [DEBUG] eye:get_movie:120 - Did not find original title for shaun het schaap - elke dag feest
+[16:45:36] [WARNING] tmdb:get_person_ids:31 - Verschillende regisseurs could not be found on TMDB.
+[16:45:36] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'shaun het schaap - elke dag feest' with director 'Verschillende regisseurs' and actor 'None'.
+[16:45:36] [WARNING] eye:get_movie:128 - No TMDB id found for shaun het schaap - elke dag feest, skipping
+[16:45:37] [DEBUG] eye:get_movie:132 - Found TMDB id 25858 for Drunken Angel
+[16:45:38] [DEBUG] eye:get_movie:132 - Found TMDB id 1315091 for Toxic
+[16:45:39] [DEBUG] eye:get_movie:132 - Found TMDB id 4946 for The Swimming Pool
+[16:45:39] [DEBUG] eye:get_movie:132 - Found TMDB id 30368 for Stray Dog
+[16:45:40] [DEBUG] eye:get_movie:132 - Found TMDB id 17295 for The Battle of Algiers
+[16:45:41] [DEBUG] eye:get_movie:132 - Found TMDB id 33205 for Dodes'ka-den
+[16:45:42] [DEBUG] eye:get_movie:132 - Found TMDB id 44783 for Symbiopsychotaxiplasm: Take One
+[16:45:43] [DEBUG] eye:get_movie:132 - Found TMDB id 760099 for Living
+[16:45:44] [DEBUG] eye:get_movie:132 - Found TMDB id 1059 for The Hidden Fortress
+[16:45:44] [DEBUG] eye:get_movie:132 - Found TMDB id 31589 for The Bad Sleep Well
+[16:45:46] [DEBUG] eye:get_movie:132 - Found TMDB id 1417 for Pan's Labyrinth
+[16:45:46] [DEBUG] eye:get_movie:132 - Found TMDB id 43487 for No Regrets for Our Youth
+[16:45:48] [DEBUG] eye:get_movie:132 - Found TMDB id 1275987 for Don’t You Let Me Go
+[16:45:49] [DEBUG] eye:get_movie:132 - Found TMDB id 1142501 for I Accidentally Wrote a Book
+[16:45:49] [DEBUG] eye:get_movie:132 - Found TMDB id 21490 for I Live in Fear
+[16:45:50] [DEBUG] eye:get_movie:132 - Found TMDB id 11104 for Chungking Express
+[16:45:51] [DEBUG] eye:get_movie:132 - Found TMDB id 11712 for Sanjuro
+[16:45:53] [DEBUG] eye:get_movie:132 - Found TMDB id 391 for A Fistful of Dollars
+[16:45:53] [DEBUG] eye:get_movie:132 - Found TMDB id 713600 for Blood Andy
+[16:45:54] [DEBUG] eye:get_movie:132 - Found TMDB id 63510 for Jo Jo Dancer, Your Life Is Calling
+[16:45:55] [DEBUG] eye:get_movie:132 - Found TMDB id 3777 for Throne of Blood
+[16:45:56] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'A.K.' with director 'Chris Marker' and actor 'None'. Fuzzy matching...
+[16:45:56] [DEBUG] eye:get_movie:132 - Found TMDB id 396485 for A. K.
+[16:45:56] [DEBUG] eye:get_movie:132 - Found TMDB id 11645 for Ran
+[16:45:57] [DEBUG] eye:get_movie:132 - Found TMDB id 3780 for Red Beard
+[16:45:58] [DEBUG] eye:get_movie:132 - Found TMDB id 70447 for Louisiana Story
+[16:46:00] [DEBUG] eye:get_movie:132 - Found TMDB id 12722 for War Photographer
+[16:46:01] [DEBUG] eye:get_movie:132 - Found TMDB id 11953 for Kagemusha
+[16:46:01] [DEBUG] eye:get_movie:132 - Found TMDB id 9764 for Dersu Uzala
+[16:46:02] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'Dreams' with director 'Akira Kurosawa' and actor 'None'. Fuzzy matching...
+[16:46:02] [DEBUG] eye:get_movie:132 - Found TMDB id 12516 for Dreams
+[16:46:03] [DEBUG] eye:get_movie:132 - Found TMDB id 988397 for Universal Language
+[16:46:04] [DEBUG] eye:get_movie:132 - Found TMDB id 2093 for Amsterdamned
+[16:46:04] [DEBUG] eye:get_movie:132 - Found TMDB id 13889 for Madadayo
+[16:46:05] [DEBUG] eye:get_movie:132 - Found TMDB id 272089 for Zare
+[16:46:06] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: eye.
+[16:46:06] [INFO] runner:run:25 - Running scraper for cinema: filmhallen...
+[16:46:07] [DEBUG] eagerly:scrape:66 - Found TMDB id 62 for 2001: A Space Odyssey
+[16:46:07] [DEBUG] eagerly:scrape:66 - Found TMDB id 1100988 for 28 Years Later
+[16:46:08] [DEBUG] eagerly:scrape:66 - Found TMDB id 269 for Breathless
+[16:46:08] [DEBUG] eagerly:scrape:66 - Found TMDB id 88912 for A Child Is Waiting
+[16:46:09] [DEBUG] eagerly:scrape:66 - Found TMDB id 661539 for A Complete Unknown
+[16:46:09] [DEBUG] eagerly:scrape:66 - Found TMDB id 1494458 for Anak Indië
+[16:46:12] [DEBUG] eagerly:scrape:66 - Found TMDB id 1052 for Blow-Up
+[16:46:13] [DEBUG] eagerly:scrape:66 - Found TMDB id 475 for Bonnie and Clyde
+[16:46:14] [DEBUG] eagerly:scrape:66 - Found TMDB id 164 for Breakfast at Tiffany's
+[16:46:15] [DEBUG] eagerly:scrape:66 - Found TMDB id 4808 for Charade
+[16:46:17] [DEBUG] eagerly:scrape:66 - Found TMDB id 907 for Doctor Zhivago
+[16:46:18] [DEBUG] eagerly:scrape:66 - Found TMDB id 624 for Easy Rider
+[16:46:19] [DEBUG] eagerly:scrape:66 - Found TMDB id 1106194 for A Beautiful Imperfection
+[16:46:19] [DEBUG] eagerly:scrape:66 - Found TMDB id 1022787 for Elio
+[16:46:20] [DEBUG] eagerly:scrape:66 - Found TMDB id 911430 for F1
+[16:46:21] [DEBUG] eagerly:scrape:66 - Found TMDB id 1714 for Fahrenheit 451
+[16:46:21] [DEBUG] eagerly:scrape:66 - Found TMDB id 1433791 for Flophouse America
+[16:46:22] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'flow' with director 'Gints Zilbalodis' and actor ''. Fuzzy matching...
+[16:46:22] [DEBUG] eagerly:scrape:66 - Found TMDB id 823219 for Flow
+[16:46:22] [DEBUG] eagerly:scrape:66 - Found TMDB id 1001273 for Fotogenico
+[16:46:25] [DEBUG] eagerly:scrape:66 - Found TMDB id 1214469 for Ghostlight
+[16:46:26] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'gillian anderson a streetcar named desire' with director 'Benedict Andrews' and actor 'Gillian Anderson'.
+[16:46:26] [WARNING] eagerly:scrape:60 - No TMDB ID found for gillian anderson a streetcar named desire, skipping
+[16:46:26] [DEBUG] eagerly:scrape:66 - Found TMDB id 1879 for Guess Who's Coming to Dinner
+[16:46:28] [DEBUG] eagerly:scrape:66 - Found TMDB id 996087 for Hoard
+[16:46:28] [DEBUG] eagerly:scrape:66 - Found TMDB id 1087192 for How to Train Your Dragon
+[16:46:29] [DEBUG] eagerly:scrape:66 - Found TMDB id 14794 for if....
+[16:46:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 1040 for The Leopard
+[16:46:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 714675 for The American
+[16:46:31] [DEBUG] eagerly:scrape:66 - Found TMDB id 439 for La Dolce Vita
+[16:46:31] [DEBUG] eagerly:scrape:66 - Found TMDB id 1320254 for The Story of Frank and Nina
+[16:46:32] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161108 for The Second Act
+[16:46:32] [DEBUG] eagerly:scrape:66 - Found TMDB id 266 for Contempt
+[16:46:34] [DEBUG] eagerly:scrape:66 - Found TMDB id 552524 for Lilo & Stitch
+[16:46:37] [DEBUG] eagerly:scrape:66 - Found TMDB id 802 for Lolita
+[16:46:37] [DEBUG] eagerly:scrape:66 - Found TMDB id 1082900 for Loveable
+[16:46:38] [DEBUG] eagerly:scrape:66 - Found TMDB id 1136867 for Materialists
+[16:46:38] [DEBUG] eagerly:scrape:66 - Found TMDB id 887180 for Matt and Mara
+[16:46:39] [DEBUG] eagerly:scrape:66 - Found TMDB id 1172244 for Moon
+[16:46:39] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161879 for Motel Destino
+[16:46:40] [DEBUG] eagerly:scrape:66 - Found TMDB id 1001684 for Niki
+[16:46:40] [DEBUG] eagerly:scrape:66 - Found TMDB id 1448497 for Ocean with David Attenborough
+[16:46:40] [DEBUG] eagerly:scrape:66 - Found TMDB id 1003504 for We Will Go
+[16:46:41] [DEBUG] eagerly:scrape:66 - Found TMDB id 422 for 8½
+[16:46:41] [DEBUG] eagerly:scrape:66 - Found TMDB id 1245728 for Peacock
+[16:46:41] [WARNING] tmdb:get_person_ids:31 - Rob Cureton could not be found on TMDB.
+[16:46:41] [WARNING] tmdb:get_person_ids:31 - Anber Ortanca could not be found on TMDB.
+[16:46:41] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'peppa en de nieuwe baby een bioscoopervaring' with director 'Rob Cureton' and actor 'Anber Ortanca'.
+[16:46:41] [WARNING] eagerly:scrape:60 - No TMDB ID found for peppa en de nieuwe baby een bioscoopervaring, skipping
+[16:46:42] [DEBUG] eagerly:scrape:66 - Found TMDB id 10227 for PlayTime
+[16:46:42] [DEBUG] eagerly:scrape:66 - Found TMDB id 10363 for Purple Noon
+[16:46:43] [DEBUG] eagerly:scrape:66 - Found TMDB id 539 for Psycho
+[16:46:46] [DEBUG] eagerly:scrape:66 - Found TMDB id 1114936 for Roger Waters: This Is Not a Drill — Live from Prague
+[16:46:46] [DEBUG] eagerly:scrape:66 - Found TMDB id 805 for Rosemary's Baby
+[16:46:47] [DEBUG] eagerly:scrape:66 - Found TMDB id 1233413 for Sinners
+[16:46:48] [DEBUG] eagerly:scrape:66 - Found TMDB id 1234400 for Swamp Dogg Gets His Pool Painted
+[16:46:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 284 for The Apartment
+[16:46:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 1112466 for The Balconettes
+[16:46:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 571 for The Birds
+[16:46:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 962 for The Gold Rush
+[16:46:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 37247 for The Graduate
+[16:46:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 842924 for The Life of Chuck
+[16:46:55] [DEBUG] eagerly:scrape:66 - Found TMDB id 11536 for The Misfits
+[16:46:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 1137350 for The Phoenician Scheme
+[16:46:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 59231 for The Rain People
+[16:46:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 1127625 for The Salt Path
+[16:46:58] [DEBUG] eagerly:scrape:66 - Found TMDB id 1024541 for The Teacher Who Promised the Sea
+[16:46:58] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'the village next to paradise' with director 'Mo Harawe' and actor 'Axmen Cali Faarax'.
+[16:46:58] [WARNING] eagerly:scrape:60 - No TMDB ID found for the village next to paradise, skipping
+[16:46:59] [DEBUG] eagerly:scrape:66 - Found TMDB id 1363149 for Tussen wal en schip - Geruisloos Indisch
+[16:47:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 55836 for A Gentle Woman
+[16:47:02] [DEBUG] eagerly:scrape:66 - Found TMDB id 10604 for Zorba the Greek
+[16:47:02] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: filmhallen.
+[16:47:02] [INFO] runner:run:25 - Running scraper for cinema: kino...
+[16:47:03] [DEBUG] eagerly:scrape:66 - Found TMDB id 1100988 for 28 Years Later
+[16:47:03] [DEBUG] eagerly:scrape:66 - Found TMDB id 11507 for Body Double
+[16:47:04] [DEBUG] eagerly:scrape:66 - Found TMDB id 4995 for Boogie Nights
+[16:47:04] [DEBUG] eagerly:scrape:66 - Found TMDB id 1448497 for Ocean with David Attenborough
+[16:47:05] [DEBUG] eagerly:scrape:66 - Found TMDB id 20676 for Deep Cover
+[16:47:05] [DEBUG] eagerly:scrape:66 - Found TMDB id 911430 for F1
+[16:47:06] [DEBUG] eagerly:scrape:66 - Found TMDB id 8052 for Hard Eight
+[16:47:06] [DEBUG] eagerly:scrape:66 - Found TMDB id 42172 for Hardcore
+[16:47:09] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'heat 1995 a 35mm presentation' with director 'Michael Mann' and actor 'Al Pacino'. Fuzzy matching...
+[16:47:09] [DEBUG] eagerly:scrape:66 - Found TMDB id 949 for Heat
+[16:47:10] [DEBUG] eagerly:scrape:66 - Found TMDB id 12493 for High and Low
+[16:47:10] [DEBUG] eagerly:scrape:66 - Found TMDB id 1087192 for How to Train Your Dragon
+[16:47:10] [DEBUG] eagerly:scrape:66 - Found TMDB id 3782 for Ikiru
+[16:47:11] [DEBUG] eagerly:scrape:66 - Found TMDB id 171274 for Inherent Vice
+[16:47:11] [DEBUG] eagerly:scrape:66 - Found TMDB id 1726 for Iron Man
+[16:47:12] [DEBUG] eagerly:scrape:66 - Found TMDB id 27432 for Killer of Sheep
+[16:47:12] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161108 for The Second Act
+[16:47:13] [DEBUG] eagerly:scrape:66 - Found TMDB id 718032 for Licorice Pizza
+[16:47:13] [DEBUG] eagerly:scrape:66 - Found TMDB id 1082900 for Loveable
+[16:47:14] [DEBUG] eagerly:scrape:66 - Found TMDB id 334 for Magnolia
+[16:47:14] [DEBUG] eagerly:scrape:66 - Found TMDB id 2321 for Married to the Mob
+[16:47:14] [DEBUG] eagerly:scrape:66 - Found TMDB id 1136867 for Materialists
+[16:47:15] [DEBUG] eagerly:scrape:66 - Found TMDB id 38772 for Melvin and Howard
+[16:47:16] [DEBUG] eagerly:scrape:66 - Found TMDB id 85942 for Model Shop
+[16:47:16] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161879 for Motel Destino
+[16:47:16] [DEBUG] eagerly:scrape:66 - Found TMDB id 37585 for Night on the Galactic Railroad
+[16:47:17] [DEBUG] eagerly:scrape:66 - Found TMDB id 370755 for Paterson
+[16:47:17] [DEBUG] eagerly:scrape:66 - Found TMDB id 1245728 for Peacock
+[16:47:17] [DEBUG] eagerly:scrape:66 - Found TMDB id 1367997 for Perla
+[16:47:18] [DEBUG] eagerly:scrape:66 - Found TMDB id 400617 for Phantom Thread
+[16:47:18] [DEBUG] eagerly:scrape:66 - Found TMDB id 10363 for Purple Noon
+[16:47:19] [WARNING] tmdb:get_person_ids:31 - Keira Knightly could not be found on TMDB.
+[16:47:20] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'pride and prejudice 2005 20th anniversary' with director 'Joe Wright' and actor 'Keira Knightly'. Fuzzy matching...
+[16:47:20] [DEBUG] eagerly:scrape:66 - Found TMDB id 4348 for Pride & Prejudice
+[16:47:20] [DEBUG] eagerly:scrape:66 - Found TMDB id 128 for Princess Mononoke
+[16:47:21] [DEBUG] eagerly:scrape:66 - Found TMDB id 8051 for Punch-Drunk Love
+[16:47:21] [DEBUG] eagerly:scrape:66 - Found TMDB id 11645 for Ran
+[16:47:22] [DEBUG] eagerly:scrape:66 - Found TMDB id 38714 for Save the Tiger
+[16:47:22] [DEBUG] eagerly:scrape:66 - Found TMDB id 346 for Seven Samurai
+[16:47:22] [DEBUG] eagerly:scrape:66 - Found TMDB id 1506688 for Shaun het schaap - Elke dag feest
+[16:47:24] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'sneak preview' with director 'It's a secret!' and actor 'It's a secret!'.
+[16:47:24] [WARNING] eagerly:scrape:60 - No TMDB ID found for sneak preview, skipping
+[16:47:25] [DEBUG] eagerly:scrape:66 - Found TMDB id 11300 for Something Wild
+[16:47:26] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'straight time 1978 a 35mm presentation' with director 'Ulu Grosbard' and actor 'Dustin Hoffman'. Fuzzy matching...
+[16:47:26] [DEBUG] eagerly:scrape:66 - Found TMDB id 23397 for Straight Time
+[16:47:26] [DEBUG] eagerly:scrape:66 - Found TMDB id 37247 for The Graduate
+[16:47:27] [DEBUG] eagerly:scrape:66 - Found TMDB id 842924 for The Life of Chuck
+[16:47:28] [DEBUG] eagerly:scrape:66 - Found TMDB id 1847 for The Long Goodbye
+[16:47:28] [DEBUG] eagerly:scrape:66 - Found TMDB id 68722 for The Master
+[16:47:29] [DEBUG] eagerly:scrape:66 - Found TMDB id 1434113 for The North
+[16:47:29] [DEBUG] eagerly:scrape:66 - Found TMDB id 1137350 for The Phoenician Scheme
+[16:47:29] [DEBUG] eagerly:scrape:66 - Found TMDB id 1127625 for The Salt Path
+[16:47:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 7345 for There Will Be Blood
+[16:47:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 1106904 for Totto-chan: The Little Girl at the Window
+[16:47:31] [DEBUG] eagerly:scrape:66 - Found TMDB id 102938 for Trackdown
+[16:47:31] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka animation shorts home is' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:31] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Anatomy of an Illness) for 'wdka animation shorts home is' is below threshold: 44.0.
+[16:47:31] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka animation shorts home is, skipping
+[16:47:31] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka animation shorts moving on' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:31] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Anatomy of an Illness) for 'wdka animation shorts moving on' is below threshold: 42.30769230769231.
+[16:47:31] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka animation shorts moving on, skipping
+[16:47:31] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka animation shorts open up' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:31] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Anatomy of an Illness) for 'wdka animation shorts open up' is below threshold: 40.0.
+[16:47:31] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka animation shorts open up, skipping
+[16:47:31] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka animation shorts there and back again' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:31] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Samaritan: The Mitch Snyder Story) for 'wdka animation shorts there and back again' is below threshold: 42.666666666666664.
+[16:47:31] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka animation shorts there and back again, skipping
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka animation shorts under pressure' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (True Grit: A Further Adventure) for 'wdka animation shorts under pressure' is below threshold: 42.42424242424242.
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka animation shorts under pressure, skipping
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka audiovisual shorts documentary' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Deadly Family Secrets) for 'wdka audiovisual shorts documentary' is below threshold: 39.285714285714285.
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka audiovisual shorts documentary, skipping
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka audiovisual shorts fiction' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Deadly Family Secrets) for 'wdka audiovisual shorts fiction' is below threshold: 42.30769230769231.
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka audiovisual shorts fiction, skipping
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka audiovisual shorts hybrid experimental' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Samaritan: The Mitch Snyder Story) for 'wdka audiovisual shorts hybrid experimental' is below threshold: 39.473684210526315.
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka audiovisual shorts hybrid experimental, skipping
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka graduation shorts animation 1' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Anatomy of an Illness) for 'wdka graduation shorts animation 1' is below threshold: 43.63636363636363.
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts animation 1, skipping
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka graduation shorts animation 2' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:32] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Anatomy of an Illness) for 'wdka graduation shorts animation 2' is below threshold: 43.63636363636363.
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts animation 2, skipping
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka graduation shorts animation 3' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Anatomy of an Illness) for 'wdka graduation shorts animation 3' is below threshold: 43.63636363636363.
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts animation 3, skipping
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka graduation shorts documentary 1' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Deadly Family Secrets) for 'wdka graduation shorts documentary 1' is below threshold: 42.10526315789474.
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts documentary 1, skipping
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka graduation shorts documentary 2' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Deadly Family Secrets) for 'wdka graduation shorts documentary 2' is below threshold: 42.10526315789474.
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts documentary 2, skipping
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka graduation shorts fiction' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (The French Revolution) for 'wdka graduation shorts fiction' is below threshold: 43.13725490196079.
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts fiction, skipping
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka graduation shorts hybrid experimental 1' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Samaritan: The Mitch Snyder Story) for 'wdka graduation shorts hybrid experimental 1' is below threshold: 38.96103896103896.
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts hybrid experimental 1, skipping
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka graduation shorts hybrid experimental 2' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:33] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Samaritan: The Mitch Snyder Story) for 'wdka graduation shorts hybrid experimental 2' is below threshold: 38.96103896103896.
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts hybrid experimental 2, skipping
+[16:47:34] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wdka industry talk film education industry in dialogue' with director 'Richard T. Heffron' and actor ''. Fuzzy matching...
+[16:47:34] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Guilty of Innocence: The Lenell Geter Story) for 'wdka industry talk film education industry in dialogue' is below threshold: 40.90909090909091.
+[16:47:34] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka industry talk film education industry in dialogue, skipping
+[16:47:34] [DEBUG] eagerly:scrape:66 - Found TMDB id 11878 for Yojimbo
+[16:47:34] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: kino.
+[16:47:34] [INFO] runner:run:25 - Running scraper for cinema: kriterion...
+[16:47:35] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1106904 for Totto-chan: The Little Girl at the Window
+[16:47:35] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1433791 for Flophouse America
+[16:47:35] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1012241 for The Village Next to Paradise
+[16:47:35] [DEBUG] kriterion:get_movie:105 - Found TMDB id 3782 for Ikiru
+[16:47:35] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1367997 for Perla
+[16:47:35] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1137350 for The Phoenician Scheme
+[16:47:35] [DEBUG] kriterion:get_movie:105 - Found TMDB id 12493 for High and Low
+[16:47:35] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1161879 for Motel Destino
+[16:47:35] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1100988 for 28 Years Later
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1161879 for Motel Destino
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 346 for Seven Samurai
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 309 for The Celebration
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1012241 for The Village Next to Paradise
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 11878 for Yojimbo
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1106904 for Totto-chan: The Little Girl at the Window
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 346 for Seven Samurai
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1367997 for Perla
+[16:47:36] [WARNING] tmdb:get_person_ids:31 - Various directors could not be found on TMDB.
+[16:47:36] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'SNEAK PREVIEW' with director 'Various directors' and actor 'None'.
+[16:47:36] [DEBUG] kriterion:get_movie:97 - No TMDB id found for SNEAK PREVIEW
+[16:47:36] [WARNING] kriterion:scrape:54 - Could not process show SNEAK PREVIEW
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1001684 for Niki
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 3782 for Ikiru
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 12493 for High and Low
+[16:47:36] [DEBUG] kriterion:get_movie:105 - Found TMDB id 1254246 for I Am the River, the River Is Me
+[16:47:36] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: kriterion.
+[16:47:36] [INFO] runner:run:25 - Running scraper for cinema: lab111...
+[16:47:38] [DEBUG] lab111:scrape:72 - Found TMDB id 309 for The Celebration
+[16:47:39] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'alien & aliens' with director 'Ridley Scott' and actor 'Sigourney Weaver'. Fuzzy matching...
+[16:47:39] [DEBUG] lab111:scrape:72 - Found TMDB id 348 for Alien
+[16:47:39] [DEBUG] lab111:scrape:72 - Found TMDB id 1100988 for 28 Years Later
+[16:47:40] [DEBUG] lab111:scrape:72 - Found TMDB id 539565 for Zola
+[16:47:41] [DEBUG] lab111:scrape:72 - Found TMDB id 18415 for Gummo
+[16:47:41] [DEBUG] lab111:scrape:72 - Found TMDB id 468 for My Own Private Idaho
+[16:47:44] [DEBUG] lab111:scrape:72 - Found TMDB id 994108 for All of Us Strangers
+[16:47:45] [DEBUG] lab111:scrape:72 - Found TMDB id 13403 for Hedwig and the Angry Inch
+[16:47:46] [DEBUG] lab111:scrape:72 - Found TMDB id 965150 for Aftersun
+[16:47:46] [DEBUG] lab111:scrape:72 - Found TMDB id 11634 for Show Me Love
+[16:47:46] [DEBUG] lab111:scrape:72 - Found TMDB id 235 for Stand by Me
+[16:47:47] [DEBUG] lab111:scrape:72 - Found TMDB id 655 for Paris, Texas
+[16:47:47] [DEBUG] lab111:scrape:72 - Found TMDB id 11645 for Ran
+[16:47:48] [DEBUG] lab111:scrape:72 - Found TMDB id 948549 for Love Lies Bleeding
+[16:47:48] [DEBUG] lab111:scrape:72 - Found TMDB id 1137350 for The Phoenician Scheme
+[16:47:48] [DEBUG] lab111:scrape:72 - Found TMDB id 949 for Heat
+[16:47:48] [DEBUG] lab111:scrape:72 - Found TMDB id 2011 for Persepolis
+[16:47:49] [DEBUG] lab111:scrape:72 - Found TMDB id 530385 for Midsommar
+[16:47:49] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'asian movie night: sanguine specters stick to the skin' with director 'Isao Fujisawa' and actor 'None'. Fuzzy matching...
+[16:47:49] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Bye Bye Love) for 'asian movie night: sanguine specters stick to the skin' is below threshold: 12.903225806451616.
+[16:47:49] [WARNING] lab111:scrape:60 - No TMDB id found for asian movie night: sanguine specters stick to the skin, skipping
+[16:47:50] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'toxic' with director 'Saule Bliuvaite' and actor 'Vesta Matulyte'. Fuzzy matching...
+[16:47:50] [DEBUG] lab111:scrape:72 - Found TMDB id 1315091 for Toxic
+[16:47:51] [DEBUG] lab111:scrape:72 - Found TMDB id 1275987 for Don’t You Let Me Go
+[16:47:51] [DEBUG] lab111:scrape:72 - Found TMDB id 11953 for Kagemusha
+[16:47:54] [DEBUG] lab111:scrape:72 - Found TMDB id 567 for Rear Window
+[16:47:54] [DEBUG] lab111:scrape:72 - Found TMDB id 10363 for Purple Noon
+[16:47:54] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'hump! film fest 2025 part two' with director 'None' and actor 'None'.
+[16:47:54] [WARNING] lab111:scrape:60 - No TMDB id found for hump! film fest 2025 part two, skipping
+[16:47:54] [DEBUG] lab111:scrape:72 - Found TMDB id 4946 for The Swimming Pool
+[16:47:55] [DEBUG] lab111:scrape:72 - Found TMDB id 54898 for The Green Ray
+[16:47:56] [DEBUG] lab111:scrape:72 - Found TMDB id 617 for Wild Things
+[16:47:57] [DEBUG] lab111:scrape:72 - Found TMDB id 1213 for The Talented Mr. Ripley
+[16:47:58] [DEBUG] lab111:scrape:72 - Found TMDB id 4507 for Jamon Jamon
+[16:47:59] [DEBUG] lab111:scrape:72 - Found TMDB id 18602 for Morvern Callar
+[16:47:59] [DEBUG] lab111:scrape:72 - Found TMDB id 1364 for Sex and Lucía
+[16:48:00] [DEBUG] lab111:scrape:72 - Found TMDB id 28 for Apocalypse Now
+[16:48:01] [DEBUG] lab111:scrape:72 - Found TMDB id 14626 for Beau Travail
+[16:48:02] [DEBUG] lab111:scrape:72 - Found TMDB id 9300 for Orlando
+[16:48:03] [DEBUG] lab111:scrape:72 - Found TMDB id 9675 for Sideways
+[16:48:04] [DEBUG] lab111:scrape:72 - Found TMDB id 11826 for Sexy Beast
+[16:48:04] [DEBUG] lab111:scrape:72 - Found TMDB id 843 for In the Mood for Love
+[16:48:05] [DEBUG] lab111:scrape:72 - Found TMDB id 858017 for I Saw the TV Glow
+[16:48:06] [DEBUG] lab111:scrape:72 - Found TMDB id 1290205 for Flat Girls
+[16:48:06] [DEBUG] lab111:scrape:72 - Found TMDB id 12516 for Dreams
+[16:48:07] [DEBUG] lab111:scrape:72 - Found TMDB id 9343 for Fitzcarraldo
+[16:48:08] [DEBUG] lab111:scrape:72 - Found TMDB id 702 for A Streetcar Named Desire
+[16:48:08] [DEBUG] lab111:scrape:72 - Found TMDB id 389 for 12 Angry Men
+[16:48:10] [DEBUG] lab111:scrape:72 - Found TMDB id 903 for Cool Hand Luke
+[16:48:10] [DEBUG] lab111:scrape:72 - Found TMDB id 46919 for Daisies
+[16:48:11] [DEBUG] lab111:scrape:72 - Found TMDB id 968 for Dog Day Afternoon
+[16:48:11] [DEBUG] lab111:scrape:72 - Found TMDB id 266 for Contempt
+[16:48:12] [DEBUG] lab111:scrape:72 - Found TMDB id 290 for Barton Fink
+[16:48:12] [DEBUG] lab111:scrape:72 - Found TMDB id 9571 for Dazed and Confused
+[16:48:13] [DEBUG] lab111:scrape:72 - Found TMDB id 19366 for Josie and the Pussycats
+[16:48:14] [DEBUG] lab111:scrape:72 - Found TMDB id 58429 for La Ciénaga
+[16:48:15] [DEBUG] lab111:scrape:72 - Found TMDB id 88 for Dirty Dancing
+[16:48:15] [DEBUG] lab111:scrape:72 - Found TMDB id 1136867 for Materialists
+[16:48:15] [DEBUG] lab111:scrape:72 - Found TMDB id 452 for The Idiots
+[16:48:17] [DEBUG] lab111:scrape:72 - Found TMDB id 9820 for The Parent Trap
+[16:48:17] [DEBUG] lab111:scrape:72 - Found TMDB id 621 for Grease
+[16:48:18] [DEBUG] lab111:scrape:72 - Found TMDB id 73939 for Pariah
+[16:48:18] [DEBUG] lab111:scrape:72 - Found TMDB id 346 for Seven Samurai
+[16:48:18] [DEBUG] lab111:scrape:72 - Found TMDB id 12493 for High and Low
+[16:48:18] [DEBUG] lab111:scrape:72 - Found TMDB id 3782 for Ikiru
+[16:48:18] [DEBUG] lab111:scrape:72 - Found TMDB id 11878 for Yojimbo
+[16:48:19] [DEBUG] lab111:scrape:72 - Found TMDB id 24128 for Stop Making Sense
+[16:48:21] [DEBUG] lab111:scrape:72 - Found TMDB id 429191 for A Fantastic Woman
+[16:48:22] [DEBUG] lab111:scrape:72 - Found TMDB id 925 for Do the Right Thing
+[16:48:22] [DEBUG] lab111:scrape:72 - Found TMDB id 1161879 for Motel Destino
+[16:48:22] [DEBUG] lab111:scrape:72 - Found TMDB id 1052599 for Songs of Slow Burning Earth
+[16:48:23] [DEBUG] lab111:scrape:72 - Found TMDB id 1177524 for Beyond the Aggressives: 25 Years Later
+[16:48:23] [DEBUG] lab111:scrape:72 - Found TMDB id 1177524 for Beyond the Aggressives: 25 Years Later
+[16:48:23] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'iqmf queer short film program 2025' with director 'None' and actor 'None'.
+[16:48:23] [WARNING] lab111:scrape:60 - No TMDB id found for iqmf queer short film program 2025, skipping
+[16:48:24] [DEBUG] lab111:scrape:72 - Found TMDB id 1329860 for Between Goodbyes
+[16:48:24] [DEBUG] lab111:scrape:72 - Found TMDB id 11240 for My Beautiful Laundrette
+[16:48:25] [DEBUG] lab111:scrape:72 - Found TMDB id 24188 for Il Sorpasso
+[16:48:26] [DEBUG] lab111:scrape:72 - Found TMDB id 1391 for Y Tu Mamá También
+[16:48:26] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: lab111.
+[16:48:26] [INFO] runner:run:25 - Running scraper for cinema: themovies...
+[16:48:26] [DEBUG] eagerly:scrape:66 - Found TMDB id 1100988 for 28 Years Later
+[16:48:27] [DEBUG] eagerly:scrape:66 - Found TMDB id 994108 for All of Us Strangers
+[16:48:29] [DEBUG] eagerly:scrape:66 - Found TMDB id 1064213 for Anora
+[16:48:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 1128752 for Bird
+[16:48:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 911430 for F1
+[16:48:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 12493 for High and Low
+[16:48:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 3782 for Ikiru
+[16:48:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 714675 for The American
+[16:48:31] [DEBUG] eagerly:scrape:66 - Found TMDB id 837335 for La Chimera
+[16:48:31] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161108 for The Second Act
+[16:48:31] [DEBUG] eagerly:scrape:66 - Found TMDB id 1082900 for Loveable
+[16:48:31] [DEBUG] eagerly:scrape:66 - Found TMDB id 1136867 for Materialists
+[16:48:32] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'monster' with director 'Hirokazu Koreeda' and actor 'Shidô Nakamura'. Fuzzy matching...
+[16:48:32] [DEBUG] eagerly:scrape:66 - Found TMDB id 1050035 for Monster
+[16:48:32] [DEBUG] eagerly:scrape:66 - Found TMDB id 1448497 for Ocean with David Attenborough
+[16:48:33] [DEBUG] eagerly:scrape:66 - Found TMDB id 792307 for Poor Things
+[16:48:34] [DEBUG] eagerly:scrape:66 - Found TMDB id 1114936 for Roger Waters: This Is Not a Drill — Live from Prague
+[16:48:34] [DEBUG] eagerly:scrape:66 - Found TMDB id 346 for Seven Samurai
+[16:48:34] [DEBUG] eagerly:scrape:66 - Found TMDB id 1214539 for Soundtrack to a Coup d'Etat
+[16:48:35] [DEBUG] eagerly:scrape:66 - Found TMDB id 1232781 for Dying
+[16:48:35] [DEBUG] eagerly:scrape:66 - Found TMDB id 962 for The Gold Rush
+[16:48:35] [DEBUG] eagerly:scrape:66 - Found TMDB id 840430 for The Holdovers
+[16:48:36] [DEBUG] eagerly:scrape:66 - Found TMDB id 842924 for The Life of Chuck
+[16:48:36] [DEBUG] eagerly:scrape:66 - Found TMDB id 1137350 for The Phoenician Scheme
+[16:48:36] [DEBUG] eagerly:scrape:66 - Found TMDB id 467244 for The Zone of Interest
+[16:48:37] [DEBUG] eagerly:scrape:66 - Found TMDB id 11878 for Yojimbo
+[16:48:37] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: themovies.
+[16:48:37] [INFO] runner:run:25 - Running scraper for cinema: uitkijk...
+[16:48:37] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 1448497 for Ocean with David Attenborough
+[16:48:38] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 309 for The Celebration
+[16:48:38] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 3782 for Ikiru
+[16:48:38] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 2011 for Persepolis
+[16:48:39] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 1064486 for Memoir of a Snail
+[16:48:39] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 468 for My Own Private Idaho
+[16:48:39] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'wijnklassieker: druk' with director 'Thomas Vinterberg' and actor 'Mads Mikkelsen'. Fuzzy matching...
+[16:48:39] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 580175 for Another Round
+[16:48:40] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 1082900 for Loveable
+[16:48:40] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 11104 for Chungking Express
+[16:48:40] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 12548 for I Vitelloni
+[16:48:41] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 12493 for High and Low
+[16:48:41] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 29698 for Ratcatcher
+[16:48:41] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 125257 for Muddy River
+[16:48:42] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 5544 for Hiroshima Mon Amour
+[16:48:42] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 83440 for Brief Encounters
+[16:48:43] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 10363 for Purple Noon
+[16:48:43] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'pottenkijkers: la amiga de mi amiga' with director 'Zaida Carmona' and actor 'Zaida Carmona'. Fuzzy matching...
+[16:48:43] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 948340 for Girlfriends and Girlfriends
+[16:48:43] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 843 for In the Mood for Love
+[16:48:43] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 3116 for Midnight Cowboy
+[16:48:44] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 25468 for My Dinner with Andre
+[16:48:44] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 27019 for Céline and Julie Go Boating
+[16:48:45] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 373765 for History's Future
+[16:48:45] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 406 for La Haine
+[16:48:46] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'mijn familie - dat u in interessante tijden moge leven' with director 'Fiona Tan' and actor 'None'. Fuzzy matching...
+[16:48:46] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 1055051 for May You Live in Interesting Times
+[16:48:46] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 1063594 for Dearest Fiona
+[16:48:46] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:46] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 409106 for Ascent
+[16:48:47] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:47] [DEBUG] uitkijk:get_movie:117 - Found TMDB id 11645 for Ran
+[16:48:47] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'het rijk der schimmen' with director 'Fiona Tan' and actor 'None'. Fuzzy matching...
+[16:48:47] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Dearest Fiona) for 'het rijk der schimmen' is below threshold: 47.05882352941177.
+[16:48:47] [WARNING] uitkijk:get_movie:108 - No TMDB id found for het rijk der schimmen, skipping
+[16:48:48] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:48] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:48] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:48] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'het rijk der schimmen' with director 'Fiona Tan' and actor 'None'. Fuzzy matching...
+[16:48:48] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Dearest Fiona) for 'het rijk der schimmen' is below threshold: 47.05882352941177.
+[16:48:48] [WARNING] uitkijk:get_movie:108 - No TMDB id found for het rijk der schimmen, skipping
+[16:48:48] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:49] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: uitkijk.
+[16:48:49] [INFO] runner:run:25 - Running scraper for cinema: filmkoepel...
+[16:48:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 1100988 for 28 Years Later
+[16:48:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 1494458 for Anak Indië
+[16:48:49] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'bijspijkeren new hollywood the graduate' with director 'Hetty Naaijkens-Retel Helmrich' and actor ''. Fuzzy matching...
+[16:48:49] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Raw Herring) for 'bijspijkeren new hollywood the graduate' is below threshold: 36.36363636363637.
+[16:48:49] [WARNING] eagerly:scrape:60 - No TMDB ID found for bijspijkeren new hollywood the graduate, skipping
+[16:48:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 1106194 for A Beautiful Imperfection
+[16:48:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 1022787 for Elio
+[16:48:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 911430 for F1
+[16:48:52] [DEBUG] eagerly:scrape:66 - Found TMDB id 14811 for Fiddler on the Roof
+[16:48:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 996087 for Hoard
+[16:48:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 1087192 for How to Train Your Dragon
+[16:48:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 3782 for Ikiru
+[16:48:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 714675 for The American
+[16:48:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 1090628 for Waves of War
+[16:48:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161108 for The Second Act
+[16:48:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 552524 for Lilo & Stitch
+[16:48:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 1082900 for Loveable
+[16:48:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 1136867 for Materialists
+[16:48:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 1172244 for Moon
+[16:48:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 1448497 for Ocean with David Attenborough
+[16:48:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 1003504 for We Will Go
+[16:48:55] [DEBUG] eagerly:scrape:66 - Found TMDB id 1245728 for Peacock
+[16:48:55] [WARNING] tmdb:get_person_ids:31 - Rob Cureton could not be found on TMDB.
+[16:48:55] [WARNING] tmdb:get_person_ids:31 - Anber Ortanca could not be found on TMDB.
+[16:48:55] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'peppa en de nieuwe baby een bioscoopervaring' with director 'Rob Cureton' and actor 'Anber Ortanca'.
+[16:48:55] [WARNING] eagerly:scrape:60 - No TMDB ID found for peppa en de nieuwe baby een bioscoopervaring, skipping
+[16:48:55] [DEBUG] eagerly:scrape:66 - Found TMDB id 1114936 for Roger Waters: This Is Not a Drill — Live from Prague
+[16:48:55] [DEBUG] eagerly:scrape:66 - Found TMDB id 346 for Seven Samurai
+[16:48:55] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'speurtocht in de koepel' with director 'Akira Kurosawa' and actor ''. Fuzzy matching...
+[16:48:55] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (The Quiet Duel) for 'speurtocht in de koepel' is below threshold: 43.24324324324324.
+[16:48:55] [WARNING] eagerly:scrape:60 - No TMDB ID found for speurtocht in de koepel, skipping
+[16:48:55] [DEBUG] eagerly:scrape:66 - Found TMDB id 962 for The Gold Rush
+[16:48:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 842924 for The Life of Chuck
+[16:48:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 1137350 for The Phoenician Scheme
+[16:48:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 1127625 for The Salt Path
+[16:48:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 1024541 for The Teacher Who Promised the Sea
+[16:48:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 1363149 for Tussen wal en schip - Geruisloos Indisch
+[16:48:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 11878 for Yojimbo
+[16:48:56] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: filmkoepel.
+[16:48:56] [INFO] runner:run:25 - Running scraper for cinema: louishartloopercomplex...
+[16:48:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 1079259 for Natasha’s Dance
+[16:48:59] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'flophouse america' with director 'Monica Strømdahl' and actor '-'.
+[16:48:59] [WARNING] eagerly:scrape:60 - No TMDB ID found for flophouse america, skipping
+[16:48:59] [DEBUG] eagerly:scrape:66 - Found TMDB id 996087 for Hoard
+[16:49:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 1096642 for The Ties That Bind Us
+[16:49:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 1082900 for Loveable
+[16:49:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 1136867 for Materialists
+[16:49:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 1172244 for Moon
+[16:49:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161879 for Motel Destino
+[16:49:01] [DEBUG] eagerly:scrape:66 - Found TMDB id 1469275 for Twinkle Twinkle Little Elephant
+[16:49:01] [DEBUG] eagerly:scrape:66 - Found TMDB id 1245728 for Peacock
+[16:49:01] [DEBUG] eagerly:scrape:66 - Found TMDB id 1367997 for Perla
+[16:49:01] [DEBUG] eagerly:scrape:66 - Found TMDB id 1114936 for Roger Waters: This Is Not a Drill — Live from Prague
+[16:49:02] [DEBUG] eagerly:scrape:66 - Found TMDB id 1067485 for Sebastian
+[16:49:02] [DEBUG] eagerly:scrape:66 - Found TMDB id 1506688 for Shaun het schaap - Elke dag feest
+[16:49:03] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'summer school' with director 'Seamus Malone' and actor ''. Fuzzy matching...
+[16:49:03] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Macarooned) for 'summer school' is below threshold: 34.78260869565217.
+[16:49:03] [WARNING] eagerly:scrape:60 - No TMDB ID found for summer school, skipping
+[16:49:03] [DEBUG] eagerly:scrape:66 - Found TMDB id 1112466 for The Balconettes
+[16:49:03] [DEBUG] eagerly:scrape:66 - Found TMDB id 842924 for The Life of Chuck
+[16:49:03] [DEBUG] eagerly:scrape:66 - Found TMDB id 1137350 for The Phoenician Scheme
+[16:49:04] [DEBUG] eagerly:scrape:66 - Found TMDB id 1128655 for The Surfer
+[16:49:04] [DEBUG] eagerly:scrape:66 - Found TMDB id 1229266 for We Were Dangerous
+[16:49:04] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: louishartloopercomplex.
+[16:49:04] [INFO] runner:run:25 - Running scraper for cinema: slachtstraat...
+[16:49:06] [DEBUG] eagerly:scrape:66 - Found TMDB id 14 for American Beauty
+[16:49:06] [DEBUG] eagerly:scrape:66 - Found TMDB id 1494458 for Anak Indië
+[16:49:06] [DEBUG] eagerly:scrape:66 - Found TMDB id 3175 for Barry Lyndon
+[16:49:07] [DEBUG] eagerly:scrape:66 - Found TMDB id 5156 for Bicycle Thieves
+[16:49:08] [DEBUG] eagerly:scrape:66 - Found TMDB id 51857 for Cria!
+[16:49:09] [DEBUG] eagerly:scrape:66 - Found TMDB id 881580 for This City Is a Battlefield
+[16:49:09] [DEBUG] eagerly:scrape:66 - Found TMDB id 309 for The Celebration
+[16:49:09] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'het muziekmedicijn' with director 'Frenk van der Linden' and actor ''.
+[16:49:09] [WARNING] eagerly:scrape:60 - No TMDB ID found for het muziekmedicijn, skipping
+[16:49:09] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'het schrijfcafe' with director 'Frenk van der Linden' and actor ''.
+[16:49:09] [WARNING] eagerly:scrape:60 - No TMDB ID found for het schrijfcafe, skipping
+[16:49:09] [DEBUG] eagerly:scrape:66 - Found TMDB id 12493 for High and Low
+[16:49:11] [DEBUG] eagerly:scrape:66 - Found TMDB id 288 for High Noon
+[16:49:11] [DEBUG] eagerly:scrape:66 - Found TMDB id 3782 for Ikiru
+[16:49:12] [DEBUG] eagerly:scrape:66 - Found TMDB id 112 for Italian for Beginners
+[16:49:12] [WARNING] tmdb:get_person_ids:31 - Ambra Reijnen &amp; Rubi Tobias could not be found on TMDB.
+[16:49:12] [WARNING] tmdb:get_person_ids:31 - Juana Victoria Hernández Gómez Arabelle Hernández Gómez Juana Gómez Torres could not be found on TMDB.
+[16:49:12] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'junax thread by thread' with director 'Ambra Reijnen &amp; Rubi Tobias' and actor 'Juana Victoria Hernández Gómez Arabelle Hernández Gómez Juana Gómez Torres'.
+[16:49:12] [WARNING] eagerly:scrape:60 - No TMDB ID found for junax thread by thread, skipping
+[16:49:12] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161108 for The Second Act
+[16:49:13] [DEBUG] eagerly:scrape:66 - Found TMDB id 451 for Leaving Las Vegas
+[16:49:14] [DEBUG] eagerly:scrape:66 - Found TMDB id 11948 for Merry Christmas, Mr. Lawrence
+[16:49:15] [DEBUG] eagerly:scrape:66 - Found TMDB id 33320 for Millennium Actress
+[16:49:15] [DEBUG] eagerly:scrape:66 - Found TMDB id 37585 for Night on the Galactic Railroad
+[16:49:15] [DEBUG] eagerly:scrape:66 - Found TMDB id 1448497 for Ocean with David Attenborough
+[16:49:16] [DEBUG] eagerly:scrape:66 - Found TMDB id 102 for Open Hearts
+[16:49:16] [DEBUG] eagerly:scrape:66 - Found TMDB id 1459982 for Patatje Oorlog
+[16:49:17] [DEBUG] eagerly:scrape:66 - Found TMDB id 16646 for Russian Ark
+[16:49:17] [DEBUG] eagerly:scrape:66 - Found TMDB id 346 for Seven Samurai
+[16:49:18] [DEBUG] eagerly:scrape:66 - Found TMDB id 38442 for The Firemen's Ball
+[16:49:18] [DEBUG] eagerly:scrape:66 - Found TMDB id 962 for The Gold Rush
+[16:49:18] [DEBUG] eagerly:scrape:66 - Found TMDB id 452 for The Idiots
+[16:49:19] [DEBUG] eagerly:scrape:66 - Found TMDB id 5506 for The Ladykillers
+[16:49:19] [DEBUG] eagerly:scrape:66 - Found TMDB id 1024541 for The Teacher Who Promised the Sea
+[16:49:19] [DEBUG] eagerly:scrape:66 - Found TMDB id 10644 for The Unbearable Lightness of Being
+[16:49:19] [DEBUG] eagerly:scrape:66 - Found TMDB id 1363149 for Tussen wal en schip - Geruisloos Indisch
+[16:49:20] [DEBUG] eagerly:scrape:66 - Found TMDB id 11878 for Yojimbo
+[16:49:20] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: slachtstraat.
+[16:49:20] [INFO] runner:run:25 - Running scraper for cinema: springhaver...
+[16:49:20] [DEBUG] eagerly:scrape:66 - Found TMDB id 1208994 for A New Kind of Wilderness
+[16:49:20] [DEBUG] eagerly:scrape:66 - Found TMDB id 1106194 for A Beautiful Imperfection
+[16:49:20] [DEBUG] eagerly:scrape:66 - Found TMDB id 714675 for The American
+[16:49:20] [DEBUG] eagerly:scrape:66 - Found TMDB id 1003504 for We Will Go
+[16:49:21] [DEBUG] eagerly:scrape:66 - Found TMDB id 1127625 for The Salt Path
+[16:49:21] [DEBUG] eagerly:scrape:66 - Found TMDB id 933260 for The Substance
+[16:49:22] [DEBUG] eagerly:scrape:66 - Found TMDB id 1012241 for The Village Next to Paradise
+[16:49:22] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: springhaver.
+[16:49:22] [INFO] runner:run:25 - Running scraper for cinema: trianon...
+[16:49:22] [DEBUG] eagerly:scrape:66 - Found TMDB id 1100988 for 28 Years Later
+[16:49:22] [DEBUG] eagerly:scrape:66 - Found TMDB id 1494458 for Anak Indië
+[16:49:28] [DEBUG] eagerly:scrape:66 - Found TMDB id 8961 for Bad Boys II
+[16:49:28] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'big trip 3 race om de wereld' with director 'Vasiliy Rovenskiy' and actor 'Ivan Pecnik'.
+[16:49:28] [WARNING] eagerly:scrape:60 - No TMDB ID found for big trip 3 race om de wereld, skipping
+[16:49:29] [DEBUG] eagerly:scrape:66 - Found TMDB id 666 for Central Station
+[16:49:29] [DEBUG] eagerly:scrape:66 - Found TMDB id 11104 for Chungking Express
+[16:49:29] [DEBUG] eagerly:scrape:66 - Found TMDB id 1494468 for De film van Rutger, Thomas & Paco
+[16:49:30] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'earth fire jerney kaagman fanclubdag ii' with director 'Hans Somers' and actor ''. Fuzzy matching...
+[16:49:30] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (De film van Rutger, Thomas & Paco) for 'earth fire jerney kaagman fanclubdag ii' is below threshold: 36.111111111111114.
+[16:49:30] [WARNING] eagerly:scrape:60 - No TMDB ID found for earth fire jerney kaagman fanclubdag ii, skipping
+[16:49:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 1022787 for Elio
+[16:49:30] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'elio nl' with director 'Madeline Sharafian' and actor ''. Fuzzy matching...
+[16:49:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 1022787 for Elio
+[16:49:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 911430 for F1
+[16:49:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 1433791 for Flophouse America
+[16:49:30] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'for your eyes only' with director 'Monica Strømdahl' and actor ''. Fuzzy matching...
+[16:49:30] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Flophouse America) for 'for your eyes only' is below threshold: 34.28571428571429.
+[16:49:30] [WARNING] eagerly:scrape:60 - No TMDB ID found for for your eyes only, skipping
+[16:49:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 12493 for High and Low
+[16:49:30] [DEBUG] eagerly:scrape:66 - Found TMDB id 1087192 for How to Train Your Dragon
+[16:49:31] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'ikiru %e7%94%9f%e3%81%8d%e3%82%8b1952' with director 'Akira Kurosawa' and actor 'Takashi Shimura'. Fuzzy matching...
+[16:49:31] [DEBUG] eagerly:scrape:66 - Found TMDB id 3782 for Ikiru
+[16:49:31] [DEBUG] eagerly:scrape:66 - Found TMDB id 5915 for Into the Wild
+[16:49:32] [DEBUG] eagerly:scrape:66 - Found TMDB id 399174 for Isle of Dogs
+[16:49:32] [DEBUG] eagerly:scrape:66 - Found TMDB id 714675 for The American
+[16:49:32] [DEBUG] eagerly:scrape:66 - Found TMDB id 1234821 for Jurassic World Rebirth
+[16:49:32] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161108 for The Second Act
+[16:49:32] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'lilo stitch nl' with director 'Dean Fleischer Camp' and actor ''. Fuzzy matching...
+[16:49:32] [DEBUG] eagerly:scrape:66 - Found TMDB id 552524 for Lilo & Stitch
+[16:49:33] [DEBUG] eagerly:scrape:66 - Found TMDB id 552524 for Lilo & Stitch
+[16:49:33] [DEBUG] eagerly:scrape:66 - Found TMDB id 1082900 for Loveable
+[16:49:34] [DEBUG] eagerly:scrape:66 - Found TMDB id 1071585 for M3GAN 2.0
+[16:49:34] [DEBUG] eagerly:scrape:66 - Found TMDB id 1136867 for Materialists
+[16:49:34] [DEBUG] eagerly:scrape:66 - Found TMDB id 575265 for Mission: Impossible - The Final Reckoning
+[16:49:35] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161879 for Motel Destino
+[16:49:35] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'nico ii' with director 'Karim Ainouz' and actor ''. Fuzzy matching...
+[16:49:35] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Sunday) for 'nico ii' is below threshold: 42.857142857142854.
+[16:49:35] [WARNING] eagerly:scrape:60 - No TMDB ID found for nico ii, skipping
+[16:49:35] [DEBUG] eagerly:scrape:66 - Found TMDB id 1448497 for Ocean with David Attenborough
+[16:49:35] [DEBUG] eagerly:scrape:66 - Found TMDB id 1469275 for Twinkle Twinkle Little Elephant
+[16:49:35] [DEBUG] eagerly:scrape:66 - Found TMDB id 1003504 for We Will Go
+[16:49:35] [DEBUG] eagerly:scrape:66 - Found TMDB id 1417 for Pan's Labyrinth
+[16:49:35] [DEBUG] eagerly:scrape:66 - Found TMDB id 1245728 for Peacock
+[16:49:35] [WARNING] tmdb:get_person_ids:31 - Rob Cureton could not be found on TMDB.
+[16:49:35] [WARNING] tmdb:get_person_ids:31 - Anber Ortanca could not be found on TMDB.
+[16:49:35] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'peppa en de nieuwe baby' with director 'Rob Cureton' and actor 'Anber Ortanca'.
+[16:49:35] [WARNING] eagerly:scrape:60 - No TMDB ID found for peppa en de nieuwe baby, skipping
+[16:49:36] [DEBUG] eagerly:scrape:66 - Found TMDB id 1367997 for Perla
+[16:49:36] [DEBUG] eagerly:scrape:66 - Found TMDB id 400617 for Phantom Thread
+[16:49:36] [DEBUG] eagerly:scrape:66 - Found TMDB id 4348 for Pride & Prejudice
+[16:49:36] [DEBUG] eagerly:scrape:66 - Found TMDB id 8051 for Punch-Drunk Love
+[16:49:36] [DEBUG] eagerly:scrape:66 - Found TMDB id 11645 for Ran
+[16:49:37] [DEBUG] eagerly:scrape:66 - Found TMDB id 1067485 for Sebastian
+[16:49:37] [WARNING] tmdb:get_person_ids:31 - Akira Surokawa could not be found on TMDB.
+[16:49:37] [DEBUG] eagerly:scrape:66 - Found TMDB id 346 for Seven Samurai
+[16:49:37] [DEBUG] eagerly:scrape:66 - Found TMDB id 1506688 for Shaun het schaap - Elke dag feest
+[16:49:37] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'sneak preview' with director 'Seamus Malone' and actor ''. Fuzzy matching...
+[16:49:37] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Shaun the Sheep: Party Animals) for 'sneak preview' is below threshold: 27.906976744186053.
+[16:49:37] [WARNING] eagerly:scrape:60 - No TMDB ID found for sneak preview, skipping
+[16:49:37] [WARNING] tmdb:get_person_ids:31 - Kirk Wahamaki could not be found on TMDB.
+[16:49:38] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'studium generalere presenteert old heart' with director 'Kirk Wahamaki' and actor 'Edward Gaines'. Fuzzy matching...
+[16:49:38] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Let The Truth Be Told: Chronicles of a Few Good Men) for 'studium generalere presenteert old heart' is below threshold: 41.75824175824176.
+[16:49:38] [WARNING] eagerly:scrape:60 - No TMDB ID found for studium generalere presenteert old heart, skipping
+[16:49:38] [DEBUG] eagerly:scrape:66 - Found TMDB id 26130 for Summer Time Machine Blues
+[16:49:40] [DEBUG] eagerly:scrape:66 - Found TMDB id 1061474 for Superman
+[16:49:41] [WARNING] tmdb:get_person_ids:31 - Jamie Bell Andy Serkis Daniel Craig Nick Frost Simon Pegg Daniel Mays Gad Elmaleh Toby Jones could not be found on TMDB.
+[16:49:41] [DEBUG] eagerly:scrape:66 - Found TMDB id 17578 for The Adventures of Tintin
+[16:49:41] [DEBUG] eagerly:scrape:66 - Found TMDB id 1112466 for The Balconettes
+[16:49:41] [DEBUG] eagerly:scrape:66 - Found TMDB id 542178 for The French Dispatch
+[16:49:41] [DEBUG] eagerly:scrape:66 - Found TMDB id 842924 for The Life of Chuck
+[16:49:43] [DEBUG] eagerly:scrape:66 - Found TMDB id 9342 for The Mask of Zorro
+[16:49:44] [DEBUG] eagerly:scrape:66 - Found TMDB id 1137350 for The Phoenician Scheme
+[16:49:44] [DEBUG] eagerly:scrape:66 - Found TMDB id 1127625 for The Salt Path
+[16:49:46] [DEBUG] eagerly:scrape:66 - Found TMDB id 46624 for The Short Films of David Lynch
+[16:49:46] [DEBUG] eagerly:scrape:66 - Found TMDB id 1024541 for The Teacher Who Promised the Sea
+[16:49:46] [DEBUG] eagerly:scrape:66 - Found TMDB id 7345 for There Will Be Blood
+[16:49:46] [DEBUG] eagerly:scrape:66 - Found TMDB id 1363149 for Tussen wal en schip - Geruisloos Indisch
+[16:49:46] [WARNING] tmdb:get_person_ids:31 - Akira Kurasawa could not be found on TMDB.
+[16:49:46] [DEBUG] eagerly:scrape:66 - Found TMDB id 11878 for Yojimbo
+[16:49:47] [WARNING] tmdb:get_person_ids:31 - Ryunosuke Kamiki Mone Kamishiraishi Ryo Narita Aoi Yuki could not be found on TMDB.
+[16:49:47] [DEBUG] eagerly:scrape:66 - Found TMDB id 372058 for Your Name.
+[16:49:47] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: trianon.
+[16:49:47] [INFO] runner:run:25 - Running scraper for cinema: lido...
+[16:49:47] [DEBUG] eagerly:scrape:66 - Found TMDB id 1100988 for 28 Years Later
+[16:49:47] [DEBUG] eagerly:scrape:66 - Found TMDB id 1494458 for Anak Indië
+[16:49:48] [DEBUG] eagerly:scrape:66 - Found TMDB id 8961 for Bad Boys II
+[16:49:48] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'big trip 3 race om de wereld' with director 'Vasiliy Rovenskiy' and actor 'Ivan Pecnik'.
+[16:49:48] [WARNING] eagerly:scrape:60 - No TMDB ID found for big trip 3 race om de wereld, skipping
+[16:49:48] [DEBUG] eagerly:scrape:66 - Found TMDB id 666 for Central Station
+[16:49:48] [DEBUG] eagerly:scrape:66 - Found TMDB id 11104 for Chungking Express
+[16:49:48] [DEBUG] eagerly:scrape:66 - Found TMDB id 1494468 for De film van Rutger, Thomas & Paco
+[16:49:49] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'earth fire jerney kaagman fanclubdag ii' with director 'Hans Somers' and actor ''. Fuzzy matching...
+[16:49:49] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (De film van Rutger, Thomas & Paco) for 'earth fire jerney kaagman fanclubdag ii' is below threshold: 36.111111111111114.
+[16:49:49] [WARNING] eagerly:scrape:60 - No TMDB ID found for earth fire jerney kaagman fanclubdag ii, skipping
+[16:49:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 1022787 for Elio
+[16:49:49] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'elio nl' with director 'Madeline Sharafian' and actor ''. Fuzzy matching...
+[16:49:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 1022787 for Elio
+[16:49:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 911430 for F1
+[16:49:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 1433791 for Flophouse America
+[16:49:49] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'for your eyes only' with director 'Monica Strømdahl' and actor ''. Fuzzy matching...
+[16:49:49] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Flophouse America) for 'for your eyes only' is below threshold: 34.28571428571429.
+[16:49:49] [WARNING] eagerly:scrape:60 - No TMDB ID found for for your eyes only, skipping
+[16:49:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 12493 for High and Low
+[16:49:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 1087192 for How to Train Your Dragon
+[16:49:49] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'ikiru %e7%94%9f%e3%81%8d%e3%82%8b1952' with director 'Akira Kurosawa' and actor 'Takashi Shimura'. Fuzzy matching...
+[16:49:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 3782 for Ikiru
+[16:49:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 5915 for Into the Wild
+[16:49:49] [DEBUG] eagerly:scrape:66 - Found TMDB id 399174 for Isle of Dogs
+[16:49:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 714675 for The American
+[16:49:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 1234821 for Jurassic World Rebirth
+[16:49:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161108 for The Second Act
+[16:49:50] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'lilo stitch nl' with director 'Dean Fleischer Camp' and actor ''. Fuzzy matching...
+[16:49:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 552524 for Lilo & Stitch
+[16:49:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 552524 for Lilo & Stitch
+[16:49:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 1082900 for Loveable
+[16:49:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 1071585 for M3GAN 2.0
+[16:49:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 1136867 for Materialists
+[16:49:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 575265 for Mission: Impossible - The Final Reckoning
+[16:49:50] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161879 for Motel Destino
+[16:49:51] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'nico ii' with director 'Karim Ainouz' and actor ''. Fuzzy matching...
+[16:49:51] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Sunday) for 'nico ii' is below threshold: 42.857142857142854.
+[16:49:51] [WARNING] eagerly:scrape:60 - No TMDB ID found for nico ii, skipping
+[16:49:51] [DEBUG] eagerly:scrape:66 - Found TMDB id 1448497 for Ocean with David Attenborough
+[16:49:51] [DEBUG] eagerly:scrape:66 - Found TMDB id 1469275 for Twinkle Twinkle Little Elephant
+[16:49:51] [DEBUG] eagerly:scrape:66 - Found TMDB id 1003504 for We Will Go
+[16:49:51] [DEBUG] eagerly:scrape:66 - Found TMDB id 1417 for Pan's Labyrinth
+[16:49:51] [DEBUG] eagerly:scrape:66 - Found TMDB id 1245728 for Peacock
+[16:49:51] [WARNING] tmdb:get_person_ids:31 - Rob Cureton could not be found on TMDB.
+[16:49:51] [WARNING] tmdb:get_person_ids:31 - Anber Ortanca could not be found on TMDB.
+[16:49:51] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'peppa en de nieuwe baby' with director 'Rob Cureton' and actor 'Anber Ortanca'.
+[16:49:51] [WARNING] eagerly:scrape:60 - No TMDB ID found for peppa en de nieuwe baby, skipping
+[16:49:51] [DEBUG] eagerly:scrape:66 - Found TMDB id 1367997 for Perla
+[16:49:51] [DEBUG] eagerly:scrape:66 - Found TMDB id 400617 for Phantom Thread
+[16:49:51] [DEBUG] eagerly:scrape:66 - Found TMDB id 4348 for Pride & Prejudice
+[16:49:51] [DEBUG] eagerly:scrape:66 - Found TMDB id 8051 for Punch-Drunk Love
+[16:49:52] [DEBUG] eagerly:scrape:66 - Found TMDB id 11645 for Ran
+[16:49:52] [DEBUG] eagerly:scrape:66 - Found TMDB id 1067485 for Sebastian
+[16:49:52] [WARNING] tmdb:get_person_ids:31 - Akira Surokawa could not be found on TMDB.
+[16:49:52] [DEBUG] eagerly:scrape:66 - Found TMDB id 346 for Seven Samurai
+[16:49:52] [DEBUG] eagerly:scrape:66 - Found TMDB id 1506688 for Shaun het schaap - Elke dag feest
+[16:49:52] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'sneak preview' with director 'Seamus Malone' and actor ''. Fuzzy matching...
+[16:49:52] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Shaun the Sheep: Party Animals) for 'sneak preview' is below threshold: 27.906976744186053.
+[16:49:52] [WARNING] eagerly:scrape:60 - No TMDB ID found for sneak preview, skipping
+[16:49:52] [WARNING] tmdb:get_person_ids:31 - Kirk Wahamaki could not be found on TMDB.
+[16:49:52] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'studium generalere presenteert old heart' with director 'Kirk Wahamaki' and actor 'Edward Gaines'. Fuzzy matching...
+[16:49:52] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Let The Truth Be Told: Chronicles of a Few Good Men) for 'studium generalere presenteert old heart' is below threshold: 41.75824175824176.
+[16:49:52] [WARNING] eagerly:scrape:60 - No TMDB ID found for studium generalere presenteert old heart, skipping
+[16:49:52] [DEBUG] eagerly:scrape:66 - Found TMDB id 26130 for Summer Time Machine Blues
+[16:49:52] [DEBUG] eagerly:scrape:66 - Found TMDB id 1061474 for Superman
+[16:49:53] [WARNING] tmdb:get_person_ids:31 - Jamie Bell Andy Serkis Daniel Craig Nick Frost Simon Pegg Daniel Mays Gad Elmaleh Toby Jones could not be found on TMDB.
+[16:49:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 17578 for The Adventures of Tintin
+[16:49:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 1112466 for The Balconettes
+[16:49:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 542178 for The French Dispatch
+[16:49:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 842924 for The Life of Chuck
+[16:49:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 9342 for The Mask of Zorro
+[16:49:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 1137350 for The Phoenician Scheme
+[16:49:53] [DEBUG] eagerly:scrape:66 - Found TMDB id 1127625 for The Salt Path
+[16:49:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 46624 for The Short Films of David Lynch
+[16:49:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 1024541 for The Teacher Who Promised the Sea
+[16:49:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 7345 for There Will Be Blood
+[16:49:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 1363149 for Tussen wal en schip - Geruisloos Indisch
+[16:49:54] [WARNING] tmdb:get_person_ids:31 - Akira Kurasawa could not be found on TMDB.
+[16:49:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 11878 for Yojimbo
+[16:49:54] [WARNING] tmdb:get_person_ids:31 - Ryunosuke Kamiki Mone Kamishiraishi Ryo Narita Aoi Yuki could not be found on TMDB.
+[16:49:54] [DEBUG] eagerly:scrape:66 - Found TMDB id 372058 for Your Name.
+[16:49:55] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: lido.
+[16:49:55] [INFO] runner:run:25 - Running scraper for cinema: kijkhuis...
+[16:49:55] [DEBUG] eagerly:scrape:66 - Found TMDB id 1100988 for 28 Years Later
+[16:49:55] [DEBUG] eagerly:scrape:66 - Found TMDB id 1494458 for Anak Indië
+[16:49:55] [DEBUG] eagerly:scrape:66 - Found TMDB id 8961 for Bad Boys II
+[16:49:55] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'big trip 3 race om de wereld' with director 'Vasiliy Rovenskiy' and actor 'Ivan Pecnik'.
+[16:49:55] [WARNING] eagerly:scrape:60 - No TMDB ID found for big trip 3 race om de wereld, skipping
+[16:49:55] [DEBUG] eagerly:scrape:66 - Found TMDB id 666 for Central Station
+[16:49:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 11104 for Chungking Express
+[16:49:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 1494468 for De film van Rutger, Thomas & Paco
+[16:49:56] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'earth fire jerney kaagman fanclubdag ii' with director 'Hans Somers' and actor ''. Fuzzy matching...
+[16:49:56] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (De film van Rutger, Thomas & Paco) for 'earth fire jerney kaagman fanclubdag ii' is below threshold: 36.111111111111114.
+[16:49:56] [WARNING] eagerly:scrape:60 - No TMDB ID found for earth fire jerney kaagman fanclubdag ii, skipping
+[16:49:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 1022787 for Elio
+[16:49:56] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'elio nl' with director 'Madeline Sharafian' and actor ''. Fuzzy matching...
+[16:49:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 1022787 for Elio
+[16:49:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 911430 for F1
+[16:49:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 1433791 for Flophouse America
+[16:49:56] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'for your eyes only' with director 'Monica Strømdahl' and actor ''. Fuzzy matching...
+[16:49:56] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Flophouse America) for 'for your eyes only' is below threshold: 34.28571428571429.
+[16:49:56] [WARNING] eagerly:scrape:60 - No TMDB ID found for for your eyes only, skipping
+[16:49:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 12493 for High and Low
+[16:49:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 1087192 for How to Train Your Dragon
+[16:49:56] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'ikiru %e7%94%9f%e3%81%8d%e3%82%8b1952' with director 'Akira Kurosawa' and actor 'Takashi Shimura'. Fuzzy matching...
+[16:49:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 3782 for Ikiru
+[16:49:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 5915 for Into the Wild
+[16:49:56] [DEBUG] eagerly:scrape:66 - Found TMDB id 399174 for Isle of Dogs
+[16:49:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 714675 for The American
+[16:49:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 1234821 for Jurassic World Rebirth
+[16:49:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161108 for The Second Act
+[16:49:57] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'lilo stitch nl' with director 'Dean Fleischer Camp' and actor ''. Fuzzy matching...
+[16:49:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 552524 for Lilo & Stitch
+[16:49:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 552524 for Lilo & Stitch
+[16:49:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 1082900 for Loveable
+[16:49:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 1071585 for M3GAN 2.0
+[16:49:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 1136867 for Materialists
+[16:49:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 575265 for Mission: Impossible - The Final Reckoning
+[16:49:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 1161879 for Motel Destino
+[16:49:57] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'nico ii' with director 'Karim Ainouz' and actor ''. Fuzzy matching...
+[16:49:57] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Sunday) for 'nico ii' is below threshold: 42.857142857142854.
+[16:49:57] [WARNING] eagerly:scrape:60 - No TMDB ID found for nico ii, skipping
+[16:49:57] [DEBUG] eagerly:scrape:66 - Found TMDB id 1448497 for Ocean with David Attenborough
+[16:49:58] [DEBUG] eagerly:scrape:66 - Found TMDB id 1469275 for Twinkle Twinkle Little Elephant
+[16:49:58] [DEBUG] eagerly:scrape:66 - Found TMDB id 1003504 for We Will Go
+[16:49:58] [DEBUG] eagerly:scrape:66 - Found TMDB id 1417 for Pan's Labyrinth
+[16:49:58] [DEBUG] eagerly:scrape:66 - Found TMDB id 1245728 for Peacock
+[16:49:58] [WARNING] tmdb:get_person_ids:31 - Rob Cureton could not be found on TMDB.
+[16:49:58] [WARNING] tmdb:get_person_ids:31 - Anber Ortanca could not be found on TMDB.
+[16:49:58] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'peppa en de nieuwe baby' with director 'Rob Cureton' and actor 'Anber Ortanca'.
+[16:49:58] [WARNING] eagerly:scrape:60 - No TMDB ID found for peppa en de nieuwe baby, skipping
+[16:49:58] [DEBUG] eagerly:scrape:66 - Found TMDB id 1367997 for Perla
+[16:49:58] [DEBUG] eagerly:scrape:66 - Found TMDB id 400617 for Phantom Thread
+[16:49:58] [DEBUG] eagerly:scrape:66 - Found TMDB id 4348 for Pride & Prejudice
+[16:49:58] [DEBUG] eagerly:scrape:66 - Found TMDB id 8051 for Punch-Drunk Love
+[16:49:58] [DEBUG] eagerly:scrape:66 - Found TMDB id 11645 for Ran
+[16:49:58] [DEBUG] eagerly:scrape:66 - Found TMDB id 1067485 for Sebastian
+[16:49:58] [WARNING] tmdb:get_person_ids:31 - Akira Surokawa could not be found on TMDB.
+[16:49:59] [DEBUG] eagerly:scrape:66 - Found TMDB id 346 for Seven Samurai
+[16:49:59] [DEBUG] eagerly:scrape:66 - Found TMDB id 1506688 for Shaun het schaap - Elke dag feest
+[16:49:59] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'sneak preview' with director 'Seamus Malone' and actor ''. Fuzzy matching...
+[16:49:59] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Shaun the Sheep: Party Animals) for 'sneak preview' is below threshold: 27.906976744186053.
+[16:49:59] [WARNING] eagerly:scrape:60 - No TMDB ID found for sneak preview, skipping
+[16:49:59] [WARNING] tmdb:get_person_ids:31 - Kirk Wahamaki could not be found on TMDB.
+[16:49:59] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'studium generalere presenteert old heart' with director 'Kirk Wahamaki' and actor 'Edward Gaines'. Fuzzy matching...
+[16:49:59] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (Let The Truth Be Told: Chronicles of a Few Good Men) for 'studium generalere presenteert old heart' is below threshold: 41.75824175824176.
+[16:49:59] [WARNING] eagerly:scrape:60 - No TMDB ID found for studium generalere presenteert old heart, skipping
+[16:49:59] [DEBUG] eagerly:scrape:66 - Found TMDB id 26130 for Summer Time Machine Blues
+[16:49:59] [DEBUG] eagerly:scrape:66 - Found TMDB id 1061474 for Superman
+[16:49:59] [WARNING] tmdb:get_person_ids:31 - Jamie Bell Andy Serkis Daniel Craig Nick Frost Simon Pegg Daniel Mays Gad Elmaleh Toby Jones could not be found on TMDB.
+[16:49:59] [DEBUG] eagerly:scrape:66 - Found TMDB id 17578 for The Adventures of Tintin
+[16:49:59] [DEBUG] eagerly:scrape:66 - Found TMDB id 1112466 for The Balconettes
+[16:49:59] [DEBUG] eagerly:scrape:66 - Found TMDB id 542178 for The French Dispatch
+[16:50:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 842924 for The Life of Chuck
+[16:50:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 9342 for The Mask of Zorro
+[16:50:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 1137350 for The Phoenician Scheme
+[16:50:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 1127625 for The Salt Path
+[16:50:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 46624 for The Short Films of David Lynch
+[16:50:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 1024541 for The Teacher Who Promised the Sea
+[16:50:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 7345 for There Will Be Blood
+[16:50:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 1363149 for Tussen wal en schip - Geruisloos Indisch
+[16:50:00] [WARNING] tmdb:get_person_ids:31 - Akira Kurasawa could not be found on TMDB.
+[16:50:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 11878 for Yojimbo
+[16:50:00] [WARNING] tmdb:get_person_ids:31 - Ryunosuke Kamiki Mone Kamishiraishi Ryo Narita Aoi Yuki could not be found on TMDB.
+[16:50:00] [DEBUG] eagerly:scrape:66 - Found TMDB id 372058 for Your Name.
+[16:50:01] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: kijkhuis.
+[16:50:01] [INFO] runner:run:25 - Running scraper for cinema: fchyena...
+[16:50:02] [DEBUG] fchyena:scrape:51 - Could not find actor for flophouse america in FC Hyena
+[16:50:02] [DEBUG] fchyena:scrape:63 - Found TMDB id 1433791 for Flophouse America
+[16:50:02] [DEBUG] fchyena:scrape:63 - Found TMDB id 590 for The Hours
+[16:50:02] [DEBUG] fchyena:scrape:63 - Found TMDB id 1087192 for How to Train Your Dragon
+[16:50:03] [DEBUG] fchyena:scrape:63 - Found TMDB id 1087192 for How to Train Your Dragon
+[16:50:03] [DEBUG] fchyena:scrape:63 - Found TMDB id 1234821 for Jurassic World Rebirth
+[16:50:04] [DEBUG] fchyena:scrape:63 - Found TMDB id 10363 for Purple Noon
+[16:50:04] [DEBUG] fchyena:scrape:63 - Found TMDB id 9603 for Clueless
+[16:50:04] [DEBUG] fchyena:scrape:63 - Found TMDB id 235 for Stand by Me
+[16:50:05] [DEBUG] fchyena:scrape:63 - Found TMDB id 1700 for Misery
+[16:50:05] [DEBUG] fchyena:scrape:63 - Found TMDB id 7340 for Carrie
+[16:50:05] [DEBUG] fchyena:scrape:51 - Could not find actor for de a’dammer in FC Hyena
+[16:50:05] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'de a’dammer' with director 'Harro Henkemans' and actor 'None'.
+[16:50:05] [WARNING] fchyena:scrape:59 - No TMDB id found for de a’dammer, skipping
+[16:50:05] [DEBUG] fchyena:scrape:63 - Found TMDB id 278 for The Shawshank Redemption
+[16:50:06] [DEBUG] fchyena:scrape:63 - Found TMDB id 552524 for Lilo & Stitch
+[16:50:06] [DEBUG] fchyena:scrape:63 - Found TMDB id 552524 for Lilo & Stitch
+[16:50:06] [DEBUG] fchyena:scrape:63 - Found TMDB id 842924 for The Life of Chuck
+[16:50:07] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'the life of chuck - scream editie' with director 'Mike Flanagan' and actor 'Mark Hamill'. Fuzzy matching...
+[16:50:07] [DEBUG] fchyena:scrape:63 - Found TMDB id 842924 for The Life of Chuck
+[16:50:07] [WARNING] tmdb:get_person_ids:31 - Alessandro Cassigoli, Casey Kauffman could not be found on TMDB.
+[16:50:07] [DEBUG] fchyena:scrape:63 - Found TMDB id 1295517 for Vittoria
+[16:50:08] [WARNING] tmdb:get_person_ids:31 - Madeline Sharafian, Adrian Molina could not be found on TMDB.
+[16:50:08] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'elio' with director 'Madeline Sharafian, Adrian Molina' and actor ''.
+[16:50:08] [WARNING] fchyena:scrape:59 - No TMDB id found for elio, skipping
+[16:50:08] [DEBUG] fchyena:scrape:63 - Found TMDB id 1100988 for 28 Years Later
+[16:50:08] [DEBUG] fchyena:scrape:63 - Found TMDB id 911430 for F1
+[16:50:09] [DEBUG] tmdb:find_tmdb_id:104 - No potential movies found for 'the salt path' with director 'Rebecca Lenkiewicz' and actor 'Gillian Anderson'.
+[16:50:09] [WARNING] fchyena:scrape:59 - No TMDB id found for the salt path, skipping
+[16:50:09] [DEBUG] tmdb:find_tmdb_id:122 - No direct match found for 'sneak preview' with director '?' and actor '?'. Fuzzy matching...
+[16:50:09] [DEBUG] tmdb:find_tmdb_id:133 - Best match score (My Belle I Love You) for 'sneak preview' is below threshold: 32.25806451612904.
+[16:50:09] [WARNING] fchyena:scrape:59 - No TMDB id found for sneak preview, skipping
+[16:50:09] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: fchyena.
+[16:50:09] [INFO] runner:run:29 - Loading Letterboxd slugs...
+[16:50:09] [ERROR] runner:<module>:34 - Error running cinema scraper
+Traceback (most recent call last):
+
+  File "/home/midas/cinema-agenda-fastapi/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/result.py", line 199, in _key_not_found
+    self._key_fallback(key, None)
+    │    │             └ 'id'
+    │    └ <function ResultMetaData._key_fallback at 0x7f2c3bc53f60>
+    └ <sqlalchemy.engine.result.SimpleResultMetaData object at 0x7f2c3057cca0>
+  File "/home/midas/cinema-agenda-fastapi/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/result.py", line 138, in _key_fallback
+    raise KeyError(key) from err
+                   │         └ None
+                   └ 'id'
+
+KeyError: 'id'
+
+
+The above exception was the direct cause of the following exception:
+
+
+Traceback (most recent call last):
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+
+> File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 34, in <module>
+    try: run()
+         └ <function run at 0x7f2c31929a80>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 30, in run
+    load_letterboxd_slugs()
+    └ <function load_letterboxd_slugs at 0x7f2c3a3cc400>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/load_letterboxd_slugs.py", line 41, in load_letterboxd_slugs
+    slug = get_letterboxd_slug(movie.id)
+           │                   └ (Movie(id=539565, letterboxd_slug=None, poster_link='https://image.tmdb.org/t/p/w342/bJLCPROp9bmNndurwZpVnOioVpB.jpg', title=...
+           └ <function get_letterboxd_slug at 0x7f2c3a3a7ce0>
+
+  File "lib/sqlalchemy/cyextension/resultproxy.pyx", line 66, in sqlalchemy.cyextension.resultproxy.BaseRow.__getattr__
+  File "lib/sqlalchemy/cyextension/resultproxy.pyx", line 63, in sqlalchemy.cyextension.resultproxy.BaseRow._get_by_key_impl
+  File "/home/midas/cinema-agenda-fastapi/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/result.py", line 201, in _key_not_found
+    raise AttributeError(ke.args[0]) from ke
+
+AttributeError: id

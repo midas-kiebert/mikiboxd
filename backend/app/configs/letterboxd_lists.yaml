@@ -1,0 +1,21 @@
+bioscoop-watchlist:
+  title: "Bioscoop Watchlist"
+  description: "Films uit mijn watchlist die binnenkort in de bioscoop komen"
+  enabled: true
+  users:
+    - username: "midaskiebert"
+      slug: "bioscoop-watchlist"
+    - username: "qonee"
+      slug: "bioscoop-watchlist"
+
+popular-unwatched:
+  title: "Popular Unwatched"
+  description: "Most popular film of each year that I haven't seen yet."
+  enabled: true
+  users:
+    - username: "midaskiebert"
+      slug: "most-popular-unwatched-film-of-each-year-4"
+      starting_year: 1937
+    - username: "qonee"
+      slug: "most-popular-unwatched-film-of-each-year"
+      starting_year: 1939

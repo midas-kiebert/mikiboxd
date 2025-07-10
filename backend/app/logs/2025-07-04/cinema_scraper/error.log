@@ -1,0 +1,71 @@
+[15:01:17] [ERROR] runner:run:26 - Error running cinema scraper for uitkijk
+Traceback (most recent call last):
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 34, in <module>
+    try: run()
+         └ <function run at 0x7fd640551a80>
+
+> File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 27, in run
+    scraper.scrape()
+    │       └ <function UitkijkScraper.scrape at 0x7fd6406c40e0>
+    └ <app.scraping.cinemas.amsterdam.uitkijk.UitkijkScraper object at 0x7fd64050e8d0>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/cinemas/amsterdam/uitkijk.py", line 56, in scrape
+    movie =  get_movie(slug=slug, title_query=title_query)
+             │              │                 └ 'zomergasten op het witte doek'
+             │              └ 'zomergasten-op-het-witte-doek'
+             └ <function get_movie at 0x7fd6406bbf60>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/cinemas/amsterdam/uitkijk.py", line 84, in get_movie
+    director_element = soup.find_all("strong", string="Regie:")[0]
+                       │    └ <function Tag.find_all at 0x7fd640744e00>
+                       └ <!DOCTYPE html>
+                         <html lang="nl"> <head><meta content="6e7f24e5ec565ff0ade55a5f33a468e4-66cf7e987a2460ee-0" name="sentry-trace...
+
+IndexError: list index out of range
+[16:50:09] [ERROR] runner:<module>:34 - Error running cinema scraper
+Traceback (most recent call last):
+
+  File "/home/midas/cinema-agenda-fastapi/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/result.py", line 199, in _key_not_found
+    self._key_fallback(key, None)
+    │    │             └ 'id'
+    │    └ <function ResultMetaData._key_fallback at 0x7f2c3bc53f60>
+    └ <sqlalchemy.engine.result.SimpleResultMetaData object at 0x7f2c3057cca0>
+  File "/home/midas/cinema-agenda-fastapi/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/result.py", line 138, in _key_fallback
+    raise KeyError(key) from err
+                   │         └ None
+                   └ 'id'
+
+KeyError: 'id'
+
+
+The above exception was the direct cause of the following exception:
+
+
+Traceback (most recent call last):
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+
+> File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 34, in <module>
+    try: run()
+         └ <function run at 0x7f2c31929a80>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 30, in run
+    load_letterboxd_slugs()
+    └ <function load_letterboxd_slugs at 0x7f2c3a3cc400>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/load_letterboxd_slugs.py", line 41, in load_letterboxd_slugs
+    slug = get_letterboxd_slug(movie.id)
+           │                   └ (Movie(id=539565, letterboxd_slug=None, poster_link='https://image.tmdb.org/t/p/w342/bJLCPROp9bmNndurwZpVnOioVpB.jpg', title=...
+           └ <function get_letterboxd_slug at 0x7f2c3a3a7ce0>
+
+  File "lib/sqlalchemy/cyextension/resultproxy.pyx", line 66, in sqlalchemy.cyextension.resultproxy.BaseRow.__getattr__
+  File "lib/sqlalchemy/cyextension/resultproxy.pyx", line 63, in sqlalchemy.cyextension.resultproxy.BaseRow._get_by_key_impl
+  File "/home/midas/cinema-agenda-fastapi/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/result.py", line 201, in _key_not_found
+    raise AttributeError(ke.args[0]) from ke
+
+AttributeError: id

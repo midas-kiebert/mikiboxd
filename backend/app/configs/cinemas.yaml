@@ -1,0 +1,46 @@
+cinemas:
+  eye:
+    city: Amsterdam
+    enabled: true
+  filmhallen:
+    city: Amsterdam
+    enabled: true
+  kino:
+    city: Rotterdam
+    enabled: true
+  kriterion:
+    city: Amsterdam
+    enabled: true
+  lab111:
+    city: Amsterdam
+    enabled: true
+  themovies:
+    city: Amsterdam
+    enabled: true
+  uitkijk:
+    city: Amsterdam
+    enabled: true
+  filmkoepel:
+    city: Haarlem
+    enabled: true
+  louishartloopercomplex:
+    city: Utrecht
+    enabled: true
+  slachtstraat:
+    city: Utrecht
+    enabled: true
+  springhaver:
+    city: Utrecht
+    enabled: true
+  trianon:
+    city: Leiden
+    enabled: true
+  lido:
+    city: Leiden
+    enabled: true
+  kijkhuis:
+    city: Leiden
+    enabled: true
+  fchyena:
+    city: Amsterdam
+    enabled: true

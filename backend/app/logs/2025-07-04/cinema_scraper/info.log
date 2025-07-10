@@ -1,0 +1,239 @@
+[14:59:13] [INFO] runner:run:25 - Running scraper for cinema: kriterion...
+[14:59:19] [WARNING] tmdb:get_person_ids:31 - Various directors could not be found on TMDB.
+[14:59:19] [WARNING] kriterion:scrape:54 - Could not process show SNEAK PREVIEW
+[14:59:20] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: kriterion.
+[14:59:20] [INFO] runner:run:25 - Running scraper for cinema: fchyena...
+[14:59:32] [WARNING] fchyena:scrape:59 - No TMDB id found for de a’dammer, skipping
+[14:59:38] [WARNING] tmdb:get_person_ids:31 - Alessandro Cassigoli, Casey Kauffman could not be found on TMDB.
+[14:59:39] [WARNING] tmdb:get_person_ids:31 - Madeline Sharafian, Adrian Molina could not be found on TMDB.
+[14:59:39] [WARNING] fchyena:scrape:59 - No TMDB id found for elio, skipping
+[14:59:42] [WARNING] fchyena:scrape:59 - No TMDB id found for the salt path, skipping
+[14:59:45] [WARNING] fchyena:scrape:59 - No TMDB id found for sneak preview, skipping
+[14:59:45] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: fchyena.
+[14:59:45] [INFO] runner:run:29 - Loading Letterboxd slugs...
+[14:59:45] [INFO] load_letterboxd_slugs:load_letterboxd_slugs:34 - No movies found without Letterboxd slug.
+[14:59:45] [SUCCESS] runner:run:31 - Successfully loaded Letterboxd slugs.
+[15:00:52] [INFO] runner:run:25 - Running scraper for cinema: uitkijk...
+[15:01:17] [ERROR] runner:run:26 - Error running cinema scraper for uitkijk
+Traceback (most recent call last):
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 34, in <module>
+    try: run()
+         └ <function run at 0x7fd640551a80>
+
+> File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 27, in run
+    scraper.scrape()
+    │       └ <function UitkijkScraper.scrape at 0x7fd6406c40e0>
+    └ <app.scraping.cinemas.amsterdam.uitkijk.UitkijkScraper object at 0x7fd64050e8d0>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/cinemas/amsterdam/uitkijk.py", line 56, in scrape
+    movie =  get_movie(slug=slug, title_query=title_query)
+             │              │                 └ 'zomergasten op het witte doek'
+             │              └ 'zomergasten-op-het-witte-doek'
+             └ <function get_movie at 0x7fd6406bbf60>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/cinemas/amsterdam/uitkijk.py", line 84, in get_movie
+    director_element = soup.find_all("strong", string="Regie:")[0]
+                       │    └ <function Tag.find_all at 0x7fd640744e00>
+                       └ <!DOCTYPE html>
+                         <html lang="nl"> <head><meta content="6e7f24e5ec565ff0ade55a5f33a468e4-66cf7e987a2460ee-0" name="sentry-trace...
+
+IndexError: list index out of range
+[15:01:17] [INFO] runner:run:29 - Loading Letterboxd slugs...
+[15:01:17] [INFO] load_letterboxd_slugs:load_letterboxd_slugs:34 - No movies found without Letterboxd slug.
+[15:01:17] [SUCCESS] runner:run:31 - Successfully loaded Letterboxd slugs.
+[15:03:18] [INFO] runner:run:25 - Running scraper for cinema: uitkijk...
+[15:03:29] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:30] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:31] [WARNING] uitkijk:get_movie:108 - No TMDB id found for het rijk der schimmen, skipping
+[15:03:32] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:32] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:32] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:32] [WARNING] uitkijk:get_movie:108 - No TMDB id found for het rijk der schimmen, skipping
+[15:03:33] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[15:03:33] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: uitkijk.
+[15:03:33] [INFO] runner:run:29 - Loading Letterboxd slugs...
+[15:03:33] [INFO] load_letterboxd_slugs:load_letterboxd_slugs:34 - No movies found without Letterboxd slug.
+[15:03:33] [SUCCESS] runner:run:31 - Successfully loaded Letterboxd slugs.
+[16:45:07] [INFO] runner:run:25 - Running scraper for cinema: eye...
+[16:45:11] [WARNING] eye:get_movie:128 - No TMDB id found for Mifune: The Last Samurai, skipping
+[16:45:18] [WARNING] tmdb:get_person_ids:31 - Verschillende regisseurs could not be found on TMDB.
+[16:45:18] [WARNING] eye:get_movie:128 - No TMDB id found for shaun het schaap - elke dag feest, skipping
+[16:45:24] [WARNING] tmdb:get_person_ids:31 - Verschillende regisseurs could not be found on TMDB.
+[16:45:24] [WARNING] eye:get_movie:128 - No TMDB id found for shaun het schaap - elke dag feest, skipping
+[16:45:36] [WARNING] eye:get_movie:128 - No TMDB id found for Naomi Osaka, skipping
+[16:45:36] [WARNING] tmdb:get_person_ids:31 - Verschillende regisseurs could not be found on TMDB.
+[16:45:36] [WARNING] eye:get_movie:128 - No TMDB id found for shaun het schaap - elke dag feest, skipping
+[16:46:06] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: eye.
+[16:46:06] [INFO] runner:run:25 - Running scraper for cinema: filmhallen...
+[16:46:26] [WARNING] eagerly:scrape:60 - No TMDB ID found for gillian anderson a streetcar named desire, skipping
+[16:46:41] [WARNING] tmdb:get_person_ids:31 - Rob Cureton could not be found on TMDB.
+[16:46:41] [WARNING] tmdb:get_person_ids:31 - Anber Ortanca could not be found on TMDB.
+[16:46:41] [WARNING] eagerly:scrape:60 - No TMDB ID found for peppa en de nieuwe baby een bioscoopervaring, skipping
+[16:46:58] [WARNING] eagerly:scrape:60 - No TMDB ID found for the village next to paradise, skipping
+[16:47:02] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: filmhallen.
+[16:47:02] [INFO] runner:run:25 - Running scraper for cinema: kino...
+[16:47:19] [WARNING] tmdb:get_person_ids:31 - Keira Knightly could not be found on TMDB.
+[16:47:24] [WARNING] eagerly:scrape:60 - No TMDB ID found for sneak preview, skipping
+[16:47:31] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka animation shorts home is, skipping
+[16:47:31] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka animation shorts moving on, skipping
+[16:47:31] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka animation shorts open up, skipping
+[16:47:31] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka animation shorts there and back again, skipping
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka animation shorts under pressure, skipping
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka audiovisual shorts documentary, skipping
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka audiovisual shorts fiction, skipping
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka audiovisual shorts hybrid experimental, skipping
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts animation 1, skipping
+[16:47:32] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts animation 2, skipping
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts animation 3, skipping
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts documentary 1, skipping
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts documentary 2, skipping
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts fiction, skipping
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts hybrid experimental 1, skipping
+[16:47:33] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka graduation shorts hybrid experimental 2, skipping
+[16:47:34] [WARNING] eagerly:scrape:60 - No TMDB ID found for wdka industry talk film education industry in dialogue, skipping
+[16:47:34] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: kino.
+[16:47:34] [INFO] runner:run:25 - Running scraper for cinema: kriterion...
+[16:47:36] [WARNING] tmdb:get_person_ids:31 - Various directors could not be found on TMDB.
+[16:47:36] [WARNING] kriterion:scrape:54 - Could not process show SNEAK PREVIEW
+[16:47:36] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: kriterion.
+[16:47:36] [INFO] runner:run:25 - Running scraper for cinema: lab111...
+[16:47:49] [WARNING] lab111:scrape:60 - No TMDB id found for asian movie night: sanguine specters stick to the skin, skipping
+[16:47:54] [WARNING] lab111:scrape:60 - No TMDB id found for hump! film fest 2025 part two, skipping
+[16:48:23] [WARNING] lab111:scrape:60 - No TMDB id found for iqmf queer short film program 2025, skipping
+[16:48:26] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: lab111.
+[16:48:26] [INFO] runner:run:25 - Running scraper for cinema: themovies...
+[16:48:37] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: themovies.
+[16:48:37] [INFO] runner:run:25 - Running scraper for cinema: uitkijk...
+[16:48:46] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:47] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:47] [WARNING] uitkijk:get_movie:108 - No TMDB id found for het rijk der schimmen, skipping
+[16:48:48] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:48] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:48] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:48] [WARNING] uitkijk:get_movie:108 - No TMDB id found for het rijk der schimmen, skipping
+[16:48:48] [WARNING] uitkijk:get_movie:86 - No director found for zomergasten-op-het-witte-doek, skipping
+[16:48:49] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: uitkijk.
+[16:48:49] [INFO] runner:run:25 - Running scraper for cinema: filmkoepel...
+[16:48:49] [WARNING] eagerly:scrape:60 - No TMDB ID found for bijspijkeren new hollywood the graduate, skipping
+[16:48:55] [WARNING] tmdb:get_person_ids:31 - Rob Cureton could not be found on TMDB.
+[16:48:55] [WARNING] tmdb:get_person_ids:31 - Anber Ortanca could not be found on TMDB.
+[16:48:55] [WARNING] eagerly:scrape:60 - No TMDB ID found for peppa en de nieuwe baby een bioscoopervaring, skipping
+[16:48:55] [WARNING] eagerly:scrape:60 - No TMDB ID found for speurtocht in de koepel, skipping
+[16:48:56] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: filmkoepel.
+[16:48:56] [INFO] runner:run:25 - Running scraper for cinema: louishartloopercomplex...
+[16:48:59] [WARNING] eagerly:scrape:60 - No TMDB ID found for flophouse america, skipping
+[16:49:03] [WARNING] eagerly:scrape:60 - No TMDB ID found for summer school, skipping
+[16:49:04] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: louishartloopercomplex.
+[16:49:04] [INFO] runner:run:25 - Running scraper for cinema: slachtstraat...
+[16:49:09] [WARNING] eagerly:scrape:60 - No TMDB ID found for het muziekmedicijn, skipping
+[16:49:09] [WARNING] eagerly:scrape:60 - No TMDB ID found for het schrijfcafe, skipping
+[16:49:12] [WARNING] tmdb:get_person_ids:31 - Ambra Reijnen &amp; Rubi Tobias could not be found on TMDB.
+[16:49:12] [WARNING] tmdb:get_person_ids:31 - Juana Victoria Hernández Gómez Arabelle Hernández Gómez Juana Gómez Torres could not be found on TMDB.
+[16:49:12] [WARNING] eagerly:scrape:60 - No TMDB ID found for junax thread by thread, skipping
+[16:49:20] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: slachtstraat.
+[16:49:20] [INFO] runner:run:25 - Running scraper for cinema: springhaver...
+[16:49:22] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: springhaver.
+[16:49:22] [INFO] runner:run:25 - Running scraper for cinema: trianon...
+[16:49:28] [WARNING] eagerly:scrape:60 - No TMDB ID found for big trip 3 race om de wereld, skipping
+[16:49:30] [WARNING] eagerly:scrape:60 - No TMDB ID found for earth fire jerney kaagman fanclubdag ii, skipping
+[16:49:30] [WARNING] eagerly:scrape:60 - No TMDB ID found for for your eyes only, skipping
+[16:49:35] [WARNING] eagerly:scrape:60 - No TMDB ID found for nico ii, skipping
+[16:49:35] [WARNING] tmdb:get_person_ids:31 - Rob Cureton could not be found on TMDB.
+[16:49:35] [WARNING] tmdb:get_person_ids:31 - Anber Ortanca could not be found on TMDB.
+[16:49:35] [WARNING] eagerly:scrape:60 - No TMDB ID found for peppa en de nieuwe baby, skipping
+[16:49:37] [WARNING] tmdb:get_person_ids:31 - Akira Surokawa could not be found on TMDB.
+[16:49:37] [WARNING] eagerly:scrape:60 - No TMDB ID found for sneak preview, skipping
+[16:49:37] [WARNING] tmdb:get_person_ids:31 - Kirk Wahamaki could not be found on TMDB.
+[16:49:38] [WARNING] eagerly:scrape:60 - No TMDB ID found for studium generalere presenteert old heart, skipping
+[16:49:41] [WARNING] tmdb:get_person_ids:31 - Jamie Bell Andy Serkis Daniel Craig Nick Frost Simon Pegg Daniel Mays Gad Elmaleh Toby Jones could not be found on TMDB.
+[16:49:46] [WARNING] tmdb:get_person_ids:31 - Akira Kurasawa could not be found on TMDB.
+[16:49:47] [WARNING] tmdb:get_person_ids:31 - Ryunosuke Kamiki Mone Kamishiraishi Ryo Narita Aoi Yuki could not be found on TMDB.
+[16:49:47] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: trianon.
+[16:49:47] [INFO] runner:run:25 - Running scraper for cinema: lido...
+[16:49:48] [WARNING] eagerly:scrape:60 - No TMDB ID found for big trip 3 race om de wereld, skipping
+[16:49:49] [WARNING] eagerly:scrape:60 - No TMDB ID found for earth fire jerney kaagman fanclubdag ii, skipping
+[16:49:49] [WARNING] eagerly:scrape:60 - No TMDB ID found for for your eyes only, skipping
+[16:49:51] [WARNING] eagerly:scrape:60 - No TMDB ID found for nico ii, skipping
+[16:49:51] [WARNING] tmdb:get_person_ids:31 - Rob Cureton could not be found on TMDB.
+[16:49:51] [WARNING] tmdb:get_person_ids:31 - Anber Ortanca could not be found on TMDB.
+[16:49:51] [WARNING] eagerly:scrape:60 - No TMDB ID found for peppa en de nieuwe baby, skipping
+[16:49:52] [WARNING] tmdb:get_person_ids:31 - Akira Surokawa could not be found on TMDB.
+[16:49:52] [WARNING] eagerly:scrape:60 - No TMDB ID found for sneak preview, skipping
+[16:49:52] [WARNING] tmdb:get_person_ids:31 - Kirk Wahamaki could not be found on TMDB.
+[16:49:52] [WARNING] eagerly:scrape:60 - No TMDB ID found for studium generalere presenteert old heart, skipping
+[16:49:53] [WARNING] tmdb:get_person_ids:31 - Jamie Bell Andy Serkis Daniel Craig Nick Frost Simon Pegg Daniel Mays Gad Elmaleh Toby Jones could not be found on TMDB.
+[16:49:54] [WARNING] tmdb:get_person_ids:31 - Akira Kurasawa could not be found on TMDB.
+[16:49:54] [WARNING] tmdb:get_person_ids:31 - Ryunosuke Kamiki Mone Kamishiraishi Ryo Narita Aoi Yuki could not be found on TMDB.
+[16:49:55] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: lido.
+[16:49:55] [INFO] runner:run:25 - Running scraper for cinema: kijkhuis...
+[16:49:55] [WARNING] eagerly:scrape:60 - No TMDB ID found for big trip 3 race om de wereld, skipping
+[16:49:56] [WARNING] eagerly:scrape:60 - No TMDB ID found for earth fire jerney kaagman fanclubdag ii, skipping
+[16:49:56] [WARNING] eagerly:scrape:60 - No TMDB ID found for for your eyes only, skipping
+[16:49:57] [WARNING] eagerly:scrape:60 - No TMDB ID found for nico ii, skipping
+[16:49:58] [WARNING] tmdb:get_person_ids:31 - Rob Cureton could not be found on TMDB.
+[16:49:58] [WARNING] tmdb:get_person_ids:31 - Anber Ortanca could not be found on TMDB.
+[16:49:58] [WARNING] eagerly:scrape:60 - No TMDB ID found for peppa en de nieuwe baby, skipping
+[16:49:58] [WARNING] tmdb:get_person_ids:31 - Akira Surokawa could not be found on TMDB.
+[16:49:59] [WARNING] eagerly:scrape:60 - No TMDB ID found for sneak preview, skipping
+[16:49:59] [WARNING] tmdb:get_person_ids:31 - Kirk Wahamaki could not be found on TMDB.
+[16:49:59] [WARNING] eagerly:scrape:60 - No TMDB ID found for studium generalere presenteert old heart, skipping
+[16:49:59] [WARNING] tmdb:get_person_ids:31 - Jamie Bell Andy Serkis Daniel Craig Nick Frost Simon Pegg Daniel Mays Gad Elmaleh Toby Jones could not be found on TMDB.
+[16:50:00] [WARNING] tmdb:get_person_ids:31 - Akira Kurasawa could not be found on TMDB.
+[16:50:00] [WARNING] tmdb:get_person_ids:31 - Ryunosuke Kamiki Mone Kamishiraishi Ryo Narita Aoi Yuki could not be found on TMDB.
+[16:50:01] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: kijkhuis.
+[16:50:01] [INFO] runner:run:25 - Running scraper for cinema: fchyena...
+[16:50:05] [WARNING] fchyena:scrape:59 - No TMDB id found for de a’dammer, skipping
+[16:50:07] [WARNING] tmdb:get_person_ids:31 - Alessandro Cassigoli, Casey Kauffman could not be found on TMDB.
+[16:50:08] [WARNING] tmdb:get_person_ids:31 - Madeline Sharafian, Adrian Molina could not be found on TMDB.
+[16:50:08] [WARNING] fchyena:scrape:59 - No TMDB id found for elio, skipping
+[16:50:09] [WARNING] fchyena:scrape:59 - No TMDB id found for the salt path, skipping
+[16:50:09] [WARNING] fchyena:scrape:59 - No TMDB id found for sneak preview, skipping
+[16:50:09] [SUCCESS] runner:run:28 - Scraped showtime data for cinema: fchyena.
+[16:50:09] [INFO] runner:run:29 - Loading Letterboxd slugs...
+[16:50:09] [ERROR] runner:<module>:34 - Error running cinema scraper
+Traceback (most recent call last):
+
+  File "/home/midas/cinema-agenda-fastapi/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/result.py", line 199, in _key_not_found
+    self._key_fallback(key, None)
+    │    │             └ 'id'
+    │    └ <function ResultMetaData._key_fallback at 0x7f2c3bc53f60>
+    └ <sqlalchemy.engine.result.SimpleResultMetaData object at 0x7f2c3057cca0>
+  File "/home/midas/cinema-agenda-fastapi/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/result.py", line 138, in _key_fallback
+    raise KeyError(key) from err
+                   │         └ None
+                   └ 'id'
+
+KeyError: 'id'
+
+
+The above exception was the direct cause of the following exception:
+
+
+Traceback (most recent call last):
+
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+
+> File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 34, in <module>
+    try: run()
+         └ <function run at 0x7f2c31929a80>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/runner.py", line 30, in run
+    load_letterboxd_slugs()
+    └ <function load_letterboxd_slugs at 0x7f2c3a3cc400>
+
+  File "/home/midas/cinema-agenda-fastapi/backend/app/scraping/load_letterboxd_slugs.py", line 41, in load_letterboxd_slugs
+    slug = get_letterboxd_slug(movie.id)
+           │                   └ (Movie(id=539565, letterboxd_slug=None, poster_link='https://image.tmdb.org/t/p/w342/bJLCPROp9bmNndurwZpVnOioVpB.jpg', title=...
+           └ <function get_letterboxd_slug at 0x7f2c3a3a7ce0>
+
+  File "lib/sqlalchemy/cyextension/resultproxy.pyx", line 66, in sqlalchemy.cyextension.resultproxy.BaseRow.__getattr__
+  File "lib/sqlalchemy/cyextension/resultproxy.pyx", line 63, in sqlalchemy.cyextension.resultproxy.BaseRow._get_by_key_impl
+  File "/home/midas/cinema-agenda-fastapi/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/result.py", line 201, in _key_not_found
+    raise AttributeError(ke.args[0]) from ke
+
+AttributeError: id

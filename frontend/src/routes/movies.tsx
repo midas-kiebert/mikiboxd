@@ -1,0 +1,96 @@
+import { createFileRoute, useSearch, useNavigate } from "@tanstack/react-router";
+import Movies from "@/components/Movies/Movies";
+import { useState, useEffect, useRef } from "react";
+import SearchBar from "@/components/Movies/SearchBar";
+import { useFetchMovies } from "@/hooks/useFetchMovies";
+import { useDebounce } from "use-debounce";
+import type { MovieFilters } from "@/hooks/useFetchMovies";
+
+
+const MoviesPage = () => {
+    const limit = 20;
+    const [snapshotTime] = useState(() => new Date().toISOString());
+    const loadMoreRef = useRef<HTMLDivElement | null>(null);
+    const search = useSearch({ from: "/movies" });
+    //@ts-ignore
+    const [searchQuery, setSearchQuery] = useState<string>(search.query ?? "");
+    const [debouncedSearchQuery] = useDebounce(searchQuery, 250);
+    const [debouncedUrlQuery] = useDebounce(searchQuery, 400);
+
+    const navigate = useNavigate();
+
+
+    useEffect(() => {
+            navigate({
+                //@ts-ignore
+                search: (prev) => ({
+                    ...prev,
+                    query: debouncedUrlQuery || "",
+                }),
+                replace: true
+            })
+    }, [debouncedUrlQuery, navigate]);
+
+    const filters: MovieFilters = {
+        query: debouncedSearchQuery,
+    };
+
+    const {
+        data,
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+    } = useFetchMovies({
+        limit: limit,
+        snapshotTime,
+        filters,
+    });
+
+    useEffect(() => {
+        if (!hasNextPage || isFetchingNextPage) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    fetchNextPage();
+                }
+            },
+            {
+                rootMargin: "200px",
+            }
+        );
+
+        const el = loadMoreRef.current;
+        if (el) observer.observe(el);
+
+        return () => {
+            if (el) observer.unobserve(el);
+        };
+    }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+    return (
+        <>
+            <SearchBar query={searchQuery} setQuery={setSearchQuery}/>
+            <Movies
+                key={debouncedSearchQuery}
+                movies={data?.pages.flat() || []}
+            />
+            {hasNextPage && (
+                <div ref={loadMoreRef} style={{ height: "1px" }} />
+            )}
+            {isFetchingNextPage && (
+                <div style={{ textAlign: "center", padding: "20px" }}>
+                    Loading more movies...
+                </div>
+            )}
+        </>
+    );
+};
+
+//@ts-ignore
+export const Route = createFileRoute("/movies")({
+    component: MoviesPage,
+    validateSearch: (search) => ({
+        query: search.query ?? "",
+    }),
+});

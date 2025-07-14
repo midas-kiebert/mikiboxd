@@ -28,6 +28,10 @@ jobs:
           SECRET_KEY=${{ secrets.SECRET_KEY }}
           ENVIRONMENT=${{ vars.ENVIRONMENT }}
           BACKEND_CORS_ORIGINS="http://localhost,http://localhost:5173,https://localhost,https://localhost:5173,http://localhost.tiangolo.com"
+          FIRST_SUPERUSER=admin@example.com
+          POSTGRES_SERVER=localhost
+          POSTGRES_PORT=5432
+          PROJECT_NAME="MikiBoxd"
           EOF
       - name: Set up Python
         uses: actions/setup-python@v5

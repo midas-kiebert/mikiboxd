@@ -26,6 +26,8 @@ dependencies = [
     "pytz<2026.0,>=2024.1",
     "rapidfuzz<4.0.0,>=3.0.0",
     "beautifulsoup4<5.0.0,>=4.12.2",
+    "types-pytz <2026.0.0,>=2024.1.0",
+    "types-requests <3.0.0,>=2.31.0",
 ]
 
 [tool.uv]

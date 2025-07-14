@@ -5,6 +5,8 @@ from sqlmodel import Session, select
 from app.core.security import get_password_hash, verify_password
 from app.models import User, UserCreate, UserUpdate, FriendRequest, Friendship
 
+from typing import Sequence
+
 from uuid import UUID
 
 
@@ -194,7 +196,7 @@ def delete_friendship(*, session: Session, user_id: UUID, friend_id: UUID) -> No
         raise ValueError(f"Failed to delete friendship: {str(e)}")
 
 
-def get_friends(*, session: Session, user_id: UUID) -> list[User]:
+def get_friends(*, session: Session, user_id: UUID) -> Sequence[User]:
     friends = session.exec(
         select(Friendship).where(
             (Friendship.user_id == user_id) | (Friendship.friend_id == user_id)
@@ -211,7 +213,7 @@ def get_friends(*, session: Session, user_id: UUID) -> list[User]:
     return session.exec(select(User).where(User.id.in_(friend_ids))).all()
 
 
-def get_sent_friend_requests(*, session: Session, user_id: UUID) -> list[User]:
+def get_sent_friend_requests(*, session: Session, user_id: UUID) -> Sequence[User]:
     requests = session.exec(
         select(FriendRequest).where(FriendRequest.sender_id == user_id)
     ).all()
@@ -219,7 +221,7 @@ def get_sent_friend_requests(*, session: Session, user_id: UUID) -> list[User]:
     return session.exec(select(User).where(User.id.in_(receiver_ids))).all()
 
 
-def get_received_friend_requests(*, session: Session, user_id: UUID) -> list[User]:
+def get_received_friend_requests(*, session: Session, user_id: UUID) -> Sequence[User]:
     requests = session.exec(
         select(FriendRequest).where(FriendRequest.receiver_id == user_id)
     ).all()
@@ -229,7 +231,7 @@ def get_received_friend_requests(*, session: Session, user_id: UUID) -> list[Use
 
 def search_users(
     *, session: Session, query: str, limit: int = 10, offset: int = 0
-) -> list[User]:
+) -> Sequence[User]:
     """
     Search for users by email or username.
     """

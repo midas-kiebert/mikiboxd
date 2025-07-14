@@ -17,3 +17,37 @@ ShowtimeInMoviePublic.model_rebuild()  # Rebuild the model for showtimes in Movi
 User.model_rebuild()
 ShowtimeSelection.model_rebuild()  # Rebuild the ShowtimeSelection model to ensure relationships are set up correctly
 WatchlistSelection.model_rebuild()
+
+__all__ = [
+    "User",
+    "UserBase",
+    "UserCreate",
+    "UserUpdate",
+    "UserPublic",
+    "UserWithShowtimesPublic",
+    "UsersPublic",
+    "Item",
+    "ItemCreate",
+    "ItemPublic",
+    "AuthToken",
+    "AuthTokenCreate",
+    "Showtime",
+    "ShowtimeCreate",
+    "ShowtimePublic",
+    "ShowtimeInMoviePublic",
+    "Movie",
+    "MovieCreate",
+    "MoviePublic",
+    "MovieUpdate",
+    "MovieSummaryPublic",
+    "Friendship",
+    "FriendRequest",
+    "ShowtimeSelection",
+    "City",
+    "CityCreate",
+    "CityPublic",
+    "Cinema",
+    "CinemaCreate",
+    "CinemaPublic",
+    "WatchlistSelection"
+]

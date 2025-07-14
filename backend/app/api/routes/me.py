@@ -1,5 +1,4 @@
-import uuid
-from typing import Any
+from typing import Any, Sequence
 
 from fastapi import APIRouter, HTTPException
 
@@ -9,10 +8,9 @@ from app.api.deps import (
     SessionDep,
 )
 from app.models import (
-    UsersPublic,
     Message,
     UserPublic,
-    Showtime
+    ShowtimePublic
 )
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -24,7 +22,7 @@ def get_current_user(
     """
     Get the current user's profile.
     """
-    return current_user
+    return UserPublic.model_validate(current_user)
 
 
 @router.delete("/", response_model=Message)
@@ -41,11 +39,11 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     return Message(message="User deleted successfully")
 
 
-@router.get("/showtimes", response_model=list[Showtime])
+@router.get("/showtimes", response_model=list[ShowtimePublic])
 def get_my_showtimes(
     session: SessionDep,
     current_user: CurrentUser,
-):
+) -> Sequence[ShowtimePublic]:
     """
     Get all showtimes selected by the current user.
     """
@@ -53,4 +51,7 @@ def get_my_showtimes(
         session=session,
         user_id=current_user.id
     )
-    return showtimes
+    showtimes_public = [
+        ShowtimePublic.model_validate(showtime) for showtime in showtimes
+    ]
+    return showtimes_public

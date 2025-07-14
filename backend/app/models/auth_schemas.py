@@ -1,12 +1,12 @@
-import uuid
-
 from pydantic import EmailStr
 from sqlmodel import Field, SQLModel
 
+from typing import Optional
+
 
 class UserUpdateMe(SQLModel):
-    display_name: str | None = Field(default=None, max_length=255)
-    email: EmailStr | None = Field(default=None, max_length=255)
+    display_name: Optional[str] = Field(default=None, max_length=255)
+    email: Optional[EmailStr] = Field(default=None, max_length=255)
 
 
 class UpdatePassword(SQLModel):
@@ -22,12 +22,12 @@ class Message(SQLModel):
 # JSON payload containing access token
 class Token(SQLModel):
     access_token: str
-    token_type: str = "bearer"
+    token_type: str = Field(default="bearer", description="Type of the token, usually 'bearer'")
 
 
 # Contents of JWT token
 class TokenPayload(SQLModel):
-    sub: str | None = None
+    sub: Optional[str] = Field(default=None, description="Subject of the token, usually the user ID")
 
 
 class NewPassword(SQLModel):

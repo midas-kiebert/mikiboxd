@@ -22,7 +22,7 @@ def clean_title(title: str) -> str:
 
 
 class GenericEagerlyScraper(BaseCinemaScraper):
-    def __init__(self, cinema, url_base, theatre_filter=""):
+    def __init__(self, cinema: str, url_base: str, theatre_filter: str = "") -> None:
         self.cinema = cinema
         with get_db_context() as session:
             self.cinema_id = crud.get_cinema_id_by_name(session=session, name=cinema)
@@ -37,7 +37,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         self.movies: list[MovieCreate] = []
         self.showtimes: list[ShowtimeCreate] = []
 
-    def scrape(self):
+    def scrape(self) -> None:
         logger.trace(f"Running {self.cinema} scraper...")
         response = requests.get(self.url)
         response.raise_for_status()
@@ -71,7 +71,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
             # Add into the database if needed
             logger.debug(f"Found TMDB id {tmdb_id} for {title}")
             movie = MovieCreate(
-                id=tmdb_id,
+                id=int(tmdb_id),
                 title=title,
                 poster_link=poster_url
             )
@@ -84,6 +84,9 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                 date = datetime.strptime(time["program_start"], "%Y%m%d%H%M")
                 ticket_link = f"{self.url_base}/tickets/{time['provider_id']}"
                 logger.trace(f"Found showtime: {date} at {theatre} for {title} ({tmdb_id}), with ticket link {ticket_link}")
+                if not self.cinema_id:
+                    logger.error(f"Cinema ID not found for {self.cinema}, skipping showtime")
+                    continue
                 showtime = ShowtimeCreate(
                     movie_id=movie.id,
                     datetime=date,

@@ -13,7 +13,7 @@ router = APIRouter(prefix="/items", tags=["items"])
 @router.get("/", response_model=ItemsPublic)
 def read_items(
     session: SessionDep, current_user: CurrentUser, skip: int = 0, limit: int = 100
-) -> Any:
+) -> ItemsPublic:
     """
     Retrieve items.
     """
@@ -37,8 +37,8 @@ def read_items(
             .limit(limit)
         )
         items = session.exec(statement).all()
-
-    return ItemsPublic(data=items, count=count)
+    items_public = [ItemPublic.model_validate(item) for item in items]
+    return ItemsPublic(data=items_public, count=count)
 
 
 @router.get("/{id}", response_model=ItemPublic)

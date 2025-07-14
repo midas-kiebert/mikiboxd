@@ -1,12 +1,14 @@
 from . import logger
 from .utils import get_page
 
+from typing import Sequence, List
 
 
-def get_watchlist(username: str):
+
+def get_watchlist(username: str) -> Sequence[str]:
     logger.info(f"Fetching watchlist for user: {username}...")
     page_num = 1
-    watchlist = []
+    watchlist: List[str] = []
     while True:
         logger.trace(f"Fetching watchlist page {page_num} for user {username}")
         url = f"https://letterboxd.com/{username}/watchlist/page/{page_num}/"
@@ -19,7 +21,10 @@ def get_watchlist(username: str):
         if not img: break
 
         for item in img:
-            slug = item.parent['data-film-slug']
+            if not item.parent or 'data-film-slug' not in item.parent.attrs:
+                logger.warning(f"Item without data-film-slug found on page {page_num}, skipping...")
+                continue
+            slug = str(item.parent['data-film-slug'])
             watchlist.append(slug)
         if len(watchlist) == watchlist_count: break
         page_num += 1

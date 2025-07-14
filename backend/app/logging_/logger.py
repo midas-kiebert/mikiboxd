@@ -1,4 +1,5 @@
 from loguru import logger
+Logger = type(logger)
 import os
 import sys
 from datetime import datetime
@@ -6,10 +7,11 @@ import pytz
 import requests
 
 from app.core.config import settings
+from typing import Any
 
 os.environ['TZ'] = 'Europe/Amsterdam'
 
-def dynamic_formatter(record):
+def dynamic_formatter(record: Any) -> str:
     base = "[{time:HH:mm:ss}] [{level}] {module}:{function}:{line} - {message}"
 
     extras = record.get("extra", {})
@@ -26,7 +28,7 @@ def dynamic_formatter(record):
 
     return base
 
-def dynamic_console_formatter(record):
+def dynamic_console_formatter(record: Any) -> str:
     base = "[<green>{time:HH:mm:ss}</green>] <level>[{level}]</level> {module}:{function}:<blue>{line}</blue> - {message}\n"
 
     if record["exception"]:
@@ -34,7 +36,7 @@ def dynamic_console_formatter(record):
 
     return base
 
-def notify_on_error(message):
+def notify_on_error(message: Any) -> None:
     record = message.record
     text = f"Error in {record['module']}:{record['function']} at line {record['line']}\n\n{record['message']}"
 
@@ -47,7 +49,7 @@ def notify_on_error(message):
     )
 
 
-def setup_logger(name: str, log_dir: str = "app/logs"):
+def setup_logger(name: str, log_dir: str = "app/logs") -> Any:
     today = datetime.now(pytz.timezone("Europe/Amsterdam")).strftime("%Y-%m-%d")
     log_path = os.path.join(log_dir, today, name)
     os.makedirs(log_path, exist_ok=True)

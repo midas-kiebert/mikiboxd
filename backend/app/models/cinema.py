@@ -1,7 +1,6 @@
 from sqlmodel import SQLModel, Field, Relationship
 
-
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 if TYPE_CHECKING:
     from .city import City, CityPublic
     from .showtime import Showtime
@@ -10,9 +9,9 @@ if TYPE_CHECKING:
 class CinemaBase(SQLModel):
     name: str = Field(description="Name of the cinema")
     cineville: bool = Field(default=False, description="Is this cinema a Cineville cinema?")
-    badge_bg_color: str | None = Field(default=None, description="Background color for the cinema badge")
-    badge_text_color: str | None = Field(default=None, description="Text color for the cinema badge")
-    url: str | None = Field(default=None, description="URL for the cinema's website or page")
+    badge_bg_color: Optional[str] = Field(default=None, description="Background color for the cinema badge")
+    badge_text_color: Optional[str] = Field(default=None, description="Text color for the cinema badge")
+    url: Optional[str] = Field(default=None, description="URL for the cinema's website or page")
 
 class CinemaCreate(CinemaBase):
     city_id: int = Field(description="ID of the city where the cinema is located")

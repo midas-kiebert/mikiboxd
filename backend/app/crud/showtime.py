@@ -5,11 +5,12 @@ from uuid import UUID
 from app.models import Showtime, ShowtimeCreate, Movie, ShowtimePublic, ShowtimeSelection, ShowtimeInMoviePublic
 from zoneinfo import ZoneInfo
 from datetime import datetime
-from app.models import User
+from app.models import User, UserPublic
+from typing import Sequence
 
 from app import crud
 
-def create_showtime(*, session: Session, showtime_create: ShowtimeCreate) -> Showtime:
+def create_showtime(*, session: Session, showtime_create: ShowtimeCreate) -> None:
     db_obj = Showtime.model_validate(showtime_create)
     session.add(db_obj)
     try:
@@ -23,7 +24,7 @@ def get_all_showtimes_for_movie(
         *,
         session: Session,
         movie_id: int,
-) -> list[Showtime]:
+) -> Sequence[Showtime]:
     """
     Retrieve all showtimes for a specific movie
     """
@@ -41,7 +42,7 @@ def get_selected_showtimes_for_user(
         *,
         session: Session,
         user_id: UUID,
-) -> list[Showtime]:
+) -> Sequence[Showtime]:
     stmt = (
         select(Showtime)
         .join(ShowtimeSelection, Showtime.id == ShowtimeSelection.showtime_id)
@@ -85,7 +86,8 @@ def get_split_showtimes_for_movie(
             .where(ShowtimeSelection.showtime_id == showtime.id)
             .where(User.id.in_(friend_ids))
         )
-        showtime_public.friends_going = session.exec(friends_going_stmt).all()
+        friends_going = session.exec(friends_going_stmt).all()
+        showtime_public.friends_going = [UserPublic.model_validate(friend) for friend in friends_going]
         if showtime_public.friends_going:
             showtimes_with_friends.append(showtime_public)
         else:
@@ -98,7 +100,7 @@ def get_first_n_showtimes(
     session: Session,
     movie: Movie,
     n: int = 5,
-) -> list[Showtime]:
+) -> Sequence[Showtime]:
     """
     Retrieve the first N showtimes for a movie.
     """

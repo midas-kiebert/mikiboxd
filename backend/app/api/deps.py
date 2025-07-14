@@ -25,7 +25,7 @@ def get_db() -> Generator[Session, None, None]:
         yield session
 
 @contextmanager
-def get_db_context():
+def get_db_context() -> Generator[Session, None, None]:
     yield from get_db()
 
 SessionDep = Annotated[Session, Depends(get_db)]

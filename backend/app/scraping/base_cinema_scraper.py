@@ -2,5 +2,5 @@ from abc import ABC, abstractmethod
 
 class BaseCinemaScraper(ABC):
     @abstractmethod
-    def scrape(self):
+    def scrape(self) -> None:
         pass

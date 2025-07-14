@@ -10,6 +10,11 @@ import re
 from app import crud
 from app.api.deps import get_db_context
 
+from bs4.element import Tag, NavigableString, PageElement
+from typing import Optional
+
+from enum import Enum, auto
+
 CINEMA = "LAB111"
 
 def clean_title(title: str) -> str:
@@ -21,7 +26,7 @@ def clean_title(title: str) -> str:
     return title
 
 class LAB111Scraper(BaseCinemaScraper):
-    def __init__(self):
+    def __init__(self) -> None:
         self.movies = []
         self.showtimes = []
         with get_db_context() as session:
@@ -31,7 +36,7 @@ class LAB111Scraper(BaseCinemaScraper):
                 raise ValueError(f"Cinema {CINEMA} not found in database")
 
 
-    def scrape(self):
+    def scrape(self) -> None:
         url = "https://lab111.nl/programma"
         response = requests.get(url)
         response.raise_for_status()
@@ -45,18 +50,38 @@ class LAB111Scraper(BaseCinemaScraper):
             return
 
         for div in film_divs:
-            title_query = clean_title(div.get("data-title"))
+            if not isinstance(div, Tag):
+                logger.warning("Skipping non-Tag element in film divs")
+                continue
+            raw_title = div.get("data-title")
+            if raw_title is None or not isinstance(raw_title, str):
+                logger.warning("Skipping div without a valid data-title attribute")
+                continue
+            title_query = clean_title(raw_title)
             director = None
             actor = None
-            for bold_tag in div.find_all('b'):
-                if bold_tag.text.strip().startswith('Regisseur:'):
-                    parent_div = bold_tag.find_parent('div')
-                    directors = " ".join(parent_div.text.strip().split()[1:])
-                    director = directors.split(',')[0]
-                if bold_tag.text.strip().startswith('Acteurs:'):
-                    parent_div = bold_tag.find_parent('div')
-                    actors = " ".join(parent_div.text.strip().split()[1:])
-                    actor = actors.split(',')[0]
+            extract_name(div, 'Regisseur:')  # Extract director name
+            extract_name(div, 'Acteurs:')  # Extract actor name
+            exit(0)
+            # for bold_tag in div.find_all('b'):
+            #     if not isinstance(bold_tag, Tag):
+            #         logger.warning("Skipping non-Tag element in bold tags")
+            #         continue
+            #     text = bold_tag.get_text(strip=True)
+            #     if text.startswith('Regisseur:'):
+            #         parent_div = bold_tag.find_parent('div')
+            #         if parent_div is None or not isinstance(parent_div, Tag):
+            #             logger.warning("Skipping bold tag without a valid parent div")
+            #             continue
+
+            #     if bold_tag.text.strip().startswith('Regisseur:'):
+            #         parent_div = bold_tag.find_parent('div')
+            #         directors = " ".join(parent_div.text.strip().split()[1:])
+            #         director = directors.split(',')[0]
+            #     if bold_tag.text.strip().startswith('Acteurs:'):
+            #         parent_div = bold_tag.find_parent('div')
+            #         actors = " ".join(parent_div.text.strip().split()[1:])
+            #         actor = actors.split(',')[0]
 
             # Try to find the tmdb_id
             result = find_tmdb_id(title_query=title_query,
@@ -107,3 +132,22 @@ class LAB111Scraper(BaseCinemaScraper):
                 crud.create_movie(session=session, movie_create=movie)
             for showtime in self.showtimes:
                 crud.create_showtime(session=session, showtime_create=showtime)
+
+
+def extract_name(tag: Tag, label: str) -> Optional[str]:
+    for bold_tag in tag.find_all('b'):
+        if not isinstance(bold_tag, Tag):
+            continue
+        text = bold_tag.get_text(strip=True)
+        if not text.startswith(label):
+            continue
+        parent_div = bold_tag.find_parent('div')
+        if parent_div is None or not isinstance(parent_div, Tag):
+            continue
+        test = parent_div.get_text(strip=True, separator=' ')
+        print(test)
+
+
+if __name__ == "__main__":
+    scraper = LAB111Scraper()
+    scraper.scrape()

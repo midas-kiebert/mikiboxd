@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 from datetime import datetime
 from uuid import UUID
 
+from typing import Sequence
+
 from app.models import Movie, MoviePublic, MovieCreate, MovieUpdate, Showtime, MovieSummaryPublic
 
 def create_movie(*, session: Session, movie_create: MovieCreate) -> None:
@@ -27,7 +29,7 @@ def get_movies(
         showtime_limit: int = 10,
         snapshot_time: datetime = datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None),
         query: str | None = None
-) -> list[Movie]:
+) -> Sequence[Movie]:
     stmt = (
         select(Movie)
         .join(Showtime, and_(
@@ -41,8 +43,9 @@ def get_movies(
     )
     if query:
         stmt = stmt.where(Movie.title.ilike(f"%{query}%"))
-    movie_rows = session.exec(stmt).all()
-    movies: list[Movie] = [movie_row[0] for movie_row in movie_rows]
+    result = session.execute(stmt)
+    # movies: list[Movie] = [movie_row[0] for movie_row in movie_rows]
+    movies: Sequence[Movie] = result.scalars().all()
 
     for movie in movies:
         movie.showtimes = get_first_n_showtimes(
@@ -68,7 +71,7 @@ def get_movie_by_id(*, session: Session, id: int, user_id: UUID) -> MoviePublic:
     )
     return movie_public
 
-def get_movies_without_letterboxd_slug(*, session: Session) -> list[Movie]:
+def get_movies_without_letterboxd_slug(*, session: Session) -> Sequence[Movie]:
     """
     Retrieve all movies that do not have a Letterboxd slug.
     """
@@ -76,8 +79,8 @@ def get_movies_without_letterboxd_slug(*, session: Session) -> list[Movie]:
         select(Movie)
         .where(Movie.letterboxd_slug.is_(None))
     )
-    rows = session.exec(stmt).all()
-    return [row[0] for row in rows]
+    result = session.execute(stmt)
+    return result.scalars().all()
 
 def update_movie(
     *, session: Session, db_movie: Movie, movie_update: MovieUpdate
@@ -97,7 +100,7 @@ def search_movies(
         limit: int = 10,
         offset: int = 0,
         showtime_limit: int = 5
-) -> list[Movie]:
+) -> Sequence[Movie]:
 
     stmt = (
         select(Movie)
@@ -111,8 +114,8 @@ def search_movies(
         .limit(limit)
         .offset(offset)
     )
-    movie_rows = session.exec(stmt).all()
-    movies: list[Movie] = [movie_row[0] for movie_row in movie_rows]
+    result = session.execute(stmt)
+    movies: Sequence[Movie] = result.scalars().all()
 
     for movie in movies:
         movie.showtimes = get_first_n_showtimes(

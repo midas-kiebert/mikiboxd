@@ -11,7 +11,7 @@ DUTCH_MONTHS = {
     "sep": 9, "okt": 10, "nov": 11, "dec": 12,
 }
 
-def get_closest_exact_date(dutch_date_str, search_years=1):
+def get_closest_exact_date(dutch_date_str: str, search_years: int = 1) -> datetime:
     """
     Parse 'wo 8 mei 19:30' and return the closest datetime (past or future)
     with matching weekday, day, month, and time.

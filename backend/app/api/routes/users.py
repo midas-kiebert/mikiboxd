@@ -26,6 +26,8 @@ from app.models import (
 )
 from app.utils import generate_new_account_email, send_email
 
+from typing import Sequence
+
 router = APIRouter(prefix="/users", tags=["users"])
 
 
@@ -44,10 +46,9 @@ def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
 
     statement = select(User).offset(skip).limit(limit)
     users = session.exec(statement).all()
+    users_public = [UserPublic.model_validate(user) for user in users]
 
-    print(users)
-
-    return UsersPublic(data=users, count=count)
+    return UsersPublic(data=users_public, count=count)
 
 
 @router.get("/search", response_model=list[UserPublic])
@@ -56,10 +57,7 @@ def search_users(
     query: str = Query(..., min_length=1, description="Search query for usernames"),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     limit: int = Query(10, ge=1, le=50, description="Max number of items to return"),
-):
-    """
-    Search for movies by title.
-    """
+) -> Sequence[User]:
     users = crud.search_users(
         session=session,
         query=query,
@@ -122,19 +120,7 @@ def update_password_me(
 ) -> Any:
     """
     Update own password.
-    """@router.delete("/me", response_model=Message)
-def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     """
-    Delete own user.
-    """
-    if current_user.is_superuser:
-        raise HTTPException(
-            status_code=403, detail="Super users are not allowed to delete themselves"
-        )
-    session.delete(current_user)
-    session.commit()
-    return Message(message="User deleted successfully")
-
     if not verify_password(body.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect password")
     if body.current_password == body.new_password:
@@ -147,6 +133,19 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     session.commit()
     return Message(message="Password updated successfully")
 
+
+@router.delete("/me", response_model=Message)
+def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
+    """
+    Delete own user.
+    """
+    if current_user.is_superuser:
+        raise HTTPException(
+            status_code=403, detail="Super users are not allowed to delete themselves"
+        )
+    session.delete(current_user)
+    session.commit()
+    return Message(message="User deleted successfully")
 
 
 @router.post("/signup", response_model=UserPublic)

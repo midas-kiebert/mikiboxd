@@ -1,6 +1,7 @@
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel, Relationship
 from datetime import datetime
+from sqlalchemy.orm import Mapped
 
 from typing import TYPE_CHECKING, Optional, Sequence
 if TYPE_CHECKING:
@@ -15,7 +16,7 @@ class ShowtimeBase(SQLModel):
     id: Optional[int] = Field(default=None, primary_key=True, description="Showtime ID")
     datetime: datetime
     theatre: str = Field(description="Theatre name", default="")
-    ticket_link: str | None = Field(description="Link to purchase tickets", default=None)
+    ticket_link: Optional[str] = Field(description="Link to purchase tickets", default=None)
 
 
 # Properties to receive on showtime creation

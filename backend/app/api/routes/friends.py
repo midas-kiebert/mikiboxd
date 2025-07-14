@@ -9,6 +9,8 @@ from app.api.deps import (
 )
 from app.models import (
     UsersPublic,
+    UserPublic,
+    Message,
 )
 
 router = APIRouter(prefix="/friends", tags=["friends"])
@@ -19,7 +21,7 @@ def send_friend_request(
     session: SessionDep,
     current_user: CurrentUser,
     receiver_id: uuid.UUID
-):
+) -> Message:
     """
     Send a friend request to another user.
     """
@@ -31,7 +33,7 @@ def send_friend_request(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"message": "Friend request sent successfully."}
+    return Message(message="Friend request sent successfully.")
 
 @router.post("/accept/{sender_id}")
 def accept_friend_request(
@@ -39,7 +41,7 @@ def accept_friend_request(
     session: SessionDep,
     current_user: CurrentUser,
     sender_id: uuid.UUID
-):
+) -> Message:
     """
     Accept a friend request from another user.
     """
@@ -51,7 +53,7 @@ def accept_friend_request(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"message": "Friend request accepted successfully."}
+    return Message(message="Friend request accepted successfully.")
 
 @router.post("/decline/{sender_id}")
 def decline_friend_request(
@@ -59,7 +61,7 @@ def decline_friend_request(
     session: SessionDep,
     current_user: CurrentUser,
     sender_id: uuid.UUID
-):
+) -> Message:
     """
     Decline a friend request from another user.
     """
@@ -71,7 +73,7 @@ def decline_friend_request(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"message": "Friend request declined successfully."}
+    return Message(message="Friend request declined successfully.")
 
 
 @router.delete("/cancel/{receiver_id}")
@@ -80,7 +82,7 @@ def cancel_friend_request(
     session: SessionDep,
     current_user: CurrentUser,
     receiver_id: uuid.UUID
-):
+) -> Message:
     """
     Cancel a sent friend request.
     """
@@ -92,7 +94,7 @@ def cancel_friend_request(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"message": "Friend request cancelled successfully."}
+    return Message(message="Friend request cancelled successfully.")
 
 
 @router.delete("/{friend_id}")
@@ -101,7 +103,7 @@ def remove_friend(
     session: SessionDep,
     current_user: CurrentUser,
     friend_id: uuid.UUID
-):
+) -> Message:
     """
     Remove a friend from your friend list.
     """
@@ -113,7 +115,7 @@ def remove_friend(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"message": "Friend removed successfully."}
+    return Message(message="Friend removed successfully.")
 
 
 @router.get("/")
@@ -126,7 +128,8 @@ def get_friends(
     Get the list of friends for the current user.
     """
     friends = crud.get_friends(session=session, user_id=current_user.id)
-    return UsersPublic(data=friends, count=len(friends))
+    friends_public = [UserPublic.model_validate(friend) for friend in friends]
+    return UsersPublic(data=friends_public, count=len(friends))
 
 
 @router.get("/requests/sent")
@@ -139,7 +142,8 @@ def get_sent_friend_requests(
     Get the list of sent friend requests for the current user.
     """
     requests = crud.get_sent_friend_requests(session=session, user_id=current_user.id)
-    return UsersPublic(data=requests, count=len(requests))
+    requests_public = [UserPublic.model_validate(request) for request in requests]
+    return UsersPublic(data=requests_public, count=len(requests))
 
 
 @router.get("/requests/received")
@@ -152,4 +156,5 @@ def get_received_friend_requests(
     Get the list of received friend requests for the current user.
     """
     requests = crud.get_received_friend_requests(session=session, user_id=current_user.id)
-    return UsersPublic(data=requests, count=len(requests))
+    requests_public = [UserPublic.model_validate(request) for request in requests]
+    return UsersPublic(data=requests_public, count=len(requests))

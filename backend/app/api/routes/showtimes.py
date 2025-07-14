@@ -27,12 +27,13 @@ def get_all_showtimes_for_movie(
     *,
     session: SessionDep,
     movie_id: int,
-) -> list[ShowtimePublic]:
+) -> list[ShowtimeInMoviePublic]:
     showtimes = crud.get_all_showtimes_for_movie(
         session=session,
         movie_id=movie_id,
     )
-    return showtimes
+    showtimes_public = [ShowtimeInMoviePublic.model_validate(showtime) for showtime in showtimes]
+    return showtimes_public
 
 
 @router.post("/selection/{showtime_id}")

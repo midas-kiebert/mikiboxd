@@ -1,6 +1,7 @@
 from sqlmodel import SQLModel, Field
 from uuid import UUID
 
+
 class Friendship(SQLModel, table=True):
     user_id: UUID = Field(foreign_key="user.id", primary_key=True)
     friend_id: UUID = Field(foreign_key="user.id", primary_key=True)

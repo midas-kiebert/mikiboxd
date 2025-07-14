@@ -1,15 +1,15 @@
-import uuid
+from uuid import UUID, uuid4
 
 from sqlmodel import Field, Relationship, SQLModel
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List
 if TYPE_CHECKING:
     from .user import User
 
 # Shared properties
 class ItemBase(SQLModel):
     title: str = Field(min_length=1, max_length=255)
-    description: str | None = Field(default=None, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=255)
 
 
 # Properties to receive on item creation
@@ -19,13 +19,13 @@ class ItemCreate(ItemBase):
 
 # Properties to receive on item update
 class ItemUpdate(ItemBase):
-    title: str | None = Field(default=None, min_length=1, max_length=255)  # type: ignore
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)  # type: ignore
 
 
 # Database model, database table inferred from class name
 class Item(ItemBase, table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    owner_id: uuid.UUID = Field(
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    owner_id: UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
     )
     owner: Optional["User"] = Relationship(back_populates="items")
@@ -33,10 +33,10 @@ class Item(ItemBase, table=True):
 
 # Properties to return via API, id is always required
 class ItemPublic(ItemBase):
-    id: uuid.UUID
-    owner_id: uuid.UUID
+    id: UUID
+    owner_id: UUID
 
 
 class ItemsPublic(SQLModel):
-    data: list[ItemPublic]
+    data: List[ItemPublic]
     count: int

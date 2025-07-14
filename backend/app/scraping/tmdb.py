@@ -6,6 +6,7 @@ from urllib3.util.retry import Retry
 from rapidfuzz import fuzz
 
 from app.scraping import logger
+from typing import Sequence, List, Optional
 
 TMDB_API_KEY = settings.TMDB_KEY
 SEARCH_PERSON_URL = 'https://api.themoviedb.org/3/search/person'
@@ -20,7 +21,7 @@ session = requests.Session()
 retry = Retry(total=15, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
 session.mount('https://', HTTPAdapter(max_retries=retry))
 
-def get_person_ids(name):
+def get_person_ids(name: str) -> Sequence[str]:
     response = session.get(SEARCH_PERSON_URL, params={
         'api_key': TMDB_API_KEY,
         'query': name
@@ -33,20 +34,23 @@ def get_person_ids(name):
 
     return [result['id'] for result in results]
 
-def search_tmdb(title):
+def search_tmdb(title: str) -> List[dict[str, str]]:
     params = {
         "api_key": TMDB_API_KEY,
         "query": title,
     }
 
     response = requests.get(TMDB_SEARCH_URL, params=params)
-    return response.json()["results"]
+    results: List[dict[str, str]] = response.json().get("results", [])
+    return results
 
 
 
-def get_persons_movies(person_id, job='Director', year=None):
+def get_persons_movies(person_id: str, job: str = 'Director', year: Optional[int] = None) -> List[dict[str, str]]:
     credits_url = CREDITS_URL_TEMPLATE.format(id=person_id)
     response = session.get(credits_url, params={'api_key': TMDB_API_KEY}).json()
+
+    movies: List[dict[str, str]] = []
 
     if job == 'Director':
         crew = response.get('crew', [])
@@ -60,14 +64,19 @@ def get_persons_movies(person_id, job='Director', year=None):
 
     return movies
 
-def strip_accents(text):
+def strip_accents(text: str) -> str:
     return ''.join(
         c for c in unicodedata.normalize('NFKD', text)
         if not unicodedata.combining(c)
     )
 
-def find_tmdb_id(title_query, director_name=None, actor_name=None, year=None):
-    directed_movies = []
+def find_tmdb_id(
+    title_query: str,
+    director_name: Optional[str] = None,
+    actor_name: Optional[str] = None,
+    year: Optional[int] = None,
+) -> Optional[tuple[str, str, str]]:
+    directed_movies: List[dict[str, str]] = []
     if director_name:
         director_name = strip_accents(director_name)
         director_ids = get_person_ids(director_name)
@@ -75,13 +84,13 @@ def find_tmdb_id(title_query, director_name=None, actor_name=None, year=None):
         for director_id in director_ids:
             directed_movies += get_persons_movies(director_id, 'Director', year)
     logger.trace(f"Directed movies: {[m['title'] for m in directed_movies]}")
-    potential_movies = []
+    potential_movies: List[dict[str, str]] = []
     if actor_name:
         actor_ids = get_person_ids(actor_name)
         logger.trace(f"Actor ids: {actor_ids}")
         if not actor_ids: potential_movies = directed_movies
         for actor_id in actor_ids:
-            acted_movies = get_persons_movies(actor_id, 'Actor', year)
+            acted_movies: List[dict[str, str]] = get_persons_movies(actor_id, 'Actor', year)
             # only add movies where the director also matches
             if directed_movies:
                 potential_movies += [m for m in acted_movies if m['id'] in [dm['id'] for dm in directed_movies]]
@@ -98,7 +107,7 @@ def find_tmdb_id(title_query, director_name=None, actor_name=None, year=None):
         if potential_movies:
             best = potential_movies[0]
             logger.debug(f"No director or actor specified, using first search result: {best['title']}")
-            return best['title'], best['id'], f"https://imCharlie Chaplinage.tmdb.org/t/p/w342{best['poster_path']}"
+            return best['title'], best['id'], f"https://image.tmdb.org/t/p/w342{best['poster_path']}"
 
     if not potential_movies:
         logger.debug(f"No potential movies found for '{title_query}' with director '{director_name}' and actor '{actor_name}'.")

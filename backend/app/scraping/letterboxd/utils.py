@@ -2,7 +2,9 @@ from bs4 import BeautifulSoup
 import requests
 from . import logger
 
-def get_page(url: str, cookie_string: str = None):
+from typing import Optional
+
+def get_page(url: str, cookie_string: Optional[str] = None) -> BeautifulSoup:
     logger.trace(f"Fetching page: {url}")
     cookies = {item.split('=')[0].strip(): item.split('=')[1].strip() for item in cookie_string.strip().split('; ')} if cookie_string else {}
     headers = {

@@ -8,9 +8,11 @@ from app.models import MovieUpdate
 
 from app.logging_.logger import setup_logger
 
+from typing import Optional
+
 logger = setup_logger(__name__)
 
-def get_letterboxd_slug(tmdb_id: int) -> str:
+def get_letterboxd_slug(tmdb_id: int) -> Optional[str]:
     url = f"https://letterboxd.com/tmdb/{tmdb_id}/"
     headers = {
         "referer": "https://letterboxd.com",
@@ -26,7 +28,7 @@ def get_letterboxd_slug(tmdb_id: int) -> str:
     slug = final_url.split("/")[-2]
     return slug
 
-def load_letterboxd_slugs():
+def load_letterboxd_slugs() -> None:
     with get_db_context() as session:
         # Fetch movies without Letterboxd slug
         movies = get_movies_without_letterboxd_slug(session=session)
@@ -34,7 +36,6 @@ def load_letterboxd_slugs():
             logger.info("No movies found without Letterboxd slug.")
             return
 
-    update = []
     logger.trace(movies)
 
     for movie in tqdm(movies):

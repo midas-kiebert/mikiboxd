@@ -33,6 +33,7 @@ jobs:
           POSTGRES_PORT=5432
           PROJECT_NAME="MikiBoxd"
           DOCKER_IMAGE_FRONTEND=frontend
+          FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
           EOF
       - name: Set up Python
         uses: actions/setup-python@v5

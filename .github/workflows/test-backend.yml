@@ -32,6 +32,7 @@ jobs:
           POSTGRES_SERVER=localhost
           POSTGRES_PORT=5432
           PROJECT_NAME="MikiBoxd"
+          DOCKER_IMAGE_FRONTEND=frontend
           EOF
       - name: Set up Python
         uses: actions/setup-python@v5

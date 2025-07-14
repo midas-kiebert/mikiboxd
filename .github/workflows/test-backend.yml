@@ -22,6 +22,7 @@ jobs:
           POSTGRES_USER=${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
           STACK_NAME=${{ secrets.STACK_NAME }}
+          FRONTEND_HOST=${{ vars.FRONTEND_HOST }}
           EOF
       - name: Set up Python
         uses: actions/setup-python@v5

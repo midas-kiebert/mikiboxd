@@ -24,6 +24,7 @@ jobs:
           STACK_NAME=${{ secrets.STACK_NAME }}
           FRONTEND_HOST=${{ vars.FRONTEND_HOST }}
           DOMAIN=${{ vars.DOMAIN }}
+          DOCKER_IMAGE_BACKEND=${{ vars.DOCKER_IMAGE_BACKEND }}
           EOF
       - name: Set up Python
         uses: actions/setup-python@v5

@@ -15,6 +15,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Create .env file
+        run: |
+          cat > .env <<EOF
+          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          EOF
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -26,9 +33,6 @@ jobs:
           enable-cache: true
       - run: docker compose down -v --remove-orphans
       - run: docker compose up -d db mailcatcher
-        env:
-          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
-          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
       - name: Migrate DB
         run: uv run bash scripts/prestart.sh
         working-directory: backend

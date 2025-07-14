@@ -34,6 +34,18 @@ jobs:
           PROJECT_NAME="MikiBoxd"
           DOCKER_IMAGE_FRONTEND=frontend
           FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
+          SMTP_HOST=
+          SMTP_USER=
+          SMTP_PASSWORD=
+          EMAILS_FROM_EMAIL=info@example.com
+          SMTP_TLS=True
+          SMTP_SSL=False
+          SMTP_PORT=587
+          SENTRY_DSN=
+          DEBUG=False
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
+          ENABLE_TELEGRAM=false
           EOF
       - name: Set up Python
         uses: actions/setup-python@v5

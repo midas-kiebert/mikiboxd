@@ -27,8 +27,8 @@ jobs:
       - run: docker compose down -v --remove-orphans
       - run: docker compose up -d db mailcatcher
         env:
-          POSTGRES_USER: {{ vars.POSTGRES_USER }}
-          POSTGRES_DB: {{ vars.POSTGRES_DB }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
       - name: Migrate DB
         run: uv run bash scripts/prestart.sh
         working-directory: backend

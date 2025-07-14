@@ -7,7 +7,7 @@ on:
 
 jobs:
   deploy:
-    # Do not deploy in the main repository, only in user projects
+    if: false # disabled
     if: github.repository_owner != 'fastapi'
     runs-on:
       - self-hosted

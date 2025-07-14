@@ -43,6 +43,7 @@ jobs:
           SMTP_PORT=587
           SENTRY_DSN=
           DEBUG=False
+          TMDB_KEY=${{ secrets.TMDB_KEY }}
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
           ENABLE_TELEGRAM=false

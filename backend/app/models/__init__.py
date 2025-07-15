@@ -12,6 +12,7 @@ from .watchlist_selection import WatchlistSelection
 Showtime.model_rebuild()
 Movie.model_rebuild()
 MoviePublic.model_rebuild()
+MovieSummaryPublic.model_rebuild()
 ShowtimePublic.model_rebuild()  # Rebuild the public model to ensure all fields are set up correctly
 ShowtimeInMoviePublic.model_rebuild()  # Rebuild the model for showtimes in MoviePublic
 User.model_rebuild()

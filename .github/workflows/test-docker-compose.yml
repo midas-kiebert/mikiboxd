@@ -53,7 +53,7 @@ jobs:
       - run: docker compose down -v --remove-orphans
       - name: Try starting backend
         run: |
-          docker compose up -d --wait backend frontend adminer || True
+          docker compose up -d --wait backend frontend adminer || true
           docker compose ps
           docker compose logs backend
       - name: Test backend is up

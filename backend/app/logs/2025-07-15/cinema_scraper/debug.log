@@ -1,0 +1,86 @@
+[00:17:43] [ERROR] lab111:__init__:35 - Cinema LAB111 not found in database
+[01:08:03] [DEBUG] tmdb:find_tmdb_id:131 - No direct match found for 'alien & aliens' with director 'Ridley Scott' and actor 'Sigourney Weaver'. Fuzzy matching...
+[01:08:03] [DEBUG] lab111:scrape:80 - Found TMDB id 348 for Alien
+[01:08:03] [DEBUG] lab111:scrape:80 - Found TMDB id 578 for Jaws
+[01:08:04] [DEBUG] lab111:scrape:80 - Found TMDB id 13282 for Death Race 2000
+[01:08:05] [DEBUG] lab111:scrape:80 - Found TMDB id 12477 for Grave of the Fireflies
+[01:08:06] [DEBUG] lab111:scrape:80 - Found TMDB id 1100988 for 28 Years Later
+[01:08:07] [DEBUG] lab111:scrape:80 - Found TMDB id 539565 for Zola
+[01:08:07] [DEBUG] lab111:scrape:80 - Found TMDB id 18415 for Gummo
+[01:08:08] [DEBUG] lab111:scrape:80 - Found TMDB id 468 for My Own Private Idaho
+[01:08:11] [DEBUG] lab111:scrape:80 - Found TMDB id 994108 for All of Us Strangers
+[01:08:12] [DEBUG] lab111:scrape:80 - Found TMDB id 13403 for Hedwig and the Angry Inch
+[01:08:13] [DEBUG] lab111:scrape:80 - Found TMDB id 965150 for Aftersun
+[01:08:13] [DEBUG] lab111:scrape:80 - Found TMDB id 11634 for Show Me Love
+[01:08:14] [DEBUG] lab111:scrape:80 - Found TMDB id 235 for Stand by Me
+[01:08:15] [DEBUG] lab111:scrape:80 - Found TMDB id 655 for Paris, Texas
+[01:08:16] [DEBUG] tmdb:find_tmdb_id:131 - No direct match found for 'ran' with director 'Akira Kurosawa' and actor 'Tatsuya Nakadai'. Fuzzy matching...
+[01:08:16] [DEBUG] lab111:scrape:80 - Found TMDB id 11645 for Ran
+[01:08:17] [DEBUG] lab111:scrape:80 - Found TMDB id 1137350 for The Phoenician Scheme
+[01:08:18] [DEBUG] lab111:scrape:80 - Found TMDB id 2011 for Persepolis
+[01:08:18] [DEBUG] lab111:scrape:80 - Found TMDB id 530385 for Midsommar
+[01:08:19] [DEBUG] tmdb:find_tmdb_id:131 - No direct match found for 'asian movie night: sanguine specters stick to the skin' with director 'Isao Fujisawa' and actor 'None'. Fuzzy matching...
+[01:08:19] [DEBUG] tmdb:find_tmdb_id:142 - Best match score (Bye Bye Love) for 'asian movie night: sanguine specters stick to the skin' is below threshold: 12.903225806451616.
+[01:08:19] [WARNING] lab111:scrape:68 - No TMDB id found for asian movie night: sanguine specters stick to the skin, skipping
+[01:08:19] [DEBUG] tmdb:find_tmdb_id:131 - No direct match found for 'toxic' with director 'Saule Bliuvaite' and actor 'Vesta Matulyte'. Fuzzy matching...
+[01:08:19] [DEBUG] lab111:scrape:80 - Found TMDB id 1315091 for Toxic
+[01:08:20] [DEBUG] lab111:scrape:80 - Found TMDB id 1234400 for Swamp Dogg Gets His Pool Painted
+[01:08:21] [DEBUG] lab111:scrape:80 - Found TMDB id 1275987 for Don’t You Let Me Go
+[01:08:21] [DEBUG] lab111:scrape:80 - Found TMDB id 11953 for Kagemusha
+[01:08:25] [DEBUG] lab111:scrape:80 - Found TMDB id 567 for Rear Window
+[01:08:26] [DEBUG] lab111:scrape:80 - Found TMDB id 10363 for Purple Noon
+[01:08:26] [DEBUG] tmdb:find_tmdb_id:113 - No potential movies found for 'hump! film fest 2025 part two' with director 'None' and actor 'None'.
+[01:08:26] [WARNING] lab111:scrape:68 - No TMDB id found for hump! film fest 2025 part two, skipping
+[01:08:27] [DEBUG] lab111:scrape:80 - Found TMDB id 4946 for The Swimming Pool
+[01:08:28] [DEBUG] lab111:scrape:80 - Found TMDB id 617 for Wild Things
+[01:08:29] [DEBUG] lab111:scrape:80 - Found TMDB id 1213 for The Talented Mr. Ripley
+[01:08:30] [DEBUG] lab111:scrape:80 - Found TMDB id 4507 for Jamon Jamon
+[01:08:31] [DEBUG] lab111:scrape:80 - Found TMDB id 18602 for Morvern Callar
+[01:08:31] [DEBUG] lab111:scrape:80 - Found TMDB id 1364 for Sex and Lucía
+[01:08:32] [DEBUG] lab111:scrape:80 - Found TMDB id 1078605 for Weapons
+[01:08:33] [DEBUG] lab111:scrape:80 - Found TMDB id 28 for Apocalypse Now
+[01:08:34] [DEBUG] lab111:scrape:80 - Found TMDB id 14626 for Beau Travail
+[01:08:35] [DEBUG] lab111:scrape:80 - Found TMDB id 9300 for Orlando
+[01:08:36] [DEBUG] lab111:scrape:80 - Found TMDB id 9675 for Sideways
+[01:08:37] [DEBUG] lab111:scrape:80 - Found TMDB id 11826 for Sexy Beast
+[01:08:37] [DEBUG] lab111:scrape:80 - Found TMDB id 843 for In the Mood for Love
+[01:08:38] [DEBUG] lab111:scrape:80 - Found TMDB id 3175 for Barry Lyndon
+[01:08:39] [DEBUG] lab111:scrape:80 - Found TMDB id 858017 for I Saw the TV Glow
+[01:08:40] [DEBUG] lab111:scrape:80 - Found TMDB id 1290205 for Flat Girls
+[01:08:40] [DEBUG] lab111:scrape:80 - Found TMDB id 12516 for Dreams
+[01:08:41] [DEBUG] lab111:scrape:80 - Found TMDB id 9343 for Fitzcarraldo
+[01:08:42] [DEBUG] lab111:scrape:80 - Found TMDB id 702 for A Streetcar Named Desire
+[01:08:43] [DEBUG] lab111:scrape:80 - Found TMDB id 389 for 12 Angry Men
+[01:08:44] [DEBUG] lab111:scrape:80 - Found TMDB id 903 for Cool Hand Luke
+[01:08:45] [DEBUG] lab111:scrape:80 - Found TMDB id 46919 for Daisies
+[01:08:45] [DEBUG] lab111:scrape:80 - Found TMDB id 968 for Dog Day Afternoon
+[01:08:46] [DEBUG] lab111:scrape:80 - Found TMDB id 266 for Contempt
+[01:08:47] [DEBUG] lab111:scrape:80 - Found TMDB id 290 for Barton Fink
+[01:08:48] [DEBUG] lab111:scrape:80 - Found TMDB id 9571 for Dazed and Confused
+[01:08:49] [DEBUG] lab111:scrape:80 - Found TMDB id 58429 for La Ciénaga
+[01:08:50] [DEBUG] lab111:scrape:80 - Found TMDB id 88 for Dirty Dancing
+[01:08:50] [DEBUG] lab111:scrape:80 - Found TMDB id 1136867 for Materialists
+[01:08:51] [DEBUG] lab111:scrape:80 - Found TMDB id 500 for Reservoir Dogs
+[01:08:52] [DEBUG] lab111:scrape:80 - Found TMDB id 9820 for The Parent Trap
+[01:08:53] [DEBUG] lab111:scrape:80 - Found TMDB id 621 for Grease
+[01:08:53] [DEBUG] lab111:scrape:80 - Found TMDB id 73939 for Pariah
+[01:08:54] [DEBUG] lab111:scrape:80 - Found TMDB id 346 for Seven Samurai
+[01:08:54] [DEBUG] lab111:scrape:80 - Found TMDB id 12493 for High and Low
+[01:08:55] [DEBUG] lab111:scrape:80 - Found TMDB id 3782 for Ikiru
+[01:08:55] [DEBUG] lab111:scrape:80 - Found TMDB id 11878 for Yojimbo
+[01:08:58] [DEBUG] lab111:scrape:80 - Found TMDB id 37247 for The Graduate
+[01:08:59] [DEBUG] lab111:scrape:80 - Found TMDB id 24128 for Stop Making Sense
+[01:09:00] [DEBUG] lab111:scrape:80 - Found TMDB id 925 for Do the Right Thing
+[01:09:00] [DEBUG] tmdb:find_tmdb_id:131 - No direct match found for 'chungking express & in the mood for love' with director 'Wong Kar-Wai' and actor 'None'. Fuzzy matching...
+[01:09:00] [DEBUG] lab111:scrape:80 - Found TMDB id 843 for In the Mood for Love
+[01:09:01] [DEBUG] lab111:scrape:80 - Found TMDB id 1161879 for Motel Destino
+[01:09:01] [DEBUG] lab111:scrape:80 - Found TMDB id 1177524 for Beyond the Aggressives: 25 Years Later
+[01:09:01] [DEBUG] lab111:scrape:80 - Found TMDB id 1177524 for Beyond the Aggressives: 25 Years Later
+[01:09:02] [DEBUG] tmdb:find_tmdb_id:113 - No potential movies found for 'iqmf queer short film program 2025' with director 'None' and actor 'None'.
+[01:09:02] [WARNING] lab111:scrape:68 - No TMDB id found for iqmf queer short film program 2025, skipping
+[01:09:02] [DEBUG] lab111:scrape:80 - Found TMDB id 1329860 for Between Goodbyes
+[01:09:03] [DEBUG] lab111:scrape:80 - Found TMDB id 1151031 for Bring Her Back
+[01:09:04] [DEBUG] lab111:scrape:80 - Found TMDB id 11240 for My Beautiful Laundrette
+[01:09:04] [DEBUG] lab111:scrape:80 - Found TMDB id 24188 for Il Sorpasso
+[01:09:05] [DEBUG] lab111:scrape:80 - Found TMDB id 11631 for Mamma Mia!
+[01:09:05] [DEBUG] lab111:scrape:80 - Found TMDB id 1391 for Y Tu Mamá También

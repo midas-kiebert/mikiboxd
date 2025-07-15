@@ -1,13 +1,28 @@
+from collections.abc import Sequence
 from typing import Any
+from uuid import UUID
 
 from sqlmodel import Session, select
 
 from app.core.security import get_password_hash, verify_password
-from app.models import User, UserCreate, UserUpdate, FriendRequest, Friendship
+from app.models import FriendRequest, Friendship, User, UserCreate, UserUpdate
+from app.models.utils import column
 
-from typing import Sequence
-
-from uuid import UUID
+__all__ = [
+    "create_user",
+    "update_user",
+    "get_user_by_email",
+    "authenticate",
+    "add_friendship",
+    "accept_friend_request",
+    "delete_friend_request",
+    "send_friend_request",
+    "delete_friendship",
+    "get_friends",
+    "get_sent_friend_requests",
+    "get_received_friend_requests",
+    "search_users",
+]
 
 
 def create_user(*, session: Session, user_create: UserCreate) -> User:
@@ -62,9 +77,7 @@ def add_friendship(*, session: Session, user_id: UUID, friend_id: UUID) -> None:
         raise ValueError("You cannot add yourself as a friend.")
 
     users = session.exec(
-        select(User).where(
-            (User.id == user_id) | (User.id == friend_id)
-        )
+        select(User).where((User.id == user_id) | (User.id == friend_id))
     ).all()
 
     if len(users) != 2:
@@ -88,10 +101,13 @@ def add_friendship(*, session: Session, user_id: UUID, friend_id: UUID) -> None:
         raise ValueError(f"Failed to add friendship: {str(e)}")
 
 
-def accept_friend_request(*, session: Session, sender_id: UUID, receiver_id: UUID) -> None:
+def accept_friend_request(
+    *, session: Session, sender_id: UUID, receiver_id: UUID
+) -> None:
     request = session.exec(
         select(FriendRequest).where(
-            (FriendRequest.sender_id == sender_id) & (FriendRequest.receiver_id == receiver_id)
+            (FriendRequest.sender_id == sender_id)
+            & (FriendRequest.receiver_id == receiver_id)
         )
     ).first()
     if not request:
@@ -108,14 +124,12 @@ def accept_friend_request(*, session: Session, sender_id: UUID, receiver_id: UUI
 
 
 def delete_friend_request(
-        *,
-        session: Session,
-        sender_id: UUID,
-        receiver_id: UUID
+    *, session: Session, sender_id: UUID, receiver_id: UUID
 ) -> None:
     request = session.exec(
         select(FriendRequest).where(
-            (FriendRequest.sender_id == sender_id) & (FriendRequest.receiver_id == receiver_id)
+            (FriendRequest.sender_id == sender_id)
+            & (FriendRequest.receiver_id == receiver_id)
         )
     ).first()
     if not request:
@@ -130,14 +144,14 @@ def delete_friend_request(
         raise ValueError(f"Failed to remove friend request: {str(e)}")
 
 
-def send_friend_request(*, session: Session, sender_id: UUID, receiver_id: UUID) -> None:
+def send_friend_request(
+    *, session: Session, sender_id: UUID, receiver_id: UUID
+) -> None:
     if sender_id == receiver_id:
         raise ValueError("You cannot send a friend request to yourself.")
 
     users = session.exec(
-        select(User).where(
-            (User.id == sender_id) | (User.id == receiver_id)
-        )
+        select(User).where((User.id == sender_id) | (User.id == receiver_id))
     ).all()
 
     if len(users) != 2:
@@ -153,7 +167,8 @@ def send_friend_request(*, session: Session, sender_id: UUID, receiver_id: UUID)
 
     existing_request = session.exec(
         select(FriendRequest).where(
-            (FriendRequest.sender_id == sender_id) & (FriendRequest.receiver_id == receiver_id)
+            (FriendRequest.sender_id == sender_id)
+            & (FriendRequest.receiver_id == receiver_id)
         )
     ).first()
     if existing_request:
@@ -161,11 +176,14 @@ def send_friend_request(*, session: Session, sender_id: UUID, receiver_id: UUID)
 
     existing_reverse_request = session.exec(
         select(FriendRequest).where(
-            (FriendRequest.sender_id == receiver_id) & (FriendRequest.receiver_id == sender_id)
+            (FriendRequest.sender_id == receiver_id)
+            & (FriendRequest.receiver_id == sender_id)
         )
     ).first()
     if existing_reverse_request:
-        raise ValueError("A friend request has already been sent in the reverse direction.")
+        raise ValueError(
+            "A friend request has already been sent in the reverse direction."
+        )
 
     friend_request = FriendRequest(sender_id=sender_id, receiver_id=receiver_id)
     session.add(friend_request)
@@ -210,7 +228,7 @@ def get_friends(*, session: Session, user_id: UUID) -> Sequence[User]:
         if friendship.friend_id != user_id:
             friend_ids.add(friendship.friend_id)
 
-    return session.exec(select(User).where(User.id.in_(friend_ids))).all()
+    return session.exec(select(User).where(column(User.id).in_(friend_ids))).all()
 
 
 def get_sent_friend_requests(*, session: Session, user_id: UUID) -> Sequence[User]:
@@ -218,7 +236,7 @@ def get_sent_friend_requests(*, session: Session, user_id: UUID) -> Sequence[Use
         select(FriendRequest).where(FriendRequest.sender_id == user_id)
     ).all()
     receiver_ids = [request.receiver_id for request in requests]
-    return session.exec(select(User).where(User.id.in_(receiver_ids))).all()
+    return session.exec(select(User).where(column(User.id).in_(receiver_ids))).all()
 
 
 def get_received_friend_requests(*, session: Session, user_id: UUID) -> Sequence[User]:
@@ -226,7 +244,7 @@ def get_received_friend_requests(*, session: Session, user_id: UUID) -> Sequence
         select(FriendRequest).where(FriendRequest.receiver_id == user_id)
     ).all()
     sender_ids = [request.sender_id for request in requests]
-    return session.exec(select(User).where(User.id.in_(sender_ids))).all()
+    return session.exec(select(User).where(column(User.id).in_(sender_ids))).all()
 
 
 def search_users(
@@ -237,11 +255,8 @@ def search_users(
     """
     statement = (
         select(User)
-        .where(
-            (User.display_name.ilike(f"%{query}%"))
-        )
+        .where(column(User.display_name).ilike(f"%{query}%"))
         .limit(limit)
         .offset(offset)
     )
-    return session.exec(statement).all(
-)
+    return session.exec(statement).all()

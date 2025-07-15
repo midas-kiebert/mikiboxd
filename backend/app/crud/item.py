@@ -4,6 +4,10 @@ from sqlmodel import Session
 
 from app.models import Item, ItemCreate
 
+__all__ = [
+    "create_item",
+]
+
 
 def create_item(*, session: Session, item_in: ItemCreate, owner_id: uuid.UUID) -> Item:
     db_item = Item.model_validate(item_in, update={"owner_id": owner_id})

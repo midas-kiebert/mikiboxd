@@ -1,14 +1,32 @@
-from sqlmodel import Session, select
-from sqlalchemy.exc import IntegrityError
-from uuid import UUID
-
-from app.models import Showtime, ShowtimeCreate, Movie, ShowtimePublic, ShowtimeSelection, ShowtimeInMoviePublic
-from zoneinfo import ZoneInfo
+from collections.abc import Sequence
 from datetime import datetime
-from app.models import User, UserPublic
-from typing import Sequence
+from uuid import UUID
+from zoneinfo import ZoneInfo
+
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, select
 
 from app import crud
+from app.models import (
+    Movie,
+    Showtime,
+    ShowtimeCreate,
+    ShowtimeInMoviePublic,
+    ShowtimeSelection,
+    User,
+    UserPublic,
+)
+from app.models.utils import column
+
+__all__ = [
+    "add_showtime_selection",
+    "create_showtime",
+    "delete_showtime_selection",
+    "get_all_showtimes_for_movie",
+    "get_selected_showtimes_for_user",
+    "get_split_showtimes_for_movie",
+]
+
 
 def create_showtime(*, session: Session, showtime_create: ShowtimeCreate) -> None:
     db_obj = Showtime.model_validate(showtime_create)
@@ -21,9 +39,9 @@ def create_showtime(*, session: Session, showtime_create: ShowtimeCreate) -> Non
 
 
 def get_all_showtimes_for_movie(
-        *,
-        session: Session,
-        movie_id: int,
+    *,
+    session: Session,
+    movie_id: int,
 ) -> Sequence[Showtime]:
     """
     Retrieve all showtimes for a specific movie
@@ -31,24 +49,33 @@ def get_all_showtimes_for_movie(
     stmt = (
         select(Showtime)
         .where(Showtime.movie_id == movie_id)
-        .where(Showtime.datetime >= datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None))
-        .order_by(Showtime.datetime)
+        .where(
+            Showtime.datetime
+            >= datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None)
+        )
+        .order_by(column(Showtime.datetime))
     )
     showtimes = session.exec(stmt).all()
     return showtimes
 
 
 def get_selected_showtimes_for_user(
-        *,
-        session: Session,
-        user_id: UUID,
+    *,
+    session: Session,
+    user_id: UUID,
 ) -> Sequence[Showtime]:
     stmt = (
         select(Showtime)
-        .join(ShowtimeSelection, Showtime.id == ShowtimeSelection.showtime_id)
+        .join(
+            ShowtimeSelection,
+            column(Showtime.id) == column(ShowtimeSelection.showtime_id),
+        )
         .where(ShowtimeSelection.user_id == user_id)
-        .where(Showtime.datetime >= datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None))
-        .order_by(Showtime.datetime)
+        .where(
+            Showtime.datetime
+            >= datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None)
+        )
+        .order_by(column(Showtime.datetime))
     )
     showtimes = session.exec(stmt).all()
     if not showtimes:
@@ -57,10 +84,10 @@ def get_selected_showtimes_for_user(
 
 
 def get_split_showtimes_for_movie(
-        *,
-        session: Session,
-        movie_id: int,
-        current_user: UUID,
+    *,
+    session: Session,
+    movie_id: int,
+    current_user: UUID,
 ) -> tuple[list[ShowtimeInMoviePublic], list[ShowtimeInMoviePublic]]:
     """
     Retrieve all showtimes for a specific movie, split by if friends are going or not
@@ -68,8 +95,11 @@ def get_split_showtimes_for_movie(
     stmt = (
         select(Showtime)
         .where(Showtime.movie_id == movie_id)
-        .where(Showtime.datetime >= datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None))
-        .order_by(Showtime.datetime)
+        .where(
+            Showtime.datetime
+            >= datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None)
+        )
+        .order_by(column(Showtime.datetime))
     )
     showtimes = session.exec(stmt).all()
 
@@ -82,12 +112,16 @@ def get_split_showtimes_for_movie(
         showtime_public = ShowtimeInMoviePublic.model_validate(showtime)
         friends_going_stmt = (
             select(User)
-            .join(ShowtimeSelection, ShowtimeSelection.user_id == User.id)
+            .join(
+                ShowtimeSelection, column(ShowtimeSelection.user_id) == column(User.id)
+            )
             .where(ShowtimeSelection.showtime_id == showtime.id)
-            .where(User.id.in_(friend_ids))
+            .where(column(User.id).in_(friend_ids))
         )
         friends_going = session.exec(friends_going_stmt).all()
-        showtime_public.friends_going = [UserPublic.model_validate(friend) for friend in friends_going]
+        showtime_public.friends_going = [
+            UserPublic.model_validate(friend) for friend in friends_going
+        ]
         if showtime_public.friends_going:
             showtimes_with_friends.append(showtime_public)
         else:
@@ -95,12 +129,13 @@ def get_split_showtimes_for_movie(
 
     return showtimes_with_friends, showtimes_without_friends
 
+
 def get_first_n_showtimes(
     *,
     session: Session,
     movie: Movie,
     n: int = 5,
-) -> Sequence[Showtime]:
+) -> list[Showtime]:
     """
     Retrieve the first N showtimes for a movie.
     """
@@ -109,18 +144,15 @@ def get_first_n_showtimes(
         select(Showtime)
         .where(Showtime.movie_id == movie.id)
         .where(Showtime.datetime >= now)
-        .order_by(Showtime.datetime)
+        .order_by(column(Showtime.datetime))
         .limit(n)
     )
-    showtimes = session.exec(stmt).all()
+    showtimes = list(session.exec(stmt).all())
     return showtimes
 
 
 def add_showtime_selection(
-    *,
-    session: Session,
-    user_id: UUID,
-    showtime_id: int
+    *, session: Session, user_id: UUID, showtime_id: int
 ) -> None:
     """
     Add a selection for a showtime by a user.
@@ -136,17 +168,15 @@ def add_showtime_selection(
 
 
 def delete_showtime_selection(
-    *,
-    session: Session,
-    user_id: UUID,
-    showtime_id: int
+    *, session: Session, user_id: UUID, showtime_id: int
 ) -> None:
     """
     Delete a selection for a showtime by a user.
     """
     selection = session.exec(
         select(ShowtimeSelection).where(
-            (ShowtimeSelection.user_id == user_id) & (ShowtimeSelection.showtime_id == showtime_id)
+            (ShowtimeSelection.user_id == user_id)
+            & (ShowtimeSelection.showtime_id == showtime_id)
         )
     ).first()
     if not selection:

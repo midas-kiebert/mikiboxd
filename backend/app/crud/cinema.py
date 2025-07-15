@@ -1,10 +1,15 @@
 from sqlmodel import Session, select
+
 from app.models import Cinema, CinemaCreate
 
+__all__ = [
+    "upsert_cinema",
+    "get_cinema_id_by_name",
+]
+
+
 def upsert_cinema(*, session: Session, cinema: CinemaCreate) -> Cinema:
-    stmt = select(Cinema).where(
-        Cinema.name == cinema.name
-    )
+    stmt = select(Cinema).where(Cinema.name == cinema.name)
     existing_cinema = session.exec(stmt).first()
 
     if existing_cinema:
@@ -23,6 +28,7 @@ def upsert_cinema(*, session: Session, cinema: CinemaCreate) -> Cinema:
     session.commit()
     session.refresh(db_item)
     return db_item
+
 
 def get_cinema_id_by_name(
     *,

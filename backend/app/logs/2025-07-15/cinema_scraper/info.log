@@ -1,0 +1,4 @@
+[00:17:43] [ERROR] lab111:__init__:35 - Cinema LAB111 not found in database
+[01:08:19] [WARNING] lab111:scrape:68 - No TMDB id found for asian movie night: sanguine specters stick to the skin, skipping
+[01:08:26] [WARNING] lab111:scrape:68 - No TMDB id found for hump! film fest 2025 part two, skipping
+[01:09:02] [WARNING] lab111:scrape:68 - No TMDB id found for iqmf queer short film program 2025, skipping

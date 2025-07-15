@@ -60,9 +60,3 @@ class MoviePublic(MovieBase):
         default=[],
         description="List of showtimes associated with the movie without friends going",
     )
-
-
-# Resolve forward references
-# Movie.model_rebuild()
-# MovieSummaryPublic.model_rebuild()
-# MoviePublic.model_rebuild()

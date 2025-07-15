@@ -1,5 +1,6 @@
-from sqlmodel import SQLModel, Field
 from uuid import UUID
+
+from sqlmodel import Field, SQLModel
 
 
 class Friendship(SQLModel, table=True):

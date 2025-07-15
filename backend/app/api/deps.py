@@ -1,7 +1,6 @@
 from collections.abc import Generator
-from typing import Annotated
-
 from contextlib import contextmanager
+from typing import Annotated
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -24,9 +23,11 @@ def get_db() -> Generator[Session, None, None]:
     with Session(engine) as session:
         yield session
 
+
 @contextmanager
 def get_db_context() -> Generator[Session, None, None]:
     yield from get_db()
+
 
 SessionDep = Annotated[Session, Depends(get_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]

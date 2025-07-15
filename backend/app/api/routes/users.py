@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -25,8 +26,6 @@ from app.models import (
     UserUpdateMe,
 )
 from app.utils import generate_new_account_email, send_email
-
-from typing import Sequence
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -65,6 +64,8 @@ def search_users(
         offset=offset,
     )
     return users
+
+
 @router.post(
     "/", dependencies=[Depends(get_current_active_superuser)], response_model=UserPublic
 )

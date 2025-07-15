@@ -1,15 +1,30 @@
 from datetime import datetime
 
 DUTCH_WEEKDAYS = {
-    "ma": 0, "di": 1, "wo": 2, "do": 3,
-    "vr": 4, "za": 5, "zo": 6,
+    "ma": 0,
+    "di": 1,
+    "wo": 2,
+    "do": 3,
+    "vr": 4,
+    "za": 5,
+    "zo": 6,
 }
 
 DUTCH_MONTHS = {
-    "jan": 1, "feb": 2, "mrt": 3, "apr": 4,
-    "mei": 5, "jun": 6, "jul": 7, "aug": 8,
-    "sep": 9, "okt": 10, "nov": 11, "dec": 12,
+    "jan": 1,
+    "feb": 2,
+    "mrt": 3,
+    "apr": 4,
+    "mei": 5,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "okt": 10,
+    "nov": 11,
+    "dec": 12,
 }
+
 
 def get_closest_exact_date(dutch_date_str: str, search_years: int = 1) -> datetime:
     """
@@ -31,7 +46,9 @@ def get_closest_exact_date(dutch_date_str: str, search_years: int = 1) -> dateti
         day = int(day_str)
         hour, minute = map(int, time_str.split(":"))
     except ValueError:
-        raise ValueError(f"Invalid day or time: {weekday_str}, {day_str}, {month_str} {time_str}")
+        raise ValueError(
+            f"Invalid day or time: {weekday_str}, {day_str}, {month_str} {time_str}"
+        )
 
     now = datetime.now()
     best_match = None
@@ -54,6 +71,8 @@ def get_closest_exact_date(dutch_date_str: str, search_years: int = 1) -> dateti
             best_match = candidate
 
     if not best_match:
-        raise ValueError(f"Invalid day or time: {weekday_str}, {day_str}, {month_str} {time_str}")
+        raise ValueError(
+            f"Invalid day or time: {weekday_str}, {day_str}, {month_str} {time_str}"
+        )
 
     return best_match

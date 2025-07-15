@@ -1,12 +1,12 @@
-from .user import *
-from .item import *
 from .auth_schemas import *
-from .showtime import Showtime, ShowtimeCreate, ShowtimePublic, ShowtimeInMoviePublic
-from .movie import Movie, MovieCreate, MoviePublic, MovieUpdate, MovieSummaryPublic
-from .friendship import Friendship, FriendRequest
-from .showtime_selection import ShowtimeSelection
-from .city import City, CityCreate, CityPublic
 from .cinema import Cinema, CinemaCreate, CinemaPublic
+from .city import City, CityCreate, CityPublic
+from .friendship import FriendRequest, Friendship
+from .item import *
+from .movie import Movie, MovieCreate, MoviePublic, MovieSummaryPublic, MovieUpdate
+from .showtime import Showtime, ShowtimeCreate, ShowtimeInMoviePublic, ShowtimePublic
+from .showtime_selection import ShowtimeSelection
+from .user import *
 from .watchlist_selection import WatchlistSelection
 
 Showtime.model_rebuild()
@@ -49,5 +49,5 @@ __all__ = [
     "Cinema",
     "CinemaCreate",
     "CinemaPublic",
-    "WatchlistSelection"
+    "WatchlistSelection",
 ]

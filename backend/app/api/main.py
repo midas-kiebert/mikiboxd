@@ -1,16 +1,16 @@
 from fastapi import APIRouter
 
 from app.api.routes import (
+    friends,
     items,
     login,
+    me,
+    movies,
     private,
+    showtimes,
+    test,
     users,
     utils,
-    test,
-    movies,
-    showtimes,
-    friends,
-    me,
 )
 from app.core.config import settings
 

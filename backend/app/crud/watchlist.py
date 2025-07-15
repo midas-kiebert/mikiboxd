@@ -1,15 +1,12 @@
-from app.models import WatchlistSelection
-from sqlmodel import Session, select
-from sqlalchemy.exc import IntegrityError
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, select
 
-def add_showtime_selection(
-    *,
-    session: Session,
-    user_id: UUID,
-    movie_id: int
-) -> None:
+from app.models import WatchlistSelection
+
+
+def add_showtime_selection(*, session: Session, user_id: UUID, movie_id: int) -> None:
     """
     Add a selection for a showtime by a user.
     """
@@ -24,17 +21,15 @@ def add_showtime_selection(
 
 
 def delete_showtime_selection(
-    *,
-    session: Session,
-    user_id: UUID,
-    movie_id: int
+    *, session: Session, user_id: UUID, movie_id: int
 ) -> None:
     """
     Delete a selection for a showtime by a user.
     """
     selection = session.exec(
         select(WatchlistSelection).where(
-            (WatchlistSelection.user_id == user_id) & (WatchlistSelection.movie_id == movie_id)
+            (WatchlistSelection.user_id == user_id)
+            & (WatchlistSelection.movie_id == movie_id)
         )
     ).first()
     if not selection:

@@ -1,4 +1,5 @@
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
@@ -7,18 +8,13 @@ from app.api.deps import (
     CurrentUser,
     SessionDep,
 )
-from app.models import (
-    Message,
-    UserPublic,
-    ShowtimePublic
-)
+from app.models import Message, ShowtimePublic, UserPublic
 
 router = APIRouter(prefix="/me", tags=["me"])
 
+
 @router.get("/", response_model=UserPublic)
-def get_current_user(
-    current_user: CurrentUser
-) -> UserPublic:
+def get_current_user(current_user: CurrentUser) -> UserPublic:
     """
     Get the current user's profile.
     """
@@ -48,8 +44,7 @@ def get_my_showtimes(
     Get all showtimes selected by the current user.
     """
     showtimes = crud.get_selected_showtimes_for_user(
-        session=session,
-        user_id=current_user.id
+        session=session, user_id=current_user.id
     )
     showtimes_public = [
         ShowtimePublic.model_validate(showtime) for showtime in showtimes

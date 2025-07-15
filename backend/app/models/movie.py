@@ -1,6 +1,5 @@
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
@@ -13,10 +12,10 @@ class MovieBase(SQLModel):
         unique=True, index=True, primary_key=True, description="TMDB ID of the movie"
     )
     title: str = Field(description="Title of the movie")
-    poster_link: str | None = Field(
+    poster_link: Optional[str] = Field(
         default=None, description="Link to the movie poster"
     )
-    letterboxd_slug: Annotated[str | None, InstrumentedAttribute] = Field(
+    letterboxd_slug: Optional[str] = Field(
         default=None, description="Letterboxd slug for the movie"
     )
 
@@ -32,7 +31,7 @@ class MovieUpdate(SQLModel):
     poster_link: str | None = Field(
         default=None, description="Link to the movie poster"
     )
-    letterboxd_slug: Annotated[str | None, InstrumentedAttribute] = Field(
+    letterboxd_slug: Optional[str] = Field(
         default=None, description="Letterboxd slug for the movie"
     )
 

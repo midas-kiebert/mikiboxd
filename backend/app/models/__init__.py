@@ -29,8 +29,6 @@ __all__ = [
     "Item",
     "ItemCreate",
     "ItemPublic",
-    "AuthToken",
-    "AuthTokenCreate",
     "Showtime",
     "ShowtimeCreate",
     "ShowtimePublic",

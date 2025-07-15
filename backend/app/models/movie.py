@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
+from pydantic import Field as PydanticField
 
 if TYPE_CHECKING:
     from .showtime import Showtime, ShowtimeInMoviePublic
@@ -11,11 +12,11 @@ class MovieBase(SQLModel):
     id: int = Field(
         unique=True, index=True, primary_key=True, description="TMDB ID of the movie"
     )
-    title: str = Field(description="Title of the movie")
-    poster_link: Optional[str] = Field(
+    title: str = PydanticField(description="Title of the movie")
+    poster_link: Optional[str] = PydanticField(
         default=None, description="Link to the movie poster"
     )
-    letterboxd_slug: Optional[str] = Field(
+    letterboxd_slug: Optional[str] = PydanticField(
         default=None, description="Letterboxd slug for the movie"
     )
 
@@ -27,11 +28,11 @@ class MovieCreate(MovieBase):
 
 # Properties to receive on movie update
 class MovieUpdate(SQLModel):
-    title: str | None = Field(default=None, description="Title of the movie")
-    poster_link: str | None = Field(
+    title: str | None = PydanticField(default=None, description="Title of the movie")
+    poster_link: str | None = PydanticField(
         default=None, description="Link to the movie poster"
     )
-    letterboxd_slug: Optional[str] = Field(
+    letterboxd_slug: Optional[str] = PydanticField(
         default=None, description="Letterboxd slug for the movie"
     )
 
@@ -46,17 +47,17 @@ class Movie(MovieBase, table=True):
 
 
 class MovieSummaryPublic(MovieBase):
-    showtimes: list["ShowtimeInMoviePublic"] = Field(
+    showtimes: list["ShowtimeInMoviePublic"] = PydanticField(
         default=[], description="List of showtimes associated with the movie"
     )
 
 
 class MoviePublic(MovieBase):
-    showtimes_with_friends: list["ShowtimeInMoviePublic"] = Field(
+    showtimes_with_friends: list["ShowtimeInMoviePublic"] = PydanticField(
         default=[],
         description="List of showtimes associated with the movie where friends are going",
     )
-    showtime_without_friends: list["ShowtimeInMoviePublic"] = Field(
+    showtime_without_friends: list["ShowtimeInMoviePublic"] = PydanticField(
         default=[],
         description="List of showtimes associated with the movie without friends going",
     )

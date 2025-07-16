@@ -2,6 +2,7 @@ import yaml
 from pathlib import Path
 from app import crud
 from app.api.deps import get_db_context
+from app.models import CityCreate, CinemaCreate
 
 
 backend_root = Path(__file__).parent.parent
@@ -16,7 +17,7 @@ def load_yaml_data(file_path: Path) -> list[dict]:
 def seed_cities_and_cinemas():
     cities = load_yaml_data(cities_yaml_path)
     for city in cities:
-        city_create = crud.CityCreate.model_validate(city)
+        city_create = CityCreate.model_validate(city)
         with get_db_context() as session:
             print(f"Seeding city: {city_create.name}")
             crud.upsert_city(session=session, city=city_create)
@@ -26,7 +27,7 @@ def seed_cities_and_cinemas():
     for cinema in cinemas:
         city_name = cinema.pop('city')
         cinema['city_id'] = city_name_to_id.get(city_name)
-        cinema_create = crud.CinemaCreate.model_validate(cinema)
+        cinema_create = CinemaCreate.model_validate(cinema)
         with get_db_context() as session:
             print(f"Seeding cinema: {cinema_create.name} in city: {city_name}")
             crud.upsert_cinema(session=session, cinema=cinema_create)

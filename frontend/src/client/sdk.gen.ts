@@ -62,6 +62,7 @@ import type {
   UsersCreateUserResponse,
   UsersSearchUsersData,
   UsersSearchUsersResponse,
+  UsersDeleteUserMeResponse,
   UsersUpdateUserMeData,
   UsersUpdateUserMeResponse,
   UsersUpdatePasswordMeData,
@@ -85,7 +86,7 @@ export class FriendsService {
    * Send a friend request to another user.
    * @param data The data for the request.
    * @param data.receiverId
-   * @returns unknown Successful Response
+   * @returns Message Successful Response
    * @throws ApiError
    */
   public static sendFriendRequest(
@@ -108,7 +109,7 @@ export class FriendsService {
    * Accept a friend request from another user.
    * @param data The data for the request.
    * @param data.senderId
-   * @returns unknown Successful Response
+   * @returns Message Successful Response
    * @throws ApiError
    */
   public static acceptFriendRequest(
@@ -131,7 +132,7 @@ export class FriendsService {
    * Decline a friend request from another user.
    * @param data The data for the request.
    * @param data.senderId
-   * @returns unknown Successful Response
+   * @returns Message Successful Response
    * @throws ApiError
    */
   public static declineFriendRequest(
@@ -154,7 +155,7 @@ export class FriendsService {
    * Cancel a sent friend request.
    * @param data The data for the request.
    * @param data.receiverId
-   * @returns unknown Successful Response
+   * @returns Message Successful Response
    * @throws ApiError
    */
   public static cancelFriendRequest(
@@ -177,7 +178,7 @@ export class FriendsService {
    * Remove a friend from your friend list.
    * @param data The data for the request.
    * @param data.friendId
-   * @returns unknown Successful Response
+   * @returns Message Successful Response
    * @throws ApiError
    */
   public static removeFriend(
@@ -491,7 +492,7 @@ export class MeService {
   /**
    * Get My Showtimes
    * Get all showtimes selected by the current user.
-   * @returns Showtime Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static getMyShowtimes(): CancelablePromise<MeGetMyShowtimesResponse> {
@@ -759,7 +760,6 @@ export class UsersService {
 
   /**
    * Search Users
-   * Search for movies by title.
    * @param data The data for the request.
    * @param data.query Search query for usernames
    * @param data.offset Number of items to skip
@@ -781,6 +781,19 @@ export class UsersService {
       errors: {
         422: "Validation Error",
       },
+    })
+  }
+
+  /**
+   * Delete User Me
+   * Delete own user.
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static deleteUserMe(): CancelablePromise<UsersDeleteUserMeResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/users/me",
     })
   }
 
@@ -808,6 +821,7 @@ export class UsersService {
 
   /**
    * Update Password Me
+   * Update own password.
    * @param data The data for the request.
    * @param data.requestBody
    * @returns Message Successful Response

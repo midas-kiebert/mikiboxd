@@ -162,30 +162,6 @@ export type PrivateUserCreate = {
   is_verified?: boolean
 }
 
-export type Showtime = {
-  /**
-   * Showtime ID
-   */
-  id?: number | null
-  datetime: string
-  /**
-   * Theatre name
-   */
-  theatre?: string
-  /**
-   * Link to purchase tickets
-   */
-  ticket_link?: string | null
-  /**
-   * TMDB ID of the movie
-   */
-  movie_id: number
-  /**
-   * ID of the cinema
-   */
-  cinema_id: number
-}
-
 export type ShowtimeCreate = {
   /**
    * Showtime ID
@@ -264,6 +240,9 @@ export type ShowtimePublic = {
 
 export type Token = {
   access_token: string
+  /**
+   * Type of the token, usually 'bearer'
+   */
   token_type?: string
 }
 
@@ -274,7 +253,13 @@ export type UpdatePassword = {
 
 export type UserCreate = {
   email: string
+  /**
+   * Indicates if the user is active
+   */
   is_active?: boolean
+  /**
+   * Indicates if the user has superuser privileges
+   */
   is_superuser?: boolean
   display_name?: string | null
   password: string
@@ -282,7 +267,13 @@ export type UserCreate = {
 
 export type UserPublic = {
   email: string
+  /**
+   * Indicates if the user is active
+   */
   is_active?: boolean
+  /**
+   * Indicates if the user has superuser privileges
+   */
   is_superuser?: boolean
   display_name?: string | null
   id: string
@@ -301,7 +292,13 @@ export type UsersPublic = {
 
 export type UserUpdate = {
   email?: string | null
+  /**
+   * Indicates if the user is active
+   */
   is_active?: boolean
+  /**
+   * Indicates if the user has superuser privileges
+   */
   is_superuser?: boolean
   display_name?: string | null
   password?: string | null
@@ -322,31 +319,31 @@ export type FriendsSendFriendRequestData = {
   receiverId: string
 }
 
-export type FriendsSendFriendRequestResponse = unknown
+export type FriendsSendFriendRequestResponse = Message
 
 export type FriendsAcceptFriendRequestData = {
   senderId: string
 }
 
-export type FriendsAcceptFriendRequestResponse = unknown
+export type FriendsAcceptFriendRequestResponse = Message
 
 export type FriendsDeclineFriendRequestData = {
   senderId: string
 }
 
-export type FriendsDeclineFriendRequestResponse = unknown
+export type FriendsDeclineFriendRequestResponse = Message
 
 export type FriendsCancelFriendRequestData = {
   receiverId: string
 }
 
-export type FriendsCancelFriendRequestResponse = unknown
+export type FriendsCancelFriendRequestResponse = Message
 
 export type FriendsRemoveFriendData = {
   friendId: string
 }
 
-export type FriendsRemoveFriendResponse = unknown
+export type FriendsRemoveFriendResponse = Message
 
 export type FriendsGetFriendsResponse = UsersPublic
 
@@ -416,7 +413,7 @@ export type MeGetCurrentUserResponse = UserPublic
 
 export type MeDeleteUserMeResponse = Message
 
-export type MeGetMyShowtimesResponse = Array<Showtime>
+export type MeGetMyShowtimesResponse = Array<ShowtimePublic>
 
 export type MoviesCreateMovieData = {
   requestBody: MovieCreate
@@ -514,6 +511,8 @@ export type UsersSearchUsersData = {
 }
 
 export type UsersSearchUsersResponse = Array<UserPublic>
+
+export type UsersDeleteUserMeResponse = Message
 
 export type UsersUpdateUserMeData = {
   requestBody: UserUpdateMe

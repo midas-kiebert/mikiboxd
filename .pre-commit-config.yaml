@@ -24,6 +24,14 @@ repos:
         args:
           - --fix
       - id: ruff-format
+  - repo: local
+    hooks:
+      - id: prevent-commit-to-master
+        name: 🚫 Prevent commit to master
+        entry: bash scripts/prevent-commit-to-master.sh
+        language: system
+        always_run: true
+        pass_filenames: false
 
 ci:
   autofix_commit_msg: 🎨 [pre-commit.ci] Auto format from pre-commit.com hooks

@@ -11,6 +11,7 @@ class CityBase(SQLModel):
     id: int = Field(description="ID of the city")
 
 
+# test comment
 class CityCreate(CityBase):
     pass
 

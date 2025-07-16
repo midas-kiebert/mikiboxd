@@ -32,6 +32,7 @@ dependencies = [
     "types-python-dateutil",
     "types-PyYAML",
     "sqlalchemy-utils",
+    "pre-commit",
 ]
 
 [tool.uv]

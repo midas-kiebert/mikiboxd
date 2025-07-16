@@ -23,3 +23,33 @@ internal:
         - '!./**/*.md'
         - '!frontend/**'
         - '!backend/**'
+
+feature:
+  - feature/**
+  - feat/**
+  - features/**
+
+
+bug:
+  - bug/**
+  - fix/**
+  - hotfix/**
+  - bugfix/**
+
+enhancement:
+  - enhancement/**
+  - improvements/**
+  - enhancements/**
+
+refactor:
+  - refactor/**
+
+test:
+  - test/**
+  - tests/**
+
+performance:
+  - performance/**
+  - perf/**
+  - optimization/**
+  - optimize/**

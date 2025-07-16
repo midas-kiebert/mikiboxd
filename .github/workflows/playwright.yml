@@ -27,7 +27,7 @@ jobs:
     - uses: dorny/paths-filter@v3
       id: filter
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.CI_PAT }}
         filters: |
           changed:
             - backend/**

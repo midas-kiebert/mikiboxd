@@ -1,11 +1,11 @@
-import pytest
-from sqlmodel import Session
 from typing import Protocol
 
-from app.tests.utils.utils import random_email, random_lower_string
-from app.models import UserCreate, User
-from app import crud
+import pytest
+from sqlmodel import Session
 
+from app import crud
+from app.models import User, UserCreate
+from app.tests.utils.utils import random_email, random_lower_string
 
 __all__ = [
     "user_factory",
@@ -15,23 +15,23 @@ __all__ = [
 
 class UserFactory(Protocol):
     def __call__(
-            self,
-            *,
-            email: str | None = None,
-            password: str | None = None,
-            display_name: str | None = None,
-            # is_superuser: bool = False,
+        self,
+        *,
+        email: str | None = None,
+        password: str | None = None,
+        display_name: str | None = None,
+        # is_superuser: bool = False,
     ) -> User: ...
 
 
 @pytest.fixture
 def user_factory(db_transaction: Session) -> UserFactory:
     def factory(
-            *,
-            email: str | None = None,
-            password: str | None = None,
-            display_name: str | None = None,
-            # is_superuser: bool = False,
+        *,
+        email: str | None = None,
+        password: str | None = None,
+        display_name: str | None = None,
+        # is_superuser: bool = False,
     ) -> User:
         email = email or random_email()
         password = password or random_lower_string()
@@ -46,6 +46,7 @@ def user_factory(db_transaction: Session) -> UserFactory:
             user_create=user_in,
         )
         return user
+
     return factory
 
 
@@ -58,6 +59,7 @@ TEST_USERS: list[tuple[str, str]] = [
     ("bobby@example.com", "bobby"),
     ("charles@example.com", "charles"),
 ]
+
 
 @pytest.fixture
 def test_users(user_factory: UserFactory) -> list[User]:

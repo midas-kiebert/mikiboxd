@@ -11,13 +11,12 @@ from app.models import User, UserCreate, UserPublic
 from app.tests.utils.utils import random_email, random_lower_string
 
 
-def test_count_users(
-    db_transaction: Session
-) -> None:
+def test_count_users(db_transaction: Session) -> None:
     user_query = select(User)
     users_count = len(list(db_transaction.exec(user_query)))
     print("Total users in the database:", users_count)
     assert users_count == 1
+
 
 def test_create_user_new_email(
     client: TestClient, superuser_token_headers: dict[str, str], db_transaction: Session
@@ -41,13 +40,13 @@ def test_create_user_new_email(
         assert user
         assert user.email == created_user["email"]
 
-def test_count_users_after(
-    db_transaction: Session
-) -> None:
+
+def test_count_users_after(db_transaction: Session) -> None:
     user_query = select(User)
     users_count = len(list(db_transaction.exec(user_query)))
     print("Total users in the database:", users_count)
     assert users_count == 1
+
 
 def test_get_existing_user(
     client: TestClient, superuser_token_headers: dict[str, str], db_transaction: Session
@@ -68,7 +67,9 @@ def test_get_existing_user(
     assert existing_user.email == api_user["email"]
 
 
-def test_get_existing_user_current_user(client: TestClient, db_transaction: Session) -> None:
+def test_get_existing_user_current_user(
+    client: TestClient, db_transaction: Session
+) -> None:
     username = random_email()
     password = random_lower_string()
     user_in = UserCreate(email=username, password=password)
@@ -184,6 +185,7 @@ def test_update_password_me(
     assert user_db_transaction.email == settings.FIRST_SUPERUSER
     assert verify_password(new_password, user_db_transaction.hashed_password)
 
+
 def test_update_password_me_incorrect_password(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
@@ -200,7 +202,9 @@ def test_update_password_me_incorrect_password(
 
 
 def test_update_user_me_email_exists(
-    client: TestClient, normal_user_token_headers: dict[str, str], db_transaction: Session
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
 ) -> None:
     username = random_email()
     password = random_lower_string()
@@ -368,7 +372,9 @@ def test_delete_user_not_found(
 def test_delete_user_current_super_user_error(
     client: TestClient, superuser_token_headers: dict[str, str], db_transaction: Session
 ) -> None:
-    super_user = crud.get_user_by_email(session=db_transaction, email=settings.FIRST_SUPERUSER)
+    super_user = crud.get_user_by_email(
+        session=db_transaction, email=settings.FIRST_SUPERUSER
+    )
     assert super_user
     user_id = super_user.id
 
@@ -381,7 +387,9 @@ def test_delete_user_current_super_user_error(
 
 
 def test_delete_user_without_privileges(
-    client: TestClient, normal_user_token_headers: dict[str, str], db_transaction: Session
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
 ) -> None:
     username = random_email()
     password = random_lower_string()
@@ -396,18 +404,18 @@ def test_delete_user_without_privileges(
     assert r.json()["detail"] == "The user doesn't have enough privileges"
 
 
-def test_search_users(
-        client: TestClient, test_users: list[User]
-) -> None:
-    assert(len(test_users) > 0)
-    assert(any(user.display_name == "alice" for user in test_users))
+def test_search_users(client: TestClient, test_users: list[User]) -> None:
+    assert len(test_users) > 0
+    assert any(user.display_name == "alice" for user in test_users)
     search_query = "alice"
     r = client.get(
         f"{settings.API_V1_STR}/users/search",
         params={"query": search_query},
     )
     assert r.status_code == 200
-    users_with_alice_query = [UserPublic.model_validate(user_dict) for user_dict in r.json()]
+    users_with_alice_query = [
+        UserPublic.model_validate(user_dict) for user_dict in r.json()
+    ]
     assert len(users_with_alice_query) == 1
     alice_user = users_with_alice_query[0]
-    assert(alice_user.display_name == "alice")
+    assert alice_user.display_name == "alice"

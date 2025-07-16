@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/labeler@v5
         if: ${{ github.event.action != 'labeled' && github.event.action != 'unlabeled' }}
-      - run: echo "Branch name is ${{ github.head_ref }}"
+      - run: echo "Branch name is now ${{ github.head_ref }}"
   # Run this after labeler applied labels
   check-labels:
     needs:

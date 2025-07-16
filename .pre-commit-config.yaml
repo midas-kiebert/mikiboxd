@@ -27,7 +27,7 @@ repos:
   - repo: local
     hooks:
       - id: prevent-commit-to-master
-        name: 🚫 Prevent commit to master
+        name: Prevent commit to master
         entry: bash scripts/prevent-commit-to-master.sh
         language: system
         always_run: true

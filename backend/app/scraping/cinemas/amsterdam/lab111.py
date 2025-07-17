@@ -7,8 +7,9 @@ from bs4.element import Tag
 from app import crud
 from app.api.deps import get_db_context
 from app.models import MovieCreate, ShowtimeCreate
-from app.scraping import BaseCinemaScraper, logger
+from app.scraping import BaseCinemaScraper
 from app.scraping.date_conversion import get_closest_exact_date
+from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 
 CINEMA = "LAB111"
@@ -89,7 +90,9 @@ class LAB111Scraper(BaseCinemaScraper):
 
                 # Get the date and ticket link
                 links = day.find_all("a")
-                assert len(links) > 0
+                if len(links) == 0:
+                    logger.debug(f"No links found for {title} on {theatre}, skipping")
+                    continue
                 link = links[0]
                 assert isinstance(link, Tag)
                 potential_showtime = link.get_text(strip=True)

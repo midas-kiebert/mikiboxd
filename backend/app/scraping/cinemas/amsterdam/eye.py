@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from app import crud
 from app.api.deps import get_db_context
 from app.models import MovieCreate, ShowtimeCreate
-from app.scraping import BaseCinemaScraper, logger
+from app.scraping import BaseCinemaScraper
+from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 
 
@@ -143,7 +144,7 @@ def get_movie(title_query: str, url: str) -> MovieCreate | None:
     director_str = sibling.string
     if director_str is None:
         return None
-    director = director_str.strip(",")[0]
+    director = director_str.strip().split(",")[0]
 
     original_title_element = soup.find(lambda tag: tag.string == "Original title")
     try:

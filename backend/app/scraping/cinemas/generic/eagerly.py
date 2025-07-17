@@ -7,7 +7,8 @@ import requests
 from app import crud
 from app.api.deps import get_db_context
 from app.models import MovieCreate, ShowtimeCreate
-from app.scraping import BaseCinemaScraper, logger
+from app.scraping import BaseCinemaScraper
+from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 
 # Generic scraper for cinemas using the Eagerly website.

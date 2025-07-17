@@ -8,7 +8,8 @@ from bs4.element import Tag
 from app import crud
 from app.api.deps import get_db_context
 from app.models import MovieCreate, ShowtimeCreate
-from app.scraping import BaseCinemaScraper, logger
+from app.scraping import BaseCinemaScraper
+from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 
 CINEMA = "FC Hyena"

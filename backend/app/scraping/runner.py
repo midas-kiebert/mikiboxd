@@ -2,10 +2,9 @@ import sys
 
 import yaml
 
-from app.scraping import load_letterboxd_slugs, logger
-
-from . import BaseCinemaScraper
-from .cinemas import SCRAPER_REGISTRY
+from app.scraping import BaseCinemaScraper, load_letterboxd_slugs
+from app.scraping.cinemas import SCRAPER_REGISTRY
+from app.scraping.logger import logger
 
 
 # @logger.catch(message="Error running cinema scraper", reraise=True)
@@ -35,6 +34,8 @@ def run() -> None:
 
 if __name__ == "__main__":
     try:
+        logger.info("Starting cinema scraper...")
         run()
     except Exception:
+        logger.error("Error running cinema scraper", exc_info=True)
         sys.exit(1)

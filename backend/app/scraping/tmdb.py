@@ -7,7 +7,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from app.core.config import settings
-from app.scraping import logger
+from app.scraping.logger import logger
 
 TMDB_API_KEY = settings.TMDB_KEY
 SEARCH_PERSON_URL = "https://api.themoviedb.org/3/search/person"

@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from app import crud
 from app.api.deps import get_db_context
 from app.models import MovieCreate, ShowtimeCreate
-from app.scraping import BaseCinemaScraper, logger
+from app.scraping import BaseCinemaScraper
+from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -67,7 +68,7 @@ class UitkijkScraper(BaseCinemaScraper):
             response = requests.get(url)
             response.raise_for_status()
 
-            data: Response = response.json()
+            data = Response.model_validate(response.json())
             url = data.next
 
             if not data.shows:

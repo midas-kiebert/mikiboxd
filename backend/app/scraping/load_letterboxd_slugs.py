@@ -7,7 +7,7 @@ from app.models import MovieUpdate
 
 # from app.logging_.logger import setup_logger
 # logger = setup_logger(__name__)
-from . import logger
+from app.scraping.logger import logger
 
 
 def get_letterboxd_slug(tmdb_id: int) -> str | None:

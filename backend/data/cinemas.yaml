@@ -43,7 +43,7 @@
 - name: "De Uitkijk"
   city: Amsterdam
   cineville: true
-  badge_bg_color: "e04625"
+  badge_bg_color: "#e04625"
   badge_text_color: "white"
   url: "https://www.uitkijk.nl"
 

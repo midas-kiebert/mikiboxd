@@ -5,9 +5,16 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session
+from sqlmodel import Session, col
 
-from app.models import Movie, MovieCreate, MoviePublic, MovieUpdate, Showtime
+from app.models import (
+    Movie,
+    MovieCreate,
+    MoviePublic,
+    MovieUpdate,
+    Showtime,
+    WatchlistSelection,
+)
 from app.models.utils import column
 
 from .showtime import get_first_n_showtimes, get_split_showtimes_for_movie
@@ -17,7 +24,6 @@ __all__ = [
     "get_movie_by_id",
     "get_movies",
     "get_movies_without_letterboxd_slug",
-    "search_movies",
     "update_movie",
 ]
 
@@ -37,6 +43,7 @@ def create_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
 def get_movies(
     *,
     session: Session,
+    user_id: UUID,
     limit: int = 50,
     offset: int = 0,
     showtime_limit: int = 10,
@@ -44,23 +51,32 @@ def get_movies(
         tzinfo=None
     ),
     query: str | None = None,
+    watchlist_only: bool = False,
 ) -> Sequence[Movie]:
-    stmt = (
-        select(Movie)
-        .join(
-            Showtime,
+    stmt = select(Movie).join(
+        Showtime,
+        and_(
+            column(Showtime.movie_id) == column(Movie.id),
+            column(Showtime.datetime) >= snapshot_time,
+        ),
+    )
+    if query:
+        stmt = stmt.where(column(Movie.title).ilike(f"%{query}%"))
+    if watchlist_only:
+        stmt = stmt.join(
+            WatchlistSelection,
             and_(
-                column(Showtime.movie_id) == column(Movie.id),
-                column(Showtime.datetime) >= snapshot_time,
+                col(WatchlistSelection.movie_id) == col(Movie.id),
+                col(WatchlistSelection.user_id) == user_id,
             ),
         )
-        .group_by(column(Movie.id))
+    stmt = (
+        stmt.group_by(column(Movie.id))
         .order_by(func.min(Showtime.datetime))
         .limit(limit)
         .offset(offset)
     )
-    if query:
-        stmt = stmt.where(column(Movie.title).ilike(f"%{query}%"))
+
     result = session.execute(stmt)
     movies: list[Movie] = list(result.scalars().all())
 
@@ -106,37 +122,3 @@ def update_movie(
     session.commit()
     session.refresh(db_movie)
     return db_movie
-
-
-def search_movies(
-    *,
-    session: Session,
-    query: str,
-    limit: int = 10,
-    offset: int = 0,
-    showtime_limit: int = 5,
-) -> list[Movie]:
-    stmt = (
-        select(Movie)
-        .where(column(Movie.title).ilike(f"%{query}%"))
-        .join(
-            Showtime,
-            and_(
-                column(Showtime.movie_id) == Movie.id,
-                column(Showtime.datetime)
-                >= datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None),
-            ),
-        )
-        .group_by(column(Movie.id))
-        .order_by(func.min(Showtime.datetime))
-        .limit(limit)
-        .offset(offset)
-    )
-    result = session.execute(stmt)
-    movies: list[Movie] = list(result.scalars().all())
-
-    for movie in movies:
-        movie.showtimes = get_first_n_showtimes(
-            session=session, movie=movie, n=showtime_limit
-        )
-    return movies

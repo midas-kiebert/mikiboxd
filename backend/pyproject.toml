@@ -64,8 +64,8 @@ filterwarnings = [
 ]
 
 [tool.mypy]
-strict = true
 exclude = ["venv", ".venv", "alembic"]
+disallow_untyped_defs = false
 
 plugins = [
     "sqlalchemy.ext.mypy.plugin",

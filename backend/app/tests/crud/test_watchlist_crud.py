@@ -100,3 +100,18 @@ def test_delete_watchlist_selection_success(
     ).first()
 
     assert selection is None
+
+
+def test_delete_watchlist_selection_not_found(
+    db_transaction: Session, user_factory, movie_factory
+):
+    user: User = user_factory()
+    movie: Movie = movie_factory()
+
+    # Attempt to delete a selection that doesn't exist
+    with pytest.raises(exc.WatchlistSelectionNotFound):
+        crud.delete_watchlist_selection(
+            session=db_transaction,
+            user_id=user.id,
+            movie_id=movie.id,
+        )

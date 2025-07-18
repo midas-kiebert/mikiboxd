@@ -48,7 +48,7 @@ def delete_watchlist_selection(
         )
     ).first()
     if not selection:
-        raise ValueError("Selection does not exist.")
+        raise exc.WatchlistSelectionNotFound()
 
     session.delete(selection)
 
@@ -56,4 +56,4 @@ def delete_watchlist_selection(
         session.commit()
     except IntegrityError:
         session.rollback()
-        raise ValueError("Failed to delete selection.")
+        raise exc.WatchlistSelectionError()

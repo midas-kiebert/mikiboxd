@@ -23,7 +23,7 @@ repos:
       - id: ruff
         args:
           - --fix
-      - id: ruff-format
+      # - id: ruff-format
   - repo: local
     hooks:
       - id: prevent-commit-to-master

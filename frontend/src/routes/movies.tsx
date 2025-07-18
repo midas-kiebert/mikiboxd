@@ -2,6 +2,7 @@ import { createFileRoute, useSearch, useNavigate } from "@tanstack/react-router"
 import Movies from "@/components/Movies/Movies";
 import { useState, useEffect, useRef } from "react";
 import SearchBar from "@/components/Movies/SearchBar";
+import WatchlistToggle from "@/components/Movies/WatchlistToggle";
 import { useFetchMovies } from "@/hooks/useFetchMovies";
 import { useDebounce } from "use-debounce";
 import type { MovieFilters } from "@/hooks/useFetchMovies";
@@ -16,6 +17,7 @@ const MoviesPage = () => {
     const [searchQuery, setSearchQuery] = useState<string>(search.query ?? "");
     const [debouncedSearchQuery] = useDebounce(searchQuery, 250);
     const [debouncedUrlQuery] = useDebounce(searchQuery, 400);
+    const [watchlistOnly, setWatchlistOnly] = useState<boolean>(search.watchlistOnly);
 
     const navigate = useNavigate();
 
@@ -25,14 +27,16 @@ const MoviesPage = () => {
                 //@ts-ignore
                 search: (prev) => ({
                     ...prev,
-                    query: debouncedUrlQuery || "",
+                    query: debouncedUrlQuery,
+                    watchlistOnly: watchlistOnly,
                 }),
                 replace: true
             })
-    }, [debouncedUrlQuery, navigate]);
+    }, [debouncedUrlQuery, watchlistOnly, navigate]);
 
     const filters: MovieFilters = {
         query: debouncedSearchQuery,
+        watchlistOnly: watchlistOnly,
     };
 
     const {
@@ -71,6 +75,10 @@ const MoviesPage = () => {
     return (
         <>
             <SearchBar query={searchQuery} setQuery={setSearchQuery}/>
+            <WatchlistToggle
+                watchlistOnly={watchlistOnly}
+                setWatchlistOnly={setWatchlistOnly}
+            />
             <Movies
                 key={debouncedSearchQuery}
                 movies={data?.pages.flat() || []}
@@ -92,5 +100,6 @@ export const Route = createFileRoute("/movies")({
     component: MoviesPage,
     validateSearch: (search) => ({
         query: search.query ?? "",
+        watchlistOnly: search.watchlistOnly ? true : false,
     }),
 });

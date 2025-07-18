@@ -39,6 +39,7 @@ import type {
   MeGetCurrentUserResponse,
   MeDeleteUserMeResponse,
   MeGetMyShowtimesResponse,
+  MeSyncWatchlistResponse,
   MoviesCreateMovieData,
   MoviesCreateMovieResponse,
   MoviesReadMoviesData,
@@ -501,6 +502,19 @@ export class MeService {
       url: "/api/v1/me/showtimes",
     })
   }
+
+  /**
+   * Sync Watchlist
+   * Sync the user's watchlist from Letterboxd.
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static syncWatchlist(): CancelablePromise<MeSyncWatchlistResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/me/watchlist",
+    })
+  }
 }
 
 export class MoviesService {
@@ -534,6 +548,7 @@ export class MoviesService {
    * @param data.showtimeLimit Max number of showtimes per movie
    * @param data.snapshotTime
    * @param data.query Search query for movie titles, optional
+   * @param data.watchlistOnly If true, only return movies that are in the user's watchlist
    * @returns MovieSummaryPublic Successful Response
    * @throws ApiError
    */
@@ -549,6 +564,7 @@ export class MoviesService {
         showtime_limit: data.showtimeLimit,
         snapshot_time: data.snapshotTime,
         query: data.query,
+        watchlist_only: data.watchlistOnly,
       },
       errors: {
         422: "Validation Error",

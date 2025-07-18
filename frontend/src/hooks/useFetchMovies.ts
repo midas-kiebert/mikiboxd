@@ -4,6 +4,7 @@ import { InfiniteData } from "@tanstack/react-query";
 
 export type MovieFilters = {
     query?: string;
+    watchlistOnly?: boolean;
 };
 
 type useFetchMoviesProps = {

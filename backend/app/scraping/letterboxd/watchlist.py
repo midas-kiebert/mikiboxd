@@ -1,10 +1,8 @@
-from collections.abc import Sequence
-
 from . import logger
 from .utils import get_page
 
 
-def get_watchlist(username: str) -> Sequence[str]:
+def get_watchlist(username: str) -> list[str]:
     logger.info(f"Fetching watchlist for user: {username}...")
     page_num = 1
     watchlist: list[str] = []

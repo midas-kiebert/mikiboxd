@@ -17,6 +17,7 @@ class UserBase(SQLModel):
         default=False, description="Indicates if the user has superuser privileges"
     )
     display_name: str | None = Field(default=None, max_length=255)
+    letterboxd_username: str | None = Field(default=None, max_length=255)
 
 
 # Properties to receive via API on creation

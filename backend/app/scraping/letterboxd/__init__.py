@@ -1,6 +1,15 @@
-# from app.logging_ import setup_logger
+import logging
+import sys
 
-# logger = setup_logger("letterboxd_list_updating")
-from logging import getLogger
+logger = logging.getLogger("letterboxd")
+logger.setLevel(logging.DEBUG)  # Or INFO, WARNING, etc.
 
-logger = getLogger("letterboxd")
+if not logger.handlers:  # Prevent adding handlers multiple times
+    handler = logging.StreamHandler(sys.stdout)  # Send logs to console
+    handler.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S"
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)

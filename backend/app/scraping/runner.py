@@ -2,8 +2,9 @@ import sys
 
 import yaml
 
-from app.scraping import BaseCinemaScraper, load_letterboxd_slugs
+from app.scraping import BaseCinemaScraper
 from app.scraping.cinemas import SCRAPER_REGISTRY
+from app.scraping.load_letterboxd_slugs import load_letterboxd_slugs
 from app.scraping.logger import logger
 
 

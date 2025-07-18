@@ -1,0 +1,253 @@
+from uuid import uuid4
+
+import pytest
+from pytest_mock import MockerFixture
+from sqlmodel import Session, select
+
+from app import crud
+from app import exceptions as exc
+from app.models import Movie, User, WatchlistSelection
+
+
+def test_add_watchlist_selection_success(
+    db_transaction: Session, user_factory, movie_factory
+):
+    user: User = user_factory()
+    movie: Movie = movie_factory()
+
+    crud.add_watchlist_selection(
+        session=db_transaction,
+        user_id=user.id,
+        movie_id=movie.id,
+    )
+
+    # Verify that the selection was added
+    selection = db_transaction.exec(
+        select(WatchlistSelection).where(
+            (WatchlistSelection.user_id == user.id)
+            & (WatchlistSelection.movie_id == movie.id)
+        )
+    ).first()
+
+    assert selection is not None
+    assert selection.user_id == user.id
+    assert selection.movie_id == movie.id
+
+
+def test_add_watchlist_selection_duplicate(
+    db_transaction: Session,
+    user_factory,
+    movie_factory,
+):
+    user: User = user_factory()
+    movie: Movie = movie_factory()
+
+    # Add the selection once
+    crud.add_watchlist_selection(
+        session=db_transaction,
+        user_id=user.id,
+        movie_id=movie.id,
+    )
+
+    # Attempt to add the same selection again
+    with pytest.raises(exc.WatchlistSelectionAlreadyExists):
+        crud.add_watchlist_selection(
+            session=db_transaction,
+            user_id=user.id,
+            movie_id=movie.id,
+        )
+
+
+def test_add_watchlist_selection_user_doesnt_exist(
+    db_transaction: Session, movie_factory
+):
+    movie: Movie = movie_factory()
+
+    # Attempt to add a selection for a non-existent user
+    with pytest.raises(exc.WatchlistSelectionInvalid):
+        crud.add_watchlist_selection(
+            session=db_transaction,
+            user_id=uuid4(),  # Invalid UUID
+            movie_id=movie.id,
+        )
+
+
+def test_delete_watchlist_selection_success(
+    db_transaction: Session, user_factory, movie_factory
+):
+    user: User = user_factory()
+    movie: Movie = movie_factory()
+
+    # First, add the selection
+    crud.add_watchlist_selection(
+        session=db_transaction,
+        user_id=user.id,
+        movie_id=movie.id,
+    )
+
+    # Now delete the selection
+    crud.delete_watchlist_selection(
+        session=db_transaction,
+        user_id=user.id,
+        movie_id=movie.id,
+    )
+
+    # Verify that the selection was deleted
+    selection = db_transaction.exec(
+        select(WatchlistSelection).where(
+            (WatchlistSelection.user_id == user.id)
+            & (WatchlistSelection.movie_id == movie.id)
+        )
+    ).first()
+
+    assert selection is None
+
+
+def test_delete_watchlist_selection_not_found(
+    db_transaction: Session, user_factory, movie_factory
+):
+    user: User = user_factory()
+    movie: Movie = movie_factory()
+
+    # Attempt to delete a selection that doesn't exist
+    with pytest.raises(exc.WatchlistSelectionNotFound):
+        crud.delete_watchlist_selection(
+            session=db_transaction,
+            user_id=user.id,
+            movie_id=movie.id,
+        )
+
+
+def test_clear_watchlist_selection_success(
+    db_transaction: Session, user_factory, movie_factory
+):
+    n = 5  # Number of movies to add
+    user: User = user_factory()
+    movies: list[Movie] = [movie_factory() for _ in range(n)]
+
+    # Add multiple selections
+    for movie in movies:
+        crud.add_watchlist_selection(
+            session=db_transaction,
+            user_id=user.id,
+            movie_id=movie.id,
+        )
+
+    assert len(movies) == n
+
+    # Clear all selections for the user
+    crud.clear_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+    )
+
+    # Verify that all selections were cleared
+    selections = db_transaction.exec(
+        select(WatchlistSelection).where(WatchlistSelection.user_id == user.id)
+    ).all()
+
+    assert len(selections) == 0
+
+
+def test_update_watchlist_success(db_transaction: Session, user_factory, movie_factory):
+    user: User = user_factory()
+    movies: list[Movie] = [movie_factory() for _ in range(3)]
+    slugs = [
+        movie.letterboxd_slug for movie in movies if movie.letterboxd_slug is not None
+    ]
+
+    # Update the watchlist with new movies
+    crud.update_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+        watchlist_slugs=slugs,
+    )
+
+    # Verify that the selections were added
+    selections = db_transaction.exec(
+        select(WatchlistSelection).where(WatchlistSelection.user_id == user.id)
+    ).all()
+
+    assert len(selections) == len(movies)
+    for selection, movie in zip(selections, movies, strict=False):
+        assert selection.movie_id == movie.id
+        assert selection.user_id == user.id
+
+
+def test_get_watchlist(db_transaction: Session, user_factory, movie_factory):
+    n = 10  # Number of movies to add
+    user: User = user_factory()
+    movies: list[Movie] = [movie_factory() for _ in range(n)]
+    slugs = [
+        movie.letterboxd_slug for movie in movies if movie.letterboxd_slug is not None
+    ]
+
+    crud.update_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+        watchlist_slugs=slugs,
+    )
+
+    # Retrieve the watchlist
+    watchlist = crud.get_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+    )
+
+    obtained_slugs = [
+        movie.letterboxd_slug
+        for movie in watchlist
+        if movie.letterboxd_slug is not None
+    ]
+
+    assert len(obtained_slugs) > 0
+    assert set(obtained_slugs) == set(slugs)
+
+
+def test_sync_watchlist_success(
+    mocker: MockerFixture,
+    db_transaction: Session,
+    user_factory,
+    movie_factory,
+):
+    # Setup mock data
+    n = 10
+    user: User = user_factory()
+    existing_movie: Movie = movie_factory()
+    crud.add_watchlist_selection(
+        session=db_transaction,
+        user_id=user.id,
+        movie_id=existing_movie.id,
+    )
+    movies: list[Movie] = [movie_factory() for _ in range(n)]
+    slugs = [
+        movie.letterboxd_slug for movie in movies if movie.letterboxd_slug is not None
+    ]
+
+    mocker.patch(
+        "app.crud.watchlist.scrape_watchlist",
+        return_value=slugs,
+    )
+    # Sync the watchlist
+    crud.sync_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+    )
+
+    obtained_movies = crud.get_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+    )
+
+    assert len(obtained_movies) > 0
+
+    obtained_slugs = [
+        movie.letterboxd_slug
+        for movie in obtained_movies
+        if movie.letterboxd_slug is not None
+    ]
+
+    # Verify that the watchlist was updated correctly
+    assert len(obtained_slugs) == n
+    assert existing_movie.letterboxd_slug not in obtained_slugs
+    assert set(obtained_slugs) == set(slugs)

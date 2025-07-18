@@ -33,6 +33,7 @@ dependencies = [
     "types-PyYAML",
     "sqlalchemy-utils",
     "pre-commit",
+    "pytest-mock",
 ]
 
 [tool.uv]
@@ -48,6 +49,18 @@ dev-dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+norecursedirs = [
+    "venv",
+    ".venv",
+    "alembic",
+    "migrations",
+]
+filterwarnings = [
+  "ignore::PendingDeprecationWarning:starlette.formparsers",
+  "ignore::DeprecationWarning:passlib.utils"
+]
 
 [tool.mypy]
 strict = true

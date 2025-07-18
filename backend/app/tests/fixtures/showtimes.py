@@ -24,8 +24,7 @@ class ShowtimeFactory(Protocol):
         ticket_link: str | None = None,
         movie_id: int,
         cinema_id: int,
-    ) -> Showtime:
-        ...
+    ) -> Showtime: ...
 
 
 @pytest.fixture

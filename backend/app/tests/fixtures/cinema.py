@@ -21,8 +21,7 @@ class CinemaFactory(Protocol):
         badge_bg_color: str | None = None,
         badge_text_color: str | None = None,
         url: str | None = None,
-    ) -> Cinema:
-        ...
+    ) -> Cinema: ...
 
 
 @pytest.fixture

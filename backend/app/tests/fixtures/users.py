@@ -22,8 +22,7 @@ class UserFactory(Protocol):
         display_name: str | None = None,
         letterboxd_username: str | None = None,
         # is_superuser: bool = False,
-    ) -> User:
-        ...
+    ) -> User: ...
 
 
 @pytest.fixture

@@ -19,8 +19,7 @@ class CityFactory(Protocol):
         *,
         id: int | None = None,
         name: str | None = None,
-    ) -> City:
-        ...
+    ) -> City: ...
 
 
 @pytest.fixture

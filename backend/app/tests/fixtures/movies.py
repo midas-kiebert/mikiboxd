@@ -21,8 +21,7 @@ class MovieFactory(Protocol):
         id: int | None = None,
         poster_link: str | None = None,
         letterboxd_slug: str | None = None,
-    ) -> Movie:
-        ...
+    ) -> Movie: ...
 
 
 @pytest.fixture

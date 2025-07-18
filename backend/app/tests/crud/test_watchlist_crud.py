@@ -115,3 +115,89 @@ def test_delete_watchlist_selection_not_found(
             user_id=user.id,
             movie_id=movie.id,
         )
+
+
+def test_clear_watchlist_selection_success(
+    db_transaction: Session, user_factory, movie_factory
+):
+    n = 5  # Number of movies to add
+    user: User = user_factory()
+    movies: list[Movie] = [movie_factory() for _ in range(n)]
+
+    # Add multiple selections
+    for movie in movies:
+        crud.add_watchlist_selection(
+            session=db_transaction,
+            user_id=user.id,
+            movie_id=movie.id,
+        )
+
+    assert len(movies) == n
+
+    # Clear all selections for the user
+    crud.clear_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+    )
+
+    # Verify that all selections were cleared
+    selections = db_transaction.exec(
+        select(WatchlistSelection).where(WatchlistSelection.user_id == user.id)
+    ).all()
+
+    assert len(selections) == 0
+
+
+def test_update_watchlist_success(db_transaction: Session, user_factory, movie_factory):
+    user: User = user_factory()
+    movies: list[Movie] = [movie_factory() for _ in range(3)]
+    slugs = [
+        movie.letterboxd_slug for movie in movies if movie.letterboxd_slug is not None
+    ]
+
+    # Update the watchlist with new movies
+    crud.update_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+        watchlist_slugs=slugs,
+    )
+
+    # Verify that the selections were added
+    selections = db_transaction.exec(
+        select(WatchlistSelection).where(WatchlistSelection.user_id == user.id)
+    ).all()
+
+    assert len(selections) == len(movies)
+    for selection, movie in zip(selections, movies, strict=False):
+        assert selection.movie_id == movie.id
+        assert selection.user_id == user.id
+
+
+def test_get_watchlist(db_transaction: Session, user_factory, movie_factory):
+    n = 10  # Number of movies to add
+    user: User = user_factory()
+    movies: list[Movie] = [movie_factory() for _ in range(n)]
+    slugs = [
+        movie.letterboxd_slug for movie in movies if movie.letterboxd_slug is not None
+    ]
+
+    crud.update_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+        watchlist_slugs=slugs,
+    )
+
+    # Retrieve the watchlist
+    watchlist = crud.get_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+    )
+
+    obtained_slugs = [
+        movie.letterboxd_slug
+        for movie in watchlist
+        if movie.letterboxd_slug is not None
+    ]
+
+    assert len(obtained_slugs) > 0
+    assert set(obtained_slugs) == set(slugs)

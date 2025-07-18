@@ -1,22 +1,22 @@
 __all__ = [
-    "WatchlistSelectionError",
+    "WatchlistError",
     "WatchlistSelectionAlreadyExists",
     "WatchlistSelectionInvalid",
     "WatchlistSelectionNotFound",
 ]
 
 
-class WatchlistSelectionError(Exception):
+class WatchlistError(Exception):
     """Base class for all watchlist-related exceptions."""
 
 
-class WatchlistSelectionAlreadyExists(WatchlistSelectionError):
+class WatchlistSelectionAlreadyExists(WatchlistError):
     """Raised when a watchlist selection already exists for a user and movie."""
 
 
-class WatchlistSelectionInvalid(WatchlistSelectionError):
+class WatchlistSelectionInvalid(WatchlistError):
     """Raised when a watchlist selection is invalid, such as when the user or movie does not exist."""
 
 
-class WatchlistSelectionNotFound(WatchlistSelectionError):
+class WatchlistSelectionNotFound(WatchlistError):
     """Raised when a watchlist selection is not found for a user and movie."""

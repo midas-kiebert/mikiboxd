@@ -38,7 +38,7 @@ def movie_factory(db_transaction: Session) -> MovieFactory:
             title=title or random_lower_string(),
             id=id or randint(1, 1 << 31),  # Random TMDB ID
             poster_link=poster_link,
-            letterboxd_slug=letterboxd_slug,
+            letterboxd_slug=letterboxd_slug or random_lower_string(),
         )
         movie = crud.create_movie(
             session=db_transaction,

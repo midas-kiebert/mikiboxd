@@ -22,6 +22,7 @@ from app.tests.utils.user import authentication_token_from_email
 from app.tests.utils.utils import get_superuser_token_headers
 
 from .fixtures.letterboxd import *
+from .fixtures.movies import *
 from .fixtures.users import *
 
 TEST_DATABASE_URL = str(settings.SQLALCHEMY_DATABASE_URI_TEST)

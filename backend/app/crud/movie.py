@@ -22,7 +22,7 @@ __all__ = [
 ]
 
 
-def create_movie(*, session: Session, movie_create: MovieCreate) -> None:
+def create_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
     db_obj = Movie.model_validate(movie_create)
     session.add(db_obj)
     try:
@@ -30,6 +30,8 @@ def create_movie(*, session: Session, movie_create: MovieCreate) -> None:
         session.refresh(db_obj)
     except IntegrityError:
         session.rollback()
+        raise ValueError("Movie with this ID already exists or invalid data.")
+    return db_obj
 
 
 def get_movies(
@@ -77,10 +79,11 @@ def get_movie_by_id(*, session: Session, id: int, user_id: UUID) -> MoviePublic:
     if movie is None:
         raise ValueError(f"Movie with ID {id} not found.")
     movie_public = MoviePublic.model_validate(movie)
-    movie_public.showtimes_with_friends, movie_public.showtime_without_friends = (
-        get_split_showtimes_for_movie(
-            session=session, movie_id=movie.id, current_user=user_id
-        )
+    (
+        movie_public.showtimes_with_friends,
+        movie_public.showtime_without_friends,
+    ) = get_split_showtimes_for_movie(
+        session=session, movie_id=movie.id, current_user=user_id
     )
     return movie_public
 

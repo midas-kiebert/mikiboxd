@@ -6,7 +6,7 @@ from sqlmodel import Session, select
 from app.models import WatchlistSelection
 
 
-def add_showtime_selection(*, session: Session, user_id: UUID, movie_id: int) -> None:
+def add_watchlist_selection(*, session: Session, user_id: UUID, movie_id: int) -> None:
     """
     Add a selection for a showtime by a user.
     """
@@ -20,7 +20,7 @@ def add_showtime_selection(*, session: Session, user_id: UUID, movie_id: int) ->
         raise ValueError("Selection already exists or invalid data.")
 
 
-def delete_showtime_selection(
+def delete_watchlist_selection(
     *, session: Session, user_id: UUID, movie_id: int
 ) -> None:
     """

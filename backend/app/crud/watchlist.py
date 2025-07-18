@@ -1,8 +1,13 @@
 from uuid import UUID
 
+from psycopg.errors import (
+    ForeignKeyViolation,
+    UniqueViolation,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
+from app import exceptions as exc
 from app.models import WatchlistSelection
 
 __all__ = [
@@ -20,9 +25,14 @@ def add_watchlist_selection(*, session: Session, user_id: UUID, movie_id: int) -
     try:
         session.commit()
         session.refresh(selection)
-    except IntegrityError:
+    except IntegrityError as e:
         session.rollback()
-        raise ValueError("Selection already exists or invalid data.")
+
+        if isinstance(e.orig, UniqueViolation):
+            raise exc.WatchlistSelectionAlreadyExists()
+        elif isinstance(e.orig, ForeignKeyViolation):
+            raise exc.WatchlistSelectionInvalid()
+        raise exc.WatchlistSelectionError()
 
 
 def delete_watchlist_selection(

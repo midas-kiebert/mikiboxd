@@ -59,7 +59,8 @@ norecursedirs = [
 ]
 filterwarnings = [
   "ignore::PendingDeprecationWarning:starlette.formparsers",
-  "ignore::DeprecationWarning:passlib.utils"
+  "ignore::DeprecationWarning:passlib.utils",
+  "ignore::sqlalchemy.exc.SAWarning"
 ]
 
 [tool.mypy]

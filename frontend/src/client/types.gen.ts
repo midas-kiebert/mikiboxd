@@ -262,6 +262,7 @@ export type UserCreate = {
    */
   is_superuser?: boolean
   display_name?: string | null
+  letterboxd_username?: string | null
   password: string
 }
 
@@ -276,6 +277,7 @@ export type UserPublic = {
    */
   is_superuser?: boolean
   display_name?: string | null
+  letterboxd_username?: string | null
   id: string
 }
 
@@ -301,6 +303,7 @@ export type UserUpdate = {
    */
   is_superuser?: boolean
   display_name?: string | null
+  letterboxd_username?: string | null
   password?: string | null
 }
 
@@ -415,6 +418,8 @@ export type MeDeleteUserMeResponse = Message
 
 export type MeGetMyShowtimesResponse = Array<ShowtimePublic>
 
+export type MeSyncWatchlistResponse = Message
+
 export type MoviesCreateMovieData = {
   requestBody: MovieCreate
 }
@@ -439,6 +444,10 @@ export type MoviesReadMoviesData = {
    */
   showtimeLimit?: number
   snapshotTime?: string
+  /**
+   * If true, only return movies that are in the user's watchlist
+   */
+  watchlistOnly?: boolean
 }
 
 export type MoviesReadMoviesResponse = Array<MovieSummaryPublic>

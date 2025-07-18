@@ -1,3 +1,4 @@
+import traceback
 from collections.abc import Sequence
 from typing import Any
 
@@ -50,3 +51,17 @@ def get_my_showtimes(
         ShowtimePublic.model_validate(showtime) for showtime in showtimes
     ]
     return showtimes_public
+
+
+@router.put("/watchlist", response_model=Message)
+def sync_watchlist(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Message:
+    """Sync the user's watchlist from Letterboxd."""
+    try:
+        crud.sync_watchlist(session=session, user_id=current_user.id)
+        return Message(message="Watchlist synced successfully")
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

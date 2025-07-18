@@ -26,6 +26,7 @@ def create_movie(*, session: SessionDep, movie_in: MovieCreate) -> Any:
 @router.get("/", response_model=list[MovieSummaryPublic])
 def read_movies(
     session: SessionDep,
+    current_user: CurrentUser,
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     limit: int = Query(20, ge=1, le=50, description="Max number of items to return"),
     showtime_limit: int = Query(
@@ -35,17 +36,23 @@ def read_movies(
     query: str | None = Query(
         None, description="Search query for movie titles, optional"
     ),
+    watchlist_only: bool = Query(
+        False,
+        description="If true, only return movies that are in the user's watchlist",
+    ),
 ) -> Any:
     snapshot_time_local = snapshot_time.astimezone(
         ZoneInfo("Europe/Amsterdam")
     ).replace(tzinfo=None)
     movies = crud.get_movies(
         session=session,
+        user_id=current_user.id,
         limit=limit,
         offset=offset,
         showtime_limit=showtime_limit,
         snapshot_time=snapshot_time_local,
         query=query,
+        watchlist_only=watchlist_only,
     )
     return movies
 

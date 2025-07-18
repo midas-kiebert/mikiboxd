@@ -28,7 +28,7 @@ __all__ = [
 ]
 
 
-def create_showtime(*, session: Session, showtime_create: ShowtimeCreate) -> None:
+def create_showtime(*, session: Session, showtime_create: ShowtimeCreate) -> Showtime:
     db_obj = Showtime.model_validate(showtime_create)
     session.add(db_obj)
     try:
@@ -36,6 +36,7 @@ def create_showtime(*, session: Session, showtime_create: ShowtimeCreate) -> Non
         session.refresh(db_obj)
     except IntegrityError:
         session.rollback()
+    return db_obj
 
 
 def get_all_showtimes_for_movie(

@@ -98,7 +98,7 @@ def update_watchlist(
     for slug in watchlist_slugs:
         movie = session.exec(select(Movie).where(Movie.letterboxd_slug == slug)).first()
         if not movie:
-            raise exc.MovieNotFound()
+            continue
 
         add_watchlist_selection(
             session=session,

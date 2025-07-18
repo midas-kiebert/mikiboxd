@@ -5,6 +5,11 @@ from sqlmodel import Session, select
 
 from app.models import WatchlistSelection
 
+__all__ = [
+    "add_watchlist_selection",
+    "delete_watchlist_selection",
+]
+
 
 def add_watchlist_selection(*, session: Session, user_id: UUID, movie_id: int) -> None:
     """

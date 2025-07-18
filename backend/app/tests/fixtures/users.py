@@ -20,8 +20,10 @@ class UserFactory(Protocol):
         email: str | None = None,
         password: str | None = None,
         display_name: str | None = None,
+        letterboxd_username: str | None = None,
         # is_superuser: bool = False,
-    ) -> User: ...
+    ) -> User:
+        ...
 
 
 @pytest.fixture
@@ -31,6 +33,7 @@ def user_factory(db_transaction: Session) -> UserFactory:
         email: str | None = None,
         password: str | None = None,
         display_name: str | None = None,
+        letterboxd_username: str | None = None,
         # is_superuser: bool = False,
     ) -> User:
         email = email or random_email()
@@ -39,6 +42,7 @@ def user_factory(db_transaction: Session) -> UserFactory:
             email=email,
             password=password,
             display_name=display_name or random_lower_string(),
+            letterboxd_username=letterboxd_username or random_lower_string(),
             # is_superuser=is_superuser,
         )
         user = crud.create_user(

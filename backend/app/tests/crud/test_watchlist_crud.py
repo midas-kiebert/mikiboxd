@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlmodel import Session, select
 
 from app import crud
@@ -200,4 +201,53 @@ def test_get_watchlist(db_transaction: Session, user_factory, movie_factory):
     ]
 
     assert len(obtained_slugs) > 0
+    assert set(obtained_slugs) == set(slugs)
+
+
+def test_sync_watchlist_success(
+    mocker: MockerFixture,
+    db_transaction: Session,
+    user_factory,
+    movie_factory,
+):
+    # Setup mock data
+    n = 10
+    user: User = user_factory()
+    existing_movie: Movie = movie_factory()
+    crud.add_watchlist_selection(
+        session=db_transaction,
+        user_id=user.id,
+        movie_id=existing_movie.id,
+    )
+    movies: list[Movie] = [movie_factory() for _ in range(n)]
+    slugs = [
+        movie.letterboxd_slug for movie in movies if movie.letterboxd_slug is not None
+    ]
+
+    mocker.patch(
+        "app.crud.watchlist.scrape_watchlist",
+        return_value=slugs,
+    )
+    # Sync the watchlist
+    crud.sync_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+    )
+
+    obtained_movies = crud.get_watchlist(
+        session=db_transaction,
+        user_id=user.id,
+    )
+
+    assert len(obtained_movies) > 0
+
+    obtained_slugs = [
+        movie.letterboxd_slug
+        for movie in obtained_movies
+        if movie.letterboxd_slug is not None
+    ]
+
+    # Verify that the watchlist was updated correctly
+    assert len(obtained_slugs) == n
+    assert existing_movie.letterboxd_slug not in obtained_slugs
     assert set(obtained_slugs) == set(slugs)

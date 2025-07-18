@@ -8,7 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
 from app import exceptions as exc
-from app.models import Movie, WatchlistSelection
+from app.models import Movie, User, WatchlistSelection
+from app.scraping.letterboxd.watchlist import get_watchlist as scrape_watchlist
 
 __all__ = [
     "add_watchlist_selection",
@@ -16,12 +17,13 @@ __all__ = [
     "clear_watchlist",
     "update_watchlist",
     "get_watchlist",
+    "sync_watchlist",
 ]
 
 
 def add_watchlist_selection(*, session: Session, user_id: UUID, movie_id: int) -> None:
     """
-    Add a selection for a showtime by a user.
+    Add a movie to the watchlist of a user.
     """
     selection = WatchlistSelection(user_id=user_id, movie_id=movie_id)
     session.add(selection)
@@ -42,7 +44,7 @@ def delete_watchlist_selection(
     *, session: Session, user_id: UUID, movie_id: int
 ) -> None:
     """
-    Delete a selection for a showtime by a user.
+    Delete a movie from the watchlist of a user.
     """
     selection = session.exec(
         select(WatchlistSelection).where(
@@ -126,3 +128,26 @@ def get_watchlist(*, session: Session, user_id: UUID) -> list[Movie]:
     movies = session.exec(select(Movie).where(col(Movie.id).in_(movie_ids))).all()
 
     return list(movies)
+
+
+def sync_watchlist(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> None:
+    """
+    Sync the user's watchlist with a list of movie slugs.
+    This will clear the existing watchlist and update it with the new slugs.
+    """
+    user = session.get(User, user_id)
+    if not user:
+        raise exc.UserNotFound()
+    if not user.letterboxd_username:
+        raise exc.UserLetterboxdUsernameNotSet()
+    watchlist_slugs = scrape_watchlist(user.letterboxd_username)
+
+    update_watchlist(
+        session=session,
+        user_id=user_id,
+        watchlist_slugs=watchlist_slugs,
+    )

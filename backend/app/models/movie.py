@@ -1,8 +1,10 @@
+from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
+    from .cinema import CinemaPublic
     from .showtime import Showtime, ShowtimeInMoviePublic
 
 
@@ -48,6 +50,17 @@ class Movie(MovieBase, table=True):
 class MovieSummaryPublic(MovieBase):
     showtimes: list["ShowtimeInMoviePublic"] = Field(
         default=[], description="List of showtimes associated with the movie"
+    )
+    cinemas: list["CinemaPublic"] = Field(
+        default=[], description="List of cinemas where the movie is showing"
+    )
+    last_showtime_datetime: datetime | None = Field(
+        default=None,
+        description="Datetime of the last showtime for the movie",
+    )
+    total_showtimes: int | None = Field(
+        default=None,
+        description="Total number of showtimes for the movie",
     )
 
 

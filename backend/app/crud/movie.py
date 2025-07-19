@@ -8,9 +8,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col
 
 from app.models import (
+    Cinema,
+    CinemaPublic,
     Movie,
     MovieCreate,
     MoviePublic,
+    MovieSummaryPublic,
     MovieUpdate,
     Showtime,
     WatchlistSelection,
@@ -25,6 +28,7 @@ __all__ = [
     "get_movies",
     "get_movies_without_letterboxd_slug",
     "update_movie",
+    "get_cinemas_for_movie",
 ]
 
 
@@ -40,6 +44,28 @@ def create_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
     return db_obj
 
 
+def get_cinemas_for_movie(
+    *,
+    session: Session,
+    movie_id: int,
+    snapshot_time: datetime = datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(
+        tzinfo=None
+    ),
+) -> list[CinemaPublic]:
+    stmt = (
+        select(Cinema)
+        .join(Showtime, col(Showtime.cinema_id) == col(Cinema.id))
+        .where(
+            col(Showtime.movie_id) == movie_id, col(Showtime.datetime) >= snapshot_time
+        )
+        .distinct()
+    )
+    result = session.execute(stmt)
+    cinemas: list[Cinema] = list(result.scalars().all())
+    cinemas_public = [CinemaPublic.model_validate(cinema) for cinema in cinemas]
+    return cinemas_public
+
+
 def get_movies(
     *,
     session: Session,
@@ -52,7 +78,7 @@ def get_movies(
     ),
     query: str | None = None,
     watchlist_only: bool = False,
-) -> Sequence[Movie]:
+) -> list[MovieSummaryPublic]:
     stmt = select(Movie).join(
         Showtime,
         and_(
@@ -78,11 +104,17 @@ def get_movies(
     )
 
     result = session.execute(stmt)
-    movies: list[Movie] = list(result.scalars().all())
+    db_movies: list[Movie] = list(result.scalars().all())
+    movies: list[MovieSummaryPublic] = [
+        MovieSummaryPublic.model_validate(movie) for movie in db_movies
+    ]
 
     for movie in movies:
         movie.showtimes = get_first_n_showtimes(
-            session=session, movie=movie, n=showtime_limit
+            session=session, movie_id=movie.id, n=showtime_limit
+        )
+        movie.cinemas = get_cinemas_for_movie(
+            session=session, movie_id=movie.id, snapshot_time=snapshot_time
         )
     return movies
 

@@ -148,7 +148,9 @@ def get_first_n_showtimes(
         .limit(n)
     )
     showtimes = list(session.exec(stmt).all())
-    showtimes_in_movie = [ShowtimeInMoviePublic.model_validate(showtime) for showtime in showtimes]
+    showtimes_in_movie = [
+        ShowtimeInMoviePublic.model_validate(showtime) for showtime in showtimes
+    ]
     return showtimes_in_movie
 
 

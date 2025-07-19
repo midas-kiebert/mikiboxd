@@ -125,7 +125,9 @@ def test_get_cinemas_for_movie(
     )
 
     assert len(cinemas) == 1, "Expected one cinema for the movie"
-    assert cinemas[0].id == cinema.id, "Expected the returned cinema to match the created one"
+    assert (
+        cinemas[0].id == cinema.id
+    ), "Expected the returned cinema to match the created one"
 
     # add another showtime to cinema_2
     showtime_factory(
@@ -138,4 +140,6 @@ def test_get_cinemas_for_movie(
         movie_id=movie.id,
     )
 
-    assert len(cinemas) == 2, "Expected two cinemas for the movie after adding another showtime"
+    assert (
+        len(cinemas) == 2
+    ), "Expected two cinemas for the movie after adding another showtime"

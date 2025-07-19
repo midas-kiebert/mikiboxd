@@ -43,18 +43,20 @@ def create_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
         raise ValueError("Movie with this ID already exists or invalid data.")
     return db_obj
 
+
 def get_cinemas_for_movie(
     *,
     session: Session,
     movie_id: int,
-    snapshot_time: datetime = datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None)
+    snapshot_time: datetime = datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(
+        tzinfo=None
+    ),
 ) -> list[CinemaPublic]:
     stmt = (
         select(Cinema)
         .join(Showtime, col(Showtime.cinema_id) == col(Cinema.id))
         .where(
-            col(Showtime.movie_id) == movie_id,
-            col(Showtime.datetime) >= snapshot_time
+            col(Showtime.movie_id) == movie_id, col(Showtime.datetime) >= snapshot_time
         )
         .distinct()
     )
@@ -109,19 +111,12 @@ def get_movies(
 
     for movie in movies:
         movie.showtimes = get_first_n_showtimes(
-            session=session,
-            movie_id=movie.id,
-            n=showtime_limit
+            session=session, movie_id=movie.id, n=showtime_limit
         )
         movie.cinemas = get_cinemas_for_movie(
-            session=session,
-            movie_id=movie.id,
-            snapshot_time=snapshot_time
+            session=session, movie_id=movie.id, snapshot_time=snapshot_time
         )
     return movies
-
-
-
 
 
 def get_movie_by_id(*, session: Session, id: int, user_id: UUID) -> MoviePublic:

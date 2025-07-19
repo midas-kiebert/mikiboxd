@@ -8,7 +8,6 @@ from sqlmodel import Session, select
 
 from app import crud
 from app.models import (
-    Movie,
     Showtime,
     ShowtimeCreate,
     ShowtimeInMoviePublic,
@@ -134,22 +133,23 @@ def get_split_showtimes_for_movie(
 def get_first_n_showtimes(
     *,
     session: Session,
-    movie: Movie,
+    movie_id: int,
     n: int = 5,
-) -> list[Showtime]:
+) -> list[ShowtimeInMoviePublic]:
     """
     Retrieve the first N showtimes for a movie.
     """
     now = datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None)
     stmt = (
         select(Showtime)
-        .where(Showtime.movie_id == movie.id)
+        .where(Showtime.movie_id == movie_id)
         .where(Showtime.datetime >= now)
         .order_by(column(Showtime.datetime))
         .limit(n)
     )
     showtimes = list(session.exec(stmt).all())
-    return showtimes
+    showtimes_in_movie = [ShowtimeInMoviePublic.model_validate(showtime) for showtime in showtimes]
+    return showtimes_in_movie
 
 
 def add_showtime_selection(

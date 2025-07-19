@@ -66,11 +66,7 @@ def get_cinemas_for_movie(
     return cinemas_public
 
 
-def get_last_showtime_datetime(
-    *,
-    session: Session,
-    movie_id: int
-) -> datetime | None:
+def get_last_showtime_datetime(*, session: Session, movie_id: int) -> datetime | None:
     stmt = (
         select(Showtime)
         .where(col(Showtime.movie_id) == movie_id)
@@ -94,12 +90,9 @@ def get_total_number_of_future_showtimes(
         tzinfo=None
     ),
 ) -> int:
-    stmt = (
-        select(func.count(col(Showtime.id)))
-        .where(
-            col(Showtime.movie_id) == movie_id,
-            col(Showtime.datetime) >= snapshot_time,
-        )
+    stmt = select(func.count(col(Showtime.id))).where(
+        col(Showtime.movie_id) == movie_id,
+        col(Showtime.datetime) >= snapshot_time,
     )
     result = session.execute(stmt)
     total_showtimes: int = result.scalar_one_or_none() or 0
@@ -151,23 +144,16 @@ def get_movies(
 
     for movie in movies:
         movie.showtimes = get_first_n_showtimes(
-            session=session,
-            movie_id=movie.id,
-            n=showtime_limit
+            session=session, movie_id=movie.id, n=showtime_limit
         )
         movie.cinemas = get_cinemas_for_movie(
-            session=session,
-            movie_id=movie.id,
-            snapshot_time=snapshot_time
+            session=session, movie_id=movie.id, snapshot_time=snapshot_time
         )
         movie.last_showtime_datetime = get_last_showtime_datetime(
-            session=session,
-            movie_id=movie.id
+            session=session, movie_id=movie.id
         )
         movie.total_showtimes = get_total_number_of_future_showtimes(
-            session=session,
-            movie_id=movie.id,
-            snapshot_time=snapshot_time
+            session=session, movie_id=movie.id, snapshot_time=snapshot_time
         )
     return movies
 

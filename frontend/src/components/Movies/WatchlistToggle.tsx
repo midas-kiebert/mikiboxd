@@ -3,6 +3,7 @@ type WatchlistToggleProps = {
     setWatchlistOnly: (value: boolean) => void;
 };
 
+
 export default function WatchlistToggle({
     watchlistOnly,
     setWatchlistOnly,

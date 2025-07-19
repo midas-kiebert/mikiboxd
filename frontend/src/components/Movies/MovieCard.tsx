@@ -2,12 +2,13 @@ import { Box } from "@chakra-ui/react";
 import MoviePoster from "./MoviePoster";
 import MovieInfoBox from "./MovieInfoBox";
 import { MovieSummaryPublic } from "@/client";
+import React from "react";
 
 type MovieCardProps = {
     movie: MovieSummaryPublic;
 };
 
-export default function MovieCard({ movie }: MovieCardProps) {
+const MovieCard = React.memo(function MovieCard({ movie }: MovieCardProps) {
     return (
         <>
         <Box
@@ -24,4 +25,6 @@ export default function MovieCard({ movie }: MovieCardProps) {
         </Box>
         </>
     );
-}
+});
+
+export default MovieCard;

@@ -1,4 +1,5 @@
 import { createFileRoute, useSearch, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import Movies from "@/components/Movies/Movies";
 import { useState, useEffect, useRef } from "react";
 import SearchBar from "@/components/Movies/SearchBar";
@@ -9,7 +10,7 @@ import type { MovieFilters } from "@/hooks/useFetchMovies";
 
 
 const MoviesPage = () => {
-    const limit = 20;
+    const limit = 10;
     const [snapshotTime] = useState(() => new Date().toISOString());
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const search = useSearch({ from: "/movies" });
@@ -18,6 +19,12 @@ const MoviesPage = () => {
     const [debouncedSearchQuery] = useDebounce(searchQuery, 250);
     const [debouncedUrlQuery] = useDebounce(searchQuery, 400);
     const [watchlistOnly, setWatchlistOnly] = useState<boolean>(search.watchlistOnly);
+
+    const queryClient = useQueryClient();
+    useEffect(() => {
+        queryClient.removeQueries({ queryKey: ["movies"] });
+      }, [watchlistOnly, debouncedSearchQuery]);
+
 
     const navigate = useNavigate();
 
@@ -80,7 +87,7 @@ const MoviesPage = () => {
                 setWatchlistOnly={setWatchlistOnly}
             />
             <Movies
-                key={debouncedSearchQuery}
+                key={JSON.stringify(filters)}
                 movies={data?.pages.flat() || []}
             />
             {hasNextPage && (

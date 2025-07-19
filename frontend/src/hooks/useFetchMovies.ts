@@ -23,6 +23,8 @@ export function useFetchMovies(
     ) {
     const result = useInfiniteQuery<MoviesReadMoviesResponse, Error, InfiniteData<MoviesReadMoviesResponse>, [string, MovieFilters], number>({
         queryKey: ["movies", filters],
+        refetchOnMount: false,
+        refetchOnWindowFocus: false,
         initialPageParam: 0,
         queryFn: ({ pageParam = 0 }) => {
             return MoviesService.readMovies({
@@ -48,11 +50,9 @@ export function useFetchMovies(
                 ...data,
                 pages: dedupedPages,
             };
-
         },
         getNextPageParam: (lastPage, allPages) =>
             lastPage.length === limit ? allPages.length * limit : undefined,
-        refetchOnWindowFocus: false,
         staleTime: 0,
         gcTime: 5 * 60 * 1000, // 5 minutes
     });

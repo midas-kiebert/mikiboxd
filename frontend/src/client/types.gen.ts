@@ -148,6 +148,10 @@ export type MovieSummaryPublic = {
    * List of showtimes associated with the movie
    */
   showtimes?: Array<ShowtimeInMoviePublic>
+  /**
+   * List of cinemas where the movie is showing
+   */
+  cinemas?: Array<CinemaPublic>
 }
 
 export type NewPassword = {

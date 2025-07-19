@@ -1,26 +1,27 @@
-import { Link } from "@tanstack/react-router"
+import { Box } from "@chakra-ui/react";
+import MoviePoster from "./MoviePoster";
+import MovieInfoBox from "./MovieInfoBox";
+import { MovieSummaryPublic } from "@/client";
 
 type MovieCardProps = {
-    title: string;
-    posterLink?: string | null;
-    id: number;
+    movie: MovieSummaryPublic;
 };
 
-export default function MovieCard({ title, posterLink, id }: MovieCardProps) {
+export default function MovieCard({ movie }: MovieCardProps) {
     return (
         <>
-            <Link
-                to={"/movie/$movieId"}
-                params={{ movieId: `${id}`}}
-                style={{ display: "inline-block", width: "auto" }}
-            >
-                <img
-                    src={posterLink || "https://via.placeholder.com/150"}
-                    alt={title}
-                    className="movie-poster"
-                />
-            </Link>
-            <h3 className="movie-title">{title}</h3>
+        <Box
+            bg="gray.100"
+            borderBottom={"1px solid"}
+            borderColor={"gray.300"}
+            py={3}
+            px={2}
+            height="250px"
+            display="flex"
+        >
+            <MoviePoster movie={movie}/>
+            <MovieInfoBox movie={movie}/>
+        </Box>
         </>
     );
 }

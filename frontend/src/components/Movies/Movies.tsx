@@ -2,6 +2,7 @@
 
 import { MovieSummaryPublic } from "@/client";
 import MovieCard from "./MovieCard";
+import MoviesContainer from "./MoviesContainer";
 
 type MoviesProps = {
     movies: Array<MovieSummaryPublic>
@@ -9,16 +10,13 @@ type MoviesProps = {
 
 export default function Movies( { movies } : MoviesProps) {
     return (
-        <div className="movies-container">
-            <h1 className="movies-title">Movies</h1>
+        <MoviesContainer>
             {movies.map((movie) => (
                 <MovieCard
+                    movie={movie}
                     key={movie.id}
-                    id={movie.id}
-                    title={movie.title}
-                    posterLink={movie.poster_link}
                 />
             ))}
-        </div>
+        </MoviesContainer>
     );
 }

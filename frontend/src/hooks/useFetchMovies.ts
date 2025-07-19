@@ -53,7 +53,7 @@ export function useFetchMovies(
         },
         getNextPageParam: (lastPage, allPages) =>
             lastPage.length === limit ? allPages.length * limit : undefined,
-        staleTime: 0,
+        staleTime: 5 * 60 * 1000,
         gcTime: 5 * 60 * 1000, // 5 minutes
     });
 

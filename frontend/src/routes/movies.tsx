@@ -16,23 +16,25 @@ const MoviesPage = () => {
     //@ts-ignore
     const [searchQuery, setSearchQuery] = useState<string>(search.query ?? "");
     const [debouncedSearchQuery] = useDebounce(searchQuery, 250);
-    const [debouncedUrlQuery] = useDebounce(searchQuery, 400);
     const [watchlistOnly, setWatchlistOnly] = useState<boolean>(search.watchlistOnly);
 
     const navigate = useNavigate();
 
 
     useEffect(() => {
-            navigate({
-                //@ts-ignore
-                search: (prev) => ({
-                    ...prev,
-                    query: debouncedUrlQuery,
-                    watchlistOnly: watchlistOnly,
-                }),
-                replace: true
-            })
-    }, [debouncedUrlQuery, watchlistOnly, navigate]);
+        const isSame = search.query === debouncedSearchQuery &&
+                       search.watchlistOnly === watchlistOnly;
+        if (isSame) return;
+        navigate({
+            //@ts-ignore
+            search: (prev) => ({
+                ...prev,
+                query: debouncedSearchQuery,
+                watchlistOnly: watchlistOnly,
+            }),
+            replace: true
+        })
+    }, [debouncedSearchQuery, watchlistOnly, navigate]);
 
     const filters: MovieFilters = {
         query: debouncedSearchQuery,
@@ -80,7 +82,7 @@ const MoviesPage = () => {
                 setWatchlistOnly={setWatchlistOnly}
             />
             <Movies
-                key={JSON.stringify(filters)}
+                // key={JSON.stringify(filters)}
                 movies={data?.pages.flat() || []}
             />
             {hasNextPage && (

@@ -4,7 +4,7 @@ import { MovieSummaryPublic } from "@/client";
 import MovieCard from "./MovieCard";
 import MoviesContainer from "./MoviesContainer";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 
 type MoviesProps = {
     movies: Array<MovieSummaryPublic>

@@ -48,9 +48,9 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
                 width={"50%"}
                 maxW={"50%"}
                 overflow={"cover"}
-                px={2}
                 flex="1"
                 height={"100%"}
+                pl={0.5}
             >
                 {showtimes.map((s) => (
                     <Box
@@ -63,7 +63,7 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
                             textOverflow={"ellipsis"}
                             overflow={"hidden"}
                         >
-                            {formatTime(s.datetime)}{" "}
+                            • {formatTime(s.datetime)}{" "}
                             <Box as="span" color="gray.500">
                                 ({s.cinema.name})
                             </Box>

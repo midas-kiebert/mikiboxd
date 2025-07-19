@@ -11,7 +11,7 @@ export default function MovieTitle({ title }: MovieTitleProps) {
             size="xl"
             // bg={"green.200"}
         >
-            {title} (Original Title)
+            {title}
         </Heading>
     );
 }

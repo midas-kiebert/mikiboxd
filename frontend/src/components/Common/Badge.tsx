@@ -20,7 +20,7 @@ const Badge = ({ text, bgColor, textColor, textSize, url, hoverColor } : BadgePr
                 _active={{ boxShadow: "none", outline: "none"}}
                 textDecoration="none"
                 width={"fit-content"}
-                mx={0.5}
+                mr={1}
                 my={0.5}
             >
                 <Box

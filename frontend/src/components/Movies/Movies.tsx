@@ -12,19 +12,14 @@ type MoviesProps = {
 
 export default function Movies( { movies } : MoviesProps) {
     // keep track of the scroll position at all times
-    const [scrollPosition, setScrollPosition] = useState(0);
-    console.log(scrollPosition)
     useEffect(() => {
         const handleScroll = () => {
-            setScrollPosition(window.scrollY);
             sessionStorage.setItem('scrollPosition', window.scrollY.toString())
         };
 
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
-
-
 
     const initialOffset = sessionStorage.getItem('scrollPosition')
                         ? parseInt(sessionStorage.getItem('scrollPosition')!)

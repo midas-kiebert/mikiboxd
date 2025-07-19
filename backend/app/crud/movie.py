@@ -86,6 +86,26 @@ def get_last_showtime_datetime(
     return last_showtime.datetime
 
 
+def get_total_number_of_future_showtimes(
+    *,
+    session: Session,
+    movie_id: int,
+    snapshot_time: datetime = datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(
+        tzinfo=None
+    ),
+) -> int:
+    stmt = (
+        select(func.count(col(Showtime.id)))
+        .where(
+            col(Showtime.movie_id) == movie_id,
+            col(Showtime.datetime) >= snapshot_time,
+        )
+    )
+    result = session.execute(stmt)
+    total_showtimes: int = result.scalar_one_or_none() or 0
+    return total_showtimes
+
+
 def get_movies(
     *,
     session: Session,
@@ -143,6 +163,11 @@ def get_movies(
         movie.last_showtime_datetime = get_last_showtime_datetime(
             session=session,
             movie_id=movie.id
+        )
+        movie.total_showtimes = get_total_number_of_future_showtimes(
+            session=session,
+            movie_id=movie.id,
+            snapshot_time=snapshot_time
         )
     return movies
 

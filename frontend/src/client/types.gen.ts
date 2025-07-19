@@ -156,6 +156,10 @@ export type MovieSummaryPublic = {
    * Datetime of the last showtime for the movie
    */
   last_showtime_datetime?: string | null
+  /**
+   * Total number of showtimes for the movie
+   */
+  total_showtimes?: number | null
 }
 
 export type NewPassword = {

@@ -1,4 +1,4 @@
-import { Box, VStack, Text,  } from "@chakra-ui/react";
+import { Box, Text,  } from "@chakra-ui/react";
 import MovieTitle from "./MovieTitle";
 import { MovieSummaryPublic } from "@/client";
 import CinemaBadge from "../Movie/CinemaBadge";

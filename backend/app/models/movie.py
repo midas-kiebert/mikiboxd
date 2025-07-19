@@ -58,6 +58,10 @@ class MovieSummaryPublic(MovieBase):
         default=None,
         description="Datetime of the last showtime for the movie",
     )
+    total_showtimes: int | None = Field(
+        default=None,
+        description="Total number of showtimes for the movie",
+    )
 
 
 class MoviePublic(MovieBase):

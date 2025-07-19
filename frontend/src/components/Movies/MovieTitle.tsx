@@ -9,7 +9,7 @@ export default function MovieTitle({ title }: MovieTitleProps) {
         <Heading
             as="h3"
             size="xl"
-            bg={"green.200"}
+            // bg={"green.200"}
         >
             {title} (Original Title)
         </Heading>

@@ -10,6 +10,7 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
+assert config.config_file_name is not None
 fileConfig(config.config_file_name)
 
 # add your model's MetaData object here
@@ -33,7 +34,6 @@ import os
 def get_url():
     testing = os.getenv("TESTING", "false").lower() == "true"
     db_url = settings.SQLALCHEMY_DATABASE_URI_TEST if testing else settings.SQLALCHEMY_DATABASE_URI
-    print(f"\n📌 Alembic connecting to: {db_url}\n")
     return str(db_url)
 
 
@@ -66,6 +66,7 @@ def run_migrations_online():
 
     """
     configuration = config.get_section(config.config_ini_section)
+    assert configuration is not None
     configuration["sqlalchemy.url"] = get_url()
     connectable = engine_from_config(
         configuration,

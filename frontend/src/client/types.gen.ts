@@ -148,6 +148,18 @@ export type MovieSummaryPublic = {
    * List of showtimes associated with the movie
    */
   showtimes?: Array<ShowtimeInMoviePublic>
+  /**
+   * List of cinemas where the movie is showing
+   */
+  cinemas?: Array<CinemaPublic>
+  /**
+   * Datetime of the last showtime for the movie
+   */
+  last_showtime_datetime?: string | null
+  /**
+   * Total number of showtimes for the movie
+   */
+  total_showtimes?: number | null
 }
 
 export type NewPassword = {

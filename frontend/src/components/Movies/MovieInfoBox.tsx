@@ -62,6 +62,7 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
                 height={"100%"}
                 pl={0.5}
             >
+
                 {showtimes.map((s) => (
                     <Box
                         maxH={"2em"}

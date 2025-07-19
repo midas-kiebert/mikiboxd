@@ -1,5 +1,4 @@
 import { createFileRoute, useSearch, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import Movies from "@/components/Movies/Movies";
 import { useState, useEffect, useRef } from "react";
 import SearchBar from "@/components/Movies/SearchBar";
@@ -19,12 +18,6 @@ const MoviesPage = () => {
     const [debouncedSearchQuery] = useDebounce(searchQuery, 250);
     const [debouncedUrlQuery] = useDebounce(searchQuery, 400);
     const [watchlistOnly, setWatchlistOnly] = useState<boolean>(search.watchlistOnly);
-
-    const queryClient = useQueryClient();
-    useEffect(() => {
-        queryClient.removeQueries({ queryKey: ["movies"] });
-      }, [watchlistOnly, debouncedSearchQuery]);
-
 
     const navigate = useNavigate();
 

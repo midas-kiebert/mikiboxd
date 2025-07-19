@@ -152,6 +152,10 @@ export type MovieSummaryPublic = {
    * List of cinemas where the movie is showing
    */
   cinemas?: Array<CinemaPublic>
+  /**
+   * Datetime of the last showtime for the movie
+   */
+  last_showtime_datetime?: string | null
 }
 
 export type NewPassword = {

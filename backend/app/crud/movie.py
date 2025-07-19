@@ -66,6 +66,26 @@ def get_cinemas_for_movie(
     return cinemas_public
 
 
+def get_last_showtime_datetime(
+    *,
+    session: Session,
+    movie_id: int
+) -> datetime | None:
+    stmt = (
+        select(Showtime)
+        .where(col(Showtime.movie_id) == movie_id)
+        .order_by(col(Showtime.datetime).desc())
+        .limit(1)
+    )
+    result = session.execute(stmt)
+    last_showtime: Showtime | None = result.scalars().first()
+
+    if last_showtime is None:
+        return None
+
+    return last_showtime.datetime
+
+
 def get_movies(
     *,
     session: Session,
@@ -111,10 +131,18 @@ def get_movies(
 
     for movie in movies:
         movie.showtimes = get_first_n_showtimes(
-            session=session, movie_id=movie.id, n=showtime_limit
+            session=session,
+            movie_id=movie.id,
+            n=showtime_limit
         )
         movie.cinemas = get_cinemas_for_movie(
-            session=session, movie_id=movie.id, snapshot_time=snapshot_time
+            session=session,
+            movie_id=movie.id,
+            snapshot_time=snapshot_time
+        )
+        movie.last_showtime_datetime = get_last_showtime_datetime(
+            session=session,
+            movie_id=movie.id
         )
     return movies
 

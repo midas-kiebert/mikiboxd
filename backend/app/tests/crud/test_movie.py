@@ -91,3 +91,51 @@ def test_get_movie_search_watchlist_only(
     assert (
         len(result_4) == 0
     ), "Expected no movies in the result when watchlist_only is True and query is 'Seven Samurai'"
+
+
+def test_get_cinemas_for_movie(
+    *,
+    db_transaction: Session,
+    movie_factory,
+    cinema_factory,
+    city_factory,
+    showtime_factory,
+):
+    city: City = city_factory()
+    cinema: Cinema = cinema_factory(city_id=city.id)
+    cinema_2: Cinema = cinema_factory(city_id=city.id)
+    movie: Movie = movie_factory()
+
+    # Add showtimes for the movie
+    showtime_factory(
+        movie_id=movie.id,
+        cinema_id=cinema.id,
+    )
+
+    # add past showtime to ensure it is not included
+    showtime_factory(
+        movie_id=movie.id,
+        cinema_id=cinema_2.id,
+        dt="2023-01-01T00:00:00Z",  # Past date
+    )
+
+    cinemas = crud.get_cinemas_for_movie(
+        session=db_transaction,
+        movie_id=movie.id,
+    )
+
+    assert len(cinemas) == 1, "Expected one cinema for the movie"
+    assert cinemas[0].id == cinema.id, "Expected the returned cinema to match the created one"
+
+    # add another showtime to cinema_2
+    showtime_factory(
+        movie_id=movie.id,
+        cinema_id=cinema_2.id,
+    )
+
+    cinemas = crud.get_cinemas_for_movie(
+        session=db_transaction,
+        movie_id=movie.id,
+    )
+
+    assert len(cinemas) == 2, "Expected two cinemas for the movie after adding another showtime"

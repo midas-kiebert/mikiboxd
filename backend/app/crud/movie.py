@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col
 
 from app.models import (
+    Cinema,
     Movie,
     MovieCreate,
     MoviePublic,
@@ -25,6 +26,7 @@ __all__ = [
     "get_movies",
     "get_movies_without_letterboxd_slug",
     "update_movie",
+    "get_cinemas_for_movie",
 ]
 
 
@@ -85,6 +87,26 @@ def get_movies(
             session=session, movie=movie, n=showtime_limit
         )
     return movies
+
+
+def get_cinemas_for_movie(
+    *,
+    session: Session,
+    movie_id: int,
+    snapshot_time: datetime = datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None)
+) -> list[Cinema]:
+    stmt = (
+        select(Cinema)
+        .join(Showtime, col(Showtime.cinema_id) == col(Cinema.id))
+        .where(
+            col(Showtime.movie_id) == movie_id,
+            col(Showtime.datetime) >= snapshot_time
+        )
+        .distinct()
+    )
+    result = session.execute(stmt)
+    cinemas: list[Cinema] = list(result.scalars().all())
+    return cinemas
 
 
 def get_movie_by_id(*, session: Session, id: int, user_id: UUID) -> MoviePublic:

@@ -23,6 +23,7 @@ jobs:
       EMAILS_FROM_EMAIL: ${{ secrets.EMAILS_FROM_EMAIL }}
       POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
       POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+      POSTGRES_PORT: 5432
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
@@ -35,6 +36,7 @@ jobs:
       POSTGRES_TESTINGPASSWORD: changethis
       DOCKER_IMAGE_BACKEND: backend
       DOCKER_IMAGE_FRONTEND: frontend
+      BACKEND_CORS_ORIGINS: "https://mi-ki.nl,https://www.mi-ki.nl,https://api.mi-ki.nl,https://staging.mi-ki.nl"
       # SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
     steps:
       - name: Checkout

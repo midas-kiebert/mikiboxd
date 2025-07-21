@@ -1,17 +1,20 @@
-import yaml
 from pathlib import Path
+
+import yaml
+
 from app import crud
 from app.api.deps import get_db_context
-from app.models import CityCreate, CinemaCreate
+from app.models import CinemaCreate, CityCreate
 
+script_dir = Path(__file__).resolve().parent
+data_dir = script_dir.parent / "data"
+print(f"Backend root path: {data_dir}")
 
-backend_root = Path(__file__).parent.parent
-
-cities_yaml_path = backend_root / "data" / "cities.yaml"
-cinemas_yaml_path = backend_root / "data" / "cinemas.yaml"
+cities_yaml_path = data_dir / "cities.yaml"
+cinemas_yaml_path = data_dir / "cinemas.yaml"
 
 def load_yaml_data(file_path: Path) -> list[dict]:
-    with open(file_path, 'r', encoding='utf-8') as file:
+    with open(file_path, encoding='utf-8') as file:
         return yaml.safe_load(file)
 
 def seed_cities_and_cinemas():

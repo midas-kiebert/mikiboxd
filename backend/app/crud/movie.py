@@ -40,7 +40,6 @@ def create_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
         session.refresh(db_obj)
     except IntegrityError:
         session.rollback()
-        raise ValueError("Movie with this ID already exists or invalid data.")
     return db_obj
 
 

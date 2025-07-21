@@ -34,6 +34,7 @@ dependencies = [
     "sqlalchemy-utils",
     "pre-commit",
     "pytest-mock",
+    "apscheduler",
 ]
 
 [tool.uv]

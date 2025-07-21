@@ -39,5 +39,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Create empty .env
+        run: touch .env
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging build
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach

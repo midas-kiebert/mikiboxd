@@ -15,7 +15,7 @@ export default function MoviesContainer({ children }: MoviesContainerProps) {
       py={6}
     >
       <Heading as="h1" mb={6} fontSize="2xl" textAlign="center">
-        Movies
+        Movies (staging works!)
       </Heading>
       {children}
     </Box>

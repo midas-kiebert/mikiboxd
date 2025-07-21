@@ -164,6 +164,16 @@ services:
 
       # Enable redirection for HTTP and HTTPS
       - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.middlewares=https-redirect
+
+      # Root domain
+      - traefik.http.routers.${STACK_NAME?Variable not set}-root-http.rule=Host(`${DOMAIN?Variable not set}`) || Host(`www.${DOMAIN?Variable not set}`)
+      - traefik.http.routers.${STACK_NAME?Variable not set}-root-http.entrypoints=http
+      - traefik.http.routers.${STACK_NAME?Variable not set}-root-http.middlewares=https-redirect
+
+      - traefik.http.routers.${STACK_NAME?Variable not set}-root-https.rule=Host(`${DOMAIN?Variable not set}`) || Host(`www.${DOMAIN?Variable not set}`)
+      - traefik.http.routers.${STACK_NAME?Variable not set}-root-https.entrypoints=https
+      - traefik.http.routers.${STACK_NAME?Variable not set}-root-https.tls=true
+      - traefik.http.routers.${STACK_NAME?Variable not set}-root-https.tls.certresolver=le
 volumes:
   app-db-data:
 

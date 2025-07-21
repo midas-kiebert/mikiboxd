@@ -11,3 +11,4 @@ alembic upgrade head
 
 # Create initial data in DB
 python app/initial_data.py
+python scripts/seed-cities-and-cinemas.py

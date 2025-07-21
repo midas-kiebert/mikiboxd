@@ -1,7 +1,7 @@
 from zoneinfo import ZoneInfo
 
-from apscheduler.schedulers.background import (
-    BackgroundScheduler,  # type: ignore[import-untyped]
+from apscheduler.schedulers.background import (  # type: ignore[import-untyped]
+    BackgroundScheduler,
 )
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 

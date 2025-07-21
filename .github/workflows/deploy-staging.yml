@@ -16,6 +16,7 @@ jobs:
       - name: Generate .env for Docker Compose
         run: |
           cat <<EOF > .env
+          PROJECT_NAME="MikiBoxd"
           ENVIRONMENT=staging
           DOMAIN=staging.mi-ki.nl
           STACK_NAME=mikiboxd-staging

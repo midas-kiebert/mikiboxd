@@ -16,6 +16,6 @@ def scrape_data():
 
 scheduler.add_job(
     func=scrape_data,
-    trigger=CronTrigger(hour=10, minute=20, timezone=ZoneInfo("Europe/Amsterdam")),
+    trigger=CronTrigger(hour=10, minute=37, timezone=ZoneInfo("Europe/Amsterdam")),
     id="nightly_scrape",
 )

@@ -1,21 +1,22 @@
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import (  # type: ignore[import-untyped]
-    BackgroundScheduler,
+    BlockingScheduler,
 )
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
-
-scheduler = BackgroundScheduler()
 
 
 def scrape_data():
     from app.scraping.runner import run
-
+    print("Starting nightly scrape of cinema data...")
     run()
 
 
-scheduler.add_job(
-    func=scrape_data,
-    trigger=CronTrigger(hour=10, minute=37, timezone=ZoneInfo("Europe/Amsterdam")),
-    id="nightly_scrape",
-)
+if __name__ == "__main__":
+    scheduler = BlockingScheduler()
+    scheduler.add_job(
+        func=scrape_data,
+        trigger=CronTrigger(hour=13, minute=10, timezone=ZoneInfo("Europe/Amsterdam")),
+        id="nightly_scrape",
+    )
+    scheduler.start()

@@ -16,7 +16,7 @@ if __name__ == "__main__":
     scheduler = BlockingScheduler()
     scheduler.add_job(
         func=scrape_data,
-        trigger=CronTrigger(hour=13, minute=10, timezone=ZoneInfo("Europe/Amsterdam")),
+        trigger=CronTrigger(hour=13, minute=15, timezone=ZoneInfo("Europe/Amsterdam")),
         id="nightly_scrape",
     )
     scheduler.start()

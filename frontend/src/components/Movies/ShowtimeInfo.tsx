@@ -1,4 +1,4 @@
-import { Box, Text } from "@chakra-ui/react";
+import { Box } from "@chakra-ui/react";
 import ShowtimeList from "@/components/Movies/ShowtimeList";
 import type { ShowtimeInMoviePublic } from "@/client";
 import MoreShowtimes from "./MoreShowtimes";

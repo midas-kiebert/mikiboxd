@@ -1,6 +1,4 @@
 import {Box, Text} from "@chakra-ui/react";
-import type { ShowtimeInMoviePublic } from "@/client";
-
 
 function formatDate(datetime: string): string {
     return new Date(datetime).toLocaleDateString([], {

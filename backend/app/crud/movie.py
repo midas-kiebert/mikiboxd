@@ -197,6 +197,12 @@ def get_movies(
         movie.total_showtimes = get_total_number_of_future_showtimes(
             session=session, movie_id=movie.id, snapshot_time=snapshot_time
         )
+        movie.friends_going = get_friends_for_movie(
+            session=session,
+            movie_id=movie.id,
+            snapshot_time=snapshot_time,
+            current_user=user_id,
+        )
     return movies
 
 

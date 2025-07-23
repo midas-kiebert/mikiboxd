@@ -6,6 +6,7 @@ from sqlmodel import Field, Relationship, SQLModel
 if TYPE_CHECKING:
     from .cinema import CinemaPublic
     from .showtime import Showtime, ShowtimeInMoviePublic
+    from .user import UserPublic
 
 
 # Shared properties
@@ -62,6 +63,11 @@ class MovieSummaryPublic(MovieBase):
         default=None,
         description="Total number of showtimes for the movie",
     )
+    friends_going: list["UserPublic"] = Field(
+        default=[],
+        description="List of friends who are going to see the movie",
+    )
+
 
 
 class MoviePublic(MovieBase):

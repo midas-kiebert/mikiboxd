@@ -7,11 +7,14 @@ type MovieTitleProps = {
 export default function MovieTitle({ title }: MovieTitleProps) {
     return (
         <Box
-            minW="fit-content"
+        maxW={"50%"}
         >
             <Heading
                 as="h3"
                 size="xl"
+                whiteSpace={"nowrap"}
+                overflow={"hidden"}
+                textOverflow={"ellipsis"}
                 // bg={"green.200"}
             >
                 {title}

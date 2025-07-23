@@ -19,10 +19,11 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
     const friends_going = movie.friends_going || [];
     return (
         <Flex
-            mx={8}
+            ml={8}
             // bg="blue.200"
             flex="1"
             flexDirection="column"
+            minW={0}
         >
             <Flex gap={"2"} align="center">
                 <MovieTitle title={movie.title} />

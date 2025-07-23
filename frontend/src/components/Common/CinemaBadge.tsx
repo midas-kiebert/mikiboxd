@@ -17,7 +17,7 @@ const CinemaBadge = ({ cinema } : CinemaBadgeProps) => {
             m={0.5}
             variant={"surface"}
             colorPalette={color}
-            size={"md"}
+            size={"sm"}
         >
             {name}
         </Badge>

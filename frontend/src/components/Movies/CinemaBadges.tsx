@@ -1,4 +1,4 @@
-import { Box } from "@chakra-ui/react";
+import { Box, Badge } from "@chakra-ui/react";
 import CinemaBadge from "@/components/Common/CinemaBadge";
 import type { CinemaPublic } from "@/client";
 

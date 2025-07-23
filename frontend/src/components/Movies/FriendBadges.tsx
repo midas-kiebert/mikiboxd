@@ -1,25 +1,23 @@
-import {Box} from "@chakra-ui/react";
-import FriendBadge from "@/components/Common/FriendBadge";
+import { Box, Badge } from "@chakra-ui/react";
 import type {UserPublic} from "@/client";
 
 type FriendBadgesProps = {
     friends: UserPublic[];
 };
 
+
 const FriendBadges = ({friends}: FriendBadgesProps) => {
     return (
         <Box>
             {friends.map((friend) => (
-                <FriendBadge
+                <Badge
                     key={friend.id}
-                    display_name={friend.display_name!}
-                    url={"@/"}
-                />
+                    colorPalette={"gray"}
+                    variant={"solid"}
+                >
+                    {friend.display_name}
+                </Badge>
             ))}
-            <FriendBadge
-                display_name={"friends going"}
-                url={"@/"}
-            />
         </Box>
     );
 }

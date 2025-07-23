@@ -2,6 +2,7 @@ import { Box, Text,  } from "@chakra-ui/react";
 import MovieTitle from "./MovieTitle";
 import { MovieSummaryPublic } from "@/client";
 import CinemaBadge from "../Movie/CinemaBadge";
+import FriendBadge from "@/components/Common/FriendBadge"
 
 
 
@@ -34,6 +35,7 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
     const cinemas = movie.cinemas || [];
     const lastShowtime = movie.last_showtime_datetime || null;
     const total_showtimes = movie.total_showtimes || 0;
+    const friends_going = movie.friends_going || [];
     return (
         <Box
             mx={8}
@@ -54,50 +56,64 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
                 ))}
             </Box>
             <Box
-                // bg="orange.100"
-                width={"50%"}
-                maxW={"50%"}
-                overflow={"cover"}
-                flex="1"
-                height={"100%"}
-                pl={0.5}
+                display={"flex"}
             >
+                <Box
+                    bg="orange.100"
+                    width={"50%"}
+                    maxW={"50%"}
+                    overflow={"cover"}
+                    flex="1"
+                    // display={"flex"}
+                    height={"100%"}
+                    pl={0.5}
+                >
 
-                {showtimes.map((s) => (
+                    {showtimes.map((s) => (
+                        <Box
+                            maxH={"2em"}
+                            key={s.id}
+                        >
+                            <Text
+                                fontSize="sm"
+                                whiteSpace={"nowrap"}
+                                textOverflow={"ellipsis"}
+                                overflow={"hidden"}
+                            >
+                                • {formatTime(s.datetime)}{" "}
+                                <Box as="span" color="gray.500">
+                                    ({s.cinema.name})
+                                </Box>
+                            </Text>
+                        </Box>
+                    ))}
                     <Box
                         maxH={"2em"}
-                        key={s.id}
                     >
                         <Text
-                            fontSize="sm"
-                            whiteSpace={"nowrap"}
-                            textOverflow={"ellipsis"}
-                            overflow={"hidden"}
+                            color={"gray.500"}
                         >
-                            • {formatTime(s.datetime)}{" "}
-                            <Box as="span" color="gray.500">
-                                ({s.cinema.name})
-                            </Box>
+                            {lastShowtime && total_showtimes > showtimes.length ? (
+                                <>
+                                    +{total_showtimes - showtimes.length}
+                                    {" more (last on "}
+                                    {formatDate(lastShowtime)}
+                                    {")"}
+                                </>
+                            ) : (
+                                ""
+                            )}
                         </Text>
                     </Box>
-                ))}
-                <Box
-                    maxH={"2em"}
-                >
-                    <Text
-                        color={"gray.500"}
-                    >
-                        {lastShowtime && total_showtimes > showtimes.length ? (
-                            <>
-                                +{total_showtimes - showtimes.length}
-                                {" more (last on "}
-                                {formatDate(lastShowtime)}
-                                {")"}
-                            </>
-                        ) : (
-                            ""
-                        )}
-                    </Text>
+                </Box>
+                <Box>
+                    { friends_going.map((friend) => (
+                        <FriendBadge
+                            key={friend.id}
+                            display_name={friend.display_name || ""}
+                            url={`/@`}
+                        />
+                    ))}
                 </Box>
             </Box>
         </Box>

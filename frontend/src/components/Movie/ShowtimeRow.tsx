@@ -1,5 +1,5 @@
 import { Flex, Text, HStack, Button, Skeleton } from "@chakra-ui/react";
-import CinemaBadge from "./CinemaBadge";
+import CinemaBadge from "../Common/CinemaBadge";
 import FriendBadge from "../Common/FriendBadge"
 
 import type { ShowtimeInMoviePublic } from "@/client";

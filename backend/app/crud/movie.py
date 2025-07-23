@@ -10,15 +10,18 @@ from sqlmodel import Session, col
 from app.models import (
     Cinema,
     CinemaPublic,
+    Friendship,
     Movie,
     MovieCreate,
     MoviePublic,
     MovieSummaryPublic,
     MovieUpdate,
     Showtime,
+    ShowtimeSelection,
+    User,
+    UserPublic,
     WatchlistSelection,
 )
-from app.models.utils import column
 
 from .showtime import get_first_n_showtimes, get_split_showtimes_for_movie
 
@@ -29,6 +32,7 @@ __all__ = [
     "get_movies_without_letterboxd_slug",
     "update_movie",
     "get_cinemas_for_movie",
+    "get_friends_for_movie",
 ]
 
 
@@ -63,6 +67,45 @@ def get_cinemas_for_movie(
     cinemas: list[Cinema] = list(result.scalars().all())
     cinemas_public = [CinemaPublic.model_validate(cinema) for cinema in cinemas]
     return cinemas_public
+
+
+def get_friends_for_movie(
+    *,
+    session: Session,
+    movie_id: int,
+    snapshot_time: datetime = datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(
+        tzinfo=None
+    ),
+    current_user: UUID,
+) -> list[UserPublic]:
+    friend_subquery = (
+        select(col(Friendship.friend_id).label("friend_id"))
+        .where(col(Friendship.user_id) == current_user)
+        .union(
+            select(col(Friendship.user_id).label("friend_id")).where(
+                col(Friendship.friend_id) == current_user
+            )
+        )
+        .subquery()
+    )
+    assert hasattr(friend_subquery.c, "friend_id")
+    friend_id_col = col(friend_subquery.c.friend_id)
+
+    stmt = (
+        select(User)
+        .join(friend_subquery, col(User.id) == friend_id_col)
+        .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == col(User.id))
+        .join(Showtime, col(Showtime.id) == col(ShowtimeSelection.showtime_id))
+        .where(
+            col(Showtime.movie_id) == movie_id,
+            col(Showtime.datetime) >= snapshot_time,
+        )
+        .distinct()
+    )
+    result = session.execute(stmt)
+    friends: list[User] = list(result.scalars().all())
+    friends_public = [UserPublic.model_validate(friend) for friend in friends]
+    return friends_public
 
 
 def get_last_showtime_datetime(*, session: Session, movie_id: int) -> datetime | None:
@@ -114,12 +157,12 @@ def get_movies(
     stmt = select(Movie).join(
         Showtime,
         and_(
-            column(Showtime.movie_id) == column(Movie.id),
-            column(Showtime.datetime) >= snapshot_time,
+            col(Showtime.movie_id) == col(Movie.id),
+            col(Showtime.datetime) >= snapshot_time,
         ),
     )
     if query:
-        stmt = stmt.where(column(Movie.title).ilike(f"%{query}%"))
+        stmt = stmt.where(col(Movie.title).ilike(f"%{query}%"))
     if watchlist_only:
         stmt = stmt.join(
             WatchlistSelection,
@@ -129,7 +172,7 @@ def get_movies(
             ),
         )
     stmt = (
-        stmt.group_by(column(Movie.id))
+        stmt.group_by(col(Movie.id))
         .order_by(func.min(Showtime.datetime))
         .limit(limit)
         .offset(offset)
@@ -153,6 +196,12 @@ def get_movies(
         )
         movie.total_showtimes = get_total_number_of_future_showtimes(
             session=session, movie_id=movie.id, snapshot_time=snapshot_time
+        )
+        movie.friends_going = get_friends_for_movie(
+            session=session,
+            movie_id=movie.id,
+            snapshot_time=snapshot_time,
+            current_user=user_id,
         )
     return movies
 
@@ -178,7 +227,7 @@ def get_movies_without_letterboxd_slug(*, session: Session) -> Sequence[Movie]:
     """
     Retrieve all movies that do not have a Letterboxd slug.
     """
-    stmt = select(Movie).where(column(Movie.letterboxd_slug).is_(None))
+    stmt = select(Movie).where(col(Movie.letterboxd_slug).is_(None))
     result = session.execute(stmt)
     return result.scalars().all()
 

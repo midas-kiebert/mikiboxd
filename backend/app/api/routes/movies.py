@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep
-from app.models import Movie, MovieCreate, MoviePublic, MovieSummaryPublic
+from app.models import Movie, MovieCreate, MoviePublic, MovieSummaryPublic, UserPublic
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 
@@ -57,6 +57,7 @@ def read_movies(
     return movies
 
 
+@router.get("/{id}/friends", response_model=list[UserPublic])
 # KEEP AT THE BOTTOM
 @router.get("/{id}", response_model=MoviePublic)
 def read_movie(*, session: SessionDep, id: int, current_user: CurrentUser) -> Any:

@@ -11,7 +11,6 @@ export default function MoviesContainer({ children }: MoviesContainerProps) {
     <Box
       maxW={{ base: "100%", md: "80%", lg: "60%" }}
       mx="auto"
-      px={4}
       py={6}
     >
       <Heading as="h1" mb={6} fontSize="2xl" textAlign="center">

@@ -1,104 +1,104 @@
 - name: Eye
   city: Amsterdam
   cineville: true
-  badge_bg_color: "#77dbed"
+  badge_bg_color: "cyan"
   badge_text_color: "white"
   url: "https://www.eyefilm.nl"
 
 - name: LAB111
   city: Amsterdam
   cineville: true
-  badge_bg_color: "#ffc8dd"
+  badge_bg_color: "pink"
   badge_text_color: "#3200ff"
   url: "https://www.lab111.nl"
 
 - name: Kriterion
   city: Amsterdam
   cineville: true
-  badge_bg_color: "#3a3f45"
+  badge_bg_color: "purple"
   badge_text_color: "white"
   url: "https://www.kriterion.nl"
 
 - name: FilmHallen
   city: Amsterdam
   cineville: true
-  badge_bg_color: "#60b570"
+  badge_bg_color: "green"
   badge_text_color: "white"
   url: "https://www.filmhallen.nl"
 
 - name: The Movies
   city: Amsterdam
   cineville: true
-  badge_bg_color: "#e9e8e1"
+  badge_bg_color: "orange"
   badge_text_color: "#af1b0b"
   url: "https://www.themovies.nl"
 
 - name: FC Hyena
   city: Amsterdam
   cineville: true
-  badge_bg_color: "#ffb800"
+  badge_bg_color: "yellow"
   badge_text_color: "black"
   url: "https://www.fchyena.nl"
 
 - name: "De Uitkijk"
   city: Amsterdam
   cineville: true
-  badge_bg_color: "#e04625"
+  badge_bg_color: "blue"
   badge_text_color: "white"
   url: "https://www.uitkijk.nl"
 
 - name: Filmkoepel
   city: Haarlem
   cineville: true
-  badge_bg_color: "#2A2923"
+  badge_bg_color: "yellow"
   badge_text_color: "#e8d68f"
   url: "https://www.filmkoepel.nl"
 
 - name: Lido
   city: Leiden
   cineville: true
-  badge_bg_color: "#ff6a00"
+  badge_bg_color: "orange"
   badge_text_color: "white"
   url: "https://www.bioscopenleiden.nl"
 
 - name: Trianon
   city: Leiden
   cineville: true
-  badge_bg_color: "#cab57d"
+  badge_bg_color: "yellow"
   badge_text_color: "#37332f"
   url: "https://www.bioscopenleiden.nl"
 
 - name: Kijkhuis
   city: Leiden
   cineville: true
-  badge_bg_color: "#64e3c7"
+  badge_bg_color: "teal"
   badge_text_color: "#37332f"
   url: "https://www.bioscopenleiden.nl"
 
 - name: Louis Hartlooper Complex
   city: Utrecht
   cineville: true
-  badge_bg_color: "#32a44f"
+  badge_bg_color: "green"
   badge_text_color: "white"
   url: "https://www.hartlooper.nl"
 
 - name: Slachtstraat
   city: Utrecht
   cineville: true
-  badge_bg_color: "#a81f15"
+  badge_bg_color: "red"
   badge_text_color: "white"
   url: "https://www.slachtstraat.nl"
 
 - name: Springhaver
   city: Utrecht
   cineville: true
-  badge_bg_color: "#d9910d"
+  badge_bg_color: "yellow"
   badge_text_color: "white"
   url: "https://www.springhaver.nl"
 
 - name: Kino
   city: Rotterdam
   cineville: true
-  badge_bg_color: "#8eb6ff"
+  badge_bg_color: "blue"
   badge_text_color: "black"
   url: "https://www.kinorotterdam.nl"

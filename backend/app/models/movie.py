@@ -69,7 +69,6 @@ class MovieSummaryPublic(MovieBase):
     )
 
 
-
 class MoviePublic(MovieBase):
     showtimes_with_friends: list["ShowtimeInMoviePublic"] = Field(
         default=[],

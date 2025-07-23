@@ -56,9 +56,8 @@ def read_movies(
     )
     return movies
 
+
 @router.get("/{id}/friends", response_model=list[UserPublic])
-
-
 # KEEP AT THE BOTTOM
 @router.get("/{id}", response_model=MoviePublic)
 def read_movie(*, session: SessionDep, id: int, current_user: CurrentUser) -> Any:

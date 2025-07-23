@@ -46,6 +46,8 @@ import type {
   MoviesReadMoviesResponse,
   MoviesReadMovieData,
   MoviesReadMovieResponse,
+  MoviesReadMovie1Data,
+  MoviesReadMovie1Response,
   PrivateCreateUserData,
   PrivateCreateUserResponse,
   ShowtimesCreateShowtimeData,
@@ -586,6 +588,29 @@ export class MoviesService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/movies/{id}",
+      path: {
+        id: data.id,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Read Movie
+   * Get movie by TMDB ID.
+   * @param data The data for the request.
+   * @param data.id
+   * @returns UserPublic Successful Response
+   * @throws ApiError
+   */
+  public static readMovie1(
+    data: MoviesReadMovie1Data,
+  ): CancelablePromise<MoviesReadMovie1Response> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/movies/{id}/friends",
       path: {
         id: data.id,
       },

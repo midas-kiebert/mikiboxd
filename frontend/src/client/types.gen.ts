@@ -160,6 +160,10 @@ export type MovieSummaryPublic = {
    * Total number of showtimes for the movie
    */
   total_showtimes?: number | null
+  /**
+   * List of friends who are going to see the movie
+   */
+  friends_going?: Array<UserPublic>
 }
 
 export type NewPassword = {
@@ -469,6 +473,12 @@ export type MoviesReadMovieData = {
 }
 
 export type MoviesReadMovieResponse = MoviePublic
+
+export type MoviesReadMovie1Data = {
+  id: number
+}
+
+export type MoviesReadMovie1Response = Array<UserPublic>
 
 export type PrivateCreateUserData = {
   requestBody: PrivateUserCreate

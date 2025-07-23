@@ -1,4 +1,4 @@
-import { Heading } from "@chakra-ui/react";
+import { Heading, Box } from "@chakra-ui/react";
 
 type MovieTitleProps = {
     title: string;
@@ -6,12 +6,19 @@ type MovieTitleProps = {
 
 export default function MovieTitle({ title }: MovieTitleProps) {
     return (
-        <Heading
-            as="h3"
-            size="xl"
-            // bg={"green.200"}
+        <Box
+        maxW={"50%"}
         >
-            {title}
-        </Heading>
+            <Heading
+                as="h3"
+                size="xl"
+                whiteSpace={"nowrap"}
+                overflow={"hidden"}
+                textOverflow={"ellipsis"}
+                // bg={"green.200"}
+            >
+                {title}
+            </Heading>
+        </Box>
     );
 }

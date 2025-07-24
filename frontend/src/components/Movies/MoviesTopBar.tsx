@@ -1,39 +1,31 @@
-import { Box } from "@chakra-ui/react";
 import SearchBar from "./SearchBar";
 import WatchlistToggle from "./WatchlistToggle";
+import TopBar from "../Common/TopBar";
 
-type TopBarProps = {
+type MoviesTopBarProps = {
     searchQuery: string;
     setSearchQuery: (query: string) => void;
     watchlistOnly: boolean;
     setWatchlistOnly: (value: boolean) => void;
+    sideBarWidth?: string;
 };
 
-const TopBar = ({
+const MoviesTopBar = ({
     searchQuery,
     setSearchQuery,
     watchlistOnly,
     setWatchlistOnly,
-}: TopBarProps) => {
+
+}: MoviesTopBarProps) => {
     return (
-        <Box
-            position="sticky"
-            top="0"
-            zIndex="sticky"
-            bg="white"
-            px={4}
-            py={2}
-            boxShadow="sm"
-            display="flex"
-            gap={4}
-        >
+        <TopBar>
             <SearchBar query={searchQuery} setQuery={setSearchQuery}/>
             <WatchlistToggle
                 watchlistOnly={watchlistOnly}
                 setWatchlistOnly={setWatchlistOnly}
             />
-        </Box>
+        </TopBar>
     );
 }
 
-export default TopBar;
+export default MoviesTopBar;

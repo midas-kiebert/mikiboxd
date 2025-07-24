@@ -5,8 +5,10 @@ import MovieTitle from "@/components/Movie/MovieTitle";
 import MoviePoster from "@/components/Movie/MoviePoster";
 import MovieLinks from "@/components/Movie/MovieLinks";
 import { Showtimes } from "@/components/Movie/Showtimes";
-import { Box } from "@chakra-ui/react";
-
+import { Flex } from "@chakra-ui/react";
+import Sidebar from "@/components/Common/Sidebar";
+import TopBar from "@/components/Common/TopBar";
+import Page from "@/components/Common/Page";
 
 const MoviePage = () => {
     const params = Route.useParams();
@@ -25,18 +27,24 @@ const MoviePage = () => {
     const letterboxdSlug = data?.letterboxd_slug || "";
 
     return (
-        <Box px={10} py={4}>
-            <MovieTitle title={data?.title || ""} />
-            <MoviePoster
-                posterUrl={posterUrl}
-            />
-            <MovieLinks
-                // imdb="https://www.imdb.com/title/tt1234567/"
-                letterboxd={`https://letterboxd.com/film/${letterboxdSlug}`}
-            />
-            <Showtimes showtimes={showtimesWithFriends} />
-            <Showtimes showtimes={showtimesNoFriends} />
-        </Box>
+        <>
+            <Flex>
+                <Sidebar/>
+                <TopBar/>
+            </Flex>
+            <Page>
+                <MovieTitle title={data?.title || ""} />
+                <MoviePoster
+                    posterUrl={posterUrl}
+                />
+                <MovieLinks
+                    // imdb="https://www.imdb.com/title/tt1234567/"
+                    letterboxd={`https://letterboxd.com/film/${letterboxdSlug}`}
+                />
+                <Showtimes showtimes={showtimesWithFriends} />
+                <Showtimes showtimes={showtimesNoFriends} />
+            </Page>
+        </>
     );
 };
 

@@ -1,10 +1,9 @@
 import { createFileRoute, useSearch, useNavigate } from "@tanstack/react-router";
 import Movies from "@/components/Movies/Movies";
 import { useState, useEffect, useRef } from "react";
-import SearchBar from "@/components/Movies/SearchBar";
-import WatchlistToggle from "@/components/Movies/WatchlistToggle";
 import { useFetchMovies } from "@/hooks/useFetchMovies";
 import { useDebounce } from "use-debounce";
+import TopBar from "@/components/Movies/TopBar";
 import type { MovieFilters } from "@/hooks/useFetchMovies";
 
 
@@ -76,13 +75,13 @@ const MoviesPage = () => {
 
     return (
         <>
-            <SearchBar query={searchQuery} setQuery={setSearchQuery}/>
-            <WatchlistToggle
+            <TopBar
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
                 watchlistOnly={watchlistOnly}
                 setWatchlistOnly={setWatchlistOnly}
             />
             <Movies
-                // key={JSON.stringify(filters)}
                 movies={data?.pages.flat() || []}
             />
             {hasNextPage && (

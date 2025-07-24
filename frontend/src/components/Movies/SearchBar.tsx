@@ -1,4 +1,5 @@
-import { Input, Box } from "@chakra-ui/react";
+import { Input, InputGroup } from "@chakra-ui/react";
+import { FaSearch } from "react-icons/fa";
 
 type SearchBarProps = {
   query: string;
@@ -7,26 +8,22 @@ type SearchBarProps = {
 
 export default function SearchBar({ query, setQuery }: SearchBarProps) {
   return (
-    <Box
-      position="sticky"
-      top="0"
-      zIndex="sticky"
-      bg="white"
-      px={4}
-      py={2}
-      boxShadow="sm"
-    >
-      <Input
-        type="text"
-        placeholder="Search for movies..."
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        bg="gray.50"
-        _hover={{ bg: "gray.100" }}
-        _focus={{ bg: "white", borderColor: "teal.400", boxShadow: "0 0 0 1px teal" }}
-        borderRadius="md"
-        size="md"
-      />
-    </Box>
+      <InputGroup
+        maxW={"30%"}
+        startElement={<FaSearch/>}
+        startElementProps={{ color: "gray.500", fontSize: "1.2em" }}
+      >
+        <Input
+          type="text"
+          placeholder="Search for movies..."
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          bg="gray.50"
+          _hover={{ bg: "gray.100" }}
+          _focus={{ bg: "white", borderColor: "teal.400", boxShadow: "0 0 0 1px teal" }}
+          borderRadius="md"
+          size="md"
+        />
+      </InputGroup>
   );
 }

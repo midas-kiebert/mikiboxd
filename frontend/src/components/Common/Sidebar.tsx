@@ -15,6 +15,8 @@ import {
   DrawerTrigger,
 } from "../ui/drawer"
 import SidebarItems from "./SidebarItems"
+import { SIDEBAR_WIDTH } from "@/constants"
+
 
 const Sidebar = () => {
   const queryClient = useQueryClient()
@@ -79,10 +81,11 @@ const Sidebar = () => {
 
       <Box
         display={{ base: "none", md: "flex" }}
-        // position="sticky"
+        position="fixed"
         bg="bg.subtle"
         top={0}
-        minW="xs"
+        // minW="xs"
+        width={ SIDEBAR_WIDTH }
         h="100vh"
         p={4}
       >

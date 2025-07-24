@@ -1,7 +1,8 @@
-import { Box, Badge, Popover, Portal, Flex } from "@chakra-ui/react";
+import { Box, Flex } from "@chakra-ui/react";
 import CinemaBadge from "@/components/Common/CinemaBadge";
 import type { CinemaPublic } from "@/client";
 import { useRef, useState, useLayoutEffect } from "react";
+import MoreCinemas from "./MoreCinemas";
 
 type CinemaBadgesProps = {
     cinemas: CinemaPublic[];
@@ -58,8 +59,6 @@ const CinemaBadges = ({ cinemas }: CinemaBadgesProps) => {
         }
     }, [cinemas]);
 
-    const hidden = cinemas.length - visibleCount;
-
     return (
         <Box overflowX="hidden" flex={"1"} position="relative">
         <Flex
@@ -80,37 +79,12 @@ const CinemaBadges = ({ cinemas }: CinemaBadgesProps) => {
                     />
                 </Box>
             ))}
-            <Popover.Root>
-                <Popover.Trigger asChild>
-                    <Badge
-                        m={0.5}
-                        variant={"surface"}
-                        colorPalette={"grey"}
-                        size={"sm"}
-                        position={"absolute"}
-                        left={`${morePos}px`}
-                        ref={moreRef}
-                        visibility={hidden > 0 ? "visible" : "hidden"}
-                    >
-                        {`+${hidden} more`}
-                    </Badge>
-                </Popover.Trigger>
-                <Portal>
-                    <Popover.Positioner>
-                        <Popover.Content width={"max-content"}>
-                            <Popover.Arrow/>
-                            <Popover.Body p={1.5}>
-                                {cinemas.slice(visibleCount).map((cinema) => (
-                                    <CinemaBadge
-                                        key={cinema.id}
-                                        cinema={cinema}
-                                    />
-                                ))}
-                            </Popover.Body>
-                        </Popover.Content>
-                    </Popover.Positioner>
-                </Portal>
-            </Popover.Root>
+            <MoreCinemas
+                cinemas={cinemas}
+                visibleCount={visibleCount}
+                morePos={morePos}
+                moreRef={moreRef}
+            />
         </Flex>
         </Box>
     );

@@ -97,9 +97,14 @@ const CinemaBadges = ({ cinemas }: CinemaBadgesProps) => {
                 </Popover.Trigger>
                 <Portal>
                     <Popover.Positioner>
-                        <Popover.Content width={"max-content"}>
+                        <Popover.Content >
                             <Popover.Arrow/>
-                            <Popover.Body p={1.5}>
+                            <Popover.Body
+                                p={1.5}
+                                display="flex"
+                                flexWrap="wrap"
+                                justifyContent={"center"}
+                            >
                                 {cinemas.slice(visibleCount).map((cinema) => (
                                     <CinemaBadge
                                         key={cinema.id}

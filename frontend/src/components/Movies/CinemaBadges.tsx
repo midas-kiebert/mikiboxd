@@ -97,7 +97,7 @@ const CinemaBadges = ({ cinemas }: CinemaBadgesProps) => {
                 </Popover.Trigger>
                 <Portal>
                     <Popover.Positioner>
-                        <Popover.Content >
+                        <Popover.Content maxW={"max-content"} >
                             <Popover.Arrow/>
                             <Popover.Body
                                 p={1.5}

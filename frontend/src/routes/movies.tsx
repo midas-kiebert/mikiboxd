@@ -1,12 +1,13 @@
 import { createFileRoute, useSearch, useNavigate } from "@tanstack/react-router";
 import Movies from "@/components/Movies/Movies";
 import { useState, useEffect, useRef } from "react";
-import SearchBar from "@/components/Movies/SearchBar";
-import WatchlistToggle from "@/components/Movies/WatchlistToggle";
 import { useFetchMovies } from "@/hooks/useFetchMovies";
 import { useDebounce } from "use-debounce";
+import MoviesTopBar from "@/components/Movies/MoviesTopBar";
 import type { MovieFilters } from "@/hooks/useFetchMovies";
-
+import Sidebar from "@/components/Common/Sidebar";
+import { Flex } from "@chakra-ui/react";
+import Page from "@/components/Common/Page";
 
 const MoviesPage = () => {
     const limit = 10;
@@ -74,25 +75,31 @@ const MoviesPage = () => {
         };
     }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+
     return (
         <>
-            <SearchBar query={searchQuery} setQuery={setSearchQuery}/>
-            <WatchlistToggle
-                watchlistOnly={watchlistOnly}
-                setWatchlistOnly={setWatchlistOnly}
-            />
-            <Movies
-                // key={JSON.stringify(filters)}
-                movies={data?.pages.flat() || []}
-            />
-            {hasNextPage && (
-                <div ref={loadMoreRef} style={{ height: "1px" }} />
-            )}
-            {isFetchingNextPage && (
-                <div style={{ textAlign: "center", padding: "20px" }}>
-                    Loading more movies...
-                </div>
-            )}
+            <Flex>
+                <Sidebar/>
+                <MoviesTopBar
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                    watchlistOnly={watchlistOnly}
+                    setWatchlistOnly={setWatchlistOnly}
+                />
+            </Flex>
+            <Page>
+                <Movies
+                    movies={data?.pages.flat() || []}
+                />
+                {hasNextPage && (
+                    <div ref={loadMoreRef} style={{ height: "1px" }} />
+                )}
+                {isFetchingNextPage && (
+                    <div style={{ textAlign: "center", padding: "20px" }}>
+                        Loading more movies...
+                    </div>
+                )}
+            </Page>
         </>
     );
 };

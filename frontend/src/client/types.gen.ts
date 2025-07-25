@@ -328,6 +328,33 @@ export type UserUpdateMe = {
   email?: string | null
 }
 
+export type UserWithFriendInfoPublic = {
+  email: string
+  /**
+   * Indicates if the user is active
+   */
+  is_active?: boolean
+  /**
+   * Indicates if the user has superuser privileges
+   */
+  is_superuser?: boolean
+  display_name?: string | null
+  letterboxd_username?: string | null
+  id: string
+  /**
+   * Indicates if the user is a friend
+   */
+  is_friend?: boolean
+  /**
+   * Indicates if the user has sent you a friendship request
+   */
+  sent_request?: boolean
+  /**
+   * Indicates if the user has received a friendship request from you
+   */
+  received_request?: boolean
+}
+
 export type ValidationError = {
   loc: Array<string | number>
   msg: string
@@ -474,12 +501,6 @@ export type MoviesReadMovieData = {
 
 export type MoviesReadMovieResponse = MoviePublic
 
-export type MoviesReadMovie1Data = {
-  id: number
-}
-
-export type MoviesReadMovie1Response = Array<UserPublic>
-
 export type PrivateCreateUserData = {
   requestBody: PrivateUserCreate
 }
@@ -541,7 +562,7 @@ export type UsersSearchUsersData = {
   query: string
 }
 
-export type UsersSearchUsersResponse = Array<UserPublic>
+export type UsersSearchUsersResponse = Array<UserWithFriendInfoPublic>
 
 export type UsersDeleteUserMeResponse = Message
 

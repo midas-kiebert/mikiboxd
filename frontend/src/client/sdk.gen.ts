@@ -46,8 +46,6 @@ import type {
   MoviesReadMoviesResponse,
   MoviesReadMovieData,
   MoviesReadMovieResponse,
-  MoviesReadMovie1Data,
-  MoviesReadMovie1Response,
   PrivateCreateUserData,
   PrivateCreateUserResponse,
   ShowtimesCreateShowtimeData,
@@ -596,29 +594,6 @@ export class MoviesService {
       },
     })
   }
-
-  /**
-   * Read Movie
-   * Get movie by TMDB ID.
-   * @param data The data for the request.
-   * @param data.id
-   * @returns UserPublic Successful Response
-   * @throws ApiError
-   */
-  public static readMovie1(
-    data: MoviesReadMovie1Data,
-  ): CancelablePromise<MoviesReadMovie1Response> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/movies/{id}/friends",
-      path: {
-        id: data.id,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
 }
 
 export class PrivateService {
@@ -805,7 +780,7 @@ export class UsersService {
    * @param data.query Search query for usernames
    * @param data.offset Number of items to skip
    * @param data.limit Max number of items to return
-   * @returns UserPublic Successful Response
+   * @returns UserWithFriendInfoPublic Successful Response
    * @throws ApiError
    */
   public static searchUsers(

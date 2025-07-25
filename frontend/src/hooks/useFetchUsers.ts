@@ -21,7 +21,7 @@ export function useFetchUsers(
     }: useFetchUsersProps
     ) {
     const result = useInfiniteQuery<UsersSearchUsersResponse, Error, InfiniteData<UsersSearchUsersResponse>, [string, UserFilters], number>({
-        queryKey: ["movies", filters],
+        queryKey: ["users", filters],
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,

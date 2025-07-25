@@ -10,7 +10,7 @@ type SearchBarProps = {
 export default function SearchBar({ query, setQuery, placeholder }: SearchBarProps) {
   return (
       <InputGroup
-        maxW={"30%"}
+        maxW={  { base: "100%", md: "400px" }}
         startElement={<FaSearch/>}
         startElementProps={{ color: "gray.500", fontSize: "1.2em" }}
       >

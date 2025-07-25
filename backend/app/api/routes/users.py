@@ -1,5 +1,4 @@
 import uuid
-from collections.abc import Sequence
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -24,6 +23,7 @@ from app.models import (
     UsersPublic,
     UserUpdate,
     UserUpdateMe,
+    UserWithFriendInfoPublic,
 )
 from app.utils import generate_new_account_email, send_email
 
@@ -50,18 +50,20 @@ def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
     return UsersPublic(data=users_public, count=count)
 
 
-@router.get("/search", response_model=list[UserPublic])
+@router.get("/search", response_model=list[UserWithFriendInfoPublic])
 def search_users(
     session: SessionDep,
+    current_user: CurrentUser,
     query: str = Query(..., min_length=1, description="Search query for usernames"),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     limit: int = Query(10, ge=1, le=50, description="Max number of items to return"),
-) -> Sequence[User]:
+) -> list[UserWithFriendInfoPublic]:
     users = crud.search_users(
         session=session,
         query=query,
         limit=limit,
         offset=offset,
+        current_user_id=current_user.id,
     )
     return users
 

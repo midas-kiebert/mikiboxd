@@ -12,7 +12,6 @@ const FriendsTopBar = ({
 }: FriendsTopBarProps) => {
     return (
         <TopBar>
-            Friends {searchQuery} {setSearchQuery.toString()}
             <SearchBar
                 query={searchQuery}
                 setQuery={setSearchQuery}

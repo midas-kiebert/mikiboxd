@@ -2,11 +2,17 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from sqlmodel import Session, select
+from sqlmodel import Session, and_, col, or_, select
 
 from app.core.security import get_password_hash, verify_password
-from app.models import FriendRequest, Friendship, User, UserCreate, UserUpdate
-from app.models.utils import column
+from app.models import (
+    FriendRequest,
+    Friendship,
+    User,
+    UserCreate,
+    UserUpdate,
+    UserWithFriendInfoPublic,
+)
 
 __all__ = [
     "create_user",
@@ -228,7 +234,7 @@ def get_friends(*, session: Session, user_id: UUID) -> Sequence[User]:
         if friendship.friend_id != user_id:
             friend_ids.add(friendship.friend_id)
 
-    return session.exec(select(User).where(column(User.id).in_(friend_ids))).all()
+    return session.exec(select(User).where(col(User.id).in_(friend_ids))).all()
 
 
 def get_sent_friend_requests(*, session: Session, user_id: UUID) -> Sequence[User]:
@@ -236,7 +242,7 @@ def get_sent_friend_requests(*, session: Session, user_id: UUID) -> Sequence[Use
         select(FriendRequest).where(FriendRequest.sender_id == user_id)
     ).all()
     receiver_ids = [request.receiver_id for request in requests]
-    return session.exec(select(User).where(column(User.id).in_(receiver_ids))).all()
+    return session.exec(select(User).where(col(User.id).in_(receiver_ids))).all()
 
 
 def get_received_friend_requests(*, session: Session, user_id: UUID) -> Sequence[User]:
@@ -244,19 +250,59 @@ def get_received_friend_requests(*, session: Session, user_id: UUID) -> Sequence
         select(FriendRequest).where(FriendRequest.receiver_id == user_id)
     ).all()
     sender_ids = [request.sender_id for request in requests]
-    return session.exec(select(User).where(column(User.id).in_(sender_ids))).all()
+    return session.exec(select(User).where(col(User.id).in_(sender_ids))).all()
 
 
 def search_users(
-    *, session: Session, query: str, limit: int = 10, offset: int = 0
-) -> Sequence[User]:
+    *,
+    session: Session,
+    query: str,
+    limit: int = 10,
+    offset: int = 0,
+    current_user_id: UUID,
+) -> list[UserWithFriendInfoPublic]:
     """
     Search for users by email or username.
     """
     statement = (
         select(User)
-        .where(column(User.display_name).ilike(f"%{query}%"))
+        .where(col(User.display_name).ilike(f"%{query}%"))
+        .where(col(User.id) != current_user_id)
         .limit(limit)
         .offset(offset)
     )
-    return session.exec(statement).all()
+    users: list[User] = list(session.exec(statement).all())
+    user_ids = [friend.id for friend in users]
+
+    friend_rows = session.exec(
+        select(Friendship).where(
+            or_(
+                and_(Friendship.user_id == current_user_id, col(Friendship.friend_id).in_(user_ids)),
+                and_(Friendship.friend_id == current_user_id, col(Friendship.user_id).in_(user_ids)),
+            )
+        )
+    ).all()
+    friend_ids = {f.user_id if f.user_id != current_user_id else f.friend_id for f in friend_rows}
+
+    sent_requests = session.exec(
+        select(FriendRequest).where(
+            and_(FriendRequest.sender_id == current_user_id, col(FriendRequest.receiver_id).in_(user_ids))
+        )
+    ).all()
+    sent_request_ids = {r.receiver_id for r in sent_requests}
+
+    received_requests = session.exec(
+        select(FriendRequest).where(
+            and_(FriendRequest.receiver_id == current_user_id, col(FriendRequest.sender_id).in_(user_ids))
+        )
+    ).all()
+    received_request_ids = {r.sender_id for r in received_requests}
+
+    results = []
+    for user in users:
+        result = UserWithFriendInfoPublic.model_validate(user)
+        result.is_friend = user.id in friend_ids
+        result.sent_request = user.id in sent_request_ids
+        result.received_request = user.id in received_request_ids
+        results.append(result)
+    return results

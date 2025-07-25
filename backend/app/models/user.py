@@ -49,6 +49,18 @@ class UserPublic(UserBase):
     id: uuid.UUID
 
 
+class UserWithFriendInfoPublic(UserPublic):
+    is_friend: bool = Field(
+        default=False, description="Indicates if the user is a friend"
+    )
+    sent_request: bool = Field(
+        default=False, description="Indicates if the user has sent you a friendship request"
+    )
+    received_request: bool = Field(
+        default=False, description="Indicates if the user has received a friendship request from you"
+    )
+
+
 class UserWithShowtimesPublic(UserPublic):
     showtimes_going: list["Showtime"] = Field(
         default_factory=list, description="List of showtimes the user is going to"

@@ -6,6 +6,7 @@ import ChangePassword from "@/components/UserSettings/ChangePassword"
 import DeleteAccount from "@/components/UserSettings/DeleteAccount"
 import UserInformation from "@/components/UserSettings/UserInformation"
 import useAuth from "@/hooks/useAuth"
+import Page from "@/components/Common/Page"
 
 const tabsConfig = [
   { value: "my-profile", title: "My profile", component: UserInformation },
@@ -29,25 +30,27 @@ function UserSettings() {
   }
 
   return (
-    <Container maxW="full">
-      <Heading size="lg" textAlign={{ base: "center", md: "left" }} py={12}>
-        User Settings
-      </Heading>
+    <Page>
+      <Container maxW="full">
+        <Heading size="lg" textAlign={{ base: "center", md: "left" }} py={12}>
+          User Settings
+        </Heading>
 
-      <Tabs.Root defaultValue="my-profile" variant="subtle">
-        <Tabs.List>
+        <Tabs.Root defaultValue="my-profile" variant="subtle">
+          <Tabs.List>
+            {finalTabs.map((tab) => (
+              <Tabs.Trigger key={tab.value} value={tab.value}>
+                {tab.title}
+              </Tabs.Trigger>
+            ))}
+          </Tabs.List>
           {finalTabs.map((tab) => (
-            <Tabs.Trigger key={tab.value} value={tab.value}>
-              {tab.title}
-            </Tabs.Trigger>
+            <Tabs.Content key={tab.value} value={tab.value}>
+              <tab.component />
+            </Tabs.Content>
           ))}
-        </Tabs.List>
-        {finalTabs.map((tab) => (
-          <Tabs.Content key={tab.value} value={tab.value}>
-            <tab.component />
-          </Tabs.Content>
-        ))}
-      </Tabs.Root>
-    </Container>
+        </Tabs.Root>
+      </Container>
+    </Page>
   )
 }

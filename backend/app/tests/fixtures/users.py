@@ -4,7 +4,7 @@ import pytest
 from sqlmodel import Session
 
 from app import crud
-from app.models import User, UserCreate
+from app.models import User, UserCreate, UserWithFriendInfoPublic
 from app.tests.utils.utils import random_email, random_lower_string
 
 __all__ = [
@@ -65,9 +65,9 @@ TEST_USERS: list[tuple[str, str]] = [
 
 
 @pytest.fixture
-def test_users(user_factory: UserFactory) -> list[User]:
-    users: list[User] = []
+def test_users(user_factory: UserFactory) -> list[UserWithFriendInfoPublic]:
+    users: list[UserWithFriendInfoPublic] = []
     for email, display_name in TEST_USERS:
         user = user_factory(email=email, display_name=display_name)
-        users.append(user)
+        users.append(UserWithFriendInfoPublic.model_validate(user))
     return users

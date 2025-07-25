@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 from app import crud
 from app.core.config import settings
 from app.core.security import verify_password
-from app.models import User, UserCreate, UserPublic
+from app.models import User, UserCreate, UserPublic, UserWithFriendInfoPublic
 from app.tests.utils.utils import random_email, random_lower_string
 
 
@@ -15,7 +15,7 @@ def test_count_users(db_transaction: Session) -> None:
     user_query = select(User)
     users_count = len(list(db_transaction.exec(user_query)))
     print("Total users in the database:", users_count)
-    assert users_count == 1
+    assert users_count == 2
 
 
 def test_create_user_new_email(
@@ -45,7 +45,7 @@ def test_count_users_after(db_transaction: Session) -> None:
     user_query = select(User)
     users_count = len(list(db_transaction.exec(user_query)))
     print("Total users in the database:", users_count)
-    assert users_count == 1
+    assert users_count == 2
 
 
 def test_get_existing_user(
@@ -404,13 +404,18 @@ def test_delete_user_without_privileges(
     assert r.json()["detail"] == "The user doesn't have enough privileges"
 
 
-def test_search_users(client: TestClient, test_users: list[User]) -> None:
+def test_search_users(
+    client: TestClient,
+    test_users: list[UserWithFriendInfoPublic],
+    normal_user_token_headers: dict[str, str],
+) -> None:
     assert len(test_users) > 0
     assert any(user.display_name == "alice" for user in test_users)
     search_query = "alice"
     r = client.get(
         f"{settings.API_V1_STR}/users/search",
         params={"query": search_query},
+        headers=normal_user_token_headers,
     )
     assert r.status_code == 200
     users_with_alice_query = [

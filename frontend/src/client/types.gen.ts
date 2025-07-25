@@ -326,6 +326,7 @@ export type UserUpdate = {
 export type UserUpdateMe = {
   display_name?: string | null
   email?: string | null
+  letterboxd_username?: string | null
 }
 
 export type UserWithFriendInfoPublic = {

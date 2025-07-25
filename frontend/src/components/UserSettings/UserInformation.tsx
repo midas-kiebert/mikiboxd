@@ -39,6 +39,7 @@ const UserInformation = () => {
     defaultValues: {
       display_name: currentUser?.display_name,
       email: currentUser?.email,
+      letterboxd_username: currentUser?.letterboxd_username,
     },
   })
 
@@ -51,6 +52,7 @@ const UserInformation = () => {
       UsersService.updateUserMe({ requestBody: data }),
     onSuccess: () => {
       showSuccessToast("User updated successfully.")
+      reset(getValues())
     },
     onError: (err: ApiError) => {
       handleError(err)
@@ -117,6 +119,24 @@ const UserInformation = () => {
             ) : (
               <Text fontSize="md" py={2} truncate maxW="sm">
                 {currentUser?.email}
+              </Text>
+            )}
+          </Field>
+          <Field
+            mt={4}
+            label="Letterboxd Username"
+            invalid={!!errors.letterboxd_username}
+            errorText={errors.letterboxd_username?.message}
+          >
+            {editMode ? (
+              <Input
+              {...register("letterboxd_username")}
+                type="text"
+                size="md"
+              />
+            ) : (
+              <Text fontSize="md" py={2} truncate maxW="sm">
+                {currentUser?.letterboxd_username ?? "N/A"}
               </Text>
             )}
           </Field>

@@ -1,4 +1,4 @@
-import SearchBar from "./SearchBar";
+import SearchBar from "../Common/SearchBar";
 import WatchlistToggle from "./WatchlistToggle";
 import TopBar from "../Common/TopBar";
 
@@ -19,7 +19,11 @@ const MoviesTopBar = ({
 }: MoviesTopBarProps) => {
     return (
         <TopBar>
-            <SearchBar query={searchQuery} setQuery={setSearchQuery}/>
+            <SearchBar
+                query={searchQuery}
+                setQuery={setSearchQuery}
+                placeholder="Search movies..."
+            />
             <WatchlistToggle
                 watchlistOnly={watchlistOnly}
                 setWatchlistOnly={setWatchlistOnly}

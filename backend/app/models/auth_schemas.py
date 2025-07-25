@@ -5,6 +5,7 @@ from sqlmodel import Field, SQLModel
 class UserUpdateMe(SQLModel):
     display_name: str | None = Field(default=None, max_length=255)
     email: EmailStr | None = Field(default=None, max_length=255)
+    letterboxd_username: str | None = Field(default=None, max_length=255)
 
 
 class UpdatePassword(SQLModel):

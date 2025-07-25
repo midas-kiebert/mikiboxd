@@ -8,9 +8,10 @@ import type { MovieFilters } from "@/hooks/useFetchMovies";
 import Sidebar from "@/components/Common/Sidebar";
 import { Flex } from "@chakra-ui/react";
 import Page from "@/components/Common/Page";
+import useInfiniteScroll from "@/hooks/useInfiniteScroll";
 
 const MoviesPage = () => {
-    const limit = 10;
+    const limit = 20;
     const [snapshotTime] = useState(() => new Date().toISOString());
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const search = useSearch({ from: "/movies" });
@@ -53,28 +54,13 @@ const MoviesPage = () => {
         filters,
     });
 
-    useEffect(() => {
-        if (!hasNextPage || isFetchingNextPage) return;
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting) {
-                    fetchNextPage();
-                }
-            },
-            {
-                rootMargin: "200px",
-            }
-        );
-
-        const el = loadMoreRef.current;
-        if (el) observer.observe(el);
-
-        return () => {
-            if (el) observer.unobserve(el);
-        };
-    }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-
+    useInfiniteScroll({
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+        loadMoreRef,
+        rootMargin: "200px",
+    });
 
     return (
         <>

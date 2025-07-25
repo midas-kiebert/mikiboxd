@@ -14,6 +14,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as MoviesRouteImport } from './routes/movies'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as FriendsRouteImport } from './routes/friends'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as MovieMovieIdRouteImport } from './routes/movie.$movieId'
@@ -45,6 +46,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FriendsRoute = FriendsRouteImport.update({
+  id: '/friends',
+  path: '/friends',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
   getParentRoute: () => rootRouteImport,
@@ -71,6 +77,7 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/friends': typeof FriendsRoute
   '/login': typeof LoginRoute
   '/movies': typeof MoviesRoute
   '/recover-password': typeof RecoverPasswordRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
 }
 export interface FileRoutesByTo {
+  '/friends': typeof FriendsRoute
   '/login': typeof LoginRoute
   '/movies': typeof MoviesRoute
   '/recover-password': typeof RecoverPasswordRoute
@@ -95,6 +103,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
+  '/friends': typeof FriendsRoute
   '/login': typeof LoginRoute
   '/movies': typeof MoviesRoute
   '/recover-password': typeof RecoverPasswordRoute
@@ -108,6 +117,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/friends'
     | '/login'
     | '/movies'
     | '/recover-password'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/friends'
     | '/login'
     | '/movies'
     | '/recover-password'
@@ -131,6 +142,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_layout'
+    | '/friends'
     | '/login'
     | '/movies'
     | '/recover-password'
@@ -144,6 +156,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
+  FriendsRoute: typeof FriendsRoute
   LoginRoute: typeof LoginRoute
   MoviesRoute: typeof MoviesRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
@@ -187,6 +200,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/friends': {
+      id: '/friends'
+      path: '/friends'
+      fullPath: '/friends'
+      preLoaderRoute: typeof FriendsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout': {
@@ -244,6 +264,7 @@ const LayoutRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
+  FriendsRoute: FriendsRoute,
   LoginRoute: LoginRoute,
   MoviesRoute: MoviesRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,

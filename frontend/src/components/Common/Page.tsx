@@ -5,14 +5,16 @@ import { TOPBAR_HEIGHT } from "@/constants";
 
 interface Props {
     children: ReactNode;
+    sidebarWidth?: number;
+    topbarHeight?: number;
 }
 
-const Page = ({ children } : Props) => {
+const Page = ({ children, sidebarWidth, topbarHeight } : Props) => {
     return (
         <Box
-            ml={SIDEBAR_WIDTH}
+            ml={ sidebarWidth ?? SIDEBAR_WIDTH }
             right="0"
-            mt={TOPBAR_HEIGHT}
+            mt={ topbarHeight ?? TOPBAR_HEIGHT }
             p={4}
         >
             { children }

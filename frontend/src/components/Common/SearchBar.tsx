@@ -4,18 +4,19 @@ import { FaSearch } from "react-icons/fa";
 type SearchBarProps = {
   query: string;
   setQuery: (query: string) => void;
+  placeholder: string;
 };
 
-export default function SearchBar({ query, setQuery }: SearchBarProps) {
+export default function SearchBar({ query, setQuery, placeholder }: SearchBarProps) {
   return (
       <InputGroup
-        maxW={"30%"}
+        maxW={  { base: "100%", md: "400px" }}
         startElement={<FaSearch/>}
         startElementProps={{ color: "gray.500", fontSize: "1.2em" }}
       >
         <Input
           type="text"
-          placeholder="Search for movies..."
+          placeholder={placeholder}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           bg="gray.50"

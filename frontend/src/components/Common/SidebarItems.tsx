@@ -3,12 +3,14 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Link as RouterLink } from "@tanstack/react-router"
 import { FiFilm, FiHome, FiSettings, FiUsers } from "react-icons/fi"
 import type { IconType } from "react-icons/lib"
+import { FaUserFriends } from "react-icons/fa"
 
 import type { UserPublic } from "@/client"
 
 const items = [
   { icon: FiHome, title: "Dashboard", path: "/" },
   { icon: FiFilm, title: "Movies", path: "/movies" },
+  { icon: FaUserFriends, title: "Friends", path: "/friends" },
   { icon: FiSettings, title: "User Settings", path: "/settings" },
 ]
 

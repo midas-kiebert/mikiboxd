@@ -54,10 +54,12 @@ class UserWithFriendInfoPublic(UserPublic):
         default=False, description="Indicates if the user is a friend"
     )
     sent_request: bool = Field(
-        default=False, description="Indicates if the user has sent you a friendship request"
+        default=False,
+        description="Indicates if the user has sent you a friendship request",
     )
     received_request: bool = Field(
-        default=False, description="Indicates if the user has received a friendship request from you"
+        default=False,
+        description="Indicates if the user has received a friendship request from you",
     )
 
 

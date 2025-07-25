@@ -277,23 +277,37 @@ def search_users(
     friend_rows = session.exec(
         select(Friendship).where(
             or_(
-                and_(Friendship.user_id == current_user_id, col(Friendship.friend_id).in_(user_ids)),
-                and_(Friendship.friend_id == current_user_id, col(Friendship.user_id).in_(user_ids)),
+                and_(
+                    Friendship.user_id == current_user_id,
+                    col(Friendship.friend_id).in_(user_ids),
+                ),
+                and_(
+                    Friendship.friend_id == current_user_id,
+                    col(Friendship.user_id).in_(user_ids),
+                ),
             )
         )
     ).all()
-    friend_ids = {f.user_id if f.user_id != current_user_id else f.friend_id for f in friend_rows}
+    friend_ids = {
+        f.user_id if f.user_id != current_user_id else f.friend_id for f in friend_rows
+    }
 
     sent_requests = session.exec(
         select(FriendRequest).where(
-            and_(FriendRequest.sender_id == current_user_id, col(FriendRequest.receiver_id).in_(user_ids))
+            and_(
+                FriendRequest.sender_id == current_user_id,
+                col(FriendRequest.receiver_id).in_(user_ids),
+            )
         )
     ).all()
     sent_request_ids = {r.receiver_id for r in sent_requests}
 
     received_requests = session.exec(
         select(FriendRequest).where(
-            and_(FriendRequest.receiver_id == current_user_id, col(FriendRequest.sender_id).in_(user_ids))
+            and_(
+                FriendRequest.receiver_id == current_user_id,
+                col(FriendRequest.sender_id).in_(user_ids),
+            )
         )
     ).all()
     received_request_ids = {r.sender_id for r in received_requests}

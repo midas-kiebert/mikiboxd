@@ -3,6 +3,7 @@ __all__ = [
     "WatchlistSelectionAlreadyExists",
     "WatchlistSelectionInvalid",
     "WatchlistSelectionNotFound",
+    "UserWatchlistSyncTooSoon",
 ]
 
 
@@ -36,5 +37,13 @@ class WatchlistSelectionNotFound(WatchlistError):
     """Raised when a watchlist selection is not found for a user and movie."""
 
     def __init__(self, message: str = "Watchlist selection not found."):
+        super().__init__(message)
+        self.message = message
+
+
+class UserWatchlistSyncTooSoon(WatchlistError):
+    """Raised when a user tries to sync their watchlist too soon after the last sync."""
+
+    def __init__(self, message: str = "You're watchlist was already synced recently."):
         super().__init__(message)
         self.message = message

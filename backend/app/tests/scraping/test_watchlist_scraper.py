@@ -12,9 +12,12 @@ def test_watchlist_parsing(
     sample_watchlist_empty_page: BeautifulSoup,
 ):
     # Mock the BeautifulSoup object to return the sample HTML
-    mock_get_page = AsyncMock(side_effect=[sample_watchlist_page_1, sample_watchlist_empty_page])
+    mock_get_page = AsyncMock(
+        side_effect=[sample_watchlist_page_1, sample_watchlist_empty_page]
+    )
     mocker.patch(
-        "app.scraping.letterboxd.watchlist.get_page_async", mock_get_page,
+        "app.scraping.letterboxd.watchlist.get_page_async",
+        mock_get_page,
     )
 
     watchlist = get_watchlist("sample username")

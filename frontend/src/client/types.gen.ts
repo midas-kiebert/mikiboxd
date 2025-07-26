@@ -295,6 +295,10 @@ export type UserPublic = {
   display_name?: string | null
   letterboxd_username?: string | null
   id: string
+  /**
+   * Last time the watchlist was synced
+   */
+  last_watchlist_sync?: string | null
 }
 
 export type UserRegister = {
@@ -342,6 +346,10 @@ export type UserWithFriendInfoPublic = {
   display_name?: string | null
   letterboxd_username?: string | null
   id: string
+  /**
+   * Last time the watchlist was synced
+   */
+  last_watchlist_sync?: string | null
   /**
    * Indicates if the user is a friend
    */

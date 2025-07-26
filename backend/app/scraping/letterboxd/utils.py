@@ -7,7 +7,10 @@ HEADERS = {
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
 }
 
-def get_page(url: str, cookie_string: str | None = None, timeout: float = 15.0) -> BeautifulSoup:
+
+def get_page(
+    url: str, cookie_string: str | None = None, timeout: float = 15.0
+) -> BeautifulSoup:
     cookies = (
         {
             item.split("=")[0].strip(): item.split("=")[1].strip()
@@ -17,11 +20,14 @@ def get_page(url: str, cookie_string: str | None = None, timeout: float = 15.0) 
         else {}
     )
     return BeautifulSoup(
-        requests.get(url, headers=HEADERS, cookies=cookies, timeout=timeout).text, "lxml"
+        requests.get(url, headers=HEADERS, cookies=cookies, timeout=timeout).text,
+        "lxml",
     )
 
 
-async def get_page_async(session: ClientSession, url: str, cookie_string: str | None = None) -> BeautifulSoup:
+async def get_page_async(
+    session: ClientSession, url: str, cookie_string: str | None = None
+) -> BeautifulSoup:
     cookies = (
         {
             item.split("=")[0].strip(): item.split("=")[1].strip()

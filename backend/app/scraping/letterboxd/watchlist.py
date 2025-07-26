@@ -26,6 +26,7 @@ async def get_watchlist_page_async(
         logger.error(f"Error fetching page {page_num} for user {username}: {e}")
         return None
 
+
 def extract_slugs_from_page(page: BeautifulSoup) -> list[str]:
     img_tags = page.find_all("img", class_="image")
 
@@ -34,6 +35,7 @@ def extract_slugs_from_page(page: BeautifulSoup) -> list[str]:
         if item.parent and "data-film-slug" in item.parent.attrs:
             slugs.append(str(item.parent["data-film-slug"]))
     return slugs
+
 
 def get_watchlist(username: str) -> list[str]:
     start = perf_counter()
@@ -45,10 +47,11 @@ def get_watchlist(username: str) -> list[str]:
     return slugs
 
 
-
 async def get_watchlist_async(username: str) -> list[str]:
     async with ClientSession() as session:
-        first_page = await get_watchlist_page_async(session=session, username=username, page_num=1)
+        first_page = await get_watchlist_page_async(
+            session=session, username=username, page_num=1
+        )
         if not first_page:
             return []
 

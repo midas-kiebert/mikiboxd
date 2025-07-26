@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from psycopg.errors import (
@@ -106,6 +107,13 @@ def update_watchlist(
             movie_id=movie.id,
         )
 
+    # Update the last sync time for the user
+    user = session.get(User, user_id)
+    if not user:
+        raise exc.UserNotFound()
+    user.last_watchlist_sync = datetime.utcnow()
+    session.add(user)
+
     try:
         session.commit()
     except IntegrityError:
@@ -139,6 +147,14 @@ def sync_watchlist(
     Sync the user's watchlist with a list of movie slugs.
     This will clear the existing watchlist and update it with the new slugs.
     """
+
+    last_sync = session.exec(
+        select(User.last_watchlist_sync).where(User.id == user_id)
+    ).first()
+
+    if last_sync and datetime.utcnow() - last_sync < timedelta(minutes=10):
+        raise exc.UserWatchlistSyncTooSoon()
+
     user = session.get(User, user_id)
     if not user:
         raise exc.UserNotFound()

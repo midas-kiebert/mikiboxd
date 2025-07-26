@@ -1,7 +1,6 @@
 import SearchBar from "../Common/SearchBar";
 import WatchlistToggle from "./WatchlistToggle";
 import TopBar from "../Common/TopBar";
-import FetchWatchlistButton from "./FetchWatchlistButton";
 
 type MoviesTopBarProps = {
     searchQuery: string;
@@ -29,7 +28,6 @@ const MoviesTopBar = ({
                 watchlistOnly={watchlistOnly}
                 setWatchlistOnly={setWatchlistOnly}
             />
-            <FetchWatchlistButton/>
         </TopBar>
     );
 }

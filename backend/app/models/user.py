@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from pydantic import EmailStr
@@ -41,12 +42,18 @@ class UserUpdate(UserBase):
 class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
+    last_watchlist_sync: datetime | None = Field(
+        default=None, description="Last time the watchlist was synced"
+    )
     items: list["Item"] = Relationship(back_populates="owner", cascade_delete=True)
 
 
 # Properties to return via API, id is always required
 class UserPublic(UserBase):
     id: uuid.UUID
+    last_watchlist_sync: datetime | None = Field(
+        default=None, description="Last time the watchlist was synced"
+    )
 
 
 class UserWithFriendInfoPublic(UserPublic):

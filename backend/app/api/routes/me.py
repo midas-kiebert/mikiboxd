@@ -9,6 +9,7 @@ from app.api.deps import (
     CurrentUser,
     SessionDep,
 )
+from app.exceptions import UserWatchlistSyncTooSoon
 from app.models import Message, ShowtimePublic, UserPublic
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -62,6 +63,8 @@ def sync_watchlist(
     try:
         crud.sync_watchlist(session=session, user_id=current_user.id)
         return Message(message="Watchlist synced successfully")
+    except UserWatchlistSyncTooSoon as e:
+        raise HTTPException(status_code=429, detail=str(e))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

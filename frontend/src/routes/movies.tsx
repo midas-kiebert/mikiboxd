@@ -1,6 +1,8 @@
 import { createFileRoute, useSearch, useNavigate } from "@tanstack/react-router";
 import Movies from "@/components/Movies/Movies";
 import { useState, useEffect, useRef } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { MeService } from "@/client";
 import { useFetchMovies } from "@/hooks/useFetchMovies";
 import { useDebounce } from "use-debounce";
 import MoviesTopBar from "@/components/Movies/MoviesTopBar";
@@ -21,6 +23,23 @@ const MoviesPage = () => {
     const [watchlistOnly, setWatchlistOnly] = useState<boolean>(search.watchlistOnly);
 
     const navigate = useNavigate();
+
+    const queryClient = useQueryClient();
+
+    const { mutate: fetchWatchlist } = useMutation({
+        mutationFn: () => MeService.syncWatchlist(),
+        onSuccess: () => {
+            queryClient.invalidateQueries({queryKey: ['movies']});
+        },
+    });
+
+    const hasFetched = useRef(false);
+
+    useEffect(() => {
+        if (hasFetched.current) return;
+        fetchWatchlist();
+        hasFetched.current = true;
+    }, [])
 
 
     useEffect(() => {

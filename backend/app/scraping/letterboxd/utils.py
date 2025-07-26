@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 
 
-def get_page(url: str, cookie_string: str | None = None) -> BeautifulSoup:
+def get_page(url: str, cookie_string: str | None = None, timeout: float = 15.0) -> BeautifulSoup:
     # logger.trace(f"Fetching page: {url}")
     cookies = (
         {
@@ -17,5 +17,5 @@ def get_page(url: str, cookie_string: str | None = None) -> BeautifulSoup:
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     }
     return BeautifulSoup(
-        requests.get(url, headers=headers, cookies=cookies).text, "lxml"
+        requests.get(url, headers=headers, cookies=cookies, timeout=timeout).text, "lxml"
     )

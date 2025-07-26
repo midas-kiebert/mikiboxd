@@ -35,6 +35,7 @@ dependencies = [
     "pre-commit",
     "pytest-mock",
     "apscheduler",
+    "aiohttp",
 ]
 
 [tool.uv]

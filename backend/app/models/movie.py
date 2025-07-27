@@ -67,14 +67,13 @@ class MovieSummaryPublic(MovieBase):
         default=[],
         description="List of friends who are going to see the movie",
     )
+    going: bool = Field(
+        default=False,
+        description="Whether the current user is going to see the movie",
+    )
 
 
 class MoviePublic(MovieBase):
-    showtimes_with_friends: list["ShowtimeInMoviePublic"] = Field(
-        default=[],
-        description="List of showtimes associated with the movie where friends are going",
-    )
-    showtime_without_friends: list["ShowtimeInMoviePublic"] = Field(
-        default=[],
-        description="List of showtimes associated with the movie without friends going",
+    showtimes: list["ShowtimeInMoviePublic"] = Field(
+        default=[], description="List of all showtimes associated with the movie"
     )

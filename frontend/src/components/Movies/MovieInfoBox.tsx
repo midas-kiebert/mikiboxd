@@ -29,7 +29,11 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
                 <MovieTitle title={movie.title} />
                 <CinemaBadges cinemas={cinemas} />
             </Flex>
-            <Separator mt={0.5} mb={2}/>
+            <Separator
+                mt={0.5}
+                mb={2}
+                borderColor={movie.going ? "green.500" : "gray.300"}
+            />
             <Flex flex="1">
                 <ShowtimeInfo
                     showtimes={showtimes}
@@ -39,6 +43,7 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
                 <Separator
                     orientation={"vertical"}
                     mx={2}
+                    borderColor={movie.going ? "green.500" : "gray.300"}
                 />
                 <FriendBadges friends={friends_going}/>
             </Flex>

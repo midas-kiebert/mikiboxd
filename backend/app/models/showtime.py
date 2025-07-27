@@ -58,6 +58,10 @@ class ShowtimePublic(ShowtimeBase):
     friends_going: Sequence["UserPublic"] | None = Field(
         default=None, description="List of friends going to this showtime"
     )
+    going: bool = Field(
+        default=False,
+        description="Whether the current user is going to this showtime",
+    )
 
 
 # For responses inside of a MoviePublic model
@@ -68,4 +72,8 @@ class ShowtimeInMoviePublic(ShowtimeBase):
     )
     friends_going: Sequence["UserPublic"] | None = Field(
         default=None, description="List of friends going to this showtime"
+    )
+    going: bool = Field(
+        default=False,
+        description="Whether the current user is going to this showtime",
     )

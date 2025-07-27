@@ -1,14 +1,16 @@
 import { VStack, Text } from "@chakra-ui/react";
 import ShowtimeRow from "./ShowtimeRow"; // adjust path as needed
 
-import type { ShowtimeInMoviePublic } from "@/client";
+import type { ShowtimeInMoviePublic, ShowtimePublic } from "@/client";
+import { UseMutateFunction } from "@tanstack/react-query";
 
 type DayProps = {
   date: string;
   showtimes: ShowtimeInMoviePublic[];
+  handleToggle: UseMutateFunction<ShowtimePublic, Error, number, unknown>;
 };
 
-export default function Day({ date, showtimes }: DayProps) {
+export default function Day({ date, showtimes, handleToggle }: DayProps) {
   const formattedDate = new Date(date).toLocaleDateString(undefined, {
     weekday: "long",
     month: "long",
@@ -16,12 +18,16 @@ export default function Day({ date, showtimes }: DayProps) {
   });
 
   return (
-    <VStack align="stretch" gap={0}>
+    <VStack align="stretch" gap={0} my={4}>
       <Text fontSize="lg" fontWeight="bold">
         {formattedDate}
       </Text>
       {showtimes.map((showtime) => (
-        <ShowtimeRow key={showtime.id} showtime={showtime} />
+        <ShowtimeRow
+          key={showtime.id}
+          showtime={showtime}
+          onToggle={() => handleToggle(showtime.id)}
+        />
       ))}
     </VStack>
   );

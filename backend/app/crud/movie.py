@@ -23,7 +23,7 @@ from app.models import (
     WatchlistSelection,
 )
 
-from .showtime import get_first_n_showtimes, get_split_showtimes_for_movie
+from .showtime import *
 
 __all__ = [
     "create_movie",
@@ -141,6 +141,28 @@ def get_total_number_of_future_showtimes(
     return total_showtimes
 
 
+def is_going(
+    *,
+    session: Session,
+    movie_id: int,
+    user_id: UUID,
+) -> bool:
+    """
+    Check if the user is going to see the movie.
+    """
+    stmt = (
+        select(ShowtimeSelection)
+        .join(Showtime, col(ShowtimeSelection.showtime_id) == col(Showtime.id))
+        .where(
+            col(ShowtimeSelection.user_id) == user_id,
+            col(Showtime.movie_id) == movie_id,
+        )
+        .limit(1)
+    )
+    result = session.execute(stmt)
+    return result.scalars().first() is not None
+
+
 def get_movies(
     *,
     session: Session,
@@ -203,6 +225,7 @@ def get_movies(
             snapshot_time=snapshot_time,
             current_user=user_id,
         )
+        movie.going = is_going(session=session, movie_id=movie.id, user_id=user_id)
     return movies
 
 
@@ -214,10 +237,7 @@ def get_movie_by_id(*, session: Session, id: int, user_id: UUID) -> MoviePublic:
     if movie is None:
         raise ValueError(f"Movie with ID {id} not found.")
     movie_public = MoviePublic.model_validate(movie)
-    (
-        movie_public.showtimes_with_friends,
-        movie_public.showtime_without_friends,
-    ) = get_split_showtimes_for_movie(
+    movie_public.showtimes = get_all_showtimes_for_movie(
         session=session, movie_id=movie.id, current_user=user_id
     )
     return movie_public

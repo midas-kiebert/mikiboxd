@@ -25,11 +25,13 @@ def create_showtime(*, session: SessionDep, showtime_create: ShowtimeCreate) -> 
 def get_all_showtimes_for_movie(
     *,
     session: SessionDep,
+    current_user: CurrentUser,
     movie_id: int,
 ) -> list[ShowtimeInMoviePublic]:
     showtimes = crud.get_all_showtimes_for_movie(
         session=session,
         movie_id=movie_id,
+        current_user=current_user.id,
     )
     showtimes_public = [
         ShowtimeInMoviePublic.model_validate(showtime) for showtime in showtimes
@@ -37,27 +39,42 @@ def get_all_showtimes_for_movie(
     return showtimes_public
 
 
-@router.post("/selection/{showtime_id}")
+@router.post("/selection/{showtime_id}", response_model=ShowtimePublic)
 def select_showtime(
     *, session: SessionDep, showtime_id: int, current_user: CurrentUser
-) -> Any:
+) -> ShowtimePublic:
     """
     Select a showtime for a user.
     """
     crud.add_showtime_selection(
         session=session, showtime_id=showtime_id, user_id=current_user.id
     )
-    return {"message": "Showtime selected successfully."}
+    showtime = crud.get_showtime_by_id(session=session, showtime_id=showtime_id)
+    return ShowtimePublic.model_validate(showtime)
 
 
-@router.delete("/selection/{showtime_id}")
+@router.delete("/selection/{showtime_id}", response_model=ShowtimePublic)
 def delete_showtime_selection(
     *, session: SessionDep, showtime_id: int, current_user: CurrentUser
-) -> Any:
+) -> ShowtimePublic:
     """
     Delete a user's selection for a showtime.
     """
     crud.delete_showtime_selection(
         session=session, showtime_id=showtime_id, user_id=current_user.id
     )
-    return {"message": "Showtime selection deleted successfully."}
+    showtime = crud.get_showtime_by_id(session=session, showtime_id=showtime_id)
+    return ShowtimePublic.model_validate(showtime)
+
+
+@router.put("/selection/{showtime_id}", response_model=ShowtimePublic)
+def toggle_showtime_selection(
+    *, session: SessionDep, showtime_id: int, current_user: CurrentUser
+) -> ShowtimePublic:
+    """
+    Toggle a user's selection for a showtime.
+    """
+    showtime = crud.toggle_showtime_selection(
+        session=session, showtime_id=showtime_id, user_id=current_user.id
+    )
+    return ShowtimePublic.model_validate(showtime)

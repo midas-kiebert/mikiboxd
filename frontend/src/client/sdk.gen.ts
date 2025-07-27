@@ -56,6 +56,8 @@ import type {
   ShowtimesSelectShowtimeResponse,
   ShowtimesDeleteShowtimeSelectionData,
   ShowtimesDeleteShowtimeSelectionResponse,
+  ShowtimesToggleShowtimeSelectionData,
+  ShowtimesToggleShowtimeSelectionResponse,
   TestMyTestResponse,
   UsersReadUsersData,
   UsersReadUsersResponse,
@@ -670,7 +672,7 @@ export class ShowtimesService {
    * Select a showtime for a user.
    * @param data The data for the request.
    * @param data.showtimeId
-   * @returns unknown Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static selectShowtime(
@@ -693,7 +695,7 @@ export class ShowtimesService {
    * Delete a user's selection for a showtime.
    * @param data The data for the request.
    * @param data.showtimeId
-   * @returns unknown Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static deleteShowtimeSelection(
@@ -701,6 +703,29 @@ export class ShowtimesService {
   ): CancelablePromise<ShowtimesDeleteShowtimeSelectionResponse> {
     return __request(OpenAPI, {
       method: "DELETE",
+      url: "/api/v1/showtimes/selection/{showtime_id}",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Toggle Showtime Selection
+   * Toggle a user's selection for a showtime.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns ShowtimePublic Successful Response
+   * @throws ApiError
+   */
+  public static toggleShowtimeSelection(
+    data: ShowtimesToggleShowtimeSelectionData,
+  ): CancelablePromise<ShowtimesToggleShowtimeSelectionResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
       url: "/api/v1/showtimes/selection/{showtime_id}",
       path: {
         showtime_id: data.showtimeId,

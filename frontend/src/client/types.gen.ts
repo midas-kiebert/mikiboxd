@@ -118,13 +118,9 @@ export type MoviePublic = {
    */
   letterboxd_slug?: string | null
   /**
-   * List of showtimes associated with the movie where friends are going
+   * List of all showtimes associated with the movie
    */
-  showtimes_with_friends?: Array<ShowtimeInMoviePublic>
-  /**
-   * List of showtimes associated with the movie without friends going
-   */
-  showtime_without_friends?: Array<ShowtimeInMoviePublic>
+  showtimes?: Array<ShowtimeInMoviePublic>
 }
 
 export type MovieSummaryPublic = {
@@ -164,6 +160,10 @@ export type MovieSummaryPublic = {
    * List of friends who are going to see the movie
    */
   friends_going?: Array<UserPublic>
+  /**
+   * Whether the current user is going to see the movie
+   */
+  going?: boolean
 }
 
 export type NewPassword = {
@@ -224,6 +224,10 @@ export type ShowtimeInMoviePublic = {
    * List of friends going to this showtime
    */
   friends_going?: Array<UserPublic> | null
+  /**
+   * Whether the current user is going to this showtime
+   */
+  going?: boolean
 }
 
 export type ShowtimePublic = {
@@ -252,6 +256,10 @@ export type ShowtimePublic = {
    * List of friends going to this showtime
    */
   friends_going?: Array<UserPublic> | null
+  /**
+   * Whether the current user is going to this showtime
+   */
+  going?: boolean
 }
 
 export type Token = {
@@ -533,13 +541,19 @@ export type ShowtimesSelectShowtimeData = {
   showtimeId: number
 }
 
-export type ShowtimesSelectShowtimeResponse = unknown
+export type ShowtimesSelectShowtimeResponse = ShowtimePublic
 
 export type ShowtimesDeleteShowtimeSelectionData = {
   showtimeId: number
 }
 
-export type ShowtimesDeleteShowtimeSelectionResponse = unknown
+export type ShowtimesDeleteShowtimeSelectionResponse = ShowtimePublic
+
+export type ShowtimesToggleShowtimeSelectionData = {
+  showtimeId: number
+}
+
+export type ShowtimesToggleShowtimeSelectionResponse = ShowtimePublic
 
 export type TestMyTestResponse = Message
 

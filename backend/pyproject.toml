@@ -36,6 +36,8 @@ dependencies = [
     "pytest-mock",
     "apscheduler",
     "aiohttp",
+    "pytest-cov",
+    "factory_boy",
 ]
 
 [tool.uv]
@@ -68,6 +70,7 @@ filterwarnings = [
 [tool.mypy]
 exclude = ["venv", ".venv", "alembic"]
 disallow_untyped_defs = false
+
 
 plugins = [
     "sqlalchemy.ext.mypy.plugin",

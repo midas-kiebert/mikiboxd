@@ -2,9 +2,11 @@ from pathlib import Path
 
 import yaml
 
-from app import crud
 from app.api.deps import get_db_context
-from app.models import CinemaCreate, CityCreate
+from app.crud import cinema as cinema_crud
+from app.crud import city as city_crud
+from app.models.cinema import CinemaCreate
+from app.models.city import CityCreate
 
 script_dir = Path(__file__).resolve().parent
 data_dir = script_dir.parent / "data"
@@ -23,7 +25,7 @@ def seed_cities_and_cinemas():
         city_create = CityCreate.model_validate(city)
         with get_db_context() as session:
             print(f"Seeding city: {city_create.name}")
-            crud.upsert_city(session=session, city=city_create)
+            city_crud.create_city(session=session, city=city_create)
 
     city_name_to_id = {city['name']: city['id'] for city in cities}
     cinemas = load_yaml_data(cinemas_yaml_path)
@@ -33,7 +35,7 @@ def seed_cities_and_cinemas():
         cinema_create = CinemaCreate.model_validate(cinema)
         with get_db_context() as session:
             print(f"Seeding cinema: {cinema_create.name} in city: {city_name}")
-            crud.upsert_cinema(session=session, cinema=cinema_create)
+            cinema_crud.upsert_cinema(session=session, cinema=cinema_create)
 
 
 if __name__ == '__main__':

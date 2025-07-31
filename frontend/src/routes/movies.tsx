@@ -11,10 +11,11 @@ import Sidebar from "@/components/Common/Sidebar";
 import { Flex } from "@chakra-ui/react";
 import Page from "@/components/Common/Page";
 import useInfiniteScroll from "@/hooks/useInfiniteScroll";
+import { DateTime } from "luxon";
 
 const MoviesPage = () => {
     const limit = 20;
-    const [snapshotTime] = useState(() => new Date().toISOString());
+    const [snapshotTime] = useState(() => DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const search = useSearch({ from: "/movies" });
     //@ts-ignore

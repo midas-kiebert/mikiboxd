@@ -1,6 +1,7 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { MoviesService, MoviesReadMoviesResponse } from "@/client";
 import { InfiniteData } from "@tanstack/react-query";
+import { DateTime } from "luxon";
 
 export type MovieFilters = {
     query?: string;
@@ -17,7 +18,7 @@ type useFetchMoviesProps = {
 export function useFetchMovies(
     {
         limit = 20,
-        snapshotTime = new Date().toISOString(),
+        snapshotTime = DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"),
         filters = {}
     }: useFetchMoviesProps = {}
     ) {

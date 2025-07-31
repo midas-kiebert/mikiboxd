@@ -1,11 +1,11 @@
 import { Flex } from "@chakra-ui/react";
 import MoviePoster from "./MoviePoster";
 import MovieInfoBox from "./MovieInfoBox";
-import { MovieSummaryPublic } from "@/client";
+import { MovieSummaryLoggedIn } from "@/client";
 import React from "react";
 
 type MovieCardProps = {
-    movie: MovieSummaryPublic;
+    movie: MovieSummaryLoggedIn;
 };
 
 const MovieCard = React.memo(function MovieCard({ movie }: MovieCardProps) {

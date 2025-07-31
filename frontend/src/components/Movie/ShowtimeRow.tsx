@@ -3,10 +3,10 @@ import CinemaBadge from "../Common/CinemaBadge";
 import FriendBadge from "../Common/FriendBadge";
 import { FaTicket } from "react-icons/fa6";
 
-import type { ShowtimeInMoviePublic } from "@/client";
+import type { ShowtimeInMovieLoggedIn } from "@/client";
 
 type ShowtimeRowProps = {
-    showtime: ShowtimeInMoviePublic;
+    showtime: ShowtimeInMovieLoggedIn;
     onToggle: () => void;
 }
 

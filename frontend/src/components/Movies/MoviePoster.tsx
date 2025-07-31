@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router"
-import { MovieSummaryPublic } from "@/client";
+import { MovieSummaryLoggedIn } from "@/client";
 
 type MoviePosterProps = {
-    movie: MovieSummaryPublic;
+    movie: MovieSummaryLoggedIn;
 };
 
 export default function MoviePoster({ movie }: MoviePosterProps) {

@@ -1,20 +1,20 @@
 import dayjs from "dayjs"
 import Day from "@/components/Movie/Day"
 
-import type { ShowtimeInMoviePublic } from "@/client"
+import type { ShowtimeInMovieLoggedIn } from "@/client"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { ShowtimesService, ShowtimesToggleShowtimeSelectionResponse } from "@/client"
 import type { MoviesReadMovieResponse } from "@/client"
-import type { MovieSummaryPublic } from "@/client"
+import type { MovieSummaryLoggedIn } from "@/client"
 
-type GroupedShowtimes = Record<string, { showtimesForDate: ShowtimeInMoviePublic[] }>
+type GroupedShowtimes = Record<string, { showtimesForDate: ShowtimeInMovieLoggedIn[] }>
 
 type InfiniteMoviesData = {
-    pages: MovieSummaryPublic[][];
+    pages: MovieSummaryLoggedIn[][];
     pageParams: unknown[];
 };
 
-export function groupShowtimesByDate(showtimes: ShowtimeInMoviePublic[]): GroupedShowtimes {
+export function groupShowtimesByDate(showtimes: ShowtimeInMovieLoggedIn[]): GroupedShowtimes {
     return showtimes.reduce((acc, showtime) => {
         const dateKey = dayjs(showtime.datetime).format("YYYY-MM-DD")
         if (!acc[dateKey]) {
@@ -26,7 +26,7 @@ export function groupShowtimesByDate(showtimes: ShowtimeInMoviePublic[]): Groupe
 }
 
 type ShowtimeProps = {
-    showtimes: ShowtimeInMoviePublic[]
+    showtimes: ShowtimeInMovieLoggedIn[]
 }
 
 type UpdateCacheData = {

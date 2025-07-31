@@ -21,21 +21,23 @@ def load_yaml_data(file_path: Path) -> list[dict]:
 
 def seed_cities_and_cinemas():
     cities = load_yaml_data(cities_yaml_path)
-    for city in cities:
-        city_create = CityCreate.model_validate(city)
-        with get_db_context() as session:
+    with get_db_context() as session:
+        for city in cities:
+            city_create = CityCreate.model_validate(city)
             print(f"Seeding city: {city_create.name}")
             city_crud.create_city(session=session, city=city_create)
+        session.commit()
 
     city_name_to_id = {city['name']: city['id'] for city in cities}
     cinemas = load_yaml_data(cinemas_yaml_path)
-    for cinema in cinemas:
-        city_name = cinema.pop('city')
-        cinema['city_id'] = city_name_to_id.get(city_name)
-        cinema_create = CinemaCreate.model_validate(cinema)
-        with get_db_context() as session:
+    with get_db_context() as session:
+        for cinema in cinemas:
+            city_name = cinema.pop('city')
+            cinema['city_id'] = city_name_to_id.get(city_name)
+            cinema_create = CinemaCreate.model_validate(cinema)
             print(f"Seeding cinema: {cinema_create.name} in city: {city_name}")
             cinema_crud.upsert_cinema(session=session, cinema=cinema_create)
+        session.commit()
 
 
 if __name__ == '__main__':

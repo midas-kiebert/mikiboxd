@@ -1,13 +1,13 @@
 import { VStack, Text } from "@chakra-ui/react";
 import ShowtimeRow from "./ShowtimeRow"; // adjust path as needed
 
-import type { ShowtimeInMoviePublic, ShowtimePublic } from "@/client";
+import type { ShowtimeInMovieLoggedIn } from "@/client";
 import { UseMutateFunction } from "@tanstack/react-query";
 
 type DayProps = {
   date: string;
-  showtimes: ShowtimeInMoviePublic[];
-  handleToggle: UseMutateFunction<ShowtimePublic, Error, number, unknown>;
+  showtimes: ShowtimeInMovieLoggedIn[];
+  handleToggle: UseMutateFunction<ShowtimeInMovieLoggedIn, Error, number, unknown>;
 };
 
 export default function Day({ date, showtimes, handleToggle }: DayProps) {

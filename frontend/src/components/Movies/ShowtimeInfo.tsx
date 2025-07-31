@@ -1,13 +1,13 @@
 import { Box } from "@chakra-ui/react";
 import ShowtimeList from "@/components/Movies/ShowtimeList";
-import type { ShowtimeInMoviePublic } from "@/client";
+import type { ShowtimeInMovieLoggedIn } from "@/client";
 import MoreShowtimes from "./MoreShowtimes";
 
 
 
 
 type ShowtimeInfoProps = {
-    showtimes: ShowtimeInMoviePublic[];
+    showtimes: ShowtimeInMovieLoggedIn[];
     lastShowtime?: string | null;
     total_showtimes: number;
 };

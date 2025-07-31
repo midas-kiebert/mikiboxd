@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException
 
 from app.api.deps import (
@@ -12,6 +14,7 @@ from app.schemas.user import UserPublic
 from app.services import me as me_service
 from app.services import users as users_service
 from app.services import watchlist as watchlist_service
+from app.utils import now_amsterdam_naive
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -62,9 +65,12 @@ def update_password_me(
 def get_my_showtimes(
     session: SessionDep,
     current_user: CurrentUser,
+    snapshot_time: datetime = now_amsterdam_naive(),
 ) -> list[ShowtimeLoggedIn]:
     return users_service.get_selected_showtimes(
-        session=session, user_id=current_user.id
+        session=session,
+        user_id=current_user.id,
+        snapshot_time=snapshot_time,
     )
 
 

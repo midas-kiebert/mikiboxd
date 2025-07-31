@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
@@ -12,6 +13,7 @@ from app.exceptions.user_exceptions import EmailAlreadyExists
 from app.models.user import UserCreate, UserRegister
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.user import UserPublic, UserWithFriendStatus
+from app.utils import now_amsterdam_naive
 
 
 def get_users(
@@ -88,9 +90,7 @@ def register_user(
 
 
 def get_selected_showtimes(
-    *,
-    session: Session,
-    user_id: UUID,
+    *, session: Session, user_id: UUID, snapshot_time: datetime = now_amsterdam_naive()
 ) -> list[ShowtimeLoggedIn]:
     """
     Get the showtimes selected by a user.
@@ -104,6 +104,7 @@ def get_selected_showtimes(
     showtimes = users_crud.get_selected_showtimes(
         session=session,
         user_id=user_id,
+        snapshot_time=snapshot_time,
     )
     return [
         showtime_converters.to_logged_in(

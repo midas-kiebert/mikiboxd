@@ -1,8 +1,8 @@
 from sqlmodel import Session, create_engine, select
 
-from app import crud
 from app.core.config import settings
-from app.models import User, UserCreate
+from app.crud import user as user_crud
+from app.models.user import User, UserCreate
 
 engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
 test_engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI_TEST))
@@ -31,7 +31,7 @@ def init_db(session: Session) -> None:
             password=settings.FIRST_SUPERUSER_PASSWORD,
             is_superuser=True,
         )
-        user = crud.create_user(session=session, user_create=user_in)
+        user = user_crud.create_user(session=session, user_create=user_in)
     test_user = session.exec(
         select(User).where(User.email == settings.EMAIL_TEST_USER)
     ).first()
@@ -41,4 +41,6 @@ def init_db(session: Session) -> None:
             password=settings.FIRST_SUPERUSER_PASSWORD,
             is_superuser=False,
         )
-        test_user = crud.create_user(session=session, user_create=test_user_in)
+        test_user = user_crud.create_user(session=session, user_create=test_user_in)
+
+    session.commit()

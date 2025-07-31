@@ -1,6 +1,6 @@
 import { Separator, Flex } from "@chakra-ui/react";
 import MovieTitle from "./MovieTitle";
-import { MovieSummaryPublic } from "@/client";
+import { MovieSummaryLoggedIn } from "@/client";
 import CinemaBadges from "./CinemaBadges";
 import ShowtimeInfo from "./ShowtimeInfo";
 import FriendBadges from "./FriendBadges";
@@ -8,7 +8,7 @@ import FriendBadges from "./FriendBadges";
 
 
 type MovieInfoBoxProps = {
-    movie: MovieSummaryPublic;
+    movie: MovieSummaryLoggedIn;
 };
 
 export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {

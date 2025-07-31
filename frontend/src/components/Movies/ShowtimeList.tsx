@@ -1,5 +1,5 @@
 import { Box, Text } from "@chakra-ui/react";
-import type { ShowtimeInMoviePublic } from "@/client";
+import type { ShowtimeInMovieLoggedIn } from "@/client";
 import CinemaBadge from "../Common/CinemaBadge";
 
 function formatTime(datetime: string): string {
@@ -14,7 +14,7 @@ function formatTime(datetime: string): string {
   }
 
 type ShowtimeListProps = {
-    showtimes: ShowtimeInMoviePublic[];
+    showtimes: ShowtimeInMovieLoggedIn[];
 }
 
 const ShowtimeList = ({ showtimes }: ShowtimeListProps) => {

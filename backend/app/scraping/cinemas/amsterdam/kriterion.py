@@ -5,12 +5,15 @@ from dateutil import parser
 from pydantic import BaseModel
 from rapidfuzz import fuzz
 
-from app import crud
 from app.api.deps import get_db_context
-from app.models import MovieCreate, ShowtimeCreate
+from app.crud import cinema as cinema_crud
+from app.models.movie import MovieCreate
+from app.models.showtime import ShowtimeCreate
 from app.scraping import BaseCinemaScraper
 from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
+from app.services import movies as movies_services
+from app.services import showtimes as showtimes_services
 
 CINEMA = "Kriterion"
 
@@ -45,10 +48,9 @@ class KriterionScraper(BaseCinemaScraper):
         self.movies: list[MovieCreate] = []
         self.showtimes: list[ShowtimeCreate] = []
         with get_db_context() as session:
-            self.cinema_id = crud.get_cinema_id_by_name(session=session, name=CINEMA)
-            if not self.cinema_id:
-                logger.error(f"Cinema {CINEMA} not found in database")
-                raise ValueError(f"Cinema {CINEMA} not found in database")
+            self.cinema_id = cinema_crud.get_cinema_id_by_name(
+                session=session, name=CINEMA
+            )
 
     def scrape(self) -> None:
         assert self.cinema_id is not None
@@ -108,10 +110,14 @@ class KriterionScraper(BaseCinemaScraper):
             self.showtimes.append(showtime)
         with get_db_context() as session:
             # logger.trace(f"Inserting {len(self.movies)} movies and {len(self.showtimes)} showtimes")
-            for movie in self.movies:
-                crud.create_movie(session=session, movie_create=movie)
+            for movie_create in self.movies:
+                movies_services.insert_movie_if_not_exists(
+                    session=session, movie_create=movie_create
+                )
             for showtime in self.showtimes:
-                crud.create_showtime(session=session, showtime_create=showtime)
+                showtimes_services.insert_showtime_if_not_exists(
+                    session=session, showtime_create=showtime
+                )
 
 
 def get_movie(

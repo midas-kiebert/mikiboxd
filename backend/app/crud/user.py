@@ -1,47 +1,83 @@
-from collections.abc import Sequence
-from typing import Any
+from datetime import datetime
 from uuid import UUID
 
-from sqlmodel import Session, and_, col, or_, select
+from sqlmodel import Session, col, select
 
 from app.core.security import get_password_hash, verify_password
-from app.models import (
-    FriendRequest,
-    Friendship,
-    User,
-    UserCreate,
-    UserUpdate,
-    UserWithFriendInfoPublic,
-)
-
-__all__ = [
-    "create_user",
-    "update_user",
-    "get_user_by_email",
-    "authenticate",
-    "add_friendship",
-    "accept_friend_request",
-    "delete_friend_request",
-    "send_friend_request",
-    "delete_friendship",
-    "get_friends",
-    "get_sent_friend_requests",
-    "get_received_friend_requests",
-    "search_users",
-]
+from app.models.friendship import FriendRequest, Friendship
+from app.models.showtime import Showtime
+from app.models.showtime_selection import ShowtimeSelection
+from app.models.user import User, UserCreate, UserUpdate
+from app.utils import now_amsterdam_naive
 
 
-def create_user(*, session: Session, user_create: UserCreate) -> User:
+def get_user_by_id(*, session: Session, user_id: UUID) -> User | None:
+    """
+    Get a user by their ID.
+
+    Parameters:
+        session (Session): The database session.
+        user_id (UUID): The ID of the user to retrieve.
+    Returns:
+        User | None: The user object if found, otherwise None.
+    """
+    return session.get(User, user_id)
+
+
+def get_user_by_email(*, session: Session, email: str) -> User | None:
+    """
+    Get a user by their email address.
+
+    Parameters:
+        session (Session): The database session.
+        email (str): The email address of the user to retrieve.
+    Returns:
+        User | None: The user object if found, otherwise None.
+    """
+    statement = select(User).where(User.email == email)
+    session_user = session.exec(statement).one_or_none()
+    return session_user
+
+
+def create_user(
+    *,
+    session: Session,
+    user_create: UserCreate,
+) -> User:
+    """
+    Create a new user in the database.
+    Parameters:
+        session (Session): The database session.
+        user_create (UserCreate): The user creation data.
+    Returns:
+        User: The created user object.
+    Raises:
+        IntegrityError: If a user with the same email already exists.
+    """
     db_obj = User.model_validate(
         user_create, update={"hashed_password": get_password_hash(user_create.password)}
     )
     session.add(db_obj)
-    session.commit()
-    session.refresh(db_obj)
+    session.flush()  # Check for unique constraints
     return db_obj
 
 
-def update_user(*, session: Session, db_user: User, user_in: UserUpdate) -> Any:
+def update_user(
+    *,
+    session: Session,
+    db_user: User,
+    user_in: UserUpdate,
+) -> User:
+    """
+    Update an existing user in the database.
+    Parameters:
+        db_user (User): The user object to update.
+        user_in (UserUpdate): The user update data.
+    Returns:
+        User: The updated user object.
+    Raises:
+        IntegrityError: If a user with the same email already exists.
+    """
     user_data = user_in.model_dump(exclude_unset=True)
     extra_data = {}
     if "password" in user_data:
@@ -49,19 +85,21 @@ def update_user(*, session: Session, db_user: User, user_in: UserUpdate) -> Any:
         hashed_password = get_password_hash(password)
         extra_data["hashed_password"] = hashed_password
     db_user.sqlmodel_update(user_data, update=extra_data)
-    session.add(db_user)
-    session.commit()
-    session.refresh(db_user)
+    session.flush()  # Check for unique constraints
     return db_user
 
 
-def get_user_by_email(*, session: Session, email: str) -> User | None:
-    statement = select(User).where(User.email == email)
-    session_user = session.exec(statement).first()
-    return session_user
-
-
 def authenticate(*, session: Session, email: str, password: str) -> User | None:
+    """
+    Authenticate a user by email and password.
+
+    Parameters:
+        session (Session): The database session.
+        email (str): The email address of the user.
+        password (str): The password of the user.
+    Returns:
+        User | None: The authenticated user object if credentials are valid, otherwise None.
+    """
     db_user = get_user_by_email(session=session, email=email)
     if not db_user:
         return None
@@ -70,253 +108,242 @@ def authenticate(*, session: Session, email: str, password: str) -> User | None:
     return db_user
 
 
-def canonical_pair(a: UUID, b: UUID) -> tuple[UUID, UUID]:
-    """
-    Returns a canonical pair of UUIDs such that the first is always less than or equal to the second.
-    This is useful for ensuring that friendships are stored in a consistent order.
-    """
-    return (a, b) if a < b else (b, a)
-
-
-def add_friendship(*, session: Session, user_id: UUID, friend_id: UUID) -> None:
-    if user_id == friend_id:
-        raise ValueError("You cannot add yourself as a friend.")
-
-    users = session.exec(
-        select(User).where((User.id == user_id) | (User.id == friend_id))
-    ).all()
-
-    if len(users) != 2:
-        raise ValueError("Both user and friend must be valid users.")
-
-    user_1_id, user_2_id = canonical_pair(user_id, friend_id)
-    existing_friendship = session.exec(
-        select(Friendship).where(
-            (Friendship.user_id == user_1_id) & (Friendship.friend_id == user_2_id)
-        )
-    ).first()
-    if existing_friendship:
-        raise ValueError("Friendship already exists between these users.")
-
-    friendship = Friendship(user_id=user_1_id, friend_id=user_2_id)
-    session.add(friendship)
-    try:
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        raise ValueError(f"Failed to add friendship: {str(e)}")
-
-
-def accept_friend_request(
-    *, session: Session, sender_id: UUID, receiver_id: UUID
-) -> None:
-    request = session.exec(
-        select(FriendRequest).where(
-            (FriendRequest.sender_id == sender_id)
-            & (FriendRequest.receiver_id == receiver_id)
-        )
-    ).first()
-    if not request:
-        raise ValueError("No friend request found between these users.")
-
-    add_friendship(session=session, user_id=receiver_id, friend_id=sender_id)
-    delete_friend_request(session=session, sender_id=sender_id, receiver_id=receiver_id)
-
-    try:
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        raise ValueError(f"Failed to accept friend request: {str(e)}")
-
-
-def delete_friend_request(
-    *, session: Session, sender_id: UUID, receiver_id: UUID
-) -> None:
-    request = session.exec(
-        select(FriendRequest).where(
-            (FriendRequest.sender_id == sender_id)
-            & (FriendRequest.receiver_id == receiver_id)
-        )
-    ).first()
-    if not request:
-        raise ValueError("No friend request found between these users.")
-
-    session.delete(request)
-
-    try:
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        raise ValueError(f"Failed to remove friend request: {str(e)}")
-
-
-def send_friend_request(
-    *, session: Session, sender_id: UUID, receiver_id: UUID
-) -> None:
-    if sender_id == receiver_id:
-        raise ValueError("You cannot send a friend request to yourself.")
-
-    users = session.exec(
-        select(User).where((User.id == sender_id) | (User.id == receiver_id))
-    ).all()
-
-    if len(users) != 2:
-        raise ValueError("Both sender and receiver must be valid users.")
-
-    existing_friendship = session.exec(
-        select(Friendship).where(
-            (Friendship.user_id == sender_id) & (Friendship.friend_id == receiver_id)
-        )
-    ).first()
-    if existing_friendship:
-        raise ValueError("Friendship already exists between these users.")
-
-    existing_request = session.exec(
-        select(FriendRequest).where(
-            (FriendRequest.sender_id == sender_id)
-            & (FriendRequest.receiver_id == receiver_id)
-        )
-    ).first()
-    if existing_request:
-        raise ValueError("Friend request already exists between these users.")
-
-    existing_reverse_request = session.exec(
-        select(FriendRequest).where(
-            (FriendRequest.sender_id == receiver_id)
-            & (FriendRequest.receiver_id == sender_id)
-        )
-    ).first()
-    if existing_reverse_request:
-        raise ValueError(
-            "A friend request has already been sent in the reverse direction."
-        )
-
-    friend_request = FriendRequest(sender_id=sender_id, receiver_id=receiver_id)
-    session.add(friend_request)
-
-    try:
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        raise ValueError(f"Failed to send friend request: {str(e)}")
-
-
-def delete_friendship(*, session: Session, user_id: UUID, friend_id: UUID) -> None:
-    user_1_id, user_2_id = canonical_pair(user_id, friend_id)
-    friendship = session.exec(
-        select(Friendship).where(
-            (Friendship.user_id == user_1_id) & (Friendship.friend_id == user_2_id)
-        )
-    ).first()
-    if not friendship:
-        raise ValueError("Friendship does not exist between these users.")
-
-    session.delete(friendship)
-
-    try:
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        raise ValueError(f"Failed to delete friendship: {str(e)}")
-
-
-def get_friends(*, session: Session, user_id: UUID) -> Sequence[User]:
-    friends = session.exec(
-        select(Friendship).where(
-            (Friendship.user_id == user_id) | (Friendship.friend_id == user_id)
-        )
-    ).all()
-
-    friend_ids = set()
-    for friendship in friends:
-        if friendship.user_id != user_id:
-            friend_ids.add(friendship.user_id)
-        if friendship.friend_id != user_id:
-            friend_ids.add(friendship.friend_id)
-
-    return session.exec(select(User).where(col(User.id).in_(friend_ids))).all()
-
-
-def get_sent_friend_requests(*, session: Session, user_id: UUID) -> Sequence[User]:
-    requests = session.exec(
-        select(FriendRequest).where(FriendRequest.sender_id == user_id)
-    ).all()
-    receiver_ids = [request.receiver_id for request in requests]
-    return session.exec(select(User).where(col(User.id).in_(receiver_ids))).all()
-
-
-def get_received_friend_requests(*, session: Session, user_id: UUID) -> Sequence[User]:
-    requests = session.exec(
-        select(FriendRequest).where(FriendRequest.receiver_id == user_id)
-    ).all()
-    sender_ids = [request.sender_id for request in requests]
-    return session.exec(select(User).where(col(User.id).in_(sender_ids))).all()
-
-
-def search_users(
+def get_users(
     *,
     session: Session,
     query: str,
-    limit: int = 10,
-    offset: int = 0,
+    limit: int,
+    offset: int,
     current_user_id: UUID,
-) -> list[UserWithFriendInfoPublic]:
+) -> list[User]:
     """
-    Search for users by email or username.
+    Get a list of users based on a search query, excluding the current user.
+
+    Parameters:
+        session (Session): The database session.
+        query (str): The search query for user display names.
+        limit (int): The maximum number of users to return.
+        offset (int): The offset for pagination.
+        current_user_id (UUID): The ID of the current user to exclude from results.
+    Returns:
+        list[User]: A list of User objects matching the search criteria.
     """
-    statement = (
+    stmt = select(User).where(col(User.display_name).isnot(None))
+    if query:
+        stmt = stmt.where(col(User.display_name).ilike(f"%{query}%"))
+    stmt = stmt.where(col(User.id) != current_user_id).limit(limit).offset(offset)
+
+    users: list[User] = list(session.exec(stmt).all())
+    return users
+
+
+def get_friends(*, session: Session, user_id: UUID) -> list[User]:
+    """
+    Get a list of friends for a user.
+
+    Parameters:
+        session (Session): The database session.
+        user_id (UUID): The ID of the user whose friends are to be retrieved.
+    Returns:
+        list[User]: A list of User objects representing the user's friends.
+    """
+    stmt = (
         select(User)
-        .where(col(User.display_name).ilike(f"%{query}%"))
-        .where(col(User.id) != current_user_id)
-        .limit(limit)
-        .offset(offset)
+        .join(
+            Friendship,
+            col(Friendship.friend_id) == User.id,
+        )
+        .where(Friendship.user_id == user_id)
     )
-    users: list[User] = list(session.exec(statement).all())
-    user_ids = [friend.id for friend in users]
+    friends: list[User] = list(session.exec(stmt).all())
+    return friends
 
-    friend_rows = session.exec(
-        select(Friendship).where(
-            or_(
-                and_(
-                    Friendship.user_id == current_user_id,
-                    col(Friendship.friend_id).in_(user_ids),
-                ),
-                and_(
-                    Friendship.friend_id == current_user_id,
-                    col(Friendship.user_id).in_(user_ids),
-                ),
-            )
+
+def get_selected_showtimes(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> list[Showtime]:
+    """
+    Get a list of showtimes that a user has selected.
+
+    Parameters:
+        session (Session): The database session.
+        user_id (UUID): The ID of the user whose selected showtimes are to be retrieved.
+    Returns:
+        list[Showtime]: A list of Showtime objects that the user has selected.
+    """
+    stmt = (
+        select(Showtime)
+        .join(
+            ShowtimeSelection,
+            col(Showtime.id) == ShowtimeSelection.showtime_id,
         )
-    ).all()
-    friend_ids = {
-        f.user_id if f.user_id != current_user_id else f.friend_id for f in friend_rows
-    }
-
-    sent_requests = session.exec(
-        select(FriendRequest).where(
-            and_(
-                FriendRequest.sender_id == current_user_id,
-                col(FriendRequest.receiver_id).in_(user_ids),
-            )
+        .where(
+            ShowtimeSelection.user_id == user_id,
+            Showtime.datetime >= now_amsterdam_naive(),
         )
-    ).all()
-    sent_request_ids = {r.receiver_id for r in sent_requests}
+        .order_by(col(Showtime.datetime))
+    )
+    showtimes = list(session.exec(stmt).all())
+    return showtimes
 
-    received_requests = session.exec(
-        select(FriendRequest).where(
-            and_(
-                FriendRequest.receiver_id == current_user_id,
-                col(FriendRequest.sender_id).in_(user_ids),
-            )
+
+def get_sent_friend_requests(*, session: Session, user_id: UUID) -> list[User]:
+    """
+    Get a list of users to whom the specified user has sent friend requests.
+
+    Parameters:
+        session (Session): The database session.
+        user_id (UUID): The ID of the user whose sent friend requests are to be retrieved.
+    Returns:
+        list[User]: A list of User objects representing the users who received friend requests from the specified user.
+    """
+    stmt = (
+        select(User)
+        .join(
+            FriendRequest,
+            col(FriendRequest.receiver_id) == col(User.id),
         )
-    ).all()
-    received_request_ids = {r.sender_id for r in received_requests}
+        .where(FriendRequest.sender_id == user_id)
+    )
+    users: list[User] = list(session.exec(stmt).all())
+    return users
 
-    results = []
-    for user in users:
-        result = UserWithFriendInfoPublic.model_validate(user)
-        result.is_friend = user.id in friend_ids
-        result.sent_request = user.id in sent_request_ids
-        result.received_request = user.id in received_request_ids
-        results.append(result)
-    return results
+
+def get_received_friend_requests(*, session: Session, user_id: UUID) -> list[User]:
+    """
+    Get a list of users who have sent friend requests to the specified user.
+
+    Parameters:
+        session (Session): The database session.
+        user_id (UUID): The ID of the user whose received friend requests are to be retrieved.
+    Returns:
+        list[User]: A list of User objects representing the users who sent friend requests to the specified user.
+    """
+    stmt = (
+        select(User)
+        .join(
+            FriendRequest,
+            col(FriendRequest.sender_id) == col(User.id),
+        )
+        .where(FriendRequest.receiver_id == user_id)
+    )
+    users: list[User] = list(session.exec(stmt).all())
+    return users
+
+
+def add_showtime_selection(
+    *,
+    session: Session,
+    user_id: UUID,
+    showtime_id: int,
+) -> Showtime:
+    """
+    Add a selection for a showtime by a user.
+
+    Parameters:
+        session (Session): The database session.
+        user_id (UUID): The ID of the user making the selection.
+        showtime_id (int): The ID of the showtime to select.
+    Returns:
+        Showtime: The showtime object if the selection was added successfully.
+    Raises:
+        IntegrityError: If the selection already exists for the user and showtime
+        or the showtime/user doesnt exist.
+    """
+    selection = ShowtimeSelection(user_id=user_id, showtime_id=showtime_id)
+    session.add(selection)
+    session.flush()
+
+    stmt = select(Showtime).where(Showtime.id == showtime_id)
+    showtime = session.exec(stmt).one()
+
+    return showtime
+
+
+def delete_showtime_selection(
+    *,
+    session: Session,
+    user_id: UUID,
+    showtime_id: int,
+) -> Showtime:
+    """
+    Delete a user's selection for a specific showtime.
+
+    Parameters:
+        session (Session): The database session.
+        user_id (UUID): The ID of the user whose selection is to be deleted.
+        showtime_id (int): The ID of the showtime to delete the selection for.
+    Returns:
+        Showtime: The showtime object if the selection was deleted successfully.
+    Raises:
+        NoResultsFound: If the selection does not exist for the user and showtime.
+        MultipleResultsFound: If multiple selections exist (should not happen in a well-formed database).
+    """
+    showtime_selection = session.exec(
+        select(ShowtimeSelection).where(
+            ShowtimeSelection.user_id == user_id,
+            ShowtimeSelection.showtime_id == showtime_id,
+        )
+    ).one()
+    showtime = session.exec(
+        select(Showtime).where(Showtime.id == showtime_selection.showtime_id)
+    ).one()
+
+    session.delete(showtime_selection)
+    return showtime
+
+
+def has_user_selected_showtime(
+    *, session: Session, showtime_id: int, user_id: UUID
+) -> bool:
+    """
+    Check if a user has selected a specific showtime.
+
+    Parameters:
+        session (Session): The database session.
+        showtime_id (int): The ID of the showtime to check.
+        user_id (UUID): The ID of the user to check.
+    Returns:
+        bool: True if the user has selected the showtime, otherwise False.
+    """
+    stmt = select(ShowtimeSelection).where(
+        ShowtimeSelection.showtime_id == showtime_id,
+        ShowtimeSelection.user_id == user_id,
+    )
+    result = session.exec(stmt).one_or_none() is not None
+    return result
+
+
+def is_user_going_to_movie(
+    *,
+    session: Session,
+    movie_id: int,
+    user_id: UUID,
+    snapshot_time: datetime = now_amsterdam_naive(),
+) -> bool:
+    """
+    Check if a user is going to a movie by checking their future showtime selections.
+
+    Parameters:
+        session (Session): The database session.
+        movie_id (int): The ID of the movie to check.
+        user_id (UUID): The ID of the user to check.
+        snapshot_time (datetime): The time to consider for the showtime selections.
+    Returns:
+        bool: True if the user has selected a showtime for the movie after the snapshot time,
+              otherwise False.
+    """
+    stmt = (
+        select(ShowtimeSelection)
+        .join(Showtime, col(ShowtimeSelection.showtime_id) == col(Showtime.id))
+        .where(
+            col(ShowtimeSelection.user_id) == user_id,
+            col(Showtime.movie_id) == movie_id,
+            col(Showtime.datetime) >= snapshot_time,
+        )
+        .limit(1)
+    )
+    result = session.execute(stmt)
+    return result.scalars().one_or_none() is not None

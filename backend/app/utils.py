@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import emails  # type: ignore
 import jwt
@@ -121,3 +122,8 @@ def verify_password_reset_token(token: str) -> str | None:
         return str(decoded_token["sub"])
     except InvalidTokenError:
         return None
+
+
+def now_amsterdam_naive() -> datetime:
+    """Return the current datetime in Europe/Amsterdam timezone, as naive (no tzinfo)."""
+    return datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None)

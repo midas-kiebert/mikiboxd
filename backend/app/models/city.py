@@ -1,9 +1,10 @@
-from typing import TYPE_CHECKING
+from sqlmodel import Field, SQLModel
 
-from sqlmodel import Field, Relationship, SQLModel
-
-if TYPE_CHECKING:
-    from .cinema import Cinema
+__all__ = [
+    "CityBase",
+    "CityCreate",
+    "City",
+]
 
 
 class CityBase(SQLModel):
@@ -22,10 +23,3 @@ class City(CityBase, table=True):
         index=True,
         description="Unique identifier for the city",
     )
-    cinemas: list["Cinema"] = Relationship(
-        back_populates="city", sa_relationship_kwargs={"lazy": "noload"}
-    )
-
-
-class CityPublic(CityBase):
-    pass

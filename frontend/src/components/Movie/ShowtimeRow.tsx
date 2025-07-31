@@ -36,6 +36,7 @@ export function ShowtimeRow({ showtime, onToggle }: ShowtimeRowProps) {
             <Link
                 href={showtime.ticket_link ?? ""}
                 target="_blank"
+                onClick={(e) => e.stopPropagation()}
             >
                 <IconButton
                     rel="noopener noreferrer"

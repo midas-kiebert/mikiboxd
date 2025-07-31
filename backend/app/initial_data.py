@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 def init() -> None:
     with Session(engine) as session:
+        print("Initializing database...")
         init_db(session)
 
 

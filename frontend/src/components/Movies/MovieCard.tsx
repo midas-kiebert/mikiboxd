@@ -1,18 +1,18 @@
 import { Flex } from "@chakra-ui/react";
 import MoviePoster from "./MoviePoster";
 import MovieInfoBox from "./MovieInfoBox";
-import { MovieSummaryPublic } from "@/client";
+import { MovieSummaryLoggedIn } from "@/client";
 import React from "react";
 
 type MovieCardProps = {
-    movie: MovieSummaryPublic;
+    movie: MovieSummaryLoggedIn;
 };
 
 const MovieCard = React.memo(function MovieCard({ movie }: MovieCardProps) {
     return (
         <>
         <Flex
-            bg="gray.100"
+            bg={ movie.going ? "green.200" : "gray.100"}
             borderBottom={"1px solid"}
             borderColor={"gray.300"}
             py={3}

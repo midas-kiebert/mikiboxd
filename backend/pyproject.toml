@@ -36,6 +36,8 @@ dependencies = [
     "pytest-mock",
     "apscheduler",
     "aiohttp",
+    "pytest-cov",
+    "factory_boy",
 ]
 
 [tool.uv]
@@ -69,6 +71,7 @@ filterwarnings = [
 exclude = ["venv", ".venv", "alembic"]
 disallow_untyped_defs = false
 
+
 plugins = [
     "sqlalchemy.ext.mypy.plugin",
 ]
@@ -94,6 +97,8 @@ ignore = [
     "W191",  # indentation contains tabs
     "B904",  # Allow raising exceptions without from e, for HTTPException
     "UP007", # X | None instead of Optional[X]
+    "F403",  # import * used; unable to detect if this is intentional
+    "F405",  # name may be undefined, or defined from star imports: module
 ]
 
 [tool.ruff.lint.pyupgrade]

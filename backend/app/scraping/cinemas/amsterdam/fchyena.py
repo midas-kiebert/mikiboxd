@@ -5,12 +5,15 @@ import requests
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 
-from app import crud
 from app.api.deps import get_db_context
-from app.models import MovieCreate, ShowtimeCreate
+from app.crud import cinema as cinema_crud
+from app.models.movie import MovieCreate
+from app.models.showtime import ShowtimeCreate
 from app.scraping import BaseCinemaScraper
 from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
+from app.services import movies as movies_service
+from app.services import showtimes as showtimes_service
 
 CINEMA = "FC Hyena"
 
@@ -28,10 +31,9 @@ class FCHyenaScraper(BaseCinemaScraper):
         self.movies: list[MovieCreate] = []
         self.showtimes: list[ShowtimeCreate] = []
         with get_db_context() as session:
-            self.cinema_id = crud.get_cinema_id_by_name(session=session, name=CINEMA)
-            if not self.cinema_id:
-                logger.error(f"Cinema {CINEMA} not found in database")
-                raise ValueError(f"Cinema {CINEMA} not found in database")
+            self.cinema_id = cinema_crud.get_cinema_id_by_name(
+                session=session, name=CINEMA
+            )
 
     def scrape(self) -> None:
         assert self.cinema_id is not None
@@ -101,10 +103,14 @@ class FCHyenaScraper(BaseCinemaScraper):
                 self.showtimes.append(showtime)
         with get_db_context() as session:
             # logger.trace(f"{len(self.movies) = }, {len(self.showtimes) = }")
-            for movie in self.movies:
-                crud.create_movie(session=session, movie_create=movie)
-            for showtime in self.showtimes:
-                crud.create_showtime(session=session, showtime_create=showtime)
+            for movie_create in self.movies:
+                movies_service.insert_movie_if_not_exists(
+                    session=session, movie_create=movie_create
+                )
+            for showtime_create in self.showtimes:
+                showtimes_service.insert_showtime_if_not_exists(
+                    session=session, showtime_create=showtime_create
+                )
 
 
 def parse_showtime(row: Tag) -> tuple[datetime, str]:

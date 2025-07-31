@@ -19,8 +19,7 @@ const MoviePage = () => {
         queryFn: () => MoviesService.readMovie({ id: Number(movieId) })
     });
 
-    const showtimesNoFriends = data?.showtime_without_friends || [];
-    const showtimesWithFriends = data?.showtimes_with_friends || [];
+    const showtimes = data?.showtimes || [];
 
     const posterUrl = data?.poster_link || "https://via.placeholder.com/300x450.png?text=No+Poster+Available"
 
@@ -41,8 +40,7 @@ const MoviePage = () => {
                     // imdb="https://www.imdb.com/title/tt1234567/"
                     letterboxd={`https://letterboxd.com/film/${letterboxdSlug}`}
                 />
-                <Showtimes showtimes={showtimesWithFriends} />
-                <Showtimes showtimes={showtimesNoFriends} />
+                <Showtimes showtimes={showtimes} />
             </Page>
         </>
     );

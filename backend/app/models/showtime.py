@@ -1,30 +1,31 @@
-from collections.abc import Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
-    from .cinema import Cinema, CinemaPublic
-    from .movie import Movie, MoviePublic
-    from .user import UserPublic  # Avoid circular import issues
+    from .cinema import Cinema
+    from .movie import Movie
+
+__all__ = [
+    "ShowtimeBase",
+    "ShowtimeCreate",
+    "Showtime",
+]
 
 
 # Shared properties
 class ShowtimeBase(SQLModel):
-    id: int | None = Field(default=None, primary_key=True, description="Showtime ID")
     datetime: datetime
-    theatre: str = Field(description="Theatre name", default="")
-    ticket_link: str | None = Field(
-        description="Link to purchase tickets", default=None
-    )
+    theatre: str = ""
+    ticket_link: str | None = None
 
 
 # Properties to receive on showtime creation
 class ShowtimeCreate(ShowtimeBase):
-    movie_id: int = Field(foreign_key="movie.id", description="TMDB ID of the movie")
-    cinema_id: int = Field(foreign_key="cinema.id", description="ID of the cinema")
+    movie_id: int = Field(foreign_key="movie.id")
+    cinema_id: int = Field(foreign_key="cinema.id")
 
 
 class Showtime(ShowtimeBase, table=True):
@@ -37,35 +38,8 @@ class Showtime(ShowtimeBase, table=True):
             name="uq_showtime_unique_fields",
         ),
     )
-    movie_id: int = Field(foreign_key="movie.id", description="TMDB ID of the movie")
-    movie: Optional["Movie"] = Relationship(
-        back_populates="showtimes", sa_relationship_kwargs={"lazy": "joined"}
-    )
-    cinema_id: int = Field(foreign_key="cinema.id", description="ID of the cinema")
-    cinema: "Cinema" = Relationship(
-        back_populates="showtimes", sa_relationship_kwargs={"lazy": "joined"}
-    )
-
-
-class ShowtimePublic(ShowtimeBase):
-    id: int = Field(description="Showtime ID")
-    movie: "MoviePublic" = Field(
-        description="Movie details associated with the showtime"
-    )
-    cinema: "CinemaPublic" = Field(
-        description="Cinema details where the showtime is held"
-    )
-    friends_going: Sequence["UserPublic"] | None = Field(
-        default=None, description="List of friends going to this showtime"
-    )
-
-
-# For responses inside of a MoviePublic model
-class ShowtimeInMoviePublic(ShowtimeBase):
-    id: int = Field(description="Showtime ID")
-    cinema: "CinemaPublic" = Field(
-        description="Cinema details where the showtime is held"
-    )
-    friends_going: Sequence["UserPublic"] | None = Field(
-        default=None, description="List of friends going to this showtime"
-    )
+    id: int = Field(primary_key=True)
+    movie_id: int = Field(foreign_key="movie.id")
+    movie: "Movie" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    cinema_id: int = Field(foreign_key="cinema.id")
+    cinema: "Cinema" = Relationship(sa_relationship_kwargs={"lazy": "joined"})

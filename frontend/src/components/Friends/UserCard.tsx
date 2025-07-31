@@ -1,4 +1,4 @@
-import type { UserWithFriendInfoPublic } from "@/client"
+import type { UserWithFriendStatus } from "@/client"
 import { Flex, Text, Badge, IconButton, Spacer, Icon } from "@chakra-ui/react"
 import { IoMdRemove, IoIosCheckmark } from "react-icons/io";
 import { LiaTimesSolid, LiaPlusSolid } from "react-icons/lia";
@@ -12,7 +12,7 @@ import {
 } from "@/client";
 
 type UserCardProps = {
-    user: UserWithFriendInfoPublic;
+    user: UserWithFriendStatus;
 };
 
 

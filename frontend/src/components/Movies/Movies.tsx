@@ -1,13 +1,13 @@
 // load all movie cards
 
-import { MovieSummaryPublic } from "@/client";
+import { MovieSummaryLoggedIn } from "@/client";
 import MovieCard from "./MovieCard";
 import MoviesContainer from "./MoviesContainer";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useEffect } from "react";
 
 type MoviesProps = {
-    movies: Array<MovieSummaryPublic>
+    movies: Array<MovieSummaryLoggedIn>
 }
 
 export default function Movies( { movies } : MoviesProps) {

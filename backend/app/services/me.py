@@ -11,6 +11,7 @@ from app.schemas.user import UserPublic
 
 logger = getLogger(__name__)
 
+
 def update_me(
     *,
     session: Session,

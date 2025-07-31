@@ -1,19 +1,18 @@
-import { Flex, Text, HStack, Button, Skeleton } from "@chakra-ui/react";
+import { Flex, Text, HStack, IconButton, Link } from "@chakra-ui/react";
 import CinemaBadge from "../Common/CinemaBadge";
-import FriendBadge from "../Common/FriendBadge"
+import FriendBadge from "../Common/FriendBadge";
+import { FaTicket } from "react-icons/fa6";
 
-import type { ShowtimeInMoviePublic } from "@/client";
-import ShowtimeSelector from "./ShowtimeSelector";
-import useIsShowtimeSelected from "@/hooks/useIsShowtimeSelected";
+import type { ShowtimeInMovieLoggedIn } from "@/client";
 
 type ShowtimeRowProps = {
-    showtime: ShowtimeInMoviePublic;
+    showtime: ShowtimeInMovieLoggedIn;
+    onToggle: () => void;
 }
 
-
-export function ShowtimeRow({ showtime }: ShowtimeRowProps) {
+export function ShowtimeRow({ showtime, onToggle }: ShowtimeRowProps) {
     // unpack showtime data
-    const {datetime, cinema, friends_going} = showtime;
+    const {datetime, cinema, friends_going, going} = showtime;
 
     // Format time as "7:30 PM"
     const formattedTime = new Date(datetime).toLocaleTimeString(undefined, {
@@ -22,23 +21,30 @@ export function ShowtimeRow({ showtime }: ShowtimeRowProps) {
         hour12: false,
     });
 
-    const { isSelected, isLoading } = useIsShowtimeSelected(showtime.id);
-    if (isLoading) {
-        return <Skeleton height="50px" width="100%" borderRadius="md" />;
-    }
-
-
     return (
         <Flex
             align="center"
             justify="space-between"
-            // py={2}
-            px={4}
+            py={1}
             borderBottom="1px solid"
             borderColor="gray.200"
-            bg={isSelected ? "blue.100" : "white"}
+            bg={going ? "green.200" : "white"}
+            _hover={{ bg: going ? "green.200" : "gray.50" }}
+            onClick={onToggle}
+            transition="background 0.2s ease"
         >
-            {/* Left side: time + cinema badge */}
+            <Link
+                href={showtime.ticket_link ?? ""}
+                target="_blank"
+            >
+                <IconButton
+                    rel="noopener noreferrer"
+                    size="sm"
+                    mx={4}
+                >
+                    <FaTicket />
+                </IconButton>
+            </Link>
             <HStack minW="300px" flexShrink={0}>
                 <Text fontWeight="semibold" fontSize="md" minW="60px">
                     {formattedTime}
@@ -65,22 +71,6 @@ export function ShowtimeRow({ showtime }: ShowtimeRowProps) {
                         ))}
                     </>
                 )}
-            </HStack>
-
-            {/* Right side: ticket link + toggle */}
-            <HStack minW="180px" flexShrink={0} justifyContent="flex-end" px={10}>
-                <Button
-                    as="a"
-                    rel="noopener noreferrer"
-                    size="sm"
-                    colorScheme="blue"
-                >
-                    Buy Ticket
-                </Button>
-
-
-
-                <ShowtimeSelector id={showtime.id}/>
             </HStack>
         </Flex>
     );

@@ -2,29 +2,19 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     friends,
-    items,
     login,
     me,
     movies,
-    private,
     showtimes,
-    test,
     users,
     utils,
 )
-from app.core.config import settings
 
 api_router = APIRouter()
 api_router.include_router(login.router)
 api_router.include_router(users.router)
 api_router.include_router(utils.router)
-api_router.include_router(items.router)
-api_router.include_router(test.router)
 api_router.include_router(movies.router)
 api_router.include_router(showtimes.router)
 api_router.include_router(friends.router)
 api_router.include_router(me.router)
-
-
-if settings.ENVIRONMENT == "local":
-    api_router.include_router(private.router)

@@ -1,5 +1,6 @@
 import { Box, Text } from "@chakra-ui/react";
-import type { ShowtimeInMoviePublic } from "@/client";
+import type { ShowtimeInMovieLoggedIn } from "@/client";
+import CinemaBadge from "../Common/CinemaBadge";
 
 function formatTime(datetime: string): string {
     return new Date(datetime).toLocaleTimeString([], {
@@ -13,7 +14,7 @@ function formatTime(datetime: string): string {
   }
 
 type ShowtimeListProps = {
-    showtimes: ShowtimeInMoviePublic[];
+    showtimes: ShowtimeInMovieLoggedIn[];
 }
 
 const ShowtimeList = ({ showtimes }: ShowtimeListProps) => {
@@ -31,8 +32,8 @@ const ShowtimeList = ({ showtimes }: ShowtimeListProps) => {
                         overflow={"hidden"}
                     >
                         • {formatTime(s.datetime)}{" "}
-                        <Box as="span" color="gray.500">
-                            ({s.cinema.name})
+                        <Box as="span" color="gray.500" ml={1}>
+                            <CinemaBadge cinema={s.cinema} />
                         </Box>
                     </Text>
                 </Box>

@@ -14,30 +14,12 @@ export type CinemaPublic = {
    * Name of the cinema
    */
   name: string
-  /**
-   * Is this cinema a Cineville cinema?
-   */
-  cineville?: boolean
-  /**
-   * Background color for the cinema badge
-   */
-  badge_bg_color?: string | null
-  /**
-   * Text color for the cinema badge
-   */
-  badge_text_color?: string | null
-  /**
-   * URL for the cinema's website or page
-   */
-  url?: string | null
-  /**
-   * Unique identifier for the cinema
-   */
+  cineville: boolean
+  badge_bg_color: string
+  badge_text_color: string
+  url: string
   id: number
-  /**
-   * City where the cinema is located
-   */
-  city?: CityPublic
+  city: CityPublic
 }
 
 export type CityPublic = {
@@ -55,115 +37,29 @@ export type HTTPValidationError = {
   detail?: Array<ValidationError>
 }
 
-export type ItemCreate = {
-  title: string
-  description?: string | null
-}
-
-export type ItemPublic = {
-  title: string
-  description?: string | null
-  id: string
-  owner_id: string
-}
-
-export type ItemsPublic = {
-  data: Array<ItemPublic>
-  count: number
-}
-
-export type ItemUpdate = {
-  title?: string | null
-  description?: string | null
-}
-
 export type Message = {
   message: string
 }
 
-export type MovieCreate = {
-  /**
-   * TMDB ID of the movie
-   */
+export type MovieLoggedIn = {
   id: number
-  /**
-   * Title of the movie
-   */
   title: string
-  /**
-   * Link to the movie poster
-   */
   poster_link?: string | null
-  /**
-   * Letterboxd slug for the movie
-   */
   letterboxd_slug?: string | null
+  showtimes: Array<ShowtimeInMovieLoggedIn>
 }
 
-export type MoviePublic = {
-  /**
-   * TMDB ID of the movie
-   */
+export type MovieSummaryLoggedIn = {
   id: number
-  /**
-   * Title of the movie
-   */
   title: string
-  /**
-   * Link to the movie poster
-   */
   poster_link?: string | null
-  /**
-   * Letterboxd slug for the movie
-   */
   letterboxd_slug?: string | null
-  /**
-   * List of showtimes associated with the movie where friends are going
-   */
-  showtimes_with_friends?: Array<ShowtimeInMoviePublic>
-  /**
-   * List of showtimes associated with the movie without friends going
-   */
-  showtime_without_friends?: Array<ShowtimeInMoviePublic>
-}
-
-export type MovieSummaryPublic = {
-  /**
-   * TMDB ID of the movie
-   */
-  id: number
-  /**
-   * Title of the movie
-   */
-  title: string
-  /**
-   * Link to the movie poster
-   */
-  poster_link?: string | null
-  /**
-   * Letterboxd slug for the movie
-   */
-  letterboxd_slug?: string | null
-  /**
-   * List of showtimes associated with the movie
-   */
-  showtimes?: Array<ShowtimeInMoviePublic>
-  /**
-   * List of cinemas where the movie is showing
-   */
-  cinemas?: Array<CinemaPublic>
-  /**
-   * Datetime of the last showtime for the movie
-   */
-  last_showtime_datetime?: string | null
-  /**
-   * Total number of showtimes for the movie
-   */
-  total_showtimes?: number | null
-  /**
-   * List of friends who are going to see the movie
-   */
-  friends_going?: Array<UserPublic>
+  showtimes: Array<ShowtimeInMovieLoggedIn>
+  cinemas: Array<CinemaPublic>
+  last_showtime_datetime: string | null
+  total_showtimes: number
+  friends_going: Array<UserPublic>
+  going: boolean
 }
 
 export type NewPassword = {
@@ -171,87 +67,25 @@ export type NewPassword = {
   new_password: string
 }
 
-export type PrivateUserCreate = {
-  email: string
-  password: string
-  display_name: string
-  is_verified?: boolean
-}
-
-export type ShowtimeCreate = {
-  /**
-   * Showtime ID
-   */
-  id?: number | null
+export type ShowtimeInMovieLoggedIn = {
   datetime: string
-  /**
-   * Theatre name
-   */
   theatre?: string
-  /**
-   * Link to purchase tickets
-   */
   ticket_link?: string | null
-  /**
-   * TMDB ID of the movie
-   */
-  movie_id: number
-  /**
-   * ID of the cinema
-   */
-  cinema_id: number
-}
-
-export type ShowtimeInMoviePublic = {
-  /**
-   * Showtime ID
-   */
   id: number
-  datetime: string
-  /**
-   * Theatre name
-   */
-  theatre?: string
-  /**
-   * Link to purchase tickets
-   */
-  ticket_link?: string | null
-  /**
-   * Cinema details where the showtime is held
-   */
   cinema: CinemaPublic
-  /**
-   * List of friends going to this showtime
-   */
-  friends_going?: Array<UserPublic> | null
+  friends_going: Array<UserPublic>
+  going: boolean
 }
 
-export type ShowtimePublic = {
-  /**
-   * Showtime ID
-   */
-  id: number
+export type ShowtimeLoggedIn = {
   datetime: string
-  /**
-   * Theatre name
-   */
   theatre?: string
-  /**
-   * Link to purchase tickets
-   */
   ticket_link?: string | null
-  /**
-   * Movie details associated with the showtime
-   */
-  movie: MoviePublic
-  /**
-   * Cinema details where the showtime is held
-   */
+  id: number
+  movie: MovieSummaryLoggedIn
   cinema: CinemaPublic
-  /**
-   * List of friends going to this showtime
-   */
-  friends_going?: Array<UserPublic> | null
+  friends_going: Array<UserPublic>
+  going: boolean
 }
 
 export type Token = {
@@ -267,38 +101,14 @@ export type UpdatePassword = {
   new_password: string
 }
 
-export type UserCreate = {
-  email: string
-  /**
-   * Indicates if the user is active
-   */
-  is_active?: boolean
-  /**
-   * Indicates if the user has superuser privileges
-   */
-  is_superuser?: boolean
-  display_name?: string | null
-  letterboxd_username?: string | null
-  password: string
-}
-
 export type UserPublic = {
   email: string
-  /**
-   * Indicates if the user is active
-   */
   is_active?: boolean
-  /**
-   * Indicates if the user has superuser privileges
-   */
   is_superuser?: boolean
   display_name?: string | null
   letterboxd_username?: string | null
   id: string
-  /**
-   * Last time the watchlist was synced
-   */
-  last_watchlist_sync?: string | null
+  last_watchlist_sync: string | null
 }
 
 export type UserRegister = {
@@ -307,61 +117,23 @@ export type UserRegister = {
   display_name?: string | null
 }
 
-export type UsersPublic = {
-  data: Array<UserPublic>
-  count: number
-}
-
-export type UserUpdate = {
-  email?: string | null
-  /**
-   * Indicates if the user is active
-   */
-  is_active?: boolean
-  /**
-   * Indicates if the user has superuser privileges
-   */
-  is_superuser?: boolean
-  display_name?: string | null
-  letterboxd_username?: string | null
-  password?: string | null
-}
-
 export type UserUpdateMe = {
   display_name?: string | null
   email?: string | null
   letterboxd_username?: string | null
 }
 
-export type UserWithFriendInfoPublic = {
+export type UserWithFriendStatus = {
   email: string
-  /**
-   * Indicates if the user is active
-   */
   is_active?: boolean
-  /**
-   * Indicates if the user has superuser privileges
-   */
   is_superuser?: boolean
   display_name?: string | null
   letterboxd_username?: string | null
   id: string
-  /**
-   * Last time the watchlist was synced
-   */
-  last_watchlist_sync?: string | null
-  /**
-   * Indicates if the user is a friend
-   */
-  is_friend?: boolean
-  /**
-   * Indicates if the user has sent you a friendship request
-   */
-  sent_request?: boolean
-  /**
-   * Indicates if the user has received a friendship request from you
-   */
-  received_request?: boolean
+  last_watchlist_sync: string | null
+  is_friend: boolean
+  sent_request: boolean
+  received_request: boolean
 }
 
 export type ValidationError = {
@@ -400,44 +172,6 @@ export type FriendsRemoveFriendData = {
 
 export type FriendsRemoveFriendResponse = Message
 
-export type FriendsGetFriendsResponse = UsersPublic
-
-export type FriendsGetSentFriendRequestsResponse = UsersPublic
-
-export type FriendsGetReceivedFriendRequestsResponse = UsersPublic
-
-export type ItemsReadItemsData = {
-  limit?: number
-  skip?: number
-}
-
-export type ItemsReadItemsResponse = ItemsPublic
-
-export type ItemsCreateItemData = {
-  requestBody: ItemCreate
-}
-
-export type ItemsCreateItemResponse = ItemPublic
-
-export type ItemsReadItemData = {
-  id: string
-}
-
-export type ItemsReadItemResponse = ItemPublic
-
-export type ItemsUpdateItemData = {
-  id: string
-  requestBody: ItemUpdate
-}
-
-export type ItemsUpdateItemResponse = ItemPublic
-
-export type ItemsDeleteItemData = {
-  id: string
-}
-
-export type ItemsDeleteItemResponse = Message
-
 export type LoginLoginAccessTokenData = {
   formData: Body_login_login_access_token
 }
@@ -468,149 +202,77 @@ export type MeGetCurrentUserResponse = UserPublic
 
 export type MeDeleteUserMeResponse = Message
 
-export type MeGetMyShowtimesResponse = Array<ShowtimePublic>
+export type MeUpdateUserMeData = {
+  requestBody: UserUpdateMe
+}
+
+export type MeUpdateUserMeResponse = UserPublic
+
+export type MeUpdatePasswordMeData = {
+  requestBody: UpdatePassword
+}
+
+export type MeUpdatePasswordMeResponse = Message
+
+export type MeGetMyShowtimesResponse = Array<ShowtimeLoggedIn>
 
 export type MeSyncWatchlistResponse = Message
 
-export type MoviesCreateMovieData = {
-  requestBody: MovieCreate
-}
+export type MeGetFriendsResponse = Array<UserPublic>
 
-export type MoviesCreateMovieResponse = MoviePublic
+export type MeGetSentFriendRequestsResponse = Array<UserPublic>
+
+export type MeGetReceivedFriendRequestsResponse = Array<UserPublic>
 
 export type MoviesReadMoviesData = {
-  /**
-   * Max number of items to return
-   */
   limit?: number
-  /**
-   * Number of items to skip
-   */
   offset?: number
-  /**
-   * Search query for movie titles, optional
-   */
-  query?: string | null
-  /**
-   * Max number of showtimes per movie
-   */
+  query?: string
   showtimeLimit?: number
   snapshotTime?: string
-  /**
-   * If true, only return movies that are in the user's watchlist
-   */
   watchlistOnly?: boolean
 }
 
-export type MoviesReadMoviesResponse = Array<MovieSummaryPublic>
+export type MoviesReadMoviesResponse = Array<MovieSummaryLoggedIn>
 
 export type MoviesReadMovieData = {
   id: number
+  snapshotTime?: string
 }
 
-export type MoviesReadMovieResponse = MoviePublic
-
-export type PrivateCreateUserData = {
-  requestBody: PrivateUserCreate
-}
-
-export type PrivateCreateUserResponse = UserPublic
-
-export type ShowtimesCreateShowtimeData = {
-  requestBody: ShowtimeCreate
-}
-
-export type ShowtimesCreateShowtimeResponse = ShowtimePublic
-
-export type ShowtimesGetAllShowtimesForMovieData = {
-  movieId: number
-}
-
-export type ShowtimesGetAllShowtimesForMovieResponse =
-  Array<ShowtimeInMoviePublic>
+export type MoviesReadMovieResponse = MovieLoggedIn
 
 export type ShowtimesSelectShowtimeData = {
   showtimeId: number
 }
 
-export type ShowtimesSelectShowtimeResponse = unknown
+export type ShowtimesSelectShowtimeResponse = ShowtimeLoggedIn
 
 export type ShowtimesDeleteShowtimeSelectionData = {
   showtimeId: number
 }
 
-export type ShowtimesDeleteShowtimeSelectionResponse = unknown
+export type ShowtimesDeleteShowtimeSelectionResponse = ShowtimeLoggedIn
 
-export type TestMyTestResponse = Message
-
-export type UsersReadUsersData = {
-  limit?: number
-  skip?: number
+export type ShowtimesToggleShowtimeSelectionData = {
+  showtimeId: number
 }
 
-export type UsersReadUsersResponse = UsersPublic
-
-export type UsersCreateUserData = {
-  requestBody: UserCreate
-}
-
-export type UsersCreateUserResponse = UserPublic
+export type ShowtimesToggleShowtimeSelectionResponse = ShowtimeLoggedIn
 
 export type UsersSearchUsersData = {
-  /**
-   * Max number of items to return
-   */
   limit?: number
-  /**
-   * Number of items to skip
-   */
   offset?: number
-  /**
-   * Search query for usernames
-   */
   query: string
 }
 
-export type UsersSearchUsersResponse = Array<UserWithFriendInfoPublic>
-
-export type UsersDeleteUserMeResponse = Message
-
-export type UsersUpdateUserMeData = {
-  requestBody: UserUpdateMe
-}
-
-export type UsersUpdateUserMeResponse = UserPublic
-
-export type UsersUpdatePasswordMeData = {
-  requestBody: UpdatePassword
-}
-
-export type UsersUpdatePasswordMeResponse = Message
+export type UsersSearchUsersResponse = Array<UserWithFriendStatus>
 
 export type UsersRegisterUserData = {
   requestBody: UserRegister
 }
 
 export type UsersRegisterUserResponse = UserPublic
-
-export type UsersReadUserByIdData = {
-  userId: string
-}
-
-export type UsersReadUserByIdResponse = UserPublic
-
-export type UsersUpdateUserData = {
-  requestBody: UserUpdate
-  userId: string
-}
-
-export type UsersUpdateUserResponse = UserPublic
-
-export type UsersDeleteUserData = {
-  userId: string
-}
-
-export type UsersDeleteUserResponse = Message
 
 export type UtilsTestEmailData = {
   emailTo: string

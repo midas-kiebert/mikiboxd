@@ -1,6 +1,6 @@
 import { Separator, Flex } from "@chakra-ui/react";
 import MovieTitle from "./MovieTitle";
-import { MovieSummaryPublic } from "@/client";
+import { MovieSummaryLoggedIn } from "@/client";
 import CinemaBadges from "./CinemaBadges";
 import ShowtimeInfo from "./ShowtimeInfo";
 import FriendBadges from "./FriendBadges";
@@ -8,7 +8,7 @@ import FriendBadges from "./FriendBadges";
 
 
 type MovieInfoBoxProps = {
-    movie: MovieSummaryPublic;
+    movie: MovieSummaryLoggedIn;
 };
 
 export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
@@ -29,7 +29,11 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
                 <MovieTitle title={movie.title} />
                 <CinemaBadges cinemas={cinemas} />
             </Flex>
-            <Separator mt={0.5} mb={2}/>
+            <Separator
+                mt={0.5}
+                mb={2}
+                borderColor={movie.going ? "green.500" : "gray.300"}
+            />
             <Flex flex="1">
                 <ShowtimeInfo
                     showtimes={showtimes}
@@ -39,6 +43,7 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
                 <Separator
                     orientation={"vertical"}
                     mx={2}
+                    borderColor={movie.going ? "green.500" : "gray.300"}
                 />
                 <FriendBadges friends={friends_going}/>
             </Flex>

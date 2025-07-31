@@ -14,19 +14,6 @@ import type {
   FriendsCancelFriendRequestResponse,
   FriendsRemoveFriendData,
   FriendsRemoveFriendResponse,
-  FriendsGetFriendsResponse,
-  FriendsGetSentFriendRequestsResponse,
-  FriendsGetReceivedFriendRequestsResponse,
-  ItemsReadItemsData,
-  ItemsReadItemsResponse,
-  ItemsCreateItemData,
-  ItemsCreateItemResponse,
-  ItemsReadItemData,
-  ItemsReadItemResponse,
-  ItemsUpdateItemData,
-  ItemsUpdateItemResponse,
-  ItemsDeleteItemData,
-  ItemsDeleteItemResponse,
   LoginLoginAccessTokenData,
   LoginLoginAccessTokenResponse,
   LoginTestTokenResponse,
@@ -38,44 +25,29 @@ import type {
   LoginRecoverPasswordHtmlContentResponse,
   MeGetCurrentUserResponse,
   MeDeleteUserMeResponse,
+  MeUpdateUserMeData,
+  MeUpdateUserMeResponse,
+  MeUpdatePasswordMeData,
+  MeUpdatePasswordMeResponse,
   MeGetMyShowtimesResponse,
   MeSyncWatchlistResponse,
-  MoviesCreateMovieData,
-  MoviesCreateMovieResponse,
+  MeGetFriendsResponse,
+  MeGetSentFriendRequestsResponse,
+  MeGetReceivedFriendRequestsResponse,
   MoviesReadMoviesData,
   MoviesReadMoviesResponse,
   MoviesReadMovieData,
   MoviesReadMovieResponse,
-  PrivateCreateUserData,
-  PrivateCreateUserResponse,
-  ShowtimesCreateShowtimeData,
-  ShowtimesCreateShowtimeResponse,
-  ShowtimesGetAllShowtimesForMovieData,
-  ShowtimesGetAllShowtimesForMovieResponse,
   ShowtimesSelectShowtimeData,
   ShowtimesSelectShowtimeResponse,
   ShowtimesDeleteShowtimeSelectionData,
   ShowtimesDeleteShowtimeSelectionResponse,
-  TestMyTestResponse,
-  UsersReadUsersData,
-  UsersReadUsersResponse,
-  UsersCreateUserData,
-  UsersCreateUserResponse,
+  ShowtimesToggleShowtimeSelectionData,
+  ShowtimesToggleShowtimeSelectionResponse,
   UsersSearchUsersData,
   UsersSearchUsersResponse,
-  UsersDeleteUserMeResponse,
-  UsersUpdateUserMeData,
-  UsersUpdateUserMeResponse,
-  UsersUpdatePasswordMeData,
-  UsersUpdatePasswordMeResponse,
   UsersRegisterUserData,
   UsersRegisterUserResponse,
-  UsersReadUserByIdData,
-  UsersReadUserByIdResponse,
-  UsersUpdateUserData,
-  UsersUpdateUserResponse,
-  UsersDeleteUserData,
-  UsersDeleteUserResponse,
   UtilsTestEmailData,
   UtilsTestEmailResponse,
   UtilsHealthCheckResponse,
@@ -84,7 +56,6 @@ import type {
 export class FriendsService {
   /**
    * Send Friend Request
-   * Send a friend request to another user.
    * @param data The data for the request.
    * @param data.receiverId
    * @returns Message Successful Response
@@ -107,7 +78,6 @@ export class FriendsService {
 
   /**
    * Accept Friend Request
-   * Accept a friend request from another user.
    * @param data The data for the request.
    * @param data.senderId
    * @returns Message Successful Response
@@ -130,7 +100,6 @@ export class FriendsService {
 
   /**
    * Decline Friend Request
-   * Decline a friend request from another user.
    * @param data The data for the request.
    * @param data.senderId
    * @returns Message Successful Response
@@ -153,7 +122,6 @@ export class FriendsService {
 
   /**
    * Cancel Friend Request
-   * Cancel a sent friend request.
    * @param data The data for the request.
    * @param data.receiverId
    * @returns Message Successful Response
@@ -176,7 +144,6 @@ export class FriendsService {
 
   /**
    * Remove Friend
-   * Remove a friend from your friend list.
    * @param data The data for the request.
    * @param data.friendId
    * @returns Message Successful Response
@@ -190,166 +157,6 @@ export class FriendsService {
       url: "/api/v1/friends/{friend_id}",
       path: {
         friend_id: data.friendId,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Get Friends
-   * Get the list of friends for the current user.
-   * @returns UsersPublic Successful Response
-   * @throws ApiError
-   */
-  public static getFriends(): CancelablePromise<FriendsGetFriendsResponse> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/friends/",
-    })
-  }
-
-  /**
-   * Get Sent Friend Requests
-   * Get the list of sent friend requests for the current user.
-   * @returns UsersPublic Successful Response
-   * @throws ApiError
-   */
-  public static getSentFriendRequests(): CancelablePromise<FriendsGetSentFriendRequestsResponse> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/friends/requests/sent",
-    })
-  }
-
-  /**
-   * Get Received Friend Requests
-   * Get the list of received friend requests for the current user.
-   * @returns UsersPublic Successful Response
-   * @throws ApiError
-   */
-  public static getReceivedFriendRequests(): CancelablePromise<FriendsGetReceivedFriendRequestsResponse> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/friends/requests/received",
-    })
-  }
-}
-
-export class ItemsService {
-  /**
-   * Read Items
-   * Retrieve items.
-   * @param data The data for the request.
-   * @param data.skip
-   * @param data.limit
-   * @returns ItemsPublic Successful Response
-   * @throws ApiError
-   */
-  public static readItems(
-    data: ItemsReadItemsData = {},
-  ): CancelablePromise<ItemsReadItemsResponse> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/items/",
-      query: {
-        skip: data.skip,
-        limit: data.limit,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Create Item
-   * Create new item.
-   * @param data The data for the request.
-   * @param data.requestBody
-   * @returns ItemPublic Successful Response
-   * @throws ApiError
-   */
-  public static createItem(
-    data: ItemsCreateItemData,
-  ): CancelablePromise<ItemsCreateItemResponse> {
-    return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/items/",
-      body: data.requestBody,
-      mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Read Item
-   * Get item by ID.
-   * @param data The data for the request.
-   * @param data.id
-   * @returns ItemPublic Successful Response
-   * @throws ApiError
-   */
-  public static readItem(
-    data: ItemsReadItemData,
-  ): CancelablePromise<ItemsReadItemResponse> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/items/{id}",
-      path: {
-        id: data.id,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Update Item
-   * Update an item.
-   * @param data The data for the request.
-   * @param data.id
-   * @param data.requestBody
-   * @returns ItemPublic Successful Response
-   * @throws ApiError
-   */
-  public static updateItem(
-    data: ItemsUpdateItemData,
-  ): CancelablePromise<ItemsUpdateItemResponse> {
-    return __request(OpenAPI, {
-      method: "PUT",
-      url: "/api/v1/items/{id}",
-      path: {
-        id: data.id,
-      },
-      body: data.requestBody,
-      mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Delete Item
-   * Delete an item.
-   * @param data The data for the request.
-   * @param data.id
-   * @returns Message Successful Response
-   * @throws ApiError
-   */
-  public static deleteItem(
-    data: ItemsDeleteItemData,
-  ): CancelablePromise<ItemsDeleteItemResponse> {
-    return __request(OpenAPI, {
-      method: "DELETE",
-      url: "/api/v1/items/{id}",
-      path: {
-        id: data.id,
       },
       errors: {
         422: "Validation Error",
@@ -466,7 +273,6 @@ export class LoginService {
 export class MeService {
   /**
    * Get Current User
-   * Get the current user's profile.
    * @returns UserPublic Successful Response
    * @throws ApiError
    */
@@ -479,7 +285,6 @@ export class MeService {
 
   /**
    * Delete User Me
-   * Delete own user.
    * @returns Message Successful Response
    * @throws ApiError
    */
@@ -491,9 +296,50 @@ export class MeService {
   }
 
   /**
+   * Update User Me
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns UserPublic Successful Response
+   * @throws ApiError
+   */
+  public static updateUserMe(
+    data: MeUpdateUserMeData,
+  ): CancelablePromise<MeUpdateUserMeResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/me/",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update Password Me
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static updatePasswordMe(
+    data: MeUpdatePasswordMeData,
+  ): CancelablePromise<MeUpdatePasswordMeResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/me/password",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Get My Showtimes
-   * Get all showtimes selected by the current user.
-   * @returns ShowtimePublic Successful Response
+   * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
   public static getMyShowtimes(): CancelablePromise<MeGetMyShowtimesResponse> {
@@ -505,7 +351,6 @@ export class MeService {
 
   /**
    * Sync Watchlist
-   * Sync the user's watchlist from Letterboxd.
    * @returns Message Successful Response
    * @throws ApiError
    */
@@ -515,41 +360,55 @@ export class MeService {
       url: "/api/v1/me/watchlist",
     })
   }
-}
 
-export class MoviesService {
   /**
-   * Create Movie
-   * Create a new movie.
-   * @param data The data for the request.
-   * @param data.requestBody
-   * @returns MoviePublic Successful Response
+   * Get Friends
+   * @returns UserPublic Successful Response
    * @throws ApiError
    */
-  public static createMovie(
-    data: MoviesCreateMovieData,
-  ): CancelablePromise<MoviesCreateMovieResponse> {
+  public static getFriends(): CancelablePromise<MeGetFriendsResponse> {
     return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/movies/",
-      body: data.requestBody,
-      mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
+      method: "GET",
+      url: "/api/v1/me/friends",
     })
   }
 
   /**
+   * Get Sent Friend Requests
+   * @returns UserPublic Successful Response
+   * @throws ApiError
+   */
+  public static getSentFriendRequests(): CancelablePromise<MeGetSentFriendRequestsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/requests/sent",
+    })
+  }
+
+  /**
+   * Get Received Friend Requests
+   * @returns UserPublic Successful Response
+   * @throws ApiError
+   */
+  public static getReceivedFriendRequests(): CancelablePromise<MeGetReceivedFriendRequestsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/requests/received",
+    })
+  }
+}
+
+export class MoviesService {
+  /**
    * Read Movies
    * @param data The data for the request.
-   * @param data.offset Number of items to skip
-   * @param data.limit Max number of items to return
-   * @param data.showtimeLimit Max number of showtimes per movie
+   * @param data.offset
+   * @param data.limit
+   * @param data.showtimeLimit
    * @param data.snapshotTime
-   * @param data.query Search query for movie titles, optional
-   * @param data.watchlistOnly If true, only return movies that are in the user's watchlist
-   * @returns MovieSummaryPublic Successful Response
+   * @param data.query
+   * @param data.watchlistOnly
+   * @returns MovieSummaryLoggedIn Successful Response
    * @throws ApiError
    */
   public static readMovies(
@@ -574,10 +433,10 @@ export class MoviesService {
 
   /**
    * Read Movie
-   * Get movie by TMDB ID.
    * @param data The data for the request.
    * @param data.id
-   * @returns MoviePublic Successful Response
+   * @param data.snapshotTime
+   * @returns MovieLoggedIn Successful Response
    * @throws ApiError
    */
   public static readMovie(
@@ -589,30 +448,9 @@ export class MoviesService {
       path: {
         id: data.id,
       },
-      errors: {
-        422: "Validation Error",
+      query: {
+        snapshot_time: data.snapshotTime,
       },
-    })
-  }
-}
-
-export class PrivateService {
-  /**
-   * Create User
-   * Create a new user.
-   * @param data The data for the request.
-   * @param data.requestBody
-   * @returns UserPublic Successful Response
-   * @throws ApiError
-   */
-  public static createUser(
-    data: PrivateCreateUserData,
-  ): CancelablePromise<PrivateCreateUserResponse> {
-    return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/private/users/",
-      body: data.requestBody,
-      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },
@@ -622,55 +460,10 @@ export class PrivateService {
 
 export class ShowtimesService {
   /**
-   * Create Showtime
-   * Create a new movie.
-   * @param data The data for the request.
-   * @param data.requestBody
-   * @returns ShowtimePublic Successful Response
-   * @throws ApiError
-   */
-  public static createShowtime(
-    data: ShowtimesCreateShowtimeData,
-  ): CancelablePromise<ShowtimesCreateShowtimeResponse> {
-    return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/showtimes/",
-      body: data.requestBody,
-      mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Get All Showtimes For Movie
-   * @param data The data for the request.
-   * @param data.movieId
-   * @returns ShowtimeInMoviePublic Successful Response
-   * @throws ApiError
-   */
-  public static getAllShowtimesForMovie(
-    data: ShowtimesGetAllShowtimesForMovieData,
-  ): CancelablePromise<ShowtimesGetAllShowtimesForMovieResponse> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/showtimes/movie/{movie_id}",
-      path: {
-        movie_id: data.movieId,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
    * Select Showtime
-   * Select a showtime for a user.
    * @param data The data for the request.
    * @param data.showtimeId
-   * @returns unknown Successful Response
+   * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
   public static selectShowtime(
@@ -690,10 +483,9 @@ export class ShowtimesService {
 
   /**
    * Delete Showtime Selection
-   * Delete a user's selection for a showtime.
    * @param data The data for the request.
    * @param data.showtimeId
-   * @returns unknown Successful Response
+   * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
   public static deleteShowtimeSelection(
@@ -710,77 +502,38 @@ export class ShowtimesService {
       },
     })
   }
-}
 
-export class TestService {
   /**
-   * My Test
-   * @returns Message Successful Response
+   * Toggle Showtime Selection
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
-  public static myTest(): CancelablePromise<TestMyTestResponse> {
+  public static toggleShowtimeSelection(
+    data: ShowtimesToggleShowtimeSelectionData,
+  ): CancelablePromise<ShowtimesToggleShowtimeSelectionResponse> {
     return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/test/my-test",
+      method: "PUT",
+      url: "/api/v1/showtimes/selection/{showtime_id}",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
     })
   }
 }
 
 export class UsersService {
   /**
-   * Read Users
-   * Retrieve users.
-   * @param data The data for the request.
-   * @param data.skip
-   * @param data.limit
-   * @returns UsersPublic Successful Response
-   * @throws ApiError
-   */
-  public static readUsers(
-    data: UsersReadUsersData = {},
-  ): CancelablePromise<UsersReadUsersResponse> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/users/",
-      query: {
-        skip: data.skip,
-        limit: data.limit,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Create User
-   * Create new user.
-   * @param data The data for the request.
-   * @param data.requestBody
-   * @returns UserPublic Successful Response
-   * @throws ApiError
-   */
-  public static createUser(
-    data: UsersCreateUserData,
-  ): CancelablePromise<UsersCreateUserResponse> {
-    return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/users/",
-      body: data.requestBody,
-      mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
    * Search Users
    * @param data The data for the request.
-   * @param data.query Search query for usernames
-   * @param data.offset Number of items to skip
-   * @param data.limit Max number of items to return
-   * @returns UserWithFriendInfoPublic Successful Response
+   * @param data.query
+   * @param data.offset
+   * @param data.limit
+   * @returns UserWithFriendStatus Successful Response
    * @throws ApiError
    */
   public static searchUsers(
@@ -801,65 +554,7 @@ export class UsersService {
   }
 
   /**
-   * Delete User Me
-   * Delete own user.
-   * @returns Message Successful Response
-   * @throws ApiError
-   */
-  public static deleteUserMe(): CancelablePromise<UsersDeleteUserMeResponse> {
-    return __request(OpenAPI, {
-      method: "DELETE",
-      url: "/api/v1/users/me",
-    })
-  }
-
-  /**
-   * Update User Me
-   * Update own user.
-   * @param data The data for the request.
-   * @param data.requestBody
-   * @returns UserPublic Successful Response
-   * @throws ApiError
-   */
-  public static updateUserMe(
-    data: UsersUpdateUserMeData,
-  ): CancelablePromise<UsersUpdateUserMeResponse> {
-    return __request(OpenAPI, {
-      method: "PATCH",
-      url: "/api/v1/users/me",
-      body: data.requestBody,
-      mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Update Password Me
-   * Update own password.
-   * @param data The data for the request.
-   * @param data.requestBody
-   * @returns Message Successful Response
-   * @throws ApiError
-   */
-  public static updatePasswordMe(
-    data: UsersUpdatePasswordMeData,
-  ): CancelablePromise<UsersUpdatePasswordMeResponse> {
-    return __request(OpenAPI, {
-      method: "PATCH",
-      url: "/api/v1/users/me/password",
-      body: data.requestBody,
-      mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
    * Register User
-   * Create new user without the need to be logged in.
    * @param data The data for the request.
    * @param data.requestBody
    * @returns UserPublic Successful Response
@@ -873,78 +568,6 @@ export class UsersService {
       url: "/api/v1/users/signup",
       body: data.requestBody,
       mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Read User By Id
-   * Get a specific user by id.
-   * @param data The data for the request.
-   * @param data.userId
-   * @returns UserPublic Successful Response
-   * @throws ApiError
-   */
-  public static readUserById(
-    data: UsersReadUserByIdData,
-  ): CancelablePromise<UsersReadUserByIdResponse> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/users/{user_id}",
-      path: {
-        user_id: data.userId,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Update User
-   * Update a user.
-   * @param data The data for the request.
-   * @param data.userId
-   * @param data.requestBody
-   * @returns UserPublic Successful Response
-   * @throws ApiError
-   */
-  public static updateUser(
-    data: UsersUpdateUserData,
-  ): CancelablePromise<UsersUpdateUserResponse> {
-    return __request(OpenAPI, {
-      method: "PATCH",
-      url: "/api/v1/users/{user_id}",
-      path: {
-        user_id: data.userId,
-      },
-      body: data.requestBody,
-      mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Delete User
-   * Delete a user.
-   * @param data The data for the request.
-   * @param data.userId
-   * @returns Message Successful Response
-   * @throws ApiError
-   */
-  public static deleteUser(
-    data: UsersDeleteUserData,
-  ): CancelablePromise<UsersDeleteUserResponse> {
-    return __request(OpenAPI, {
-      method: "DELETE",
-      url: "/api/v1/users/{user_id}",
-      path: {
-        user_id: data.userId,
-      },
       errors: {
         422: "Validation Error",
       },

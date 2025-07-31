@@ -22,6 +22,7 @@ const Badge = ({ text, bgColor, textColor, textSize, url, hoverColor } : BadgePr
                 width={"fit-content"}
                 mr={1}
                 my={0.5}
+                target="_blank"
             >
                 <Box
                     px={2}

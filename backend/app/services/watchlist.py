@@ -64,3 +64,4 @@ def sync_watchlist(
         )
 
     user.last_watchlist_sync = now_amsterdam_naive()
+    session.commit()

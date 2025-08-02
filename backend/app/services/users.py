@@ -7,9 +7,10 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
+from app.crud import friendship as friendship_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
-from app.exceptions.user_exceptions import EmailAlreadyExists
+from app.exceptions.user_exceptions import EmailAlreadyExists, NotAFriend
 from app.models.user import UserCreate, UserRegister
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.user import UserPublic, UserWithFriendStatus
@@ -92,6 +93,7 @@ def register_user(
 def get_selected_showtimes(
     *,
     session: Session,
+    current_user_id: UUID,
     user_id: UUID,
     snapshot_time: datetime = now_amsterdam_naive(),
     limit: int,
@@ -106,6 +108,15 @@ def get_selected_showtimes(
     Returns:
         list[ShowtimeLoggedIn]: List of showtimes selected by the user.
     """
+    is_friend = friendship_crud.are_users_friends(
+        session=session,
+        user_id=current_user_id,
+        friend_id=user_id,
+    )
+
+    if user_id != current_user_id and not is_friend:
+        raise NotAFriend(user_id=user_id)
+
     showtimes = users_crud.get_selected_showtimes(
         session=session,
         user_id=user_id,

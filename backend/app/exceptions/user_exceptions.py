@@ -35,3 +35,10 @@ class OneOrMoreUsersNotFound(AppError):
     def __init__(self, user_ids: list[UUID]):
         detail = f"One or more users not found: {', '.join(str(user_id) for user_id in user_ids)}."
         super().__init__(detail)
+
+class NotAFriend(AppError):
+    status_code = status.HTTP_403_FORBIDDEN
+
+    def __init__(self, user_id: UUID):
+        detail = f"User with id {user_id} is not a friend."
+        super().__init__(detail)

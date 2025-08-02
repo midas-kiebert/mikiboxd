@@ -45,6 +45,7 @@ def register_user(*, session: SessionDep, user_in: UserRegister) -> UserPublic:
 @router.get("/{id}/showtimes", response_model=list[ShowtimeLoggedIn])
 def get_user_selected_showtimes(
     session: SessionDep,
+    current_user: CurrentUser,
     user_id: UUID,
     snapshot_time: datetime = now_amsterdam_naive(),
     limit: int = Query(20, ge=1, le=50),
@@ -56,4 +57,5 @@ def get_user_selected_showtimes(
         snapshot_time=snapshot_time,
         limit=limit,
         offset=offset,
+        current_user_id=current_user.id,
     )

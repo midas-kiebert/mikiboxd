@@ -72,6 +72,7 @@ def get_my_showtimes(
     return users_service.get_selected_showtimes(
         session=session,
         user_id=current_user.id,
+        current_user_id=current_user.id,
         snapshot_time=snapshot_time,
         limit=limit,
         offset=offset,

@@ -1,13 +1,20 @@
 import { useState, useRef } from "react";
-import { useFetchMyShowtimes } from "@/hooks/useFetchMyShowtimes";
+import { useFetchUserShowtimes } from "@/hooks/useFetchUserShowtimes";
 import Sidebar from "@/components/Common/Sidebar";
 import { Flex } from "@chakra-ui/react";
 import Page from "@/components/Common/Page";
 import useInfiniteScroll from "@/hooks/useInfiniteScroll";
 import { DateTime } from "luxon";
 import { Showtimes } from "@/components/Showtimes/Showtimes";
+import { UUID } from "crypto";
+import { useGetUser } from "@/hooks/useGetUser";
 
-const MyShowtimesPage = () => {
+
+type ShowtimesPageProps = {
+    userId: UUID;
+};
+
+const ShowtimesPage = ({ userId } : ShowtimesPageProps) => {
     const limit = 20;
     const [snapshotTime] = useState(() => DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -17,9 +24,10 @@ const MyShowtimesPage = () => {
         fetchNextPage,
         hasNextPage,
         isFetchingNextPage,
-    } = useFetchMyShowtimes({
+    } = useFetchUserShowtimes({
         limit: limit,
         snapshotTime,
+        userId: userId,
     });
 
     useInfiniteScroll({
@@ -32,13 +40,15 @@ const MyShowtimesPage = () => {
 
     const showtimes = data?.pages.flat() ?? [];
 
+    const { data: user } = useGetUser({ userId });
+
     return (
         <>
             <Flex>
                 <Sidebar/>
             </Flex>
             <Page>
-                <h1>My Showtimes</h1>
+                <h1>Showtimes for {user?.display_name}</h1>
                 <Showtimes showtimes={showtimes}/>
                 {hasNextPage && (
                     <div ref={loadMoreRef} style={{ height: "1px" }} />
@@ -53,4 +63,4 @@ const MyShowtimesPage = () => {
     );
 };
 
-export default MyShowtimesPage;
+export default ShowtimesPage;

@@ -39,6 +39,7 @@ export function Showtimes( { showtimes } : ShowtimeProps  ) {
     const queryClient = useQueryClient();
 
     const updateCacheAfterShowtimeToggle = ({ movieId, showtimeId, newValue } : UpdateCacheData) => {
+        queryClient.invalidateQueries({ queryKey: ["showtimes"]});
 
         // update the cache in the movie details page
         queryClient.setQueryData(['movie', String(movieId)], (oldData: MoviesReadMovieResponse | undefined) => {

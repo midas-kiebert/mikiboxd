@@ -280,6 +280,12 @@ export type UsersRegisterUserData = {
 
 export type UsersRegisterUserResponse = UserPublic
 
+export type UsersGetUserData = {
+  userId: string
+}
+
+export type UsersGetUserResponse = UserPublic
+
 export type UsersGetUserSelectedShowtimesData = {
   limit?: number
   offset?: number

@@ -20,6 +20,7 @@ import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as MovieMovieIdRouteImport } from './routes/movie.$movieId'
 import { Route as MeShowtimesRouteImport } from './routes/me/showtimes'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
+import { Route as UsersUserIdShowtimesRouteImport } from './routes/users/$userId/showtimes'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -75,6 +76,11 @@ const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => LayoutRoute,
 } as any)
+const UsersUserIdShowtimesRoute = UsersUserIdShowtimesRouteImport.update({
+  id: '/users/$userId/showtimes',
+  path: '/users/$userId/showtimes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/friends': typeof FriendsRoute
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/me/showtimes': typeof MeShowtimesRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/': typeof LayoutIndexRoute
+  '/users/$userId/showtimes': typeof UsersUserIdShowtimesRoute
 }
 export interface FileRoutesByTo {
   '/friends': typeof FriendsRoute
@@ -99,6 +106,7 @@ export interface FileRoutesByTo {
   '/me/showtimes': typeof MeShowtimesRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/': typeof LayoutIndexRoute
+  '/users/$userId/showtimes': typeof UsersUserIdShowtimesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -113,6 +121,7 @@ export interface FileRoutesById {
   '/me/showtimes': typeof MeShowtimesRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/_layout/': typeof LayoutIndexRoute
+  '/users/$userId/showtimes': typeof UsersUserIdShowtimesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -127,6 +136,7 @@ export interface FileRouteTypes {
     | '/me/showtimes'
     | '/movie/$movieId'
     | '/'
+    | '/users/$userId/showtimes'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/friends'
@@ -139,6 +149,7 @@ export interface FileRouteTypes {
     | '/me/showtimes'
     | '/movie/$movieId'
     | '/'
+    | '/users/$userId/showtimes'
   id:
     | '__root__'
     | '/_layout'
@@ -152,6 +163,7 @@ export interface FileRouteTypes {
     | '/me/showtimes'
     | '/movie/$movieId'
     | '/_layout/'
+    | '/users/$userId/showtimes'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -164,6 +176,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   MeShowtimesRoute: typeof MeShowtimesRoute
   MovieMovieIdRoute: typeof MovieMovieIdRoute
+  UsersUserIdShowtimesRoute: typeof UsersUserIdShowtimesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -245,6 +258,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutSettingsRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/users/$userId/showtimes': {
+      id: '/users/$userId/showtimes'
+      path: '/users/$userId/showtimes'
+      fullPath: '/users/$userId/showtimes'
+      preLoaderRoute: typeof UsersUserIdShowtimesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -271,6 +291,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   MeShowtimesRoute: MeShowtimesRoute,
   MovieMovieIdRoute: MovieMovieIdRoute,
+  UsersUserIdShowtimesRoute: UsersUserIdShowtimesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

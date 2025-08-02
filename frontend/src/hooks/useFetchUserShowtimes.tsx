@@ -1,33 +1,36 @@
 import { useInfiniteQuery, InfiniteData } from "@tanstack/react-query";
-import { MeService, MeGetMyShowtimesResponse } from "@/client";
+import { UsersService, UsersGetUserSelectedShowtimesResponse } from "@/client";
+import { UUID } from "crypto";
 
-
-type useFetchShowtimesProps = {
+type useFetchUserShowtimesProps = {
     limit?: number;
     snapshotTime?: string;
+    userId: UUID;
 };
 
-export function useFetchMyShowtimes(
+export function useFetchUserShowtimes(
     {
         limit,
         snapshotTime,
-    } : useFetchShowtimesProps = {}
+        userId,
+    } : useFetchUserShowtimesProps
 ) {
-    const result = useInfiniteQuery<MeGetMyShowtimesResponse, Error, InfiniteData<MeGetMyShowtimesResponse>, [string], number>({
+    const result = useInfiniteQuery<UsersGetUserSelectedShowtimesResponse, Error, InfiniteData<UsersGetUserSelectedShowtimesResponse>, [string], number>({
         queryKey: ["showtimes"],
         refetchOnMount: true,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
         queryFn: ({ pageParam = 0}) => {
-            return MeService.getMyShowtimes({
+            return UsersService.getUserSelectedShowtimes({
                 offset: pageParam,
                 limit: limit,
                 snapshotTime: snapshotTime,
+                userId: userId,
             });
         },
         select: (data) => {
             const seen = new Set<number>();
-            const dedupedPages: MeGetMyShowtimesResponse[] = [];
+            const dedupedPages: UsersGetUserSelectedShowtimesResponse[] = [];
 
             for (const page of data.pages) {
                 const filteredPage = page.filter((showtime) => {

@@ -49,6 +49,8 @@ import type {
   UsersSearchUsersResponse,
   UsersRegisterUserData,
   UsersRegisterUserResponse,
+  UsersGetUserData,
+  UsersGetUserResponse,
   UsersGetUserSelectedShowtimesData,
   UsersGetUserSelectedShowtimesResponse,
   UtilsTestEmailData,
@@ -592,6 +594,29 @@ export class UsersService {
   }
 
   /**
+   * Get User
+   * Get a user by their ID.
+   * @param data The data for the request.
+   * @param data.userId
+   * @returns UserPublic Successful Response
+   * @throws ApiError
+   */
+  public static getUser(
+    data: UsersGetUserData,
+  ): CancelablePromise<UsersGetUserResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/users/{user_id}",
+      path: {
+        user_id: data.userId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Get User Selected Showtimes
    * @param data The data for the request.
    * @param data.userId
@@ -606,9 +631,11 @@ export class UsersService {
   ): CancelablePromise<UsersGetUserSelectedShowtimesResponse> {
     return __request(OpenAPI, {
       method: "GET",
-      url: "/api/v1/users/{id}/showtimes",
-      query: {
+      url: "/api/v1/users/{user_id}/showtimes",
+      path: {
         user_id: data.userId,
+      },
+      query: {
         snapshot_time: data.snapshotTime,
         limit: data.limit,
         offset: data.offset,

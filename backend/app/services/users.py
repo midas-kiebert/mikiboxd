@@ -7,13 +7,36 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
+from app.crud import friendship as friendship_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
-from app.exceptions.user_exceptions import EmailAlreadyExists
+from app.exceptions.user_exceptions import EmailAlreadyExists, NotAFriend, UserNotFound
 from app.models.user import UserCreate, UserRegister
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.user import UserPublic, UserWithFriendStatus
 from app.utils import now_amsterdam_naive
+
+
+def get_user(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> UserPublic:
+    """
+    Get a user by their ID.
+
+    Parameters:
+        session (Session): Database session.
+        user_id (UUID): ID of the user to retrieve.
+    Returns:
+        UserPublic: The public representation of the user.
+    Raises:
+        UserNotFound: If the user with the given ID does not exist.
+    """
+    user_db = users_crud.get_user_by_id(session=session, user_id=user_id)
+    if not user_db:
+        raise UserNotFound(user_id)
+    return user_converters.to_public(user_db)
 
 
 def get_users(
@@ -92,6 +115,7 @@ def register_user(
 def get_selected_showtimes(
     *,
     session: Session,
+    current_user_id: UUID,
     user_id: UUID,
     snapshot_time: datetime = now_amsterdam_naive(),
     limit: int,
@@ -106,6 +130,15 @@ def get_selected_showtimes(
     Returns:
         list[ShowtimeLoggedIn]: List of showtimes selected by the user.
     """
+    is_friend = friendship_crud.are_users_friends(
+        session=session,
+        user_id=current_user_id,
+        friend_id=user_id,
+    )
+
+    if user_id != current_user_id and not is_friend:
+        raise NotAFriend(user_id=user_id)
+
     showtimes = users_crud.get_selected_showtimes(
         session=session,
         user_id=user_id,
@@ -117,7 +150,7 @@ def get_selected_showtimes(
         showtime_converters.to_logged_in(
             showtime=showtime,
             session=session,
-            user_id=user_id,
+            user_id=current_user_id,
         )
         for showtime in showtimes
     ]

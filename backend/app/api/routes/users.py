@@ -42,9 +42,24 @@ def register_user(*, session: SessionDep, user_in: UserRegister) -> UserPublic:
     )
 
 
-@router.get("/{id}/showtimes", response_model=list[ShowtimeLoggedIn])
+@router.get("/{user_id}", response_model=UserPublic)
+def get_user(
+    session: SessionDep,
+    user_id: UUID,
+) -> UserPublic:
+    """
+    Get a user by their ID.
+    """
+    return users_service.get_user(
+        session=session,
+        user_id=user_id,
+    )
+
+
+@router.get("/{user_id}/showtimes", response_model=list[ShowtimeLoggedIn])
 def get_user_selected_showtimes(
     session: SessionDep,
+    current_user: CurrentUser,
     user_id: UUID,
     snapshot_time: datetime = now_amsterdam_naive(),
     limit: int = Query(20, ge=1, le=50),
@@ -56,4 +71,5 @@ def get_user_selected_showtimes(
         snapshot_time=snapshot_time,
         limit=limit,
         offset=offset,
+        current_user_id=current_user.id,
     )

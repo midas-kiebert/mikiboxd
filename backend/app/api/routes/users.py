@@ -42,7 +42,7 @@ def register_user(*, session: SessionDep, user_in: UserRegister) -> UserPublic:
     )
 
 
-@router.get("/{id}/showtimes", response_model=list[ShowtimeLoggedIn])
+@router.get("/{user_id}/showtimes", response_model=list[ShowtimeLoggedIn])
 def get_user_selected_showtimes(
     session: SessionDep,
     current_user: CurrentUser,

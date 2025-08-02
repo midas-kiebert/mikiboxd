@@ -1,7 +1,6 @@
-import { Box, Text, VStack } from "@chakra-ui/react";
+import { Text, VStack } from "@chakra-ui/react";
 import days from "dayjs"
 import type { ShowtimeLoggedIn } from "@/client";
-import CinemaBadge from "../Common/CinemaBadge";
 
 
 type DatetimeCardProps = {
@@ -14,7 +13,6 @@ const DatetimeCard = ({ showtime }: DatetimeCardProps) => {
     const month = days(datetime).format('MMMM');
     const time = days(datetime).format('HH:mm');
     const weekday = days(datetime).format('ddd');
-    const cinema = showtime.cinema;
 
     return (
         <VStack

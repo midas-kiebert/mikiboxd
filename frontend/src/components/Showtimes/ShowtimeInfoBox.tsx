@@ -1,19 +1,8 @@
-import { Separator, Flex, Box } from "@chakra-ui/react";
+import { Flex } from "@chakra-ui/react";
 import MovieTitle from "../Movies/MovieTitle";
 import FriendBadges from "../Movies/FriendBadges";
 import { ShowtimeLoggedIn } from "@/client";
 import CinemaBadge from "../Common/CinemaBadge";
-
-function formatTime(datetime: string): string {
-    return new Date(datetime).toLocaleTimeString([], {
-        weekday: "short",
-        month: "short",
-        day: "2-digit",
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit",
-    });
-  }
 
 
 type ShowtimeInfoBoxProps = {

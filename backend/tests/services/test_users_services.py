@@ -96,6 +96,8 @@ def test_get_selected_showtimes_success(
     mock_converter = mocker.patch("app.converters.showtime.to_logged_in")
     mock_session = mocker.MagicMock()
     snapshot_time = mocker.MagicMock()
+    limit = 20
+    offset = 0
 
     user_id = uuid4()
 
@@ -103,12 +105,16 @@ def test_get_selected_showtimes_success(
         session=mock_session,
         user_id=user_id,
         snapshot_time=snapshot_time,
+        limit=limit,
+        offset=offset,
     )
 
     mock_crud.assert_called_once_with(
         session=mock_session,
         user_id=user_id,
         snapshot_time=snapshot_time,
+        limit=limit,
+        offset=offset,
     )
     assert mock_converter.call_count == len_results
 

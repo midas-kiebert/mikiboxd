@@ -18,6 +18,7 @@ import { Route as FriendsRouteImport } from './routes/friends'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as MovieMovieIdRouteImport } from './routes/movie.$movieId'
+import { Route as MeShowtimesRouteImport } from './routes/me/showtimes'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 
 const SignupRoute = SignupRouteImport.update({
@@ -64,6 +65,11 @@ const MovieMovieIdRoute = MovieMovieIdRouteImport.update({
   path: '/movie/$movieId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MeShowtimesRoute = MeShowtimesRouteImport.update({
+  id: '/me/showtimes',
+  path: '/me/showtimes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/settings': typeof LayoutSettingsRoute
+  '/me/showtimes': typeof MeShowtimesRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/': typeof LayoutIndexRoute
 }
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/settings': typeof LayoutSettingsRoute
+  '/me/showtimes': typeof MeShowtimesRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/': typeof LayoutIndexRoute
 }
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/me/showtimes': typeof MeShowtimesRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/_layout/': typeof LayoutIndexRoute
 }
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/settings'
+    | '/me/showtimes'
     | '/movie/$movieId'
     | '/'
   fileRoutesByTo: FileRoutesByTo
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/settings'
+    | '/me/showtimes'
     | '/movie/$movieId'
     | '/'
   id:
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/_layout/settings'
+    | '/me/showtimes'
     | '/movie/$movieId'
     | '/_layout/'
   fileRoutesById: FileRoutesById
@@ -150,6 +162,7 @@ export interface RootRouteChildren {
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  MeShowtimesRoute: typeof MeShowtimesRoute
   MovieMovieIdRoute: typeof MovieMovieIdRoute
 }
 
@@ -218,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MovieMovieIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/me/showtimes': {
+      id: '/me/showtimes'
+      path: '/me/showtimes'
+      fullPath: '/me/showtimes'
+      preLoaderRoute: typeof MeShowtimesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_layout/settings': {
       id: '/_layout/settings'
       path: '/settings'
@@ -249,6 +269,7 @@ const rootRouteChildren: RootRouteChildren = {
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  MeShowtimesRoute: MeShowtimesRoute,
   MovieMovieIdRoute: MovieMovieIdRoute,
 }
 export const routeTree = rootRouteImport

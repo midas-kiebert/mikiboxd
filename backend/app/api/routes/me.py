@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.api.deps import (
     CurrentUser,
@@ -66,11 +66,15 @@ def get_my_showtimes(
     session: SessionDep,
     current_user: CurrentUser,
     snapshot_time: datetime = now_amsterdam_naive(),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
 ) -> list[ShowtimeLoggedIn]:
     return users_service.get_selected_showtimes(
         session=session,
         user_id=current_user.id,
         snapshot_time=snapshot_time,
+        limit=limit,
+        offset=offset,
     )
 
 

@@ -44,9 +44,14 @@ def test_to_with_showtimes_public(
         return_value=showtime_logged_in,
     )
 
+    limit=20
+    offset=0
+
     user_with_showtimes = user_converters.to_with_showtimes_public(
         user=user,
         session=mocker.MagicMock(),
+        limit=limit,
+        offset=offset,
     )
 
     assert isinstance(user_with_showtimes, UserWithShowtimesPublic)

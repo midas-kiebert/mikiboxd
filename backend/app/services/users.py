@@ -90,7 +90,12 @@ def register_user(
 
 
 def get_selected_showtimes(
-    *, session: Session, user_id: UUID, snapshot_time: datetime = now_amsterdam_naive()
+    *,
+    session: Session,
+    user_id: UUID,
+    snapshot_time: datetime = now_amsterdam_naive(),
+    limit: int,
+    offset: int,
 ) -> list[ShowtimeLoggedIn]:
     """
     Get the showtimes selected by a user.
@@ -105,6 +110,8 @@ def get_selected_showtimes(
         session=session,
         user_id=user_id,
         snapshot_time=snapshot_time,
+        limit=limit,
+        offset=offset,
     )
     return [
         showtime_converters.to_logged_in(

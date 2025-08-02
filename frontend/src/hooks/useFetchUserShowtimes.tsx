@@ -17,7 +17,7 @@ export function useFetchUserShowtimes(
 ) {
     const result = useInfiniteQuery<UsersGetUserSelectedShowtimesResponse, Error, InfiniteData<UsersGetUserSelectedShowtimesResponse>, [string], number>({
         queryKey: ["showtimes"],
-        refetchOnMount: false,
+        refetchOnMount: true,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
         queryFn: ({ pageParam = 0}) => {
@@ -47,7 +47,7 @@ export function useFetchUserShowtimes(
         },
         getNextPageParam: (lastPage, allPages) =>
             lastPage.length === limit ? allPages.length * limit : undefined,
-        staleTime: 5 * 60 * 1000, // 5 minutes
+        staleTime: 0,
         gcTime: 5 * 60 * 1000, // 5 minutes
     });
 

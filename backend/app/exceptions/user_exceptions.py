@@ -36,6 +36,7 @@ class OneOrMoreUsersNotFound(AppError):
         detail = f"One or more users not found: {', '.join(str(user_id) for user_id in user_ids)}."
         super().__init__(detail)
 
+
 class NotAFriend(AppError):
     status_code = status.HTTP_403_FORBIDDEN
 

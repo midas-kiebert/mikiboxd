@@ -63,11 +63,10 @@ export function ShowtimeRow({ showtime, onToggle }: ShowtimeRowProps) {
                 ) : (
                     <>
                         <Text>Friends Going:</Text>
-                        {friends_going?.map(({ id, display_name }) => (
+                        {friends_going?.map((friend) => (
                             <FriendBadge
-                                key={id}
-                                display_name={display_name? display_name : ""}
-                                url={"/@"}
+                                key={friend.id}
+                                friend={friend}
                             />
                         ))}
                     </>

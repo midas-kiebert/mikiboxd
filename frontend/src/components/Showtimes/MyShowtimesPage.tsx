@@ -38,6 +38,7 @@ const MyShowtimesPage = () => {
                 <Sidebar/>
             </Flex>
             <Page>
+                <h1>My Showtimes</h1>
                 <Showtimes showtimes={showtimes}/>
                 {hasNextPage && (
                     <div ref={loadMoreRef} style={{ height: "1px" }} />

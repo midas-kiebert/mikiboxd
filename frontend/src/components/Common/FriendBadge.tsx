@@ -1,20 +1,31 @@
-import Badge from "@/components/Common/Badge";
+import { Badge } from "@chakra-ui/react";
+import { Link } from "@tanstack/react-router";
+import type { UserPublic } from "@/client";
+import { Route as ShowtimesRoute } from "@/routes/users/$userId/showtimes";
 
 interface FriendBadgeProps {
-    display_name: string;
-    url: string;
+    friend: UserPublic;
 }
 
-const CinemaBadge = ({ display_name, url } : FriendBadgeProps) => {
+const CinemaBadge = ({ friend } : FriendBadgeProps) => {
 
     return (
-        <Badge
-            text={display_name}
-            url={url || "#"}
-            textSize="12px"
-            bgColor="gray.200"
-            textColor="black"
-        />
+        <Link
+            to={ShowtimesRoute.to}
+            params={{ userId: `${friend.id}` }}
+            style={{ display: "inline-block" }}
+            onClick={(e) => e.stopPropagation()}
+        >
+            <Badge
+                key={friend.id}
+                colorPalette={"gray"}
+                variant="surface"
+                mr={1}
+                mb={0.5}
+            >
+                {friend.display_name}
+            </Badge>
+        </Link>
     );
 };
 

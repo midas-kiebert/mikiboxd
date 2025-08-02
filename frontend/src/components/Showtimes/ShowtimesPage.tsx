@@ -7,6 +7,8 @@ import useInfiniteScroll from "@/hooks/useInfiniteScroll";
 import { DateTime } from "luxon";
 import { Showtimes } from "@/components/Showtimes/Showtimes";
 import { UUID } from "crypto";
+import { useGetUser } from "@/hooks/useGetUser";
+
 
 type ShowtimesPageProps = {
     userId: UUID;
@@ -38,12 +40,15 @@ const ShowtimesPage = ({ userId } : ShowtimesPageProps) => {
 
     const showtimes = data?.pages.flat() ?? [];
 
+    const { data: user } = useGetUser({ userId });
+
     return (
         <>
             <Flex>
                 <Sidebar/>
             </Flex>
             <Page>
+                <h1>Showtimes for {user?.display_name}</h1>
                 <Showtimes showtimes={showtimes}/>
                 {hasNextPage && (
                     <div ref={loadMoreRef} style={{ height: "1px" }} />

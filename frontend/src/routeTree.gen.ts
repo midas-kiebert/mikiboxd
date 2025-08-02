@@ -20,7 +20,7 @@ import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as MovieMovieIdRouteImport } from './routes/movie.$movieId'
 import { Route as MeShowtimesRouteImport } from './routes/me/showtimes'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
-import { Route as UsersUserIdShowtimesRouteImport } from './routes/users/$userId.showtimes'
+import { Route as UsersUserIdShowtimesRouteImport } from './routes/users/$userId/showtimes'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',

@@ -42,6 +42,20 @@ def register_user(*, session: SessionDep, user_in: UserRegister) -> UserPublic:
     )
 
 
+@router.get("/{user_id}", response_model=UserPublic)
+def get_user(
+    session: SessionDep,
+    user_id: UUID,
+) -> UserPublic:
+    """
+    Get a user by their ID.
+    """
+    return users_service.get_user(
+        session=session,
+        user_id=user_id,
+    )
+
+
 @router.get("/{user_id}/showtimes", response_model=list[ShowtimeLoggedIn])
 def get_user_selected_showtimes(
     session: SessionDep,

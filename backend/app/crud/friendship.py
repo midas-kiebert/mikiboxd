@@ -51,8 +51,7 @@ def are_users_friends(
     """
     friendship = session.exec(
         select(Friendship).where(
-            Friendship.user_id == user_id,
-            Friendship.friend_id == friend_id
+            Friendship.user_id == user_id, Friendship.friend_id == friend_id
         )
     ).one_or_none()
     return friendship is not None

@@ -9,8 +9,51 @@ from sqlalchemy.exc import IntegrityError
 from app.exceptions.user_exceptions import (
     EmailAlreadyExists,
     NotAFriend,
+    UserNotFound,
 )
 from app.services import users as users_services
+
+
+def test_user_success(
+    mocker: MockerFixture,
+):
+    mock_crud = mocker.patch("app.crud.user.get_user_by_id")
+    mock_converter = mocker.patch("app.converters.user.to_public")
+    mock_session = mocker.MagicMock()
+
+    user_id = uuid4()
+
+    users_services.get_user(
+        session=mock_session,
+        user_id=user_id,
+    )
+
+    mock_crud.assert_called_once_with(
+        session=mock_session,
+        user_id=user_id,
+    )
+    mock_converter.assert_called_once_with(mock_crud.return_value
+)
+
+def test_get_user_not_found(
+    mocker: MockerFixture,
+):
+    mock_crud = mocker.patch("app.crud.user.get_user_by_id")
+    mock_crud.return_value = None
+    mock_session = mocker.MagicMock()
+
+    user_id = uuid4()
+
+    with pytest.raises(UserNotFound):
+        users_services.get_user(
+            session=mock_session,
+            user_id=user_id,
+        )
+
+    mock_crud.assert_called_once_with(
+        session=mock_session,
+        user_id=user_id,
+    )
 
 
 def test_get_users_success(

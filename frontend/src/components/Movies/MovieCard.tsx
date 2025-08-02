@@ -12,9 +12,9 @@ const MovieCard = React.memo(function MovieCard({ movie }: MovieCardProps) {
     return (
         <>
         <Flex
-            bg={ movie.going ? "green.200" : "gray.100"}
+            bg={ movie.going ? "green.200" : "gray.50"}
             borderBottom={"1px solid"}
-            borderColor={"gray.300"}
+            borderColor={"gray.200"}
             py={3}
             px={2}
             height="250px"

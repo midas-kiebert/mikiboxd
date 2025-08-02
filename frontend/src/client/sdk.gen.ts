@@ -29,6 +29,7 @@ import type {
   MeUpdateUserMeResponse,
   MeUpdatePasswordMeData,
   MeUpdatePasswordMeResponse,
+  MeGetMyShowtimesData,
   MeGetMyShowtimesResponse,
   MeSyncWatchlistResponse,
   MeGetFriendsResponse,
@@ -48,6 +49,8 @@ import type {
   UsersSearchUsersResponse,
   UsersRegisterUserData,
   UsersRegisterUserResponse,
+  UsersGetUserSelectedShowtimesData,
+  UsersGetUserSelectedShowtimesResponse,
   UtilsTestEmailData,
   UtilsTestEmailResponse,
   UtilsHealthCheckResponse,
@@ -339,13 +342,27 @@ export class MeService {
 
   /**
    * Get My Showtimes
+   * @param data The data for the request.
+   * @param data.snapshotTime
+   * @param data.limit
+   * @param data.offset
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
-  public static getMyShowtimes(): CancelablePromise<MeGetMyShowtimesResponse> {
+  public static getMyShowtimes(
+    data: MeGetMyShowtimesData = {},
+  ): CancelablePromise<MeGetMyShowtimesResponse> {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/me/showtimes",
+      query: {
+        snapshot_time: data.snapshotTime,
+        limit: data.limit,
+        offset: data.offset,
+      },
+      errors: {
+        422: "Validation Error",
+      },
     })
   }
 
@@ -568,6 +585,34 @@ export class UsersService {
       url: "/api/v1/users/signup",
       body: data.requestBody,
       mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get User Selected Showtimes
+   * @param data The data for the request.
+   * @param data.userId
+   * @param data.snapshotTime
+   * @param data.limit
+   * @param data.offset
+   * @returns ShowtimeLoggedIn Successful Response
+   * @throws ApiError
+   */
+  public static getUserSelectedShowtimes(
+    data: UsersGetUserSelectedShowtimesData,
+  ): CancelablePromise<UsersGetUserSelectedShowtimesResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/users/{id}/showtimes",
+      query: {
+        user_id: data.userId,
+        snapshot_time: data.snapshotTime,
+        limit: data.limit,
+        offset: data.offset,
+      },
       errors: {
         422: "Validation Error",
       },

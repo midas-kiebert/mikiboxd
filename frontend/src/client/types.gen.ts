@@ -214,6 +214,12 @@ export type MeUpdatePasswordMeData = {
 
 export type MeUpdatePasswordMeResponse = Message
 
+export type MeGetMyShowtimesData = {
+  limit?: number
+  offset?: number
+  snapshotTime?: string
+}
+
 export type MeGetMyShowtimesResponse = Array<ShowtimeLoggedIn>
 
 export type MeSyncWatchlistResponse = Message
@@ -273,6 +279,15 @@ export type UsersRegisterUserData = {
 }
 
 export type UsersRegisterUserResponse = UserPublic
+
+export type UsersGetUserSelectedShowtimesData = {
+  limit?: number
+  offset?: number
+  snapshotTime?: string
+  userId: string
+}
+
+export type UsersGetUserSelectedShowtimesResponse = Array<ShowtimeLoggedIn>
 
 export type UtilsTestEmailData = {
   emailTo: string

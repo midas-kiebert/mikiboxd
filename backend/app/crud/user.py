@@ -163,6 +163,9 @@ def get_selected_showtimes(
     *,
     session: Session,
     user_id: UUID,
+    snapshot_time: datetime = now_amsterdam_naive(),
+    limit: int,
+    offset: int,
 ) -> list[Showtime]:
     """
     Get a list of showtimes that a user has selected.
@@ -181,9 +184,11 @@ def get_selected_showtimes(
         )
         .where(
             ShowtimeSelection.user_id == user_id,
-            Showtime.datetime >= now_amsterdam_naive(),
+            Showtime.datetime >= snapshot_time,
         )
         .order_by(col(Showtime.datetime))
+        .limit(limit)
+        .offset(offset)
     )
     showtimes = list(session.exec(stmt).all())
     return showtimes

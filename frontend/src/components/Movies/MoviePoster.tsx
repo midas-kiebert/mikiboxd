@@ -3,17 +3,22 @@ import { MovieSummaryLoggedIn } from "@/client";
 
 type MoviePosterProps = {
     movie: MovieSummaryLoggedIn;
+    size?: string;
 };
 
-export default function MoviePoster({ movie }: MoviePosterProps) {
+export default function MoviePoster({
+    movie,
+    size = "225px"
+}: MoviePosterProps) {
     return (
         <Link
             to={"/movie/$movieId"}
             params={{ movieId: `${movie.id}`}}
             style={{
                 display: "inline-block",
-                height: "225px",
-                width: "150px"
+                height: size,
+                 // two thirds of the height
+                width: `calc(${size} * 2 / 3)`,
             }}
         >
             <img

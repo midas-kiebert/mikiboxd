@@ -467,6 +467,7 @@ def test_get_selected_showtimes(
     user_factory: Callable[..., User],
     showtime_factory: Callable[..., Showtime],
 ):
+    snapshot_time = now_amsterdam_naive()
     past = now_amsterdam_naive() - timedelta(minutes=10)
     user = user_factory()
     showtime_1 = showtime_factory()
@@ -491,7 +492,11 @@ def test_get_selected_showtimes(
     )
 
     selected_showtimes = user_crud.get_selected_showtimes(
-        session=db_transaction, user_id=user.id
+        session=db_transaction,
+        user_id=user.id,
+        snapshot_time=snapshot_time,
+        limit=10,
+        offset=0,
     )
 
     assert showtime_1 in selected_showtimes

@@ -61,6 +61,8 @@ def to_with_showtimes_public(
     user: User,
     *,
     session: Session,
+    limit: int,
+    offset: int,
 ) -> UserWithShowtimesPublic:
     """
     Converts a User object to a UserPublic object, including showtimes.
@@ -82,6 +84,8 @@ def to_with_showtimes_public(
         for showtime in user_crud.get_selected_showtimes(
             session=session,
             user_id=user.id,
+            limit=limit,
+            offset=offset,
         )
     ]
 

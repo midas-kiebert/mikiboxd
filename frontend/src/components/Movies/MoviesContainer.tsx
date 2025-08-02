@@ -1,5 +1,5 @@
 // MoviesContainer.tsx
-import { Box, Heading } from "@chakra-ui/react";
+import { Box } from "@chakra-ui/react";
 import { ReactNode } from "react";
 
 type MoviesContainerProps = {
@@ -13,9 +13,6 @@ export default function MoviesContainer({ children }: MoviesContainerProps) {
       mx="auto"
       py={6}
     >
-      <Heading as="h1" mb={6} fontSize="2xl" textAlign="center">
-        Movies
-      </Heading>
       {children}
     </Box>
   );

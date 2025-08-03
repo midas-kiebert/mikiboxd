@@ -20,6 +20,7 @@ fileConfig(config.config_file_name)
 # target_metadata = None
 
 from sqlmodel import SQLModel  # noqa
+from app.models import * # type: ignore[import-untyped]
 from app.core.config import settings # noqa
 
 target_metadata = SQLModel.metadata

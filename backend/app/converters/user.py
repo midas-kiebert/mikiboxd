@@ -10,7 +10,14 @@ from app.schemas.user import UserPublic, UserWithFriendStatus, UserWithShowtimes
 
 
 def to_public(user: User) -> UserPublic:
-    return UserPublic.model_validate(user)
+    User.model_validate(user)
+    last_watchlist_sync = (
+        user.letterboxd.last_watchlist_sync if user.letterboxd else None
+    )
+    return UserPublic(
+        **user.model_dump(),
+        last_watchlist_sync=last_watchlist_sync,
+    )
 
 
 def to_with_friend_status(
@@ -48,12 +55,16 @@ def to_with_friend_status(
         sender_id=user.id,
         receiver_id=current_user,
     )
+    last_watchlist_sync = (
+        user.letterboxd.last_watchlist_sync if user.letterboxd else None
+    )
 
     return UserWithFriendStatus(
         **user.model_dump(),
         is_friend=is_friend,
         sent_request=sent_request,
         received_request=received_request,
+        last_watchlist_sync=last_watchlist_sync,
     )
 
 
@@ -89,7 +100,12 @@ def to_with_showtimes_public(
         )
     ]
 
+    last_watchlist_sync = (
+        user.letterboxd.last_watchlist_sync if user.letterboxd else None
+    )
+
     return UserWithShowtimesPublic(
         **user.model_dump(),
         showtimes_going=showtimes,
+        last_watchlist_sync=last_watchlist_sync,
     )

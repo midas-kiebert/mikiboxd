@@ -16,6 +16,7 @@ from sqlmodel import Session
 from app.core.security import get_password_hash
 from app.models.cinema import Cinema, CinemaCreate
 from app.models.city import City, CityCreate
+from app.models.letterboxd import Letterboxd
 from app.models.movie import Movie, MovieCreate
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.models.showtime_selection import ShowtimeSelection
@@ -244,7 +245,6 @@ class CinemaPublicFactory(Factory):
 def cinema_public_factory():
     return CinemaPublicFactory
 
-
 class UserPublicFactory(Factory):
     class Meta:
         model = UserPublic
@@ -334,7 +334,7 @@ class UserCreateFactory(Factory):
         "password", special_chars=True, digits=True, upper_case=True, lower_case=True
     )
     display_name = Faker("name")
-    letterboxd_username = Faker("user_name")
+    # letterboxd_username = Faker("user_name")
     is_active = True
     is_superuser = False
 
@@ -360,6 +360,14 @@ def user_create_factory():
     return UserCreateFactory
 
 
+class LetterboxdFactory(SQLModelFactory):
+    class Meta:
+        model = Letterboxd
+
+    letterboxd_username = Faker("user_name")
+    last_watchlist_sync = Faker("date_time_this_year", before_now=True, after_now=False)
+
+
 class UserFactory(SQLModelFactory):
     class Meta:
         model = User
@@ -367,11 +375,11 @@ class UserFactory(SQLModelFactory):
     id = LazyFunction(uuid4)
     email = Faker("email")
     display_name = Faker("name")
-    letterboxd_username = Faker("user_name")
     is_active = True
     is_superuser = False
-    last_watchlist_sync = None
     hashed_password = get_password_hash("password")
+    letterboxd = SubFactory(LetterboxdFactory)
+    letterboxd_username = SelfAttribute("letterboxd.letterboxd_username")
 
     @post_generation
     def password(self, create, extracted, **kwargs):
@@ -381,5 +389,6 @@ class UserFactory(SQLModelFactory):
 
 @pytest.fixture
 def user_factory(db_transaction: Session):
-    UserFactory._meta.sqlalchemy_session = db_transaction
+    LetterboxdFactory._meta.sqlalchemy_session = db_transaction # type: ignore
+    UserFactory._meta.sqlalchemy_session = db_transaction # type: ignore
     return UserFactory

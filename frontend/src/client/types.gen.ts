@@ -117,10 +117,11 @@ export type UserRegister = {
   display_name?: string | null
 }
 
-export type UserUpdateMe = {
+export type UserUpdate = {
   display_name?: string | null
   email?: string | null
   letterboxd_username?: string | null
+  password?: string | null
 }
 
 export type UserWithFriendStatus = {
@@ -203,7 +204,7 @@ export type MeGetCurrentUserResponse = UserPublic
 export type MeDeleteUserMeResponse = Message
 
 export type MeUpdateUserMeData = {
-  requestBody: UserUpdateMe
+  requestBody: UserUpdate
 }
 
 export type MeUpdateUserMeResponse = UserPublic

@@ -1,8 +1,11 @@
 import uuid
-from datetime import datetime
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import EmailStr
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
+
+if TYPE_CHECKING:
+    from app.models.letterboxd import Letterboxd
 
 __all__ = [
     "UserBase",
@@ -19,7 +22,12 @@ class UserBase(SQLModel):
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
     display_name: str | None = Field(default=None, max_length=255)
-    letterboxd_username: str | None = Field(default=None, max_length=255)
+    letterboxd_username: str | None = Field(
+        default=None,
+        max_length=255,
+        sa_column_kwargs={"unique": True, "index": True},
+        foreign_key="letterboxd.letterboxd_username",
+    )
 
 
 # Properties to receive via API on creation
@@ -34,8 +42,10 @@ class UserRegister(SQLModel):
 
 
 # Properties to receive via API on update, all are optional
-class UserUpdate(UserBase):
-    email: EmailStr | None = Field(default=None, max_length=255)  # type: ignore
+class UserUpdate(SQLModel):
+    display_name: str | None = Field(default=None, max_length=255)
+    email: EmailStr | None = Field(default=None, max_length=255)
+    letterboxd_username: str | None = Field(default=None, max_length=255)
     password: str | None = Field(default=None, min_length=1, max_length=255)
 
 
@@ -43,6 +53,6 @@ class UserUpdate(UserBase):
 class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
-    last_watchlist_sync: datetime | None = Field(
-        default=None, description="Last time the watchlist was synced"
+    letterboxd: Optional["Letterboxd"] = Relationship(
+        sa_relationship_kwargs={"lazy": "joined"},
     )

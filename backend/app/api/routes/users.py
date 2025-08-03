@@ -21,7 +21,7 @@ def search_users(
     *,
     session: SessionDep,
     current_user: CurrentUser,
-    query: str = Query(..., min_length=1),
+    query: str = Query(...),
     offset: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=50),
 ) -> list[UserWithFriendStatus]:

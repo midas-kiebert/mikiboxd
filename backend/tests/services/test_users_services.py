@@ -242,7 +242,7 @@ def test_get_friends_success(
     len_results = randint(0, 10)
     mock_crud = mocker.patch("app.crud.user.get_friends")
     mock_crud.return_value = [mocker.MagicMock() for _ in range(len_results)]
-    mock_converter = mocker.patch("app.converters.user.to_public")
+    mock_converter = mocker.patch("app.converters.user.to_with_friend_status")
     mock_session = mocker.MagicMock()
 
     user_id = uuid4()
@@ -265,7 +265,7 @@ def test_get_sent_friend_requests(
     len_results = randint(0, 10)
     mock_crud = mocker.patch("app.crud.user.get_sent_friend_requests")
     mock_crud.return_value = [mocker.MagicMock() for _ in range(len_results)]
-    mock_converter = mocker.patch("app.converters.user.to_public")
+    mock_converter = mocker.patch("app.converters.user.to_with_friend_status")
     mock_session = mocker.MagicMock()
 
     user_id = uuid4()
@@ -288,7 +288,7 @@ def test_get_recieved_friend_requests(
     len_results = randint(0, 10)
     mock_crud = mocker.patch("app.crud.user.get_received_friend_requests")
     mock_crud.return_value = [mocker.MagicMock() for _ in range(len_results)]
-    mock_converter = mocker.patch("app.converters.user.to_public")
+    mock_converter = mocker.patch("app.converters.user.to_with_friend_status")
     mock_session = mocker.MagicMock()
 
     user_id = uuid4()

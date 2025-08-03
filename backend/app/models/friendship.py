@@ -16,5 +16,3 @@ class Friendship(SQLModel, table=True):
 class FriendRequest(SQLModel, table=True):
     sender_id: UUID = Field(foreign_key="user.id", primary_key=True)
     receiver_id: UUID = Field(foreign_key="user.id", primary_key=True)
-
-    status: str = Field(default="pending")  # pending, accepted, declined

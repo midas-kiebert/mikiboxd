@@ -10,6 +10,7 @@ import {
     FriendsSendFriendRequestData,
     FriendsCancelFriendRequestData
 } from "@/client";
+import FriendBadge from "@/components/Common/FriendBadge";
 
 type UserCardProps = {
     user: UserWithFriendStatus;
@@ -168,15 +169,17 @@ const UserCard = ({ user }: UserCardProps) => {
             borderRadius="md"
             p={4}
             mb={2}
-            // _hover={{ bg: "gray.50", cursor: "pointer" }}
             display="flex"
             alignItems="center"
             gap={4}
             bg={bgColor || "white"}
+            maxW={"100%"}
         >
-            <Text>
-                {user.display_name}
-            </Text>
+            <FriendBadge
+                friend={user}
+                variant="plain"
+                size="md"
+            />
             {
                 (user.letterboxd_username)
                 ? <Text

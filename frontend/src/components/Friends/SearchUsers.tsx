@@ -1,4 +1,4 @@
-import { Box } from '@chakra-ui/react';
+import { Box, Heading } from '@chakra-ui/react';
 import { useRef } from 'react';
 import { useFetchUsers, type UserFilters } from '@/hooks/useFetchUsers';
 import useInfiniteScroll from '@/hooks/useInfiniteScroll';
@@ -40,17 +40,15 @@ const SearchUsers = (
 
     return (
         <Box>
-            <Box
-                mt={4}
-                maxW={ { base: '100%', md: '800px' }}
-            >
-                {data?.pages.flat().map((user) => (
-                    <UserCard
-                        key={user.id}
-                        user={user}
-                    />
-                ))}
-            </Box>
+            <Heading as="h2" size="lg" mb={4} ml={2}>
+                All Users
+            </Heading>
+            {data?.pages.flat().map((user) => (
+                <UserCard
+                    key={user.id}
+                    user={user}
+                />
+            ))}
             <div ref={loadMoreRef} />
         </Box>
     );

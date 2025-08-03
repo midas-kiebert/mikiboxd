@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlmodel import Session
 
 from app.crud import movie as movies_crud
+from app.crud import user as users_crud
 from app.crud import watchlist as watchlist_crud
 from app.exceptions.user_exceptions import (
     LetterboxdUsernameNotSet,
@@ -16,9 +17,15 @@ from app.utils import now_amsterdam_naive
 
 
 def clear_watchlist(*, session: Session, user_id: UUID) -> None:
-    selections = watchlist_crud.get_watchlist_selections(
+    letterboxd_username = users_crud.get_letterboxd_username(
         session=session,
         user_id=user_id,
+    )
+    if not letterboxd_username:
+        raise LetterboxdUsernameNotSet
+    selections = watchlist_crud.get_watchlist_selections(
+        session=session,
+        letterboxd_username=letterboxd_username,
     )
 
     for selection in selections:
@@ -47,6 +54,14 @@ def sync_watchlist(
         user_id=user_id,
     )
 
+    letterboxd_username = users_crud.get_letterboxd_username(
+        session=session,
+        user_id=user_id,
+    )
+
+    if not letterboxd_username:
+        raise LetterboxdUsernameNotSet()
+
     for slug in watchlist_slugs:
         movie = movies_crud.get_movie_by_letterboxd_slug(
             session=session,
@@ -57,7 +72,7 @@ def sync_watchlist(
 
         watchlist_crud.add_watchlist_selection(
             session=session,
-            user_id=user_id,
+            letterboxd_username=letterboxd_username,
             movie_id=movie.id,
         )
 

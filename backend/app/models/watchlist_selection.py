@@ -1,5 +1,3 @@
-from uuid import UUID
-
 from sqlmodel import Field, SQLModel
 
 __all__ = [
@@ -8,5 +6,7 @@ __all__ = [
 
 
 class WatchlistSelection(SQLModel, table=True):
-    user_id: UUID = Field(foreign_key="user.id", primary_key=True)
+    letterboxd_username: str = Field(
+        foreign_key="letterboxd.letterboxd_username", primary_key=True
+    )
     movie_id: int = Field(foreign_key="movie.id", primary_key=True)

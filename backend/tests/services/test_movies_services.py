@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from random import randint
 from uuid import uuid4
 
@@ -9,19 +10,24 @@ from sqlalchemy.exc import IntegrityError
 from app.exceptions.movie_exceptions import (
     MovieNotFoundError,
 )
+from app.models.user import User
 from app.services import movies as movies_services
 
 
 def test_get_movie_summaries_success(
     mocker: MockerFixture,
+    user_factory: Callable[..., User]
 ):
     n_returned_movies = randint(0, 10)
     mock_crud = mocker.patch("app.crud.movie.get_movies")
     mock_crud.return_value = [mocker.MagicMock for _ in range(n_returned_movies)]
     mock_converter = mocker.patch("app.converters.movie.to_summary_logged_in")
     mock_session = mocker.MagicMock()
+    mock_get_letterboxd_username = mocker.patch("app.crud.user.get_letterboxd_username")
 
-    user_id = uuid4()
+
+    user = user_factory()
+    mock_get_letterboxd_username.return_value = user.letterboxd_username  # Assuming no user is logged in
     limit = 10
     offset = 0
     showtime_limit = 5
@@ -31,7 +37,7 @@ def test_get_movie_summaries_success(
 
     movies_services.get_movie_summaries(
         session=mock_session,
-        user_id=user_id,
+        user_id=user.id,
         limit=limit,
         offset=offset,
         showtime_limit=showtime_limit,
@@ -42,7 +48,7 @@ def test_get_movie_summaries_success(
 
     mock_crud.assert_called_once_with(
         session=mock_session,
-        user_id=user_id,
+        letterboxd_username=user.letterboxd_username,  # Assuming no user is logged in
         limit=limit,
         offset=offset,
         query=query,

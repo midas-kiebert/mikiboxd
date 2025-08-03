@@ -7,6 +7,7 @@ from sqlmodel import Session
 
 from app.converters import movie as movie_converters
 from app.crud import movie as movies_crud
+from app.crud import user as users_crud
 from app.exceptions.base import AppError
 from app.exceptions.movie_exceptions import MovieNotFoundError
 from app.models.movie import MovieCreate, MovieUpdate
@@ -39,9 +40,13 @@ def get_movie_summaries(
     Returns:
         list[MovieSummaryLoggedIn]: List of movie summaries.
     """
-    movies_db = movies_crud.get_movies(
+    letterboxd_username = users_crud.get_letterboxd_username(
         session=session,
         user_id=user_id,
+    )
+    movies_db = movies_crud.get_movies(
+        session=session,
+        letterboxd_username=letterboxd_username,
         limit=limit,
         offset=offset,
         query=query,

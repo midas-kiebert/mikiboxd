@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from uuid import uuid4
 
 import pytest
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
@@ -21,32 +20,33 @@ def test_add_delete_watchlist_selection(
     user = user_factory()
     movie = movie_factory()
 
+    assert user.letterboxd_username is not None
+
     before = watchlist_crud.does_watchlist_selection_exist(
-        session=db_transaction, movie_id=movie.id, user_id=user.id
-    )
+        session=db_transaction, movie_id=movie.id, letterboxd_username=user.letterboxd_username)
 
     assert before is False
 
     added_movie = watchlist_crud.add_watchlist_selection(
-        session=db_transaction, user_id=user.id, movie_id=movie.id
+        session=db_transaction, letterboxd_username=user.letterboxd_username, movie_id=movie.id
     )
 
     assert added_movie is movie
 
     after_add = watchlist_crud.does_watchlist_selection_exist(
-        session=db_transaction, movie_id=movie.id, user_id=user.id
+        session=db_transaction, movie_id=movie.id, letterboxd_username=user.letterboxd_username
     )
 
     assert after_add is True
 
     deleted_movie = watchlist_crud.delete_watchlist_selection(
-        session=db_transaction, user_id=user.id, movie_id=movie.id
+        session=db_transaction, letterboxd_username=user.letterboxd_username, movie_id=movie.id
     )
 
     assert deleted_movie is movie
 
     after_delete = watchlist_crud.does_watchlist_selection_exist(
-        session=db_transaction, movie_id=movie.id, user_id=user.id
+        session=db_transaction, movie_id=movie.id, letterboxd_username=user.letterboxd_username
     )
 
     assert after_delete is False
@@ -58,12 +58,13 @@ def test_add_watchlist_selection_nonexistent_user(
     *, db_transaction: Session, movie_factory: Callable[..., Movie]
 ):
     movie = movie_factory()
+    letterboxd_username = "nonexistent_user"
 
     # Test with nonexistent user
     with pytest.raises(IntegrityError) as exc_info:
         watchlist_crud.add_watchlist_selection(
             session=db_transaction,
-            user_id=uuid4(),  # Nonexistent user ID
+            letterboxd_username=letterboxd_username,
             movie_id=movie.id,
         )
 
@@ -74,12 +75,13 @@ def test_add_watchlist_selection_nonexistent_movie(
     *, db_transaction: Session, user_factory: Callable[..., User]
 ):
     user = user_factory()
+    assert user.letterboxd_username is not None
 
     # Test with nonexistent movie
     with pytest.raises(IntegrityError) as exc_info:
         watchlist_crud.add_watchlist_selection(
             session=db_transaction,
-            user_id=user.id,
+            letterboxd_username=user.letterboxd_username,
             movie_id=99999,  # Nonexistent movie ID
         )
 
@@ -95,16 +97,18 @@ def test_add_watchlist_selection_duplicate_selection(
     user = user_factory()
     movie = movie_factory()
 
+    assert user.letterboxd_username is not None
+
     # Add the watchlist selection for the first time
     added_movie = watchlist_crud.add_watchlist_selection(
-        session=db_transaction, user_id=user.id, movie_id=movie.id
+        session=db_transaction, letterboxd_username=user.letterboxd_username, movie_id=movie.id
     )
     assert added_movie is movie
 
     # Attempt to add the same selection again
     with pytest.raises(IntegrityError) as exc_info:
         watchlist_crud.add_watchlist_selection(
-            session=db_transaction, user_id=user.id, movie_id=movie.id
+            session=db_transaction, letterboxd_username=user.letterboxd_username, movie_id=movie.id
         )
 
     assert isinstance(exc_info.value.orig, UniqueViolation)
@@ -115,9 +119,11 @@ def test_delete_watchlist_selection_nonexistent_user(
 ):
     movie = movie_factory()
 
+    letterboxd_username = "nonexistent_user"
+
     with pytest.raises(NoResultFound):
         watchlist_crud.delete_watchlist_selection(
-            session=db_transaction, user_id=uuid4(), movie_id=movie.id
+            session=db_transaction, letterboxd_username=letterboxd_username, movie_id=movie.id
         )
 
 
@@ -125,10 +131,11 @@ def test_delete_watchlist_selection_nonexistent_movie(
     *, db_transaction: Session, user_factory: Callable[..., User]
 ):
     user = user_factory()
+    assert user.letterboxd_username is not None
     # Test with nonexistent movie
     with pytest.raises(NoResultFound):
         watchlist_crud.delete_watchlist_selection(
-            session=db_transaction, user_id=user.id, movie_id=999999
+            session=db_transaction, letterboxd_username=user.letterboxd_username, movie_id=999999
         )
 
 
@@ -143,20 +150,27 @@ def test_get_watchlist_selections(
     movie2 = movie_factory()
     movie_factory()
 
+    assert user.letterboxd_username is not None
+
     # Add two watchlist selections
     watchlist_crud.add_watchlist_selection(
-        session=db_transaction, user_id=user.id, movie_id=movie1.id
+        session=db_transaction,
+        letterboxd_username=user.letterboxd_username,
+        movie_id=movie1.id
     )
     watchlist_crud.add_watchlist_selection(
-        session=db_transaction, user_id=user.id, movie_id=movie2.id
+        session=db_transaction,
+        letterboxd_username=user.letterboxd_username,
+        movie_id=movie2.id
     )
 
     selections = watchlist_crud.get_watchlist_selections(
-        session=db_transaction, user_id=user.id
+        session=db_transaction,
+        letterboxd_username=user.letterboxd_username,
     )
 
-    selection1 = WatchlistSelection(user_id=user.id, movie_id=movie1.id)
-    selection2 = WatchlistSelection(user_id=user.id, movie_id=movie2.id)
+    selection1 = WatchlistSelection(letterboxd_username=user.letterboxd_username, movie_id=movie1.id)
+    selection2 = WatchlistSelection(letterboxd_username=user.letterboxd_username, movie_id=movie2.id)
 
     assert selection1 in selections
     assert selection2 in selections
@@ -174,15 +188,17 @@ def test_get_watchlist(
     movie2 = movie_factory()
     movie_factory()
 
+    assert user.letterboxd_username is not None
+
     # Add two watchlist selections
     watchlist_crud.add_watchlist_selection(
-        session=db_transaction, user_id=user.id, movie_id=movie1.id
+        session=db_transaction, letterboxd_username=user.letterboxd_username, movie_id=movie1.id
     )
     watchlist_crud.add_watchlist_selection(
-        session=db_transaction, user_id=user.id, movie_id=movie2.id
+        session=db_transaction, letterboxd_username=user.letterboxd_username, movie_id=movie2.id
     )
 
-    watchlist = watchlist_crud.get_watchlist(session=db_transaction, user_id=user.id)
+    watchlist = watchlist_crud.get_watchlist(session=db_transaction, letterboxd_username=user.letterboxd_username)
 
     assert movie1 in watchlist
     assert movie2 in watchlist

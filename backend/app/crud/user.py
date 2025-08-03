@@ -25,6 +25,26 @@ def get_user_by_id(*, session: Session, user_id: UUID) -> User | None:
     return session.get(User, user_id)
 
 
+def get_letterboxd_username(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> str | None:
+    """
+    Get the Letterboxd username for a user.
+
+    Parameters:
+        session (Session): The database session.
+        user_id (UUID): The ID of the user.
+    Returns:
+        str | None: The Letterboxd username if it exists, otherwise None.
+    """
+    user = get_user_by_id(session=session, user_id=user_id)
+    if not user or not user.letterboxd or not user.letterboxd.letterboxd_username:
+        return None
+    return user.letterboxd.letterboxd_username
+
+
 def get_user_by_email(*, session: Session, email: str) -> User | None:
     """
     Get a user by their email address.

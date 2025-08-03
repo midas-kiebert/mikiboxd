@@ -11,7 +11,7 @@ from app.core.security import get_password_hash, verify_password
 from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
 from app.schemas.showtime import ShowtimeLoggedIn
-from app.schemas.user import UserPublic
+from app.schemas.user import UserPublic, UserWithFriendStatus
 from app.services import me as me_service
 from app.services import users as users_service
 from app.services import watchlist as watchlist_service
@@ -89,8 +89,10 @@ def sync_watchlist(
     return Message(message="Watchlist synced successfully")
 
 
-@router.get("/friends", response_model=list[UserPublic])
-def get_friends(*, session: SessionDep, current_user: CurrentUser) -> list[UserPublic]:
+@router.get("/friends", response_model=list[UserWithFriendStatus])
+def get_friends(
+    *, session: SessionDep, current_user: CurrentUser
+) -> list[UserWithFriendStatus]:
     return users_service.get_friends(session=session, user_id=current_user.id)
 
 
@@ -99,7 +101,7 @@ def get_sent_friend_requests(
     *,
     session: SessionDep,
     current_user: CurrentUser,
-) -> list[UserPublic]:
+) -> list[UserWithFriendStatus]:
     return users_service.get_sent_friend_requests(
         session=session, user_id=current_user.id
     )
@@ -110,7 +112,7 @@ def get_received_friend_requests(
     *,
     session: SessionDep,
     current_user: CurrentUser,
-) -> list[UserPublic]:
+) -> list[UserWithFriendStatus]:
     return users_service.get_received_friend_requests(
         session=session, user_id=current_user.id
     )

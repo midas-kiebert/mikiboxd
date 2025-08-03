@@ -160,7 +160,7 @@ def get_friends(
     *,
     session: Session,
     user_id: UUID,
-) -> list[UserPublic]:
+) -> list[UserWithFriendStatus]:
     """
     Get the friends of a user.
 
@@ -168,17 +168,22 @@ def get_friends(
         session (Session): Database session.
         user_id (UUID): ID of the user whose friends are to be retrieved.
     Returns:
-        list[UserPublic]: List of friends of the user.
+        list[UserWithFriendStatus]: List of friends of the user.
     """
     friends = users_crud.get_friends(session=session, user_id=user_id)
-    return [user_converters.to_public(friend) for friend in friends]
+    return [
+        user_converters.to_with_friend_status(
+            session=session, current_user=user_id, user=friend
+        )
+        for friend in friends
+    ]
 
 
 def get_sent_friend_requests(
     *,
     session: Session,
     user_id: UUID,
-) -> list[UserPublic]:
+) -> list[UserWithFriendStatus]:
     """
     Get the friend requests sent by a user.
 
@@ -186,20 +191,25 @@ def get_sent_friend_requests(
         session (Session): Database session.
         user_id (UUID): ID of the user whose sent friend requests are to be retrieved.
     Returns:
-        list[UserPublic]: List of users to whom the friend requests were sent.
+        list[UserWithFriendStatus]: List of users to whom the friend requests were sent.
     """
     requests = users_crud.get_sent_friend_requests(
         session=session,
         user_id=user_id,
     )
-    return [user_converters.to_public(request) for request in requests]
+    return [
+        user_converters.to_with_friend_status(
+            session=session, current_user=user_id, user=request
+        )
+        for request in requests
+    ]
 
 
 def get_received_friend_requests(
     *,
     session: Session,
     user_id: UUID,
-) -> list[UserPublic]:
+) -> list[UserWithFriendStatus]:
     """
     Get the friend requests received by a user.
 
@@ -207,10 +217,15 @@ def get_received_friend_requests(
         session (Session): Database session.
         user_id (UUID): ID of the user whose received friend requests are to be retrieved.
     Returns:
-        list[UserPublic]: List of users who sent friend requests to the user.
+        list[UserWithFriendStatus]: List of users who sent friend requests to the user.
     """
     requests = users_crud.get_received_friend_requests(
         session=session,
         user_id=user_id,
     )
-    return [user_converters.to_public(request) for request in requests]
+    return [
+        user_converters.to_with_friend_status(
+            session=session, current_user=user_id, user=request
+        )
+        for request in requests
+    ]

@@ -225,11 +225,11 @@ export type MeGetMyShowtimesResponse = Array<ShowtimeLoggedIn>
 
 export type MeSyncWatchlistResponse = Message
 
-export type MeGetFriendsResponse = Array<UserPublic>
+export type MeGetFriendsResponse = Array<UserWithFriendStatus>
 
-export type MeGetSentFriendRequestsResponse = Array<UserPublic>
+export type MeGetSentFriendRequestsResponse = Array<UserWithFriendStatus>
 
-export type MeGetReceivedFriendRequestsResponse = Array<UserPublic>
+export type MeGetReceivedFriendRequestsResponse = Array<UserWithFriendStatus>
 
 export type MoviesReadMoviesData = {
   limit?: number

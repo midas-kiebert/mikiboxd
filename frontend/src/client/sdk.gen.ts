@@ -382,7 +382,7 @@ export class MeService {
 
   /**
    * Get Friends
-   * @returns UserPublic Successful Response
+   * @returns UserWithFriendStatus Successful Response
    * @throws ApiError
    */
   public static getFriends(): CancelablePromise<MeGetFriendsResponse> {
@@ -394,7 +394,7 @@ export class MeService {
 
   /**
    * Get Sent Friend Requests
-   * @returns UserPublic Successful Response
+   * @returns UserWithFriendStatus Successful Response
    * @throws ApiError
    */
   public static getSentFriendRequests(): CancelablePromise<MeGetSentFriendRequestsResponse> {
@@ -406,7 +406,7 @@ export class MeService {
 
   /**
    * Get Received Friend Requests
-   * @returns UserPublic Successful Response
+   * @returns UserWithFriendStatus Successful Response
    * @throws ApiError
    */
   public static getReceivedFriendRequests(): CancelablePromise<MeGetReceivedFriendRequestsResponse> {

@@ -245,7 +245,7 @@ def get_total_number_of_future_showtimes(
 def get_movies(
     *,
     session: Session,
-    user_id: UUID,
+    letterboxd_username: str | None,
     limit: int,
     offset: int,
     snapshot_time: datetime,
@@ -276,7 +276,7 @@ def get_movies(
     if watchlist_only:
         stmt = stmt.join(
             WatchlistSelection, col(WatchlistSelection.movie_id) == Movie.id
-        ).where(col(WatchlistSelection.user_id) == user_id)
+        ).where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
     stmt = (
         stmt.group_by(col(Movie.id))
         .order_by(func.min(Showtime.datetime))

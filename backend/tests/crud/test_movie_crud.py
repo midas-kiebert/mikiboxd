@@ -1,6 +1,5 @@
 from collections.abc import Callable
 from datetime import timedelta
-from uuid import uuid4
 
 import pytest
 from psycopg.errors import UniqueViolation
@@ -386,6 +385,7 @@ def test_get_movies(
     db_transaction: Session,
     movie_factory: Callable[..., Movie],
     showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
 ):
     past = now_amsterdam_naive() - timedelta(minutes=10)
     tomorrow = now_amsterdam_naive() + timedelta(days=1)
@@ -404,11 +404,12 @@ def test_get_movies(
     movie_4 = movie_factory(
         title="Forrest Gump", showtimes=[showtime_factory(datetime=tomorrow)]
     )
+    user = user_factory()
 
     # Retrieve all movies
     movies = movie_crud.get_movies(
         session=db_transaction,
-        user_id=uuid4(),
+        letterboxd_username=user.letterboxd_username,
         limit=10,
         offset=0,
         snapshot_time=now_amsterdam_naive(),
@@ -423,7 +424,7 @@ def test_get_movies(
 
     movies_with_query = movie_crud.get_movies(
         session=db_transaction,
-        user_id=uuid4(),
+        letterboxd_username=user.letterboxd_username,
         limit=10,
         offset=0,
         snapshot_time=now_amsterdam_naive(),

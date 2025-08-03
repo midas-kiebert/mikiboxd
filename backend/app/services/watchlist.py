@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from app.crud import movie as movies_crud
 from app.crud import watchlist as watchlist_crud
@@ -30,19 +30,17 @@ def sync_watchlist(
     session: Session,
     user_id: UUID,
 ) -> None:
-    last_sync = session.exec(
-        select(User.last_watchlist_sync).where(User.id == user_id)
-    ).one_or_none()
-
-    if last_sync and datetime.utcnow() - last_sync < timedelta(minutes=10):
-        raise WatchlistSyncTooSoon()
-
     user = session.get(User, user_id)
     if not user:
         raise UserNotFound(user_id)
-    if not user.letterboxd_username:
+    if not user.letterboxd or not user.letterboxd_username:
         raise LetterboxdUsernameNotSet()
     watchlist_slugs = scrape_watchlist(user.letterboxd_username)
+
+    last_sync = user.letterboxd.last_watchlist_sync
+
+    if last_sync and datetime.utcnow() - last_sync < timedelta(minutes=10):
+        raise WatchlistSyncTooSoon()
 
     clear_watchlist(
         session=session,
@@ -63,5 +61,5 @@ def sync_watchlist(
             movie_id=movie.id,
         )
 
-    user.last_watchlist_sync = now_amsterdam_naive()
+    user.letterboxd.last_watchlist_sync = now_amsterdam_naive()
     session.commit()

@@ -8,7 +8,8 @@ from app.api.deps import (
 )
 from app.converters import user as user_converters
 from app.core.security import get_password_hash, verify_password
-from app.models.auth_schemas import Message, UpdatePassword, UserUpdateMe
+from app.models.auth_schemas import Message, UpdatePassword
+from app.models.user import UserUpdate
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.user import UserPublic
 from app.services import me as me_service
@@ -37,7 +38,7 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Message:
 
 @router.patch("/", response_model=UserPublic)
 def update_user_me(
-    *, session: SessionDep, user_in: UserUpdateMe, current_user: CurrentUser
+    *, session: SessionDep, user_in: UserUpdate, current_user: CurrentUser
 ) -> UserPublic:
     return me_service.update_me(
         session=session, user_in=user_in, current_user=current_user

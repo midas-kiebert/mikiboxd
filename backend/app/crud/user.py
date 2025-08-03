@@ -5,6 +5,7 @@ from sqlmodel import Session, col, select
 
 from app.core.security import get_password_hash, verify_password
 from app.models.friendship import FriendRequest, Friendship
+from app.models.letterboxd import Letterboxd
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User, UserCreate, UserUpdate
@@ -62,6 +63,34 @@ def create_user(
     return db_obj
 
 
+def create_letterboxd(
+    *,
+    session: Session,
+    letterboxd_username: str,
+    last_watchlist_sync: datetime | None = None,
+):
+    """
+    Create a Letterboxd entry for a user.
+
+    Parameters:
+        session (Session): The database session.
+        letterboxd_username (str): The Letterboxd username.
+        last_watchlist_sync (datetime | None): The last time the watchlist was synced.
+    Returns:
+        User: The user object with the Letterboxd entry created.
+    Raises:
+        IntegrityError: If a Letterboxd entry with the same username already exists.
+    """
+
+    letterboxd = Letterboxd(
+        letterboxd_username=letterboxd_username,
+        last_watchlist_sync=last_watchlist_sync,
+    )
+    session.add(letterboxd)
+    session.flush()  # Check for unique constraints
+    return letterboxd
+
+
 def update_user(
     *,
     session: Session,
@@ -79,6 +108,18 @@ def update_user(
         IntegrityError: If a user with the same email already exists.
     """
     user_data = user_in.model_dump(exclude_unset=True)
+    if "letterboxd_username" in user_data:
+        letterboxd_username = user_data["letterboxd_username"]
+        if letterboxd_username:
+            print("Getting letterboxd for user: ", letterboxd_username)
+            letterboxd = session.get(Letterboxd, letterboxd_username)
+            print(letterboxd)
+            if not letterboxd:
+                letterboxd = create_letterboxd(
+                    session=session,
+                    letterboxd_username=letterboxd_username,
+                )
+            db_user.letterboxd = letterboxd
     extra_data = {}
     if "password" in user_data:
         password = user_data["password"]

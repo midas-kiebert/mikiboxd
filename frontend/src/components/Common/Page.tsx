@@ -16,6 +16,7 @@ const Page = ({ children, sidebarWidth, topbarHeight } : Props) => {
             right="0"
             mt={ topbarHeight ?? TOPBAR_HEIGHT }
             p={4}
+            minH={"calc(100vh - " + (topbarHeight ?? TOPBAR_HEIGHT) + "px - 1rem)" }
         >
             { children }
         </Box>

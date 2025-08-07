@@ -1,14 +1,14 @@
 import { useSearch, useNavigate } from "@tanstack/react-router";
 import Movies from "@/components/Movies/Movies";
 import { useState, useEffect, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, } from "@tanstack/react-query";
 import { MeService } from "@/client";
 import { useFetchMovies } from "@/hooks/useFetchMovies";
 import { useDebounce } from "use-debounce";
 import MoviesTopBar from "@/components/Movies/MoviesTopBar";
 import type { MovieFilters } from "@/hooks/useFetchMovies";
 import Sidebar from "@/components/Common/Sidebar";
-import { Flex } from "@chakra-ui/react";
+import { Flex, Center, Spinner } from "@chakra-ui/react";
 import Page from "@/components/Common/Page";
 import useInfiniteScroll from "@/hooks/useInfiniteScroll";
 import { DateTime } from "luxon";
@@ -68,6 +68,8 @@ const MoviesPage = () => {
         fetchNextPage,
         hasNextPage,
         isFetchingNextPage,
+        isLoading,
+        isFetching,
     } = useFetchMovies({
         limit: limit,
         snapshotTime,
@@ -96,14 +98,15 @@ const MoviesPage = () => {
             <Page>
                 <Movies
                     movies={data?.pages.flat() || []}
+                    isLoading={(isLoading || isFetching) && !isFetchingNextPage}
                 />
                 {hasNextPage && (
                     <div ref={loadMoreRef} style={{ height: "1px" }} />
                 )}
                 {isFetchingNextPage && (
-                    <div style={{ textAlign: "center", padding: "20px" }}>
-                        Loading more movies...
-                    </div>
+                    <Center mt={4}>
+                        <Spinner size="lg" />
+                    </Center>
                 )}
             </Page>
         </>

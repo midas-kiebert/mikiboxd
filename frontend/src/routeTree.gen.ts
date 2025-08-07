@@ -15,6 +15,7 @@ import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as MoviesRouteImport } from './routes/movies'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as FriendsRouteImport } from './routes/friends'
+import { Route as ForbiddenRouteImport } from './routes/forbidden'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as MovieMovieIdRouteImport } from './routes/movie.$movieId'
@@ -52,6 +53,11 @@ const FriendsRoute = FriendsRouteImport.update({
   path: '/friends',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ForbiddenRoute = ForbiddenRouteImport.update({
+  id: '/forbidden',
+  path: '/forbidden',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
   getParentRoute: () => rootRouteImport,
@@ -83,6 +89,7 @@ const UsersUserIdShowtimesRoute = UsersUserIdShowtimesRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/forbidden': typeof ForbiddenRoute
   '/friends': typeof FriendsRoute
   '/login': typeof LoginRoute
   '/movies': typeof MoviesRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/users/$userId/showtimes': typeof UsersUserIdShowtimesRoute
 }
 export interface FileRoutesByTo {
+  '/forbidden': typeof ForbiddenRoute
   '/friends': typeof FriendsRoute
   '/login': typeof LoginRoute
   '/movies': typeof MoviesRoute
@@ -111,6 +119,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
+  '/forbidden': typeof ForbiddenRoute
   '/friends': typeof FriendsRoute
   '/login': typeof LoginRoute
   '/movies': typeof MoviesRoute
@@ -126,6 +135,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/forbidden'
     | '/friends'
     | '/login'
     | '/movies'
@@ -139,6 +149,7 @@ export interface FileRouteTypes {
     | '/users/$userId/showtimes'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/forbidden'
     | '/friends'
     | '/login'
     | '/movies'
@@ -153,6 +164,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_layout'
+    | '/forbidden'
     | '/friends'
     | '/login'
     | '/movies'
@@ -168,6 +180,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
+  ForbiddenRoute: typeof ForbiddenRoute
   FriendsRoute: typeof FriendsRoute
   LoginRoute: typeof LoginRoute
   MoviesRoute: typeof MoviesRoute
@@ -221,6 +234,13 @@ declare module '@tanstack/react-router' {
       path: '/friends'
       fullPath: '/friends'
       preLoaderRoute: typeof FriendsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forbidden': {
+      id: '/forbidden'
+      path: '/forbidden'
+      fullPath: '/forbidden'
+      preLoaderRoute: typeof ForbiddenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout': {
@@ -283,6 +303,7 @@ const LayoutRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
+  ForbiddenRoute: ForbiddenRoute,
   FriendsRoute: FriendsRoute,
   LoginRoute: LoginRoute,
   MoviesRoute: MoviesRoute,

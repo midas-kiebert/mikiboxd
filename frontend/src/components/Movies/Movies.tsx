@@ -1,5 +1,6 @@
 // load all movie cards
 
+import { Spinner, Center } from "@chakra-ui/react";
 import { MovieSummaryLoggedIn } from "@/client";
 import MovieCard from "./MovieCard";
 import MoviesContainer from "./MoviesContainer";
@@ -8,9 +9,10 @@ import { useEffect } from "react";
 
 type MoviesProps = {
     movies: Array<MovieSummaryLoggedIn>
+    isLoading: boolean
 }
 
-export default function Movies( { movies } : MoviesProps) {
+export default function Movies( { movies, isLoading } : MoviesProps) {
     // keep track of the scroll position at all times
     useEffect(() => {
         const handleScroll = () => {
@@ -31,6 +33,14 @@ export default function Movies( { movies } : MoviesProps) {
         overscan: 2, // Number of items to render outside the visible area
         initialOffset
     })
+
+    if (isLoading) {
+        return (
+            <Center h="100vh">
+                <Spinner size="xl" />
+            </Center>
+        );
+    }
 
     return (
         <MoviesContainer>

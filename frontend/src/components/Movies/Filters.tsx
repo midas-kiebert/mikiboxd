@@ -1,6 +1,5 @@
 import FilterButton from "./FilterButton";
-import { CloseButton, Dialog, Portal, Box, Heading } from '@chakra-ui/react'
-import CinemaToggle from "../Common/CinemaToggle";
+import { CloseButton, Dialog, Portal } from '@chakra-ui/react'
 import {useFetchCinemas} from "@/hooks/useFetchCinemas";
 import { useFetchSelectedCinemas } from "@/hooks/useFetchSelectedCinemas";
 import { useState, useEffect } from "react";
@@ -8,6 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MeService, MeSetCinemaSelectionsData } from "@/client";
 import { useDebouncedCallback } from "use-debounce";
 import type { CinemaPublic, CityPublic } from "@/client";
+import CityCinemas from "./CityCinemas";
 
 
 function useDebouncedCinemaMutation(delay = 500) {
@@ -73,11 +73,26 @@ const Filters = () => {
         }
     }, [selectedCinemaIds]);
 
-    const handleToggle = (cinemaId: number, select: boolean) => {
+    const handleToggle = (cinemaId: number) => {
+        const select = !selectedCinemas.includes(cinemaId);
         setSelectedCinemas((prev) => {
             const next = select
                 ? [...new Set([...prev, cinemaId])]
                 : prev.filter(id => id !== cinemaId);
+
+            debouncedMutate(next);
+            return next;
+        });
+    }
+
+    const handleToggleCity = (cityId: number) => {
+        const cityCinemas = groupedCinemas[cityId]?.cinemasForCity || [];
+        const allSelected = cityCinemas.every(cinema => selectedCinemas.includes(cinema.id));
+
+        setSelectedCinemas((prev) => {
+            const next = allSelected
+                ? selectedCinemas.filter(id => !cityCinemas.some(cinema => cinema.id === id))
+                : [...new Set([...prev, ...cityCinemas.map(cinema => cinema.id)])];
 
             debouncedMutate(next);
             return next;
@@ -113,19 +128,14 @@ const Filters = () => {
                         <Dialog.Body>
                             {
                                 Object.values(groupedCinemas).map(({ city, cinemasForCity }) => (
-                                    <Box key={city.id} mb={4}>
-                                        <Heading as="h3" size="md">
-                                            {city.name}:
-                                        </Heading>
-                                        { cinemasForCity.map((cinema) => (
-                                            <CinemaToggle
-                                                key={cinema.id}
-                                                cinema={cinema}
-                                                enabled={selectedCinemas.includes(cinema.id)}
-                                                handleToggle={handleToggle}
-                                            />
-                                        )) }
-                                    </Box>
+                                    <CityCinemas
+                                        key={city.id}
+                                        city={city}
+                                        cinemasForCity={cinemasForCity}
+                                        selectedCinemas={selectedCinemas}
+                                        handleToggle={handleToggle}
+                                        handleToggleCity={handleToggleCity}
+                                    />
                                 ))
                             }
                         </Dialog.Body>

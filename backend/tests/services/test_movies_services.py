@@ -54,6 +54,7 @@ def test_get_movie_summaries_success(
         query=query,
         watchlist_only=watchlist_only,
         snapshot_time=snapshot_time,
+        current_user_id=user.id,
     )
     assert mock_converter.call_count == n_returned_movies
 

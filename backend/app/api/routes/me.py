@@ -116,3 +116,46 @@ def get_received_friend_requests(
     return users_service.get_received_friend_requests(
         session=session, user_id=current_user.id
     )
+
+
+@router.get("/cinemas", response_model=list[int])
+def get_cinema_selections(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> list[int]:
+    """
+    Get the IDs of cinemas selected by the current user.
+
+    Parameters:
+        session (SessionDep): The SQLAlchemy session to use for the operation.
+        current_user (CurrentUser): The currently authenticated user.
+
+    Returns:
+        list[int]: List of cinema IDs selected by the user.
+    """
+    return users_service.get_selected_cinemas_ids(
+        session=session, user_id=current_user.id
+    )
+
+
+@router.post("/cinemas", response_model=Message)
+def set_cinema_selections(
+    session: SessionDep,
+    current_user: CurrentUser,
+    cinema_ids: list[int],
+) -> Message:
+    """
+    Set the cinemas selected by the current user.
+
+    Parameters:
+        session (SessionDep): The SQLAlchemy session to use for the operation.
+        current_user (CurrentUser): The currently authenticated user.
+        cinema_ids (list[int]): List of cinema IDs to set as selected.
+
+    Returns:
+        Message: Confirmation message indicating success.
+    """
+    users_service.set_cinema_selections(
+        session=session, user_id=current_user.id, cinema_ids=cinema_ids
+    )
+    return Message(message="Cinemas updated successfully")

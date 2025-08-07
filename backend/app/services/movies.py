@@ -52,6 +52,7 @@ def get_movie_summaries(
         query=query,
         watchlist_only=watchlist_only,
         snapshot_time=snapshot_time,
+        current_user_id=user_id,
     )
     movies = [
         movie_converters.to_summary_logged_in(

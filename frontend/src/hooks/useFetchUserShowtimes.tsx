@@ -1,6 +1,7 @@
 import { useInfiniteQuery, InfiniteData } from "@tanstack/react-query";
 import { UsersService, UsersGetUserSelectedShowtimesResponse } from "@/client";
 import { UUID } from "crypto";
+import { ApiError } from "@/client";
 
 type useFetchUserShowtimesProps = {
     limit?: number;
@@ -27,6 +28,13 @@ export function useFetchUserShowtimes(
                 snapshotTime: snapshotTime,
                 userId: userId,
             });
+        },
+        retry: (failureCount, error) => {
+            if (error instanceof ApiError && error.status === 403) {
+                // If we get a 403 error, we don't want to retry
+                return false;
+            }
+            return failureCount < 3; // Retry up to 3 times for other errors
         },
         select: (data) => {
             const seen = new Set<number>();

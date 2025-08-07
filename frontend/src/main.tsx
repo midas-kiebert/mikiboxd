@@ -17,10 +17,17 @@ OpenAPI.TOKEN = async () => {
   return localStorage.getItem("access_token") || ""
 }
 
+const router = createRouter({
+  routeTree,
+  scrollRestoration: true,
+});
+
 const handleApiError = (error: Error) => {
-  if (error instanceof ApiError && [401, 403].includes(error.status)) {
+  if (error instanceof ApiError && error.status === 401) {
     localStorage.removeItem("access_token")
-    window.location.href = "/login"
+    router.navigate({ to: "/login" })
+  } else if (error instanceof ApiError && error.status === 403) {
+    router.navigate({ to: "/forbidden", replace: true})
   }
 }
 const queryClient = new QueryClient({
@@ -32,10 +39,7 @@ const queryClient = new QueryClient({
   }),
 })
 
-const router = createRouter({
-  routeTree,
-  scrollRestoration: true,
-});
+
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router

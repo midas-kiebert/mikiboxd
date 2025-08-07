@@ -54,6 +54,10 @@ def get_movie_summaries(
         snapshot_time=snapshot_time,
         current_user_id=user_id,
     )
+    users_crud.get_selected_cinemas_ids(
+        session=session,
+        user_id=user_id,
+    )
     movies = [
         movie_converters.to_summary_logged_in(
             movie=movie,

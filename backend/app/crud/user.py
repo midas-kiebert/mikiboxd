@@ -1,9 +1,10 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, delete, select
 
 from app.core.security import get_password_hash, verify_password
+from app.models.cinema_selection import CinemaSelection
 from app.models.friendship import FriendRequest, Friendship
 from app.models.letterboxd import Letterboxd
 from app.models.showtime import Showtime
@@ -413,3 +414,52 @@ def is_user_going_to_movie(
     )
     result = session.execute(stmt)
     return result.scalars().one_or_none() is not None
+
+
+def get_selected_cinemas_ids(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> list[int]:
+    """
+    Get a list of cinema IDs that a user has selected.
+
+    Parameters:
+        session (Session): The database session.
+        user_id (UUID): The ID of the user whose selected cinemas are to be retrieved.
+        limit (int): The maximum number of cinema IDs to return.
+        offset (int): The offset for pagination.
+    Returns:
+        list[int]: A list of cinema IDs that the user has selected.
+    """
+    stmt = select(CinemaSelection.cinema_id).where(CinemaSelection.user_id == user_id)
+    cinema_ids = list(session.exec(stmt).all())
+    return cinema_ids
+
+
+def set_cinema_selections(
+    *,
+    session: Session,
+    user_id: UUID,
+    cinema_ids: list[int],
+) -> None:
+    """
+    Set the cinema selections for a user.
+
+    Parameters:
+        session (Session): The database session.
+        user_id (UUID): The ID of the user whose cinema selections are to be set.
+        cinema_ids (list[int]): A list of cinema IDs to select.
+    Raises:
+        IntegrityError: If there is a database integrity error, such as an invalid cinema_id.
+    """
+    # Clear existing selections
+    stmt = delete(CinemaSelection).where(col(CinemaSelection.user_id) == user_id)
+    session.execute(stmt)
+
+    session.add_all(
+        CinemaSelection(user_id=user_id, cinema_id=cinema_id)
+        for cinema_id in cinema_ids
+    )
+
+    session.flush()

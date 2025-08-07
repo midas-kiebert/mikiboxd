@@ -229,3 +229,47 @@ def get_received_friend_requests(
         )
         for request in requests
     ]
+
+
+def get_selected_cinemas_ids(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> list[int]:
+    """
+    Get the IDs of cinemas selected by a user.
+
+    Parameters:
+        session (Session): Database session.
+        user_id (UUID): ID of the user whose selected cinemas are to be retrieved.
+    Returns:
+        list[int]: List of cinema IDs selected by the user.
+    """
+    return users_crud.get_selected_cinemas_ids(session=session, user_id=user_id)
+
+
+def set_cinema_selections(
+    *,
+    session: Session,
+    user_id: UUID,
+    cinema_ids: list[int],
+) -> None:
+    """
+    Set the cinema selections for a user.
+
+    Parameters:
+        session (Session): Database session.
+        user_id (UUID): ID of the user whose cinema selections are to be set.
+        cinema_ids (list[int]): List of cinema IDs to be selected by the user.
+    """
+    try:
+        users_crud.set_cinema_selections(
+            session=session,
+            user_id=user_id,
+            cinema_ids=cinema_ids,
+        )
+        session.commit()
+        print("Cinemas have been updated:" + str(cinema_ids))
+    except Exception as e:
+        session.rollback()
+        raise AppError from e

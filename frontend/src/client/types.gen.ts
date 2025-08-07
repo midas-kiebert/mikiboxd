@@ -143,6 +143,8 @@ export type ValidationError = {
   type: string
 }
 
+export type CinemasGetAllCinemasResponse = Array<CinemaPublic>
+
 export type FriendsSendFriendRequestData = {
   receiverId: string
 }
@@ -230,6 +232,14 @@ export type MeGetFriendsResponse = Array<UserWithFriendStatus>
 export type MeGetSentFriendRequestsResponse = Array<UserWithFriendStatus>
 
 export type MeGetReceivedFriendRequestsResponse = Array<UserWithFriendStatus>
+
+export type MeGetCinemaSelectionsResponse = Array<number>
+
+export type MeSetCinemaSelectionsData = {
+  requestBody: Array<number>
+}
+
+export type MeSetCinemaSelectionsResponse = Message
 
 export type MoviesReadMoviesData = {
   limit?: number

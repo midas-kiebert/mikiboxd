@@ -2,22 +2,22 @@
 import { CinemaPublic } from "@/client";
 import { Badge } from "@chakra-ui/react";
 
-interface CinemaBadgeProps {
+interface CinemaBadgeProps extends React.ComponentProps<typeof Badge> {
     cinema: CinemaPublic;
+    enabled?: boolean;
 }
 
-const CinemaBadge = ({ cinema } : CinemaBadgeProps) => {
+const CinemaBadge = ({ cinema, enabled = true, ...rest } : CinemaBadgeProps) => {
     const name = cinema.name;
     const color = cinema.badge_bg_color || "gray.500";
-    // const textColor = cinema.badge_text_color || "white";
-    // const url = cinema.url || "";
 
     return (
         <Badge
             m={0.5}
             variant={"surface"}
-            colorPalette={color}
+            colorPalette={enabled ? color : "grey"}
             size={"sm"}
+            {...rest}
         >
             {name}
         </Badge>

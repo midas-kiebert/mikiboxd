@@ -1,4 +1,4 @@
-from datetime import datetime
+import datetime as dt
 from typing import TYPE_CHECKING
 
 from sqlalchemy import UniqueConstraint
@@ -17,7 +17,7 @@ __all__ = [
 
 # Shared properties
 class ShowtimeBase(SQLModel):
-    datetime: datetime
+    datetime: dt.datetime = Field(index=True)
     theatre: str = ""
     ticket_link: str | None = None
 

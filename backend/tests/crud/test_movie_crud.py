@@ -152,8 +152,10 @@ def test_get_cinemas_for_movie(
     movie_factory: Callable[..., Movie],
     cinema_factory: Callable[..., Cinema],
     showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
 ):
     cinema_1, cinema_2, cinema_3, cinema_4 = (cinema_factory() for _ in range(4))
+    user = user_factory()
 
     past = now_amsterdam_naive() - timedelta(minutes=10)
     future = now_amsterdam_naive() + timedelta(minutes=10)
@@ -176,10 +178,33 @@ def test_get_cinemas_for_movie(
         ]
     )
 
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=user.id,
+        cinema_ids=[cinema_1.id, cinema_3.id, cinema_4.id],
+    )
+
     cinemas = movie_crud.get_cinemas_for_movie(
         session=db_transaction,
         movie_id=movie.id,
         snapshot_time=now_amsterdam_naive(),
+        current_user_id=user.id,
+    )
+
+    assert cinema_3 in cinemas
+    assert len(cinemas) == 1
+
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=user.id,
+        cinema_ids=[cinema_1.id, cinema_2.id, cinema_3.id, cinema_4.id],
+    )
+
+    cinemas = movie_crud.get_cinemas_for_movie(
+        session=db_transaction,
+        movie_id=movie.id,
+        snapshot_time=now_amsterdam_naive(),
+        current_user_id=user.id,
     )
 
     assert cinema_2 in cinemas
@@ -192,6 +217,7 @@ def test_get_cinemas_for_movie(
         session=db_transaction,
         movie_id=movie.id,
         snapshot_time=more_future,
+        current_user_id=user.id,
     )
 
     assert len(cinemas_in_20_minutes) == 0
@@ -227,6 +253,14 @@ def test_get_friends_for_movie(
 
     other_showtime = showtime_factory()
 
+    all_showtimes = showtimes + [other_showtime]
+
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=user.id,
+        cinema_ids=list({showtime.cinema_id for showtime in all_showtimes}),
+    )
+
     movie = movie_factory(showtimes=showtimes)
 
     # Showtime selections
@@ -261,7 +295,9 @@ def test_get_showtimes_for_movie(
     db_transaction: Session,
     movie_factory: Callable[..., Movie],
     showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
 ):
+    user = user_factory()
     past = now_amsterdam_naive() - timedelta(minutes=10)
     future = now_amsterdam_naive() + timedelta(minutes=10)
 
@@ -273,10 +309,17 @@ def test_get_showtimes_for_movie(
 
     movie = movie_factory(showtimes=showtimes)
 
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=user.id,
+        cinema_ids=list({showtime.cinema_id for showtime in showtimes}),
+    )
+
     retrieved_showtimes = movie_crud.get_showtimes_for_movie(
         session=db_transaction,
         movie_id=movie.id,
         snapshot_time=now_amsterdam_naive(),
+        current_user_id=user.id,
     )
 
     assert showtimes[1] in retrieved_showtimes
@@ -288,6 +331,7 @@ def test_get_showtimes_for_movie(
         movie_id=movie.id,
         limit=1,
         snapshot_time=now_amsterdam_naive(),
+        current_user_id=user.id,
     )
     assert len(retrieved_showtimes_limited) == 1
 
@@ -297,7 +341,9 @@ def test_get_last_showtime_datetime(
     db_transaction: Session,
     movie_factory: Callable[..., Movie],
     showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
 ):
+    user = user_factory()
     past = now_amsterdam_naive() - timedelta(minutes=10)
     future = now_amsterdam_naive() + timedelta(minutes=10)
     far_future = now_amsterdam_naive() + timedelta(days=10)
@@ -313,12 +359,21 @@ def test_get_last_showtime_datetime(
         showtime_factory(datetime=future),
     ]
 
+    showtimes = showtimes_1 + showtimes_2
+
     movie = movie_factory(showtimes=showtimes_1)
     other_movie = movie_factory(showtimes=showtimes_2)
+
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=user.id,
+        cinema_ids=list({showtime.cinema_id for showtime in showtimes}),
+    )
 
     last_showtime_datetime = movie_crud.get_last_showtime_datetime(
         session=db_transaction,
         movie_id=movie.id,
+        current_user_id=user.id,
     )
 
     assert last_showtime_datetime == far_future
@@ -326,6 +381,7 @@ def test_get_last_showtime_datetime(
     last_showtime_datetime_other = movie_crud.get_last_showtime_datetime(
         session=db_transaction,
         movie_id=other_movie.id,
+        current_user_id=user.id,
     )
 
     assert last_showtime_datetime_other == very_far_future
@@ -335,12 +391,15 @@ def test_get_last_showtime_datetime_no_showtimes(
     *,
     db_transaction: Session,
     movie_factory: Callable[..., Movie],
+    user_factory: Callable[..., User],
 ):
+    user = user_factory()
     movie = movie_factory()
 
     last_showtime_datetime = movie_crud.get_last_showtime_datetime(
         session=db_transaction,
         movie_id=movie.id,
+        current_user_id=user.id,
     )
 
     assert last_showtime_datetime is None
@@ -351,7 +410,9 @@ def test_get_total_number_of_future_showtimes(
     db_transaction: Session,
     movie_factory: Callable[..., Movie],
     showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
 ):
+    user = user_factory()
     past = now_amsterdam_naive() - timedelta(minutes=10)
     future = now_amsterdam_naive() + timedelta(minutes=10)
 
@@ -363,10 +424,17 @@ def test_get_total_number_of_future_showtimes(
 
     movie = movie_factory(showtimes=showtimes)
 
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=user.id,
+        cinema_ids=list({showtime.cinema_id for showtime in showtimes}),
+    )
+
     total_showtimes = movie_crud.get_total_number_of_future_showtimes(
         session=db_transaction,
         movie_id=movie.id,
         snapshot_time=now_amsterdam_naive(),
+        current_user_id=user.id,
     )
 
     assert total_showtimes == 2
@@ -375,6 +443,7 @@ def test_get_total_number_of_future_showtimes(
         session=db_transaction,
         movie_id=movie.id,
         snapshot_time=past,
+        current_user_id=user.id,
     )
 
     assert total_showtimes_past == 3
@@ -390,21 +459,35 @@ def test_get_movies(
     past = now_amsterdam_naive() - timedelta(minutes=10)
     tomorrow = now_amsterdam_naive() + timedelta(days=1)
     far_future = now_amsterdam_naive() + timedelta(days=10)
+
+    showtimes_1 = [showtime_factory(datetime=past)]
+    showtimes_2 = [showtime_factory(datetime=far_future)]
+    showtimes_3 = []
+    showtimes_4 = [showtime_factory(datetime=tomorrow)]
+    showtimes = showtimes_1 + showtimes_2 + showtimes_3 + showtimes_4
+
     # Create movies with different showtimes
     movie_factory(
-        title="Gone Girl", showtimes=[showtime_factory(datetime=past)]
+        title="Gone Girl", showtimes=showtimes_1
     )
     movie_2 = movie_factory(
         title="A girl Walks Home Alone At Night",
-        showtimes=[showtime_factory(datetime=far_future)],
+        showtimes=showtimes_2
     )
     movie_factory(
         title="Girly Pop",
+        showtimes=showtimes_3
     )
     movie_4 = movie_factory(
-        title="Forrest Gump", showtimes=[showtime_factory(datetime=tomorrow)]
+        title="Forrest Gump", showtimes=showtimes_4
     )
     user = user_factory()
+
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=user.id,
+        cinema_ids=list({showtime.cinema_id for showtime in showtimes}),
+    )
 
     # Retrieve all movies
     movies = movie_crud.get_movies(
@@ -415,6 +498,7 @@ def test_get_movies(
         snapshot_time=now_amsterdam_naive(),
         query="",
         watchlist_only=False,
+        current_user_id=user.id,
     )
 
     assert movie_2 in movies
@@ -430,6 +514,7 @@ def test_get_movies(
         snapshot_time=now_amsterdam_naive(),
         query="girl",
         watchlist_only=False,
+        current_user_id=user.id,
     )
 
     assert movie_2 in movies_with_query

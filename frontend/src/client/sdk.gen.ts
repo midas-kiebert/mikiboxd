@@ -4,6 +4,7 @@ import type { CancelablePromise } from "./core/CancelablePromise"
 import { OpenAPI } from "./core/OpenAPI"
 import { request as __request } from "./core/request"
 import type {
+  CinemasGetAllCinemasResponse,
   FriendsSendFriendRequestData,
   FriendsSendFriendRequestResponse,
   FriendsAcceptFriendRequestData,
@@ -35,6 +36,9 @@ import type {
   MeGetFriendsResponse,
   MeGetSentFriendRequestsResponse,
   MeGetReceivedFriendRequestsResponse,
+  MeGetCinemaSelectionsResponse,
+  MeSetCinemaSelectionsData,
+  MeSetCinemaSelectionsResponse,
   MoviesReadMoviesData,
   MoviesReadMoviesResponse,
   MoviesReadMovieData,
@@ -57,6 +61,20 @@ import type {
   UtilsTestEmailResponse,
   UtilsHealthCheckResponse,
 } from "./types.gen"
+
+export class CinemasService {
+  /**
+   * Get All Cinemas
+   * @returns CinemaPublic Successful Response
+   * @throws ApiError
+   */
+  public static getAllCinemas(): CancelablePromise<CinemasGetAllCinemasResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/cinemas/",
+    })
+  }
+}
 
 export class FriendsService {
   /**
@@ -413,6 +431,56 @@ export class MeService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/me/requests/received",
+    })
+  }
+
+  /**
+   * Get Cinema Selections
+   * Get the IDs of cinemas selected by the current user.
+   *
+   * Parameters:
+   * session (SessionDep): The SQLAlchemy session to use for the operation.
+   * current_user (CurrentUser): The currently authenticated user.
+   *
+   * Returns:
+   * list[int]: List of cinema IDs selected by the user.
+   * @returns number Successful Response
+   * @throws ApiError
+   */
+  public static getCinemaSelections(): CancelablePromise<MeGetCinemaSelectionsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/cinemas",
+    })
+  }
+
+  /**
+   * Set Cinema Selections
+   * Set the cinemas selected by the current user.
+   *
+   * Parameters:
+   * session (SessionDep): The SQLAlchemy session to use for the operation.
+   * current_user (CurrentUser): The currently authenticated user.
+   * cinema_ids (list[int]): List of cinema IDs to set as selected.
+   *
+   * Returns:
+   * Message: Confirmation message indicating success.
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static setCinemaSelections(
+    data: MeSetCinemaSelectionsData,
+  ): CancelablePromise<MeSetCinemaSelectionsResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/cinemas",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
     })
   }
 }

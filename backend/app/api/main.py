@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.routes import (
+    cinemas,
     friends,
     login,
     me,
@@ -18,3 +19,4 @@ api_router.include_router(movies.router)
 api_router.include_router(showtimes.router)
 api_router.include_router(friends.router)
 api_router.include_router(me.router)
+api_router.include_router(cinemas.router)

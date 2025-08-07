@@ -49,3 +49,21 @@ def upsert_cinema(*, session: Session, cinema: CinemaCreate) -> Cinema:
     session.add(db_item)
     session.flush()  # Make sure the ID is generated, check integrity
     return db_item
+
+
+def get_cinemas(
+    *,
+    session: Session,
+) -> list[Cinema]:
+    """
+    Get all cinemas from the database.
+
+    Parameters:
+        session (Session): The SQLAlchemy session to use for the operation.
+
+    Returns:
+        list[Cinema]: A list of Cinema objects.
+    """
+    stmt = select(Cinema)
+    cinemas = list(session.exec(stmt).all())
+    return cinemas

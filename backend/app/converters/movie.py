@@ -48,6 +48,7 @@ def to_summary_logged_in(
             movie_id=movie.id,
             snapshot_time=snapshot_time,
             limit=showtime_limit,
+            current_user_id=current_user,
         )
     ]
     cinemas = [
@@ -56,16 +57,19 @@ def to_summary_logged_in(
             session=session,
             movie_id=movie.id,
             snapshot_time=snapshot_time,
+            current_user_id=current_user,
         )
     ]
     last_showtime_datetime = movies_crud.get_last_showtime_datetime(
         session=session,
         movie_id=movie.id,
+        current_user_id=current_user,
     )
     total_showtimes = movies_crud.get_total_number_of_future_showtimes(
         session=session,
         movie_id=movie.id,
         snapshot_time=snapshot_time,
+        current_user_id=current_user,
     )
     friends_going = [
         user_converters.to_public(friend)
@@ -122,6 +126,7 @@ def to_logged_in(
             session=session,
             movie_id=movie.id,
             snapshot_time=snapshot_time,
+            current_user_id=current_user,
         )
     ]
     return MovieLoggedIn(

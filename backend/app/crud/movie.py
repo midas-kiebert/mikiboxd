@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlmodel import Session, col
 
 from app.models.cinema import Cinema
+from app.models.cinema_selection import CinemaSelection
 from app.models.friendship import Friendship
 from app.models.movie import Movie, MovieCreate, MovieUpdate
 from app.models.showtime import Showtime
@@ -101,6 +102,7 @@ def get_cinemas_for_movie(
     session: Session,
     movie_id: int,
     snapshot_time: datetime = now_amsterdam_naive(),
+    current_user_id: UUID,
 ) -> list[Cinema]:
     """
     Retrieve all cinemas showing a movie at or after a specific snapshot time.
@@ -114,8 +116,11 @@ def get_cinemas_for_movie(
     stmt = (
         select(Cinema)
         .join(Showtime, col(Showtime.cinema_id) == col(Cinema.id))
+        .join(CinemaSelection, col(CinemaSelection.cinema_id) == col(Cinema.id))
         .where(
-            col(Showtime.movie_id) == movie_id, col(Showtime.datetime) >= snapshot_time
+            col(Showtime.movie_id) == movie_id,
+            col(Showtime.datetime) >= snapshot_time,
+            col(CinemaSelection.user_id) == current_user_id,
         )
         .distinct()
     )
@@ -147,10 +152,15 @@ def get_friends_for_movie(
         .join(Friendship, col(Friendship.friend_id) == col(User.id))
         .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == col(User.id))
         .join(Showtime, col(Showtime.id) == col(ShowtimeSelection.showtime_id))
+        .join(
+            CinemaSelection,
+            col(CinemaSelection.cinema_id) == col(Showtime.cinema_id),
+        )
         .where(
             col(Friendship.user_id) == current_user,
             col(Showtime.movie_id) == movie_id,
             col(Showtime.datetime) >= snapshot_time,
+            col(CinemaSelection.user_id) == current_user,
         )
         .distinct()
     )
@@ -163,6 +173,7 @@ def get_showtimes_for_movie(
     *,
     session: Session,
     movie_id: int,
+    current_user_id: UUID,
     limit: int | None = None,
     snapshot_time: datetime = now_amsterdam_naive(),
 ) -> list[Showtime]:
@@ -179,33 +190,50 @@ def get_showtimes_for_movie(
     """
     stmt = (
         select(Showtime)
+        .join(CinemaSelection, col(Showtime.cinema_id) == CinemaSelection.cinema_id)
         .where(
-            col(Showtime.movie_id) == movie_id, col(Showtime.datetime) >= snapshot_time
+            col(Showtime.datetime) >= snapshot_time,
+            col(CinemaSelection.user_id) == current_user_id,
         )
         .order_by(col(Showtime.datetime))
     )
+    stmt = stmt.where(col(Showtime.movie_id) == movie_id)
 
     if limit is not None:
         stmt = stmt.limit(limit)
 
     result = session.execute(stmt)
     showtimes: list[Showtime] = list(result.scalars().all())
+
     return showtimes
 
 
-def get_last_showtime_datetime(*, session: Session, movie_id: int) -> datetime | None:
+def get_last_showtime_datetime(
+    *,
+    session: Session,
+    movie_id: int,
+    current_user_id: UUID,
+) -> datetime | None:
     """
     Retrieve the last showtime datetime for a specific movie.
 
     Parameters:
         session (Session): The database session.
         movie_id (int): The ID of the movie.
+        current_user_id (UUID): The ID of the current user.
     Returns:
         datetime | None: The last showtime datetime if found, otherwise None.
     """
     stmt = (
         select(Showtime)
-        .where(col(Showtime.movie_id) == movie_id)
+        .join(
+            CinemaSelection,
+            col(Showtime.cinema_id) == CinemaSelection.cinema_id,
+        )
+        .where(
+            col(CinemaSelection.user_id) == current_user_id,
+            col(Showtime.movie_id) == movie_id,
+        )
         .order_by(col(Showtime.datetime).desc())
         .limit(1)
     )
@@ -223,6 +251,7 @@ def get_total_number_of_future_showtimes(
     session: Session,
     movie_id: int,
     snapshot_time: datetime = now_amsterdam_naive(),
+    current_user_id: UUID,
 ) -> int:
     """
     Retrieve the total number of future showtimes for a specific movie at or after a snapshot time.
@@ -234,8 +263,18 @@ def get_total_number_of_future_showtimes(
     Returns:
         int: The total number of future showtimes for the specified movie.
     """
-    stmt = select(func.count(col(Showtime.id))).where(
-        col(Showtime.movie_id) == movie_id, col(Showtime.datetime) >= snapshot_time
+    stmt = (
+        select(func.count(col(Showtime.id)))
+        .select_from(Showtime)
+        .join(
+            CinemaSelection,
+            col(Showtime.cinema_id) == CinemaSelection.cinema_id,
+        )
+        .where(
+            col(CinemaSelection.user_id) == current_user_id,
+            col(Showtime.movie_id) == movie_id,
+            col(Showtime.datetime) >= snapshot_time,
+        )
     )
     result = session.execute(stmt)
     total_showtimes: int = result.scalar_one_or_none() or 0
@@ -251,6 +290,7 @@ def get_movies(
     snapshot_time: datetime,
     query: str,
     watchlist_only: bool,
+    current_user_id: UUID,
 ) -> list[Movie]:
     """
     Retrieve a list of movies based on various filters and pagination.
@@ -269,7 +309,11 @@ def get_movies(
     stmt = (
         select(Movie)
         .join(Showtime, col(Movie.id) == Showtime.movie_id)
-        .where(col(Showtime.datetime) >= snapshot_time)
+        .join(CinemaSelection, col(Showtime.cinema_id) == CinemaSelection.cinema_id)
+        .where(
+            col(Showtime.datetime) >= snapshot_time,
+            col(CinemaSelection.user_id) == current_user_id,
+        )
     )
     if query:
         stmt = stmt.where(col(Movie.title).ilike(f"%{query}%"))

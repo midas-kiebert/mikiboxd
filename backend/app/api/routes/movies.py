@@ -21,6 +21,7 @@ def read_movies(
     query: str = Query(""),
     watchlist_only: bool = Query(False),
 ) -> list[MovieSummaryLoggedIn]:
+    print("Snapshot time:", snapshot_time)
     movies = movies_service.get_movie_summaries(
         session=session,
         user_id=current_user.id,

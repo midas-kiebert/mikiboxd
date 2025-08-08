@@ -40,6 +40,7 @@ def get_movie_summaries(
     Returns:
         list[MovieSummaryLoggedIn]: List of movie summaries.
     """
+    print("Snapshot time in service:", snapshot_time)
     letterboxd_username = users_crud.get_letterboxd_username(
         session=session,
         user_id=user_id,

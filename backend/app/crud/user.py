@@ -10,7 +10,6 @@ from app.models.letterboxd import Letterboxd
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User, UserCreate, UserUpdate
-from app.utils import now_amsterdam_naive
 
 
 def get_user_by_id(*, session: Session, user_id: UUID) -> User | None:
@@ -225,7 +224,7 @@ def get_selected_showtimes(
     *,
     session: Session,
     user_id: UUID,
-    snapshot_time: datetime = now_amsterdam_naive(),
+    snapshot_time: datetime,
     limit: int,
     offset: int,
 ) -> list[Showtime]:
@@ -388,7 +387,7 @@ def is_user_going_to_movie(
     session: Session,
     movie_id: int,
     user_id: UUID,
-    snapshot_time: datetime = now_amsterdam_naive(),
+    snapshot_time: datetime,
 ) -> bool:
     """
     Check if a user is going to a movie by checking their future showtime selections.
@@ -413,7 +412,14 @@ def is_user_going_to_movie(
         .limit(1)
     )
     result = session.execute(stmt)
-    return result.scalars().one_or_none() is not None
+    is_going = result.scalars().one_or_none() is not None
+
+    if movie_id == 12493:
+        print(
+            f"Checking if user {user_id} is going to movie {movie_id}: {is_going}, snapshot time: {snapshot_time}"
+        )
+
+    return is_going
 
 
 def get_selected_cinemas_ids(

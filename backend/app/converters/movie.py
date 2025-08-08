@@ -10,14 +10,13 @@ from app.crud import movie as movies_crud
 from app.crud import user as user_crud
 from app.models.movie import Movie
 from app.schemas.movie import MovieLoggedIn, MovieSummaryLoggedIn
-from app.utils import now_amsterdam_naive
 
 
 def to_summary_logged_in(
     movie: Movie,
     *,
     session: Session,
-    snapshot_time: datetime = now_amsterdam_naive(),
+    snapshot_time: datetime,
     current_user: UUID,
     showtime_limit: int = 10,
 ) -> MovieSummaryLoggedIn:
@@ -84,6 +83,7 @@ def to_summary_logged_in(
         session=session,
         movie_id=movie.id,
         user_id=current_user,
+        snapshot_time=snapshot_time,
     )
 
     return MovieSummaryLoggedIn(
@@ -101,7 +101,7 @@ def to_logged_in(
     movie: Movie,
     *,
     session: Session,
-    snapshot_time: datetime = now_amsterdam_naive(),
+    snapshot_time: datetime,
     current_user: UUID,
 ) -> MovieLoggedIn:
     """

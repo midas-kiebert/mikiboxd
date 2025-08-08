@@ -14,7 +14,6 @@ from app.exceptions.user_exceptions import EmailAlreadyExists, NotAFriend, UserN
 from app.models.user import UserCreate, UserRegister
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.user import UserPublic, UserWithFriendStatus
-from app.utils import now_amsterdam_naive
 
 
 def get_user(
@@ -117,7 +116,7 @@ def get_selected_showtimes(
     session: Session,
     current_user_id: UUID,
     user_id: UUID,
-    snapshot_time: datetime = now_amsterdam_naive(),
+    snapshot_time: datetime,
     limit: int,
     offset: int,
 ) -> list[ShowtimeLoggedIn]:

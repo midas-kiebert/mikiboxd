@@ -12,7 +12,6 @@ from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
 from app.models.watchlist_selection import WatchlistSelection
-from app.utils import now_amsterdam_naive
 
 
 def get_movie_by_id(*, session: Session, id: int) -> Movie | None:
@@ -101,7 +100,7 @@ def get_cinemas_for_movie(
     *,
     session: Session,
     movie_id: int,
-    snapshot_time: datetime = now_amsterdam_naive(),
+    snapshot_time: datetime,
     current_user_id: UUID,
 ) -> list[Cinema]:
     """
@@ -133,7 +132,7 @@ def get_friends_for_movie(
     *,
     session: Session,
     movie_id: int,
-    snapshot_time: datetime = now_amsterdam_naive(),
+    snapshot_time: datetime,
     current_user: UUID,
 ) -> list[User]:
     """
@@ -175,7 +174,7 @@ def get_showtimes_for_movie(
     movie_id: int,
     current_user_id: UUID,
     limit: int | None = None,
-    snapshot_time: datetime = now_amsterdam_naive(),
+    snapshot_time: datetime,
 ) -> list[Showtime]:
     """
     Retrieve showtimes for a specific movie at or after a snapshot time.
@@ -250,7 +249,7 @@ def get_total_number_of_future_showtimes(
     *,
     session: Session,
     movie_id: int,
-    snapshot_time: datetime = now_amsterdam_naive(),
+    snapshot_time: datetime,
     current_user_id: UUID,
 ) -> int:
     """

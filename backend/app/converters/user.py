@@ -7,6 +7,7 @@ from app.crud import friendship as friendship_crud
 from app.crud import user as user_crud
 from app.models.user import User
 from app.schemas.user import UserPublic, UserWithFriendStatus, UserWithShowtimesPublic
+from app.utils import now_amsterdam_naive
 
 
 def to_public(user: User) -> UserPublic:
@@ -85,6 +86,9 @@ def to_with_showtimes_public(
     Raises:
         ValidationError: If the user does not match the expected model.
     """
+
+    now = now_amsterdam_naive()
+
     User.model_validate(user)
     showtimes = [
         showtime_converters.to_logged_in(
@@ -97,6 +101,7 @@ def to_with_showtimes_public(
             user_id=user.id,
             limit=limit,
             offset=offset,
+            snapshot_time=now,
         )
     ]
 

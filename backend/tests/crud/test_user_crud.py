@@ -532,6 +532,7 @@ def test_is_user_going_to_movie(
         session=db_transaction,
         user_id=user.id,
         movie_id=movie.id,
+        snapshot_time=now_amsterdam_naive(),
     )
 
     assert is_going is False
@@ -546,6 +547,7 @@ def test_is_user_going_to_movie(
         session=db_transaction,
         user_id=user.id,
         movie_id=movie.id,
+        snapshot_time=now_amsterdam_naive(),
     )
 
     assert is_going is False
@@ -559,6 +561,7 @@ def test_is_user_going_to_movie(
         session=db_transaction,
         user_id=user.id,
         movie_id=movie.id,
+        snapshot_time=now_amsterdam_naive(),
     )
 
     assert is_going is True

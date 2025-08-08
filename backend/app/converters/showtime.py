@@ -9,6 +9,7 @@ from app.crud import showtime as showtime_crud
 from app.crud import user as user_crud
 from app.models.showtime import Showtime
 from app.schemas.showtime import ShowtimeInMovieLoggedIn, ShowtimeLoggedIn
+from app.utils import now_amsterdam_naive
 
 
 def to_logged_in(
@@ -31,6 +32,7 @@ def to_logged_in(
     Raises:
         ValidationError: If the showtime does not match the expected model.
     """
+    now = now_amsterdam_naive()
     Showtime.model_validate(showtime)
     friends_going = [
         user_converters.to_public(friend)
@@ -49,6 +51,7 @@ def to_logged_in(
         movie=showtime.movie,
         session=session,
         current_user=user_id,
+        snapshot_time=now,
     )
     cinema = cinema_converters.to_public(
         cinema=showtime.cinema,

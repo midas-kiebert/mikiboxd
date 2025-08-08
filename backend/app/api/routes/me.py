@@ -66,7 +66,7 @@ def update_password_me(
 def get_my_showtimes(
     session: SessionDep,
     current_user: CurrentUser,
-    snapshot_time: datetime = now_amsterdam_naive(),
+    snapshot_time: datetime = Query(default_factory=now_amsterdam_naive),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
 ) -> list[ShowtimeLoggedIn]:

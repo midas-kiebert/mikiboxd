@@ -284,6 +284,7 @@ def test_get_friends_for_movie(
         session=db_transaction,
         movie_id=movie.id,
         current_user=user.id,
+        snapshot_time=now_amsterdam_naive(),
     )
 
     assert friend_1 in friends

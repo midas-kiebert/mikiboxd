@@ -25,7 +25,9 @@ session.mount("https://", HTTPAdapter(max_retries=retry))
 
 def get_person_ids(name: str) -> Sequence[str]:
     try:
-        res = session.get(SEARCH_PERSON_URL, params={"api_key": TMDB_API_KEY, "query": name})
+        res = session.get(
+            SEARCH_PERSON_URL, params={"api_key": TMDB_API_KEY, "query": name}
+        )
         res.raise_for_status()
     except requests.RequestException as e:
         logger.warning(f"Failed to fetch person IDs for {name}. Error: {e}")

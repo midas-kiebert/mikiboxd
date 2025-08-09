@@ -14,13 +14,17 @@ class Film(BaseModel):
     cast: list[str] | None
     directors: list[str] | None
 
+
 class FilmResponse(BaseModel):
     data: list[Film]
+
+
 class ResponseData(BaseModel):
     films: FilmResponse
+
+
 class Response(BaseModel):
     data: ResponseData
-
 
 
 def get_movies_json() -> list[Film]:
@@ -72,29 +76,21 @@ def get_movies_json() -> list[Film]:
     }
 
     try:
-        res = requests.post(
-                url,
-                headers=headers,
-                data=json.dumps(payload),
-                timeout=10
-            )
+        res = requests.post(url, headers=headers, data=json.dumps(payload), timeout=10)
         res.raise_for_status()
     except requests.RequestException as e:
-        logger.warning(
-            "Failed to fetch movies data. Error:", str(e)
-        )
+        logger.warning("Failed to fetch movies data. Error:", str(e))
         return []
 
     try:
         movies_response = Response.model_validate(res.json())
     except Exception as e:
-        logger.warning(
-            "Error parsing movies response. Error:", str(e)
-        )
+        logger.warning("Error parsing movies response. Error:", str(e))
         return []
     movies_data = movies_response.data.films.data
 
     return movies_data
+
 
 if __name__ == "__main__":
     movies = get_movies_json()

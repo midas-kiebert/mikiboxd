@@ -8,6 +8,7 @@ from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped
 
 def scrape_data():
     from app.scraping.runner import run
+
     run()
 
 

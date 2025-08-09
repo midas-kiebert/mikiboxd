@@ -9,7 +9,6 @@ from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped
 def scrape_data():
     from app.scraping.runner import run
 
-    print("Starting nightly scrape of cinema data...")
     run()
 
 
@@ -17,7 +16,7 @@ if __name__ == "__main__":
     scheduler = BlockingScheduler()
     scheduler.add_job(
         func=scrape_data,
-        trigger=CronTrigger(hour=3, minute=0, timezone=ZoneInfo("Europe/Amsterdam")),
+        trigger=CronTrigger(hour=0, minute=30, timezone=ZoneInfo("Europe/Amsterdam")),
         id="nightly_scrape",
     )
     scheduler.start()

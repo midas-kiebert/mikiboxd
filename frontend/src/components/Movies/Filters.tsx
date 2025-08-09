@@ -111,6 +111,7 @@ const Filters = () => {
     return (
         <Dialog.Root
             size="cover"
+            scrollBehavior={"inside"}
         >
             <Dialog.Trigger asChild>
                 <FilterButton />

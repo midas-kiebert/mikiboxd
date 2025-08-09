@@ -24,9 +24,15 @@ session.mount("https://", HTTPAdapter(max_retries=retry))
 
 
 def get_person_ids(name: str) -> Sequence[str]:
-    response = session.get(
-        SEARCH_PERSON_URL, params={"api_key": TMDB_API_KEY, "query": name}
-    ).json()
+    try:
+        res = session.get(
+            SEARCH_PERSON_URL, params={"api_key": TMDB_API_KEY, "query": name}
+        )
+        res.raise_for_status()
+    except requests.RequestException as e:
+        logger.warning(f"Failed to fetch person IDs for {name}. Error: {e}")
+        return []
+    response = res.json()
 
     results = response.get("results", [])
     if not results:
@@ -42,7 +48,12 @@ def search_tmdb(title: str) -> list[dict[str, str]]:
         "query": title,
     }
 
-    response = requests.get(TMDB_SEARCH_URL, params=params)
+    try:
+        response = requests.get(TMDB_SEARCH_URL, params=params)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logger.warning(f"Failed to search TMDB for title '{title}'. Error: {e}")
+        return []
     results: list[dict[str, str]] = response.json().get("results", [])
     return results
 
@@ -51,7 +62,13 @@ def get_persons_movies(
     person_id: str, job: str = "Director", year: int | None = None
 ) -> list[dict[str, str]]:
     credits_url = CREDITS_URL_TEMPLATE.format(id=person_id)
-    response = session.get(credits_url, params={"api_key": TMDB_API_KEY}).json()
+    try:
+        res = session.get(credits_url, params={"api_key": TMDB_API_KEY})
+        res.raise_for_status()
+    except requests.RequestException as e:
+        logger.warning(f"Failed to fetch movies for person ID {person_id}. Error: {e}")
+        return []
+    response = res.json()
 
     movies: list[dict[str, str]] = []
 

@@ -16,7 +16,6 @@ export type CinemaPublic = {
   name: string
   cineville: boolean
   badge_bg_color: string
-  badge_text_color: string
   url: string
   id: number
   city: CityPublic

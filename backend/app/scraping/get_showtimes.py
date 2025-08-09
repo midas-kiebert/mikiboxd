@@ -2,9 +2,40 @@ import json
 from datetime import datetime
 
 import requests
+from pydantic import BaseModel
 
 
-def get_showtimes_json(productionId: str):
+class ShowtimeResponse(BaseModel):
+    id: str
+    startDate: str
+    ticketUrl: str | None
+    venueName: str
+class Venue(BaseModel):
+    name: str
+
+class EventEmbedded(BaseModel):
+    venue: Venue
+
+class Event(BaseModel):
+    id: str
+    startDate: str
+    ticketingUrl: str | None
+    _embedded: EventEmbedded
+
+class Embedded(BaseModel):
+    events: list[Event]
+class Response(BaseModel):
+    _embedded: Embedded
+
+def truncate_ticket_link(ticketUrl: str | None) -> str | None:
+    if ticketUrl is None:
+        return None
+    ticketUrl = ticketUrl.split("?utm_source")[0]
+    ticketUrl = ticketUrl.split("&utm_source")[0]
+    return ticketUrl
+
+
+def get_showtimes_json(productionId: str) -> list[ShowtimeResponse]:
     url = "https://api.cineville.nl/events/search?page[limit]=1000"
 
     headers = {
@@ -18,22 +49,26 @@ def get_showtimes_json(productionId: str):
         "sort": {"startDate": "asc"},
     }
 
-    response = requests.post(url, headers=headers, data=json.dumps(payload))
+    response = Response.model_validate(
+        requests.post(
+            url,
+            headers=headers,
+            data=json.dumps(payload)
+        ).json()
+    )
 
-    clean_events = []
+    clean_events: list[ShowtimeResponse] = []
 
-    for event in response.json()["_embedded"]["events"]:
-        ticketUrl: str | None = event["ticketingUrl"]
-        if ticketUrl is not None:
-            ticketUrl = ticketUrl.split("?utm_source")[0]
-            ticketUrl = ticketUrl.split("&utm_source")[0]
+    for event in response._embedded.events:
         clean_events.append(
-            {
-                "id": event["id"],
-                "startDate": event["startDate"],
-                "venueName": event["_embedded"]["venue"]["name"],
-                "ticketUrl": ticketUrl,
-            }
+            ShowtimeResponse.model_validate(
+                {
+                    "id": event.id,
+                    "startDate": event.startDate,
+                    "venueName": event._embedded.venue.name,
+                    "ticketUrl": truncate_ticket_link(event.ticketingUrl),
+                }
+            )
         )
 
     return clean_events

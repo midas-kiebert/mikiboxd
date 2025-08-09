@@ -2,7 +2,9 @@ import json
 from datetime import datetime
 
 import requests
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.scraping.logger import logger
 
 
 class ShowtimeResponse(BaseModel):
@@ -20,12 +22,18 @@ class Event(BaseModel):
     id: str
     startDate: str
     ticketingUrl: str | None
-    _embedded: EventEmbedded
+    embedded: EventEmbedded = Field(alias="_embedded")
+
+    class Config:
+        populate_by_name = True
 
 class Embedded(BaseModel):
     events: list[Event]
 class Response(BaseModel):
-    _embedded: Embedded
+    embedded: Embedded = Field(alias="_embedded")
+
+    class Config:
+        populate_by_name = True
 
 def truncate_ticket_link(ticketUrl: str | None) -> str | None:
     if ticketUrl is None:
@@ -49,23 +57,44 @@ def get_showtimes_json(productionId: str) -> list[ShowtimeResponse]:
         "sort": {"startDate": "asc"},
     }
 
-    response = Response.model_validate(
-        requests.post(
+    try:
+        res = requests.post(
             url,
             headers=headers,
-            data=json.dumps(payload)
-        ).json()
-    )
+            data=json.dumps(payload),
+            timeout=10,
+        )
+        res.raise_for_status()
+    except requests.RequestException as e:
+        logger.warning(
+            "Failed to fetch showtimes for production ID:",
+            productionId,
+            "Error:",
+            str(e),
+        )
+        return []
+
+    try:
+        response = Response.model_validate(res.json())
+    except Exception as e:
+        logger.warning(
+            "Error parsing showtimes response for production ID:",
+            productionId,
+            "Error:",
+            str(e),
+        )
+        return []
+
 
     clean_events: list[ShowtimeResponse] = []
 
-    for event in response._embedded.events:
+    for event in response.embedded.events:
         clean_events.append(
             ShowtimeResponse.model_validate(
                 {
                     "id": event.id,
                     "startDate": event.startDate,
-                    "venueName": event._embedded.venue.name,
+                    "venueName": event.embedded.venue.name,
                     "ticketUrl": truncate_ticket_link(event.ticketingUrl),
                 }
             )

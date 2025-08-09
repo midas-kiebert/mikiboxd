@@ -4,6 +4,8 @@ from datetime import datetime
 import requests
 from pydantic import BaseModel
 
+from app.scraping.logger import logger
+
 
 class Film(BaseModel):
     id: str
@@ -69,13 +71,27 @@ def get_movies_json() -> list[Film]:
         },
     }
 
-    movies_response = Response.model_validate(
-        requests.post(
-            url,
-            headers=headers,
-            data=json.dumps(payload)
-        ).json()
-    )
+    try:
+        res = requests.post(
+                url,
+                headers=headers,
+                data=json.dumps(payload),
+                timeout=10
+            )
+        res.raise_for_status()
+    except requests.RequestException as e:
+        logger.warning(
+            "Failed to fetch movies data. Error:", str(e)
+        )
+        return []
+
+    try:
+        movies_response = Response.model_validate(res.json())
+    except Exception as e:
+        logger.warning(
+            "Error parsing movies response. Error:", str(e)
+        )
+        return []
     movies_data = movies_response.data.films.data
 
     return movies_data

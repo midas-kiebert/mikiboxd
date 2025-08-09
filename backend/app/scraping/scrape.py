@@ -1,7 +1,3 @@
-import re
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
 from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
 from app.models.movie import MovieCreate
@@ -10,28 +6,10 @@ from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 from app.services import movies as movies_service
 from app.services import showtimes as showtimes_service
+from app.utils import clean_title, to_amsterdam_time
 
 from . import get_movies, get_showtimes
 from .load_letterboxd_slugs import get_letterboxd_slug
-
-
-def to_amsterdam_time(dt: str) -> datetime:
-    """Convert UTC datetime string to Amsterdam time."""
-    utc_dt = datetime.strptime(dt, "%Y-%m-%dT%H:%M:%S.%fZ").replace(
-        tzinfo=ZoneInfo("UTC")
-    )
-    amsterdam_tz = ZoneInfo("Europe/Amsterdam")
-    amsterdam_dt = utc_dt.astimezone(amsterdam_tz)
-    amsterdam_naive = amsterdam_dt.replace(tzinfo=None)  # Convert to naive datetime
-    return amsterdam_naive
-
-
-def clean_title(title: str) -> str:
-    title = title.lower()
-    title = re.sub(r"\(.*\)", "", title)  # Remove everything in parentheses
-    title = re.sub(r"\b-.*$", "", title)  # Remove everything starting from "-"
-    title = re.sub(r"\s+", " ", title).strip()  # Normalize whitespace
-    return title
 
 
 def scrape_cineville():

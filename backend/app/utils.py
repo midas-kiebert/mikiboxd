@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -127,3 +128,20 @@ def verify_password_reset_token(token: str) -> str | None:
 def now_amsterdam_naive() -> datetime:
     """Return the current datetime in Europe/Amsterdam timezone, as naive (no tzinfo)."""
     return datetime.now(tz=ZoneInfo("Europe/Amsterdam")).replace(tzinfo=None)
+
+def to_amsterdam_time(dt: str) -> datetime:
+    """Convert UTC datetime string to Amsterdam time."""
+    utc_dt = datetime.strptime(dt, "%Y-%m-%dT%H:%M:%S.%fZ").replace(
+        tzinfo=ZoneInfo("UTC")
+    )
+    amsterdam_tz = ZoneInfo("Europe/Amsterdam")
+    amsterdam_dt = utc_dt.astimezone(amsterdam_tz)
+    amsterdam_naive = amsterdam_dt.replace(tzinfo=None)  # Convert to naive datetime
+    return amsterdam_naive
+
+def clean_title(title: str) -> str:
+    title = title.lower()
+    title = re.sub(r"\(.*\)", "", title)  # Remove everything in parentheses
+    title = re.sub(r"\b-.*$", "", title)  # Remove everything starting from "-"
+    title = re.sub(r"\s+", " ", title).strip()  # Normalize whitespace
+    return title

@@ -2,9 +2,26 @@ import json
 from datetime import datetime
 
 import requests
+from pydantic import BaseModel
 
 
-def get_movies_json():
+class Film(BaseModel):
+    id: str
+    slug: str
+    title: str
+    cast: list[str] | None
+    directors: list[str] | None
+
+class FilmResponse(BaseModel):
+    data: list[Film]
+class ResponseData(BaseModel):
+    films: FilmResponse
+class Response(BaseModel):
+    data: ResponseData
+
+
+
+def get_movies_json() -> list[Film]:
     url = "https://cineville.nl/api/graphql"
 
     headers = {
@@ -52,7 +69,16 @@ def get_movies_json():
         },
     }
 
-    movies_response = requests.post(url, headers=headers, data=json.dumps(payload))
-    movies_data = movies_response.json()["data"]["films"]["data"]
+    movies_response = Response.model_validate(
+        requests.post(
+            url,
+            headers=headers,
+            data=json.dumps(payload)
+        ).json()
+    )
+    movies_data = movies_response.data.films.data
 
     return movies_data
+
+if __name__ == "__main__":
+    movies = get_movies_json()

@@ -12,4 +12,6 @@ if not logger.handlers:  # Prevent adding handlers multiple times
         "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S"
     )
     handler.setFormatter(formatter)
-    # logger.addHandler(handler)
+    logger.addHandler(handler)
+
+logger.propagate = False

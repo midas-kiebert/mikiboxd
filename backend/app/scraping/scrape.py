@@ -37,10 +37,10 @@ def clean_title(title: str) -> str:
 def scrape_cineville():
     movies_data = get_movies.get_movies_json()
     for movie_data in movies_data:
-        title_query = clean_title(movie_data["title"])
-        actors = movie_data["cast"]
+        title_query = clean_title(movie_data.title)
+        actors = movie_data.cast
         actor = actors[0] if actors else None
-        directors = movie_data["directors"]
+        directors = movie_data.directors
         director = directors[0] if directors else None
 
         ret = find_tmdb_id(
@@ -75,13 +75,13 @@ def scrape_cineville():
             f"Inserted movie: {title} (TMDB ID: {tmdb_id}, Letterboxd slug: {letterboxd_slug})"
         )
 
-        showtimes_data = get_showtimes.get_showtimes_json(productionId=movie_data["id"])
+        showtimes_data = get_showtimes.get_showtimes_json(productionId=movie_data.id)
         for showtime_data in showtimes_data:
             with get_db_context() as session:
-                startdate_utc = showtime_data["startDate"]
+                startdate_utc = showtime_data.startDate
                 start_date = to_amsterdam_time(startdate_utc)
-                venue_name = showtime_data["venueName"]
-                ticket_url = showtime_data["ticketUrl"]
+                venue_name = showtime_data.venueName
+                ticket_url = showtime_data.ticketUrl
 
                 cinema_id = cinema_crud.get_cinema_id_by_name(
                     session=session,
@@ -100,7 +100,7 @@ def scrape_cineville():
                     showtime_create=showtime,
                 )
                 logger.info(
-                    f"Inserted showtime for movie: {title} at {showtime_data['venueName']} on {start_date}"
+                    f"Inserted showtime for movie: {title} at {showtime_data.venueName} on {start_date}"
                 )
 
 

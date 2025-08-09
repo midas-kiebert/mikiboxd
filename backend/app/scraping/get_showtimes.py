@@ -12,11 +12,15 @@ class ShowtimeResponse(BaseModel):
     startDate: str
     ticketUrl: str | None
     venueName: str
+
+
 class Venue(BaseModel):
     name: str
 
+
 class EventEmbedded(BaseModel):
     venue: Venue
+
 
 class Event(BaseModel):
     id: str
@@ -27,13 +31,17 @@ class Event(BaseModel):
     class Config:
         populate_by_name = True
 
+
 class Embedded(BaseModel):
     events: list[Event]
+
+
 class Response(BaseModel):
     embedded: Embedded = Field(alias="_embedded")
 
     class Config:
         populate_by_name = True
+
 
 def truncate_ticket_link(ticketUrl: str | None) -> str | None:
     if ticketUrl is None:
@@ -84,7 +92,6 @@ def get_showtimes_json(productionId: str) -> list[ShowtimeResponse]:
             str(e),
         )
         return []
-
 
     clean_events: list[ShowtimeResponse] = []
 

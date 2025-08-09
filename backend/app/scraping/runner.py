@@ -13,5 +13,6 @@ def run() -> None:
         logger.error("Error running cinema scraper", exc_info=True)
         sys.exit(1)
 
+
 if __name__ == "__main__":
     run()

@@ -16,7 +16,6 @@ class CinemaBase(SQLModel):
     name: str = Field(description="Name of the cinema")
     cineville: bool
     badge_bg_color: str
-    badge_text_color: str
     url: str
 
 

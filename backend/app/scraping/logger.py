@@ -13,3 +13,5 @@ if not logger.handlers:  # Prevent adding handlers multiple times
     )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
+logger.propagate = False

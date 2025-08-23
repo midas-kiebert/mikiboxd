@@ -4,6 +4,8 @@ from time import perf_counter
 from aiohttp import ClientSession
 from bs4 import BeautifulSoup
 
+from app.exceptions import scraper_exceptions
+
 from . import logger
 from .utils import get_page_async
 
@@ -32,8 +34,16 @@ def extract_slugs_from_page(page: BeautifulSoup) -> list[str]:
 
     slugs: list[str] = []
     for item in img_tags:
-        if item.parent and "data-film-slug" in item.parent.attrs:
-            slugs.append(str(item.parent["data-film-slug"]))
+        if not item.parent:
+            logger.error("Image tag without parent found.")
+            raise scraper_exceptions.ScraperStructureError()
+        if not item.parent.parent:
+            logger.error("Image tag parent without grandparent found.")
+            raise scraper_exceptions.ScraperStructureError()
+        if "data-item-slug" not in item.parent.parent.attrs:
+            logger.error("Image tag parent grandparent without slug found.")
+            raise scraper_exceptions.ScraperStructureError()
+        slugs.append(str(item.parent.parent["data-item-slug"]))
     return slugs
 
 
@@ -53,16 +63,21 @@ async def get_watchlist_async(username: str) -> list[str]:
             session=session, username=username, page_num=1
         )
         if not first_page:
-            return []
+            logger.error(
+                f"Failed to fetch the first page of watchlist for user {username}"
+            )
+            raise scraper_exceptions.ScraperStructureError()
 
         count_span = first_page.find("span", class_="js-watchlist-count")
         if not count_span:
-            return []
+            logger.error("Count span not found in the first page of watchlist.")
+            raise scraper_exceptions.ScraperStructureError()
         count_str: str = count_span.text
         count = int(count_str.split()[0])
         slugs_1 = extract_slugs_from_page(page=first_page)
-        if not slugs_1:
-            return []
+        if count > 0 and not slugs_1:
+            logger.error("No slugs found on the first page of watchlist.")
+            raise scraper_exceptions.ScraperStructureError()
         perpage = len(slugs_1)
         total_pages = (count + perpage - 1) // perpage
 

@@ -23,8 +23,8 @@ def test_watchlist_parsing(
     watchlist = get_watchlist("sample username")
 
     assert isinstance(watchlist, list), "Expected watchlist to be a list"
-    assert len(watchlist) == 100, "Expected watchlist to contain 100 items"
+    assert len(watchlist) == 28, "Expected watchlist to contain 100 items"
     sorted_watchlist = sorted(watchlist)
-    assert sorted_watchlist[0] == "4-months-3-weeks-and-2-days"
-    assert sorted_watchlist[50] == "rebels-of-the-neon-god"
-    assert sorted_watchlist[99] == "yi-yi"
+    assert sorted_watchlist[0] == "2046"
+    assert sorted_watchlist[-1] == "uncle-boonmee-who-can-recall-his-past-lives"
+    assert sorted_watchlist[10] == "naked-lunch"

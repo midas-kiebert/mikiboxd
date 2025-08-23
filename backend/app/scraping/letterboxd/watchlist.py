@@ -63,7 +63,9 @@ async def get_watchlist_async(username: str) -> list[str]:
             session=session, username=username, page_num=1
         )
         if not first_page:
-            logger.error(f"Failed to fetch the first page of watchlist for user {username}")
+            logger.error(
+                f"Failed to fetch the first page of watchlist for user {username}"
+            )
             raise scraper_exceptions.ScraperStructureError()
 
         count_span = first_page.find("span", class_="js-watchlist-count")

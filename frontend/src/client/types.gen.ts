@@ -47,9 +47,9 @@ export type MovieLoggedIn = {
   poster_link?: string | null
   letterboxd_slug?: string | null
   top250?: number | null
-  directors: Array<string> | null
-  release_year: number | null
-  rating: number | null
+  directors?: Array<string>
+  release_year?: number | null
+  rating?: number | null
   showtimes: Array<ShowtimeInMovieLoggedIn>
 }
 
@@ -60,9 +60,9 @@ export type MovieSummaryLoggedIn = {
   poster_link?: string | null
   letterboxd_slug?: string | null
   top250?: number | null
-  directors: Array<string> | null
-  release_year: number | null
-  rating: number | null
+  directors?: Array<string>
+  release_year?: number | null
+  rating?: number | null
   showtimes: Array<ShowtimeInMovieLoggedIn>
   cinemas: Array<CinemaPublic>
   last_showtime_datetime: string | null

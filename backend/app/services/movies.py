@@ -107,6 +107,29 @@ def get_movie_by_id(
     return movie_public
 
 
+def upsert_movie(
+    *,
+    session: Session,
+    movie_create: MovieCreate,
+):
+    """
+    Insert or update a movie in the database.
+
+    Parameters:
+        session (Session): Database session.
+        movie_create (MovieCreate): Movie data to insert or update.
+    """
+    try:
+        movies_crud.upsert_movie(
+            session=session,
+            movie_create=movie_create,
+        )
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise AppError from e
+
+
 def insert_movie_if_not_exists(
     *,
     session: Session,

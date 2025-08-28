@@ -4,11 +4,14 @@ import MovieTitle from "@/components/Movie/MovieTitle";
 import MoviePoster from "@/components/Movie/MoviePoster";
 import MovieLinks from "@/components/Movie/MovieLinks";
 import { Showtimes } from "@/components/Movie/Showtimes";
-import { Flex } from "@chakra-ui/react";
+import { Flex, Box } from "@chakra-ui/react";
 import Sidebar from "@/components/Common/Sidebar";
 import TopBar from "@/components/Common/TopBar";
 import Page from "@/components/Common/Page";
 import { Route } from "@/routes/movie.$movieId";
+import OriginalTitle from "./OriginalTitle";
+import ReleaseYear from "./ReleaseYear";
+import Directors from "./Directors";
 
 const MoviePage = () => {
     const params = Route.useParams();
@@ -32,14 +35,21 @@ const MoviePage = () => {
                 <TopBar/>
             </Flex>
             <Page>
-                <MovieTitle title={data?.title || ""} />
-                <MoviePoster
-                    posterUrl={posterUrl}
-                />
-                <MovieLinks
-                    // imdb="https://www.imdb.com/title/tt1234567/"
-                    letterboxd={`https://letterboxd.com/film/${letterboxdSlug}`}
-                />
+                <Flex gap={4}>
+                    <MoviePoster posterUrl={posterUrl}/>
+                    <Flex flexDirection={"column"} flex={1} minW={0} justifyContent={"top"}>
+                    <Flex alignItems={"baseline"} gap={4}>
+                        <MovieTitle title={data?.title || ""} />
+                        <ReleaseYear releaseYear={data?.release_year || null} />
+                        <OriginalTitle originalTitle={data?.original_title || null} />
+                    </Flex>
+                    <Directors directors={data?.directors || null} />
+                    <MovieLinks
+                        letterboxd={`https://letterboxd.com/film/${letterboxdSlug}`}
+                    />
+                    </Flex>
+                </Flex>
+
                 <Showtimes showtimes={showtimes} />
             </Page>
         </>

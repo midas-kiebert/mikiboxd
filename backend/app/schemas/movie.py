@@ -1,8 +1,6 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from pydantic import Field
-
 from app.models.movie import MovieBase
 
 if TYPE_CHECKING:
@@ -27,7 +25,7 @@ class MovieSummaryLoggedIn(MovieBase):
     top250: int | None = None
     release_year: int | None = None
     rating: float | None = None
-    directors: list[str] = Field(default_factory=list)
+    directors: list[str] | None = None
 
 
 class MovieLoggedIn(MovieBase):
@@ -36,4 +34,4 @@ class MovieLoggedIn(MovieBase):
     top250: int | None = None
     release_year: int | None = None
     rating: float | None = None
-    directors: list[str] = Field(default_factory=list)
+    directors: list[str] | None = None

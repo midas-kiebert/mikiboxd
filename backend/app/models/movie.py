@@ -22,9 +22,9 @@ class MovieBase(SQLModel):
     poster_link: str | None = None
     letterboxd_slug: str | None = None
     top250: int | None = None
-    directors: list[str] = Field(
+    directors: list[str] | None = Field(
         sa_column=Column(ARRAY(String)),
-        default_factory=list,
+        default=None
     )
     release_year: int | None = None
     rating: float | None = None

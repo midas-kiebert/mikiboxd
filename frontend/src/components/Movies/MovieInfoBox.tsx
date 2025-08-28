@@ -1,5 +1,6 @@
 import { Separator, Flex } from "@chakra-ui/react";
 import MovieTitle from "./MovieTitle";
+import OriginalTitle from "./OriginalTitle";
 import { MovieSummaryLoggedIn } from "@/client";
 import CinemaBadges from "./CinemaBadges";
 import ShowtimeInfo from "./ShowtimeInfo";
@@ -17,6 +18,7 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
     const lastShowtime = movie.last_showtime_datetime || null;
     const total_showtimes = movie.total_showtimes || 0;
     const friends_going = movie.friends_going || [];
+    const original_title = movie.original_title || null;
     return (
         <Flex
             ml={8}
@@ -27,6 +29,7 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
         >
             <Flex gap={"2"} align="center">
                 <MovieTitle title={movie.title} />
+                <OriginalTitle originalTitle={original_title} />
                 <CinemaBadges cinemas={cinemas} />
             </Flex>
             <Separator

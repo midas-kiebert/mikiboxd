@@ -4,7 +4,7 @@ import MovieTitle from "@/components/Movie/MovieTitle";
 import MoviePoster from "@/components/Movie/MoviePoster";
 import MovieLinks from "@/components/Movie/MovieLinks";
 import { Showtimes } from "@/components/Movie/Showtimes";
-import { Flex, Box } from "@chakra-ui/react";
+import { Flex } from "@chakra-ui/react";
 import Sidebar from "@/components/Common/Sidebar";
 import TopBar from "@/components/Common/TopBar";
 import Page from "@/components/Common/Page";

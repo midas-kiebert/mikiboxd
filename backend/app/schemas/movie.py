@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from pydantic import Field
+
 from app.models.movie import MovieBase
 
 if TYPE_CHECKING:

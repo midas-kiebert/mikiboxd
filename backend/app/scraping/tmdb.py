@@ -96,7 +96,7 @@ def find_tmdb_id(
     director_name: str | None = None,
     actor_name: str | None = None,
     year: int | None = None,
-) -> tuple[str, str, str] | None:
+) -> int | None:
     directed_movies: list[dict[str, str]] = []
     if director_name:
         director_name = strip_accents(director_name)
@@ -137,11 +137,7 @@ def find_tmdb_id(
             logger.debug(
                 f"No director or actor specified, using first search result: {best['title']}"
             )
-            return (
-                best["title"],
-                best["id"],
-                f"https://image.tmdb.org/t/p/w342{best['poster_path']}",
-            )
+            return int(best["id"])
 
     if not potential_movies:
         logger.debug(
@@ -164,11 +160,7 @@ def find_tmdb_id(
             potential_movies_filtered.sort(key=lambda m: m["popularity"])
             best = potential_movies_filtered[-1]
             # logger.trace(f"Found matching movie in search results: {best['title']}")
-            return (
-                best["title"],
-                best["id"],
-                f"https://image.tmdb.org/t/p/w342{best['poster_path']}",
-            )
+            return int(best["id"])
 
     logger.debug(
         f"No direct match found for '{title_query}' with director '{director_name}' and actor '{actor_name}'. Fuzzy matching..."
@@ -193,9 +185,7 @@ def find_tmdb_id(
         )
         return None
 
-    poster_url = f"https://image.tmdb.org/t/p/w342{best['poster_path']}"
-
-    return best["title"], best["id"], poster_url
+    return int(best["id"])
 
 
 if __name__ == "__main__":

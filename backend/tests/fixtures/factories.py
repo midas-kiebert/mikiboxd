@@ -82,7 +82,7 @@ class CityFactory(SQLModelFactory):
 
 @pytest.fixture
 def city_factory(db_transaction: Session):
-    CityFactory._meta.sqlalchemy_session = db_transaction
+    CityFactory._meta.sqlalchemy_session = db_transaction # type: ignore
     return CityFactory
 
 
@@ -130,8 +130,8 @@ class CinemaFactory(SQLModelFactory):
 
 @pytest.fixture
 def cinema_factory(db_transaction: Session):
-    CityFactory._meta.sqlalchemy_session = db_transaction
-    CinemaFactory._meta.sqlalchemy_session = db_transaction
+    CityFactory._meta.sqlalchemy_session = db_transaction # type: ignore
+    CinemaFactory._meta.sqlalchemy_session = db_transaction # type: ignore
     return CinemaFactory
 
 
@@ -158,6 +158,9 @@ class MovieFactory(SQLModelFactory):
     title = Faker("sentence", nb_words=3)
     poster_link = Faker("image_url", width=300, height=450)
     letterboxd_slug = Faker("slug")
+    rating = Faker("pyfloat", left_digits=1, right_digits=1, min_value=0, max_value=10)
+    directors = Faker("words", nb=2)
+    top250 = Faker("random_int", min=1, max=250)
 
     @post_generation
     def showtimes(self, create, extracted, **kwargs):
@@ -172,7 +175,7 @@ class MovieFactory(SQLModelFactory):
 
 @pytest.fixture
 def movie_factory(db_transaction: Session):
-    MovieFactory._meta.sqlalchemy_session = db_transaction
+    MovieFactory._meta.sqlalchemy_session = db_transaction # type: ignore
     return MovieFactory
 
 
@@ -208,10 +211,10 @@ class ShowtimeFactory(SQLModelFactory):
 
 @pytest.fixture
 def showtime_factory(db_transaction: Session):
-    CityFactory._meta.sqlalchemy_session = db_transaction
-    CinemaFactory._meta.sqlalchemy_session = db_transaction
-    MovieFactory._meta.sqlalchemy_session = db_transaction
-    ShowtimeFactory._meta.sqlalchemy_session = db_transaction
+    CityFactory._meta.sqlalchemy_session = db_transaction # type: ignore
+    CinemaFactory._meta.sqlalchemy_session = db_transaction # type: ignore
+    MovieFactory._meta.sqlalchemy_session = db_transaction # type: ignore
+    ShowtimeFactory._meta.sqlalchemy_session = db_transaction # type: ignore
     return ShowtimeFactory
 
 

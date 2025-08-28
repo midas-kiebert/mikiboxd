@@ -27,6 +27,27 @@ def get_movie_by_id(*, session: Session, id: int) -> Movie | None:
     return movie
 
 
+def upsert_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
+    """
+    Insert or update a movie in the database.
+
+    Parameters:
+        session (Session): The database session.
+        movie_create (MovieCreate): The movie data to insert or update.
+    Returns:
+        Movie: The inserted or updated movie object.
+    """
+    db_obj = session.get(Movie, movie_create.id)
+    if db_obj is None:
+        db_obj = Movie(**movie_create.model_dump())
+        session.add(db_obj)
+        session.flush()  # Check for Unique Violations
+        return db_obj
+    movie_data = movie_create.model_dump(exclude_unset=True)
+    db_obj.sqlmodel_update(movie_data)
+    return db_obj
+
+
 def create_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
     """
     Create a new movie in the database. Raises an IntegrityError if the movie with that id already exists.
@@ -315,7 +336,10 @@ def get_movies(
         )
     )
     if query:
-        stmt = stmt.where(col(Movie.title).ilike(f"%{query}%"))
+        pattern = f"%{query}%"
+        stmt = stmt.where(
+            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
+        )
     if watchlist_only:
         stmt = stmt.join(
             WatchlistSelection, col(WatchlistSelection.movie_id) == Movie.id

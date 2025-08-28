@@ -9,7 +9,7 @@ from app.services import showtimes as showtimes_service
 from app.utils import clean_title, to_amsterdam_time
 
 from . import get_movies, get_showtimes
-from .load_letterboxd_slugs import get_letterboxd_slug
+from .letterboxd.load_letterboxd_data import scrape_letterboxd
 
 
 def scrape_cineville():
@@ -21,65 +21,73 @@ def scrape_cineville():
         directors = movie_data.directors
         director = directors[0] if directors else None
 
-        ret = find_tmdb_id(
+        tmdb_id = find_tmdb_id(
             title_query=title_query,
             actor_name=actor,
             director_name=director,
         )
-        if ret is None:
+        if tmdb_id is None:
             logger.warning(f"TMDB ID not found for movie: {title_query}")
             continue
-        title, tmdb_id, posterUrl = ret
-        tmdb_id = int(tmdb_id)
 
-        letterboxd_slug = get_letterboxd_slug(tmdb_id)
-        if letterboxd_slug is None:
-            logger.warning(f"Letterboxd slug not found for TMDB ID: {tmdb_id}")
+        letterboxd_data = scrape_letterboxd(tmdb_id)
+        if letterboxd_data is None:
+            logger.warning(f"Letterboxd data not found for TMDB ID: {tmdb_id}")
             continue
 
         movie = MovieCreate(
-            title=title,
+            title=letterboxd_data.title,
             id=tmdb_id,
-            poster_link=posterUrl,
-            letterboxd_slug=letterboxd_slug,
+            poster_link=letterboxd_data.poster_url,
+            letterboxd_slug=letterboxd_data.slug,
+            top250=letterboxd_data.top250,
+            directors=letterboxd_data.directors,
+            release_year=letterboxd_data.release_year,
+            rating=letterboxd_data.rating,
+            original_title=letterboxd_data.original_title,
         )
 
         with get_db_context() as session:
-            movie = movies_service.insert_movie_if_not_exists(
+            movie = movies_service.upsert_movie(
                 session=session,
                 movie_create=movie,
             )
         logger.info(
-            f"Inserted movie: {title} (TMDB ID: {tmdb_id}, Letterboxd slug: {letterboxd_slug})"
+            f"Inserted movie: {letterboxd_data.title} (TMDB ID: {tmdb_id}, Letterboxd slug: {letterboxd_data.slug})"
         )
 
         showtimes_data = get_showtimes.get_showtimes_json(productionId=movie_data.id)
         for showtime_data in showtimes_data:
             with get_db_context() as session:
-                startdate_utc = showtime_data.startDate
-                start_date = to_amsterdam_time(startdate_utc)
-                venue_name = showtime_data.venueName
-                ticket_url = showtime_data.ticketUrl
+                try:
+                    startdate_utc = showtime_data.startDate
+                    start_date = to_amsterdam_time(startdate_utc)
+                    venue_name = showtime_data.venueName
+                    ticket_url = showtime_data.ticketUrl
 
-                cinema_id = cinema_crud.get_cinema_id_by_name(
-                    session=session,
-                    name=venue_name,
-                )
+                    cinema_id = cinema_crud.get_cinema_id_by_name(
+                        session=session,
+                        name=venue_name,
+                    )
 
-                showtime = ShowtimeCreate(
-                    datetime=start_date,
-                    ticket_link=ticket_url,
-                    movie_id=tmdb_id,
-                    cinema_id=cinema_id,
-                )
+                    showtime = ShowtimeCreate(
+                        datetime=start_date,
+                        ticket_link=ticket_url,
+                        movie_id=tmdb_id,
+                        cinema_id=cinema_id,
+                    )
 
-                showtimes_service.insert_showtime_if_not_exists(
-                    session=session,
-                    showtime_create=showtime,
-                )
-                logger.info(
-                    f"Inserted showtime for movie: {title} at {showtime_data.venueName} on {start_date}"
-                )
+                    showtimes_service.insert_showtime_if_not_exists(
+                        session=session,
+                        showtime_create=showtime,
+                    )
+                    logger.info(
+                        f"Inserted showtime for movie: {letterboxd_data.title} at {showtime_data.venueName} on {start_date}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to insert showtime for movie: {letterboxd_data.title} at {showtime_data.venueName} on {start_date}. Error: {e}"
+                    )
 
 
 if __name__ == "__main__":

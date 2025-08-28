@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from pydantic import Field
+
 from app.models.movie import MovieBase
 
 if TYPE_CHECKING:
@@ -21,7 +23,17 @@ class MovieSummaryLoggedIn(MovieBase):
     total_showtimes: int
     friends_going: list["UserPublic"]
     going: bool
+    original_title: str | None = None
+    top250: int | None = None
+    release_year: int | None = None
+    rating: float | None = None
+    directors: list[str] = Field(default_factory=list)
 
 
 class MovieLoggedIn(MovieBase):
     showtimes: list["ShowtimeInMovieLoggedIn"]
+    original_title: str | None = None
+    top250: int | None = None
+    release_year: int | None = None
+    rating: float | None = None
+    directors: list[str] = Field(default_factory=list)

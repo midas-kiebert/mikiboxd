@@ -14,7 +14,7 @@ const ShowtimeCard = ({ showtime }: ShowtimeCardProps) => {
     return (
         <>
         <Flex
-            bg={"gray.50"}
+            bg={ showtime.going ? "green.200" : "gray.50"}
             borderBottom={"1px solid"}
             borderColor={"gray.200"}
             py={3}

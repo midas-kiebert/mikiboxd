@@ -59,7 +59,7 @@ const ShowtimesPage = ({ userId } : ShowtimesPageProps) => {
             </Flex>
             <Page>
                 <h1>Showtimes for {user?.display_name}</h1>
-                <Showtimes showtimes={showtimes}/>
+                <Showtimes showtimes={showtimes} highlight={true}/>
                 {hasNextPage && (
                     <div ref={loadMoreRef} style={{ height: "1px" }} />
                 )}

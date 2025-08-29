@@ -6,15 +6,16 @@ import DatetimeCard from "./DatetimeCard";
 
 type ShowtimeCardProps = {
     showtime: ShowtimeLoggedIn;
+    highlight?: boolean;
 };
 
-const ShowtimeCard = ({ showtime }: ShowtimeCardProps) => {
+const ShowtimeCard = ({ showtime, highlight }: ShowtimeCardProps) => {
     const HEIGHT = "150px";
 
     return (
         <>
         <Flex
-            bg={ showtime.going ? "green.200" : "gray.50"}
+            bg={ highlight ? "green.200" : "gray.50"}
             borderBottom={"1px solid"}
             borderColor={"gray.200"}
             py={3}

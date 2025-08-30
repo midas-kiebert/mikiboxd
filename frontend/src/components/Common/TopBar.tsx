@@ -13,7 +13,7 @@ const TopBar = ({ children } : Props) => {
     return (
         <Box
             position="fixed"
-            height={TOPBAR_HEIGHT}
+            height={`${TOPBAR_HEIGHT}px`}
             top="0"
             flex={"1"}
             left={SIDEBAR_WIDTH}

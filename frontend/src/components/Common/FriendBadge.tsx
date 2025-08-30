@@ -6,10 +6,10 @@ import { Route as ShowtimesRoute } from "@/routes/users/$userId/showtimes";
 interface FriendBadgeProps {
     friend: UserPublic;
     variant?: "surface" | "plain";
-    size?: "sm" | "md" | "lg";
+    size?: "xs" | "sm" | "md" | "lg";
 }
 
-const CinemaBadge = ({
+const FriendBadge = ({
     friend,
     variant="surface",
     size="sm",
@@ -35,4 +35,4 @@ const CinemaBadge = ({
     );
 };
 
-export default CinemaBadge;
+export default FriendBadge;

@@ -286,6 +286,14 @@ export type ShowtimesToggleShowtimeSelectionData = {
 
 export type ShowtimesToggleShowtimeSelectionResponse = ShowtimeLoggedIn
 
+export type ShowtimesGetMainPageShowtimesData = {
+  limit?: number
+  offset?: number
+  snapshotTime?: string
+}
+
+export type ShowtimesGetMainPageShowtimesResponse = Array<ShowtimeLoggedIn>
+
 export type UsersSearchUsersData = {
   limit?: number
   offset?: number

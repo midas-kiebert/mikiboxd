@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
@@ -210,3 +211,28 @@ def insert_showtime_if_not_exists(
     except Exception as e:
         session.rollback()
         raise AppError from e
+
+
+def get_main_page_showtimes(
+    *,
+    session: Session,
+    current_user_id: UUID,
+    snapshot_time: datetime,
+    limit: int,
+    offset: int,
+) -> list[ShowtimeLoggedIn]:
+    showtimes = showtimes_crud.get_main_page_showtimes(
+        session=session,
+        user_id=current_user_id,
+        snapshot_time=snapshot_time,
+        limit=limit,
+        offset=offset,
+    )
+    return [
+        showtime_converters.to_logged_in(
+            showtime=showtime,
+            session=session,
+            user_id=current_user_id,
+        )
+        for showtime in showtimes
+    ]

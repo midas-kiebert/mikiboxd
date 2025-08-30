@@ -1,4 +1,5 @@
 import { Box, Flex, Icon, Text } from "@chakra-ui/react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Link as RouterLink } from "@tanstack/react-router"
 import { FiFilm, FiHome, FiSettings } from "react-icons/fi"
 import { FaUserFriends } from "react-icons/fa"

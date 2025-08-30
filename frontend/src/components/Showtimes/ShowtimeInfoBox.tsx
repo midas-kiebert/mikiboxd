@@ -1,8 +1,9 @@
-import { Flex } from "@chakra-ui/react";
+import { Flex, Box, Stack } from "@chakra-ui/react";
 import MovieTitle from "../Movies/MovieTitle";
 import FriendBadges from "../Movies/FriendBadges";
 import { ShowtimeLoggedIn } from "@/client";
 import CinemaBadge from "../Common/CinemaBadge";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 
 type ShowtimeInfoBoxProps = {
@@ -11,17 +12,24 @@ type ShowtimeInfoBoxProps = {
 
 export default function ShowtimeInfoBox({ showtime } : ShowtimeInfoBoxProps) {
     const friendsGoing = showtime.friends_going;
+    const isMobile = useIsMobile();
     return (
         <Flex
-            ml={8}
+            ml={ isMobile ? 2 : 8}
             flex="1"
             flexDirection="column"
             minW={0}
         >
-            <Flex gap={2}>
+            <Stack
+                gap={ isMobile ? 0 : 2}
+                direction={isMobile ? "column" : "row"}
+                align={ isMobile ? "flex-start" : "center"}
+            >
+            {/* <Flex gap={2} */}
                 <MovieTitle title={showtime.movie.title} />
                 <CinemaBadge cinema={showtime.cinema} />
-            </Flex>
+            {/* </Flex> */}
+            </Stack>
             <Flex flex="1">
                 <FriendBadges friends={friendsGoing}/>
             </Flex>

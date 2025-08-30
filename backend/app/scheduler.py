@@ -1,5 +1,3 @@
-from zoneinfo import ZoneInfo
-
 from apscheduler.schedulers.background import (  # type: ignore[import-untyped]
     BlockingScheduler,
 )
@@ -16,7 +14,7 @@ if __name__ == "__main__":
     scheduler = BlockingScheduler()
     scheduler.add_job(
         func=scrape_data,
-        trigger=CronTrigger(hour=1, minute=0, timezone=ZoneInfo("Europe/Amsterdam")),
+        trigger=CronTrigger(hour=23, minute=30),
         id="nightly_scrape",
     )
     scheduler.start()

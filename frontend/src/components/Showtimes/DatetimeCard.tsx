@@ -1,6 +1,7 @@
 import { Text, VStack } from "@chakra-ui/react";
 import days from "dayjs"
 import type { ShowtimeLoggedIn } from "@/client";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 
 type DatetimeCardProps = {
@@ -14,16 +15,22 @@ const DatetimeCard = ({ showtime }: DatetimeCardProps) => {
     const time = days(datetime).format('HH:mm');
     const weekday = days(datetime).format('ddd');
 
+    const isMobile = useIsMobile();
+
+    const width = isMobile ? "60px" : "80px";
+
+
+
     return (
         <VStack
             gap={0}
             align="center"
             justify="center"
-            width="80px"
+            width={width}
             height="100%"
         >
             <Text
-                fontSize="xs"
+                fontSize={ isMobile ? "2xs" : "xs"}
                 color="gray.500"
                 textTransform="uppercase"
                 lineHeight={"3"}
@@ -31,7 +38,7 @@ const DatetimeCard = ({ showtime }: DatetimeCardProps) => {
                 {weekday}
             </Text>
             <Text
-                fontSize="3xl"
+                fontSize={ isMobile ? "2xl" : "3xl"}
                 fontWeight="bold"
                 lineHeight={"0.7"}
                 color="green.700"
@@ -39,13 +46,13 @@ const DatetimeCard = ({ showtime }: DatetimeCardProps) => {
                 {day}
             </Text>
             <Text
-                fontSize="xs"
+                fontSize={isMobile ? '2xs' : 'xs'}
                 color="gray.600"
             >
                 {month}
             </Text>
             <Text
-                fontSize="xl"
+                fontSize={ isMobile ? "sm" : "xl"}
                 color="gray.800"
                 fontWeight="semibold"
                 lineHeight={"1.2"}

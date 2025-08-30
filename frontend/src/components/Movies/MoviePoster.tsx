@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import { MovieSummaryLoggedIn } from "@/client";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 type MoviePosterProps = {
     movie: MovieSummaryLoggedIn;
@@ -10,6 +11,8 @@ export default function MoviePoster({
     movie,
     size = "225px"
 }: MoviePosterProps) {
+    const isMobile = useIsMobile();
+    const borderRadius = isMobile ? "6px" : "0px";
     return (
         <Link
             to={"/movie/$movieId"}
@@ -17,8 +20,7 @@ export default function MoviePoster({
             style={{
                 display: "inline-block",
                 height: size,
-                 // two thirds of the height
-                width: `calc(${size} * 2 / 3)`,
+                width: `calc(${size} * 2 / 3)px`,
             }}
         >
             <img
@@ -30,6 +32,7 @@ export default function MoviePoster({
                     width: "auto",
                     objectFit: "cover",
                     display: "block",
+                    borderRadius: borderRadius,
                 }}
             />
         </Link>

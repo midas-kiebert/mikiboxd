@@ -15,7 +15,7 @@ export function useFetchMainPageShowtimes(
 ) {
     const result = useInfiniteQuery<ShowtimesGetMainPageShowtimesResponse, Error, InfiniteData<ShowtimesGetMainPageShowtimesResponse>, [string], number>({
         queryKey: ["showtimes"],
-        refetchOnMount: true,
+        refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
         queryFn: ({ pageParam = 0}) => {

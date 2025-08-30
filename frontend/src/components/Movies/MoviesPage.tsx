@@ -42,7 +42,6 @@ const MoviesPage = () => {
         hasFetched.current = true;
     }, [])
 
-
     useEffect(() => {
         const isSame = search.query === debouncedSearchQuery &&
                        search.watchlistOnly === watchlistOnly;

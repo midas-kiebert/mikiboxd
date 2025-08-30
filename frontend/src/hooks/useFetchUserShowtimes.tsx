@@ -18,7 +18,7 @@ export function useFetchUserShowtimes(
 ) {
     const result = useInfiniteQuery<UsersGetUserSelectedShowtimesResponse, Error, InfiniteData<UsersGetUserSelectedShowtimesResponse>, [string, string], number>({
         queryKey: ["showtimes", userId],
-        refetchOnMount: true,
+        refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
         queryFn: ({ pageParam = 0}) => {

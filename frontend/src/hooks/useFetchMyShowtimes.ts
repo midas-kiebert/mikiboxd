@@ -15,7 +15,7 @@ export function useFetchMyShowtimes(
 ) {
     const result = useInfiniteQuery<MeGetMyShowtimesResponse, Error, InfiniteData<MeGetMyShowtimesResponse>, [string], number>({
         queryKey: ["showtimes"],
-        refetchOnMount: true,
+        refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
         queryFn: ({ pageParam = 0}) => {

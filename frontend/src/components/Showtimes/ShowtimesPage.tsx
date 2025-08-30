@@ -46,9 +46,14 @@ const ShowtimesPage = ({ userId } : ShowtimesPageProps) => {
 
     if ((isLoading || isFetching) && !isFetchingNextPage) {
         return (
-            <Center h="100vh">
-                <Spinner size="xl" />
-            </Center>
+            <>
+                <Flex>
+                    <Sidebar/>
+                </Flex>
+                <Center h="100vh">
+                    <Spinner size="xl" />
+                </Center>
+            </>
         );
     }
 

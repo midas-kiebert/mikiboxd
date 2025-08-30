@@ -98,10 +98,7 @@ def get_main_page_showtimes(
     Returns:
         list[Showtime]
     """
-    friends_subq = (
-        select(Friendship.friend_id)
-        .where(Friendship.user_id == user_id)
-    )
+    friends_subq = select(Friendship.friend_id).where(Friendship.user_id == user_id)
 
     stmt = (
         select(Showtime)

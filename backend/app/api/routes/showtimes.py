@@ -39,6 +39,7 @@ def toggle_showtime_selection(
         session=session, showtime_id=showtime_id, user_id=current_user.id
     )
 
+
 @router.get("/")
 def get_main_page_showtimes(
     *,
@@ -54,4 +55,4 @@ def get_main_page_showtimes(
         limit=limit,
         offset=offset,
         snapshot_time=snapshot_time,
-)
+    )

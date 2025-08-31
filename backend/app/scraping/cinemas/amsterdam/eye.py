@@ -109,9 +109,6 @@ class EyeScraper(BaseCinemaScraper):
         # logger.trace(f"Processing show: {show}")
         url = show.url
         start_datetime_str = show.startDateTime
-        # end_datetime = show['endDateTime']
-        theatre = show.cinemaRoom
-        # ticket_status = show['ticketStatus']
         ticket_url = show.ticketUrl
         title_query = clean_title(show.production[0].title)
         movie_id = show.production[0].id
@@ -130,7 +127,6 @@ class EyeScraper(BaseCinemaScraper):
             movie_id=movie.id,
             datetime=start_datetime,
             cinema_id=self.cinema_id,
-            theatre=theatre,
             ticket_link=ticket_url,
         )
 

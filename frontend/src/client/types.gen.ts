@@ -78,7 +78,6 @@ export type NewPassword = {
 
 export type ShowtimeInMovieLoggedIn = {
   datetime: string
-  theatre?: string
   ticket_link?: string | null
   id: number
   cinema: CinemaPublic
@@ -88,7 +87,6 @@ export type ShowtimeInMovieLoggedIn = {
 
 export type ShowtimeLoggedIn = {
   datetime: string
-  theatre?: string
   ticket_link?: string | null
   id: number
   movie: MovieSummaryLoggedIn

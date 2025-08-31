@@ -1,4 +1,4 @@
-from app.scraping.cinemas.generic import GenericEagerlyScraper
+from app.scraping.cinemas.generic.eagerly import GenericEagerlyScraper
 
 
 class TheMoviesScraper(GenericEagerlyScraper):

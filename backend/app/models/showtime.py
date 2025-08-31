@@ -18,7 +18,6 @@ __all__ = [
 # Shared properties
 class ShowtimeBase(SQLModel):
     datetime: dt.datetime = Field(index=True)
-    theatre: str = ""
     ticket_link: str | None = None
 
 
@@ -33,7 +32,6 @@ class Showtime(ShowtimeBase, table=True):
         UniqueConstraint(
             "cinema_id",
             "datetime",
-            "theatre",
             "movie_id",
             name="uq_showtime_unique_fields",
         ),

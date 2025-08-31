@@ -36,7 +36,6 @@ class Show(BaseModel):
     production_id: int
     name: str
     start_date: str
-    theatre_name: str
     id: int
 
 
@@ -98,14 +97,12 @@ class KriterionScraper(BaseCinemaScraper):
                 movie_cache[movie_id] = movie
             datetime_str = show.start_date
             start_datetime = parser.parse(datetime_str).replace(tzinfo=None)
-            theatre = show.theatre_name
             ticket_link = f"https://tickets.kriterion.nl/kriterion/nl/flow_configs/webshop/steps/start/show/{show.id}"
 
             showtime = ShowtimeCreate(
                 movie_id=movie_cache[movie_id].id,
                 datetime=start_datetime,
                 cinema_id=self.cinema_id,
-                theatre=theatre,
                 ticket_link=ticket_link,
             )
             self.showtimes.append(showtime)

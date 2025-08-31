@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlmodel import Session, col, or_, select
@@ -24,6 +24,31 @@ def get_showtime_by_id(
         Showtime | None: The Showtime object if found, otherwise None.
     """
     return session.get(Showtime, showtime_id)
+
+
+def get_showtime_close_in_time(
+    *,
+    session: Session,
+    showtime_create: ShowtimeCreate,
+    delta: timedelta = timedelta(minutes=60),
+) -> Showtime | None:
+    datetime = showtime_create.datetime
+
+    time_window_start = datetime - delta
+    time_window_end = datetime + delta
+    stmt = (
+        select(Showtime)
+        .where(
+            Showtime.movie_id == showtime_create.movie_id,
+            Showtime.cinema_id == showtime_create.cinema_id,
+            col(Showtime.datetime).between(time_window_start, time_window_end),
+            Showtime.datetime != showtime_create.datetime,
+        )
+    )
+
+    result = session.execute(stmt)
+    return result.scalars().first()
+
 
 
 def create_showtime(

@@ -36,19 +36,15 @@ def get_showtime_close_in_time(
 
     time_window_start = datetime - delta
     time_window_end = datetime + delta
-    stmt = (
-        select(Showtime)
-        .where(
-            Showtime.movie_id == showtime_create.movie_id,
-            Showtime.cinema_id == showtime_create.cinema_id,
-            col(Showtime.datetime).between(time_window_start, time_window_end),
-            Showtime.datetime != showtime_create.datetime,
-        )
+    stmt = select(Showtime).where(
+        Showtime.movie_id == showtime_create.movie_id,
+        Showtime.cinema_id == showtime_create.cinema_id,
+        col(Showtime.datetime).between(time_window_start, time_window_end),
+        Showtime.datetime != showtime_create.datetime,
     )
 
     result = session.execute(stmt)
     return result.scalars().first()
-
 
 
 def create_showtime(

@@ -39,6 +39,7 @@ def get_showtime_close_in_time(
     stmt = select(Showtime).where(
         Showtime.movie_id == showtime_create.movie_id,
         Showtime.cinema_id == showtime_create.cinema_id,
+        Showtime.ticket_link == showtime_create.ticket_link,
         col(Showtime.datetime).between(time_window_start, time_window_end),
         Showtime.datetime != showtime_create.datetime,
     )

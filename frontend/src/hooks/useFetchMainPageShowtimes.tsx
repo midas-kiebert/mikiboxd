@@ -13,8 +13,8 @@ export function useFetchMainPageShowtimes(
         snapshotTime,
     } : useFetchMainPageShowtimesProps
 ) {
-    const result = useInfiniteQuery<ShowtimesGetMainPageShowtimesResponse, Error, InfiniteData<ShowtimesGetMainPageShowtimesResponse>, [string], number>({
-        queryKey: ["showtimes"],
+    const result = useInfiniteQuery<ShowtimesGetMainPageShowtimesResponse, Error, InfiniteData<ShowtimesGetMainPageShowtimesResponse>, [string, string], number>({
+        queryKey: ["showtimes", "main"],
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,

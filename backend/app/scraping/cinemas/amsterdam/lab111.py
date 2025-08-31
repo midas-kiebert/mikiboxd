@@ -102,20 +102,12 @@ class LAB111Scraper(BaseCinemaScraper):
             # logger.trace(f"Found {len(days)} showtimes for {title}")
             for day in days:
                 assert isinstance(day, Tag)
-                # Get Theatre
-                theatre_element = day.find_next("span", class_="theatre_name")
-                if not theatre_element or not isinstance(theatre_element, Tag):
-                    logger.warning(
-                        f"No theatre name found for {letterboxd_data.title}, skipping"
-                    )
-                    continue
-                theatre = theatre_element.get_text(strip=True)
 
                 # Get the date and ticket link
                 links = day.find_all("a")
                 if len(links) == 0:
                     logger.debug(
-                        f"No links found for {letterboxd_data.title} on {theatre}, skipping"
+                        f"No links found for {letterboxd_data.title}, skipping"
                     )
                     continue
                 link = links[0]
@@ -128,7 +120,6 @@ class LAB111Scraper(BaseCinemaScraper):
                     movie_id=movie.id,
                     datetime=date,
                     cinema_id=self.cinema_id,
-                    theatre=theatre,
                     ticket_link=ticket_link,
                 )
                 self.showtimes.append(showtime)

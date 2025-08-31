@@ -101,7 +101,6 @@ class UitkijkScraper(BaseCinemaScraper):
                         movie_id=movie_cache[slug].id,
                         datetime=start_datetime,
                         cinema_id=self.cinema_id,
-                        theatre="Grote Zaal",
                         ticket_link=f"https://www.uitkijk.nl/film/{slug}",
                     )
                     self.showtimes.append(showtime)

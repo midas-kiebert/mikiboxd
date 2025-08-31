@@ -117,7 +117,6 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                     movie_id=movie.id,
                     datetime=date,
                     cinema_id=self.cinema_id,
-                    theatre=theatre,
                     ticket_link=ticket_link,
                 )
                 self.showtimes.append(showtime)

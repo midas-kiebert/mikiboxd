@@ -80,7 +80,6 @@ def test_create_showtime_already_exists(
         datetime=existing_showtime.datetime,
         movie_id=existing_showtime.movie_id,
         cinema_id=existing_showtime.cinema_id,
-        theatre=existing_showtime.theatre,
     )
 
     with pytest.raises(IntegrityError) as exc_info:

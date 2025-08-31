@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
@@ -186,15 +186,32 @@ def insert_showtime_if_not_exists(
 ) -> bool:
     """
     Insert a showtime into the database if it does not already exist.
+    If there is a showtime with the same movie and cinema within 1 hour,
+    assume its a time change and simply change the time of the existing showtime.
 
     Parameters:
         session (Session): Database session.
         showtime_create (ShowtimeCreate): Showtime data to insert.
     Returns:
-        bool: True if the showtime was inserted, False if it already exists.
+        bool: True if the showtime was inserted/changed, False if it already exists.
     Raises:
         AppError: If there is an error during showtime insertion.
     """
+    existing_showtime = showtimes_crud.get_showtime_close_in_time(
+        session=session,
+        showtime_create=showtime_create,
+        delta=timedelta(hours=1),
+    )
+
+    if existing_showtime is not None:
+        try:
+            existing_showtime.datetime = showtime_create.datetime
+            session.commit()
+            return True
+        except Exception as e:
+            session.rollback()
+            raise AppError from e
+
     try:
         showtimes_crud.create_showtime(
             session=session,

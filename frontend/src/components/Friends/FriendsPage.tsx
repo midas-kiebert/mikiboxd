@@ -1,6 +1,5 @@
 import { Flex, Box, Grid } from "@chakra-ui/react";
 import Page from "@/components/Common/Page";
-import Sidebar from "@/components/Common/Sidebar";
 import FriendsTopBar from "@/components/Friends/FriendsTopBar";
 import { useState} from "react";
 import SearchUsers from "@/components/Friends/SearchUsers";
@@ -14,7 +13,6 @@ const FriendsPage = () => {
     return (
         <>
             <Flex>
-                <Sidebar/>
                 <FriendsTopBar
                     searchQuery={searchQuery}
                     setSearchQuery={setSearchQuery}

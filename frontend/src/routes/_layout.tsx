@@ -22,6 +22,8 @@ export const Route = createFileRoute("/_layout")({
 function Layout() {
   const isMobile = useIsMobile();
 
+  const height = isMobile ? "calc(100% - 60px)" : "100%";
+
   return (
     <Flex direction="column" height="100vh">
       <Navbar />
@@ -32,9 +34,10 @@ function Layout() {
         }
         <Box
           flex="1"
-          bg="white"
-          p={4}
-          height="calc(100vh - 85px)"
+          px={2}
+          height={height}
+          mb={ isMobile ? "60px" : "0px"}
+          overflowY={"auto"}
         >
           <Outlet />
         </Box>

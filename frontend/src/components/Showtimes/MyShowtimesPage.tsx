@@ -1,7 +1,6 @@
 import { useState, useRef } from "react";
 import { useFetchMyShowtimes } from "@/hooks/useFetchMyShowtimes";
-import Sidebar from "@/components/Common/Sidebar";
-import { Flex, Spinner, Center } from "@chakra-ui/react";
+import { Spinner, Center } from "@chakra-ui/react";
 import Page from "@/components/Common/Page";
 import useInfiniteScroll from "@/hooks/useInfiniteScroll";
 import { DateTime } from "luxon";
@@ -37,9 +36,6 @@ const MyShowtimesPage = () => {
     if ((isLoading || isFetching) && !isFetchingNextPage) {
         return (
             <>
-                <Flex>
-                    <Sidebar/>
-                </Flex>
                 <Center h="100vh">
                     <Spinner size="xl" />
                 </Center>
@@ -49,9 +45,6 @@ const MyShowtimesPage = () => {
 
     return (
         <>
-            <Flex>
-                <Sidebar/>
-            </Flex>
             <Page>
                 <h1>My Showtimes</h1>
                 <Showtimes showtimes={showtimes}/>

@@ -25,3 +25,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
+
+if __name__ == "__main__":
+    # Example usage
+    print("Password Hash:", get_password_hash("test"))

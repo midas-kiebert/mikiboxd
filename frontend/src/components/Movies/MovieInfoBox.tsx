@@ -21,7 +21,7 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
     const original_title = movie.original_title || null;
     return (
         <Flex
-            ml={8}
+            ml={{base: 2, md: 8}}
             // bg="blue.200"
             flex="1"
             flexDirection="column"

@@ -6,6 +6,7 @@ import MovieCard from "./MovieCard";
 import MoviesContainer from "./MoviesContainer";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useEffect } from "react";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 type MoviesProps = {
     movies: Array<MovieSummaryLoggedIn>
@@ -14,6 +15,7 @@ type MoviesProps = {
 
 export default function Movies( { movies, isLoading } : MoviesProps) {
     // keep track of the scroll position at all times
+    const isMobile = useIsMobile();
     useEffect(() => {
         const handleScroll = () => {
             sessionStorage.setItem('scrollPosition', window.scrollY.toString())
@@ -29,7 +31,7 @@ export default function Movies( { movies, isLoading } : MoviesProps) {
 
     const rowVirtualizer = useWindowVirtualizer({
         count: movies.length,
-        estimateSize: () => 250, // Estimate height of each movie card
+        estimateSize: () => isMobile ? 125 :250, // Estimate height of each movie card
         overscan: 2, // Number of items to render outside the visible area
         initialOffset
     })

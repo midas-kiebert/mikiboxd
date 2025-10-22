@@ -1,7 +1,6 @@
 import { useState, useRef } from "react";
 import { useFetchUserShowtimes } from "@/hooks/useFetchUserShowtimes";
-import Sidebar from "@/components/Common/Sidebar";
-import { Flex, Center, Spinner } from "@chakra-ui/react";
+import { Center, Spinner } from "@chakra-ui/react";
 import Page from "@/components/Common/Page";
 import useInfiniteScroll from "@/hooks/useInfiniteScroll";
 import { DateTime } from "luxon";
@@ -47,9 +46,6 @@ const ShowtimesPage = ({ userId } : ShowtimesPageProps) => {
     if ((isLoading || isFetching) && !isFetchingNextPage) {
         return (
             <>
-                <Flex>
-                    <Sidebar/>
-                </Flex>
                 <Center h="100vh">
                     <Spinner size="xl" />
                 </Center>
@@ -59,9 +55,6 @@ const ShowtimesPage = ({ userId } : ShowtimesPageProps) => {
 
     return (
         <>
-            <Flex>
-                <Sidebar/>
-            </Flex>
             <Page>
                 <h1>Showtimes for {user?.display_name}</h1>
                 <Showtimes showtimes={showtimes} highlight={true}/>

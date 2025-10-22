@@ -73,7 +73,7 @@ async def get_watchlist_async(username: str) -> list[str]:
             logger.error("Count span not found in the first page of watchlist.")
             raise scraper_exceptions.ScraperStructureError()
         count_str: str = count_span.text
-        count = int(count_str.split()[0])
+        count = int(count_str.split()[0].replace(",", ""))
         slugs_1 = extract_slugs_from_page(page=first_page)
         if count > 0 and not slugs_1:
             logger.error("No slugs found on the first page of watchlist.")

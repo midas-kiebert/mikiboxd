@@ -170,6 +170,14 @@ def get_top250_position(slug: str) -> int | None:
     return position
 
 
+def film_not_found(response: Response) -> bool:
+    page = BeautifulSoup(response.text, "lxml")
+    not_found_tag = page.find("h1", class_="title")
+    if not isinstance(not_found_tag, Tag):
+        return False
+    return not_found_tag.text == "Film not found"
+
+
 def scrape_letterboxd(tmdb_id: int) -> LetterboxdMovieData | None:
     response = get_letterboxd_page(tmdb_id)
     if response is None:
@@ -180,6 +188,10 @@ def scrape_letterboxd(tmdb_id: int) -> LetterboxdMovieData | None:
         return None
 
     parsed_page = parse_page(response)
+    if film_not_found(response):
+        logger.warning(f"Letterboxd page not found for TMDB ID {tmdb_id}")
+        return None
+
     poster_url = get_poster_url(slug)
     title = get_english_title(parsed_page)
     original_title = get_original_title(parsed_page)
@@ -201,7 +213,7 @@ def scrape_letterboxd(tmdb_id: int) -> LetterboxdMovieData | None:
 
 
 if __name__ == "__main__":
-    tmdb_id = 12477
+    tmdb_id = 570685
     logger.info(f"Scraping Letterboxd data for TMDB ID {tmdb_id}")
     data = scrape_letterboxd(tmdb_id)
     logger.info(f"Data: {data}")

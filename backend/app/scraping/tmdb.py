@@ -93,18 +93,17 @@ def strip_accents(text: str) -> str:
 
 def find_tmdb_id(
     title_query: str,
-    director_name: str | None = None,
+    director_names: list[str],
     actor_name: str | None = None,
     year: int | None = None,
 ) -> int | None:
+    director_names = [strip_accents(name) for name in director_names]
+    director_ids: list[str] = []
     directed_movies: list[dict[str, str]] = []
-    if director_name:
-        director_name = strip_accents(director_name)
-        director_ids = get_person_ids(director_name)
-        # logger.trace(f"Director ids: {director_ids}")
-        for director_id in director_ids:
-            directed_movies += get_persons_movies(director_id, "Director", year)
-    # logger.trace(f"Directed movies: {[m['title'] for m in directed_movies]}")
+    for name in director_names:
+        director_ids += get_person_ids(name)
+    for id in director_ids:
+        directed_movies += get_persons_movies(id, "Director", year)
     potential_movies: list[dict[str, str]] = []
     if actor_name:
         actor_ids = get_person_ids(actor_name)
@@ -129,7 +128,7 @@ def find_tmdb_id(
 
     # logger.trace(f"Potential movies for query {title_query}, {director_name}, {actor_name}: {[m['title'] for m in potential_movies]}")
 
-    if not director_name and not actor_name:
+    if not director_names and not actor_name:
         # If no director or actor is specified, search for the title directly
         potential_movies = search_tmdb(title_query)
         if potential_movies:
@@ -141,7 +140,7 @@ def find_tmdb_id(
 
     if not potential_movies:
         logger.debug(
-            f"No potential movies found for '{title_query}' with director '{director_name}' and actor '{actor_name}'."
+            f"No potential movies found for '{title_query}' with director '{director_names}' and actor '{actor_name}'."
         )
         return None
 
@@ -163,7 +162,7 @@ def find_tmdb_id(
             return int(best["id"])
 
     logger.debug(
-        f"No direct match found for '{title_query}' with director '{director_name}' and actor '{actor_name}'. Fuzzy matching..."
+        f"No direct match found for '{title_query}' with director '{director_names}' and actor '{actor_name}'. Fuzzy matching..."
     )
 
     # Score by fuzzy match
@@ -191,9 +190,9 @@ def find_tmdb_id(
 if __name__ == "__main__":
     # Example
     tmdb_id = find_tmdb_id(
-        "the adventures of tintin",
-        director_name="Steven Spielberg",
-        actor_name="sdgsgdfgfdg",
+        "Werckmeister Harmóniák",
+        director_names=["Agnes Hranitzky", "Béla Tarr"],
+        actor_name=None,
     )
     logger.debug(tmdb_id)
     # logger.debug()

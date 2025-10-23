@@ -62,7 +62,7 @@ class FCHyenaScraper(BaseCinemaScraper):
             assert isinstance(director_element, Tag)
             director_sibling = director_element.next_sibling
             assert isinstance(director_sibling, str)
-            director = director_sibling.strip()
+            directors = director_sibling.strip().split(",")
             cast_element = film_element.find(lambda tag: tag.string == "Cast")
             try:
                 assert isinstance(cast_element, Tag)
@@ -75,7 +75,7 @@ class FCHyenaScraper(BaseCinemaScraper):
             # logger.trace(f"{director = }, {actor = }")
 
             tmdb_id = find_tmdb_id(
-                title_query=title_query, director_name=director, actor_name=actor
+                title_query=title_query, director_names=directors, actor_name=actor
             )
             if tmdb_id is None:
                 logger.warning(f"No TMDB id found for {title_query}, skipping")

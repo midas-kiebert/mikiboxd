@@ -137,11 +137,10 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
         logger.warning(f"No strong tag found for {slug}, skipping")
         return None
     strong_tag.extract()  # removes the <strong> from the DOM
-    director = sub(
-        r"\s+",
-        " ",
-        li.get_text(strip=True).encode("latin1").decode("utf-8").split(",")[0],
-    )
+    directors = [sub(r"\s+", " ", name)
+                 for name in
+                 li.get_text(strip=True).encode("latin1").decode("utf-8").split(",")
+                ]
     try:
         actor_element = soup.find_all("strong", string="Cast:")[0]
         li = actor_element.parent
@@ -168,7 +167,7 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
     # logger.trace(f"{title_query = }, {director = }, {actor = }")
 
     tmdb_id = find_tmdb_id(
-        title_query=title_query, director_name=director, actor_name=actor
+        title_query=title_query, director_names=directors, actor_name=actor
     )
     if tmdb_id is None:
         logger.warning(f"No TMDB id found for {title_query}, skipping")

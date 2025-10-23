@@ -1,4 +1,4 @@
-from re import sub
+from re import split, sub
 
 import requests
 from dateutil import parser
@@ -68,20 +68,17 @@ class KriterionScraper(BaseCinemaScraper):
         movies_data = MovieResponse.model_validate(response_movies.json()).data
         movies_attributes = [m.attributes for m in movies_data]
 
-        movies_directors: list[tuple[str, str]] = []
+        movies_directors: list[tuple[str, list[str]]] = []
 
         for attrs in movies_attributes:
             title = sub(
                 r"\s*\([^)]*\)", "", attrs.titel.split(" | ")[0].strip()
             )  # Take the first part of the title if multiple are listed
-            director = (
-                attrs.regie.split(" and ")[0]
-                .split(",")[0]
-                .split(" | ")[0]
-                .split(" en ")[0]
-                .strip()
-            )  # Take the first director if multiple are listed
-            movies_directors.append((title, director))
+            directors = [
+                director.strip()
+                for director in split(r"\s*(?:and|en|,|\|)\s*", attrs.regie)
+            ]
+            movies_directors.append((title, directors))
             # logger.trace(f"title: {title}, director: {director}")
 
         movie_cache: dict[int, MovieCreate] = {}
@@ -119,25 +116,25 @@ class KriterionScraper(BaseCinemaScraper):
 
 
 def get_movie(
-    show: Show, movies_directors: list[tuple[str, str]]
+    show: Show, movies_directors: list[tuple[str, list[str]]]
 ) -> MovieCreate | None:
     title_query = sub(r"\s*\([^)]*\)", "", show.name.split(" | ")[0].strip())
 
     # find directorprocess_show
     best_fuzz_ratio = 0.0
-    director = None
-    for title, dir in movies_directors:
+    directors: list[str] = []
+    for title, dirs in movies_directors:
         fuzz_ratio = fuzz.token_set_ratio(title_query.lower(), title.lower())
         if fuzz_ratio > best_fuzz_ratio:
             best_fuzz_ratio = fuzz_ratio
-            director = dir
+            directors = dirs
     if best_fuzz_ratio < 50:
         logger.debug(
             f"Could not match showtime title {title_query} with movie title {title}, no director found."
         )
-        director = None
+        directors = []
 
-    tmdb_id = find_tmdb_id(title_query=title_query, director_name=director)
+    tmdb_id = find_tmdb_id(title_query=title_query, director_names=directors)
     if tmdb_id is None:
         logger.debug(f"No TMDB id found for {title_query}")
         return None

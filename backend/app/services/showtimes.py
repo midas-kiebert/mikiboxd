@@ -208,6 +208,12 @@ def insert_showtime_if_not_exists(
             existing_showtime.datetime = showtime_create.datetime
             session.commit()
             return True
+        except IntegrityError as e:
+            session.rollback()
+            if isinstance(e.orig, UniqueViolation):
+                return False
+            else:
+                raise AppError from e
         except Exception as e:
             session.rollback()
             raise AppError from e

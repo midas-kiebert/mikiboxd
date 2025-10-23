@@ -147,7 +147,7 @@ def get_movie(title_query: str, url: str) -> MovieCreate | None:
     director_str = sibling.string
     if director_str is None:
         return None
-    director = director_str.strip().split(",")[0]
+    directors = director_str.strip().split(",")
 
     original_title_element = soup.find(lambda tag: tag.string == "Original title")
     try:
@@ -163,7 +163,7 @@ def get_movie(title_query: str, url: str) -> MovieCreate | None:
     if original_title:
         title_query = original_title
 
-    tmdb_id = find_tmdb_id(title_query=title_query, director_name=director)
+    tmdb_id = find_tmdb_id(title_query=title_query, director_names=directors)
     if tmdb_id is None:
         logger.warning(f"No TMDB id found for {title_query}, skipping")
         return None

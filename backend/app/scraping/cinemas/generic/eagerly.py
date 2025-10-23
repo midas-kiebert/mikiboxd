@@ -61,7 +61,9 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                 continue
             title_query = clean_title(slug)
             directors_str = value["director_name"]
-            directors = [director.strip() for director in directors_str["value"].split(",")]
+            directors = [
+                director.strip() for director in directors_str["value"].split(",")
+            ]
             # get actor, removing text within parenthesis (such as (voice))
             actor = sub(
                 r"\s*\([^)]*\)", "", value["starring_short"].split(",")[0].strip()

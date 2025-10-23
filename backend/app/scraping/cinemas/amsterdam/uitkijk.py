@@ -137,10 +137,10 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
         logger.warning(f"No strong tag found for {slug}, skipping")
         return None
     strong_tag.extract()  # removes the <strong> from the DOM
-    directors = [sub(r"\s+", " ", name)
-                 for name in
-                 li.get_text(strip=True).encode("latin1").decode("utf-8").split(",")
-                ]
+    directors = [
+        sub(r"\s+", " ", name)
+        for name in li.get_text(strip=True).encode("latin1").decode("utf-8").split(",")
+    ]
     try:
         actor_element = soup.find_all("strong", string="Cast:")[0]
         li = actor_element.parent

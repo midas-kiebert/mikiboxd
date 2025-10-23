@@ -65,13 +65,12 @@ class LAB111Scraper(BaseCinemaScraper):
                 logger.warning("Skipping div without a valid data-title attribute")
                 continue
             title_query = clean_title(raw_title)
-            directors = extract_name(div, "Regisseur:")  # Extract director name
-            actors = extract_name(div, "Acteurs:")  # Extract actor name
-            actor = actors[0] if actors else None
+            director = extract_name(div, "Regisseur:")  # Extract director name
+            actor = extract_name(div, "Acteurs:")  # Extract actor name
 
             # Try to find the tmdb_id
             tmdb_id = find_tmdb_id(
-                title_query=title_query, director_names=directors, actor_name=actor
+                title_query=title_query, director_name=director, actor_name=actor
             )
             if tmdb_id is None:
                 logger.warning(f"No TMDB id found for {title_query}, skipping")
@@ -136,7 +135,7 @@ class LAB111Scraper(BaseCinemaScraper):
                 )
 
 
-def extract_name(tag: Tag, label: str) -> list[str]:
+def extract_name(tag: Tag, label: str) -> str | None:
     for bold_tag in tag.find_all("b"):
         if not isinstance(bold_tag, Tag):
             continue
@@ -145,13 +144,16 @@ def extract_name(tag: Tag, label: str) -> list[str]:
             continue
         parent_div = bold_tag.find_parent("div")
         if parent_div is None or not isinstance(parent_div, Tag):
-            return []
+            return None
         inner_text = list(parent_div.stripped_strings)
         if len(inner_text) < 2:
-            return []
-        names = [name.strip() for name in inner_text[1].strip().split(", ")]
-        return names
-    return []
+            return None
+        names = inner_text[1].strip().split(", ")
+        if not names:
+            return None
+        name = names[0].strip()
+        return name
+    return None
 
 
 if __name__ == "__main__":

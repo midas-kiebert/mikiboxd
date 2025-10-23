@@ -60,8 +60,9 @@ class GenericEagerlyScraper(BaseCinemaScraper):
             if not value.get("times"):
                 continue
             title_query = clean_title(slug)
-            directors_str = value["director_name"]
-            directors = [director.strip() for director in directors_str["value"].split(",")]
+            directors = value["director_name"]
+            if directors:
+                director = directors["value"].split(",")[0].strip()
             # get actor, removing text within parenthesis (such as (voice))
             actor = sub(
                 r"\s*\([^)]*\)", "", value["starring_short"].split(",")[0].strip()
@@ -69,7 +70,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
             # logger.trace(f"query: {title_query}, {director}, {actor}")
             # Try to find the tmdb_id
             tmdb_id = find_tmdb_id(
-                title_query=title_query, director_names=directors, actor_name=actor
+                title_query=title_query, director_name=director, actor_name=actor
             )
 
             if not tmdb_id:

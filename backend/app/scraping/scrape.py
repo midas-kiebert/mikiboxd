@@ -36,12 +36,13 @@ def scrape_cineville():
         title_query = clean_title(movie_data.title)
         actors = movie_data.cast
         actor = actors[0] if actors else None
-        directors = movie_data.directors or []
+        directors = movie_data.directors
+        director = directors[0] if directors else None
 
         tmdb_id = find_tmdb_id(
             title_query=title_query,
             actor_name=actor,
-            director_names=directors,
+            director_name=director,
         )
         if tmdb_id is None:
             logger.warning(f"TMDB ID not found for movie: {title_query}")

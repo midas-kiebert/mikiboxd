@@ -76,7 +76,7 @@ class KriterionScraper(BaseCinemaScraper):
             )  # Take the first part of the title if multiple are listed
             directors = [
                 director.strip()
-                for director in split(r"\s*(?:and|en|,|\|)\s*", attrs.regie)
+                for director in split(r"\s*(?: and | en |,|\|)\s*", attrs.regie)
             ]
             movies_directors.append((title, directors))
             # logger.trace(f"title: {title}, director: {director}")

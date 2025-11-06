@@ -7,6 +7,7 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
+from app.crud import cinema as cinemas_crud
 from app.crud import friendship as friendship_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
@@ -71,44 +72,6 @@ def get_users(
         )
         for user_db in users_db
     ]
-
-
-def register_user(
-    *,
-    session: Session,
-    user_in: UserRegister,
-) -> UserPublic:
-    """
-    Register a new user in the system.
-
-    Parameters:
-        session (Session): Database session.
-        user_in (UserRegister): User registration data.
-    Returns:
-        UserPublic: The public representation of the newly created user.
-    Raises:
-        EmailAlreadyExists: If a user with the given email already exists.
-        AppError: If there is an error during user creation.
-    """
-    user_create = UserCreate.model_validate(user_in)
-    try:
-        user = users_crud.create_user(
-            session=session,
-            user_create=user_create,
-        )
-        session.commit()
-    except IntegrityError as e:
-        session.rollback()
-        if isinstance(e.orig, UniqueViolation):
-            raise EmailAlreadyExists(user_in.email) from e
-        else:
-            raise AppError from e
-    except Exception as e:
-        session.rollback()
-        raise AppError from e
-
-    user_public = user_converters.to_public(user)
-    return user_public
 
 
 def get_selected_showtimes(
@@ -272,3 +235,73 @@ def set_cinema_selections(
     except Exception as e:
         session.rollback()
         raise AppError from e
+
+
+def select_all_cinemas(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> None:
+    """
+    Select all cinemas for a user.
+
+    Parameters:
+        session (Session): Database session.
+        user_id (UUID): ID of the user whose cinema selections are to be set to all cinemas.
+    """
+    try:
+        all_cinemas = cinemas_crud.get_cinemas(
+            session=session,
+        )
+        all_cinema_ids = [cinema.id for cinema in all_cinemas]
+        users_crud.set_cinema_selections(
+            session=session,
+            user_id=user_id,
+            cinema_ids=all_cinema_ids,
+        )
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise AppError from e
+
+
+def register_user(
+    *,
+    session: Session,
+    user_in: UserRegister,
+) -> UserPublic:
+    """
+    Register a new user in the system.
+
+    Parameters:
+        session (Session): Database session.
+        user_in (UserRegister): User registration data.
+    Returns:
+        UserPublic: The public representation of the newly created user.
+    Raises:
+        EmailAlreadyExists: If a user with the given email already exists.
+        AppError: If there is an error during user creation.
+    """
+    user_create = UserCreate.model_validate(user_in)
+    try:
+        user = users_crud.create_user(
+            session=session,
+            user_create=user_create,
+        )
+        select_all_cinemas(
+            session=session,
+            user_id=user.id,
+        )
+        session.commit()
+    except IntegrityError as e:
+        session.rollback()
+        if isinstance(e.orig, UniqueViolation):
+            raise EmailAlreadyExists(user_in.email) from e
+        else:
+            raise AppError from e
+    except Exception as e:
+        session.rollback()
+        raise AppError from e
+
+    user_public = user_converters.to_public(user)
+    return user_public

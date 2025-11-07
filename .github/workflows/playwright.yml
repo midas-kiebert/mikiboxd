@@ -82,7 +82,7 @@ jobs:
         TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
         ENABLE_TELEGRAM=false
         EOF
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v6
       with:
         node-version: lts/*
     - uses: actions/setup-python@v5
@@ -161,7 +161,7 @@ jobs:
         TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
         ENABLE_TELEGRAM=false
         EOF
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v6
       with:
         node-version: 20
     - name: Install dependencies

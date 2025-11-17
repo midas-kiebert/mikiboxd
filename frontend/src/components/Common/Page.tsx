@@ -17,7 +17,7 @@ const Page = ({ children, sidebarWidth = SIDEBAR_WIDTH, topbarHeight = TOPBAR_HE
 
     if (isMobile) {
         sidebarWidth = 0;
-        topbarHeight = 0;
+        topbarHeight = 50;
     }
 
     return (

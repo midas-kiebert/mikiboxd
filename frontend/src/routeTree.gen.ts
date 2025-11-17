@@ -12,16 +12,16 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
-import { Route as MoviesRouteImport } from './routes/movies'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as FriendsRouteImport } from './routes/friends'
 import { Route as ForbiddenRouteImport } from './routes/forbidden'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as MovieMovieIdRouteImport } from './routes/movie.$movieId'
-import { Route as MeShowtimesRouteImport } from './routes/me/showtimes'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
-import { Route as UsersUserIdShowtimesRouteImport } from './routes/users/$userId/showtimes'
+import { Route as LayoutMoviesRouteImport } from './routes/_layout/movies'
+import { Route as LayoutFriendsRouteImport } from './routes/_layout/friends'
+import { Route as LayoutMeShowtimesRouteImport } from './routes/_layout/me/showtimes'
+import { Route as LayoutUserIdShowtimesRouteImport } from './routes/_layout/$userId/showtimes'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -38,19 +38,9 @@ const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
   path: '/recover-password',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MoviesRoute = MoviesRouteImport.update({
-  id: '/movies',
-  path: '/movies',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FriendsRoute = FriendsRouteImport.update({
-  id: '/friends',
-  path: '/friends',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ForbiddenRoute = ForbiddenRouteImport.update({
@@ -72,124 +62,130 @@ const MovieMovieIdRoute = MovieMovieIdRouteImport.update({
   path: '/movie/$movieId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MeShowtimesRoute = MeShowtimesRouteImport.update({
-  id: '/me/showtimes',
-  path: '/me/showtimes',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => LayoutRoute,
 } as any)
-const UsersUserIdShowtimesRoute = UsersUserIdShowtimesRouteImport.update({
-  id: '/users/$userId/showtimes',
-  path: '/users/$userId/showtimes',
-  getParentRoute: () => rootRouteImport,
+const LayoutMoviesRoute = LayoutMoviesRouteImport.update({
+  id: '/movies',
+  path: '/movies',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutFriendsRoute = LayoutFriendsRouteImport.update({
+  id: '/friends',
+  path: '/friends',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutMeShowtimesRoute = LayoutMeShowtimesRouteImport.update({
+  id: '/me/showtimes',
+  path: '/me/showtimes',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutUserIdShowtimesRoute = LayoutUserIdShowtimesRouteImport.update({
+  id: '/$userId/showtimes',
+  path: '/$userId/showtimes',
+  getParentRoute: () => LayoutRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/forbidden': typeof ForbiddenRoute
-  '/friends': typeof FriendsRoute
   '/login': typeof LoginRoute
-  '/movies': typeof MoviesRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/friends': typeof LayoutFriendsRoute
+  '/movies': typeof LayoutMoviesRoute
   '/settings': typeof LayoutSettingsRoute
-  '/me/showtimes': typeof MeShowtimesRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/': typeof LayoutIndexRoute
-  '/users/$userId/showtimes': typeof UsersUserIdShowtimesRoute
+  '/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
+  '/me/showtimes': typeof LayoutMeShowtimesRoute
 }
 export interface FileRoutesByTo {
   '/forbidden': typeof ForbiddenRoute
-  '/friends': typeof FriendsRoute
   '/login': typeof LoginRoute
-  '/movies': typeof MoviesRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/friends': typeof LayoutFriendsRoute
+  '/movies': typeof LayoutMoviesRoute
   '/settings': typeof LayoutSettingsRoute
-  '/me/showtimes': typeof MeShowtimesRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/': typeof LayoutIndexRoute
-  '/users/$userId/showtimes': typeof UsersUserIdShowtimesRoute
+  '/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
+  '/me/showtimes': typeof LayoutMeShowtimesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
   '/forbidden': typeof ForbiddenRoute
-  '/friends': typeof FriendsRoute
   '/login': typeof LoginRoute
-  '/movies': typeof MoviesRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/_layout/friends': typeof LayoutFriendsRoute
+  '/_layout/movies': typeof LayoutMoviesRoute
   '/_layout/settings': typeof LayoutSettingsRoute
-  '/me/showtimes': typeof MeShowtimesRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/_layout/': typeof LayoutIndexRoute
-  '/users/$userId/showtimes': typeof UsersUserIdShowtimesRoute
+  '/_layout/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
+  '/_layout/me/showtimes': typeof LayoutMeShowtimesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/forbidden'
-    | '/friends'
     | '/login'
-    | '/movies'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/friends'
+    | '/movies'
     | '/settings'
-    | '/me/showtimes'
     | '/movie/$movieId'
     | '/'
-    | '/users/$userId/showtimes'
+    | '/$userId/showtimes'
+    | '/me/showtimes'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/forbidden'
-    | '/friends'
     | '/login'
-    | '/movies'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/friends'
+    | '/movies'
     | '/settings'
-    | '/me/showtimes'
     | '/movie/$movieId'
     | '/'
-    | '/users/$userId/showtimes'
+    | '/$userId/showtimes'
+    | '/me/showtimes'
   id:
     | '__root__'
     | '/_layout'
     | '/forbidden'
-    | '/friends'
     | '/login'
-    | '/movies'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/_layout/friends'
+    | '/_layout/movies'
     | '/_layout/settings'
-    | '/me/showtimes'
     | '/movie/$movieId'
     | '/_layout/'
-    | '/users/$userId/showtimes'
+    | '/_layout/$userId/showtimes'
+    | '/_layout/me/showtimes'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
   ForbiddenRoute: typeof ForbiddenRoute
-  FriendsRoute: typeof FriendsRoute
   LoginRoute: typeof LoginRoute
-  MoviesRoute: typeof MoviesRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
-  MeShowtimesRoute: typeof MeShowtimesRoute
   MovieMovieIdRoute: typeof MovieMovieIdRoute
-  UsersUserIdShowtimesRoute: typeof UsersUserIdShowtimesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -215,25 +211,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RecoverPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/movies': {
-      id: '/movies'
-      path: '/movies'
-      fullPath: '/movies'
-      preLoaderRoute: typeof MoviesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/friends': {
-      id: '/friends'
-      path: '/friends'
-      fullPath: '/friends'
-      preLoaderRoute: typeof FriendsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/forbidden': {
@@ -264,13 +246,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MovieMovieIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/me/showtimes': {
-      id: '/me/showtimes'
-      path: '/me/showtimes'
-      fullPath: '/me/showtimes'
-      preLoaderRoute: typeof MeShowtimesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_layout/settings': {
       id: '/_layout/settings'
       path: '/settings'
@@ -278,24 +253,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutSettingsRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/users/$userId/showtimes': {
-      id: '/users/$userId/showtimes'
-      path: '/users/$userId/showtimes'
-      fullPath: '/users/$userId/showtimes'
-      preLoaderRoute: typeof UsersUserIdShowtimesRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_layout/movies': {
+      id: '/_layout/movies'
+      path: '/movies'
+      fullPath: '/movies'
+      preLoaderRoute: typeof LayoutMoviesRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/friends': {
+      id: '/_layout/friends'
+      path: '/friends'
+      fullPath: '/friends'
+      preLoaderRoute: typeof LayoutFriendsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/me/showtimes': {
+      id: '/_layout/me/showtimes'
+      path: '/me/showtimes'
+      fullPath: '/me/showtimes'
+      preLoaderRoute: typeof LayoutMeShowtimesRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/$userId/showtimes': {
+      id: '/_layout/$userId/showtimes'
+      path: '/$userId/showtimes'
+      fullPath: '/$userId/showtimes'
+      preLoaderRoute: typeof LayoutUserIdShowtimesRouteImport
+      parentRoute: typeof LayoutRoute
     }
   }
 }
 
 interface LayoutRouteChildren {
+  LayoutFriendsRoute: typeof LayoutFriendsRoute
+  LayoutMoviesRoute: typeof LayoutMoviesRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
+  LayoutUserIdShowtimesRoute: typeof LayoutUserIdShowtimesRoute
+  LayoutMeShowtimesRoute: typeof LayoutMeShowtimesRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
+  LayoutFriendsRoute: LayoutFriendsRoute,
+  LayoutMoviesRoute: LayoutMoviesRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
+  LayoutUserIdShowtimesRoute: LayoutUserIdShowtimesRoute,
+  LayoutMeShowtimesRoute: LayoutMeShowtimesRoute,
 }
 
 const LayoutRouteWithChildren =
@@ -304,15 +308,11 @@ const LayoutRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
   ForbiddenRoute: ForbiddenRoute,
-  FriendsRoute: FriendsRoute,
   LoginRoute: LoginRoute,
-  MoviesRoute: MoviesRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
-  MeShowtimesRoute: MeShowtimesRoute,
   MovieMovieIdRoute: MovieMovieIdRoute,
-  UsersUserIdShowtimesRoute: UsersUserIdShowtimesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

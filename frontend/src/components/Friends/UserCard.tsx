@@ -1,5 +1,5 @@
 import type { UserWithFriendStatus } from "@/client"
-import { Flex, Text, Badge, IconButton, Spacer, Icon } from "@chakra-ui/react"
+import { Flex, Badge, IconButton, Spacer, Icon } from "@chakra-ui/react"
 import { IoMdRemove, IoIosCheckmark } from "react-icons/io";
 import { LiaTimesSolid, LiaPlusSolid } from "react-icons/lia";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -69,7 +69,7 @@ const UserCard = ({ user }: UserCardProps) => {
             <Badge
                 colorPalette="green"
                 variant={"solid"}
-                fontSize="0.8em"
+                fontSize={{base: "0.6em", md: "0.8em"}}
             >
                 Friend
             </Badge>
@@ -80,7 +80,7 @@ const UserCard = ({ user }: UserCardProps) => {
                 bg={"red.500"}
                 _hover={{ bg: "red.600"}}
                 rounded={"full"}
-                size="xs"
+                size={{base: "2xs", md: "xs"}}
                 onClick={() => removeFriendMutation.mutate({ friendId: user.id })}
             >
                 <Icon as={IoMdRemove} boxSize={6}></Icon>
@@ -92,7 +92,7 @@ const UserCard = ({ user }: UserCardProps) => {
             <Badge
                 colorPalette="blue"
                 variant={"solid"}
-                fontSize="0.8em"
+                fontSize={{base: "0.6em", md: "0.8em"}}
             >
                 Sent you a friend request
             </Badge>
@@ -103,7 +103,7 @@ const UserCard = ({ user }: UserCardProps) => {
                 bg={"red.500"}
                 _hover={{ bg: "red.600"}}
                 rounded={"full"}
-                size="xs"
+                size={{base: "2xs", md: "xs"}}
             >
                 <Icon as={LiaTimesSolid} boxSize={5}></Icon>
             </IconButton>
@@ -114,7 +114,7 @@ const UserCard = ({ user }: UserCardProps) => {
                 bg={"green.500"}
                 _hover={{ bg: "green.600"}}
                 rounded={"full"}
-                size="xs"
+                size={{base: "2xs", md: "xs"}}
                 onClick={() => acceptFriendRequestMutation.mutate({ senderId: user.id })}
             >
                 <Icon as={IoIosCheckmark} boxSize={7}></Icon>
@@ -126,7 +126,7 @@ const UserCard = ({ user }: UserCardProps) => {
             <Badge
                 colorPalette="yellow"
                 variant={"solid"}
-                fontSize="0.8em"
+                fontSize={{base: "0.6em", md: "0.8em"}}
             >
                 Request sent
             </Badge>
@@ -137,7 +137,7 @@ const UserCard = ({ user }: UserCardProps) => {
                 bg={"red.500"}
                 _hover={{ bg: "red.600"}}
                 rounded={"full"}
-                size="xs"
+                size={{base: "2xs", md: "xs"}}
                 onClick={() => cancelFriendRequestMutation.mutate({ receiverId: user.id })}
             >
                 <Icon as={LiaTimesSolid} boxSize={5}></Icon>
@@ -151,7 +151,7 @@ const UserCard = ({ user }: UserCardProps) => {
                 bg={"green.500"}
                 _hover={{ bg: "green.600"}}
                 rounded={"full"}
-                size="xs"
+                size={{base: "2xs", md: "xs"}}
                 onClick={() => sendFriendRequestMutation.mutate({ receiverId: user.id })}
             >
                 <Icon as={LiaPlusSolid} boxSize={6}></Icon>
@@ -167,20 +167,20 @@ const UserCard = ({ user }: UserCardProps) => {
         <Flex
             borderWidth="1px"
             borderRadius="md"
-            p={4}
+            p={{base: 2, md: 4}}
             mb={2}
             display="flex"
             alignItems="center"
-            gap={4}
+            gap={{base: 2, md: 4}}
             bg={bgColor || "white"}
             maxW={"100%"}
         >
             <FriendBadge
                 friend={user}
                 variant="plain"
-                size="md"
+                size={{base: "xs", md: "md"}}
             />
-            {
+            {/* {
                 (user.letterboxd_username)
                 ? <Text
                     fontSize="0.8em"
@@ -189,9 +189,9 @@ const UserCard = ({ user }: UserCardProps) => {
                     ({user.letterboxd_username})
                 </Text>
                 : ""
-            }
-            { badge }
+            } */}
             <Spacer />
+            { badge }
             { button }
             { secondButton }
         </Flex>

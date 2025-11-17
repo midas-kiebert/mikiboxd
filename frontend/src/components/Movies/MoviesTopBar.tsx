@@ -2,6 +2,8 @@ import SearchBar from "../Common/SearchBar";
 import WatchlistToggle from "./WatchlistToggle";
 import TopBar from "../Common/TopBar";
 import Filters from "./Filters";
+import { Spacer } from "@chakra-ui/react";
+import UserMenu from "../Common/UserMenu";
 
 type MoviesTopBarProps = {
     searchQuery: string;
@@ -30,6 +32,8 @@ const MoviesTopBar = ({
                 setWatchlistOnly={setWatchlistOnly}
             />
             <Filters />
+            <Spacer />
+            <UserMenu />
         </TopBar>
     );
 }

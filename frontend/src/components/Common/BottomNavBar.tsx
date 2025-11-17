@@ -33,6 +33,7 @@ const BottomNavBar = () => {
             position="fixed"
             bg="gray.100"
             bottom={0}
+            zIndex={10}
             // minW="xs"
             width={"100%"}
             h="60px"
@@ -43,7 +44,6 @@ const BottomNavBar = () => {
                 gap={4}
                 height="100%"
                 alignItems="center"
-
                 >
                 {listItems}
             </Grid>

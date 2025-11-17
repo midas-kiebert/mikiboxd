@@ -16,7 +16,7 @@ const TopBar = ({ children } : Props) => {
             height={`${TOPBAR_HEIGHT}px`}
             top="0"
             flex={"1"}
-            left={SIDEBAR_WIDTH}
+            left={{ base: "0", md: SIDEBAR_WIDTH }}
             right="0"
             zIndex="sticky"
             bg="gray.50"

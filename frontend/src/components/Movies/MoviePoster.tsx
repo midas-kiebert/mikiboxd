@@ -1,40 +1,38 @@
 import { Link } from "@tanstack/react-router"
 import { MovieSummaryLoggedIn } from "@/client";
-import { useIsMobile } from "@/hooks/useIsMobile";
+import { Box, Image } from "@chakra-ui/react";
 
 type MoviePosterProps = {
     movie: MovieSummaryLoggedIn;
-    size?: string;
+    size?: {base: string, md: string};
 };
 
 export default function MoviePoster({
     movie,
-    size = "225px"
+    size = {base: "100px", md: "225px"}
 }: MoviePosterProps) {
-    const isMobile = useIsMobile();
-    const borderRadius = isMobile ? "6px" : "0px";
+    const borderRadius = {base: "3px", md: "0px"};
+    const width = {base: "66px", md: "150px"}
     return (
-        <Link
-            to={"/movie/$movieId"}
-            params={{ movieId: `${movie.id}`}}
-            style={{
-                display: "inline-block",
-                height: size,
-                width: `calc(${size} * 2 / 3)px`,
-            }}
+        <Box
+            as="div"
+            display="inline-block"
+            height={size}
+            width={width}
         >
-            <img
-                src={movie.poster_link || "https://via.placeholder.com/150"}
-                alt={movie.title}
-                className="movie-poster"
-                style={{
-                    height: "100%",
-                    width: "auto",
-                    objectFit: "cover",
-                    display: "block",
-                    borderRadius: borderRadius,
-                }}
-            />
-        </Link>
+            <Link
+                to={"/movie/$movieId"}
+                params={{ movieId: `${movie.id}`}}
+            >
+                <Image
+                    src={movie.poster_link || "https://via.placeholder.com/150"}
+                    alt={movie.title}
+                    width="100%"
+                    height="100%"
+                    objectFit="cover"
+                    borderRadius={borderRadius}
+                />
+            </Link>
+        </Box>
     );
 }

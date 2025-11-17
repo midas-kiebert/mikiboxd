@@ -17,7 +17,7 @@ const MovieCard = React.memo(function MovieCard({ movie }: MovieCardProps) {
             borderColor={"gray.200"}
             py={3}
             px={2}
-            height="250px"
+            height={{base: "125px", md: "250px"}}
         >
             <MoviePoster movie={movie}/>
             <MovieInfoBox movie={movie}/>

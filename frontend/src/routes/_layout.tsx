@@ -1,7 +1,7 @@
 import { Flex } from "@chakra-ui/react"
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router"
 
-import Navbar from "@/components/Common/Navbar"
+// import Navbar from "@/components/Common/Navbar"
 import Sidebar from "@/components/Common/Sidebar"
 import { isLoggedIn } from "@/hooks/useAuth"
 import { Box } from "@chakra-ui/react"
@@ -22,9 +22,11 @@ export const Route = createFileRoute("/_layout")({
 function Layout() {
   const isMobile = useIsMobile();
 
+  const height = isMobile ? "calc(100% - 60px)" : "100%";
+
   return (
     <Flex direction="column" height="100vh">
-      <Navbar />
+      {/* <Navbar /> */}
       <Flex flex="1">
         {isMobile
           ? <BottomNavBar />
@@ -32,9 +34,10 @@ function Layout() {
         }
         <Box
           flex="1"
-          bg="white"
-          p={4}
-          height="calc(100vh - 85px)"
+          px={2}
+          height={height}
+          mb={ isMobile ? "60px" : "0px"}
+          overflowY={"auto"}
         >
           <Outlet />
         </Box>

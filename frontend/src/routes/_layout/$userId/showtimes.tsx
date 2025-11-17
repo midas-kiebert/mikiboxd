@@ -3,7 +3,7 @@ import ShowtimesPage from '@/components/Showtimes/ShowtimesPage'
 import { UUID } from 'crypto'
 
 //@ts-ignore
-export const Route = createFileRoute('/users/$userId/showtimes')({
+export const Route = createFileRoute('/_layout/$userId/showtimes')({
   component: () => {
     const params = Route.useParams()
     const { userId } = params as { userId: UUID }

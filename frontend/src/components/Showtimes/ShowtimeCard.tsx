@@ -28,7 +28,7 @@ const ShowtimeCard = ({ showtime, highlight }: ShowtimeCardProps) => {
             <DatetimeCard showtime={showtime}></DatetimeCard>
             <MoviePoster
                 movie={showtime.movie}
-                size={`calc(${HEIGHT}px * 0.85)`}
+                size={{base: `calc(${HEIGHT}px * 0.85)`, md: `calc(${HEIGHT}px * 0.85)`}}
             />
             <ShowtimeInfoBox showtime={showtime} />
 

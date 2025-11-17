@@ -1,6 +1,5 @@
 import { Flex, Box, Grid } from "@chakra-ui/react";
 import Page from "@/components/Common/Page";
-import Sidebar from "@/components/Common/Sidebar";
 import FriendsTopBar from "@/components/Friends/FriendsTopBar";
 import { useState} from "react";
 import SearchUsers from "@/components/Friends/SearchUsers";
@@ -14,7 +13,6 @@ const FriendsPage = () => {
     return (
         <>
             <Flex>
-                <Sidebar/>
                 <FriendsTopBar
                     searchQuery={searchQuery}
                     setSearchQuery={setSearchQuery}
@@ -25,13 +23,15 @@ const FriendsPage = () => {
                     <Box
                         // bg={"green.50"}
                         minH={"calc(100vh - 64px)"}
-                        p={4}
+                        py={4}
+                        px={2}
                     >
                         <SearchUsers query={searchQuery}/>
                     </Box>
                     <Box
                         // bg={"green.50"}
-                        p={4}
+                        py={4}
+                        px={2}
                     >
                         <ReceivedRequests/>
                         <SentRequests/>

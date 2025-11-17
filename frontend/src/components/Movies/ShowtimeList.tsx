@@ -26,7 +26,7 @@ const ShowtimeList = ({ showtimes }: ShowtimeListProps) => {
                     key={s.id}
                 >
                     <Text
-                        fontSize="sm"
+                        fontSize={{base: "0.6rem", md: "sm"}}
                         whiteSpace={"nowrap"}
                         textOverflow={"ellipsis"}
                         overflow={"hidden"}

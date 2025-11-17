@@ -26,7 +26,7 @@ function Layout() {
 
   return (
     <Flex direction="column" height="100vh">
-      <Navbar />
+      {/* <Navbar /> */}
       <Flex flex="1">
         {isMobile
           ? <BottomNavBar />

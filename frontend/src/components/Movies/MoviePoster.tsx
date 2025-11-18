@@ -11,8 +11,11 @@ export default function MoviePoster({
     movie,
     size = {base: "100px", md: "225px"}
 }: MoviePosterProps) {
-    const borderRadius = {base: "3px", md: "0px"};
-    const width = {base: "66px", md: "150px"}
+    const borderRadius = {base: "3px", md: "3px"};
+    const width = {
+        base: `calc(2/3 * ${size.base})`,
+        md: `calc(2/3 * ${size.md})`
+    };
     return (
         <Box
             as="div"

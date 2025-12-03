@@ -71,7 +71,7 @@ class UitkijkScraper(BaseCinemaScraper):
         movie_cache: dict[str, MovieCreate] = {}
 
         while url:
-            response = requests.get(url)
+            response = requests.get(url, verify=False)
             response.raise_for_status()
 
             data = Response.model_validate(response.json())

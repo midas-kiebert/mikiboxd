@@ -27,6 +27,7 @@ const Page = ({ children, sidebarWidth = SIDEBAR_WIDTH, topbarHeight = TOPBAR_HE
             mt={ `${topbarHeight}px` }
             p={isMobile ? 0 : 4}
             minH={"calc(100vh - " + (topbarHeight ?? TOPBAR_HEIGHT) + "px - 1rem)" }
+            overflowX={"hidden"}
         >
             { children }
         </Box>

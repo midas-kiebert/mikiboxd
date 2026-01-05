@@ -57,7 +57,7 @@ const ShowtimesPage = ({ userId } : ShowtimesPageProps) => {
         <>
             <Page>
                 <h1>Showtimes for {user?.display_name}</h1>
-                <Showtimes showtimes={showtimes} highlight={true}/>
+                <Showtimes showtimes={showtimes}/>
                 {hasNextPage && (
                     <div ref={loadMoreRef} style={{ height: "1px" }} />
                 )}

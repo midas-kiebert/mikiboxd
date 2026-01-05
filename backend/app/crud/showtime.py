@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlmodel import Session, col, or_, select
 
+from app.core.enums import GoingStatus
 from app.models.friendship import Friendship
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.models.showtime_selection import ShowtimeSelection
@@ -141,3 +142,51 @@ def get_main_page_showtimes(
     )
     showtimes = list(session.exec(stmt).all())
     return showtimes
+
+
+def add_showtime_selection(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID,
+    going_status: GoingStatus,
+) -> Showtime:
+    showtime = session.exec(select(Showtime).where(Showtime.id == showtime_id)).one()
+
+    showtime_selection = session.get(
+        ShowtimeSelection,
+        (user_id, showtime_id),
+    )
+    if showtime_selection is not None:
+        showtime_selection.going_status = going_status
+        session.add(showtime_selection)
+        session.flush()
+        return showtime
+
+    db_obj = ShowtimeSelection(
+        user_id=user_id,
+        showtime_id=showtime_id,
+        going_status=going_status,
+    )
+    session.add(db_obj)
+    session.flush()  # So that the ID is set, and check for integrity errors
+    return showtime
+
+
+def remove_showtime_selection(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID,
+) -> Showtime:
+    showtime = session.exec(select(Showtime).where(Showtime.id == showtime_id)).one()
+
+    showtime_selection = session.get(
+        ShowtimeSelection,
+        (user_id, showtime_id),
+    )
+    if showtime_selection is not None:
+        session.delete(showtime_selection)
+        session.flush()
+
+    return showtime

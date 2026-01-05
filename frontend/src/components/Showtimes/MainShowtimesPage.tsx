@@ -44,7 +44,7 @@ const MainShowtimesPage = () => {
 
     return (
         <Page>
-            <Showtimes showtimes={showtimes} highlight={true}/>
+            <Showtimes showtimes={showtimes}/>
             {hasNextPage && (
                 <div ref={loadMoreRef} style={{ height: "1px" }} />
             )}

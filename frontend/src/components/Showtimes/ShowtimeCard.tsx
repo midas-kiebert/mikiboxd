@@ -1,4 +1,4 @@
-import type { ShowtimeLoggedIn } from "@/client";
+import type { GoingStatus, ShowtimeLoggedIn } from "@/client";
 import { Flex } from "@chakra-ui/react";
 import MoviePoster from "../Movies/MoviePoster";
 import ShowtimeInfoBox from "./ShowtimeInfoBox";
@@ -7,17 +7,17 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 
 type ShowtimeCardProps = {
     showtime: ShowtimeLoggedIn;
-    highlight?: boolean;
+    going_status: GoingStatus;
 };
 
-const ShowtimeCard = ({ showtime, highlight }: ShowtimeCardProps) => {
+const ShowtimeCard = ({ showtime, going_status }: ShowtimeCardProps) => {
     const isMobile = useIsMobile();
     const HEIGHT = isMobile ? 115 : 150;
 
     return (
         <>
         <Flex
-            bg={ highlight ? "green.200" : "gray.50"}
+            bg={ going_status == "GOING" ? "green.200" : going_status == "INTERESTED" ? "orange.200" : "gray.50"}
             borderBottom={"1px solid"}
             borderColor={"gray.200"}
             py={3}

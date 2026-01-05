@@ -4,17 +4,16 @@ import MoviesContainer from "../Movies/MoviesContainer";
 
 type ShowtimeProps = {
     showtimes: ShowtimeLoggedIn[],
-    highlight?: boolean,
 }
 
-export function Showtimes( { showtimes, highlight } : ShowtimeProps  ) {
+export function Showtimes( { showtimes } : ShowtimeProps  ) {
     return (
         <MoviesContainer>
             {
                 showtimes.map((showtime) =>
                     <ShowtimeCard
                         showtime={showtime}
-                        highlight={highlight && showtime.going}
+                        going_status={showtime.going}
                         key={showtime.id}
                     />
                 )

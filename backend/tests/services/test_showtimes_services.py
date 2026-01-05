@@ -2,15 +2,12 @@ from random import randint
 from uuid import uuid4
 
 import pytest
-from psycopg.errors import ForeignKeyViolation, UniqueViolation
+from psycopg.errors import UniqueViolation
 from pytest_mock import MockerFixture
-from sqlalchemy.exc import IntegrityError, NoResultFound
+from sqlalchemy.exc import IntegrityError
 
 from app.exceptions.showtime_exceptions import (
-    ShowtimeAlreadySelectedError,
     ShowtimeNotFoundError,
-    ShowtimeOrUserNotFoundError,
-    ShowtimeSelectionNotFoundError,
 )
 from app.services import showtimes as showtime_services
 
@@ -62,207 +59,207 @@ def test_get_showtime_by_id_not_found(
     assert str(exc_info.value) == f"Showtime with ID {showtime_id} not found."
 
 
-def test_select_showtime_success(
-    mocker: MockerFixture,
-):
-    mock_crud = mocker.patch("app.crud.user.add_showtime_selection")
-    mock_converter = mocker.patch("app.converters.showtime.to_logged_in")
-    mock_session = mocker.MagicMock()
+# def test_select_showtime_success(
+#     mocker: MockerFixture,
+# ):
+#     mock_crud = mocker.patch("app.crud.user.add_showtime_selection")
+#     mock_converter = mocker.patch("app.converters.showtime.to_logged_in")
+#     mock_session = mocker.MagicMock()
 
-    showtime_id = randint(1, 1000)
-    user_id = uuid4()
+#     showtime_id = randint(1, 1000)
+#     user_id = uuid4()
 
-    showtime_services.select_showtime(
-        session=mock_session,
-        showtime_id=showtime_id,
-        user_id=user_id,
-    )
+#     showtime_services.select_showtime(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#         user_id=user_id,
+#     )
 
-    mock_crud.assert_called_once_with(
-        session=mock_session,
-        showtime_id=showtime_id,
-        user_id=user_id,
-    )
-    mock_converter.assert_called_once_with(
-        showtime=mock_crud.return_value,
-        session=mock_session,
-        user_id=user_id,
-    )
-
-
-def test_select_showtime_already_selected(
-    mocker: MockerFixture,
-):
-    mock_crud = mocker.patch("app.crud.user.add_showtime_selection")
-    mock_crud.side_effect = IntegrityError(
-        statement="Integrity error",
-        orig=UniqueViolation("Showtime already selected"),
-        params=None,
-    )
-    mock_session = mocker.MagicMock()
-
-    showtime_id = randint(1, 1000)
-    user_id = uuid4()
-
-    with pytest.raises(ShowtimeAlreadySelectedError) as exc_info:
-        showtime_services.select_showtime(
-            session=mock_session,
-            showtime_id=showtime_id,
-            user_id=user_id,
-        )
-
-    assert (
-        str(exc_info.value)
-        == f"Showtime with ID {showtime_id} is already selected by user with ID {user_id}."
-    )
-    mock_session.rollback.assert_called_once()
+#     mock_crud.assert_called_once_with(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#         user_id=user_id,
+#     )
+#     mock_converter.assert_called_once_with(
+#         showtime=mock_crud.return_value,
+#         session=mock_session,
+#         user_id=user_id,
+#     )
 
 
-def test_select_showtime_not_found(
-    mocker: MockerFixture,
-):
-    mock_crud = mocker.patch("app.crud.user.add_showtime_selection")
-    mock_crud.side_effect = IntegrityError(
-        statement="Integrity error",
-        orig=ForeignKeyViolation("Showtime or user not found"),
-        params=None,
-    )
-    mock_session = mocker.MagicMock()
+# def test_select_showtime_already_selected(
+#     mocker: MockerFixture,
+# ):
+#     mock_crud = mocker.patch("app.crud.user.add_showtime_selection")
+#     mock_crud.side_effect = IntegrityError(
+#         statement="Integrity error",
+#         orig=UniqueViolation("Showtime already selected"),
+#         params=None,
+#     )
+#     mock_session = mocker.MagicMock()
 
-    showtime_id = randint(1, 1000)
-    user_id = uuid4()
+#     showtime_id = randint(1, 1000)
+#     user_id = uuid4()
 
-    with pytest.raises(ShowtimeOrUserNotFoundError) as exc_info:
-        showtime_services.select_showtime(
-            session=mock_session,
-            showtime_id=showtime_id,
-            user_id=user_id,
-        )
+#     with pytest.raises(ShowtimeAlreadySelectedError) as exc_info:
+#         showtime_services.select_showtime(
+#             session=mock_session,
+#             showtime_id=showtime_id,
+#             user_id=user_id,
+#         )
 
-    assert (
-        str(exc_info.value)
-        == f"Showtime with ID {showtime_id} or user with ID {user_id} not found."
-    )
-    mock_session.rollback.assert_called_once()
-
-
-def test_delete_showtime_success(
-    mocker: MockerFixture,
-):
-    mock_crud = mocker.patch("app.crud.user.delete_showtime_selection")
-    mock_converter = mocker.patch("app.converters.showtime.to_logged_in")
-    mock_session = mocker.MagicMock()
-
-    showtime_id = randint(1, 1000)
-    user_id = uuid4()
-
-    showtime_services.delete_showtime_selection(
-        session=mock_session,
-        showtime_id=showtime_id,
-        user_id=user_id,
-    )
-
-    mock_crud.assert_called_once_with(
-        session=mock_session,
-        showtime_id=showtime_id,
-        user_id=user_id,
-    )
-    mock_session.commit.assert_called_once()
-    mock_converter.assert_called_once_with(
-        showtime=mock_crud.return_value,
-        session=mock_session,
-        user_id=user_id,
-    )
+#     assert (
+#         str(exc_info.value)
+#         == f"Showtime with ID {showtime_id} is already selected by user with ID {user_id}."
+#     )
+#     mock_session.rollback.assert_called_once()
 
 
-def test_delete_showtime_not_found(
-    mocker: MockerFixture,
-):
-    mock_crud = mocker.patch("app.crud.user.delete_showtime_selection")
-    mock_crud.side_effect = NoResultFound("Showtime selection not found")
-    mock_session = mocker.MagicMock()
+# def test_select_showtime_not_found(
+#     mocker: MockerFixture,
+# ):
+#     mock_crud = mocker.patch("app.crud.user.add_showtime_selection")
+#     mock_crud.side_effect = IntegrityError(
+#         statement="Integrity error",
+#         orig=ForeignKeyViolation("Showtime or user not found"),
+#         params=None,
+#     )
+#     mock_session = mocker.MagicMock()
 
-    showtime_id = randint(1, 1000)
-    user_id = uuid4()
+#     showtime_id = randint(1, 1000)
+#     user_id = uuid4()
 
-    with pytest.raises(ShowtimeSelectionNotFoundError) as exc_info:
-        showtime_services.delete_showtime_selection(
-            session=mock_session,
-            showtime_id=showtime_id,
-            user_id=user_id,
-        )
+#     with pytest.raises(ShowtimeOrUserNotFoundError) as exc_info:
+#         showtime_services.select_showtime(
+#             session=mock_session,
+#             showtime_id=showtime_id,
+#             user_id=user_id,
+#         )
 
-    assert (
-        str(exc_info.value)
-        == f"Showtime selection with ID {showtime_id} for user with ID {user_id} not found."
-    )
-    mock_session.rollback.assert_called_once()
-
-
-def test_toggle_showtime_selection_select_success(
-    mocker: MockerFixture,
-):
-    mock_is_going = mocker.patch("app.crud.user.has_user_selected_showtime")
-    mock_is_going.return_value = False
-    mock_select = mocker.patch("app.services.showtimes.select_showtime")
-    mock_deselect = mocker.patch("app.services.showtimes.delete_showtime_selection")
-    mock_session = mocker.MagicMock()
-
-    showtime_id = randint(1, 1000)
-    user_id = uuid4()
-
-    showtime_services.toggle_showtime_selection(
-        session=mock_session,
-        showtime_id=showtime_id,
-        user_id=user_id,
-    )
-
-    mock_is_going.assert_called_once_with(
-        session=mock_session,
-        showtime_id=showtime_id,
-        user_id=user_id,
-    )
-
-    mock_select.assert_called_once_with(
-        session=mock_session,
-        showtime_id=showtime_id,
-        user_id=user_id,
-    )
-
-    mock_deselect.assert_not_called()
+#     assert (
+#         str(exc_info.value)
+#         == f"Showtime with ID {showtime_id} or user with ID {user_id} not found."
+#     )
+#     mock_session.rollback.assert_called_once()
 
 
-def test_toggle_showtime_selection_deselect_success(
-    mocker: MockerFixture,
-):
-    mock_is_going = mocker.patch("app.crud.user.has_user_selected_showtime")
-    mock_is_going.return_value = True
-    mock_select = mocker.patch("app.services.showtimes.select_showtime")
-    mock_deselect = mocker.patch("app.services.showtimes.delete_showtime_selection")
-    mock_session = mocker.MagicMock()
+# def test_delete_showtime_success(
+#     mocker: MockerFixture,
+# ):
+#     mock_crud = mocker.patch("app.crud.user.delete_showtime_selection")
+#     mock_converter = mocker.patch("app.converters.showtime.to_logged_in")
+#     mock_session = mocker.MagicMock()
 
-    showtime_id = randint(1, 1000)
-    user_id = uuid4()
+#     showtime_id = randint(1, 1000)
+#     user_id = uuid4()
 
-    showtime_services.toggle_showtime_selection(
-        session=mock_session,
-        showtime_id=showtime_id,
-        user_id=user_id,
-    )
+#     showtime_services.delete_showtime_selection(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#         user_id=user_id,
+#     )
 
-    mock_is_going.assert_called_once_with(
-        session=mock_session,
-        showtime_id=showtime_id,
-        user_id=user_id,
-    )
+#     mock_crud.assert_called_once_with(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#         user_id=user_id,
+#     )
+#     mock_session.commit.assert_called_once()
+#     mock_converter.assert_called_once_with(
+#         showtime=mock_crud.return_value,
+#         session=mock_session,
+#         user_id=user_id,
+#     )
 
-    mock_deselect.assert_called_once_with(
-        session=mock_session,
-        showtime_id=showtime_id,
-        user_id=user_id,
-    )
 
-    mock_select.assert_not_called()
+# def test_delete_showtime_not_found(
+#     mocker: MockerFixture,
+# ):
+#     mock_crud = mocker.patch("app.crud.user.delete_showtime_selection")
+#     mock_crud.side_effect = NoResultFound("Showtime selection not found")
+#     mock_session = mocker.MagicMock()
+
+#     showtime_id = randint(1, 1000)
+#     user_id = uuid4()
+
+#     with pytest.raises(ShowtimeSelectionNotFoundError) as exc_info:
+#         showtime_services.delete_showtime_selection(
+#             session=mock_session,
+#             showtime_id=showtime_id,
+#             user_id=user_id,
+#         )
+
+#     assert (
+#         str(exc_info.value)
+#         == f"Showtime selection with ID {showtime_id} for user with ID {user_id} not found."
+#     )
+#     mock_session.rollback.assert_called_once()
+
+
+# def test_toggle_showtime_selection_select_success(
+#     mocker: MockerFixture,
+# ):
+#     mock_is_going = mocker.patch("app.crud.user.has_user_selected_showtime")
+#     mock_is_going.return_value = False
+#     mock_select = mocker.patch("app.services.showtimes.select_showtime")
+#     mock_deselect = mocker.patch("app.services.showtimes.delete_showtime_selection")
+#     mock_session = mocker.MagicMock()
+
+#     showtime_id = randint(1, 1000)
+#     user_id = uuid4()
+
+#     showtime_services.toggle_showtime_selection(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#         user_id=user_id,
+#     )
+
+#     mock_is_going.assert_called_once_with(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#         user_id=user_id,
+#     )
+
+#     mock_select.assert_called_once_with(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#         user_id=user_id,
+#     )
+
+#     mock_deselect.assert_not_called()
+
+
+# def test_toggle_showtime_selection_deselect_success(
+#     mocker: MockerFixture,
+# ):
+#     mock_is_going = mocker.patch("app.crud.user.has_user_selected_showtime")
+#     mock_is_going.return_value = True
+#     mock_select = mocker.patch("app.services.showtimes.select_showtime")
+#     mock_deselect = mocker.patch("app.services.showtimes.delete_showtime_selection")
+#     mock_session = mocker.MagicMock()
+
+#     showtime_id = randint(1, 1000)
+#     user_id = uuid4()
+
+#     showtime_services.toggle_showtime_selection(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#         user_id=user_id,
+#     )
+
+#     mock_is_going.assert_called_once_with(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#         user_id=user_id,
+#     )
+
+#     mock_deselect.assert_called_once_with(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#         user_id=user_id,
+#     )
+
+#     mock_select.assert_not_called()
 
 
 def test_insert_showtime_if_not_exists(

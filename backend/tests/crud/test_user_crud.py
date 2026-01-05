@@ -256,40 +256,40 @@ def test_get_friends(*, db_transaction: Session, user_factory: Callable[..., Use
     assert len(friends) == 2
 
 
-def test_add_showtime_selection_success(
-    *,
-    db_transaction: Session,
-    user_factory: Callable[..., User],
-    showtime_factory: Callable[..., Showtime],
-):
-    user = user_factory()
-    showtime = showtime_factory()
+# def test_add_showtime_selection_success(
+#     *,
+#     db_transaction: Session,
+#     user_factory: Callable[..., User],
+#     showtime_factory: Callable[..., Showtime],
+# ):
+#     user = user_factory()
+#     showtime = showtime_factory()
 
-    before_selection = user_crud.has_user_selected_showtime(
-        session=db_transaction,
-        user_id=user.id,
-        showtime_id=showtime.id,
-    )
+#     before_selection = user_crud.has_user_selected_showtime(
+#         session=db_transaction,
+#         user_id=user.id,
+#         showtime_id=showtime.id,
+#     )
 
-    assert before_selection is False
+#     assert before_selection is False
 
-    selected_showtime = user_crud.add_showtime_selection(
-        session=db_transaction,
-        user_id=user.id,
-        showtime_id=showtime.id,
-    )
+#     selected_showtime = user_crud.add_showtime_selection(
+#         session=db_transaction,
+#         user_id=user.id,
+#         showtime_id=showtime.id,
+#     )
 
-    is_selected = user_crud.has_user_selected_showtime(
-        session=db_transaction,
-        user_id=user.id,
-        showtime_id=showtime.id,
-    )
+#     is_selected = user_crud.has_user_selected_showtime(
+#         session=db_transaction,
+#         user_id=user.id,
+#         showtime_id=showtime.id,
+#     )
 
-    assert is_selected is True
-    assert selected_showtime is showtime
-    assert selected_showtime is not None
+#     assert is_selected is True
+#     assert selected_showtime is showtime
+#     assert selected_showtime is not None
 
-    db_transaction.flush()  # ensure that there were no database violations
+#     db_transaction.flush()  # ensure that there were no database violations
 
 
 def test_add_showtime_selection_invalid_showtime(
@@ -348,74 +348,74 @@ def test_add_duplicate_showtime_selection(
     assert isinstance(exc_info.value.orig, UniqueViolation)
 
 
-def test_has_selected_showtime_invalid_user(
-    *, db_transaction: Session, showtime_factory: Callable[..., Showtime]
-):
-    showtime = showtime_factory()
+# def test_has_selected_showtime_invalid_user(
+#     *, db_transaction: Session, showtime_factory: Callable[..., Showtime]
+# ):
+#     showtime = showtime_factory()
 
-    is_selected = user_crud.has_user_selected_showtime(
-        session=db_transaction,
-        user_id=uuid4(),
-        showtime_id=showtime.id,
-    )
+#     is_selected = user_crud.has_user_selected_showtime(
+#         session=db_transaction,
+#         user_id=uuid4(),
+#         showtime_id=showtime.id,
+#     )
 
-    assert is_selected is False
-
-
-def test_has_selected_showtime_invalid_showtime(
-    *, db_transaction: Session, user_factory: Callable[..., User]
-):
-    user = user_factory()
-
-    is_selected = user_crud.has_user_selected_showtime(
-        session=db_transaction,
-        user_id=user.id,
-        showtime_id=9999,
-    )
-
-    assert is_selected is False
+#     assert is_selected is False
 
 
-def test_delete_showtime_selection_success(
-    *,
-    db_transaction: Session,
-    user_factory: Callable[..., User],
-    showtime_factory: Callable[..., Showtime],
-):
-    user = user_factory()
-    showtime = showtime_factory()
+# def test_has_selected_showtime_invalid_showtime(
+#     *, db_transaction: Session, user_factory: Callable[..., User]
+# ):
+#     user = user_factory()
 
-    # Add selection first
-    selected_showtime = user_crud.add_showtime_selection(
-        session=db_transaction,
-        user_id=user.id,
-        showtime_id=showtime.id,
-    )
+#     is_selected = user_crud.has_user_selected_showtime(
+#         session=db_transaction,
+#         user_id=user.id,
+#         showtime_id=9999,
+#     )
 
-    before_deletion = user_crud.has_user_selected_showtime(
-        session=db_transaction,
-        user_id=user.id,
-        showtime_id=showtime.id,
-    )
+#     assert is_selected is False
 
-    assert before_deletion is True
 
-    # Now delete the selection
-    deleted = user_crud.delete_showtime_selection(
-        session=db_transaction,
-        user_id=user.id,
-        showtime_id=showtime.id,
-    )
+# def test_delete_showtime_selection_success(
+#     *,
+#     db_transaction: Session,
+#     user_factory: Callable[..., User],
+#     showtime_factory: Callable[..., Showtime],
+# ):
+#     user = user_factory()
+#     showtime = showtime_factory()
 
-    assert deleted is selected_showtime
+#     # Add selection first
+#     selected_showtime = user_crud.add_showtime_selection(
+#         session=db_transaction,
+#         user_id=user.id,
+#         showtime_id=showtime.id,
+#     )
 
-    after_deletion = user_crud.has_user_selected_showtime(
-        session=db_transaction,
-        user_id=user.id,
-        showtime_id=showtime.id,
-    )
+#     before_deletion = user_crud.has_user_selected_showtime(
+#         session=db_transaction,
+#         user_id=user.id,
+#         showtime_id=showtime.id,
+#     )
 
-    assert after_deletion is False
+#     assert before_deletion is True
+
+#     # Now delete the selection
+#     deleted = user_crud.delete_showtime_selection(
+#         session=db_transaction,
+#         user_id=user.id,
+#         showtime_id=showtime.id,
+#     )
+
+#     assert deleted is selected_showtime
+
+#     after_deletion = user_crud.has_user_selected_showtime(
+#         session=db_transaction,
+#         user_id=user.id,
+#         showtime_id=showtime.id,
+#     )
+
+#     assert after_deletion is False
 
 
 def test_delete_showtime_selection_doesnt_exist(

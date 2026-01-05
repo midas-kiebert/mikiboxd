@@ -43,12 +43,8 @@ import type {
   MoviesReadMoviesResponse,
   MoviesReadMovieData,
   MoviesReadMovieResponse,
-  ShowtimesSelectShowtimeData,
-  ShowtimesSelectShowtimeResponse,
-  ShowtimesDeleteShowtimeSelectionData,
-  ShowtimesDeleteShowtimeSelectionResponse,
-  ShowtimesToggleShowtimeSelectionData,
-  ShowtimesToggleShowtimeSelectionResponse,
+  ShowtimesUpdateShowtimeSelectionData,
+  ShowtimesUpdateShowtimeSelectionResponse,
   ShowtimesGetMainPageShowtimesData,
   ShowtimesGetMainPageShowtimesResponse,
   UsersSearchUsersData,
@@ -549,65 +545,24 @@ export class MoviesService {
 
 export class ShowtimesService {
   /**
-   * Select Showtime
+   * Update Showtime Selection
    * @param data The data for the request.
    * @param data.showtimeId
+   * @param data.requestBody
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
-  public static selectShowtime(
-    data: ShowtimesSelectShowtimeData,
-  ): CancelablePromise<ShowtimesSelectShowtimeResponse> {
-    return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/showtimes/selection/{showtime_id}",
-      path: {
-        showtime_id: data.showtimeId,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Delete Showtime Selection
-   * @param data The data for the request.
-   * @param data.showtimeId
-   * @returns ShowtimeLoggedIn Successful Response
-   * @throws ApiError
-   */
-  public static deleteShowtimeSelection(
-    data: ShowtimesDeleteShowtimeSelectionData,
-  ): CancelablePromise<ShowtimesDeleteShowtimeSelectionResponse> {
-    return __request(OpenAPI, {
-      method: "DELETE",
-      url: "/api/v1/showtimes/selection/{showtime_id}",
-      path: {
-        showtime_id: data.showtimeId,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Toggle Showtime Selection
-   * @param data The data for the request.
-   * @param data.showtimeId
-   * @returns ShowtimeLoggedIn Successful Response
-   * @throws ApiError
-   */
-  public static toggleShowtimeSelection(
-    data: ShowtimesToggleShowtimeSelectionData,
-  ): CancelablePromise<ShowtimesToggleShowtimeSelectionResponse> {
+  public static updateShowtimeSelection(
+    data: ShowtimesUpdateShowtimeSelectionData,
+  ): CancelablePromise<ShowtimesUpdateShowtimeSelectionResponse> {
     return __request(OpenAPI, {
       method: "PUT",
       url: "/api/v1/showtimes/selection/{showtime_id}",
       path: {
         showtime_id: data.showtimeId,
       },
+      body: data.requestBody,
+      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },

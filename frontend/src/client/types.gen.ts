@@ -32,6 +32,8 @@ export type CityPublic = {
   id: number
 }
 
+export type GoingStatus = "GOING" | "NOT_GOING" | "INTERESTED"
+
 export type HTTPValidationError = {
   detail?: Array<ValidationError>
 }
@@ -82,7 +84,7 @@ export type ShowtimeInMovieLoggedIn = {
   id: number
   cinema: CinemaPublic
   friends_going: Array<UserPublic>
-  going: boolean
+  going: GoingStatus
 }
 
 export type ShowtimeLoggedIn = {
@@ -92,7 +94,11 @@ export type ShowtimeLoggedIn = {
   movie: MovieSummaryLoggedIn
   cinema: CinemaPublic
   friends_going: Array<UserPublic>
-  going: boolean
+  going: GoingStatus
+}
+
+export type ShowtimeSelectionUpdate = {
+  going_status: GoingStatus
 }
 
 export type Token = {
@@ -266,23 +272,12 @@ export type MoviesReadMovieData = {
 
 export type MoviesReadMovieResponse = MovieLoggedIn
 
-export type ShowtimesSelectShowtimeData = {
+export type ShowtimesUpdateShowtimeSelectionData = {
+  requestBody: ShowtimeSelectionUpdate
   showtimeId: number
 }
 
-export type ShowtimesSelectShowtimeResponse = ShowtimeLoggedIn
-
-export type ShowtimesDeleteShowtimeSelectionData = {
-  showtimeId: number
-}
-
-export type ShowtimesDeleteShowtimeSelectionResponse = ShowtimeLoggedIn
-
-export type ShowtimesToggleShowtimeSelectionData = {
-  showtimeId: number
-}
-
-export type ShowtimesToggleShowtimeSelectionResponse = ShowtimeLoggedIn
+export type ShowtimesUpdateShowtimeSelectionResponse = ShowtimeLoggedIn
 
 export type ShowtimesGetMainPageShowtimesData = {
   limit?: number

@@ -5,12 +5,13 @@ import { FaTicket } from "react-icons/fa6";
 
 import type { ShowtimeInMovieLoggedIn } from "@/client";
 
+
 type ShowtimeRowProps = {
     showtime: ShowtimeInMovieLoggedIn;
-    onToggle: () => void;
+    onOpen: (showtime: ShowtimeInMovieLoggedIn) => void;
 }
 
-export function ShowtimeRow({ showtime, onToggle }: ShowtimeRowProps) {
+export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
     // unpack showtime data
     const {datetime, cinema, friends_going, going} = showtime;
 
@@ -21,6 +22,12 @@ export function ShowtimeRow({ showtime, onToggle }: ShowtimeRowProps) {
         hour12: false,
     });
 
+    // const formattedDate = new Date(datetime).toLocaleDateString(undefined, {
+    //     year: "numeric",
+    //     month: "long",
+    //     day: "numeric",
+    // });
+
     return (
         <Flex
             align="center"
@@ -28,10 +35,11 @@ export function ShowtimeRow({ showtime, onToggle }: ShowtimeRowProps) {
             py={1}
             borderBottom="1px solid"
             borderColor="gray.200"
-            bg={going ? "green.200" : "white"}
-            _hover={{ bg: going ? "green.200" : "gray.50" }}
-            onClick={onToggle}
+            bg={going == "GOING" ? "green.300" : going == "INTERESTED" ? "orange.300" : "white"}
+            _hover={{ bg: going == "GOING" ? "green.200" : going == "INTERESTED" ? "orange.200" : "gray.50" }}
             transition="background 0.2s ease"
+            onClick={() => onOpen(showtime)}
+            cursor={"pointer"}
         >
             <Link
                 href={showtime.ticket_link ?? ""}

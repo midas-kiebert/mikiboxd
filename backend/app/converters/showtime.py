@@ -42,7 +42,7 @@ def to_logged_in(
             user_id=user_id,
         )
     ]
-    going = user_crud.has_user_selected_showtime(
+    going = user_crud.get_showtime_going_status(
         session=session,
         showtime_id=showtime.id,
         user_id=user_id,
@@ -94,7 +94,7 @@ def to_in_movie_logged_in(
             user_id=user_id,
         )
     ]
-    going = user_crud.has_user_selected_showtime(
+    going = user_crud.get_showtime_going_status(
         session=session,
         showtime_id=showtime.id,
         user_id=user_id,

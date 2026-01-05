@@ -3,6 +3,6 @@ from enum import Enum, unique
 
 @unique
 class GoingStatus(str, Enum):
-    GOING = "going"
-    NOT_GOING = "not_going"
-    INTERESTED = "interested"
+    GOING = "GOING"
+    NOT_GOING = "NOT_GOING"
+    INTERESTED = "INTERESTED"

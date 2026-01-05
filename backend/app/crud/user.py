@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlmodel import Session, col, delete, select
 
+from app.core.enums import GoingStatus
 from app.core.security import get_password_hash, verify_password
 from app.models.cinema_selection import CinemaSelection
 from app.models.friendship import FriendRequest, Friendship
@@ -361,9 +362,12 @@ def delete_showtime_selection(
     return showtime
 
 
-def has_user_selected_showtime(
-    *, session: Session, showtime_id: int, user_id: UUID
-) -> bool:
+def get_showtime_going_status(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID
+) -> GoingStatus:
     """
     Check if a user has selected a specific showtime.
 
@@ -378,9 +382,8 @@ def has_user_selected_showtime(
         ShowtimeSelection.showtime_id == showtime_id,
         ShowtimeSelection.user_id == user_id,
     )
-    result = session.exec(stmt).one_or_none() is not None
-    return result
-
+    selection = session.exec(stmt).one_or_none()
+    return selection.going_status if selection else GoingStatus.NOT_GOING
 
 def is_user_going_to_movie(
     *,

@@ -151,10 +151,7 @@ def add_showtime_selection(
     user_id: UUID,
     going_status: GoingStatus,
 ) -> Showtime:
-    showtime = session.exec(
-        select(Showtime)
-        .where(Showtime.id == showtime_id)
-    ).one()
+    showtime = session.exec(select(Showtime).where(Showtime.id == showtime_id)).one()
 
     showtime_selection = session.get(
         ShowtimeSelection,
@@ -182,11 +179,7 @@ def remove_showtime_selection(
     showtime_id: int,
     user_id: UUID,
 ) -> Showtime:
-
-    showtime = session.exec(
-        select(Showtime)
-        .where(Showtime.id == showtime_id)
-    ).one()
+    showtime = session.exec(select(Showtime).where(Showtime.id == showtime_id)).one()
 
     showtime_selection = session.get(
         ShowtimeSelection,

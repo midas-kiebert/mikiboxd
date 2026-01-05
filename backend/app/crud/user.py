@@ -363,10 +363,7 @@ def delete_showtime_selection(
 
 
 def get_showtime_going_status(
-    *,
-    session: Session,
-    showtime_id: int,
-    user_id: UUID
+    *, session: Session, showtime_id: int, user_id: UUID
 ) -> GoingStatus:
     """
     Check if a user has selected a specific showtime.
@@ -384,6 +381,7 @@ def get_showtime_going_status(
     )
     selection = session.exec(stmt).one_or_none()
     return selection.going_status if selection else GoingStatus.NOT_GOING
+
 
 def is_user_going_to_movie(
     *,

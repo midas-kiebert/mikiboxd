@@ -15,5 +15,5 @@ class ShowtimeSelection(SQLModel, table=True):
     showtime_id: int = Field(foreign_key="showtime.id", primary_key=True)
     going_status: GoingStatus = Field(
         default=GoingStatus.GOING,
-        sa_column=Column(SAEnum(GoingStatus, native_enum=False), nullable=False)
+        sa_column=Column(SAEnum(GoingStatus, native_enum=False), nullable=False),
     )

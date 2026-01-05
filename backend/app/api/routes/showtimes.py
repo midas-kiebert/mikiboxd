@@ -16,7 +16,7 @@ def update_showtime_selection(
     session: SessionDep,
     showtime_id: int,
     payload: ShowtimeSelectionUpdate,
-    current_user: CurrentUser
+    current_user: CurrentUser,
 ) -> ShowtimeLoggedIn:
     return showtimes_service.update_showtime_selection(
         session=session,

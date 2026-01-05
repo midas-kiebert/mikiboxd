@@ -138,6 +138,7 @@ def update_showtime_selection(
     )
     return showtime_logged_in
 
+
 def insert_showtime_if_not_exists(
     *,
     session: Session,

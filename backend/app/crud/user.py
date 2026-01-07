@@ -410,7 +410,7 @@ def is_user_going_to_movie(
         .order_by(
             case(
                 (ShowtimeSelection.going_status == GoingStatus.GOING, 0),
-                (ShowtimeSelection.going_status == GoingStatus.INTERESTED, 1)
+                (ShowtimeSelection.going_status == GoingStatus.INTERESTED, 1),
             )
         )
         .limit(1)
@@ -421,6 +421,7 @@ def is_user_going_to_movie(
         return GoingStatus.NOT_GOING
 
     return result.going_status
+
 
 def get_selected_cinemas_ids(
     *,

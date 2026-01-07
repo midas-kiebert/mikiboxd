@@ -41,7 +41,7 @@ def to_logged_in(
             session=session,
             showtime_id=showtime.id,
             user_id=user_id,
-            going_status=GoingStatus.GOING
+            going_status=GoingStatus.GOING,
         )
     ]
     friends_interested = [
@@ -50,7 +50,7 @@ def to_logged_in(
             session=session,
             showtime_id=showtime.id,
             user_id=user_id,
-            going_status=GoingStatus.INTERESTED
+            going_status=GoingStatus.INTERESTED,
         )
         if friend.id not in [friend.id for friend in friends_going]
     ]
@@ -105,7 +105,7 @@ def to_in_movie_logged_in(
             session=session,
             showtime_id=showtime.id,
             user_id=user_id,
-            going_status=GoingStatus.GOING
+            going_status=GoingStatus.GOING,
         )
     ]
     friends_interested = [
@@ -114,7 +114,7 @@ def to_in_movie_logged_in(
             session=session,
             showtime_id=showtime.id,
             user_id=user_id,
-            going_status=GoingStatus.INTERESTED
+            going_status=GoingStatus.INTERESTED,
         )
         if friend.id not in [friend.id for friend in friends_going]
     ]

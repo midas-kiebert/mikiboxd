@@ -19,7 +19,8 @@ jobs:
           cat <<EOF > .env
           PROJECT_NAME="MIKINO"
           ENVIRONMENT=staging
-          DOMAIN=staging.mi-ki.nl
+          # DOMAIN=staging.mi-ki.nl
+          DOMAIN=mikino.nl
           STACK_NAME=mikiboxd-staging
           SECRET_KEY=${{ secrets.SECRET_KEY }}
           FIRST_SUPERUSER=admin@example.com
@@ -33,7 +34,8 @@ jobs:
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
           TMDB_KEY=${{ secrets.TMDB_KEY }}
-          FRONTEND_HOST=https://dashboard.staging.mi-ki.nl
+          # FRONTEND_HOST=https://dashboard.staging.mi-ki.nl
+          FRONTEND_HOST=https://dashboard.mikino.nl
           POSTGRES_TESTING_SERVER=db
           POSTGRES_TESTING_POST=5432
           POSTGRES_TESTING_DB=app_test
@@ -41,7 +43,8 @@ jobs:
           POSTGRES_TESTINGPASSWORD=changethis
           DOCKER_IMAGE_BACKEND=backend
           DOCKER_IMAGE_FRONTEND=frontend
-          BACKEND_CORS_ORIGINS="https://mi-ki.nl,https://www.mi-ki.nl,https://api.mi-ki.nl,https://staging.mi-ki.nl"
+          # BACKEND_CORS_ORIGINS="https://mi-ki.nl,https://www.mi-ki.nl,https://api.mi-ki.nl,https://staging.mi-ki.nl"
+          BACKEND_CORS_ORIGINS="https://mikino.nl,https://www.mikino.nl,https://api.mikino.nl,https://staging.mikino.nl"
           SMTP_HOST=${{ secrets.SMTP_HOST }}
           SMTP_USER=${{ secrets.SMTP_USER }}
           SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}

@@ -79,6 +79,7 @@ def get_friends_for_showtime(
     session: Session,
     showtime_id: int,
     user_id: UUID,
+    going_status: GoingStatus = GoingStatus.GOING,
 ) -> list[User]:
     """
     Get a list of friends who have selected a specific showtime.
@@ -97,6 +98,7 @@ def get_friends_for_showtime(
         .where(
             Friendship.user_id == user_id,
             ShowtimeSelection.showtime_id == showtime_id,
+            ShowtimeSelection.going_status == going_status,
         )
     )
     result = session.execute(stmt)

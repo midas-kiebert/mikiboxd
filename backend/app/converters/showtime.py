@@ -5,6 +5,7 @@ from sqlmodel import Session
 from app.converters import cinema as cinema_converters
 from app.converters import movie as movie_converters
 from app.converters import user as user_converters
+from app.core.enums import GoingStatus
 from app.crud import showtime as showtime_crud
 from app.crud import user as user_crud
 from app.models.showtime import Showtime
@@ -40,7 +41,18 @@ def to_logged_in(
             session=session,
             showtime_id=showtime.id,
             user_id=user_id,
+            going_status=GoingStatus.GOING
         )
+    ]
+    friends_interested = [
+        user_converters.to_public(friend)
+        for friend in showtime_crud.get_friends_for_showtime(
+            session=session,
+            showtime_id=showtime.id,
+            user_id=user_id,
+            going_status=GoingStatus.INTERESTED
+        )
+        if friend.id not in [friend.id for friend in friends_going]
     ]
     going = user_crud.get_showtime_going_status(
         session=session,
@@ -60,6 +72,7 @@ def to_logged_in(
     return ShowtimeLoggedIn(
         **showtime.model_dump(),
         friends_going=friends_going,
+        friends_interested=friends_interested,
         going=going,
         movie=movie_summary,
         cinema=cinema,
@@ -92,7 +105,18 @@ def to_in_movie_logged_in(
             session=session,
             showtime_id=showtime.id,
             user_id=user_id,
+            going_status=GoingStatus.GOING
         )
+    ]
+    friends_interested = [
+        user_converters.to_public(friend)
+        for friend in showtime_crud.get_friends_for_showtime(
+            session=session,
+            showtime_id=showtime.id,
+            user_id=user_id,
+            going_status=GoingStatus.INTERESTED
+        )
+        if friend.id not in [friend.id for friend in friends_going]
     ]
     going = user_crud.get_showtime_going_status(
         session=session,
@@ -106,6 +130,7 @@ def to_in_movie_logged_in(
     return ShowtimeInMovieLoggedIn(
         **showtime.model_dump(),
         friends_going=friends_going,
+        friends_interested=friends_interested,
         going=going,
         cinema=cinema,
     )

@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlmodel import Session, col
 
+from app.core.enums import GoingStatus
 from app.models.cinema import Cinema
 from app.models.cinema_selection import CinemaSelection
 from app.models.friendship import Friendship
@@ -155,6 +156,7 @@ def get_friends_for_movie(
     movie_id: int,
     snapshot_time: datetime,
     current_user: UUID,
+    going_status: GoingStatus = GoingStatus.GOING,
 ) -> list[User]:
     """
     Retrieve friends who have selected a specific movie at or after a snapshot time.
@@ -181,6 +183,7 @@ def get_friends_for_movie(
             col(Showtime.movie_id) == movie_id,
             col(Showtime.datetime) >= snapshot_time,
             col(CinemaSelection.user_id) == current_user,
+            col(ShowtimeSelection.going_status) == going_status,
         )
         .distinct()
     )

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlmodel import Session, col, delete, select
+from sqlmodel import Session, case, col, delete, select
 
 from app.core.enums import GoingStatus
 from app.core.security import get_password_hash, verify_password
@@ -389,7 +389,7 @@ def is_user_going_to_movie(
     movie_id: int,
     user_id: UUID,
     snapshot_time: datetime,
-) -> bool:
+) -> GoingStatus:
     """
     Check if a user is going to a movie by checking their future showtime selections.
 
@@ -398,9 +398,6 @@ def is_user_going_to_movie(
         movie_id (int): The ID of the movie to check.
         user_id (UUID): The ID of the user to check.
         snapshot_time (datetime): The time to consider for the showtime selections.
-    Returns:
-        bool: True if the user has selected a showtime for the movie after the snapshot time,
-              otherwise False.
     """
     stmt = (
         select(ShowtimeSelection)
@@ -410,18 +407,20 @@ def is_user_going_to_movie(
             col(Showtime.movie_id) == movie_id,
             col(Showtime.datetime) >= snapshot_time,
         )
+        .order_by(
+            case(
+                (ShowtimeSelection.going_status == GoingStatus.GOING, 0),
+                (ShowtimeSelection.going_status == GoingStatus.INTERESTED, 1)
+            )
+        )
         .limit(1)
     )
-    result = session.execute(stmt)
-    is_going = result.scalars().one_or_none() is not None
+    result = session.exec(stmt).one_or_none()
 
-    if movie_id == 12493:
-        print(
-            f"Checking if user {user_id} is going to movie {movie_id}: {is_going}, snapshot time: {snapshot_time}"
-        )
+    if result is None:
+        return GoingStatus.NOT_GOING
 
-    return is_going
-
+    return result.going_status
 
 def get_selected_cinemas_ids(
     *,

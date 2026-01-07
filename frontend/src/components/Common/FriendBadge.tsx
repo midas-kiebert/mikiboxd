@@ -8,12 +8,14 @@ interface FriendBadgeProps {
     friend: UserPublic;
     variant?: "surface" | "plain";
     size?: Responsive<"xs" | "sm" | "md" | "lg">;
+    colorPalette?: string;
 }
 
 const FriendBadge = ({
     friend,
     variant="surface",
     size="sm",
+    colorPalette="gray"
 } : FriendBadgeProps) => {
     return (
         <Link
@@ -24,7 +26,7 @@ const FriendBadge = ({
         >
             <Badge
                 key={friend.id}
-                colorPalette={"gray"}
+                colorPalette={colorPalette}
                 variant={variant}
                 mr={1}
                 mb={0.5}

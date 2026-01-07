@@ -1,6 +1,6 @@
 import { Flex, Text, HStack, IconButton, Link } from "@chakra-ui/react";
 import CinemaBadge from "../Common/CinemaBadge";
-import FriendBadge from "../Common/FriendBadge";
+import FriendBadges from "../Movies/FriendBadges";
 import { FaTicket } from "react-icons/fa6";
 
 import type { ShowtimeInMovieLoggedIn } from "@/client";
@@ -13,7 +13,7 @@ type ShowtimeRowProps = {
 
 export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
     // unpack showtime data
-    const {datetime, cinema, friends_going, going} = showtime;
+    const {datetime, cinema, friends_going, friends_interested, going} = showtime;
 
     // Format time as "7:30 PM"
     const formattedTime = new Date(datetime).toLocaleTimeString(undefined, {
@@ -63,7 +63,7 @@ export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
             </HStack>
 
             {/* Middle: friend badges */}
-            <HStack px={5} flex="1" justify="left" overflowX="auto" minW={0}>
+            {/* <HStack px={5} flex="1" justify="left" overflowX="auto" minW={0}>
                 {friends_going?.length === 0 ? (
                     <Text fontSize="sm" color="gray.500" whiteSpace="nowrap">
                         No friends going
@@ -79,7 +79,12 @@ export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
                         ))}
                     </>
                 )}
-            </HStack>
+            </HStack> */}
+            <Flex flex="1">
+                <FriendBadges friends={friends_going} goingStatus="GOING"/>
+                <FriendBadges friends={friends_interested} goingStatus="INTERESTED"/>
+            </Flex>
+
         </Flex>
     );
 }

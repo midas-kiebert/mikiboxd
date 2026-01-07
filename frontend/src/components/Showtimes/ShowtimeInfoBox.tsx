@@ -12,6 +12,7 @@ type ShowtimeInfoBoxProps = {
 
 export default function ShowtimeInfoBox({ showtime } : ShowtimeInfoBoxProps) {
     const friendsGoing = showtime.friends_going;
+    const friendsInterested = showtime.friends_interested;
     const isMobile = useIsMobile();
     return (
         <Flex
@@ -31,7 +32,8 @@ export default function ShowtimeInfoBox({ showtime } : ShowtimeInfoBoxProps) {
             {/* </Flex> */}
             </Stack>
             <Flex flex="1">
-                <FriendBadges friends={friendsGoing}/>
+                <FriendBadges friends={friendsGoing} goingStatus="GOING"/>
+                <FriendBadges friends={friendsInterested} goingStatus="INTERESTED"/>
             </Flex>
         </Flex>
     )

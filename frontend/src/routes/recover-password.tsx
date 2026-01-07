@@ -3,6 +3,8 @@ import { useMutation } from "@tanstack/react-query"
 import { createFileRoute, redirect } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiMail } from "react-icons/fi"
+import { useState } from "react"
+import { useEffect } from "react"
 
 import { type ApiError, LoginService } from "@/client"
 import { Button } from "@/components/ui/button"
@@ -36,6 +38,19 @@ function RecoverPassword() {
   } = useForm<FormData>()
   const { showSuccessToast } = useCustomToast()
 
+  const COOLDOWN_SECONDS = 30
+  const [cooldown, setCooldown] = useState(0)
+
+  useEffect(() => {
+    let interval: number | undefined
+    if (cooldown > 0) {
+      interval = window.setInterval(() => {
+        setCooldown((c) => c - 1)
+      }, 1000)
+    }
+    return () => window.clearInterval(interval)
+  }, [cooldown])
+
   const recoverPassword = async (data: FormData) => {
     await LoginService.recoverPassword({
       email: data.email,
@@ -54,6 +69,7 @@ function RecoverPassword() {
   })
 
   const onSubmit: SubmitHandler<FormData> = async (data) => {
+    setCooldown(COOLDOWN_SECONDS)
     mutation.mutate(data)
   }
 
@@ -87,8 +103,13 @@ function RecoverPassword() {
           />
         </InputGroup>
       </Field>
-      <Button variant="solid" type="submit" loading={isSubmitting}>
-        Continue
+      <Button
+        variant="solid"
+        type="submit"
+        loading={isSubmitting}
+        disabled={isSubmitting || cooldown > 0}
+      >
+        {cooldown > 0 ? `Please wait ${cooldown}s` : "Send Recovery Email"}
       </Button>
     </Container>
   )

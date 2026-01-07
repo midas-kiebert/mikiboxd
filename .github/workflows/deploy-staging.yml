@@ -41,9 +41,12 @@ jobs:
           DOCKER_IMAGE_BACKEND=backend
           DOCKER_IMAGE_FRONTEND=frontend
           BACKEND_CORS_ORIGINS="https://mi-ki.nl,https://www.mi-ki.nl,https://api.mi-ki.nl,https://staging.mi-ki.nl"
-          # SMTP_HOST=${{ secrets.SMTP_HOST }}
-          # SMTP_USER=${{ secrets.SMTP_USER }}
-          # SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+          SMTP_HOST=${{ secrets.SMTP_HOST }}
+          SMTP_USER=${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+          SMTP_TLS=True
+          SMTP_SSL=False
+          SMTP_PORT=587
           # SENTRY_DSN=${{ secrets.SENTRY_DSN }}
           EOF
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging build

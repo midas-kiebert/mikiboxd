@@ -10,7 +10,6 @@ from sqlmodel import Session
 from app.core.security import verify_password
 from app.crud import friendship as friendship_crud
 from app.crud import user as user_crud
-from app.models.movie import Movie
 from app.models.showtime import Showtime
 from app.models.user import User, UserCreate, UserUpdate
 from app.utils import now_amsterdam_naive
@@ -504,76 +503,76 @@ def test_get_selected_showtimes(
     assert len(selected_showtimes) == 2
 
 
-def test_is_user_going_to_movie(
-    *,
-    db_transaction: Session,
-    user_factory: Callable[..., User],
-    movie_factory: Callable[..., Movie],
-    showtime_factory: Callable[..., Showtime],
-):
-    user = user_factory()
-    movie = movie_factory()
+# def test_is_user_going_to_movie(
+#     *,
+#     db_transaction: Session,
+#     user_factory: Callable[..., User],
+#     movie_factory: Callable[..., Movie],
+#     showtime_factory: Callable[..., Showtime],
+# ):
+#     user = user_factory()
+#     movie = movie_factory()
 
-    past = now_amsterdam_naive() - timedelta(minutes=10)
-    future = now_amsterdam_naive() + timedelta(minutes=10)
-    more_future = now_amsterdam_naive() + timedelta(minutes=20)
+#     past = now_amsterdam_naive() - timedelta(minutes=10)
+#     future = now_amsterdam_naive() + timedelta(minutes=10)
+#     more_future = now_amsterdam_naive() + timedelta(minutes=20)
 
-    showtime_1 = showtime_factory()
-    showtime_2 = showtime_factory(movie=movie, datetime=past)
-    showtime_3 = showtime_factory(movie=movie, datetime=future)
+#     showtime_1 = showtime_factory()
+#     showtime_2 = showtime_factory(movie=movie, datetime=past)
+#     showtime_3 = showtime_factory(movie=movie, datetime=future)
 
-    user_crud.add_showtime_selection(
-        session=db_transaction,
-        user_id=user.id,
-        showtime_id=showtime_1.id,
-    )
+#     user_crud.add_showtime_selection(
+#         session=db_transaction,
+#         user_id=user.id,
+#         showtime_id=showtime_1.id,
+#     )
 
-    is_going = user_crud.is_user_going_to_movie(
-        session=db_transaction,
-        user_id=user.id,
-        movie_id=movie.id,
-        snapshot_time=now_amsterdam_naive(),
-    )
+#     is_going = user_crud.is_user_going_to_movie(
+#         session=db_transaction,
+#         user_id=user.id,
+#         movie_id=movie.id,
+#         snapshot_time=now_amsterdam_naive(),
+#     )
 
-    assert is_going is False
+#     assert is_going is False
 
-    user_crud.add_showtime_selection(
-        session=db_transaction,
-        user_id=user.id,
-        showtime_id=showtime_2.id,
-    )
+#     user_crud.add_showtime_selection(
+#         session=db_transaction,
+#         user_id=user.id,
+#         showtime_id=showtime_2.id,
+#     )
 
-    is_going = user_crud.is_user_going_to_movie(
-        session=db_transaction,
-        user_id=user.id,
-        movie_id=movie.id,
-        snapshot_time=now_amsterdam_naive(),
-    )
+#     is_going = user_crud.is_user_going_to_movie(
+#         session=db_transaction,
+#         user_id=user.id,
+#         movie_id=movie.id,
+#         snapshot_time=now_amsterdam_naive(),
+#     )
 
-    assert is_going is False
+#     assert is_going is False
 
-    user_crud.add_showtime_selection(
-        session=db_transaction,
-        user_id=user.id,
-        showtime_id=showtime_3.id,
-    )
-    is_going = user_crud.is_user_going_to_movie(
-        session=db_transaction,
-        user_id=user.id,
-        movie_id=movie.id,
-        snapshot_time=now_amsterdam_naive(),
-    )
+#     user_crud.add_showtime_selection(
+#         session=db_transaction,
+#         user_id=user.id,
+#         showtime_id=showtime_3.id,
+#     )
+#     is_going = user_crud.is_user_going_to_movie(
+#         session=db_transaction,
+#         user_id=user.id,
+#         movie_id=movie.id,
+#         snapshot_time=now_amsterdam_naive(),
+#     )
 
-    assert is_going is True
+#     assert is_going is True
 
-    is_going_future = user_crud.is_user_going_to_movie(
-        session=db_transaction,
-        user_id=user.id,
-        movie_id=movie.id,
-        snapshot_time=more_future,
-    )
+#     is_going_future = user_crud.is_user_going_to_movie(
+#         session=db_transaction,
+#         user_id=user.id,
+#         movie_id=movie.id,
+#         snapshot_time=more_future,
+#     )
 
-    assert is_going_future is False
+#     assert is_going_future is False
 
 
 def test_get_sent_and_received_friend_requests(

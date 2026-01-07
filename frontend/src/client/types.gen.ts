@@ -70,7 +70,8 @@ export type MovieSummaryLoggedIn = {
   last_showtime_datetime: string | null
   total_showtimes: number
   friends_going: Array<UserPublic>
-  going: boolean
+  friends_interested: Array<UserPublic>
+  going: GoingStatus
 }
 
 export type NewPassword = {
@@ -84,6 +85,7 @@ export type ShowtimeInMovieLoggedIn = {
   id: number
   cinema: CinemaPublic
   friends_going: Array<UserPublic>
+  friends_interested: Array<UserPublic>
   going: GoingStatus
 }
 
@@ -94,6 +96,7 @@ export type ShowtimeLoggedIn = {
   movie: MovieSummaryLoggedIn
   cinema: CinemaPublic
   friends_going: Array<UserPublic>
+  friends_interested: Array<UserPublic>
   going: GoingStatus
 }
 

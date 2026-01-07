@@ -12,12 +12,20 @@ type MovieInfoBoxProps = {
     movie: MovieSummaryLoggedIn;
 };
 
+const goingBorderMap: Record<string, string> = {
+    GOING: "green.500",
+    INTERESTED: "orange.500",
+    NOT_GOING: "gray.300",
+  };
+
+
 export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
     const showtimes = movie.showtimes || [];
     const cinemas = movie.cinemas || [];
     const lastShowtime = movie.last_showtime_datetime || null;
     const total_showtimes = movie.total_showtimes || 0;
     const friends_going = movie.friends_going || [];
+    const friends_interested = movie.friends_interested || [];
     const original_title = movie.original_title || null;
     return (
         <Flex
@@ -35,7 +43,7 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
             <Separator
                 mt={0.5}
                 mb={2}
-                borderColor={movie.going ? "green.500" : "gray.300"}
+                borderColor={goingBorderMap[movie.going]}
             />
             <Flex flex="1">
                 <ShowtimeInfo
@@ -46,9 +54,10 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
                 <Separator
                     orientation={"vertical"}
                     mx={2}
-                    borderColor={movie.going ? "green.500" : "gray.300"}
+                    borderColor={goingBorderMap[movie.going]}
                 />
-                <FriendBadges friends={friends_going}/>
+                <FriendBadges friends={friends_going} goingStatus="GOING"/>
+                <FriendBadges friends={friends_interested} goingStatus="INTERESTED"/>
             </Flex>
         </Flex>
     )

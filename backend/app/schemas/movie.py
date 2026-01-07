@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from app.core.enums import GoingStatus
 from app.models.movie import MovieBase
 
 if TYPE_CHECKING:
@@ -20,7 +21,8 @@ class MovieSummaryLoggedIn(MovieBase):
     last_showtime_datetime: datetime | None
     total_showtimes: int
     friends_going: list["UserPublic"]
-    going: bool
+    friends_interested: list["UserPublic"]
+    going: GoingStatus
     original_title: str | None = None
     top250: int | None = None
     release_year: int | None = None

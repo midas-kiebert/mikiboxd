@@ -6,6 +6,7 @@ from sqlmodel import Session
 from app.converters import cinema as cinema_converters
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
+from app.core.enums import GoingStatus
 from app.crud import movie as movies_crud
 from app.crud import user as user_crud
 from app.models.movie import Movie
@@ -77,7 +78,19 @@ def to_summary_logged_in(
             movie_id=movie.id,
             snapshot_time=snapshot_time,
             current_user=current_user,
+            going_status=GoingStatus.GOING,
         )
+    ]
+    friends_interested = [
+        user_converters.to_public(friend)
+        for friend in movies_crud.get_friends_for_movie(
+            session=session,
+            movie_id=movie.id,
+            snapshot_time=snapshot_time,
+            current_user=current_user,
+            going_status=GoingStatus.INTERESTED,
+        )
+        if friend.id not in [friend.id for friend in friends_going]
     ]
     going = user_crud.is_user_going_to_movie(
         session=session,
@@ -93,6 +106,7 @@ def to_summary_logged_in(
         last_showtime_datetime=last_showtime_datetime,
         total_showtimes=total_showtimes,
         friends_going=friends_going,
+        friends_interested=friends_interested,
         going=going,
     )
 

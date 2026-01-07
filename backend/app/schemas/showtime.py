@@ -27,6 +27,7 @@ class ShowtimeLoggedIn(ShowtimeBase):
     movie: "MovieSummaryLoggedIn"
     cinema: "CinemaPublic"
     friends_going: Sequence["UserPublic"]
+    friends_interested: Sequence["UserPublic"]
     going: GoingStatus
 
 
@@ -35,4 +36,5 @@ class ShowtimeInMovieLoggedIn(ShowtimeBase):
     id: int
     cinema: "CinemaPublic"
     friends_going: Sequence["UserPublic"]
+    friends_interested: Sequence["UserPublic"]
     going: GoingStatus

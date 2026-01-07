@@ -109,7 +109,7 @@ function RecoverPassword() {
         loading={isSubmitting}
         disabled={isSubmitting || cooldown > 0}
       >
-        {cooldown > 0 ? `Wait ${cooldown}s` : "Send Recovery Email"}
+        {cooldown > 0 ? `Please wait ${cooldown}s` : "Send Recovery Email"}
       </Button>
     </Container>
   )

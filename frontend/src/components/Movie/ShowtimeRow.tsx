@@ -61,30 +61,10 @@ export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
 
                 <CinemaBadge cinema={cinema} />
             </HStack>
-
-            {/* Middle: friend badges */}
-            {/* <HStack px={5} flex="1" justify="left" overflowX="auto" minW={0}>
-                {friends_going?.length === 0 ? (
-                    <Text fontSize="sm" color="gray.500" whiteSpace="nowrap">
-                        No friends going
-                    </Text>
-                ) : (
-                    <>
-                        <Text>Friends Going:</Text>
-                        {friends_going?.map((friend) => (
-                            <FriendBadge
-                                key={friend.id}
-                                friend={friend}
-                            />
-                        ))}
-                    </>
-                )}
-            </HStack> */}
             <Flex flex="1">
                 <FriendBadges friends={friends_going} goingStatus="GOING"/>
                 <FriendBadges friends={friends_interested} goingStatus="INTERESTED"/>
             </Flex>
-
         </Flex>
     );
 }

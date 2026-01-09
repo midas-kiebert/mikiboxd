@@ -1,4 +1,3 @@
-from datetime import datetime
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
@@ -10,6 +9,7 @@ from app.crud import movie as movies_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
 from app.exceptions.movie_exceptions import MovieNotFoundError
+from app.inputs.movie import Filters
 from app.models.movie import MovieCreate, MovieUpdate
 from app.schemas.movie import MovieLoggedIn, MovieSummaryLoggedIn
 
@@ -21,51 +21,32 @@ def get_movie_summaries(
     limit: int,
     offset: int,
     showtime_limit: int,
-    query: str,
-    watchlist_only: bool,
-    snapshot_time: datetime,
+    filters: Filters,
 ) -> list[MovieSummaryLoggedIn]:
-    """
-    Get a list of movie summaries for a logged-in user.
-
-    Parameters:
-        session (Session): Database session.
-        user_id (UUID): ID of the user requesting the movies.
-        limit (int): Maximum number of movies to return.
-        offset (int): Offset for pagination.
-        showtime_limit (int): Limit for showtimes.
-        query (str): Search query for filtering movies.
-        watchlist_only (bool): If True, only return movies in the user's watchlist.
-        snapshot_time (datetime): Time to snapshot the movie data.
-    Returns:
-        list[MovieSummaryLoggedIn]: List of movie summaries.
-    """
-    print("Snapshot time in service:", snapshot_time)
     letterboxd_username = users_crud.get_letterboxd_username(
         session=session,
         user_id=user_id,
     )
+    if filters.selected_cinema_ids is None:
+        filters.selected_cinema_ids = users_crud.get_selected_cinemas_ids(
+            session=session,
+            user_id=user_id,
+        )
+
     movies_db = movies_crud.get_movies(
         session=session,
         letterboxd_username=letterboxd_username,
         limit=limit,
         offset=offset,
-        query=query,
-        watchlist_only=watchlist_only,
-        snapshot_time=snapshot_time,
-        current_user_id=user_id,
-    )
-    users_crud.get_selected_cinemas_ids(
-        session=session,
-        user_id=user_id,
+        filters=filters,
     )
     movies = [
         movie_converters.to_summary_logged_in(
             movie=movie,
             session=session,
-            snapshot_time=snapshot_time,
             current_user=user_id,
             showtime_limit=showtime_limit,
+            filters=filters,
         )
         for movie in movies_db
     ]
@@ -73,11 +54,7 @@ def get_movie_summaries(
 
 
 def get_movie_by_id(
-    *,
-    session: Session,
-    movie_id: int,
-    current_user: UUID,
-    snapshot_time: datetime,
+    *, session: Session, movie_id: int, current_user: UUID, filters: Filters
 ) -> MovieLoggedIn:
     """
     Get a movie by its ID for a logged-in user.
@@ -99,10 +76,7 @@ def get_movie_by_id(
     if movie_db is None:
         raise MovieNotFoundError(movie_id)
     movie_public = movie_converters.to_logged_in(
-        movie=movie_db,
-        session=session,
-        snapshot_time=snapshot_time,
-        current_user=current_user,
+        movie=movie_db, session=session, current_user=current_user, filters=filters
     )
     return movie_public
 

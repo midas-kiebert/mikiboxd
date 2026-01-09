@@ -8,6 +8,13 @@ import { MeService, MeSetCinemaSelectionsData } from "@/client";
 import { useDebouncedCallback } from "use-debounce";
 import type { CinemaPublic, CityPublic } from "@/client";
 import CityCinemas from "./CityCinemas";
+import { DayFilter } from "../Common/DayFilter";
+import { Box, Grid } from "@chakra-ui/react";
+
+type FiltersProps = {
+    selectedDays: Date[];
+    handleDaysChange: (days: Date[]) => void;
+}
 
 
 function useDebouncedCinemaMutation(delay = 500) {
@@ -58,7 +65,7 @@ function groupCinemasByCity(cinemas: CinemaPublic[]) {
 }
 
 
-const Filters = () => {
+const Filters = ({ selectedDays, handleDaysChange } : FiltersProps) => {
     const { data: cinemas } = useFetchCinemas();
     const groupedCinemas = groupCinemasByCity(cinemas || []);
     const { data: selectedCinemaIds } = useFetchSelectedCinemas();
@@ -127,18 +134,31 @@ const Filters = () => {
                             </Dialog.CloseTrigger>
                         </Dialog.Header>
                         <Dialog.Body>
-                            {
-                                Object.values(groupedCinemas).map(({ city, cinemasForCity }) => (
-                                    <CityCinemas
-                                        key={city.id}
-                                        city={city}
-                                        cinemasForCity={cinemasForCity}
-                                        selectedCinemas={selectedCinemas}
-                                        handleToggle={handleToggle}
-                                        handleToggleCity={handleToggleCity}
+                            <Grid
+                                templateColumns={"40% 40%"}
+                                gap={20}
+                            >
+                                <Box>
+                                    {
+                                        Object.values(groupedCinemas).map(({ city, cinemasForCity }) => (
+                                            <CityCinemas
+                                                key={city.id}
+                                                city={city}
+                                                cinemasForCity={cinemasForCity}
+                                                selectedCinemas={selectedCinemas}
+                                                handleToggle={handleToggle}
+                                                handleToggleCity={handleToggleCity}
+                                            />
+                                        ))
+                                    }
+                                </Box>
+                                <Box>
+                                    <DayFilter
+                                        selectedDays={selectedDays}
+                                        onChange={handleDaysChange}
                                     />
-                                ))
-                            }
+                                </Box>
+                            </Grid>
                         </Dialog.Body>
                     </Dialog.Content>
                 </Dialog.Positioner>

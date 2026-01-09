@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
@@ -12,6 +12,7 @@ from app.exceptions.base import AppError
 from app.exceptions.showtime_exceptions import (
     ShowtimeNotFoundError,
 )
+from app.inputs.movie import Filters
 from app.models.showtime import ShowtimeCreate
 from app.schemas.showtime import ShowtimeLoggedIn
 
@@ -21,6 +22,7 @@ def get_showtime_by_id(
     session: Session,
     showtime_id: int,
     current_user: UUID,
+    filters: Filters,
 ) -> ShowtimeLoggedIn:
     """
     Get a showtime by its ID for a logged-in user.
@@ -41,58 +43,9 @@ def get_showtime_by_id(
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
     showtime_public = showtime_converters.to_logged_in(
-        showtime=showtime,
-        session=session,
-        user_id=current_user,
+        showtime=showtime, session=session, user_id=current_user, filters=filters
     )
     return showtime_public
-
-
-# def select_showtime(
-#     *,
-#     session: Session,
-#     showtime_id: int,
-#     user_id: UUID,
-# ) -> ShowtimeLoggedIn:
-#     """
-#     Select a showtime for a user.
-
-#     Parameters:
-#         session (Session): Database session.
-#         showtime_id (int): ID of the showtime to select.
-#         user_id (UUID): ID of the user selecting the showtime.
-#     Returns:
-#         ShowtimeLoggedIn: The showtime details for the logged-in user.
-#     Raises:
-#         ShowtimeAlreadySelectedError: If the showtime is already selected by the user.
-#         ShowtimeOrUserNotFoundError: If the showtime or user does not exist.
-#         AppError: For other unexpected errors.
-#     """
-#     try:
-#         showtime = users_crud.add_showtime_selection(
-#             session=session,
-#             showtime_id=showtime_id,
-#             user_id=user_id,
-#         )
-#         session.commit()
-#     except IntegrityError as e:
-#         session.rollback()
-#         if isinstance(e.orig, UniqueViolation):
-#             raise ShowtimeAlreadySelectedError(showtime_id, user_id) from e
-#         elif isinstance(e.orig, ForeignKeyViolation):
-#             raise ShowtimeOrUserNotFoundError(showtime_id, user_id) from e
-#         else:
-#             raise AppError from e
-#     except Exception as e:
-#         session.rollback()
-#         raise AppError from e
-
-#     showtime_logged_in = showtime_converters.to_logged_in(
-#         showtime=showtime,
-#         session=session,
-#         user_id=user_id,
-#     )
-#     return showtime_logged_in
 
 
 def update_showtime_selection(
@@ -101,6 +54,7 @@ def update_showtime_selection(
     showtime_id: int,
     user_id: UUID,
     going_status: GoingStatus,
+    filters: Filters,
 ) -> ShowtimeLoggedIn:
     if going_status == GoingStatus.NOT_GOING:
         try:
@@ -132,9 +86,7 @@ def update_showtime_selection(
             session.rollback()
             raise AppError from e
     showtime_logged_in = showtime_converters.to_logged_in(
-        showtime=showtime,
-        session=session,
-        user_id=user_id,
+        showtime=showtime, session=session, user_id=user_id, filters=filters
     )
     return showtime_logged_in
 
@@ -200,22 +152,20 @@ def get_main_page_showtimes(
     *,
     session: Session,
     current_user_id: UUID,
-    snapshot_time: datetime,
     limit: int,
     offset: int,
+    filters: Filters,
 ) -> list[ShowtimeLoggedIn]:
     showtimes = showtimes_crud.get_main_page_showtimes(
         session=session,
         user_id=current_user_id,
-        snapshot_time=snapshot_time,
         limit=limit,
         offset=offset,
+        filters=filters,
     )
     return [
         showtime_converters.to_logged_in(
-            showtime=showtime,
-            session=session,
-            user_id=current_user_id,
+            showtime=showtime, session=session, user_id=current_user_id, filters=filters
         )
         for showtime in showtimes
     ]

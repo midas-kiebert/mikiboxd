@@ -1,4 +1,3 @@
-from datetime import datetime
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
@@ -12,6 +11,7 @@ from app.crud import friendship as friendship_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
 from app.exceptions.user_exceptions import EmailAlreadyExists, NotAFriend, UserNotFound
+from app.inputs.movie import Filters
 from app.models.user import UserCreate, UserRegister
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.user import UserPublic, UserWithFriendStatus
@@ -79,9 +79,9 @@ def get_selected_showtimes(
     session: Session,
     current_user_id: UUID,
     user_id: UUID,
-    snapshot_time: datetime,
     limit: int,
     offset: int,
+    filters: Filters,
 ) -> list[ShowtimeLoggedIn]:
     """
     Get the showtimes selected by a user.
@@ -104,15 +104,13 @@ def get_selected_showtimes(
     showtimes = users_crud.get_selected_showtimes(
         session=session,
         user_id=user_id,
-        snapshot_time=snapshot_time,
+        snapshot_time=filters.snapshot_time,
         limit=limit,
         offset=offset,
     )
     return [
         showtime_converters.to_logged_in(
-            showtime=showtime,
-            session=session,
-            user_id=current_user_id,
+            showtime=showtime, session=session, user_id=current_user_id, filters=filters
         )
         for showtime in showtimes
     ]

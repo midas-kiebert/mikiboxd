@@ -1,9 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from uuid import UUID
 
 from sqlmodel import Session, col, or_, select
 
 from app.core.enums import GoingStatus
+from app.inputs.movie import Filters
 from app.models.friendship import Friendship
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.models.showtime_selection import ShowtimeSelection
@@ -107,22 +108,8 @@ def get_friends_for_showtime(
 
 
 def get_main_page_showtimes(
-    *,
-    session: Session,
-    user_id: UUID,
-    snapshot_time: datetime,
-    limit: int,
-    offset: int,
+    *, session: Session, user_id: UUID, limit: int, offset: int, filters: Filters
 ) -> list[Showtime]:
-    """
-    Get a list of showtimes that a user and their friends have selected.
-
-    Parameters:
-        session (Session): The database session.
-        user_id (UUID): The ID of the user.
-    Returns:
-        list[Showtime]
-    """
     friends_subq = select(Friendship.friend_id).where(Friendship.user_id == user_id)
 
     stmt = (
@@ -136,7 +123,7 @@ def get_main_page_showtimes(
                 col(ShowtimeSelection.user_id).in_(friends_subq),
                 ShowtimeSelection.user_id == user_id,
             ),
-            Showtime.datetime >= snapshot_time,
+            Showtime.datetime >= filters.snapshot_time,
         )
         .order_by(col(Showtime.datetime))
         .limit(limit)

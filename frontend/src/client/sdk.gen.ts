@@ -490,9 +490,12 @@ export class MoviesService {
    * @param data.offset
    * @param data.limit
    * @param data.showtimeLimit
-   * @param data.snapshotTime
    * @param data.query
+   * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
+   * @param data.days
+   * @param data.timeRanges
    * @returns MovieSummaryLoggedIn Successful Response
    * @throws ApiError
    */
@@ -506,9 +509,12 @@ export class MoviesService {
         offset: data.offset,
         limit: data.limit,
         showtime_limit: data.showtimeLimit,
-        snapshot_time: data.snapshotTime,
         query: data.query,
+        snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        selected_cinema_ids: data.selectedCinemaIds,
+        days: data.days,
+        time_ranges: data.timeRanges,
       },
       errors: {
         422: "Validation Error",
@@ -520,7 +526,12 @@ export class MoviesService {
    * Read Movie
    * @param data The data for the request.
    * @param data.id
-   * @param data.snapshotTime
+   * @param data.query
+   * @param data.snapshotTime Only show showtimes after this moment
+   * @param data.watchlistOnly
+   * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
+   * @param data.days
+   * @param data.timeRanges
    * @returns MovieLoggedIn Successful Response
    * @throws ApiError
    */
@@ -534,7 +545,12 @@ export class MoviesService {
         id: data.id,
       },
       query: {
+        query: data.query,
         snapshot_time: data.snapshotTime,
+        watchlist_only: data.watchlistOnly,
+        selected_cinema_ids: data.selectedCinemaIds,
+        days: data.days,
+        time_ranges: data.timeRanges,
       },
       errors: {
         422: "Validation Error",
@@ -549,6 +565,12 @@ export class ShowtimesService {
    * @param data The data for the request.
    * @param data.showtimeId
    * @param data.requestBody
+   * @param data.query
+   * @param data.snapshotTime Only show showtimes after this moment
+   * @param data.watchlistOnly
+   * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
+   * @param data.days
+   * @param data.timeRanges
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -561,6 +583,14 @@ export class ShowtimesService {
       path: {
         showtime_id: data.showtimeId,
       },
+      query: {
+        query: data.query,
+        snapshot_time: data.snapshotTime,
+        watchlist_only: data.watchlistOnly,
+        selected_cinema_ids: data.selectedCinemaIds,
+        days: data.days,
+        time_ranges: data.timeRanges,
+      },
       body: data.requestBody,
       mediaType: "application/json",
       errors: {
@@ -572,9 +602,14 @@ export class ShowtimesService {
   /**
    * Get Main Page Showtimes
    * @param data The data for the request.
-   * @param data.snapshotTime
    * @param data.limit
    * @param data.offset
+   * @param data.query
+   * @param data.snapshotTime Only show showtimes after this moment
+   * @param data.watchlistOnly
+   * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
+   * @param data.days
+   * @param data.timeRanges
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -585,9 +620,14 @@ export class ShowtimesService {
       method: "GET",
       url: "/api/v1/showtimes/",
       query: {
-        snapshot_time: data.snapshotTime,
         limit: data.limit,
         offset: data.offset,
+        query: data.query,
+        snapshot_time: data.snapshotTime,
+        watchlist_only: data.watchlistOnly,
+        selected_cinema_ids: data.selectedCinemaIds,
+        days: data.days,
+        time_ranges: data.timeRanges,
       },
       errors: {
         422: "Validation Error",
@@ -671,9 +711,14 @@ export class UsersService {
    * Get User Selected Showtimes
    * @param data The data for the request.
    * @param data.userId
-   * @param data.snapshotTime
    * @param data.limit
    * @param data.offset
+   * @param data.query
+   * @param data.snapshotTime Only show showtimes after this moment
+   * @param data.watchlistOnly
+   * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
+   * @param data.days
+   * @param data.timeRanges
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -687,9 +732,14 @@ export class UsersService {
         user_id: data.userId,
       },
       query: {
-        snapshot_time: data.snapshotTime,
         limit: data.limit,
         offset: data.offset,
+        query: data.query,
+        snapshot_time: data.snapshotTime,
+        watchlist_only: data.watchlistOnly,
+        selected_cinema_ids: data.selectedCinemaIds,
+        days: data.days,
+        time_ranges: data.timeRanges,
       },
       errors: {
         422: "Validation Error",

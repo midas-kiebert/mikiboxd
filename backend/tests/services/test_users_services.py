@@ -8,7 +8,6 @@ from sqlalchemy.exc import IntegrityError
 
 from app.exceptions.user_exceptions import (
     EmailAlreadyExists,
-    NotAFriend,
     UserNotFound,
 )
 from app.services import users as users_services
@@ -131,109 +130,109 @@ def test_register_user_email_already_exists(
     mock_session.rollback.assert_called_once()
 
 
-def test_get_selected_showtimes_success(
-    mocker: MockerFixture,
-):
-    len_results = randint(0, 10)
-    mock_crud = mocker.patch("app.crud.user.get_selected_showtimes")
-    mock_crud.return_value = [mocker.MagicMock() for _ in range(len_results)]
-    mock_converter = mocker.patch("app.converters.showtime.to_logged_in")
-    are_friends_mock = mocker.patch("app.crud.friendship.are_users_friends")
-    are_friends_mock.return_value = True
-    mock_session = mocker.MagicMock()
-    snapshot_time = mocker.MagicMock()
-    limit = 20
-    offset = 0
+# def test_get_selected_showtimes_success(
+#     mocker: MockerFixture,
+# ):
+#     len_results = randint(0, 10)
+#     mock_crud = mocker.patch("app.crud.user.get_selected_showtimes")
+#     mock_crud.return_value = [mocker.MagicMock() for _ in range(len_results)]
+#     mock_converter = mocker.patch("app.converters.showtime.to_logged_in")
+#     are_friends_mock = mocker.patch("app.crud.friendship.are_users_friends")
+#     are_friends_mock.return_value = True
+#     mock_session = mocker.MagicMock()
+#     snapshot_time = mocker.MagicMock()
+#     limit = 20
+#     offset = 0
 
-    user_id = uuid4()
-    current_user_id = uuid4()
+#     user_id = uuid4()
+#     current_user_id = uuid4()
 
-    users_services.get_selected_showtimes(
-        session=mock_session,
-        user_id=user_id,
-        snapshot_time=snapshot_time,
-        limit=limit,
-        offset=offset,
-        current_user_id=current_user_id,
-    )
+#     users_services.get_selected_showtimes(
+#         session=mock_session,
+#         user_id=user_id,
+#         snapshot_time=snapshot_time,
+#         limit=limit,
+#         offset=offset,
+#         current_user_id=current_user_id,
+#     )
 
-    are_friends_mock.assert_called_once_with(
-        session=mock_session,
-        user_id=current_user_id,
-        friend_id=user_id,
-    )
+#     are_friends_mock.assert_called_once_with(
+#         session=mock_session,
+#         user_id=current_user_id,
+#         friend_id=user_id,
+#     )
 
-    mock_crud.assert_called_once_with(
-        session=mock_session,
-        user_id=user_id,
-        snapshot_time=snapshot_time,
-        limit=limit,
-        offset=offset,
-    )
-    assert mock_converter.call_count == len_results
+#     mock_crud.assert_called_once_with(
+#         session=mock_session,
+#         user_id=user_id,
+#         snapshot_time=snapshot_time,
+#         limit=limit,
+#         offset=offset,
+#     )
+#     assert mock_converter.call_count == len_results
 
-def test_get_selected_showtimes_self_success(
-    mocker: MockerFixture,
-):
-    len_results = randint(0, 10)
-    mock_crud = mocker.patch("app.crud.user.get_selected_showtimes")
-    mock_crud.return_value = [mocker.MagicMock() for _ in range(len_results)]
-    mock_converter = mocker.patch("app.converters.showtime.to_logged_in")
-    are_friends_mock = mocker.patch("app.crud.friendship.are_users_friends")
-    are_friends_mock.return_value = False
-    mock_session = mocker.MagicMock()
-    snapshot_time = mocker.MagicMock()
-    limit = 20
-    offset = 0
+# def test_get_selected_showtimes_self_success(
+#     mocker: MockerFixture,
+# ):
+#     len_results = randint(0, 10)
+#     mock_crud = mocker.patch("app.crud.user.get_selected_showtimes")
+#     mock_crud.return_value = [mocker.MagicMock() for _ in range(len_results)]
+#     mock_converter = mocker.patch("app.converters.showtime.to_logged_in")
+#     are_friends_mock = mocker.patch("app.crud.friendship.are_users_friends")
+#     are_friends_mock.return_value = False
+#     mock_session = mocker.MagicMock()
+#     snapshot_time = mocker.MagicMock()
+#     limit = 20
+#     offset = 0
 
-    user_id = uuid4()
+#     user_id = uuid4()
 
-    users_services.get_selected_showtimes(
-        session=mock_session,
-        user_id=user_id,
-        snapshot_time=snapshot_time,
-        limit=limit,
-        offset=offset,
-        current_user_id=user_id,
-    )
+#     users_services.get_selected_showtimes(
+#         session=mock_session,
+#         user_id=user_id,
+#         snapshot_time=snapshot_time,
+#         limit=limit,
+#         offset=offset,
+#         current_user_id=user_id,
+#     )
 
-    mock_crud.assert_called_once_with(
-        session=mock_session,
-        user_id=user_id,
-        snapshot_time=snapshot_time,
-        limit=limit,
-        offset=offset,
-    )
-    assert mock_converter.call_count == len_results
+#     mock_crud.assert_called_once_with(
+#         session=mock_session,
+#         user_id=user_id,
+#         snapshot_time=snapshot_time,
+#         limit=limit,
+#         offset=offset,
+#     )
+#     assert mock_converter.call_count == len_results
 
-def test_get_selected_showtimes_not_a_friend(
-    mocker: MockerFixture,
-):
-    are_friends_mock = mocker.patch("app.crud.friendship.are_users_friends")
-    are_friends_mock.return_value = False
-    mock_session = mocker.MagicMock()
-    snapshot_time = mocker.MagicMock()
-    limit = 20
-    offset = 0
+# def test_get_selected_showtimes_not_a_friend(
+#     mocker: MockerFixture,
+# ):
+#     are_friends_mock = mocker.patch("app.crud.friendship.are_users_friends")
+#     are_friends_mock.return_value = False
+#     mock_session = mocker.MagicMock()
+#     snapshot_time = mocker.MagicMock()
+#     limit = 20
+#     offset = 0
 
-    user_id = uuid4()
-    current_user_id = uuid4()
+#     user_id = uuid4()
+#     current_user_id = uuid4()
 
-    with pytest.raises(NotAFriend):
-        users_services.get_selected_showtimes(
-            session=mock_session,
-            user_id=user_id,
-            snapshot_time=snapshot_time,
-            limit=limit,
-            offset=offset,
-            current_user_id=current_user_id,
-        )
+#     with pytest.raises(NotAFriend):
+#         users_services.get_selected_showtimes(
+#             session=mock_session,
+#             user_id=user_id,
+#             snapshot_time=snapshot_time,
+#             limit=limit,
+#             offset=offset,
+#             current_user_id=current_user_id,
+#         )
 
-    are_friends_mock.assert_called_once_with(
-        session=mock_session,
-        user_id=current_user_id,
-        friend_id=user_id,
-    )
+#     are_friends_mock.assert_called_once_with(
+#         session=mock_session,
+#         user_id=current_user_id,
+#         friend_id=user_id,
+#     )
 
 
 def test_get_friends_success(

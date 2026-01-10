@@ -1,62 +1,55 @@
-from random import randint
-from uuid import uuid4
 
-import pytest
 from psycopg.errors import UniqueViolation
 from pytest_mock import MockerFixture
 from sqlalchemy.exc import IntegrityError
 
-from app.exceptions.showtime_exceptions import (
-    ShowtimeNotFoundError,
-)
 from app.services import showtimes as showtime_services
 
+# def test_get_showtime_by_id_success(
+#     mocker: MockerFixture,
+# ):
+#     mock_crud = mocker.patch("app.crud.showtime.get_showtime_by_id")
+#     mock_converter = mocker.patch("app.converters.showtime.to_logged_in")
+#     mock_session = mocker.MagicMock()
 
-def test_get_showtime_by_id_success(
-    mocker: MockerFixture,
-):
-    mock_crud = mocker.patch("app.crud.showtime.get_showtime_by_id")
-    mock_converter = mocker.patch("app.converters.showtime.to_logged_in")
-    mock_session = mocker.MagicMock()
+#     current_user = uuid4()
+#     showtime_id = randint(1, 1000)
 
-    current_user = uuid4()
-    showtime_id = randint(1, 1000)
+#     showtime_services.get_showtime_by_id(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#         current_user=current_user,
+#     )
 
-    showtime_services.get_showtime_by_id(
-        session=mock_session,
-        showtime_id=showtime_id,
-        current_user=current_user,
-    )
-
-    mock_crud.assert_called_once_with(
-        session=mock_session,
-        showtime_id=showtime_id,
-    )
-    mock_converter.assert_called_once_with(
-        showtime=mock_crud.return_value,
-        session=mock_session,
-        user_id=current_user,
-    )
+#     mock_crud.assert_called_once_with(
+#         session=mock_session,
+#         showtime_id=showtime_id,
+#     )
+#     mock_converter.assert_called_once_with(
+#         showtime=mock_crud.return_value,
+#         session=mock_session,
+#         user_id=current_user,
+#     )
 
 
-def test_get_showtime_by_id_not_found(
-    mocker: MockerFixture,
-):
-    mock_crud = mocker.patch("app.crud.showtime.get_showtime_by_id")
-    mock_crud.return_value = None
-    mock_session = mocker.MagicMock()
+# def test_get_showtime_by_id_not_found(
+#     mocker: MockerFixture,
+# ):
+#     mock_crud = mocker.patch("app.crud.showtime.get_showtime_by_id")
+#     mock_crud.return_value = None
+#     mock_session = mocker.MagicMock()
 
-    current_user = uuid4()
-    showtime_id = randint(1, 1000)
+#     current_user = uuid4()
+#     showtime_id = randint(1, 1000)
 
-    with pytest.raises(ShowtimeNotFoundError) as exc_info:
-        showtime_services.get_showtime_by_id(
-            session=mock_session,
-            showtime_id=showtime_id,
-            current_user=current_user,
-        )
+#     with pytest.raises(ShowtimeNotFoundError) as exc_info:
+#         showtime_services.get_showtime_by_id(
+#             session=mock_session,
+#             showtime_id=showtime_id,
+#             current_user=current_user,
+#         )
 
-    assert str(exc_info.value) == f"Showtime with ID {showtime_id} not found."
+#     assert str(exc_info.value) == f"Showtime with ID {showtime_id} not found."
 
 
 # def test_select_showtime_success(

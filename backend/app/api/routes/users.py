@@ -1,17 +1,16 @@
-from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import (
     CurrentUser,
     SessionDep,
 )
+from app.inputs.movie import Filters, get_filters
 from app.models.user import UserRegister
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.user import UserPublic, UserWithFriendStatus
 from app.services import users as users_service
-from app.utils import now_amsterdam_naive
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -61,15 +60,15 @@ def get_user_selected_showtimes(
     session: SessionDep,
     current_user: CurrentUser,
     user_id: UUID,
-    snapshot_time: datetime = Query(default_factory=now_amsterdam_naive),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
+    filters: Filters = Depends(get_filters),
 ) -> list[ShowtimeLoggedIn]:
     return users_service.get_selected_showtimes(
         session=session,
         user_id=user_id,
-        snapshot_time=snapshot_time,
         limit=limit,
         offset=offset,
         current_user_id=current_user.id,
+        filters=filters,
     )

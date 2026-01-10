@@ -234,9 +234,20 @@ export type MeUpdatePasswordMeData = {
 export type MeUpdatePasswordMeResponse = Message
 
 export type MeGetMyShowtimesData = {
+  days?: Array<string> | null
   limit?: number
   offset?: number
+  query?: string | null
+  /**
+   * Filter showtimes to only these cinema IDs
+   */
+  selectedCinemaIds?: Array<number> | null
+  /**
+   * Only show showtimes after this moment
+   */
   snapshotTime?: string
+  timeRanges?: Array<string> | null
+  watchlistOnly?: boolean
 }
 
 export type MeGetMyShowtimesResponse = Array<ShowtimeLoggedIn>
@@ -258,34 +269,77 @@ export type MeSetCinemaSelectionsData = {
 export type MeSetCinemaSelectionsResponse = Message
 
 export type MoviesReadMoviesData = {
+  days?: Array<string> | null
   limit?: number
   offset?: number
-  query?: string
+  query?: string | null
+  /**
+   * Filter showtimes to only these cinema IDs
+   */
+  selectedCinemaIds?: Array<number> | null
   showtimeLimit?: number
+  /**
+   * Only show showtimes after this moment
+   */
   snapshotTime?: string
+  timeRanges?: Array<string> | null
   watchlistOnly?: boolean
 }
 
 export type MoviesReadMoviesResponse = Array<MovieSummaryLoggedIn>
 
 export type MoviesReadMovieData = {
+  days?: Array<string> | null
   id: number
+  query?: string | null
+  /**
+   * Filter showtimes to only these cinema IDs
+   */
+  selectedCinemaIds?: Array<number> | null
+  /**
+   * Only show showtimes after this moment
+   */
   snapshotTime?: string
+  timeRanges?: Array<string> | null
+  watchlistOnly?: boolean
 }
 
 export type MoviesReadMovieResponse = MovieLoggedIn
 
 export type ShowtimesUpdateShowtimeSelectionData = {
+  days?: Array<string> | null
+  query?: string | null
   requestBody: ShowtimeSelectionUpdate
+  /**
+   * Filter showtimes to only these cinema IDs
+   */
+  selectedCinemaIds?: Array<number> | null
   showtimeId: number
+  /**
+   * Only show showtimes after this moment
+   */
+  snapshotTime?: string
+  timeRanges?: Array<string> | null
+  watchlistOnly?: boolean
 }
 
 export type ShowtimesUpdateShowtimeSelectionResponse = ShowtimeLoggedIn
 
 export type ShowtimesGetMainPageShowtimesData = {
+  days?: Array<string> | null
   limit?: number
   offset?: number
+  query?: string | null
+  /**
+   * Filter showtimes to only these cinema IDs
+   */
+  selectedCinemaIds?: Array<number> | null
+  /**
+   * Only show showtimes after this moment
+   */
   snapshotTime?: string
+  timeRanges?: Array<string> | null
+  watchlistOnly?: boolean
 }
 
 export type ShowtimesGetMainPageShowtimesResponse = Array<ShowtimeLoggedIn>
@@ -311,10 +365,21 @@ export type UsersGetUserData = {
 export type UsersGetUserResponse = UserPublic
 
 export type UsersGetUserSelectedShowtimesData = {
+  days?: Array<string> | null
   limit?: number
   offset?: number
+  query?: string | null
+  /**
+   * Filter showtimes to only these cinema IDs
+   */
+  selectedCinemaIds?: Array<number> | null
+  /**
+   * Only show showtimes after this moment
+   */
   snapshotTime?: string
+  timeRanges?: Array<string> | null
   userId: string
+  watchlistOnly?: boolean
 }
 
 export type UsersGetUserSelectedShowtimesResponse = Array<ShowtimeLoggedIn>

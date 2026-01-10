@@ -21,7 +21,21 @@ const MoviesPage = () => {
     const [searchQuery, setSearchQuery] = useState<string>(search.query ?? "");
     const [debouncedSearchQuery] = useDebounce(searchQuery, 250);
     const [watchlistOnly, setWatchlistOnly] = useState<boolean>(search.watchlistOnly);
+    // Convert URL string days to Date objects for the DayFilter
+    const selectedDays = search.days.map(d => DateTime.fromISO(d).toJSDate());
 
+    const handleDaysChange = (days: Date[]) => {
+        // Convert Date objects to ISO strings for the URL
+        const isoDays = days.map(d => DateTime.fromJSDate(d).toISODate());
+        navigate({
+            //@ts-ignore
+            search: prev => ({
+              ...(prev as { query?: string; watchlistOnly?: boolean; days?: string[] }),
+              days: isoDays,
+            }),
+            replace: true,
+          });
+    };
     const navigate = useNavigate();
 
     const queryClient = useQueryClient();
@@ -59,6 +73,7 @@ const MoviesPage = () => {
     const filters: MovieFilters = {
         query: debouncedSearchQuery,
         watchlistOnly: watchlistOnly,
+        days: selectedDays.map(d => DateTime.fromJSDate(d).toISODate() || ""),
     };
 
     const {
@@ -90,6 +105,8 @@ const MoviesPage = () => {
                     setSearchQuery={setSearchQuery}
                     watchlistOnly={watchlistOnly}
                     setWatchlistOnly={setWatchlistOnly}
+                    selectedDays={selectedDays}
+                    handleDaysChange={handleDaysChange}
                 />
             </Flex>
             <Page>

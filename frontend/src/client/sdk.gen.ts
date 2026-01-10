@@ -361,9 +361,14 @@ export class MeService {
   /**
    * Get My Showtimes
    * @param data The data for the request.
-   * @param data.snapshotTime
    * @param data.limit
    * @param data.offset
+   * @param data.query
+   * @param data.snapshotTime Only show showtimes after this moment
+   * @param data.watchlistOnly
+   * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
+   * @param data.days
+   * @param data.timeRanges
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -374,9 +379,14 @@ export class MeService {
       method: "GET",
       url: "/api/v1/me/showtimes",
       query: {
-        snapshot_time: data.snapshotTime,
         limit: data.limit,
         offset: data.offset,
+        query: data.query,
+        snapshot_time: data.snapshotTime,
+        watchlist_only: data.watchlistOnly,
+        selected_cinema_ids: data.selectedCinemaIds,
+        days: data.days,
+        time_ranges: data.timeRanges,
       },
       errors: {
         422: "Validation Error",

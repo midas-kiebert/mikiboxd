@@ -234,9 +234,20 @@ export type MeUpdatePasswordMeData = {
 export type MeUpdatePasswordMeResponse = Message
 
 export type MeGetMyShowtimesData = {
+  days?: Array<string> | null
   limit?: number
   offset?: number
+  query?: string | null
+  /**
+   * Filter showtimes to only these cinema IDs
+   */
+  selectedCinemaIds?: Array<number> | null
+  /**
+   * Only show showtimes after this moment
+   */
   snapshotTime?: string
+  timeRanges?: Array<string> | null
+  watchlistOnly?: boolean
 }
 
 export type MeGetMyShowtimesResponse = Array<ShowtimeLoggedIn>

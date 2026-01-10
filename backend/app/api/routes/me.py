@@ -1,6 +1,4 @@
-from datetime import datetime
-
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import (
     CurrentUser,
@@ -8,6 +6,7 @@ from app.api.deps import (
 )
 from app.converters import user as user_converters
 from app.core.security import get_password_hash, verify_password
+from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
 from app.schemas.showtime import ShowtimeLoggedIn
@@ -15,7 +14,6 @@ from app.schemas.user import UserPublic, UserWithFriendStatus
 from app.services import me as me_service
 from app.services import users as users_service
 from app.services import watchlist as watchlist_service
-from app.utils import now_amsterdam_naive
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -66,17 +64,17 @@ def update_password_me(
 def get_my_showtimes(
     session: SessionDep,
     current_user: CurrentUser,
-    snapshot_time: datetime = Query(default_factory=now_amsterdam_naive),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
+    filters: Filters = Depends(get_filters),
 ) -> list[ShowtimeLoggedIn]:
     return users_service.get_selected_showtimes(
         session=session,
         user_id=current_user.id,
         current_user_id=current_user.id,
-        snapshot_time=snapshot_time,
         limit=limit,
         offset=offset,
+        filters=filters,
     )
 
 

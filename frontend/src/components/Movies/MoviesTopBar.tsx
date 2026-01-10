@@ -11,6 +11,8 @@ type MoviesTopBarProps = {
     watchlistOnly: boolean;
     setWatchlistOnly: (value: boolean) => void;
     sideBarWidth?: string;
+    selectedDays: Date[];
+    handleDaysChange: (days: Date[]) => void;
 };
 
 const MoviesTopBar = ({
@@ -18,6 +20,8 @@ const MoviesTopBar = ({
     setSearchQuery,
     watchlistOnly,
     setWatchlistOnly,
+    selectedDays,
+    handleDaysChange,
 
 }: MoviesTopBarProps) => {
     return (
@@ -31,7 +35,10 @@ const MoviesTopBar = ({
                 watchlistOnly={watchlistOnly}
                 setWatchlistOnly={setWatchlistOnly}
             />
-            <Filters />
+            <Filters
+                selectedDays={selectedDays}
+                handleDaysChange={handleDaysChange}
+            />
             <Spacer />
             <UserMenu />
         </TopBar>

@@ -5,6 +5,7 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.crud import friendship as friendship_crud
 from app.crud import user as user_crud
+from app.inputs.movie import Filters
 from app.models.user import User
 from app.schemas.user import UserPublic, UserWithFriendStatus, UserWithShowtimesPublic
 from app.utils import now_amsterdam_naive
@@ -75,6 +76,7 @@ def to_with_showtimes_public(
     session: Session,
     limit: int,
     offset: int,
+    filters: Filters,
 ) -> UserWithShowtimesPublic:
     """
     Converts a User object to a UserPublic object, including showtimes.
@@ -92,9 +94,7 @@ def to_with_showtimes_public(
     User.model_validate(user)
     showtimes = [
         showtime_converters.to_logged_in(
-            showtime=showtime,
-            session=session,
-            user_id=user.id,
+            showtime=showtime, session=session, user_id=user.id, filters=filters
         )
         for showtime in user_crud.get_selected_showtimes(
             session=session,

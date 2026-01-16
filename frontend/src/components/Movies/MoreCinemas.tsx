@@ -1,5 +1,5 @@
 import { Popover, Badge, Portal, For } from "@chakra-ui/react";
-import type { CinemaPublic } from "@/client";
+import type { CinemaPublic } from "shared";
 import CinemaBadge from "@/components/Common/CinemaBadge";
 
 type MoreCinemasProps = {

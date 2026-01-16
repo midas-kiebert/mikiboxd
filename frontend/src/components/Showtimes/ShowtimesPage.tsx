@@ -1,12 +1,12 @@
 import { useState, useRef } from "react";
-import { useFetchUserShowtimes } from "@/hooks/useFetchUserShowtimes";
+import { useFetchUserShowtimes } from "shared/hooks/useFetchUserShowtimes";
 import { Center, Spinner } from "@chakra-ui/react";
 import Page from "@/components/Common/Page";
 import useInfiniteScroll from "@/hooks/useInfiniteScroll";
 import { DateTime } from "luxon";
 import { Showtimes } from "@/components/Showtimes/Showtimes";
 import { UUID } from "crypto";
-import { useGetUser } from "@/hooks/useGetUser";
+import { useGetUser } from "shared/hooks/useGetUser";
 
 
 type ShowtimesPageProps = {

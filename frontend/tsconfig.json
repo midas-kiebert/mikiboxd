@@ -1,4 +1,5 @@
 {
+  "extends": "../tsconfig.json",
   "compilerOptions": {
     "target": "ES2020",
     "useDefineForClassFields": true,
@@ -18,10 +19,12 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "shared": ["../shared/index.ts"],
+      "shared/*": ["../shared/*"]
     }
   },
-  "include": ["src/**/*", "tests/**/*.ts", "playwright.config.ts"],
+  "include": ["src/**/*", "tests/**/*.ts", "playwright.config.ts", "../shared/**/*.ts", "../shared/**/*.d.ts", "../shared/**/*.tsx"],
   "references": [
     {
       "path": "./tsconfig.node.json"

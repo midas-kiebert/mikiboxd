@@ -1,6 +1,6 @@
 import { Box, Heading } from '@chakra-ui/react';
 import { useRef } from 'react';
-import { useFetchUsers, type UserFilters } from '@/hooks/useFetchUsers';
+import { useFetchUsers, type UserFilters } from 'shared/hooks/useFetchUsers';
 import useInfiniteScroll from '@/hooks/useInfiniteScroll';
 import UserCard from './UserCard';
 

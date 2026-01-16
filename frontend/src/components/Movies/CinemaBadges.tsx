@@ -1,6 +1,6 @@
 import { Box, Flex } from "@chakra-ui/react";
 import CinemaBadge from "@/components/Common/CinemaBadge";
-import type { CinemaPublic } from "@/client";
+import type { CinemaPublic } from "shared";
 import { useRef, useState, useLayoutEffect } from "react";
 import MoreCinemas from "./MoreCinemas";
 

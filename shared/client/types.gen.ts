@@ -19,6 +19,7 @@ export type CinemaPublic = {
   url: string
   id: number
   city: CityPublic
+  test?: number
 }
 
 export type CityPublic = {

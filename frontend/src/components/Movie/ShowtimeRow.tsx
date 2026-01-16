@@ -3,7 +3,7 @@ import CinemaBadge from "../Common/CinemaBadge";
 import FriendBadges from "../Movies/FriendBadges";
 import { FaTicket } from "react-icons/fa6";
 
-import type { ShowtimeInMovieLoggedIn } from "@/client";
+import type { ShowtimeInMovieLoggedIn } from "shared";
 
 
 type ShowtimeRowProps = {

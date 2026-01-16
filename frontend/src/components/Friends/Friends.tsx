@@ -1,5 +1,5 @@
 import { Box, Heading } from '@chakra-ui/react';
-import { useFetchFriends } from '@/hooks/useFetchFriends';
+import { useFetchFriends } from 'shared/hooks/useFetchFriends';
 import UserCard from './UserCard';
 
 

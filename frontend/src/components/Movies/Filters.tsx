@@ -1,12 +1,12 @@
 import FilterButton from "./FilterButton";
 import { CloseButton, Dialog, Portal } from '@chakra-ui/react'
-import {useFetchCinemas} from "@/hooks/useFetchCinemas";
-import { useFetchSelectedCinemas } from "@/hooks/useFetchSelectedCinemas";
+import {useFetchCinemas} from "shared/hooks/useFetchCinemas";
+import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MeService, MeSetCinemaSelectionsData } from "@/client";
+import { MeService, MeSetCinemaSelectionsData } from "shared/client";
 import { useDebouncedCallback } from "use-debounce";
-import type { CinemaPublic, CityPublic } from "@/client";
+import type { CinemaPublic, CityPublic } from "shared";
 import CityCinemas from "./CityCinemas";
 import { DayFilter } from "../Common/DayFilter";
 import { Box, Grid } from "@chakra-ui/react";

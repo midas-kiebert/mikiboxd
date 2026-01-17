@@ -10,7 +10,7 @@ import {
   type UserRegister,
   UsersService,
   MeService
-} from "@/client"
+} from "shared"
 import { handleError } from "@/utils"
 
 const isLoggedIn = () => {

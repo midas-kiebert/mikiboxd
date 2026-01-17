@@ -4,7 +4,7 @@ import { useState } from "react"
 import { FaBars } from "react-icons/fa"
 import { FiLogOut } from "react-icons/fi"
 
-import type { UserPublic } from "@/client"
+import type { UserPublic } from "shared"
 import useAuth from "@/hooks/useAuth"
 import {
   DrawerBackdrop,

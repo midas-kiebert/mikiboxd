@@ -5,7 +5,7 @@ export type AuthHook = {
   signUpMutation: UseMutationResult<UserPublic, ApiError, UserRegister, unknown>;
   loginMutation: UseMutationResult<void, ApiError, AccessToken, unknown>;
   logout: () => void;
-  user: UserPublic | null;
+  user: UserPublic | null | undefined;
   error: string | null;
   resetError: () => void;
 };

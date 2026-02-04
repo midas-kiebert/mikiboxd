@@ -57,8 +57,8 @@ axios.defaults.transformRequest = [
   ...defaultTransformers,
 ]
 
-OpenAPI.BASE = "http://192.168.1.121:8000";
-// OpenAPI.BASE = "https://api.mikino.nl";
+// OpenAPI.BASE = "http://192.168.1.121:8000";
+OpenAPI.BASE = "https://api.mikino.nl";
 
 OpenAPI.TOKEN = async () => {
   const token = await storage.getItem('access_token');

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -45,8 +45,7 @@ export default function MoviePage() {
   });
 
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
-
-  const handleLoadMore = () => {
+  const handleEndReached = () => {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
@@ -64,51 +63,56 @@ export default function MoviePage() {
           <ThemedText style={styles.errorText}>Could not load movie.</ThemedText>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
-          <View style={styles.header}>
-            <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
-            <View style={styles.headerInfo}>
-              <ThemedText style={styles.title}>{movie.title}</ThemedText>
-              {movie.original_title ? (
-                <ThemedText style={styles.subtitle}>{movie.original_title}</ThemedText>
-              ) : null}
-              {movie.directors && movie.directors.length > 0 ? (
-                <ThemedText style={styles.meta}>Directed by {movie.directors.join(", ")}</ThemedText>
-              ) : null}
-              {movie.release_year ? (
-                <ThemedText style={styles.meta}>{movie.release_year}</ThemedText>
-              ) : null}
+        <FlatList
+          data={showtimes}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => (
+            <View style={styles.showtimeCard}>
+              <ShowtimeRow showtime={item} showFriends />
             </View>
-          </View>
-
-          <ThemedText style={styles.sectionTitle}>Showtimes</ThemedText>
-          {isShowtimesLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.tint} />
-            </View>
-          ) : isShowtimesError ? (
-            <ThemedText style={styles.errorText}>Could not load showtimes.</ThemedText>
-          ) : showtimes.length === 0 ? (
-            <ThemedText style={styles.noShowtimes}>No upcoming showtimes</ThemedText>
-          ) : (
-            showtimes.map((showtime) => (
-              <View key={showtime.id} style={styles.showtimeCard}>
-                <ShowtimeRow showtime={showtime} showFriends />
-              </View>
-            ))
           )}
-          {hasNextPage ? (
-            <TouchableOpacity
-              style={styles.loadMore}
-              onPress={handleLoadMore}
-              disabled={isFetchingNextPage}
-            >
-              <ThemedText style={styles.loadMoreText}>
-                {isFetchingNextPage ? "Loading..." : "Load more showtimes"}
-              </ThemedText>
-            </TouchableOpacity>
-          ) : null}
-        </ScrollView>
+          contentContainerStyle={styles.content}
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={0.4}
+          ListHeaderComponent={
+            <View style={styles.headerSection}>
+              <View style={styles.header}>
+                <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
+                <View style={styles.headerInfo}>
+                  <ThemedText style={styles.title}>{movie.title}</ThemedText>
+                  {movie.original_title ? (
+                    <ThemedText style={styles.subtitle}>{movie.original_title}</ThemedText>
+                  ) : null}
+                  {movie.directors && movie.directors.length > 0 ? (
+                    <ThemedText style={styles.meta}>Directed by {movie.directors.join(", ")}</ThemedText>
+                  ) : null}
+                  {movie.release_year ? (
+                    <ThemedText style={styles.meta}>{movie.release_year}</ThemedText>
+                  ) : null}
+                </View>
+              </View>
+              <ThemedText style={styles.sectionTitle}>Showtimes</ThemedText>
+            </View>
+          }
+          ListEmptyComponent={
+            isShowtimesLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.tint} />
+              </View>
+            ) : isShowtimesError ? (
+              <ThemedText style={styles.errorText}>Could not load showtimes.</ThemedText>
+            ) : (
+              <ThemedText style={styles.noShowtimes}>No upcoming showtimes</ThemedText>
+            )
+          }
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={colors.tint} />
+              </View>
+            ) : null
+          }
+        />
       )}
     </SafeAreaView>
   );
@@ -122,6 +126,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     content: {
       padding: 16,
+      gap: 16,
+    },
+    headerSection: {
       gap: 16,
     },
     centered: {
@@ -181,17 +188,5 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       padding: 10,
       backgroundColor: colors.cardBackground,
       gap: 6,
-    },
-    loadMore: {
-      alignSelf: "flex-start",
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 8,
-      backgroundColor: colors.pillBackground,
-    },
-    loadMoreText: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: colors.pillText,
     },
   });

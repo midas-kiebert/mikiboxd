@@ -1,6 +1,6 @@
 import CinemaToggle from '@/components/Common/CinemaToggle';
 import { Box, Heading, Flex, Button } from '@chakra-ui/react';
-import type { CityPublic, CinemaPublic } from '@/client';
+import type { CityPublic, CinemaPublic } from 'shared';
 
 type CityCinemasProps = {
     city: CityPublic;

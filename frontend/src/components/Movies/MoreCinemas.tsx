@@ -1,12 +1,12 @@
 import { Popover, Badge, Portal, For } from "@chakra-ui/react";
-import type { CinemaPublic } from "@/client";
+import type { CinemaPublic } from "shared";
 import CinemaBadge from "@/components/Common/CinemaBadge";
 
 type MoreCinemasProps = {
     cinemas: CinemaPublic[];
     visibleCount: number;
     morePos: number;
-    moreRef: React.RefObject<HTMLDivElement>;
+    moreRef: React.RefObject<HTMLDivElement | null>;
 };
 
 const MoreCinemas = ({

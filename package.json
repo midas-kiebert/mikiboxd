@@ -1,8 +1,10 @@
 {
-  "dependencies": {
-    "luxon": "^3.7.1"
-  },
-  "devDependencies": {
-    "@types/luxon": "^3.7.1"
-  }
+    "private": true,
+    "packageManager": "pnpm@10.28.0",
+    "dependencies": {
+        "@types/react": "^19.1.0",
+        "@types/react-dom": "^19.1.0",
+        "react": "19.1.0",
+        "react-dom": "19.1.0"
+    }
 }

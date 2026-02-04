@@ -1,0 +1,27 @@
+{
+  "name": "shared",
+  "private": true,
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.28.0",
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.28.14",
+    "@tanstack/react-router": "^1.125.0",
+    "@tanstack/react-query-devtools": "^5.74.9",
+    "luxon": "^3.7.1"
+  },
+  "dependencies": {
+    "@types/luxon": "^3.7.1",
+    "axios": "^1.13.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.7"
+  }
+}

@@ -93,6 +93,7 @@ def to_logged_in(
     session: Session,
     current_user: UUID,
     filters: Filters,
+    showtime_limit: int | None = None,
 ) -> MovieLoggedIn:
     """
     Convert a Movie object to a MovieLoggedIn schema, including showtimes.
@@ -113,7 +114,10 @@ def to_logged_in(
             user_id=current_user,
         )
         for showtime in movies_crud.get_showtimes_for_movie(
-            session=session, movie_id=movie.id, filters=filters
+            session=session,
+            movie_id=movie.id,
+            limit=showtime_limit,
+            filters=filters,
         )
     ]
     return MovieLoggedIn(

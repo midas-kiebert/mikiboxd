@@ -2,12 +2,17 @@ FROM node:20
 
 WORKDIR /app
 
-COPY package*.json /app/
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml /app/
+COPY tsconfig.json /app/tsconfig.json
+COPY frontend/package.json /app/frontend/package.json
+COPY shared/package.json /app/shared/package.json
 
-RUN npm install
+RUN corepack enable && pnpm install --filter frontend... --no-frozen-lockfile --prod=false
 
-RUN npx -y playwright install --with-deps
+WORKDIR /app/frontend
+RUN pnpm exec playwright install --with-deps
 
-COPY ./ /app/
+COPY frontend /app/frontend
+COPY shared /app/shared
 
 ARG VITE_API_URL=${VITE_API_URL}

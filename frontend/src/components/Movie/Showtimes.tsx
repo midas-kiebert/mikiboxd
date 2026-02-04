@@ -1,7 +1,7 @@
 import dayjs from "dayjs"
 import Day from "@/components/Movie/Day"
 
-import type { ShowtimeInMovieLoggedIn } from "@/client"
+import type { ShowtimeInMovieLoggedIn } from "shared"
 
 type GroupedShowtimes = Record<string, { showtimesForDate: ShowtimeInMovieLoggedIn[] }>
 

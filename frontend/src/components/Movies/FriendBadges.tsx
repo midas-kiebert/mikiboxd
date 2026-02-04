@@ -1,8 +1,8 @@
 import { Box } from "@chakra-ui/react";
-import type {UserPublic} from "@/client";
+import type {UserPublic} from "shared";
 import FriendBadge from "@/components/Common/FriendBadge";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import type { GoingStatus } from "@/client";
+import type { GoingStatus } from "shared";
 
 type FriendBadgesProps = {
     friends: UserPublic[];

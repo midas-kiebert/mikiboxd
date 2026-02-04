@@ -56,6 +56,8 @@ jobs:
     - uses: actions/setup-node@v4
       with:
         node-version: lts/*
+    - name: Enable Corepack
+      run: corepack enable
     - uses: actions/setup-python@v5
       with:
         python-version: "3.10"
@@ -65,8 +67,7 @@ jobs:
         version: "0.4.15"
         enable-cache: true
     - name: Install dependencies
-      run: npm ci
-      working-directory: frontend
+      run: pnpm install --filter frontend... --frozen-lockfile
     - run: uv sync
       working-directory: backend
     - run: uv run bash scripts/generate-client.sh
@@ -79,7 +80,7 @@ jobs:
       run: |
         git config --local user.email "github-actions@github.com"
         git config --local user.name "github-actions"
-        git add frontend/src/client
+        git add -A shared/client
     # Same repo PRs
     - name: Push changes
       if: ( github.event_name != 'pull_request' || github.secret_source == 'Actions' )

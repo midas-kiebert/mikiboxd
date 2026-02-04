@@ -1,6 +1,6 @@
 import { Box } from "@chakra-ui/react";
 import ShowtimeList from "@/components/Movies/ShowtimeList";
-import type { ShowtimeInMovieLoggedIn } from "@/client";
+import type { ShowtimeInMovieLoggedIn } from "shared";
 import MoreShowtimes from "./MoreShowtimes";
 
 

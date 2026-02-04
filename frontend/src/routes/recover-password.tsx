@@ -6,11 +6,11 @@ import { FiMail } from "react-icons/fi"
 import { useState } from "react"
 import { useEffect } from "react"
 
-import { type ApiError, LoginService } from "@/client"
+import { type ApiError, LoginService } from "shared"
 import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
-import { isLoggedIn } from "@/hooks/useAuth"
+import { isLoggedIn } from "shared/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { emailPattern, handleError } from "@/utils"
 
@@ -21,7 +21,7 @@ interface FormData {
 export const Route = createFileRoute("/recover-password")({
   component: RecoverPassword,
   beforeLoad: async () => {
-    if (isLoggedIn()) {
+    if (await isLoggedIn()) {
       throw redirect({
         to: "/",
       })

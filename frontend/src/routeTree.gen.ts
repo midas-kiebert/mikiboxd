@@ -89,6 +89,7 @@ const LayoutUserIdShowtimesRoute = LayoutUserIdShowtimesRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof LayoutIndexRoute
   '/forbidden': typeof ForbiddenRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
@@ -98,7 +99,6 @@ export interface FileRoutesByFullPath {
   '/movies': typeof LayoutMoviesRoute
   '/settings': typeof LayoutSettingsRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
-  '/': typeof LayoutIndexRoute
   '/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
   '/me/showtimes': typeof LayoutMeShowtimesRoute
 }
@@ -135,6 +135,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/'
     | '/forbidden'
     | '/login'
     | '/recover-password'
@@ -144,7 +145,6 @@ export interface FileRouteTypes {
     | '/movies'
     | '/settings'
     | '/movie/$movieId'
-    | '/'
     | '/$userId/showtimes'
     | '/me/showtimes'
   fileRoutesByTo: FileRoutesByTo
@@ -228,7 +228,7 @@ declare module '@tanstack/react-router' {
     '/_layout': {
       id: '/_layout'
       path: ''
-      fullPath: ''
+      fullPath: '/'
       preLoaderRoute: typeof LayoutRouteImport
       parentRoute: typeof rootRouteImport
     }

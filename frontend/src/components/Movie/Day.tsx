@@ -1,7 +1,7 @@
 import { VStack, Text } from "@chakra-ui/react";
 import ShowtimeRow from "./ShowtimeRow"; // adjust path as needed
 
-import type { ShowtimeInMovieLoggedIn } from "@/client";
+import type { ShowtimeInMovieLoggedIn } from "shared";
 
 type DayProps = {
   date: string;

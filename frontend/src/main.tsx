@@ -9,12 +9,24 @@ import { StrictMode } from "react"
 import ReactDOM from "react-dom/client"
 import { routeTree } from "./routeTree.gen"
 
-import { ApiError, OpenAPI } from "./client"
+import { ApiError, OpenAPI } from "shared"
 import { CustomProvider } from "./components/ui/provider"
+import { setStorage, storage } from "shared/storage"
+
+setStorage({
+  getItem: async (key: string) => localStorage.getItem(key),
+  setItem: async (key: string, value: string) => {
+    localStorage.setItem(key, value)
+  },
+  removeItem: async (key: string) => {
+    localStorage.removeItem(key)
+  },
+})
+
 
 OpenAPI.BASE = import.meta.env.VITE_API_URL
 OpenAPI.TOKEN = async () => {
-  return localStorage.getItem("access_token") || ""
+  return (await storage.getItem("access_token")) || ""
 }
 
 const router = createRouter({
@@ -22,9 +34,9 @@ const router = createRouter({
   scrollRestoration: true,
 });
 
-const handleApiError = (error: Error) => {
+const handleApiError = async (error: Error) => {
   if (error instanceof ApiError && error.status === 401) {
-    localStorage.removeItem("access_token")
+    await storage.removeItem("access_token")
     router.navigate({ to: "/login" })
   } else if (error instanceof ApiError && error.status === 403) {
     router.navigate({ to: "/forbidden", replace: true})

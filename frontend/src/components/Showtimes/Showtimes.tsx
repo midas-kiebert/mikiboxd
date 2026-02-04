@@ -1,4 +1,4 @@
-import type { ShowtimeLoggedIn } from "@/client"
+import type { ShowtimeLoggedIn } from "shared"
 import ShowtimeCard from "./ShowtimeCard";
 import MoviesContainer from "../Movies/MoviesContainer";
 

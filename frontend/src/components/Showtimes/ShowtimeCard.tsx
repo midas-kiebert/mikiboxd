@@ -1,4 +1,4 @@
-import type { GoingStatus, ShowtimeLoggedIn } from "@/client";
+import type { GoingStatus, ShowtimeLoggedIn } from "shared";
 import { Flex } from "@chakra-ui/react";
 import MoviePoster from "../Movies/MoviePoster";
 import ShowtimeInfoBox from "./ShowtimeInfoBox";

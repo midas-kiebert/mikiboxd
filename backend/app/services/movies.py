@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.converters import movie as movie_converters
+from app.converters import showtime as showtime_converters
 from app.crud import movie as movies_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
@@ -12,6 +13,7 @@ from app.exceptions.movie_exceptions import MovieNotFoundError
 from app.inputs.movie import Filters
 from app.models.movie import MovieCreate, MovieUpdate
 from app.schemas.movie import MovieLoggedIn, MovieSummaryLoggedIn
+from app.schemas.showtime import ShowtimeInMovieLoggedIn
 
 
 def get_movie_summaries(
@@ -54,7 +56,12 @@ def get_movie_summaries(
 
 
 def get_movie_by_id(
-    *, session: Session, movie_id: int, current_user: UUID, filters: Filters
+    *,
+    session: Session,
+    movie_id: int,
+    current_user: UUID,
+    filters: Filters,
+    showtime_limit: int | None = None,
 ) -> MovieLoggedIn:
     """
     Get a movie by its ID for a logged-in user.
@@ -76,9 +83,47 @@ def get_movie_by_id(
     if movie_db is None:
         raise MovieNotFoundError(movie_id)
     movie_public = movie_converters.to_logged_in(
-        movie=movie_db, session=session, current_user=current_user, filters=filters
+        movie=movie_db,
+        session=session,
+        current_user=current_user,
+        filters=filters,
+        showtime_limit=showtime_limit,
     )
     return movie_public
+
+
+def get_movie_showtimes(
+    *,
+    session: Session,
+    movie_id: int,
+    current_user: UUID,
+    limit: int,
+    offset: int,
+    filters: Filters,
+) -> list[ShowtimeInMovieLoggedIn]:
+    movie_db = movies_crud.get_movie_by_id(
+        session=session,
+        id=movie_id,
+    )
+    if movie_db is None:
+        raise MovieNotFoundError(movie_id)
+
+    showtimes = movies_crud.get_showtimes_for_movie(
+        session=session,
+        movie_id=movie_id,
+        limit=limit,
+        offset=offset,
+        filters=filters,
+    )
+
+    return [
+        showtime_converters.to_in_movie_logged_in(
+            showtime=showtime,
+            session=session,
+            user_id=current_user,
+        )
+        for showtime in showtimes
+    ]
 
 
 def upsert_movie(

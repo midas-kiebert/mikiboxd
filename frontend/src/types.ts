@@ -1,4 +1,4 @@
-import type { GoingStatus } from "@/client";
+import type { GoingStatus } from "shared";
 
 type Breakpoint = "base" | "sm" | "md" | "lg" | "xl" | "2xl";
 

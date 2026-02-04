@@ -212,7 +212,12 @@ def get_friends_for_movie(
 
 
 def get_showtimes_for_movie(
-    *, session: Session, movie_id: int, limit: int | None = None, filters: Filters
+    *,
+    session: Session,
+    movie_id: int,
+    limit: int | None = None,
+    offset: int = 0,
+    filters: Filters,
 ) -> list[Showtime]:
     stmt = select(Showtime).where(col(Showtime.datetime) >= filters.snapshot_time)
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
@@ -233,6 +238,8 @@ def get_showtimes_for_movie(
         )
 
     stmt = stmt.order_by(col(Showtime.datetime))
+    if offset:
+        stmt = stmt.offset(offset)
 
     if limit is not None:
         stmt = stmt.limit(limit)

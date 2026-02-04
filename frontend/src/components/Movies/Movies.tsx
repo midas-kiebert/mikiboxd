@@ -1,7 +1,7 @@
 // load all movie cards
 
 import { Spinner, Center } from "@chakra-ui/react";
-import { MovieSummaryLoggedIn } from "@/client";
+import { MovieSummaryLoggedIn } from "shared";
 import MovieCard from "./MovieCard";
 import MoviesContainer from "./MoviesContainer";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";

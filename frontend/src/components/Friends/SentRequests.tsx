@@ -1,5 +1,5 @@
 import { Box, Heading } from '@chakra-ui/react';
-import { useFetchSentRequests } from '@/hooks/useFetchSentRequests';
+import { useFetchSentRequests } from 'shared/hooks/useFetchSentRequests';
 import UserCard from './UserCard';
 
 

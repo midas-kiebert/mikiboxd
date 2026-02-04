@@ -1,7 +1,7 @@
 import { Badge } from "@chakra-ui/react";
 import { Responsive } from "@/types";
 import { Link } from "@tanstack/react-router";
-import type { UserPublic } from "@/client";
+import type { UserPublic } from "shared";
 import { Route as ShowtimesRoute } from "@/routes/_layout/$userId/showtimes";
 
 interface FriendBadgeProps {

@@ -3,7 +3,7 @@ import { defineConfig } from "@hey-api/openapi-ts"
 export default defineConfig({
   client: "legacy/axios",
   input: "./openapi.json",
-  output: "./src/client",
+  output: "../shared/client",
   // exportSchemas: true,
   plugins: [
     {

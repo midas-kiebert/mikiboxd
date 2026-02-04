@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { useFetchMyShowtimes } from "@/hooks/useFetchMyShowtimes";
+import { useFetchMyShowtimes } from "shared/hooks/useFetchMyShowtimes";
 import { Spinner, Center } from "@chakra-ui/react";
 import Page from "@/components/Common/Page";
 import useInfiniteScroll from "@/hooks/useInfiniteScroll";

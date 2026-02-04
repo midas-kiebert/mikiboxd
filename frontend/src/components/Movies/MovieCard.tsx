@@ -1,7 +1,7 @@
 import { Flex } from "@chakra-ui/react";
 import MoviePoster from "./MoviePoster";
 import MovieInfoBox from "./MovieInfoBox";
-import { MovieSummaryLoggedIn } from "@/client";
+import { MovieSummaryLoggedIn } from "shared";
 import React from "react";
 
 type MovieCardProps = {

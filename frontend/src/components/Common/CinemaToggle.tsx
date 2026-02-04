@@ -1,5 +1,5 @@
 // import Badge from "@/components/Common/Badge";
-import { CinemaPublic } from "@/client";
+import { CinemaPublic } from "shared";
 import CinemaBadge from "./CinemaBadge";
 
 interface CinemaToggleProps {

@@ -1,5 +1,5 @@
 import { Box, Text } from "@chakra-ui/react";
-import type { ShowtimeInMovieLoggedIn } from "@/client";
+import type { ShowtimeInMovieLoggedIn } from "shared";
 import CinemaBadge from "../Common/CinemaBadge";
 
 function formatTime(datetime: string): string {

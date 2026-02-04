@@ -1,7 +1,7 @@
 import { Separator, Flex } from "@chakra-ui/react";
 import MovieTitle from "./MovieTitle";
 import OriginalTitle from "./OriginalTitle";
-import { MovieSummaryLoggedIn } from "@/client";
+import { MovieSummaryLoggedIn } from "shared";
 import CinemaBadges from "./CinemaBadges";
 import ShowtimeInfo from "./ShowtimeInfo";
 import FriendBadges from "./FriendBadges";

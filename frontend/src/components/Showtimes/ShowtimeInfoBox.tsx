@@ -1,7 +1,7 @@
 import { Flex, Stack } from "@chakra-ui/react";
 import MovieTitle from "../Movies/MovieTitle";
 import FriendBadges from "../Movies/FriendBadges";
-import { ShowtimeLoggedIn } from "@/client";
+import { ShowtimeLoggedIn } from "shared";
 import CinemaBadge from "../Common/CinemaBadge";
 import { useIsMobile } from "@/hooks/useIsMobile";
 

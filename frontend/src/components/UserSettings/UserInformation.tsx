@@ -16,8 +16,8 @@ import {
   type UserPublic,
   type UserUpdate,
   MeService,
-} from "@/client"
-import useAuth from "@/hooks/useAuth"
+} from "shared"
+import useAuth from "shared/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { emailPattern, handleError } from "@/utils"
 import { Field } from "../ui/field"

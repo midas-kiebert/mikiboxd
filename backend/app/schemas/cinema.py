@@ -13,3 +13,4 @@ __all__ = [
 class CinemaPublic(CinemaBase):
     id: int
     city: "CityPublic"
+    test: int = 32

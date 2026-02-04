@@ -4,7 +4,7 @@ interface InfiniteScrollProps {
     fetchNextPage: () => void;
     hasNextPage: boolean;
     isFetchingNextPage: boolean;
-    loadMoreRef: React.RefObject<HTMLDivElement>;
+    loadMoreRef: React.RefObject<HTMLDivElement | null>;
     rootMargin?: string;
 }
 

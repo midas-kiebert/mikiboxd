@@ -1,4 +1,4 @@
-import { MoviesService, MoviesReadMovieResponse } from "@/client";
+import { MoviesService, MoviesReadMovieResponse } from "shared";
 import { useQuery } from "@tanstack/react-query";
 import MovieTitle from "@/components/Movie/MovieTitle";
 import MoviePoster from "@/components/Movie/MoviePoster";
@@ -15,10 +15,10 @@ import Directors from "./Directors";
 import { Dialog, Portal, Button, HStack } from "@chakra-ui/react";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ShowtimesService, ShowtimesUpdateShowtimeSelectionResponse } from "@/client";
-import type { ShowtimeInMovieLoggedIn, GoingStatus } from "@/client";
+import { ShowtimesService, ShowtimesUpdateShowtimeSelectionResponse } from "shared";
+import type { ShowtimeInMovieLoggedIn, GoingStatus } from "shared";
 import type { ShowtimeSelectionTogglePayload } from "@/types";
-import type { MovieSummaryLoggedIn } from "@/client";
+import type { MovieSummaryLoggedIn } from "shared";
 
 type UpdateCacheData = {
     movieId: number;

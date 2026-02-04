@@ -1,5 +1,5 @@
 // import Badge from "@/components/Common/Badge";
-import { CinemaPublic } from "@/client";
+import { CinemaPublic } from "shared";
 import { Badge } from "@chakra-ui/react";
 
 interface CinemaBadgeProps extends React.ComponentProps<typeof Badge> {

@@ -2,8 +2,9 @@ import { Button, ButtonGroup, Text } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { useForm } from "react-hook-form"
+import { useNavigate } from "@tanstack/react-router"
 
-import { type ApiError, MeService } from "@/client"
+import { type ApiError, MeService } from "shared"
 import {
   DialogActionTrigger,
   DialogBody,
@@ -15,11 +16,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import useAuth from "@/hooks/useAuth"
+import useAuth from "shared/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 
 const DeleteConfirmation = () => {
+  const navigate = useNavigate()
   const [isOpen, setIsOpen] = useState(false)
   const queryClient = useQueryClient()
   const { showSuccessToast } = useCustomToast()
@@ -27,14 +29,17 @@ const DeleteConfirmation = () => {
     handleSubmit,
     formState: { isSubmitting },
   } = useForm()
-  const { logout } = useAuth()
+  const { logout } = useAuth(
+    () => navigate({ to: "/" }), // onLoginSuccess
+    () => navigate({ to: "/login" }) // onLogout
+  )
 
   const mutation = useMutation({
     mutationFn: () => MeService.deleteUserMe(),
-    onSuccess: () => {
+    onSuccess: async () => {
       showSuccessToast("Your account has been successfully deleted")
       setIsOpen(false)
-      logout()
+      await logout()
     },
     onError: (err: ApiError) => {
       handleError(err)

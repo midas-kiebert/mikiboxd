@@ -1,6 +1,6 @@
 import { Text, VStack } from "@chakra-ui/react";
 import days from "dayjs"
-import type { ShowtimeLoggedIn } from "@/client";
+import type { ShowtimeLoggedIn } from "shared";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 

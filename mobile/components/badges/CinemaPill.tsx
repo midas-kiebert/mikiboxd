@@ -1,0 +1,92 @@
+import { StyleSheet, View } from "react-native";
+import type { CinemaPublic } from "shared";
+
+import { ThemedText } from "@/components/themed-text";
+import { useThemeColors } from "@/hooks/use-theme-color";
+
+type CinemaColorKey =
+  | "pink"
+  | "purple"
+  | "green"
+  | "orange"
+  | "yellow"
+  | "blue"
+  | "teal"
+  | "red"
+  | "cyan";
+
+type CinemaColorPalette = {
+  primary: string;
+  secondary: string;
+};
+
+type CinemaPillProps = {
+  cinema: CinemaPublic;
+  variant?: "compact" | "default";
+};
+
+export default function CinemaPill({ cinema, variant = "default" }: CinemaPillProps) {
+  const colors = useThemeColors();
+  const styles = createStyles(colors);
+  const sizeStyles = variant === "compact" ? styles.compact : styles.default;
+
+  const cinemaColorKey = cinema.badge_bg_color as CinemaColorKey;
+  const cinemaPalette = (colors as Record<CinemaColorKey, CinemaColorPalette>)[
+    cinemaColorKey
+  ];
+  const cinemaBackground = cinemaPalette?.primary ?? colors.pillBackground;
+  const cinemaText = cinemaPalette?.secondary ?? colors.textSecondary;
+
+  return (
+    <View
+      style={[
+        styles.container,
+        sizeStyles.container,
+        { backgroundColor: cinemaBackground, borderColor: cinemaText },
+      ]}
+    >
+      <ThemedText
+        style={[styles.text, sizeStyles.text, { color: cinemaText }]}
+        numberOfLines={1}
+      >
+        {cinema.name}
+      </ThemedText>
+    </View>
+  );
+}
+
+const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
+  StyleSheet.create({
+    container: {
+      borderWidth: 1,
+      borderRadius: 3,
+      justifyContent: "center",
+      maxWidth: "65%",
+      paddingHorizontal: 6,
+    },
+    text: {
+      includeFontPadding: false,
+      textAlignVertical: "center",
+    },
+    compact: {
+      container: {
+        borderRadius: 2,
+        height: 12,
+        paddingHorizontal: 5,
+      },
+      text: {
+        fontSize: 9,
+        lineHeight: 12,
+      },
+    },
+    default: {
+      container: {
+        height: 16,
+        paddingHorizontal: 6,
+      },
+      text: {
+        fontSize: 11,
+        lineHeight: 14,
+      },
+    },
+  });

@@ -1,6 +1,6 @@
 import { Button } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MeService } from "@/client";
+import { MeService } from "shared";
 import { FaSync } from "react-icons/fa";
 import { useEffect } from "react";
 

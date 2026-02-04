@@ -80,7 +80,7 @@ jobs:
       run: |
         git config --local user.email "github-actions@github.com"
         git config --local user.name "github-actions"
-        git add frontend/src/client
+        git add -A shared/client
     # Same repo PRs
     - name: Push changes
       if: ( github.event_name != 'pull_request' || github.secret_source == 'Actions' )

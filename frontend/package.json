@@ -30,10 +30,15 @@
     "react-day-picker": "^9.13.0",
     "react-error-boundary": "^5.0.0",
     "react-icons": "^5.5.0",
-    "use-debounce": "^10.0.5",
-    "react-hook-form": "^7.49.3"
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-hook-form": "^7.49.3",
+    "shared": "workspace:*",
+    "use-debounce": "^10.0.5"
   },
   "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
     "@biomejs/biome": "1.9.4",
     "@hey-api/openapi-ts": "^0.57.0",
     "@playwright/test": "^1.52.0",

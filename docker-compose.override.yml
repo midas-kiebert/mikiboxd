@@ -97,15 +97,16 @@ services:
     ports:
       - "5173:80"
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         - VITE_API_URL=http://localhost:8000
         - NODE_ENV=development
 
   playwright:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile.playwright
+      context: .
+      dockerfile: frontend/Dockerfile.playwright
       args:
         - VITE_API_URL=http://backend:8000
         - NODE_ENV=production

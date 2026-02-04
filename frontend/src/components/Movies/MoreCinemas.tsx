@@ -6,7 +6,7 @@ type MoreCinemasProps = {
     cinemas: CinemaPublic[];
     visibleCount: number;
     morePos: number;
-    moreRef: React.RefObject<HTMLDivElement>;
+    moreRef: React.RefObject<HTMLDivElement | null>;
 };
 
 const MoreCinemas = ({

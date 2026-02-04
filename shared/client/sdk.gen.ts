@@ -41,6 +41,8 @@ import type {
   MeSetCinemaSelectionsResponse,
   MoviesReadMoviesData,
   MoviesReadMoviesResponse,
+  MoviesReadMovieShowtimesData,
+  MoviesReadMovieShowtimesResponse,
   MoviesReadMovieData,
   MoviesReadMovieResponse,
   ShowtimesUpdateShowtimeSelectionData,
@@ -533,9 +535,50 @@ export class MoviesService {
   }
 
   /**
+   * Read Movie Showtimes
+   * @param data The data for the request.
+   * @param data.id
+   * @param data.limit
+   * @param data.offset
+   * @param data.query
+   * @param data.snapshotTime Only show showtimes after this moment
+   * @param data.watchlistOnly
+   * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
+   * @param data.days
+   * @param data.timeRanges
+   * @returns ShowtimeInMovieLoggedIn Successful Response
+   * @throws ApiError
+   */
+  public static readMovieShowtimes(
+    data: MoviesReadMovieShowtimesData,
+  ): CancelablePromise<MoviesReadMovieShowtimesResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/movies/{id}/showtimes",
+      path: {
+        id: data.id,
+      },
+      query: {
+        limit: data.limit,
+        offset: data.offset,
+        query: data.query,
+        snapshot_time: data.snapshotTime,
+        watchlist_only: data.watchlistOnly,
+        selected_cinema_ids: data.selectedCinemaIds,
+        days: data.days,
+        time_ranges: data.timeRanges,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Read Movie
    * @param data The data for the request.
    * @param data.id
+   * @param data.showtimeLimit
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
@@ -555,6 +598,7 @@ export class MoviesService {
         id: data.id,
       },
       query: {
+        showtime_limit: data.showtimeLimit,
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,

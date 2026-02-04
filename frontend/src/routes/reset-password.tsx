@@ -18,7 +18,7 @@ interface NewPasswordForm extends NewPassword {
 export const Route = createFileRoute("/reset-password")({
   component: ResetPassword,
   beforeLoad: async () => {
-    if (isLoggedIn()) {
+    if (await isLoggedIn()) {
       throw redirect({
         to: "/",
       })

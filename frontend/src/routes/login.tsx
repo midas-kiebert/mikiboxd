@@ -3,6 +3,7 @@ import {
   Link as RouterLink,
   createFileRoute,
   redirect,
+  useNavigate,
 } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiLock, FiMail } from "react-icons/fi"
@@ -19,7 +20,7 @@ import { emailPattern, passwordRules } from "../utils"
 export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
-    if (isLoggedIn()) {
+    if (await isLoggedIn()) {
       throw redirect({
         to: "/",
       })
@@ -28,7 +29,11 @@ export const Route = createFileRoute("/login")({
 })
 
 function Login() {
-  const { loginMutation, error, resetError } = useAuth()
+  const navigate = useNavigate()
+  const { loginMutation, error, resetError } = useAuth(
+    () => navigate({ to: "/" }), // onLoginSuccess
+    () => navigate({ to: "/login" }) // onLogout
+  )
   const {
     register,
     handleSubmit,

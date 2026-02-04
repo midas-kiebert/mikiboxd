@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiLock, FiUser } from "react-icons/fi"
+import { useNavigate } from "@tanstack/react-router"
 
 import type { UserRegister } from "shared"
 import { Button } from "@/components/ui/button"
@@ -19,7 +20,7 @@ import Logo from "/assets/images/fastapi-logo.svg"
 export const Route = createFileRoute("/signup")({
   component: SignUp,
   beforeLoad: async () => {
-    if (isLoggedIn()) {
+    if (await isLoggedIn()) {
       throw redirect({
         to: "/",
       })
@@ -32,7 +33,11 @@ interface UserRegisterForm extends UserRegister {
 }
 
 function SignUp() {
-  const { signUpMutation } = useAuth()
+  const navigate = useNavigate()
+  const { signUpMutation } = useAuth(
+    () => navigate({ to: "/login" }), // onSignUpSuccess
+    () => navigate({ to: "/login" }) // onLogout
+  )
   const {
     register,
     handleSubmit,

@@ -2,15 +2,20 @@ import { Box, Button, Flex, Text } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
 import { FaUserAstronaut } from "react-icons/fa"
 import { FiLogOut, FiUser } from "react-icons/fi"
+import { useNavigate } from "@tanstack/react-router"
 
-import useAuth from "@/hooks/useAuth"
+import useAuth from "shared/hooks/useAuth"
 import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/menu"
 
 const UserMenu = () => {
-  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const { user, logout } = useAuth(
+    () => navigate({ to: "/" }), // onLoginSuccess
+    () => navigate({ to: "/login" }) // onLogout
+  )
 
   const handleLogout = async () => {
-    logout()
+    await logout()
   }
 
   return (

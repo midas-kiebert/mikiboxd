@@ -1,11 +1,12 @@
 import { Box, Flex, IconButton, Text } from "@chakra-ui/react"
+import { useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { FaBars } from "react-icons/fa"
 import { FiLogOut } from "react-icons/fi"
 
 import type { UserPublic } from "shared"
-import useAuth from "@/hooks/useAuth"
+import useAuth from "shared/hooks/useAuth"
 import {
   DrawerBackdrop,
   DrawerBody,
@@ -20,9 +21,18 @@ import { SIDEBAR_WIDTH } from "@/constants"
 
 const Sidebar = () => {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+
   const currentUser = queryClient.getQueryData<UserPublic>(["currentUser"])
-  const { logout } = useAuth()
+  const { logout } = useAuth(
+    () => navigate({ to: "/" }), // onLoginSuccess
+    () => navigate({ to: "/login" }) // onLogout
+  )
   const [open, setOpen] = useState(false)
+
+  const handleLogout = async () => {
+    await logout()
+  }
 
   return (
     <>
@@ -54,9 +64,7 @@ const Sidebar = () => {
                 <SidebarItems onClose={() => setOpen(false)} />
                 <Flex
                   as="button"
-                  onClick={() => {
-                    logout()
-                  }}
+                  onClick={handleLogout}
                   alignItems="center"
                   gap={4}
                   px={4}

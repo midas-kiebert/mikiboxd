@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
-import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
+import { useFetchMyShowtimes } from 'shared/hooks/useFetchMyShowtimes';
 
 import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
 
 const FILTERS = [
-  { id: '1', label: 'All Showtimes' },
+  { id: '1', label: 'All' },
   { id: '2', label: 'Going' },
   { id: '3', label: 'Interested' },
 ];
 
-export default function MainShowtimesScreen() {
+export default function AgendaScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('1');
   const [refreshing, setRefreshing] = useState(false);
@@ -28,7 +28,7 @@ export default function MainShowtimesScreen() {
     isFetching,
     hasNextPage,
     fetchNextPage,
-  } = useFetchMainPageShowtimes({
+  } = useFetchMyShowtimes({
     limit: 20,
     snapshotTime,
   });
@@ -37,7 +37,7 @@ export default function MainShowtimesScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ['showtimes', 'main'] });
+    await queryClient.invalidateQueries({ queryKey: ['showtimes', 'me'] });
     setSnapshotTime(DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
     setRefreshing(false);
   };
@@ -63,7 +63,7 @@ export default function MainShowtimesScreen() {
       filters={FILTERS}
       selectedFilter={selectedFilter}
       onSelectFilter={setSelectedFilter}
-      emptyText="No showtimes found"
+      emptyText="No showtimes in your agenda"
     />
   );
 }

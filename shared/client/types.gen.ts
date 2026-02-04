@@ -289,6 +289,26 @@ export type MoviesReadMoviesData = {
 
 export type MoviesReadMoviesResponse = Array<MovieSummaryLoggedIn>
 
+export type MoviesReadMovieShowtimesData = {
+  days?: Array<string> | null
+  id: number
+  limit?: number
+  offset?: number
+  query?: string | null
+  /**
+   * Filter showtimes to only these cinema IDs
+   */
+  selectedCinemaIds?: Array<number> | null
+  /**
+   * Only show showtimes after this moment
+   */
+  snapshotTime?: string
+  timeRanges?: Array<string> | null
+  watchlistOnly?: boolean
+}
+
+export type MoviesReadMovieShowtimesResponse = Array<ShowtimeInMovieLoggedIn>
+
 export type MoviesReadMovieData = {
   days?: Array<string> | null
   id: number
@@ -297,6 +317,7 @@ export type MoviesReadMovieData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  showtimeLimit?: number | null
   /**
    * Only show showtimes after this moment
    */

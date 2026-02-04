@@ -3,7 +3,7 @@ import { Outlet, createFileRoute, redirect } from "@tanstack/react-router"
 
 // import Navbar from "@/components/Common/Navbar"
 import Sidebar from "@/components/Common/Sidebar"
-import { isLoggedIn } from "@/hooks/useAuth"
+import { isLoggedIn } from "shared/hooks/useAuth"
 import { Box } from "@chakra-ui/react"
 import { useIsMobile } from "@/hooks/useIsMobile"
 import BottomNavBar from "@/components/Common/BottomNavBar"

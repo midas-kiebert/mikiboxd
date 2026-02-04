@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
+import { storage } from "../storage"
 import type { AuthHook } from "../types"
 
 import {
@@ -14,26 +14,31 @@ import {
 } from "../client"
 import { handleError } from "../utils"
 
-const isLoggedIn = () => {
-  return localStorage.getItem("access_token") !== null
+const isLoggedIn = async () => {
+  const token = await storage.getItem("access_token")
+  return token !== null
 }
 
-const useAuth = (): AuthHook => {
+const useAuth = (onLoginSuccess?: () => void, onLogout?: () => void): AuthHook => {
   const [error, setError] = useState<string | null>(null)
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { data: user } = useQuery<UserPublic | null, Error>({
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useState(() => {
+    isLoggedIn().then(setIsAuthenticated)
+  })
+
+  const {data: user } = useQuery<UserPublic | null, Error>({
     queryKey: ["currentUser"],
     queryFn: MeService.getCurrentUser,
-    enabled: isLoggedIn(),
+    enabled: isAuthenticated,
   })
 
   const signUpMutation = useMutation({
     mutationFn: (data: UserRegister) =>
       UsersService.registerUser({ requestBody: data }),
-
     onSuccess: () => {
-      navigate({ to: "/login" })
+      if (onLoginSuccess) onLoginSuccess()
     },
     onError: (err: ApiError) => {
       handleError(err)
@@ -43,27 +48,30 @@ const useAuth = (): AuthHook => {
     },
   })
 
+
   const login = async (data: AccessToken) => {
     const response = await LoginService.loginAccessToken({
       formData: data,
     })
-    localStorage.setItem("access_token", response.access_token)
+    await storage.setItem("access_token", response.access_token)
+    setIsAuthenticated(true)
   }
 
   const loginMutation = useMutation({
     mutationFn: login,
     onSuccess: () => {
-      navigate({ to: "/" })
+      if (onLoginSuccess) onLoginSuccess()
     },
     onError: (err: ApiError) => {
       handleError(err)
     },
   })
 
-  const logout = () => {
-    localStorage.removeItem("access_token")
-    queryClient.clear();
-    navigate({ to: "/login" })
+  const logout = async () => {
+    await storage.removeItem("access_token")
+    setIsAuthenticated(false)
+    queryClient.clear()
+    if (onLogout) onLogout()
   }
 
   return {

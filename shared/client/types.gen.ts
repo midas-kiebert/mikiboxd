@@ -80,6 +80,11 @@ export type NewPassword = {
   new_password: string
 }
 
+export type PushTokenRegister = {
+  token: string
+  platform?: "ios" | "android" | "web" | null
+}
+
 export type ShowtimeInMovieLoggedIn = {
   datetime: string
   ticket_link?: string | null
@@ -122,6 +127,7 @@ export type UserPublic = {
   email: string
   is_active?: boolean
   is_superuser?: boolean
+  notify_on_friend_showtime_match?: boolean
   display_name?: string | null
   letterboxd_username?: string | null
   id: string
@@ -138,6 +144,7 @@ export type UserUpdate = {
   display_name?: string | null
   email?: string | null
   letterboxd_username?: string | null
+  notify_on_friend_showtime_match?: boolean | null
   password?: string | null
 }
 
@@ -145,6 +152,7 @@ export type UserWithFriendStatus = {
   email: string
   is_active?: boolean
   is_superuser?: boolean
+  notify_on_friend_showtime_match?: boolean
   display_name?: string | null
   letterboxd_username?: string | null
   id: string
@@ -268,6 +276,12 @@ export type MeSetCinemaSelectionsData = {
 }
 
 export type MeSetCinemaSelectionsResponse = Message
+
+export type MeRegisterPushTokenData = {
+  requestBody: PushTokenRegister
+}
+
+export type MeRegisterPushTokenResponse = Message
 
 export type MoviesReadMoviesData = {
   days?: Array<string> | null

@@ -7,6 +7,7 @@ type useFetchUserShowtimesProps = {
     limit?: number;
     snapshotTime?: string;
     userId: UUID;
+    selectedCinemaIds?: number[];
 };
 
 export function useFetchUserShowtimes(
@@ -14,10 +15,17 @@ export function useFetchUserShowtimes(
         limit,
         snapshotTime,
         userId,
+        selectedCinemaIds,
     } : useFetchUserShowtimesProps
 ): UseInfiniteQueryResult<InfiniteData<UsersGetUserSelectedShowtimesResponse>, Error>{
-    const result = useInfiniteQuery<UsersGetUserSelectedShowtimesResponse, Error, InfiniteData<UsersGetUserSelectedShowtimesResponse>, [string, string], number>({
-        queryKey: ["showtimes", userId],
+    const result = useInfiniteQuery<
+        UsersGetUserSelectedShowtimesResponse,
+        Error,
+        InfiniteData<UsersGetUserSelectedShowtimesResponse>,
+        [string, string, number[] | null],
+        number
+    >({
+        queryKey: ["showtimes", userId, selectedCinemaIds ?? null],
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
@@ -27,6 +35,7 @@ export function useFetchUserShowtimes(
                 limit: limit,
                 snapshotTime: snapshotTime,
                 userId: userId,
+                selectedCinemaIds: selectedCinemaIds,
             });
         },
         retry: (failureCount, error) => {

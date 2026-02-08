@@ -2,11 +2,16 @@ import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstac
 import { MoviesService, MoviesReadMovieShowtimesResponse } from "../client";
 import { ApiError } from "../client";
 
+type ShowtimesFilters = {
+    days?: string[];
+    selectedCinemaIds?: number[];
+};
 
 type useFetchMovieShowtimesProps = {
     movieId: number;
     limit?: number;
     snapshotTime?: string;
+    filters?: ShowtimesFilters;
 };
 
 export function useFetchMovieShowtimes(
@@ -14,10 +19,17 @@ export function useFetchMovieShowtimes(
         movieId,
         limit = 20,
         snapshotTime,
+        filters = {},
     } : useFetchMovieShowtimesProps
 ): UseInfiniteQueryResult<InfiniteData<MoviesReadMovieShowtimesResponse>, Error>{
-    const result = useInfiniteQuery<MoviesReadMovieShowtimesResponse, Error, InfiniteData<MoviesReadMovieShowtimesResponse>, [string, number, string], number>({
-        queryKey: ["movie", movieId, "showtimes"],
+    const result = useInfiniteQuery<
+        MoviesReadMovieShowtimesResponse,
+        Error,
+        InfiniteData<MoviesReadMovieShowtimesResponse>,
+        [string, number, string, ShowtimesFilters],
+        number
+    >({
+        queryKey: ["movie", movieId, "showtimes", filters],
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
@@ -28,6 +40,7 @@ export function useFetchMovieShowtimes(
                 limit: limit,
                 snapshotTime: snapshotTime,
                 id: movieId,
+                ...filters,
             });
         },
         retry: (failureCount, error) => {

@@ -28,6 +28,7 @@ type ShowtimesScreenProps = {
   filters: FilterOption[];
   selectedFilter: string;
   onSelectFilter: (id: string) => void;
+  activeFilterIds?: string[];
   emptyText?: string;
 };
 
@@ -45,6 +46,7 @@ export default function ShowtimesScreen({
   filters,
   selectedFilter,
   onSelectFilter,
+  activeFilterIds,
   emptyText = "No showtimes found",
 }: ShowtimesScreenProps) {
   const colors = useThemeColors();
@@ -86,6 +88,7 @@ export default function ShowtimesScreen({
         filters={filters}
         selectedId={selectedFilter}
         onSelect={onSelectFilter}
+        activeIds={activeFilterIds}
       />
       <FlatList
         data={showtimes}

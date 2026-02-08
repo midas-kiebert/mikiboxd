@@ -1,10 +1,10 @@
-import { MoviesService, MoviesReadMovieResponse } from "shared";
+import { MoviesService, type MoviesReadMovieResponse } from "shared";
 import { useQuery } from "@tanstack/react-query";
 import MovieTitle from "@/components/Movie/MovieTitle";
 import MoviePoster from "@/components/Movie/MoviePoster";
 import MovieLinks from "@/components/Movie/MovieLinks";
 import { Showtimes } from "@/components/Movie/Showtimes";
-import { Flex } from "@chakra-ui/react";
+import { Flex, Center, Spinner, Spacer } from "@chakra-ui/react";
 import Sidebar from "@/components/Common/Sidebar";
 import TopBar from "@/components/Common/TopBar";
 import Page from "@/components/Common/Page";
@@ -15,10 +15,14 @@ import Directors from "./Directors";
 import { Dialog, Portal, Button, HStack } from "@chakra-ui/react";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ShowtimesService, ShowtimesUpdateShowtimeSelectionResponse } from "shared";
+import { ShowtimesService, type ShowtimesUpdateShowtimeSelectionResponse } from "shared";
 import type { ShowtimeInMovieLoggedIn, GoingStatus } from "shared";
 import type { ShowtimeSelectionTogglePayload } from "@/types";
 import type { MovieSummaryLoggedIn } from "shared";
+import Filters from "@/components/Movies/Filters";
+import UserMenu from "@/components/Common/UserMenu";
+import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
+import { DateTime } from "luxon";
 
 type UpdateCacheData = {
     movieId: number;
@@ -35,12 +39,23 @@ type InfiniteMoviesData = {
 const MoviePage = () => {
     const queryClient = useQueryClient();
     const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeInMovieLoggedIn | null>(null);
+    const [selectedDays, setSelectedDays] = useState<Date[]>([]);
     const params = Route.useParams();
     const { movieId } = params as { movieId: string };
+    const movieIdNumber = Number(movieId);
+    const { data: selectedCinemaIds, isLoading: isLoadingSelectedCinemas } = useFetchSelectedCinemas();
+    const selectedDayFilters = selectedDays.map((day) => DateTime.fromJSDate(day).toISODate() || "");
+    const shouldWaitForCinemaSelection = isLoadingSelectedCinemas && selectedCinemaIds === undefined;
 
-    const { data } = useQuery<MoviesReadMovieResponse, Error>({
-        queryKey: ["movie", movieId],
-        queryFn: () => MoviesService.readMovie({ id: Number(movieId) })
+    const { data, isLoading, isFetching } = useQuery<MoviesReadMovieResponse, Error>({
+        queryKey: ["movie", movieIdNumber, selectedCinemaIds, selectedDayFilters],
+        enabled: Number.isFinite(movieIdNumber) && movieIdNumber > 0 && !shouldWaitForCinemaSelection,
+        queryFn: () =>
+            MoviesService.readMovie({
+                id: movieIdNumber,
+                selectedCinemaIds,
+                days: selectedDayFilters,
+            }),
     });
 
     const showtimes = data?.showtimes || [];
@@ -50,23 +65,28 @@ const MoviePage = () => {
     const letterboxdSlug = data?.letterboxd_slug || "";
 
     const title = data?.title || "";
+    const isMovieLoading = shouldWaitForCinemaSelection || (isLoading && !data);
+    const handleDaysChange = (days: Date[]) => setSelectedDays(days);
 
     const updateCacheAfterShowtimeToggle = ({ movieId, showtimeId, newValue }: UpdateCacheData) => {
         queryClient.invalidateQueries({ queryKey: ["showtimes"] });
 
         // update the cache in the movie details page
-        queryClient.setQueryData(['movie', String(movieId)], (oldData: MoviesReadMovieResponse | undefined) => {
-            if (!oldData || !oldData.showtimes) return;
+        queryClient.setQueriesData(
+            { queryKey: ["movie", movieId] },
+            (oldData: MoviesReadMovieResponse | undefined) => {
+                if (!oldData || !oldData.showtimes) return oldData;
 
-            const newShowtimes = oldData.showtimes.map((s) =>
-                s.id === showtimeId ? { ...s, going: newValue } : s
-            );
+                const newShowtimes = oldData.showtimes.map((s) =>
+                    s.id === showtimeId ? { ...s, going: newValue } : s
+                );
 
-            return {
-                ...oldData,
-                showtimes: newShowtimes,
-            };
-        });
+                return {
+                    ...oldData,
+                    showtimes: newShowtimes,
+                };
+            }
+        );
 
         // new showtimes with going flag updated
         const updatedShowtimes = showtimes.map((s) =>
@@ -176,25 +196,42 @@ const MoviePage = () => {
             )}
             <Flex>
                 <Sidebar />
-                <TopBar />
+                <TopBar>
+                    <Filters selectedDays={selectedDays} handleDaysChange={handleDaysChange} />
+                    <Spacer />
+                    <UserMenu />
+                </TopBar>
             </Flex>
             <Page>
-                <Flex gap={4}>
-                    <MoviePoster posterUrl={posterUrl} />
-                    <Flex flexDirection={"column"} flex={1} minW={0} justifyContent={"top"}>
-                        <Flex alignItems={"baseline"} gap={4} minW={0} flexWrap={"wrap"}>
-                            <MovieTitle title={title} />
-                            <ReleaseYear releaseYear={data?.release_year || null} />
-                            <OriginalTitle originalTitle={data?.original_title || null} />
+                {isMovieLoading ? (
+                    <Center h="50vh">
+                        <Spinner size="xl" />
+                    </Center>
+                ) : (
+                    <>
+                        <Flex gap={4}>
+                            <MoviePoster posterUrl={posterUrl} />
+                            <Flex flexDirection={"column"} flex={1} minW={0} justifyContent={"top"}>
+                                <Flex alignItems={"baseline"} gap={4} minW={0} flexWrap={"wrap"}>
+                                    <MovieTitle title={title} />
+                                    <ReleaseYear releaseYear={data?.release_year || null} />
+                                    <OriginalTitle originalTitle={data?.original_title || null} />
+                                </Flex>
+                                <Directors directors={data?.directors || null} />
+                                <MovieLinks
+                                    letterboxd={`https://letterboxd.com/film/${letterboxdSlug}`}
+                                />
+                            </Flex>
                         </Flex>
-                        <Directors directors={data?.directors || null} />
-                        <MovieLinks
-                            letterboxd={`https://letterboxd.com/film/${letterboxdSlug}`}
-                        />
-                    </Flex>
-                </Flex>
 
-                <Showtimes showtimes={showtimes} setSelectedShowtime={setSelectedShowtime} />
+                        <Showtimes showtimes={showtimes} setSelectedShowtime={setSelectedShowtime} />
+                        {isFetching ? (
+                            <Center mt={4}>
+                                <Spinner />
+                            </Center>
+                        ) : null}
+                    </>
+                )}
             </Page>
         </>
     );

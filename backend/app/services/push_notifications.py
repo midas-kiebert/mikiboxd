@@ -12,6 +12,7 @@ from app.crud import user as user_crud
 from app.models.showtime import Showtime
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+ANDROID_PUSH_CHANNEL_ID = "heads-up"
 
 logger = getLogger(__name__)
 
@@ -78,6 +79,9 @@ def notify_friends_on_showtime_selection(
             "title": title,
             "body": body,
             "data": data,
+            "priority": "high",
+            "sound": "default",
+            "channelId": ANDROID_PUSH_CHANNEL_ID,
         }
         for token in push_tokens
     ]

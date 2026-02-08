@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "473523351693",
+    "project_id": "mikino-1cefa",
+    "storage_bucket": "mikino-1cefa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:473523351693:android:48db6ed917078f5664b2c4",
+        "android_client_info": {
+          "package_name": "com.midaskiebert.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCwk3MYNkX7qdvYwMvoMjbiGxgDtJ2qjRE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

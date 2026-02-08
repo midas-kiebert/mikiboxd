@@ -101,3 +101,48 @@ def test_notify_friends_skips_when_no_opted_in_recipients(
 
     get_tokens.assert_not_called()
     send_messages.assert_not_called()
+
+
+def test_handle_expo_results_removes_only_device_not_registered(
+    mocker: MockerFixture,
+) -> None:
+    session = mocker.MagicMock()
+    delete_token = mocker.patch(
+        "app.services.push_notifications.push_token_crud.delete_push_token"
+    )
+
+    push_notifications._handle_expo_results(
+        session=session,
+        tokens=[
+            "ExponentPushToken[invalid-creds]",
+            "ExponentPushToken[device-not-registered]",
+        ],
+        results=[
+            {"status": "error", "details": {"error": "InvalidCredentials"}},
+            {"status": "error", "details": {"error": "DeviceNotRegistered"}},
+        ],
+    )
+
+    delete_token.assert_called_once_with(
+        session=session,
+        token="ExponentPushToken[device-not-registered]",
+    )
+    session.commit.assert_called_once()
+
+
+def test_handle_expo_results_does_not_remove_token_for_invalid_credentials(
+    mocker: MockerFixture,
+) -> None:
+    session = mocker.MagicMock()
+    delete_token = mocker.patch(
+        "app.services.push_notifications.push_token_crud.delete_push_token"
+    )
+
+    push_notifications._handle_expo_results(
+        session=session,
+        tokens=["ExponentPushToken[invalid-creds-only]"],
+        results=[{"status": "error", "details": {"error": "InvalidCredentials"}}],
+    )
+
+    delete_token.assert_not_called()
+    session.commit.assert_not_called()

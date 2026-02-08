@@ -16,6 +16,12 @@ EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 logger = getLogger(__name__)
 
 
+def _token_hint(token: str) -> str:
+    if len(token) <= 16:
+        return token
+    return f"{token[:12]}...{token[-4:]}"
+
+
 def notify_friends_on_showtime_selection(
     *,
     session: Session,
@@ -108,8 +114,22 @@ def _handle_expo_results(
         if result.get("status") != "error":
             continue
         error = result.get("details", {}).get("error")
-        if error in {"DeviceNotRegistered", "InvalidCredentials"}:
+        message = result.get("message")
+
+        if error == "DeviceNotRegistered":
             invalid_tokens.append(token)
+            logger.info(
+                "Removing Expo push token after DeviceNotRegistered: %s",
+                _token_hint(token),
+            )
+            continue
+
+        logger.warning(
+            "Expo push delivery error for token %s: error=%s message=%s",
+            _token_hint(token),
+            error,
+            message,
+        )
 
     for token in invalid_tokens:
         push_token_crud.delete_push_token(session=session, token=token)

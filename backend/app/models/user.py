@@ -21,6 +21,7 @@ class UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
+    notify_on_friend_showtime_match: bool = Field(default=False)
     display_name: str | None = Field(default=None, max_length=255)
     letterboxd_username: str | None = Field(
         default=None,
@@ -46,6 +47,7 @@ class UserUpdate(SQLModel):
     display_name: str | None = Field(default=None, max_length=255)
     email: EmailStr | None = Field(default=None, max_length=255)
     letterboxd_username: str | None = Field(default=None, max_length=255)
+    notify_on_friend_showtime_match: bool | None = Field(default=None)
     password: str | None = Field(default=None, min_length=1, max_length=255)
 
 

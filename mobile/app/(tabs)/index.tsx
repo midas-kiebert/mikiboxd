@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
+import { useSessionCinemaSelections } from 'shared/hooks/useSessionCinemaSelections';
 
 import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
+import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
-const FILTERS = [
+const BASE_FILTERS = [
   { id: '1', label: 'All Showtimes' },
   { id: '2', label: 'Going' },
   { id: '3', label: 'Interested' },
@@ -19,7 +21,16 @@ export default function MainShowtimesScreen() {
     DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")
   );
 
+  const { selections: sessionCinemaIds } = useSessionCinemaSelections();
+
   const queryClient = useQueryClient();
+
+  const showtimesFilters = useMemo(
+    () => ({
+      selectedCinemaIds: sessionCinemaIds,
+    }),
+    [sessionCinemaIds]
+  );
 
   const {
     data,
@@ -31,13 +42,14 @@ export default function MainShowtimesScreen() {
   } = useFetchMainPageShowtimes({
     limit: 20,
     snapshotTime,
+    filters: showtimesFilters,
   });
 
   const showtimes = data?.pages.flat() ?? [];
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ['showtimes', 'main'] });
+    await resetInfiniteQuery(queryClient, ['showtimes', 'main', showtimesFilters]);
     setSnapshotTime(DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
     setRefreshing(false);
   };
@@ -60,7 +72,7 @@ export default function MainShowtimesScreen() {
       onRefresh={handleRefresh}
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
-      filters={FILTERS}
+      filters={BASE_FILTERS}
       selectedFilter={selectedFilter}
       onSelectFilter={setSelectedFilter}
       emptyText="No showtimes found"

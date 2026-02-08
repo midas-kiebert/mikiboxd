@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import Appearance from "@/components/UserSettings/Appearance"
 import ChangePassword from "@/components/UserSettings/ChangePassword"
 import DeleteAccount from "@/components/UserSettings/DeleteAccount"
+import Notifications from "@/components/UserSettings/Notifications"
 import UserInformation from "@/components/UserSettings/UserInformation"
 import useAuth from "shared/hooks/useAuth"
 import Page from "@/components/Common/Page"
@@ -11,6 +12,11 @@ import Page from "@/components/Common/Page"
 const tabsConfig = [
   { value: "my-profile", title: "My profile", component: UserInformation },
   { value: "password", title: "Password", component: ChangePassword },
+  {
+    value: "notifications",
+    title: "Notifications",
+    component: Notifications,
+  },
   { value: "appearance", title: "Appearance", component: Appearance },
   { value: "danger-zone", title: "Danger zone", component: DeleteAccount },
 ]
@@ -22,7 +28,7 @@ export const Route = createFileRoute("/_layout/settings")({
 function UserSettings() {
   const { user: currentUser } = useAuth()
   const finalTabs = currentUser?.is_superuser
-    ? tabsConfig.slice(0, 3)
+    ? tabsConfig.filter((tab) => tab.value !== "danger-zone")
     : tabsConfig
 
   if (!currentUser) {

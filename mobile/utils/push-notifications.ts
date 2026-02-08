@@ -3,11 +3,14 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { MeService } from "shared";
 
+export const ANDROID_PUSH_CHANNEL_ID = "heads-up";
+
 export async function registerPushTokenForCurrentDevice(): Promise<string | null> {
   if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "default",
+    await Notifications.setNotificationChannelAsync(ANDROID_PUSH_CHANNEL_ID, {
+      name: "Heads Up",
       importance: Notifications.AndroidImportance.MAX,
+      sound: "default",
       vibrationPattern: [0, 250, 250, 250],
       lightColor: "#FFFFFF",
     });

@@ -96,9 +96,9 @@ def update_showtime_selection(
         showtime=showtime, session=session, user_id=user_id, filters=filters
     )
 
-    if (
-        going_status != previous_status
-        and going_status in (GoingStatus.GOING, GoingStatus.INTERESTED)
+    if going_status != previous_status and going_status in (
+        GoingStatus.GOING,
+        GoingStatus.INTERESTED,
     ):
         push_notifications.notify_friends_on_showtime_selection(
             session=session,

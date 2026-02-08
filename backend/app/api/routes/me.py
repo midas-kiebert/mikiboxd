@@ -9,6 +9,7 @@ from app.core.security import get_password_hash, verify_password
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
+from app.schemas.push_token import PushTokenRegister
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.user import UserPublic, UserWithFriendStatus
 from app.services import me as me_service
@@ -157,3 +158,19 @@ def set_cinema_selections(
         session=session, user_id=current_user.id, cinema_ids=cinema_ids
     )
     return Message(message="Cinemas updated successfully")
+
+
+@router.post("/push-tokens", response_model=Message)
+def register_push_token(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    payload: PushTokenRegister,
+) -> Message:
+    me_service.register_push_token(
+        session=session,
+        user_id=current_user.id,
+        token=payload.token,
+        platform=payload.platform,
+    )
+    return Message(message="Push token registered successfully")

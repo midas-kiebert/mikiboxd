@@ -13,6 +13,7 @@ import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import FriendCard from '@/components/friends/FriendCard';
 import FilterPills from '@/components/filters/FilterPills';
+import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
 export default function FriendsScreen() {
   const colors = useThemeColors();
@@ -23,6 +24,8 @@ export default function FriendsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'users' | 'received' | 'sent' | 'friends'>('users');
 
+  const userFilters = useMemo(() => ({ query: searchQuery }), [searchQuery]);
+
   const {
     data: usersData,
     fetchNextPage,
@@ -31,7 +34,7 @@ export default function FriendsScreen() {
     isFetching: isFetchingUsers,
   } = useFetchUsers({
     limit: 20,
-    filters: { query: searchQuery },
+    filters: userFilters,
   });
 
   const { data: friendsData, isFetching: isFetchingFriends } = useFetchFriends();
@@ -45,7 +48,7 @@ export default function FriendsScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ['users'] });
+    await resetInfiniteQuery(queryClient, ['users', userFilters]);
     setRefreshing(false);
   };
 

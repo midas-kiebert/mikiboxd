@@ -107,6 +107,26 @@ def get_friends_for_showtime(
     return friends
 
 
+def get_friends_with_showtime_selection(
+    *,
+    session: Session,
+    showtime_id: int,
+    friend_id: UUID,
+    statuses: list[GoingStatus],
+) -> list[User]:
+    friends_subq = select(Friendship.user_id).where(Friendship.friend_id == friend_id)
+    stmt = (
+        select(User)
+        .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == User.id)
+        .where(
+            col(User.id).in_(friends_subq),
+            ShowtimeSelection.showtime_id == showtime_id,
+            col(ShowtimeSelection.going_status).in_(statuses),
+        )
+    )
+    return list(session.exec(stmt).all())
+
+
 def get_main_page_showtimes(
     *, session: Session, user_id: UUID, limit: int, offset: int, filters: Filters
 ) -> list[Showtime]:

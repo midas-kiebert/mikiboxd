@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage, setStorage } from 'shared/storage';
 import * as SecureStore from 'expo-secure-store';
 import { useSegments, useRouter } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -57,8 +58,8 @@ axios.defaults.transformRequest = [
   ...defaultTransformers,
 ]
 
-OpenAPI.BASE = "http://192.168.1.121:8000";
-// OpenAPI.BASE = "https://api.mikino.nl";
+// OpenAPI.BASE = "http://192.168.1.121:8000";
+OpenAPI.BASE = "https://api.mikino.nl";
 
 OpenAPI.TOKEN = async () => {
   const token = await storage.getItem('access_token');
@@ -80,6 +81,15 @@ if (__DEV__ && !apiLoggingEnabled) {
 }
 
 const queryClient = new QueryClient();
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 
 

@@ -8,6 +8,7 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.core.enums import GoingStatus
 from app.crud import showtime as showtimes_crud
+from app.crud import user as user_crud
 from app.exceptions.base import AppError
 from app.exceptions.showtime_exceptions import (
     ShowtimeNotFoundError,
@@ -15,6 +16,7 @@ from app.exceptions.showtime_exceptions import (
 from app.inputs.movie import Filters
 from app.models.showtime import ShowtimeCreate
 from app.schemas.showtime import ShowtimeLoggedIn
+from app.services import push_notifications
 
 
 def get_showtime_by_id(
@@ -56,6 +58,11 @@ def update_showtime_selection(
     going_status: GoingStatus,
     filters: Filters,
 ) -> ShowtimeLoggedIn:
+    previous_status = user_crud.get_showtime_going_status(
+        session=session,
+        showtime_id=showtime_id,
+        user_id=user_id,
+    )
     if going_status == GoingStatus.NOT_GOING:
         try:
             showtime = showtimes_crud.remove_showtime_selection(
@@ -88,6 +95,18 @@ def update_showtime_selection(
     showtime_logged_in = showtime_converters.to_logged_in(
         showtime=showtime, session=session, user_id=user_id, filters=filters
     )
+
+    if going_status != previous_status and going_status in (
+        GoingStatus.GOING,
+        GoingStatus.INTERESTED,
+    ):
+        push_notifications.notify_friends_on_showtime_selection(
+            session=session,
+            actor_id=user_id,
+            showtime=showtime,
+            going_status=going_status,
+        )
+
     return showtime_logged_in
 
 

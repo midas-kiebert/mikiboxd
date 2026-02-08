@@ -10,6 +10,7 @@ import TopBar from '@/components/layout/TopBar';
 import useAuth from 'shared/hooks/useAuth';
 import { MeService, type UpdatePassword, type UserUpdate } from 'shared';
 import { emailPattern } from 'shared/utils';
+import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications';
 
 type ProfileState = {
   display_name: string;
@@ -40,6 +41,7 @@ export default function SettingsScreen() {
     new_password: '',
     confirm_password: '',
   });
+  const [isRegisteringPush, setIsRegisteringPush] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -128,6 +130,26 @@ export default function SettingsScreen() {
         { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate() },
       ]
     );
+  };
+
+  const handleRegisterPush = async () => {
+    try {
+      setIsRegisteringPush(true);
+      const token = await registerPushTokenForCurrentDevice();
+      if (!token) {
+        Alert.alert(
+          'Permission required',
+          'Enable notifications for this app to receive push updates.'
+        );
+        return;
+      }
+      Alert.alert('Push ready', 'This device is now registered for push notifications.');
+    } catch (error) {
+      console.error('Error registering push token:', error);
+      Alert.alert('Error', 'Could not register this device for push notifications.');
+    } finally {
+      setIsRegisteringPush(false);
+    }
   };
 
   const isProfileSaving = profileMutation.isPending;
@@ -227,6 +249,27 @@ export default function SettingsScreen() {
           <ThemedText style={styles.sectionTitle}>Appearance</ThemedText>
           <View style={styles.card}>
             <ThemedText style={styles.helperText}>Appearance follows your system setting.</ThemedText>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Push notifications</ThemedText>
+          <View style={styles.card}>
+            <ThemedText style={styles.helperText}>
+              Website preference: {user?.notify_on_friend_showtime_match ? 'Enabled' : 'Disabled'}.
+            </ThemedText>
+            <ThemedText style={styles.helperText}>
+              Enable friend overlap notifications on the website, then register this device.
+            </ThemedText>
+            <TouchableOpacity
+              style={[styles.primaryButton, isRegisteringPush && styles.buttonDisabled]}
+              onPress={handleRegisterPush}
+              disabled={isRegisteringPush}
+            >
+              <ThemedText style={styles.primaryButtonText}>
+                {isRegisteringPush ? 'Registering...' : 'Register this device for push'}
+              </ThemedText>
+            </TouchableOpacity>
           </View>
         </View>
 

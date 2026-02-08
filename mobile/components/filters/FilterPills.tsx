@@ -12,9 +12,10 @@ type FilterPillsProps = {
   filters: FilterOption[];
   selectedId: string;
   onSelect: (id: string) => void;
+  activeIds?: string[];
 };
 
-export default function FilterPills({ filters, selectedId, onSelect }: FilterPillsProps) {
+export default function FilterPills({ filters, selectedId, onSelect, activeIds }: FilterPillsProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
 
@@ -28,25 +29,28 @@ export default function FilterPills({ filters, selectedId, onSelect }: FilterPil
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[
-              styles.pill,
-              selectedId === item.id && styles.pillActive,
-            ]}
-            onPress={() => onSelect(item.id)}
-          >
-            <ThemedText
-              numberOfLines={1}
+        renderItem={({ item }) => {
+          const isActive = selectedId === item.id || activeIds?.includes(item.id);
+          return (
+            <TouchableOpacity
               style={[
-                styles.pillText,
-                selectedId === item.id && styles.pillTextActive,
+                styles.pill,
+                isActive && styles.pillActive,
               ]}
+              onPress={() => onSelect(item.id)}
             >
-              {item.label}
-            </ThemedText>
-          </TouchableOpacity>
-        )}
+              <ThemedText
+                numberOfLines={1}
+                style={[
+                  styles.pillText,
+                  isActive && styles.pillTextActive,
+                ]}
+              >
+                {item.label}
+              </ThemedText>
+            </TouchableOpacity>
+          );
+        }}
       />
     </View>
   );

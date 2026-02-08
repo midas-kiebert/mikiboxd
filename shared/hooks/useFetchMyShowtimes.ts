@@ -1,20 +1,32 @@
 import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { MeService, MeGetMyShowtimesResponse } from "../client";
 
+type ShowtimesFilters = {
+    days?: string[];
+    selectedCinemaIds?: number[];
+};
 
 type useFetchShowtimesProps = {
     limit?: number;
     snapshotTime?: string;
+    filters?: ShowtimesFilters;
 };
 
 export function useFetchMyShowtimes(
     {
         limit,
         snapshotTime,
+        filters = {},
     } : useFetchShowtimesProps = {}
 ): UseInfiniteQueryResult<InfiniteData<MeGetMyShowtimesResponse>, Error>{
-    const result = useInfiniteQuery<MeGetMyShowtimesResponse, Error, InfiniteData<MeGetMyShowtimesResponse>, [string, string], number>({
-        queryKey: ["showtimes", "me"],
+    const result = useInfiniteQuery<
+        MeGetMyShowtimesResponse,
+        Error,
+        InfiniteData<MeGetMyShowtimesResponse>,
+        [string, string, ShowtimesFilters],
+        number
+    >({
+        queryKey: ["showtimes", "me", filters],
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
@@ -23,6 +35,7 @@ export function useFetchMyShowtimes(
                 offset: pageParam,
                 limit: limit,
                 snapshotTime: snapshotTime,
+                ...filters,
             });
         },
         select: (data) => {

@@ -2,19 +2,32 @@ import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstac
 import { ShowtimesService, ShowtimesGetMainPageShowtimesResponse } from "../client";
 import { ApiError } from "../client";
 
+type ShowtimesFilters = {
+    days?: string[];
+    selectedCinemaIds?: number[];
+};
+
 type useFetchMainPageShowtimesProps = {
     limit?: number;
     snapshotTime?: string;
+    filters?: ShowtimesFilters;
 };
 
 export function useFetchMainPageShowtimes(
     {
         limit,
         snapshotTime,
+        filters = {},
     } : useFetchMainPageShowtimesProps
 ): UseInfiniteQueryResult<InfiniteData<ShowtimesGetMainPageShowtimesResponse>, Error>{
-    const result = useInfiniteQuery<ShowtimesGetMainPageShowtimesResponse, Error, InfiniteData<ShowtimesGetMainPageShowtimesResponse>, [string, string], number>({
-        queryKey: ["showtimes", "main"],
+    const result = useInfiniteQuery<
+        ShowtimesGetMainPageShowtimesResponse,
+        Error,
+        InfiniteData<ShowtimesGetMainPageShowtimesResponse>,
+        [string, string, ShowtimesFilters],
+        number
+    >({
+        queryKey: ["showtimes", "main", filters],
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
@@ -23,6 +36,7 @@ export function useFetchMainPageShowtimes(
                 offset: pageParam,
                 limit: limit,
                 snapshotTime: snapshotTime,
+                ...filters,
             });
         },
         retry: (failureCount, error) => {

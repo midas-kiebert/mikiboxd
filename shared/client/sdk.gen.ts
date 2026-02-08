@@ -39,6 +39,8 @@ import type {
   MeGetCinemaSelectionsResponse,
   MeSetCinemaSelectionsData,
   MeSetCinemaSelectionsResponse,
+  MeRegisterPushTokenData,
+  MeRegisterPushTokenResponse,
   MoviesReadMoviesData,
   MoviesReadMoviesResponse,
   MoviesReadMovieShowtimesData,
@@ -486,6 +488,27 @@ export class MeService {
     return __request(OpenAPI, {
       method: "POST",
       url: "/api/v1/me/cinemas",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Register Push Token
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static registerPushToken(
+    data: MeRegisterPushTokenData,
+  ): CancelablePromise<MeRegisterPushTokenResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/push-tokens",
       body: data.requestBody,
       mediaType: "application/json",
       errors: {

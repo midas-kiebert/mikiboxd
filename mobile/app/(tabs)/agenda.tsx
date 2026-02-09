@@ -8,14 +8,12 @@ import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
 const BASE_FILTERS = [
-  { id: '1', label: 'All' },
-  { id: '2', label: 'Going' },
-  { id: '3', label: 'Interested' },
+  { id: 'going', label: 'Going Only' },
 ];
 
 export default function AgendaScreen() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState('1');
+  const [selectedFilter, setSelectedFilter] = useState('going');
   const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() =>
     DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")
@@ -45,7 +43,11 @@ export default function AgendaScreen() {
     filters: showtimesFilters,
   });
 
-  const showtimes = data?.pages.flat() ?? [];
+  const showtimes = useMemo(() => {
+    const allShowtimes = data?.pages.flat() ?? [];
+    if (selectedFilter !== 'going') return allShowtimes;
+    return allShowtimes.filter((showtime) => showtime.going === 'GOING');
+  }, [data, selectedFilter]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -58,6 +60,10 @@ export default function AgendaScreen() {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
+  };
+
+  const handleSelectFilter = (filterId: string) => {
+    setSelectedFilter((prev) => (prev === filterId ? '' : filterId));
   };
 
   return (
@@ -74,7 +80,7 @@ export default function AgendaScreen() {
       onSearchChange={setSearchQuery}
       filters={BASE_FILTERS}
       selectedFilter={selectedFilter}
-      onSelectFilter={setSelectedFilter}
+      onSelectFilter={handleSelectFilter}
       emptyText="No showtimes in your agenda"
     />
   );

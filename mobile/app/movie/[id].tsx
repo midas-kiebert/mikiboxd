@@ -147,8 +147,28 @@ export default function MoviePage() {
             data={filteredShowtimes}
             keyExtractor={(item) => item.id.toString()}
             renderItem={({ item }) => (
-              <View style={styles.showtimeCard}>
-                <ShowtimeRow showtime={item} showFriends />
+              <View
+                style={[
+                  styles.showtimeCardGlow,
+                  item.going === "GOING"
+                    ? styles.showtimeCardGlowGoing
+                    : item.going === "INTERESTED"
+                      ? styles.showtimeCardGlowInterested
+                      : undefined,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.showtimeCard,
+                    item.going === "GOING"
+                      ? styles.showtimeCardGoing
+                      : item.going === "INTERESTED"
+                        ? styles.showtimeCardInterested
+                        : undefined,
+                  ]}
+                >
+                  <ShowtimeRow showtime={item} showFriends />
+                </View>
               </View>
             )}
             contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) }]}
@@ -282,6 +302,32 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     noShowtimes: {
       fontSize: 13,
       color: colors.textSecondary,
+    },
+    showtimeCardGlow: {
+      borderRadius: 10,
+      backgroundColor: colors.cardBackground,
+    },
+    showtimeCardGlowGoing: {
+      shadowColor: colors.green.secondary,
+      shadowOpacity: 0.6,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 8,
+    },
+    showtimeCardGlowInterested: {
+      shadowColor: colors.orange.secondary,
+      shadowOpacity: 0.6,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 8,
+    },
+    showtimeCardGoing: {
+      borderColor: colors.green.secondary,
+      backgroundColor: colors.green.primary,
+    },
+    showtimeCardInterested: {
+      borderColor: colors.orange.secondary,
+      backgroundColor: colors.orange.primary,
     },
     showtimeCard: {
       borderWidth: 1,

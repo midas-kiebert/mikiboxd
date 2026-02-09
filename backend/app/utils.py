@@ -24,6 +24,10 @@ class EmailData:
     subject: str
 
 
+class EmailDeliveryError(Exception):
+    pass
+
+
 def render_email_template(*, template_name: str, context: dict[str, Any]) -> str:
     template_str = (
         Path(__file__).parent / "email-templates" / "build" / template_name
@@ -55,6 +59,14 @@ def send_email(
         smtp_options["password"] = settings.SMTP_PASSWORD
     response = message.send(to=email_to, smtp=smtp_options)
     logger.info(f"send email result: {response}")
+
+    status_code = getattr(response, "status_code", None)
+    status_text = getattr(response, "status_text", "")
+    if isinstance(status_text, bytes):
+        status_text = status_text.decode(errors="replace")
+
+    if status_code is not None and int(status_code) >= 400:
+        raise EmailDeliveryError(f"{status_code} {status_text}")
 
 
 def generate_test_email(email_to: str) -> EmailData:

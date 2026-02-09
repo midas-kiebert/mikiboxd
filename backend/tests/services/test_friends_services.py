@@ -19,6 +19,7 @@ def test_create_friend_request_success(
     mocker: MockerFixture,
 ):
     mock_crud = mocker.patch("app.crud.friendship.create_friend_request")
+    notify = mocker.patch("app.services.push_notifications.notify_user_on_friend_request")
     mock_session = mocker.MagicMock()
 
     sender_id = uuid4()
@@ -36,6 +37,11 @@ def test_create_friend_request_success(
         receiver_id=receiver_id,
     )
     mock_session.commit.assert_called_once()
+    notify.assert_called_once_with(
+        session=mock_session,
+        sender_id=sender_id,
+        receiver_id=receiver_id,
+    )
     assert result.message == "Friend request sent successfully."
 
 
@@ -75,6 +81,9 @@ def test_accept_friend_request_success(
 ):
     mock_create_crud = mocker.patch("app.crud.friendship.create_friendship")
     mock_delete_crud = mocker.patch("app.crud.friendship.delete_friend_request")
+    notify = mocker.patch(
+        "app.services.push_notifications.notify_user_on_friend_request_accepted"
+    )
     mock_session = mocker.MagicMock()
 
     current_user_id = uuid4()
@@ -98,6 +107,11 @@ def test_accept_friend_request_success(
     )
 
     mock_session.commit.assert_called_once()
+    notify.assert_called_once_with(
+        session=mock_session,
+        accepter_id=current_user_id,
+        requester_id=sender_id,
+    )
     assert result.message == "Friend request accepted successfully."
 
 

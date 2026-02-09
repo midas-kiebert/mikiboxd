@@ -42,6 +42,7 @@ export default function SettingsScreen() {
     confirm_password: '',
   });
   const [isRegisteringPush, setIsRegisteringPush] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -128,6 +129,28 @@ export default function SettingsScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate() },
+      ]
+    );
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Log out',
+      'Are you sure you want to log out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsLoggingOut(true);
+              await logout();
+            } finally {
+              setIsLoggingOut(false);
+            }
+          },
+        },
       ]
     );
   };
@@ -274,6 +297,21 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Account</ThemedText>
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={[styles.secondaryButton, isLoggingOut && styles.buttonDisabled]}
+              onPress={handleLogout}
+              disabled={isLoggingOut}
+            >
+              <ThemedText style={styles.secondaryButtonText}>
+                {isLoggingOut ? 'Logging out...' : 'Log out'}
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Danger zone</ThemedText>
           <View style={styles.card}>
             <ThemedText style={styles.helperText}>
@@ -344,6 +382,19 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     },
     primaryButtonText: {
       color: '#fff',
+      fontWeight: '700',
+    },
+    secondaryButton: {
+      marginTop: 4,
+      backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      paddingVertical: 10,
+      borderRadius: 10,
+      alignItems: 'center',
+    },
+    secondaryButtonText: {
+      color: colors.text,
       fontWeight: '700',
     },
     dangerButton: {

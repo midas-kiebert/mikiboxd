@@ -99,6 +99,100 @@ def notify_friends_on_showtime_selection(
     )
 
 
+def notify_user_on_friend_request(
+    *,
+    session: Session,
+    sender_id: UUID,
+    receiver_id: UUID,
+) -> None:
+    sender = user_crud.get_user_by_id(session=session, user_id=sender_id)
+    if sender is None:
+        return
+
+    push_tokens = push_token_crud.get_push_tokens_for_users(
+        session=session,
+        user_ids=[receiver_id],
+    )
+    if not push_tokens:
+        return
+
+    sender_name = sender.display_name or "Someone"
+    messages = [
+        {
+            "to": token.token,
+            "title": "New friend request",
+            "body": f"{sender_name} sent you a friend request",
+            "data": {
+                "type": "friend_request_received",
+                "senderId": str(sender_id),
+            },
+            "priority": "high",
+            "sound": "default",
+            "channelId": ANDROID_PUSH_CHANNEL_ID,
+        }
+        for token in push_tokens
+    ]
+
+    try:
+        results = _send_expo_messages(messages)
+    except Exception:
+        logger.exception("Failed sending friend request notifications")
+        return
+
+    _handle_expo_results(
+        session=session,
+        tokens=[token.token for token in push_tokens],
+        results=results,
+    )
+
+
+def notify_user_on_friend_request_accepted(
+    *,
+    session: Session,
+    accepter_id: UUID,
+    requester_id: UUID,
+) -> None:
+    accepter = user_crud.get_user_by_id(session=session, user_id=accepter_id)
+    if accepter is None:
+        return
+
+    push_tokens = push_token_crud.get_push_tokens_for_users(
+        session=session,
+        user_ids=[requester_id],
+    )
+    if not push_tokens:
+        return
+
+    accepter_name = accepter.display_name or "Someone"
+    messages = [
+        {
+            "to": token.token,
+            "title": "Friend request accepted",
+            "body": f"{accepter_name} accepted your friend request",
+            "data": {
+                "type": "friend_request_accepted",
+                "accepterId": str(accepter_id),
+            },
+            "priority": "high",
+            "sound": "default",
+            "channelId": ANDROID_PUSH_CHANNEL_ID,
+        }
+        for token in push_tokens
+    ]
+
+    try:
+        results = _send_expo_messages(messages)
+    except Exception:
+        logger.exception("Failed sending friend request accepted notifications")
+        return
+
+    _handle_expo_results(
+        session=session,
+        tokens=[token.token for token in push_tokens],
+        results=results,
+    )
+
+
 def _send_expo_messages(messages: list[dict]) -> list[dict]:
     with httpx.Client(timeout=10) as client:
         response = client.post(EXPO_PUSH_URL, json=messages)

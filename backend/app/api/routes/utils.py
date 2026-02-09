@@ -29,7 +29,9 @@ def test_email(email_to: EmailStr) -> Message:
         )
     except EmailDeliveryError as e:
         logger.exception("Test email delivery failed for %s", email_to)
-        raise HTTPException(status_code=502, detail=f"Could not deliver test email: {e}") from e
+        raise HTTPException(
+            status_code=502, detail=f"Could not deliver test email: {e}"
+        ) from e
     return Message(message="Test email sent")
 
 

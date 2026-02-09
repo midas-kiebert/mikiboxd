@@ -103,6 +103,96 @@ def test_notify_friends_skips_when_no_opted_in_recipients(
     send_messages.assert_not_called()
 
 
+def test_notify_user_on_friend_request(
+    mocker: MockerFixture,
+) -> None:
+    session = mocker.MagicMock()
+    sender_id = uuid4()
+    receiver_id = uuid4()
+
+    sender = mocker.MagicMock(display_name="Alex")
+    token = mocker.MagicMock(token="ExponentPushToken[abc]")
+
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        return_value=sender,
+    )
+    get_tokens = mocker.patch(
+        "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
+        return_value=[token],
+    )
+    send_messages = mocker.patch(
+        "app.services.push_notifications._send_expo_messages",
+        return_value=[{"status": "ok"}],
+    )
+    handle_results = mocker.patch("app.services.push_notifications._handle_expo_results")
+
+    push_notifications.notify_user_on_friend_request(
+        session=session,
+        sender_id=sender_id,
+        receiver_id=receiver_id,
+    )
+
+    get_tokens.assert_called_once_with(
+        session=session,
+        user_ids=[receiver_id],
+    )
+    send_messages.assert_called_once()
+    sent_payload = send_messages.call_args.args[0]
+    assert len(sent_payload) == 1
+    assert sent_payload[0]["to"] == token.token
+    assert sent_payload[0]["title"] == "New friend request"
+    assert sent_payload[0]["body"] == "Alex sent you a friend request"
+    assert sent_payload[0]["data"]["type"] == "friend_request_received"
+    assert sent_payload[0]["data"]["senderId"] == str(sender_id)
+    handle_results.assert_called_once()
+
+
+def test_notify_user_on_friend_request_accepted(
+    mocker: MockerFixture,
+) -> None:
+    session = mocker.MagicMock()
+    accepter_id = uuid4()
+    requester_id = uuid4()
+
+    accepter = mocker.MagicMock(display_name="Alex")
+    token = mocker.MagicMock(token="ExponentPushToken[abc]")
+
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        return_value=accepter,
+    )
+    get_tokens = mocker.patch(
+        "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
+        return_value=[token],
+    )
+    send_messages = mocker.patch(
+        "app.services.push_notifications._send_expo_messages",
+        return_value=[{"status": "ok"}],
+    )
+    handle_results = mocker.patch("app.services.push_notifications._handle_expo_results")
+
+    push_notifications.notify_user_on_friend_request_accepted(
+        session=session,
+        accepter_id=accepter_id,
+        requester_id=requester_id,
+    )
+
+    get_tokens.assert_called_once_with(
+        session=session,
+        user_ids=[requester_id],
+    )
+    send_messages.assert_called_once()
+    sent_payload = send_messages.call_args.args[0]
+    assert len(sent_payload) == 1
+    assert sent_payload[0]["to"] == token.token
+    assert sent_payload[0]["title"] == "Friend request accepted"
+    assert sent_payload[0]["body"] == "Alex accepted your friend request"
+    assert sent_payload[0]["data"]["type"] == "friend_request_accepted"
+    assert sent_payload[0]["data"]["accepterId"] == str(accepter_id)
+    handle_results.assert_called_once()
+
+
 def test_handle_expo_results_removes_only_device_not_registered(
     mocker: MockerFixture,
 ) -> None:

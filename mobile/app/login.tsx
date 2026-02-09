@@ -13,9 +13,12 @@ import { useRouter } from 'expo-router'
 import { useForm, Controller } from 'react-hook-form'
 import useAuth from 'shared/hooks/useAuth'
 import type { Body_login_login_access_token as AccessToken } from 'shared'
+import { useThemeColors } from '@/hooks/use-theme-color'
 
 export default function LoginScreen() {
     const router = useRouter()
+    const colors = useThemeColors()
+    const styles = createStyles(colors)
     const { loginMutation, error, resetError } = useAuth(
         () => router.replace('/(tabs)'), // onLoginSuccess - navigate to home
         () => router.replace('/login') // onLogout
@@ -77,13 +80,14 @@ export default function LoginScreen() {
                             <TextInput
                                 style={[styles.input, errors.username && styles.inputError]}
                                 placeholder="Email"
-                                placeholderTextColor="#999"
+                                placeholderTextColor={colors.textSecondary}
                                 onBlur={onBlur}
                                 onChangeText={onChange}
                                 value={value}
                                 autoCapitalize="none"
                                 keyboardType="email-address"
                                 autoComplete="email"
+                                selectionColor={colors.tint}
                             />
                             {errors.username && (
                                 <Text style={styles.fieldError}>{errors.username.message}</Text>
@@ -103,13 +107,14 @@ export default function LoginScreen() {
                             <TextInput
                                 style={[styles.input, errors.password && styles.inputError]}
                                 placeholder="Password"
-                                placeholderTextColor="#999"
+                                placeholderTextColor={colors.textSecondary}
                                 onBlur={onBlur}
                                 onChangeText={onChange}
                                 value={value}
                                 secureTextEntry
                                 autoCapitalize="none"
                                 autoComplete="password"
+                                selectionColor={colors.tint}
                             />
                             {errors.password && (
                                 <Text style={styles.fieldError}>{errors.password.message}</Text>
@@ -117,6 +122,10 @@ export default function LoginScreen() {
                         </View>
                     )}
                 />
+
+                <TouchableOpacity onPress={() => router.push('/recover-password')}>
+                    <Text style={styles.forgotLink}>Forgot Password?</Text>
+                </TouchableOpacity>
 
                 <TouchableOpacity
                     style={styles.button}
@@ -130,10 +139,7 @@ export default function LoginScreen() {
                     )}
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={
-                    () => { }
-                    // router.push('/signup')
-                }>
+                <TouchableOpacity onPress={() => router.push('/signup')}>
                     <Text style={styles.linkText}>
                         Don't have an account? <Text style={styles.link}>Sign Up</Text>
                     </Text>
@@ -143,69 +149,82 @@ export default function LoginScreen() {
     )
 }
 
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#fff',
-    },
-    form: {
-        flex: 1,
-        justifyContent: 'center',
-        padding: 20,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        marginBottom: 40,
-        textAlign: 'center',
-    },
-    inputContainer: {
-        marginBottom: 20,
-    },
-    input: {
-        borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 8,
-        padding: 15,
-        fontSize: 16,
-    },
-    inputError: {
-        borderColor: '#ff0000',
-    },
-    fieldError: {
-        color: '#ff0000',
-        fontSize: 12,
-        marginTop: 5,
-    },
-    button: {
-        backgroundColor: '#007AFF',
-        borderRadius: 8,
-        padding: 15,
-        alignItems: 'center',
-        marginTop: 10,
-    },
-    buttonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    linkText: {
-        textAlign: 'center',
-        marginTop: 20,
-        color: '#666',
-    },
-    link: {
-        color: '#007AFF',
-        fontWeight: '600',
-    },
-    errorContainer: {
-        backgroundColor: '#ffe6e6',
-        padding: 10,
-        borderRadius: 8,
-        marginBottom: 20,
-    },
-    errorText: {
-        color: '#ff0000',
-        textAlign: 'center',
-    },
-})
+const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =>
+    StyleSheet.create({
+        container: {
+            flex: 1,
+            backgroundColor: colors.background,
+        },
+        form: {
+            flex: 1,
+            justifyContent: 'center',
+            padding: 20,
+        },
+        title: {
+            fontSize: 32,
+            fontWeight: 'bold',
+            marginBottom: 40,
+            textAlign: 'center',
+            color: colors.text,
+        },
+        inputContainer: {
+            marginBottom: 20,
+        },
+        input: {
+            borderWidth: 1,
+            borderColor: colors.cardBorder,
+            borderRadius: 8,
+            padding: 15,
+            fontSize: 16,
+            color: colors.text,
+            backgroundColor: colors.cardBackground,
+        },
+        inputError: {
+            borderColor: colors.red.secondary,
+        },
+        fieldError: {
+            color: colors.red.secondary,
+            fontSize: 12,
+            marginTop: 5,
+        },
+        button: {
+            backgroundColor: colors.tint,
+            borderRadius: 8,
+            padding: 15,
+            alignItems: 'center',
+            marginTop: 10,
+        },
+        buttonText: {
+            color: colors.pillActiveText,
+            fontSize: 16,
+            fontWeight: '600',
+        },
+        linkText: {
+            textAlign: 'center',
+            marginTop: 20,
+            color: colors.textSecondary,
+        },
+        link: {
+            color: colors.tint,
+            fontWeight: '600',
+        },
+        forgotLink: {
+            color: colors.tint,
+            marginTop: -2,
+            marginBottom: 8,
+            alignSelf: 'flex-start',
+            fontWeight: '600',
+        },
+        errorContainer: {
+            backgroundColor: colors.red.primary,
+            padding: 10,
+            borderRadius: 8,
+            marginBottom: 20,
+            borderWidth: 1,
+            borderColor: colors.red.secondary,
+        },
+        errorText: {
+            color: colors.red.secondary,
+            textAlign: 'center',
+        },
+    })

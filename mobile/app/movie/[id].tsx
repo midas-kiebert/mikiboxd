@@ -1,11 +1,21 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Image, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Modal,
+  Pressable,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+  Linking,
+} from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useLocalSearchParams } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
-import type { MovieLoggedIn } from "shared";
-import { MoviesService } from "shared";
+import type { GoingStatus, MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
+import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
@@ -18,21 +28,21 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 
 const SHOWTIMES_PAGE_SIZE = 20;
 const BASE_FILTERS = [
-  { id: "1", label: "All Showtimes" },
+  { id: "showtime-filter", label: "All Showtimes" },
   { id: "cinemas", label: "Cinemas" },
   { id: "days", label: "Days" },
-  { id: "you-going", label: "You Going" },
-  { id: "you-interested", label: "You Interested" },
-  { id: "friends-going", label: "Friends Going" },
-  { id: "friends-interested", label: "Friends Interested" },
 ];
+
+type ShowtimeFilter = "all" | "going" | "interested";
 
 export default function MoviePage() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [selectedFilter, setSelectedFilter] = useState("1");
+  const [selectedFilter, setSelectedFilter] = useState<ShowtimeFilter>("all");
+  const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeInMovieLoggedIn | null>(null);
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [dayModalVisible, setDayModalVisible] = useState(false);
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
@@ -80,14 +90,18 @@ export default function MoviePage() {
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
   const filteredShowtimes = useMemo(() => {
     switch (selectedFilter) {
-      case "you-going":
-        return showtimes.filter((showtime) => showtime.going === "GOING");
-      case "you-interested":
-        return showtimes.filter((showtime) => showtime.going === "INTERESTED");
-      case "friends-going":
-        return showtimes.filter((showtime) => (showtime.friends_going ?? []).length > 0);
-      case "friends-interested":
-        return showtimes.filter((showtime) => (showtime.friends_interested ?? []).length > 0);
+      case "going":
+        return showtimes.filter(
+          (showtime) => showtime.going === "GOING" || (showtime.friends_going ?? []).length > 0
+        );
+      case "interested":
+        return showtimes.filter(
+          (showtime) =>
+            showtime.going === "GOING" ||
+            showtime.going === "INTERESTED" ||
+            (showtime.friends_going ?? []).length > 0 ||
+            (showtime.friends_interested ?? []).length > 0
+        );
       default:
         return showtimes;
     }
@@ -98,7 +112,115 @@ export default function MoviePage() {
     }
   };
 
+  const updateShowtimeInCaches = (showtimeId: number, going: GoingStatus) => {
+    queryClient.setQueriesData(
+      { queryKey: ["movie", movieId, "showtimes"] },
+      (oldData: unknown) => {
+        if (!oldData || typeof oldData !== "object" || !("pages" in oldData)) {
+          return oldData;
+        }
+        const data = oldData as { pages: ShowtimeInMovieLoggedIn[][]; pageParams: unknown[] };
+        return {
+          ...data,
+          pages: data.pages.map((page) =>
+            page.map((showtime) =>
+              showtime.id === showtimeId ? { ...showtime, going } : showtime
+            )
+          ),
+        };
+      }
+    );
+
+    queryClient.setQueriesData({ queryKey: ["movie", movieId] }, (oldData: unknown) => {
+      if (!oldData || typeof oldData !== "object" || !("showtimes" in oldData)) {
+        return oldData;
+      }
+      const data = oldData as MovieLoggedIn;
+      return {
+        ...data,
+        showtimes: data.showtimes.map((showtime) =>
+          showtime.id === showtimeId ? { ...showtime, going } : showtime
+        ),
+      };
+    });
+  };
+
+  const { mutate: updateShowtimeSelection, isPending: isUpdatingShowtimeSelection } = useMutation({
+    mutationFn: ({ showtimeId, going }: { showtimeId: number; going: GoingStatus }) =>
+      ShowtimesService.updateShowtimeSelection({
+        showtimeId,
+        requestBody: {
+          going_status: going,
+        },
+      }),
+    onMutate: async ({ showtimeId, going }) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ["movie", movieId, "showtimes"] }),
+        queryClient.cancelQueries({ queryKey: ["movie", movieId] }),
+      ]);
+
+      const previousMovieShowtimeQueries = queryClient.getQueriesData({
+        queryKey: ["movie", movieId, "showtimes"],
+      });
+      const previousMovieQueries = queryClient.getQueriesData({
+        queryKey: ["movie", movieId],
+      });
+      const previousSelectedShowtime = selectedShowtime;
+
+      // Optimistic update for immediate UI feedback.
+      updateShowtimeInCaches(showtimeId, going);
+      setSelectedShowtime(null);
+
+      return {
+        previousMovieShowtimeQueries,
+        previousMovieQueries,
+        previousSelectedShowtime,
+      };
+    },
+    onError: (_error, _variables, context) => {
+      context?.previousMovieShowtimeQueries?.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+      context?.previousMovieQueries?.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+      setSelectedShowtime(context?.previousSelectedShowtime ?? null);
+    },
+    onSuccess: (updatedShowtime) => {
+      // Ensure optimistic state matches backend-confirmed value.
+      updateShowtimeInCaches(updatedShowtime.id, updatedShowtime.going);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["movie", movieId, "showtimes"] });
+      queryClient.invalidateQueries({ queryKey: ["movie", movieId] });
+      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
+      queryClient.invalidateQueries({ queryKey: ["movies"] });
+    },
+  });
+
+  const handleShowtimeStatusUpdate = (going: GoingStatus) => {
+    if (!selectedShowtime || isUpdatingShowtimeSelection) return;
+    updateShowtimeSelection({ showtimeId: selectedShowtime.id, going });
+  };
+  const handleOpenTicketLink = async () => {
+    const ticketLink = selectedShowtime?.ticket_link;
+    if (!ticketLink) return;
+    const canOpen = await Linking.canOpenURL(ticketLink);
+    if (canOpen) {
+      await Linking.openURL(ticketLink);
+    }
+  };
+  const isGoingSelected = selectedShowtime?.going === "GOING";
+  const isInterestedSelected = selectedShowtime?.going === "INTERESTED";
+  const isNotGoingSelected = selectedShowtime?.going === "NOT_GOING";
+
   const handleSelectFilter = (filterId: string) => {
+    if (filterId === "showtime-filter") {
+      setSelectedFilter((prev) =>
+        prev === "all" ? "interested" : prev === "interested" ? "going" : "all"
+      );
+      return;
+    }
     if (filterId === "cinemas") {
       setCinemaModalVisible(true);
       return;
@@ -107,20 +229,31 @@ export default function MoviePage() {
       setDayModalVisible(true);
       return;
     }
-    setSelectedFilter(filterId);
   };
 
   const pillFilters = useMemo(() => {
-    if (selectedDays.length === 0) return BASE_FILTERS;
-    return BASE_FILTERS.map((filter) =>
-      filter.id === "days"
-        ? { ...filter, label: `Days (${selectedDays.length})` }
-        : filter
-    );
-  }, [selectedDays.length]);
+    return BASE_FILTERS.map((filter) => {
+      if (filter.id === "showtime-filter") {
+        const label =
+          selectedFilter === "all"
+            ? "All Showtimes"
+            : selectedFilter === "going"
+              ? "Going"
+              : "Interested";
+        return { ...filter, label };
+      }
+      if (filter.id === "days" && selectedDays.length > 0) {
+        return { ...filter, label: `Days (${selectedDays.length})` };
+      }
+      return filter;
+    });
+  }, [selectedDays.length, selectedFilter]);
 
   const activeFilterIds = useMemo(() => {
     const active: string[] = [];
+    if (selectedFilter !== "all") {
+      active.push("showtime-filter");
+    }
     if (selectedDays.length > 0) {
       active.push("days");
     }
@@ -128,11 +261,125 @@ export default function MoviePage() {
       active.push("cinemas");
     }
     return active;
-  }, [selectedDays.length, sessionCinemaIds]);
+  }, [selectedFilter, selectedDays.length, sessionCinemaIds]);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <Stack.Screen options={{ title: movie?.title ?? "Movie" }} />
+      <Modal
+        transparent
+        visible={!!selectedShowtime}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isUpdatingShowtimeSelection) {
+            setSelectedShowtime(null);
+          }
+        }}
+      >
+        <View style={styles.statusModalBackdrop}>
+          <Pressable
+            style={styles.statusModalDismissArea}
+            onPress={() => {
+              if (!isUpdatingShowtimeSelection) {
+                setSelectedShowtime(null);
+              }
+            }}
+          />
+          <View style={styles.statusModalCard}>
+            <ThemedText style={styles.statusModalTitle}>Update your status</ThemedText>
+            {selectedShowtime ? (
+              <ThemedText style={styles.statusModalSubtitle}>
+                {DateTime.fromISO(selectedShowtime.datetime).toFormat("ccc, LLL d, HH:mm")} •{" "}
+                {selectedShowtime.cinema.name}
+              </ThemedText>
+            ) : null}
+            <TouchableOpacity
+              style={[
+                styles.ticketButton,
+                !selectedShowtime?.ticket_link && styles.ticketButtonDisabled,
+              ]}
+              disabled={!selectedShowtime?.ticket_link}
+              onPress={handleOpenTicketLink}
+              activeOpacity={0.8}
+            >
+              <ThemedText
+                style={[
+                  styles.ticketButtonText,
+                  !selectedShowtime?.ticket_link && styles.ticketButtonTextDisabled,
+                ]}
+              >
+                {selectedShowtime?.ticket_link ? "Open Ticket Link" : "No ticket link available"}
+              </ThemedText>
+            </TouchableOpacity>
+            <View style={styles.statusButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.statusButton,
+                  styles.statusButtonGoing,
+                  isGoingSelected && styles.statusButtonActive,
+                ]}
+                disabled={isUpdatingShowtimeSelection}
+                onPress={() => handleShowtimeStatusUpdate("GOING")}
+                activeOpacity={0.8}
+              >
+                <ThemedText
+                  style={[styles.statusButtonText, isGoingSelected && styles.statusButtonTextActive]}
+                >
+                  I'm Going
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.statusButton,
+                  styles.statusButtonInterested,
+                  isInterestedSelected && styles.statusButtonActive,
+                ]}
+                disabled={isUpdatingShowtimeSelection}
+                onPress={() => handleShowtimeStatusUpdate("INTERESTED")}
+                activeOpacity={0.8}
+              >
+                <ThemedText
+                  style={[
+                    styles.statusButtonText,
+                    isInterestedSelected && styles.statusButtonTextActive,
+                  ]}
+                >
+                  I'm Interested
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.statusButton,
+                  styles.statusButtonNotGoing,
+                  isNotGoingSelected && styles.statusButtonActive,
+                ]}
+                disabled={isUpdatingShowtimeSelection}
+                onPress={() => handleShowtimeStatusUpdate("NOT_GOING")}
+                activeOpacity={0.8}
+              >
+                <ThemedText
+                  style={[
+                    styles.statusButtonText,
+                    isNotGoingSelected && styles.statusButtonTextActive,
+                  ]}
+                >
+                  I'm Not Going
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.statusCancelButton}
+              disabled={isUpdatingShowtimeSelection}
+              onPress={() => setSelectedShowtime(null)}
+              activeOpacity={0.8}
+            >
+              <ThemedText style={styles.statusCancelText}>
+                {isUpdatingShowtimeSelection ? "Updating..." : "Cancel"}
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       {isMovieLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.tint} />
@@ -147,7 +394,7 @@ export default function MoviePage() {
             data={filteredShowtimes}
             keyExtractor={(item) => item.id.toString()}
             renderItem={({ item }) => (
-              <View
+              <TouchableOpacity
                 style={[
                   styles.showtimeCardGlow,
                   item.going === "GOING"
@@ -156,6 +403,8 @@ export default function MoviePage() {
                       ? styles.showtimeCardGlowInterested
                       : undefined,
                 ]}
+                onPress={() => setSelectedShowtime(item)}
+                activeOpacity={0.85}
               >
                 <View
                   style={[
@@ -169,7 +418,7 @@ export default function MoviePage() {
                 >
                   <ShowtimeRow showtime={item} showFriends />
                 </View>
-              </View>
+              </TouchableOpacity>
             )}
             contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) }]}
             onEndReached={handleEndReached}
@@ -195,7 +444,7 @@ export default function MoviePage() {
                 <View style={styles.filterPillsWrapper}>
                   <FilterPills
                     filters={pillFilters}
-                    selectedId={selectedFilter}
+                    selectedId=""
                     onSelect={handleSelectFilter}
                     activeIds={activeFilterIds}
                   />
@@ -336,5 +585,101 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       padding: 10,
       backgroundColor: colors.cardBackground,
       gap: 6,
+    },
+    statusModalBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0, 0, 0, 0.45)",
+      justifyContent: "center",
+      padding: 20,
+    },
+    statusModalDismissArea: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    statusModalCard: {
+      backgroundColor: colors.cardBackground,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      padding: 14,
+      gap: 10,
+    },
+    statusModalTitle: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    statusModalSubtitle: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    ticketButton: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.tint,
+      backgroundColor: colors.cardBackground,
+      alignItems: "center",
+      paddingVertical: 9,
+      paddingHorizontal: 12,
+    },
+    ticketButtonDisabled: {
+      borderColor: colors.divider,
+      backgroundColor: colors.pillBackground,
+    },
+    ticketButtonText: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.tint,
+    },
+    ticketButtonTextDisabled: {
+      color: colors.textSecondary,
+    },
+    statusButtons: {
+      gap: 8,
+      marginTop: 4,
+    },
+    statusButton: {
+      borderRadius: 10,
+      borderWidth: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      alignItems: "center",
+    },
+    statusButtonGoing: {
+      backgroundColor: colors.green.primary,
+      borderColor: colors.green.secondary,
+    },
+    statusButtonInterested: {
+      backgroundColor: colors.orange.primary,
+      borderColor: colors.orange.secondary,
+    },
+    statusButtonNotGoing: {
+      backgroundColor: colors.red.primary,
+      borderColor: colors.red.secondary,
+    },
+    statusButtonActive: {
+      borderWidth: 3,
+      shadowColor: colors.text,
+      shadowOpacity: 0.28,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 7,
+      transform: [{ scale: 1.02 }],
+    },
+    statusButtonText: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    statusButtonTextActive: {
+      fontWeight: "800",
+    },
+    statusCancelButton: {
+      alignItems: "center",
+      paddingTop: 2,
+    },
+    statusCancelText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.textSecondary,
     },
   });

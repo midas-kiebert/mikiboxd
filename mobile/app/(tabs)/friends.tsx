@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, RefreshControl, StyleSheet, View, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, FlatList, ScrollView, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { useFetchUsers } from 'shared/hooks/useFetchUsers';
@@ -35,11 +35,16 @@ export default function FriendsScreen() {
   } = useFetchUsers({
     limit: 20,
     filters: userFilters,
+    enabled: activeTab === 'users',
   });
 
-  const { data: friendsData, isFetching: isFetchingFriends } = useFetchFriends();
+  const { data: friendsData, isFetching: isFetchingFriends } = useFetchFriends({
+    enabled: activeTab === 'friends',
+  });
   const { data: receivedRequests, isFetching: isFetchingReceived } = useFetchReceivedRequests();
-  const { data: sentRequests, isFetching: isFetchingSent } = useFetchSentRequests();
+  const { data: sentRequests, isFetching: isFetchingSent } = useFetchSentRequests({
+    enabled: activeTab === 'sent',
+  });
 
   const users = useMemo(() => usersData?.pages.flat() ?? [], [usersData]);
   const friends = friendsData ?? [];
@@ -48,7 +53,15 @@ export default function FriendsScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await resetInfiniteQuery(queryClient, ['users', userFilters]);
+    if (activeTab === 'users') {
+      await resetInfiniteQuery(queryClient, ['users', userFilters]);
+    } else if (activeTab === 'received') {
+      await queryClient.invalidateQueries({ queryKey: ['users', 'receivedRequests'] });
+    } else if (activeTab === 'sent') {
+      await queryClient.invalidateQueries({ queryKey: ['users', 'sentRequests'] });
+    } else if (activeTab === 'friends') {
+      await queryClient.invalidateQueries({ queryKey: ['users', 'friends'] });
+    }
     setRefreshing(false);
   };
 
@@ -61,11 +74,11 @@ export default function FriendsScreen() {
   const tabs = useMemo(
     () => [
       { id: 'users', label: 'All Users' },
-      { id: 'received', label: 'Requests Received' },
+      { id: 'received', label: 'Requests Received', badgeCount: received.length },
       { id: 'sent', label: 'Requests Sent' },
       { id: 'friends', label: 'Friends' },
     ],
-    []
+    [received.length]
   );
 
   return (
@@ -80,40 +93,39 @@ export default function FriendsScreen() {
         <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search users" />
       ) : null}
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-      >
-        {activeTab === 'users' ? (
-          <View style={styles.section}>
-            {isFetchingUsers && users.length === 0 ? (
+      {activeTab === 'users' ? (
+        <FlatList
+          data={users}
+          keyExtractor={(item) => `user-${item.id}`}
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          renderItem={({ item }) => <FriendCard user={item} />}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.4}
+          ListEmptyComponent={
+            isFetchingUsers ? (
               <View style={styles.centerContainer}>
                 <ActivityIndicator size="large" color={colors.tint} />
               </View>
-            ) : users.length === 0 ? (
-              <ThemedText style={styles.emptyText}>No users found</ThemedText>
             ) : (
-              <View style={styles.list}>
-                {users.map((user) => (
-                  <FriendCard key={`user-${user.id}`} user={user} />
-                ))}
+              <ThemedText style={styles.emptyText}>No users found</ThemedText>
+            )
+          }
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={styles.centerContainer}>
+                <ActivityIndicator size="small" color={colors.tint} />
               </View>
-            )}
-            {hasNextPage ? (
-              <TouchableOpacity
-                style={styles.loadMore}
-                onPress={handleLoadMore}
-                disabled={isFetchingNextPage}
-              >
-                <ThemedText style={styles.loadMoreText}>
-                  {isFetchingNextPage ? 'Loading...' : 'Load more'}
-                </ThemedText>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        ) : null}
-
-        {activeTab === 'received' ? (
+            ) : null
+          }
+        />
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        >
+          {activeTab === 'received' ? (
           <View style={styles.section}>
             {isFetchingReceived && received.length === 0 ? (
               <View style={styles.centerContainer}>
@@ -129,44 +141,45 @@ export default function FriendsScreen() {
               </View>
             )}
           </View>
-        ) : null}
+          ) : null}
 
-        {activeTab === 'sent' ? (
-          <View style={styles.section}>
-            {isFetchingSent && sent.length === 0 ? (
-              <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={colors.tint} />
-              </View>
-            ) : sent.length === 0 ? (
-              <ThemedText style={styles.emptyText}>No requests sent</ThemedText>
-            ) : (
-              <View style={styles.list}>
-                {sent.map((user) => (
-                  <FriendCard key={`sent-${user.id}`} user={user} />
-                ))}
-              </View>
-            )}
-          </View>
-        ) : null}
+          {activeTab === 'sent' ? (
+            <View style={styles.section}>
+              {isFetchingSent && sent.length === 0 ? (
+                <View style={styles.centerContainer}>
+                  <ActivityIndicator size="large" color={colors.tint} />
+                </View>
+              ) : sent.length === 0 ? (
+                <ThemedText style={styles.emptyText}>No requests sent</ThemedText>
+              ) : (
+                <View style={styles.list}>
+                  {sent.map((user) => (
+                    <FriendCard key={`sent-${user.id}`} user={user} />
+                  ))}
+                </View>
+              )}
+            </View>
+          ) : null}
 
-        {activeTab === 'friends' ? (
-          <View style={styles.section}>
-            {isFetchingFriends && friends.length === 0 ? (
-              <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={colors.tint} />
-              </View>
-            ) : friends.length === 0 ? (
-              <ThemedText style={styles.emptyText}>No friends yet</ThemedText>
-            ) : (
-              <View style={styles.list}>
-                {friends.map((user) => (
-                  <FriendCard key={`friend-${user.id}`} user={user} />
-                ))}
-              </View>
-            )}
-          </View>
-        ) : null}
-      </ScrollView>
+          {activeTab === 'friends' ? (
+            <View style={styles.section}>
+              {isFetchingFriends && friends.length === 0 ? (
+                <View style={styles.centerContainer}>
+                  <ActivityIndicator size="large" color={colors.tint} />
+                </View>
+              ) : friends.length === 0 ? (
+                <ThemedText style={styles.emptyText}>No friends yet</ThemedText>
+              ) : (
+                <View style={styles.list}>
+                  {friends.map((user) => (
+                    <FriendCard key={`friend-${user.id}`} user={user} />
+                  ))}
+                </View>
+              )}
+            </View>
+          ) : null}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -187,6 +200,9 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     list: {
       gap: 12,
     },
+    separator: {
+      height: 12,
+    },
     emptyText: {
       fontSize: 14,
       color: colors.textSecondary,
@@ -194,17 +210,5 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     centerContainer: {
       paddingVertical: 16,
       alignItems: 'center',
-    },
-    loadMore: {
-      alignSelf: 'flex-start',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 8,
-      backgroundColor: colors.pillBackground,
-    },
-    loadMoreText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.pillText,
     },
   });

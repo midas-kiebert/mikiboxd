@@ -14,6 +14,7 @@ from app.exceptions.friends_exceptions import (
 )
 from app.exceptions.user_exceptions import OneOrMoreUsersNotFound
 from app.models.auth_schemas import Message
+from app.services import push_notifications
 
 
 def create_friend_request(
@@ -47,6 +48,12 @@ def create_friend_request(
     except Exception as e:
         session.rollback()
         raise AppError from e
+
+    push_notifications.notify_user_on_friend_request(
+        session=session,
+        sender_id=sender_id,
+        receiver_id=receiver_id,
+    )
     return Message(message="Friend request sent successfully.")
 
 
@@ -90,6 +97,12 @@ def accept_friend_request(
     except Exception as e:
         session.rollback()
         raise AppError from e
+
+    push_notifications.notify_user_on_friend_request_accepted(
+        session=session,
+        accepter_id=current_user_id,
+        requester_id=sender_id,
+    )
     return Message(message="Friend request accepted successfully.")
 
 

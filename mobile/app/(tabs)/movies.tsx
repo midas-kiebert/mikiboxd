@@ -23,19 +23,15 @@ import MovieCard from '@/components/movies/MovieCard';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
 const BASE_FILTERS = [
-  { id: '1', label: 'All Movies' },
+  { id: 'watchlist-only', label: 'Watchlist Only' },
   { id: 'cinemas', label: 'Cinemas' },
   { id: 'days', label: 'Days' },
-  { id: 'you-going', label: 'You Going' },
-  { id: 'you-interested', label: 'You Interested' },
-  { id: 'friends-going', label: 'Friends Going' },
-  { id: 'friends-interested', label: 'Friends Interested' },
 ];
 
 export default function MovieScreen() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState('1');
+  const [watchlistOnly, setWatchlistOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [dayModalVisible, setDayModalVisible] = useState(false);
@@ -54,10 +50,11 @@ export default function MovieScreen() {
   const movieFilters = useMemo<MovieFilters>(
     () => ({
       query: searchQuery,
+      watchlistOnly: watchlistOnly ? true : undefined,
       days: selectedDays.length > 0 ? selectedDays : undefined,
       selectedCinemaIds: sessionCinemaIds,
     }),
-    [searchQuery, selectedDays, sessionCinemaIds]
+    [searchQuery, watchlistOnly, selectedDays, sessionCinemaIds]
   );
 
   const {
@@ -74,21 +71,6 @@ export default function MovieScreen() {
   });
 
   const movies = moviesData?.pages.flat() || [];
-
-  const filteredMovies = useMemo(() => {
-    switch (selectedFilter) {
-      case 'you-going':
-        return movies.filter((movie) => movie.going === 'GOING');
-      case 'you-interested':
-        return movies.filter((movie) => movie.going === 'INTERESTED');
-      case 'friends-going':
-        return movies.filter((movie) => (movie.friends_going ?? []).length > 0);
-      case 'friends-interested':
-        return movies.filter((movie) => (movie.friends_interested ?? []).length > 0);
-      default:
-        return movies;
-    }
-  }, [movies, selectedFilter]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -128,6 +110,10 @@ export default function MovieScreen() {
   };
 
   const handleSelectFilter = (filterId: string) => {
+    if (filterId === 'watchlist-only') {
+      setWatchlistOnly((prev) => !prev);
+      return;
+    }
     if (filterId === 'cinemas') {
       setCinemaModalVisible(true);
       return;
@@ -136,7 +122,6 @@ export default function MovieScreen() {
       setDayModalVisible(true);
       return;
     }
-    setSelectedFilter(filterId);
   };
 
   const pillFilters = useMemo(() => {
@@ -150,14 +135,17 @@ export default function MovieScreen() {
 
   const activeFilterIds = useMemo(() => {
     const active: string[] = [];
+    if (watchlistOnly) {
+      active.push('watchlist-only');
+    }
     if (selectedDays.length > 0) {
       active.push('days');
     }
-    if (sessionCinemaIds !== undefined) {
+    if ((sessionCinemaIds?.length ?? 0) > 0) {
       active.push('cinemas');
     }
     return active;
-  }, [selectedDays.length, sessionCinemaIds]);
+  }, [watchlistOnly, selectedDays.length, sessionCinemaIds]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -165,7 +153,7 @@ export default function MovieScreen() {
       <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search movies" />
       <FilterPills
         filters={pillFilters}
-        selectedId={selectedFilter}
+        selectedId=""
         onSelect={handleSelectFilter}
         activeIds={activeFilterIds}
       />
@@ -182,7 +170,7 @@ export default function MovieScreen() {
 
       {/* Movie Feed */}
       <FlatList
-        data={filteredMovies}
+        data={movies}
         renderItem={({ item }) => (
           <MovieCard
             movie={item}

@@ -88,9 +88,9 @@ function SignUp() {
                 id="display_name"
                 minLength={3}
                 {...register("display_name", {
-                  required: "Full Name is required",
+                  required: "Display Name is required",
                 })}
-                placeholder="Full Name"
+                placeholder="Display Name"
                 type="text"
               />
             </InputGroup>

@@ -9,12 +9,14 @@ export type UserFilters = {
 type useFetchUsersProps = {
     limit: number;
     filters?: UserFilters;
+    enabled?: boolean;
 };
 
 
 export function useFetchUsers(
     {
         limit = 20,
+        enabled = true,
         filters = {
             query: ""
         }
@@ -22,6 +24,7 @@ export function useFetchUsers(
     ): UseInfiniteQueryResult<InfiniteData<UsersSearchUsersResponse>, Error>{
     const result = useInfiniteQuery<UsersSearchUsersResponse, Error, InfiniteData<UsersSearchUsersResponse>, [string, UserFilters], number>({
         queryKey: ["users", filters],
+        enabled,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,

@@ -13,7 +13,7 @@ const BASE_FILTERS = [
 
 export default function MainShowtimesScreen() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState('going');
+  const [selectedFilter, setSelectedFilter] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() =>
     DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")

@@ -5,6 +5,7 @@ from datetime import date, datetime, time
 from fastapi import Query
 from pydantic import BaseModel
 
+from app.core.enums import GoingStatus
 from app.utils import now_amsterdam_naive
 
 
@@ -20,6 +21,7 @@ class Filters(BaseModel):
     selected_cinema_ids: list[int] | None = None
     days: list[date] | None = None
     time_ranges: list[TimeRange] | None = None
+    selected_statuses: list[GoingStatus] | None = None
 
 
 def parse_time_ranges(value: str) -> TimeRange:
@@ -42,6 +44,11 @@ def get_filters(
     ),
     days: list[date] | None = Query(None),
     time_ranges_raw: list[str] | None = Query(None, alias="time_ranges"),
+    selected_statuses: list[GoingStatus] | None = Query(
+        None,
+        alias="selected_statuses",
+        description="Filter by selection statuses (GOING/INTERESTED)",
+    ),
 ) -> Filters:
     time_ranges = (
         [parse_time_ranges(tr) for tr in time_ranges_raw]
@@ -56,4 +63,5 @@ def get_filters(
         selected_cinema_ids=selected_cinema_ids,
         days=days,
         time_ranges=time_ranges,
+        selected_statuses=selected_statuses,
     )

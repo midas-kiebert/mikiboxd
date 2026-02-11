@@ -373,6 +373,7 @@ export class MeService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -391,6 +392,7 @@ export class MeService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        selected_statuses: data.selectedStatuses,
       },
       errors: {
         422: "Validation Error",
@@ -531,6 +533,7 @@ export class MoviesService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns MovieSummaryLoggedIn Successful Response
    * @throws ApiError
    */
@@ -550,6 +553,7 @@ export class MoviesService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        selected_statuses: data.selectedStatuses,
       },
       errors: {
         422: "Validation Error",
@@ -569,6 +573,7 @@ export class MoviesService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns ShowtimeInMovieLoggedIn Successful Response
    * @throws ApiError
    */
@@ -590,6 +595,7 @@ export class MoviesService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        selected_statuses: data.selectedStatuses,
       },
       errors: {
         422: "Validation Error",
@@ -608,6 +614,7 @@ export class MoviesService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns MovieLoggedIn Successful Response
    * @throws ApiError
    */
@@ -628,6 +635,7 @@ export class MoviesService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        selected_statuses: data.selectedStatuses,
       },
       errors: {
         422: "Validation Error",
@@ -648,6 +656,7 @@ export class ShowtimesService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -667,6 +676,7 @@ export class ShowtimesService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        selected_statuses: data.selectedStatuses,
       },
       body: data.requestBody,
       mediaType: "application/json",
@@ -687,6 +697,7 @@ export class ShowtimesService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -705,6 +716,7 @@ export class ShowtimesService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        selected_statuses: data.selectedStatuses,
       },
       errors: {
         422: "Validation Error",
@@ -796,6 +808,7 @@ export class UsersService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -817,6 +830,7 @@ export class UsersService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        selected_statuses: data.selectedStatuses,
       },
       errors: {
         422: "Validation Error",

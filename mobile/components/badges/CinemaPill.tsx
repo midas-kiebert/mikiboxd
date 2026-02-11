@@ -1,4 +1,9 @@
-import { StyleSheet, View } from "react-native";
+import {
+  StyleSheet,
+  View,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native";
 import type { CinemaPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
@@ -25,10 +30,24 @@ type CinemaPillProps = {
   variant?: "compact" | "default";
 };
 
+type VariantStyles = {
+  container: ViewStyle;
+  text: TextStyle;
+};
+
 export default function CinemaPill({ cinema, variant = "default" }: CinemaPillProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
-  const sizeStyles = variant === "compact" ? styles.compact : styles.default;
+  const sizeStyles: VariantStyles =
+    variant === "compact"
+      ? {
+          container: styles.compactContainer,
+          text: styles.compactText,
+        }
+      : {
+          container: styles.defaultContainer,
+          text: styles.defaultText,
+        };
 
   const cinemaColorKey = cinema.badge_bg_color as CinemaColorKey;
   const cinemaPalette = (colors as Record<CinemaColorKey, CinemaColorPalette>)[
@@ -68,25 +87,21 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       includeFontPadding: false,
       textAlignVertical: "center",
     },
-    compact: {
-      container: {
-        borderRadius: 2,
-        height: 12,
-        paddingHorizontal: 5,
-      },
-      text: {
-        fontSize: 9,
-        lineHeight: 12,
-      },
+    compactContainer: {
+      borderRadius: 2,
+      height: 12,
+      paddingHorizontal: 5,
     },
-    default: {
-      container: {
-        height: 16,
-        paddingHorizontal: 6,
-      },
-      text: {
-        fontSize: 11,
-        lineHeight: 14,
-      },
+    compactText: {
+      fontSize: 9,
+      lineHeight: 12,
+    },
+    defaultContainer: {
+      height: 16,
+      paddingHorizontal: 6,
+    },
+    defaultText: {
+      fontSize: 11,
+      lineHeight: 14,
     },
   });

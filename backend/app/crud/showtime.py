@@ -1,14 +1,35 @@
-from datetime import timedelta
+from datetime import time, timedelta
 from uuid import UUID
 
-from sqlmodel import Session, col, or_, select
+from sqlalchemy import func
+from sqlalchemy.sql.elements import ColumnElement
+from sqlmodel import Session, Time, cast, col, or_, select
 
 from app.core.enums import GoingStatus
 from app.inputs.movie import Filters
 from app.models.friendship import Friendship
+from app.models.movie import Movie
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
+from app.models.watchlist_selection import WatchlistSelection
+
+
+def time_range_clause(
+    datetime_column,
+    start: time,
+    end: time,
+) -> ColumnElement[bool]:
+    time_col = cast(datetime_column, Time)
+
+    if start <= end:
+        return time_col.between(start, end)
+
+    # crosses midnight
+    return or_(
+        time_col >= start,
+        time_col <= end,
+    )
 
 
 def get_showtime_by_id(
@@ -128,7 +149,13 @@ def get_friends_with_showtime_selection(
 
 
 def get_main_page_showtimes(
-    *, session: Session, user_id: UUID, limit: int, offset: int, filters: Filters
+    *,
+    session: Session,
+    user_id: UUID,
+    limit: int,
+    offset: int,
+    filters: Filters,
+    letterboxd_username: str | None = None,
 ) -> list[Showtime]:
     friends_subq = select(Friendship.friend_id).where(Friendship.user_id == user_id)
 
@@ -145,10 +172,45 @@ def get_main_page_showtimes(
             ),
             Showtime.datetime >= filters.snapshot_time,
         )
-        .order_by(col(Showtime.datetime))
-        .limit(limit)
-        .offset(offset)
     )
+
+    if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
+        stmt = stmt.where(col(ShowtimeSelection.going_status).in_(filters.selected_statuses))
+
+    if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
+        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+
+    if filters.days is not None and len(filters.days) > 0:
+        stmt = stmt.where(func.date(col(Showtime.datetime)).in_(filters.days))
+
+    if filters.time_ranges is not None and len(filters.time_ranges) > 0:
+        stmt = stmt.where(
+            or_(
+                *[
+                    time_range_clause(col(Showtime.datetime), tr.start, tr.end)
+                    for tr in filters.time_ranges
+                ]
+            )
+        )
+
+    if filters.query or filters.watchlist_only:
+        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
+
+    if filters.query:
+        pattern = f"%{filters.query}%"
+        stmt = stmt.where(
+            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
+        )
+
+    if filters.watchlist_only:
+        if letterboxd_username is None:
+            return []
+        stmt = stmt.join(
+            WatchlistSelection,
+            col(WatchlistSelection.movie_id) == col(Showtime.movie_id),
+        ).where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
+
+    stmt = stmt.order_by(col(Showtime.datetime)).limit(limit).offset(offset)
     showtimes = list(session.exec(stmt).all())
     return showtimes
 

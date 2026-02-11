@@ -57,8 +57,14 @@ export default function MoviePage() {
     () => ({
       selectedCinemaIds: sessionCinemaIds,
       days: selectedDays.length > 0 ? selectedDays : undefined,
+      selectedStatuses:
+        (selectedFilter === "all"
+          ? undefined
+          : selectedFilter === "going"
+            ? ["GOING"]
+            : ["GOING", "INTERESTED"]) as GoingStatus[] | undefined,
     }),
-    [sessionCinemaIds, selectedDays]
+    [selectedDays, selectedFilter, sessionCinemaIds]
   );
 
   const { data: movie, isLoading: isMovieLoading, isError: isMovieError } = useQuery<MovieLoggedIn, Error>({
@@ -88,24 +94,6 @@ export default function MoviePage() {
   });
 
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
-  const filteredShowtimes = useMemo(() => {
-    switch (selectedFilter) {
-      case "going":
-        return showtimes.filter(
-          (showtime) => showtime.going === "GOING" || (showtime.friends_going ?? []).length > 0
-        );
-      case "interested":
-        return showtimes.filter(
-          (showtime) =>
-            showtime.going === "GOING" ||
-            showtime.going === "INTERESTED" ||
-            (showtime.friends_going ?? []).length > 0 ||
-            (showtime.friends_interested ?? []).length > 0
-        );
-      default:
-        return showtimes;
-    }
-  }, [showtimes, selectedFilter]);
   const handleEndReached = () => {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
@@ -391,7 +379,7 @@ export default function MoviePage() {
       ) : (
         <>
           <FlatList
-            data={filteredShowtimes}
+            data={showtimes}
             keyExtractor={(item) => item.id.toString()}
             renderItem={({ item }) => (
               <TouchableOpacity

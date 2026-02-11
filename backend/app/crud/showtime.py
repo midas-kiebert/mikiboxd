@@ -175,7 +175,9 @@ def get_main_page_showtimes(
     )
 
     if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
-        stmt = stmt.where(col(ShowtimeSelection.going_status).in_(filters.selected_statuses))
+        stmt = stmt.where(
+            col(ShowtimeSelection.going_status).in_(filters.selected_statuses)
+        )
 
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
         stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))

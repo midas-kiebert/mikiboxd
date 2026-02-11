@@ -256,8 +256,8 @@ def get_showtimes_for_movie(
         and filters.selected_statuses is not None
         and len(filters.selected_statuses) > 0
     ):
-        friends_subq = select(Friendship.friend_id).where(
-            Friendship.user_id == current_user_id
+        friends_subq = select(col(Friendship.friend_id)).where(
+            col(Friendship.user_id) == current_user_id
         )
         stmt = (
             stmt.join(

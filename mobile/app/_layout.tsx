@@ -47,9 +47,21 @@ axios.defaults.transformRequest = [
       data instanceof FormData
     ) {
       // Convert FormData to URL-encoded string
-      const params: any = {}
-      for (const [key, value] of data.entries()) {
-        params[key] = value
+      const params: Record<string, unknown> = {}
+      const formDataWithEntries = data as FormData & {
+        entries?: () => IterableIterator<[string, FormDataEntryValue]>
+      }
+      if (typeof formDataWithEntries.entries === 'function') {
+        for (const [key, value] of formDataWithEntries.entries()) {
+          params[key] = value
+        }
+      } else {
+        const reactNativeParts = (data as FormData & { _parts?: Array<[string, unknown]> })._parts
+        if (Array.isArray(reactNativeParts)) {
+          for (const [key, value] of reactNativeParts) {
+            params[key] = value
+          }
+        }
       }
       return qs.stringify(params)
     }

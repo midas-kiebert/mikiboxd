@@ -7,9 +7,12 @@ from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlmodel import Session
 
+from app.core.enums import GoingStatus
 from app.core.security import verify_password
 from app.crud import friendship as friendship_crud
+from app.crud import showtime as showtime_crud
 from app.crud import user as user_crud
+from app.inputs.movie import Filters
 from app.models.showtime import Showtime
 from app.models.user import User, UserCreate, UserUpdate
 from app.utils import now_amsterdam_naive
@@ -493,14 +496,53 @@ def test_get_selected_showtimes(
     selected_showtimes = user_crud.get_selected_showtimes(
         session=db_transaction,
         user_id=user.id,
-        snapshot_time=snapshot_time,
         limit=10,
         offset=0,
+        filters=Filters(snapshot_time=snapshot_time),
     )
 
     assert showtime_1 in selected_showtimes
     assert showtime_2 in selected_showtimes
     assert len(selected_showtimes) == 2
+
+
+def test_get_selected_showtimes_filters_by_selected_statuses(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    showtime_factory: Callable[..., Showtime],
+):
+    snapshot_time = now_amsterdam_naive() - timedelta(minutes=1)
+    user = user_factory()
+    showtime_going = showtime_factory()
+    showtime_interested = showtime_factory()
+
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_going.id,
+        user_id=user.id,
+        going_status=GoingStatus.GOING,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_interested.id,
+        user_id=user.id,
+        going_status=GoingStatus.INTERESTED,
+    )
+
+    selected_showtimes = user_crud.get_selected_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=10,
+        offset=0,
+        filters=Filters(
+            snapshot_time=snapshot_time,
+            selected_statuses=[GoingStatus.GOING],
+        ),
+    )
+
+    assert showtime_going in selected_showtimes
+    assert showtime_interested not in selected_showtimes
 
 
 # def test_is_user_going_to_movie(

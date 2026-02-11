@@ -6,9 +6,12 @@ from psycopg.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
+from app.core.enums import GoingStatus
 from app.crud import friendship as friendship_crud
 from app.crud import movie as movie_crud
+from app.crud import showtime as showtime_crud
 from app.crud import user as user_crud
+from app.inputs.movie import Filters
 from app.models.movie import Movie, MovieCreate, MovieUpdate
 from app.models.showtime import Showtime
 from app.models.user import User
@@ -288,6 +291,74 @@ def test_get_friends_for_movie(
 
     assert friend_1 in friends
     assert len(friends) == 1
+
+
+def test_get_showtimes_for_movie_filters_by_selected_statuses(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    friend = user_factory()
+    not_friend = user_factory()
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=user.id, friend_id=friend.id
+    )
+
+    movie = movie_factory()
+    showtime_going = showtime_factory(movie=movie)
+    showtime_interested = showtime_factory(movie=movie)
+    showtime_not_friend = showtime_factory(movie=movie)
+
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_going.id,
+        user_id=user.id,
+        going_status=GoingStatus.GOING,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_interested.id,
+        user_id=friend.id,
+        going_status=GoingStatus.INTERESTED,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_not_friend.id,
+        user_id=not_friend.id,
+        going_status=GoingStatus.GOING,
+    )
+
+    going_filtered = movie_crud.get_showtimes_for_movie(
+        session=db_transaction,
+        movie_id=movie.id,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_statuses=[GoingStatus.GOING],
+        ),
+        current_user_id=user.id,
+    )
+
+    assert showtime_going in going_filtered
+    assert showtime_interested not in going_filtered
+    assert showtime_not_friend not in going_filtered
+
+    interested_filtered = movie_crud.get_showtimes_for_movie(
+        session=db_transaction,
+        movie_id=movie.id,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_statuses=[GoingStatus.GOING, GoingStatus.INTERESTED],
+        ),
+        current_user_id=user.id,
+    )
+
+    assert showtime_going in interested_filtered
+    assert showtime_interested in interested_filtered
+    assert showtime_not_friend not in interested_filtered
 
 
 # def test_get_showtimes_for_movie(

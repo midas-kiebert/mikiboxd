@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
+import type { GoingStatus } from 'shared';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useSessionCinemaSelections } from 'shared/hooks/useSessionCinemaSelections';
 
@@ -25,9 +26,13 @@ export default function MainShowtimesScreen() {
 
   const showtimesFilters = useMemo(
     () => ({
+      query: searchQuery || undefined,
       selectedCinemaIds: sessionCinemaIds,
+      selectedStatuses: (selectedFilter === 'going' ? ['GOING'] : undefined) as
+        | GoingStatus[]
+        | undefined,
     }),
-    [sessionCinemaIds]
+    [searchQuery, selectedFilter, sessionCinemaIds]
   );
 
   const {
@@ -43,13 +48,7 @@ export default function MainShowtimesScreen() {
     filters: showtimesFilters,
   });
 
-  const showtimes = useMemo(() => {
-    const allShowtimes = data?.pages.flat() ?? [];
-    if (selectedFilter !== 'going') return allShowtimes;
-    return allShowtimes.filter(
-      (showtime) => showtime.going === 'GOING' || (showtime.friends_going?.length ?? 0) > 0
-    );
-  }, [data, selectedFilter]);
+  const showtimes = useMemo(() => data?.pages.flat() ?? [], [data]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

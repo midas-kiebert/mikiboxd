@@ -175,12 +175,19 @@ def get_main_page_showtimes(
     offset: int,
     filters: Filters,
 ) -> list[ShowtimeLoggedIn]:
+    letterboxd_username = None
+    if filters.watchlist_only:
+        letterboxd_username = user_crud.get_letterboxd_username(
+            session=session,
+            user_id=current_user_id,
+        )
     showtimes = showtimes_crud.get_main_page_showtimes(
         session=session,
         user_id=current_user_id,
         limit=limit,
         offset=offset,
         filters=filters,
+        letterboxd_username=letterboxd_username,
     )
     return [
         showtime_converters.to_logged_in(

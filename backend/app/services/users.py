@@ -101,12 +101,20 @@ def get_selected_showtimes(
     if user_id != current_user_id and not is_friend:
         raise NotAFriend(user_id=user_id)
 
+    letterboxd_username = None
+    if filters.watchlist_only:
+        letterboxd_username = users_crud.get_letterboxd_username(
+            session=session,
+            user_id=current_user_id,
+        )
+
     showtimes = users_crud.get_selected_showtimes(
         session=session,
         user_id=user_id,
-        snapshot_time=filters.snapshot_time,
         limit=limit,
         offset=offset,
+        filters=filters,
+        letterboxd_username=letterboxd_username,
     )
     return [
         showtime_converters.to_logged_in(

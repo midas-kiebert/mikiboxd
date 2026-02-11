@@ -33,6 +33,7 @@ def to_summary_logged_in(
             movie_id=movie.id,
             limit=showtime_limit,
             filters=filters,
+            current_user_id=current_user,
         )
     ]
     cinemas = [
@@ -118,6 +119,7 @@ def to_logged_in(
             movie_id=movie.id,
             limit=showtime_limit,
             filters=filters,
+            current_user_id=current_user,
         )
     ]
     return MovieLoggedIn(

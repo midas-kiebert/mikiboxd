@@ -108,12 +108,21 @@ def get_movie_showtimes(
     if movie_db is None:
         raise MovieNotFoundError(movie_id)
 
+    letterboxd_username = None
+    if filters.watchlist_only:
+        letterboxd_username = users_crud.get_letterboxd_username(
+            session=session,
+            user_id=current_user,
+        )
+
     showtimes = movies_crud.get_showtimes_for_movie(
         session=session,
         movie_id=movie_id,
         limit=limit,
         offset=offset,
         filters=filters,
+        current_user_id=current_user,
+        letterboxd_username=letterboxd_username,
     )
 
     return [

@@ -1,4 +1,10 @@
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import {
+  StyleSheet,
+  View,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native";
 import type { UserPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
@@ -19,6 +25,11 @@ type FriendBadgeProps = {
   variant: "compact" | "default";
 };
 
+type VariantStyles = {
+  badge: ViewStyle;
+  badgeText: TextStyle;
+};
+
 const getFriendLabel = (user: UserPublic) => {
   const displayName = user.display_name?.trim();
   if (displayName) return displayName;
@@ -30,7 +41,16 @@ const getFriendLabel = (user: UserPublic) => {
 };
 
 const FriendBadge = ({ label, color, textColor, styles, variant }: FriendBadgeProps) => {
-  const sizeStyles = variant === "compact" ? styles.compact : styles.default;
+  const sizeStyles: VariantStyles =
+    variant === "compact"
+      ? {
+          badge: styles.compactBadge,
+          badgeText: styles.compactBadgeText,
+        }
+      : {
+          badge: styles.defaultBadge,
+          badgeText: styles.defaultBadgeText,
+        };
 
   return (
     <View style={[styles.badge, sizeStyles.badge, { backgroundColor: color, borderColor: textColor }]}>
@@ -114,27 +134,23 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "600",
       textAlignVertical: "center",
     },
-    compact: {
-      badge: {
-        height: 12,
-        borderRadius: 2,
-        paddingHorizontal: 4,
-        maxWidth: 90,
-      },
-      badgeText: {
-        fontSize: 9,
-        lineHeight: 12,
-        fontWeight: "500",
-      },
+    compactBadge: {
+      height: 12,
+      borderRadius: 2,
+      paddingHorizontal: 4,
+      maxWidth: 90,
     },
-    default: {
-      badge: {
-        height: 16,
-        paddingHorizontal: 6,
-      },
-      badgeText: {
-        fontSize: 11,
-        lineHeight: 14,
-      },
+    compactBadgeText: {
+      fontSize: 9,
+      lineHeight: 12,
+      fontWeight: "500",
+    },
+    defaultBadge: {
+      height: 16,
+      paddingHorizontal: 6,
+    },
+    defaultBadgeText: {
+      fontSize: 11,
+      lineHeight: 14,
     },
   });

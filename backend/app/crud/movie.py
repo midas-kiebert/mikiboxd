@@ -218,6 +218,8 @@ def get_showtimes_for_movie(
     limit: int | None = None,
     offset: int = 0,
     filters: Filters,
+    current_user_id: UUID | None = None,
+    letterboxd_username: str | None = None,
 ) -> list[Showtime]:
     stmt = select(Showtime).where(col(Showtime.datetime) >= filters.snapshot_time)
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
@@ -235,6 +237,41 @@ def get_showtimes_for_movie(
                     for tr in filters.time_ranges
                 ]
             )
+        )
+
+    if filters.query:
+        pattern = f"%{filters.query}%"
+        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id)).where(
+            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
+        )
+
+    if filters.watchlist_only and letterboxd_username is not None:
+        stmt = stmt.join(
+            WatchlistSelection,
+            col(WatchlistSelection.movie_id) == col(Showtime.movie_id),
+        ).where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
+
+    if (
+        current_user_id is not None
+        and filters.selected_statuses is not None
+        and len(filters.selected_statuses) > 0
+    ):
+        friends_subq = select(col(Friendship.friend_id)).where(
+            col(Friendship.user_id) == current_user_id
+        )
+        stmt = (
+            stmt.join(
+                ShowtimeSelection,
+                col(ShowtimeSelection.showtime_id) == col(Showtime.id),
+            )
+            .where(
+                or_(
+                    col(ShowtimeSelection.user_id).in_(friends_subq),
+                    ShowtimeSelection.user_id == current_user_id,
+                ),
+                col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
+            )
+            .distinct()
         )
 
     stmt = stmt.order_by(col(Showtime.datetime))

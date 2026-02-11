@@ -252,6 +252,10 @@ export type MeGetMyShowtimesData = {
    */
   selectedCinemaIds?: Array<number> | null
   /**
+   * Filter by selection statuses (GOING/INTERESTED)
+   */
+  selectedStatuses?: Array<GoingStatus> | null
+  /**
    * Only show showtimes after this moment
    */
   snapshotTime?: string
@@ -292,6 +296,10 @@ export type MoviesReadMoviesData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Filter by selection statuses (GOING/INTERESTED)
+   */
+  selectedStatuses?: Array<GoingStatus> | null
   showtimeLimit?: number
   /**
    * Only show showtimes after this moment
@@ -314,6 +322,10 @@ export type MoviesReadMovieShowtimesData = {
    */
   selectedCinemaIds?: Array<number> | null
   /**
+   * Filter by selection statuses (GOING/INTERESTED)
+   */
+  selectedStatuses?: Array<GoingStatus> | null
+  /**
    * Only show showtimes after this moment
    */
   snapshotTime?: string
@@ -331,6 +343,10 @@ export type MoviesReadMovieData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Filter by selection statuses (GOING/INTERESTED)
+   */
+  selectedStatuses?: Array<GoingStatus> | null
   showtimeLimit?: number | null
   /**
    * Only show showtimes after this moment
@@ -350,6 +366,10 @@ export type ShowtimesUpdateShowtimeSelectionData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Filter by selection statuses (GOING/INTERESTED)
+   */
+  selectedStatuses?: Array<GoingStatus> | null
   showtimeId: number
   /**
    * Only show showtimes after this moment
@@ -370,6 +390,10 @@ export type ShowtimesGetMainPageShowtimesData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Filter by selection statuses (GOING/INTERESTED)
+   */
+  selectedStatuses?: Array<GoingStatus> | null
   /**
    * Only show showtimes after this moment
    */
@@ -409,6 +433,10 @@ export type UsersGetUserSelectedShowtimesData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Filter by selection statuses (GOING/INTERESTED)
+   */
+  selectedStatuses?: Array<GoingStatus> | null
   /**
    * Only show showtimes after this moment
    */

@@ -1,10 +1,15 @@
 import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { ShowtimesService, ShowtimesGetMainPageShowtimesResponse } from "../client";
 import { ApiError } from "../client";
+import type { GoingStatus } from "../client";
 
 type ShowtimesFilters = {
+    query?: string;
     days?: string[];
     selectedCinemaIds?: number[];
+    timeRanges?: string[];
+    watchlistOnly?: boolean;
+    selectedStatuses?: GoingStatus[];
 };
 
 type useFetchMainPageShowtimesProps = {

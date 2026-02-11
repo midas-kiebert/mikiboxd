@@ -90,6 +90,7 @@ def to_with_showtimes_public(
     """
 
     now = now_amsterdam_naive()
+    filters.snapshot_time = now
 
     User.model_validate(user)
     showtimes = [
@@ -101,7 +102,8 @@ def to_with_showtimes_public(
             user_id=user.id,
             limit=limit,
             offset=offset,
-            snapshot_time=now,
+            filters=filters,
+            letterboxd_username=user.letterboxd_username,
         )
     ]
 

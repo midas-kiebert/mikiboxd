@@ -7,6 +7,8 @@
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
+    "build:apk": "bash ./scripts/build-android-apk.sh gradle release",
+    "build:apk:local": "bash ./scripts/build-android-apk.sh gradle debug",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"

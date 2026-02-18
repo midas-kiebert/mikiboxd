@@ -7,7 +7,7 @@ import {
   type Body_login_login_access_token as AccessToken,
   type ApiError,
   LoginService,
-  type UserPublic,
+  type MeGetCurrentUserResponse,
   type UserRegister,
   UsersService,
   MeService
@@ -28,7 +28,7 @@ const useAuth = (onLoginSuccess?: () => void, onLogout?: () => void): AuthHook =
     isLoggedIn().then(setIsAuthenticated)
   })
 
-  const {data: user } = useQuery<UserPublic | null, Error>({
+  const {data: user } = useQuery<MeGetCurrentUserResponse | null, Error>({
     queryKey: ["currentUser"],
     queryFn: MeService.getCurrentUser,
     enabled: isAuthenticated,

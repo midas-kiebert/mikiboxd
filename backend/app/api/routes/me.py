@@ -11,7 +11,7 @@ from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
 from app.schemas.push_token import PushTokenRegister
 from app.schemas.showtime import ShowtimeLoggedIn
-from app.schemas.user import UserPublic, UserWithFriendStatus
+from app.schemas.user import UserMe, UserWithFriendStatus
 from app.services import me as me_service
 from app.services import users as users_service
 from app.services import watchlist as watchlist_service
@@ -19,9 +19,9 @@ from app.services import watchlist as watchlist_service
 router = APIRouter(prefix="/me", tags=["me"])
 
 
-@router.get("/", response_model=UserPublic)
-def get_current_user(current_user: CurrentUser) -> UserPublic:
-    return user_converters.to_public(current_user)
+@router.get("/", response_model=UserMe)
+def get_current_user(current_user: CurrentUser) -> UserMe:
+    return user_converters.to_me(current_user)
 
 
 @router.delete("/", response_model=Message)
@@ -35,10 +35,10 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Message:
     return Message(message="User deleted successfully")
 
 
-@router.patch("/", response_model=UserPublic)
+@router.patch("/", response_model=UserMe)
 def update_user_me(
     *, session: SessionDep, user_in: UserUpdate, current_user: CurrentUser
-) -> UserPublic:
+) -> UserMe:
     return me_service.update_me(
         session=session, user_in=user_in, current_user=current_user
     )

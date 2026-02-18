@@ -1,121 +1,118 @@
 /**
- * Expo Router screen/module for (tabs) / index. It controls navigation and screen-level state for this route.
+ * Expo Router screen/module for cinema-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
-import { useMemo, useState } from 'react';
-import { DateTime } from 'luxon';
-import { useQueryClient } from '@tanstack/react-query';
-import type { GoingStatus } from 'shared';
-import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
-import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
-import { useSessionCinemaSelections } from 'shared/hooks/useSessionCinemaSelections';
-import { useSessionDaySelections } from 'shared/hooks/useSessionDaySelections';
+import { useMemo, useState } from "react";
+import { DateTime } from "luxon";
+import { useLocalSearchParams } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
+import type { GoingStatus } from "shared";
+import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
+import { useSessionDaySelections } from "shared/hooks/useSessionDaySelections";
+import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 
-import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
-import DayFilterModal from '@/components/filters/DayFilterModal';
-import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
-import { isCinemaSelectionDifferentFromPreferred } from '@/utils/cinema-selection';
-import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
+import ShowtimesScreen from "@/components/showtimes/ShowtimesScreen";
+import DayFilterModal from "@/components/filters/DayFilterModal";
+import { resetInfiniteQuery } from "@/utils/reset-infinite-query";
 
 // Filter pill definitions rendered in the top filter row.
 const BASE_FILTERS = [
-  { id: 'all', label: 'All Showtimes' },
-  { id: 'interested', label: 'Interested' },
-  { id: 'going', label: 'Going' },
-  { id: 'watchlist-only', label: 'Watchlist Only' },
-  { id: 'cinemas', label: 'Cinemas' },
-  { id: 'days', label: 'Days' },
+  { id: "all", label: "All Showtimes" },
+  { id: "interested", label: "Interested" },
+  { id: "going", label: "Going" },
+  { id: "watchlist-only", label: "Watchlist Only" },
+  { id: "days", label: "Days" },
 ] as const;
 
-type MainShowtimesFilterId = (typeof BASE_FILTERS)[number]['id'];
-
-type ShowtimeStatusFilterId =
-  Exclude<MainShowtimesFilterId, 'cinemas' | 'days' | 'watchlist-only'>;
+type CinemaShowtimesFilterId = (typeof BASE_FILTERS)[number]["id"];
+type ShowtimeStatusFilterId = Exclude<CinemaShowtimesFilterId, "days" | "watchlist-only">;
 
 const EMPTY_DAYS: string[] = [];
 
-export default function MainShowtimesScreen() {
+const getRouteParam = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+
+export default function CinemaShowtimesScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
-  const [searchQuery, setSearchQuery] = useState('');
+  const { id, name, city } = useLocalSearchParams<{
+    id?: string | string[];
+    name?: string | string[];
+    city?: string | string[];
+  }>();
+  const routeCinemaId = useMemo(() => Number(getRouteParam(id)), [id]);
+  const cinemaId = Number.isFinite(routeCinemaId) && routeCinemaId > 0 ? routeCinemaId : -1;
+  const routeCinemaName = useMemo(() => getRouteParam(name)?.trim() ?? "", [name]);
+  const routeCityName = useMemo(() => getRouteParam(city)?.trim() ?? "", [city]);
+  const [searchQuery, setSearchQuery] = useState("");
   // Tracks the selected showtime-status mode (interested / going / all).
   const [selectedShowtimeFilter, setSelectedShowtimeFilter] =
-    useState<ShowtimeStatusFilterId>('interested');
+    useState<ShowtimeStatusFilterId>("all");
   // Whether the list should be limited to movies in the user's watchlist.
   const [watchlistOnly, setWatchlistOnly] = useState(false);
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
-  // Controls visibility of the cinema-filter modal.
-  const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
   // Snapshot timestamp used to keep paginated API responses consistent.
   const [snapshotTime, setSnapshotTime] = useState(() =>
-    DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")
+    DateTime.now().setZone("Europe/Amsterdam").toFormat("yyyy-MM-dd'T'HH:mm:ss")
   );
 
-  const { selections: sessionCinemaIds } = useSessionCinemaSelections();
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
   const { selections: sessionDays, setSelections: setSessionDays } = useSessionDaySelections();
   const selectedDays = sessionDays ?? EMPTY_DAYS;
+  const { data: cinemas } = useFetchCinemas();
 
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
+  const cinemaFromList = useMemo(
+    () => cinemas?.find((cinemaValue) => cinemaValue.id === cinemaId),
+    [cinemaId, cinemas]
+  );
+  const cinemaName = routeCinemaName || cinemaFromList?.name || "Cinema";
+  const cityName = routeCityName || cinemaFromList?.city.name || "";
+  const topBarTitleSuffix = cityName ? `(${cityName})` : undefined;
+
   // Build the filter payload from current UI selections.
   const showtimesFilters = useMemo(() => {
-    // This local variable annotation gives `selectedStatuses` the correct type
-    // without needing an `as ...` cast on the ternary expression.
     const selectedStatuses: GoingStatus[] | undefined =
-      selectedShowtimeFilter === 'all'
+      selectedShowtimeFilter === "all"
         ? undefined
-        : selectedShowtimeFilter === 'going'
-          ? ['GOING']
-          : ['GOING', 'INTERESTED'];
+        : selectedShowtimeFilter === "going"
+          ? ["GOING"]
+          : ["GOING", "INTERESTED"];
 
     return {
       query: searchQuery || undefined,
-      selectedCinemaIds: sessionCinemaIds,
+      selectedCinemaIds: [cinemaId],
       days: selectedDays.length > 0 ? selectedDays : undefined,
       selectedStatuses,
       watchlistOnly: watchlistOnly ? true : undefined,
     };
-  }, [searchQuery, sessionCinemaIds, selectedDays, selectedShowtimeFilter, watchlistOnly]);
+  }, [cinemaId, searchQuery, selectedDays, selectedShowtimeFilter, watchlistOnly]);
 
   // Only decorate the day pill label when the filter is actually active.
   const pillFilters = useMemo(() => {
     if (selectedDays.length === 0) return BASE_FILTERS;
     return BASE_FILTERS.map((filter) =>
-      filter.id === 'days'
+      filter.id === "days"
         ? { ...filter, label: `Days (${selectedDays.length})` }
         : filter
     );
   }, [selectedDays.length]);
 
-  // Cinema pill should only be active when current session differs from preferred cinemas.
-  const isCinemaFilterActive = useMemo(
-    () =>
-      isCinemaSelectionDifferentFromPreferred({
-        sessionCinemaIds,
-        preferredCinemaIds,
-      }),
-    [sessionCinemaIds, preferredCinemaIds]
-  );
-
   // Compute which filter pills should render as active.
-  const activeFilterIds = useMemo<MainShowtimesFilterId[]>(
+  const activeFilterIds = useMemo<CinemaShowtimesFilterId[]>(
     () => {
-      const active: MainShowtimesFilterId[] = [selectedShowtimeFilter];
+      const active: CinemaShowtimesFilterId[] = [selectedShowtimeFilter];
       if (selectedDays.length > 0) {
-        active.push('days');
-      }
-      if (isCinemaFilterActive) {
-        active.push('cinemas');
+        active.push("days");
       }
       if (watchlistOnly) {
-        active.push('watchlist-only');
+        active.push("watchlist-only");
       }
       return active;
     },
-    [selectedShowtimeFilter, selectedDays.length, isCinemaFilterActive, watchlistOnly]
+    [selectedShowtimeFilter, selectedDays.length, watchlistOnly]
   );
 
   // Data hooks keep this module synced with backend data and shared cache state.
@@ -138,8 +135,8 @@ export default function MainShowtimesScreen() {
   // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
     setRefreshing(true);
-    await resetInfiniteQuery(queryClient, ['showtimes', 'main', showtimesFilters]);
-    setSnapshotTime(DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
+    await resetInfiniteQuery(queryClient, ["showtimes", "main", showtimesFilters]);
+    setSnapshotTime(DateTime.now().setZone("Europe/Amsterdam").toFormat("yyyy-MM-dd'T'HH:mm:ss"));
     setRefreshing(false);
   };
 
@@ -151,16 +148,12 @@ export default function MainShowtimesScreen() {
   };
 
   // Handle filter pill presses and update filter state.
-  const handleToggleFilter = (filterId: MainShowtimesFilterId) => {
-    if (filterId === 'cinemas') {
-      setCinemaModalVisible(true);
-      return;
-    }
-    if (filterId === 'days') {
+  const handleToggleFilter = (filterId: CinemaShowtimesFilterId) => {
+    if (filterId === "days") {
       setDayModalVisible(true);
       return;
     }
-    if (filterId === 'watchlist-only') {
+    if (filterId === "watchlist-only") {
       setWatchlistOnly((prev) => !prev);
       return;
     }
@@ -171,6 +164,9 @@ export default function MainShowtimesScreen() {
   return (
     <>
       <ShowtimesScreen
+        topBarTitle={cinemaName}
+        topBarTitleSuffix={topBarTitleSuffix}
+        topBarShowBackButton
         showtimes={showtimes}
         isLoading={isLoading}
         isFetching={isFetching}
@@ -184,11 +180,7 @@ export default function MainShowtimesScreen() {
         filters={pillFilters}
         activeFilterIds={activeFilterIds}
         onToggleFilter={handleToggleFilter}
-        emptyText="No showtimes found"
-      />
-      <CinemaFilterModal
-        visible={cinemaModalVisible}
-        onClose={() => setCinemaModalVisible(false)}
+        emptyText="No showtimes for this cinema"
       />
       <DayFilterModal
         visible={dayModalVisible}

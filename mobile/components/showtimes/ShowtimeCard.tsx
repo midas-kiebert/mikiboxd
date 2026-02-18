@@ -2,6 +2,7 @@
  * Mobile showtimes feature component: Showtime Card.
  */
 import { Image, StyleSheet, TouchableOpacity, View } from "react-native";
+import { useRef } from "react";
 import { DateTime } from "luxon";
 import { useRouter } from "expo-router";
 import type { ShowtimeLoggedIn } from "shared";
@@ -14,13 +15,15 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 type ShowtimeCardProps = {
   showtime: ShowtimeLoggedIn;
   onPress?: (showtime: ShowtimeLoggedIn) => void;
+  onLongPress?: (showtime: ShowtimeLoggedIn) => void;
 };
 
 const POSTER_HEIGHT = 112;
 
-export default function ShowtimeCard({ showtime, onPress }: ShowtimeCardProps) {
+export default function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
+  const suppressNextPressRef = useRef(false);
   // Read the active theme color tokens used by this screen/component.
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -47,13 +50,32 @@ export default function ShowtimeCard({ showtime, onPress }: ShowtimeCardProps) {
       : showtime.going === "INTERESTED"
         ? styles.dateColumnInterested
         : undefined;
+
   // Handle press behavior for this module.
   const handlePress = () => {
+    if (suppressNextPressRef.current) {
+      suppressNextPressRef.current = false;
+      return;
+    }
     if (onPress) {
       onPress(showtime);
       return;
     }
     router.push(`/movie/${showtime.movie.id}`);
+  };
+
+  const handleLongPress = () => {
+    if (!onLongPress) return;
+    suppressNextPressRef.current = true;
+    onLongPress(showtime);
+  };
+
+  const handlePressOut = () => {
+    if (!suppressNextPressRef.current) return;
+    // Clear right after the current gesture cycle to avoid slowing the next tap.
+    requestAnimationFrame(() => {
+      suppressNextPressRef.current = false;
+    });
   };
 
   // Render/output using the state and derived values prepared above.
@@ -62,6 +84,8 @@ export default function ShowtimeCard({ showtime, onPress }: ShowtimeCardProps) {
       <TouchableOpacity
         style={[styles.card, cardStatusStyle]}
         onPress={handlePress}
+        onLongPress={onLongPress ? handleLongPress : undefined}
+        onPressOut={onLongPress ? handlePressOut : undefined}
         activeOpacity={0.8}
       >
         <View style={[styles.dateColumn, dateColumnStatusStyle]}>
@@ -200,6 +224,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       maxWidth: "100%",
     },
     friendRow: {
-      marginTop: 2,
+      marginTop: 3,
     },
   });

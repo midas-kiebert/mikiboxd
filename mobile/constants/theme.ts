@@ -25,6 +25,7 @@ export const Colors = {
     pillText: '#666666',
     pillActiveBackground: tintColorLight,
     pillActiveText: '#ffffff',
+    notificationBadge: '#c92a2a',
     divider: '#f0f0f0',
     posterPlaceholder: '#f0f0f0',
     pink: {
@@ -48,20 +49,28 @@ export const Colors = {
       secondary: '#7a5a00',
     },
     blue: {
-      primary: '#cfe4ff',
-      secondary: '#1e4f9e',
+      primary: '#dbe6ff',
+      secondary: '#1d3fa8',
     },
     teal: {
-      primary: '#ccefeb',
-      secondary: '#0f5e58',
+      primary: '#d3f0df',
+      secondary: '#116a4f',
     },
     red: {
       primary: '#ffd1d1',
       secondary: '#8a1c1c',
     },
     cyan: {
-      primary: '#cfeffd',
-      secondary: '#0e5a7a',
+      primary: '#d5f4ff',
+      secondary: '#0a6f99',
+    },
+    friendGoing: {
+      primary: '#e3f6ec',
+      secondary: '#0b7f56',
+    },
+    friendInterested: {
+      primary: '#fff0e0',
+      secondary: '#a95708',
     },
   },
   dark: {
@@ -79,6 +88,7 @@ export const Colors = {
     pillText: '#9BA1A6',
     pillActiveBackground: tintColorDark,
     pillActiveText: '#151718',
+    notificationBadge: '#d63a3a',
     divider: '#3a3a3a',
     posterPlaceholder: '#3a3a3a',
     pink: {
@@ -102,20 +112,28 @@ export const Colors = {
       secondary: '#ffeaa1',
     },
     blue: {
-      primary: '#1d3b66',
-      secondary: '#cfe2ff',
+      primary: '#1b2f63',
+      secondary: '#c8d8ff',
     },
     teal: {
-      primary: '#144a46',
-      secondary: '#bfe7e2',
+      primary: '#143e34',
+      secondary: '#a9e8c8',
     },
     red: {
       primary: '#5a1c1c',
       secondary: '#ffb8b8',
     },
     cyan: {
-      primary: '#104559',
-      secondary: '#c8efff',
+      primary: '#0f3f51',
+      secondary: '#9fe8ff',
+    },
+    friendGoing: {
+      primary: '#173b2b',
+      secondary: '#7fddb6',
+    },
+    friendInterested: {
+      primary: '#4e3015',
+      secondary: '#ffc590',
     },
   },
 };

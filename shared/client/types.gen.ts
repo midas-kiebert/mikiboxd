@@ -123,15 +123,20 @@ export type UpdatePassword = {
   new_password: string
 }
 
-export type UserPublic = {
-  email: string
-  is_active?: boolean
-  is_superuser?: boolean
-  notify_on_friend_showtime_match?: boolean
-  display_name?: string | null
-  letterboxd_username?: string | null
+export type UserMe = {
   id: string
-  last_watchlist_sync: string | null
+  is_active: boolean
+  display_name: string | null
+  email: string
+  is_superuser: boolean
+  notify_on_friend_showtime_match: boolean
+  letterboxd_username: string | null
+}
+
+export type UserPublic = {
+  id: string
+  is_active: boolean
+  display_name: string | null
 }
 
 export type UserRegister = {
@@ -149,14 +154,9 @@ export type UserUpdate = {
 }
 
 export type UserWithFriendStatus = {
-  email: string
-  is_active?: boolean
-  is_superuser?: boolean
-  notify_on_friend_showtime_match?: boolean
-  display_name?: string | null
-  letterboxd_username?: string | null
   id: string
-  last_watchlist_sync: string | null
+  is_active: boolean
+  display_name: string | null
   is_friend: boolean
   sent_request: boolean
   received_request: boolean
@@ -226,7 +226,7 @@ export type LoginRecoverPasswordHtmlContentData = {
 
 export type LoginRecoverPasswordHtmlContentResponse = string
 
-export type MeGetCurrentUserResponse = UserPublic
+export type MeGetCurrentUserResponse = UserMe
 
 export type MeDeleteUserMeResponse = Message
 
@@ -234,7 +234,7 @@ export type MeUpdateUserMeData = {
   requestBody: UserUpdate
 }
 
-export type MeUpdateUserMeResponse = UserPublic
+export type MeUpdateUserMeResponse = UserMe
 
 export type MeUpdatePasswordMeData = {
   requestBody: UpdatePassword

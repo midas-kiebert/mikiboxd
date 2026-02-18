@@ -90,6 +90,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       lineHeight: 16,
     },
     friendRow: {
-      marginTop: 2,
+      marginTop: 3,
     },
   });

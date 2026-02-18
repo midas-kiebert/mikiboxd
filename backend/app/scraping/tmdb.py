@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 import unicodedata
 from collections.abc import Sequence
 from threading import local
@@ -8,10 +10,15 @@ import aiohttp
 import requests
 from rapidfuzz import fuzz
 from requests.adapters import HTTPAdapter
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlmodel import select
 from urllib3.util.retry import Retry
 
+from app.api.deps import get_db_context
 from app.core.config import settings
+from app.models.tmdb_lookup_cache import TmdbLookupCache
 from app.scraping.logger import logger
+from app.utils import now_amsterdam_naive
 
 TMDB_API_KEY = settings.TMDB_KEY
 SEARCH_PERSON_URL = "https://api.themoviedb.org/3/search/person"
@@ -21,8 +28,10 @@ LETTERBOXD_SEARCH_URL = "https://letterboxd.com/search/"
 TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 
 FUZZ_THRESHOLD = 60  # Minimum score for a match
+TMDB_LOOKUP_PAYLOAD_VERSION = 1
 
 _thread_local = local()
+_tmdb_cache_available: bool | None = None
 
 
 def _get_session() -> requests.Session:
@@ -37,6 +46,96 @@ def _get_session() -> requests.Session:
         session.mount("https://", HTTPAdapter(max_retries=retry))
         _thread_local.session = session
     return session
+
+
+def _build_lookup_payload(
+    *,
+    title_query: str,
+    director_names: list[str],
+    actor_name: str | None,
+    year: int | None,
+) -> dict[str, Any]:
+    return {
+        "version": TMDB_LOOKUP_PAYLOAD_VERSION,
+        "title_query": title_query,
+        "director_names": [strip_accents(name) for name in director_names],
+        "actor_name": actor_name,
+        "year": year,
+    }
+
+
+def _payload_to_canonical_json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _payload_hash(payload_json: str) -> str:
+    return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+
+
+def _get_cached_tmdb_id(
+    *,
+    payload_json: str,
+    payload_hash: str,
+) -> tuple[bool, int | None]:
+    global _tmdb_cache_available
+    if _tmdb_cache_available is False:
+        return False, None
+    try:
+        with get_db_context() as session:
+            stmt = select(TmdbLookupCache).where(
+                TmdbLookupCache.lookup_hash == payload_hash,
+                TmdbLookupCache.lookup_payload == payload_json,
+            )
+            cached = session.exec(stmt).first()
+            _tmdb_cache_available = True
+            if cached is None:
+                return False, None
+            return True, cached.tmdb_id
+    except SQLAlchemyError:
+        if _tmdb_cache_available is not False:
+            logger.debug("TMDB cache unavailable; falling back to uncached lookups.")
+        _tmdb_cache_available = False
+        return False, None
+
+
+def _store_cached_tmdb_id(
+    *,
+    payload_json: str,
+    payload_hash: str,
+    tmdb_id: int | None,
+) -> None:
+    global _tmdb_cache_available
+    if _tmdb_cache_available is False:
+        return
+    now = now_amsterdam_naive()
+    try:
+        with get_db_context() as session:
+            stmt = select(TmdbLookupCache).where(
+                TmdbLookupCache.lookup_hash == payload_hash,
+                TmdbLookupCache.lookup_payload == payload_json,
+            )
+            cached = session.exec(stmt).first()
+            if cached is None:
+                session.add(
+                    TmdbLookupCache(
+                        lookup_hash=payload_hash,
+                        lookup_payload=payload_json,
+                        tmdb_id=tmdb_id,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+            else:
+                cached.tmdb_id = tmdb_id
+                cached.updated_at = now
+            session.commit()
+            _tmdb_cache_available = True
+    except IntegrityError:
+        logger.debug("TMDB cache write conflict, another worker likely wrote it first.")
+    except SQLAlchemyError:
+        if _tmdb_cache_available is not False:
+            logger.debug("TMDB cache unavailable; skipping cache writes.")
+        _tmdb_cache_available = False
 
 
 async def _get_json_async(
@@ -283,13 +382,13 @@ def _resolve_tmdb_id(
     return _movie_id(best)
 
 
-def find_tmdb_id(
+def _find_tmdb_id_uncached(
+    *,
     title_query: str,
     director_names: list[str],
-    actor_name: str | None = None,
-    year: int | None = None,
+    actor_name: str | None,
+    year: int | None,
 ) -> int | None:
-    director_names = [strip_accents(name) for name in director_names]
     director_ids: list[str] = []
     directed_movies: list[dict[str, Any]] = []
     for name in director_names:
@@ -309,9 +408,9 @@ def find_tmdb_id(
             )
             if directed_movies:
                 potential_movies += [
-                    m
-                    for m in acted_movies
-                    if _movie_id(m) in directed_movie_ids
+                    movie
+                    for movie in acted_movies
+                    if _movie_id(movie) in directed_movie_ids
                 ]
             else:
                 potential_movies += acted_movies
@@ -340,16 +439,14 @@ def find_tmdb_id(
     )
 
 
-async def find_tmdb_id_async(
+async def _find_tmdb_id_uncached_async(
     *,
     session: aiohttp.ClientSession,
     title_query: str,
     director_names: list[str],
-    actor_name: str | None = None,
-    year: int | None = None,
+    actor_name: str | None,
+    year: int | None,
 ) -> int | None:
-    director_names = [strip_accents(name) for name in director_names]
-
     director_id_lists = await asyncio.gather(
         *(get_person_ids_async(session=session, name=name) for name in director_names),
         return_exceptions=False,
@@ -395,7 +492,9 @@ async def find_tmdb_id_async(
 
         if directed_movies:
             potential_movies = [
-                movie for movie in acted_movies if _movie_id(movie) in directed_movie_ids
+                movie
+                for movie in acted_movies
+                if _movie_id(movie) in directed_movie_ids
             ]
         else:
             potential_movies = acted_movies
@@ -422,6 +521,88 @@ async def find_tmdb_id_async(
         potential_movies=potential_movies,
         search_results=search_results,
     )
+
+
+def find_tmdb_id(
+    title_query: str,
+    director_names: list[str],
+    actor_name: str | None = None,
+    year: int | None = None,
+) -> int | None:
+    payload = _build_lookup_payload(
+        title_query=title_query,
+        director_names=director_names,
+        actor_name=actor_name,
+        year=year,
+    )
+    payload_json = _payload_to_canonical_json(payload)
+    payload_hash = _payload_hash(payload_json)
+
+    cache_hit, cached_tmdb_id = _get_cached_tmdb_id(
+        payload_json=payload_json,
+        payload_hash=payload_hash,
+    )
+    if cache_hit:
+        return cached_tmdb_id
+
+    normalized_directors = payload["director_names"]
+    assert isinstance(normalized_directors, list)
+    tmdb_id = _find_tmdb_id_uncached(
+        title_query=title_query,
+        director_names=[str(name) for name in normalized_directors],
+        actor_name=actor_name,
+        year=year,
+    )
+    _store_cached_tmdb_id(
+        payload_json=payload_json,
+        payload_hash=payload_hash,
+        tmdb_id=tmdb_id,
+    )
+    return tmdb_id
+
+
+async def find_tmdb_id_async(
+    *,
+    session: aiohttp.ClientSession,
+    title_query: str,
+    director_names: list[str],
+    actor_name: str | None = None,
+    year: int | None = None,
+) -> int | None:
+    payload = _build_lookup_payload(
+        title_query=title_query,
+        director_names=director_names,
+        actor_name=actor_name,
+        year=year,
+    )
+    payload_json = _payload_to_canonical_json(payload)
+    payload_hash = _payload_hash(payload_json)
+
+    cache_hit, cached_tmdb_id = await asyncio.to_thread(
+        _get_cached_tmdb_id,
+        payload_json=payload_json,
+        payload_hash=payload_hash,
+    )
+    if cache_hit:
+        return cached_tmdb_id
+
+    normalized_directors = payload["director_names"]
+    assert isinstance(normalized_directors, list)
+    tmdb_id = await _find_tmdb_id_uncached_async(
+        session=session,
+        title_query=title_query,
+        director_names=[str(name) for name in normalized_directors],
+        actor_name=actor_name,
+        year=year,
+    )
+
+    await asyncio.to_thread(
+        _store_cached_tmdb_id,
+        payload_json=payload_json,
+        payload_hash=payload_hash,
+        tmdb_id=tmdb_id,
+    )
+    return tmdb_id
 
 
 if __name__ == "__main__":

@@ -1,3 +1,6 @@
+/**
+ * TanStack Router route module for signup. It connects URL state to the matching page component.
+ */
 import { Container, Flex, Image, Input, Text } from "@chakra-ui/react"
 import {
   Link as RouterLink,
@@ -33,7 +36,9 @@ interface UserRegisterForm extends UserRegister {
 }
 
 function SignUp() {
+  // Read flow: route state and data hooks first, then handlers, then page JSX.
   const navigate = useNavigate()
+  // Data hooks keep this module synced with backend data and shared cache state.
   const { signUpMutation } = useAuth(
     () => navigate({ to: "/login" }), // onSignUpSuccess
     () => navigate({ to: "/login" }) // onLogout
@@ -58,6 +63,7 @@ function SignUp() {
     signUpMutation.mutate(data)
   }
 
+  // Render/output using the state and derived values prepared above.
   return (
     <>
       <Flex flexDir={{ base: "column", md: "row" }} justify="center" h="100vh">

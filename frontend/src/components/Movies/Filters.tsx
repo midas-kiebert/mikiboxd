@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Filters.
+ */
 import FilterButton from "./FilterButton";
 import { CloseButton, Dialog, Portal } from '@chakra-ui/react'
 import {useFetchCinemas} from "shared/hooks/useFetchCinemas";
@@ -18,8 +21,10 @@ type FiltersProps = {
 
 
 function useDebouncedCinemaMutation(delay = 500) {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const queryClient = useQueryClient();
 
+    // Data hooks keep this module synced with backend data and shared cache state.
     const mutation = useMutation({
         mutationFn: (data: MeSetCinemaSelectionsData) => (
             MeService.setCinemaSelections(data)
@@ -39,6 +44,7 @@ function useDebouncedCinemaMutation(delay = 500) {
         { leading: false, trailing: true }
     );
 
+    // Render/output using the state and derived values prepared above.
     return debouncedMutate;
 }
 

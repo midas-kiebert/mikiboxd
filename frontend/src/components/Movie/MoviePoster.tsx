@@ -1,3 +1,6 @@
+/**
+ * Single-movie detail feature component: Movie Poster.
+ */
 import { Box, Image, Skeleton } from "@chakra-ui/react"
 import { useState } from "react"
 
@@ -16,8 +19,10 @@ export default function MoviePoster({
   height = "375px",
   borderRadius = "lg",
 }: MoviePosterProps) {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   const [isLoaded, setIsLoaded] = useState(false)
 
+  // Render/output using the state and derived values prepared above.
   return (
     <Box
       width={width}

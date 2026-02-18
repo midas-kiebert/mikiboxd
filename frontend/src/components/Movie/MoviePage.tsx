@@ -1,3 +1,6 @@
+/**
+ * Single-movie detail feature component: Movie Page.
+ */
 import { MoviesService, type MoviesReadMovieResponse } from "shared";
 import { useQuery } from "@tanstack/react-query";
 import MovieTitle from "@/components/Movie/MovieTitle";
@@ -37,16 +40,19 @@ type InfiniteMoviesData = {
 
 
 const MoviePage = () => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const queryClient = useQueryClient();
     const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeInMovieLoggedIn | null>(null);
     const [selectedDays, setSelectedDays] = useState<Date[]>([]);
     const params = Route.useParams();
     const { movieId } = params as { movieId: string };
     const movieIdNumber = Number(movieId);
+    // Data hooks keep this module synced with backend data and shared cache state.
     const { data: selectedCinemaIds, isLoading: isLoadingSelectedCinemas } = useFetchSelectedCinemas();
     const selectedDayFilters = selectedDays.map((day) => DateTime.fromJSDate(day).toISODate() || "");
     const shouldWaitForCinemaSelection = isLoadingSelectedCinemas && selectedCinemaIds === undefined;
 
+    // Include cinema/day filters in the query key so cached data lines up with active filters.
     const { data, isLoading, isFetching } = useQuery<MoviesReadMovieResponse, Error>({
         queryKey: ["movie", movieIdNumber, selectedCinemaIds, selectedDayFilters],
         enabled: Number.isFinite(movieIdNumber) && movieIdNumber > 0 && !shouldWaitForCinemaSelection,
@@ -68,6 +74,7 @@ const MoviePage = () => {
     const isMovieLoading = shouldWaitForCinemaSelection || (isLoading && !data);
     const handleDaysChange = (days: Date[]) => setSelectedDays(days);
 
+    // Keep movie details and movie-list caches in sync after a showtime status change.
     const updateCacheAfterShowtimeToggle = ({ movieId, showtimeId, newValue }: UpdateCacheData) => {
         queryClient.invalidateQueries({ queryKey: ["showtimes"] });
 
@@ -131,10 +138,12 @@ const MoviePage = () => {
         }
     });
 
+    // Dialog buttons call into the mutation with the selected showtime row.
     const handleToggleShowtime = (going: GoingStatus) => {
         if (!selectedShowtime) return;
         handleToggle({ showtimeId: selectedShowtime.id, going_status: going });
     }
+    // Render/output using the state and derived values prepared above.
     return (
         <>
             {selectedShowtime && (

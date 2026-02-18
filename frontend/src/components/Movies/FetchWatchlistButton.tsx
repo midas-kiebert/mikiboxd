@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Fetch Watchlist Button.
+ */
 import { Button } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MeService } from "shared";
@@ -6,8 +9,10 @@ import { useEffect } from "react";
 
 const FetchWatchlistButton = () => {
 
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const queryClient = useQueryClient();
 
+    // Data hooks keep this module synced with backend data and shared cache state.
     const { mutate: fetchWatchlist, isPending } = useMutation({
         mutationFn: () => MeService.syncWatchlist(),
         onSuccess: () => {
@@ -17,6 +22,7 @@ const FetchWatchlistButton = () => {
 
     useEffect(() => (fetchWatchlist()), [])
 
+    // Render/output using the state and derived values prepared above.
     return (
         <Button
             loading={isPending}

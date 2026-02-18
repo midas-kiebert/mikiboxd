@@ -1,3 +1,6 @@
+/**
+ * Shared web layout/presentation component: Badge.
+ */
 import { Box, Text, Link } from "@chakra-ui/react";
 
 
@@ -11,6 +14,7 @@ interface BadgeProps {
 }
 
 const Badge = ({ text, bgColor, textColor, textSize, url, hoverColor } : BadgeProps) => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     return (
         <>
             <Link

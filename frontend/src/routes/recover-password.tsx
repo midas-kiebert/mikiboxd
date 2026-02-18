@@ -1,3 +1,6 @@
+/**
+ * TanStack Router route module for recover-password. It connects URL state to the matching page component.
+ */
 import { Container, Heading, Input, Text } from "@chakra-ui/react"
 import { useMutation } from "@tanstack/react-query"
 import { createFileRoute, redirect } from "@tanstack/react-router"
@@ -30,6 +33,7 @@ export const Route = createFileRoute("/recover-password")({
 })
 
 function RecoverPassword() {
+  // Read flow: route state and data hooks first, then handlers, then page JSX.
   const {
     register,
     handleSubmit,
@@ -73,6 +77,7 @@ function RecoverPassword() {
     mutation.mutate(data)
   }
 
+  // Render/output using the state and derived values prepared above.
   return (
     <Container
       as="form"

@@ -1,3 +1,6 @@
+/**
+ * Web app entry point. It configures shared storage, API auth, React Query, routing, and root providers.
+ */
 import {
   MutationCache,
   QueryCache,
@@ -13,6 +16,7 @@ import { ApiError, OpenAPI } from "shared"
 import { CustomProvider } from "./components/ui/provider"
 import { setStorage, storage } from "shared/storage"
 
+// The generated API client expects async storage helpers, so we adapt browser localStorage here.
 setStorage({
   getItem: async (key: string) => localStorage.getItem(key),
   setItem: async (key: string, value: string) => {
@@ -24,6 +28,7 @@ setStorage({
 })
 
 
+// Configure the generated OpenAPI client once at startup.
 OpenAPI.BASE = import.meta.env.VITE_API_URL
 OpenAPI.TOKEN = async () => {
   return (await storage.getItem("access_token")) || ""
@@ -34,6 +39,7 @@ const router = createRouter({
   scrollRestoration: true,
 });
 
+// Centralized API error handling keeps auth redirects consistent for every query/mutation.
 const handleApiError = async (error: Error) => {
   if (error instanceof ApiError && error.status === 401) {
     await storage.removeItem("access_token")
@@ -42,6 +48,8 @@ const handleApiError = async (error: Error) => {
     router.navigate({ to: "/forbidden", replace: true})
   }
 }
+
+// Reuse the same error handler for all queries and mutations.
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: handleApiError,

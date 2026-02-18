@@ -1,3 +1,6 @@
+/**
+ * Theme configuration for Chakra UI styling in the web app.
+ */
 import { defineRecipe } from "@chakra-ui/react"
 
 export const buttonRecipe = defineRecipe({

@@ -1,27 +1,39 @@
+/**
+ * Mobile filter UI component: Filter Pills.
+ */
 import { FlatList, StyleSheet, TouchableOpacity, View } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
-type FilterOption = {
-  id: string;
+type FilterOption<TId extends string = string> = {
+  id: TId;
   label: string;
   badgeCount?: number;
 };
 
-type FilterPillsProps = {
-  filters: FilterOption[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-  activeIds?: string[];
+type FilterPillsProps<TId extends string = string> = {
+  filters: ReadonlyArray<FilterOption<TId>>;
+  // For "single select" mode you pass a real id; for "multi active" mode most screens pass "".
+  selectedId: TId | "";
+  onSelect: (id: TId) => void;
+  activeIds?: ReadonlyArray<TId>;
 };
 
-export default function FilterPills({ filters, selectedId, onSelect, activeIds }: FilterPillsProps) {
+export default function FilterPills<TId extends string = string>({
+  filters,
+  selectedId,
+  onSelect,
+  activeIds,
+}: FilterPillsProps<TId>) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
 
+  // Nothing to render when the screen has no available filters/tabs.
   if (filters.length === 0) return null;
 
+  // Render/output using the state and derived values prepared above.
   return (
     <View style={styles.container}>
       <FlatList
@@ -31,6 +43,7 @@ export default function FilterPills({ filters, selectedId, onSelect, activeIds }
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
+          // `activeIds` supports multi-active mode; `selectedId` supports single-select mode.
           const isActive = selectedId === item.id || activeIds?.includes(item.id);
           const showBadge = typeof item.badgeCount === "number" && item.badgeCount > 0;
           const badgeText = item.badgeCount && item.badgeCount > 99 ? "99+" : String(item.badgeCount ?? 0);

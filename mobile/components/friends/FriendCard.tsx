@@ -1,3 +1,6 @@
+/**
+ * Mobile friends feature component: Friend Card.
+ */
 import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
 import type { UserWithFriendStatus } from "shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -28,14 +31,17 @@ const getFriendName = (friend: UserWithFriendStatus) =>
   friend.display_name?.trim() || friend.email?.split("@")[0] || friend.email;
 
 export default function FriendCard({ user }: FriendCardProps) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["users"] });
   };
 
+  // Data hooks keep this module synced with backend data and shared cache state.
   const removeFriendMutation = useMutation({
     mutationFn: (data: FriendsRemoveFriendData) => FriendsService.removeFriend(data),
     onSuccess: invalidate,
@@ -45,6 +51,7 @@ export default function FriendCard({ user }: FriendCardProps) {
     },
   });
 
+  // Send a new friend request to this user.
   const sendFriendRequestMutation = useMutation({
     mutationFn: (data: FriendsSendFriendRequestData) => FriendsService.sendFriendRequest(data),
     onSuccess: invalidate,
@@ -54,6 +61,7 @@ export default function FriendCard({ user }: FriendCardProps) {
     },
   });
 
+  // Accept a received friend request.
   const acceptFriendRequestMutation = useMutation({
     mutationFn: (data: FriendsAcceptFriendRequestData) => FriendsService.acceptFriendRequest(data),
     onSuccess: invalidate,
@@ -63,6 +71,7 @@ export default function FriendCard({ user }: FriendCardProps) {
     },
   });
 
+  // Decline a received friend request.
   const declineFriendRequestMutation = useMutation({
     mutationFn: (data: FriendsDeclineFriendRequestData) => FriendsService.declineFriendRequest(data),
     onSuccess: invalidate,
@@ -72,6 +81,7 @@ export default function FriendCard({ user }: FriendCardProps) {
     },
   });
 
+  // Cancel a previously sent friend request.
   const cancelFriendRequestMutation = useMutation({
     mutationFn: (data: FriendsCancelFriendRequestData) => FriendsService.cancelFriendRequest(data),
     onSuccess: invalidate,
@@ -151,6 +161,7 @@ export default function FriendCard({ user }: FriendCardProps) {
     return [styles.actionButtonNeutral, styles.actionTextNeutral] as const;
   };
 
+  // Render/output using the state and derived values prepared above.
   return (
     <View style={[styles.card, isBusy && styles.cardDisabled]}>
       <View style={styles.info}>

@@ -1,4 +1,6 @@
-// mobile/app/login.tsx
+/**
+ * Expo Router screen/module for login. It controls navigation and screen-level state for this route.
+ */
 import {
     View,
     Text,
@@ -16,9 +18,12 @@ import type { Body_login_login_access_token as AccessToken } from 'shared'
 import { useThemeColors } from '@/hooks/use-theme-color'
 
 export default function LoginScreen() {
+    // Read flow: local state and data hooks first, then handlers, then the JSX screen.
     const router = useRouter()
+    // Read the active theme color tokens used by this screen/component.
     const colors = useThemeColors()
     const styles = createStyles(colors)
+    // useAuth centralizes token storage and error mapping for auth screens.
     const { loginMutation, error, resetError } = useAuth(
         () => router.replace('/(tabs)'), // onLoginSuccess - navigate to home
         () => router.replace('/login') // onLogout
@@ -29,6 +34,7 @@ export default function LoginScreen() {
         handleSubmit,
         formState: { errors, isSubmitting },
     } = useForm<AccessToken>({
+        // Keep fields controlled from first render to avoid uncontrolled->controlled warnings.
         defaultValues: {
             username: '',
             password: '',
@@ -36,12 +42,14 @@ export default function LoginScreen() {
     })
 
     const onSubmit = async (data: AccessToken) => {
+        // Prevent duplicate mutation calls while react-hook-form is already submitting.
         if (isSubmitting) {
             console.log("Submission in progress, please wait.")
             return
         }
         resetError()
         try {
+            // `mutateAsync` throws on failure so the catch block can handle unknown errors.
             console.log("About to call login mutation")
             await loginMutation.mutateAsync(data)
             console.log("loginMutation successful")
@@ -51,6 +59,7 @@ export default function LoginScreen() {
         }
     }
 
+    // Render/output using the state and derived values prepared above.
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -65,6 +74,7 @@ export default function LoginScreen() {
                     </View>
                 )}
 
+                {/* Email field uses Controller so validation and input stay in sync. */}
                 <Controller
                     control={control}
                     name="username"
@@ -96,6 +106,7 @@ export default function LoginScreen() {
                     )}
                 />
 
+                {/* Password field follows the same controlled/validated pattern. */}
                 <Controller
                     control={control}
                     name="password"

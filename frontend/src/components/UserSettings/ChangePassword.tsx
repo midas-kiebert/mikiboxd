@@ -1,3 +1,6 @@
+/**
+ * User settings feature component: Change Password.
+ */
 import { Box, Button, Container, Heading, VStack } from "@chakra-ui/react"
 import { useMutation } from "@tanstack/react-query"
 import { type SubmitHandler, useForm } from "react-hook-form"
@@ -13,7 +16,9 @@ interface UpdatePasswordForm extends UpdatePassword {
 }
 
 const ChangePassword = () => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   const { showSuccessToast } = useCustomToast()
+  // Data hooks keep this module synced with backend data and shared cache state.
   const {
     register,
     handleSubmit,
@@ -41,6 +46,7 @@ const ChangePassword = () => {
     mutation.mutate(data)
   }
 
+  // Render/output using the state and derived values prepared above.
   return (
     <>
       <Container maxW="full">

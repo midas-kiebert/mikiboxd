@@ -1,3 +1,6 @@
+/**
+ * Shared web layout/presentation component: User Menu.
+ */
 import { Box, Button, Flex, Text } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
 import { FaUserAstronaut } from "react-icons/fa"
@@ -8,7 +11,9 @@ import useAuth from "shared/hooks/useAuth"
 import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/menu"
 
 const UserMenu = () => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   const navigate = useNavigate()
+  // Data hooks keep this module synced with backend data and shared cache state.
   const { user, logout } = useAuth(
     () => navigate({ to: "/" }), // onLoginSuccess
     () => navigate({ to: "/login" }) // onLogout
@@ -18,6 +23,7 @@ const UserMenu = () => {
     await logout()
   }
 
+  // Render/output using the state and derived values prepared above.
   return (
     <>
       {/* Desktop */}

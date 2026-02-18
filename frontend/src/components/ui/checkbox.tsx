@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Checkbox. This keeps common UI patterns consistent.
+ */
 import { Checkbox as ChakraCheckbox } from "@chakra-ui/react"
 import * as React from "react"
 

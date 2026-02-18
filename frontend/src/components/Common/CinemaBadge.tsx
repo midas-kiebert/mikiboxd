@@ -8,9 +8,11 @@ interface CinemaBadgeProps extends React.ComponentProps<typeof Badge> {
 }
 
 const CinemaBadge = ({ cinema, enabled = true, ...rest } : CinemaBadgeProps) => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const name = cinema.name;
     const color = cinema.badge_bg_color || "gray.500";
 
+    // Render/output using the state and derived values prepared above.
     return (
         <Badge
             m={0.5}

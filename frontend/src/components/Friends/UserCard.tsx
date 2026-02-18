@@ -1,3 +1,6 @@
+/**
+ * Friends feature component: User Card.
+ */
 import type { UserWithFriendStatus } from "shared"
 import { Flex, Badge, IconButton, Spacer, Icon } from "@chakra-ui/react"
 import { IoMdRemove, IoIosCheckmark } from "react-icons/io";
@@ -19,10 +22,12 @@ type UserCardProps = {
 
 const UserCard = ({ user }: UserCardProps) => {
 
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const queryClient = useQueryClient();
 
     let badge, button, secondButton, bgColor;
 
+    // Data hooks keep this module synced with backend data and shared cache state.
     const removeFriendMutation = useMutation({
         mutationFn: (data: FriendsRemoveFriendData) => FriendsService.removeFriend(data),
         onSuccess: () => {
@@ -163,6 +168,7 @@ const UserCard = ({ user }: UserCardProps) => {
 
 
 
+    // Render/output using the state and derived values prepared above.
     return (
         <Flex
             borderWidth="1px"

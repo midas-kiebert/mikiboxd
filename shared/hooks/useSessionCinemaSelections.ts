@@ -8,10 +8,13 @@ export function useSessionCinemaSelections() {
 
   const { data } = useQuery<number[] | undefined>({
     queryKey: SESSION_CINEMA_SELECTIONS_KEY,
-    queryFn: async () =>
-      queryClient.getQueryData(SESSION_CINEMA_SELECTIONS_KEY) as number[] | undefined,
-    initialData: () =>
-      queryClient.getQueryData(SESSION_CINEMA_SELECTIONS_KEY) as number[] | undefined,
+    // TanStack Query's types require a `queryFn` unless you configure a "default queryFn"
+    // on the QueryClient. Even though this query is `enabled: false`, providing a small
+    // queryFn avoids both runtime and TypeScript errors if someone ever calls `refetch()`
+    // or flips `enabled` to `true` later.
+    queryFn: () => queryClient.getQueryData<number[]>(SESSION_CINEMA_SELECTIONS_KEY),
+    // When the hook mounts, seed the value from whatever is already in the cache.
+    initialData: () => queryClient.getQueryData<number[]>(SESSION_CINEMA_SELECTIONS_KEY),
     staleTime: Infinity,
     gcTime: Infinity,
     enabled: false,

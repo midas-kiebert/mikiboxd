@@ -1,3 +1,6 @@
+/**
+ * Shared mobile UI component: Parallax scroll view.
+ */
 import type { PropsWithChildren, ReactElement } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, {
@@ -23,10 +26,15 @@ export default function ParallaxScrollView({
   headerImage,
   headerBackgroundColor,
 }: Props) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const backgroundColor = useThemeColor({}, 'background');
+  // Current theme mode decides which header background color to use.
   const colorScheme = useColorScheme() ?? 'light';
+  // Animated ref lets Reanimated track this ScrollView directly.
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  // Shared value that updates with the current vertical scroll offset.
   const scrollOffset = useScrollOffset(scrollRef);
+  // Header transform interpolates scroll offset into translate/scale values.
   const headerAnimatedStyle = useAnimatedStyle(() => {
     return {
       transform: [
@@ -44,6 +52,7 @@ export default function ParallaxScrollView({
     };
   });
 
+  // Render/output using the state and derived values prepared above.
   return (
     <Animated.ScrollView
       ref={scrollRef}

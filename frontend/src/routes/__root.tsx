@@ -1,3 +1,6 @@
+/**
+ * TanStack Router route module for root. It connects URL state to the matching page component.
+ */
 import { Outlet, createRootRoute } from "@tanstack/react-router"
 import React, { Suspense } from "react"
 

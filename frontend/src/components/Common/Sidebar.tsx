@@ -1,3 +1,6 @@
+/**
+ * Shared web layout/presentation component: Sidebar.
+ */
 import { Box, Flex, IconButton, Text } from "@chakra-ui/react"
 import { useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
@@ -20,10 +23,12 @@ import { SIDEBAR_WIDTH } from "@/constants"
 
 
 const Sidebar = () => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
   const currentUser = queryClient.getQueryData<UserPublic>(["currentUser"])
+  // Data hooks keep this module synced with backend data and shared cache state.
   const { logout } = useAuth(
     () => navigate({ to: "/" }), // onLoginSuccess
     () => navigate({ to: "/login" }) // onLogout
@@ -34,6 +39,7 @@ const Sidebar = () => {
     await logout()
   }
 
+  // Render/output using the state and derived values prepared above.
   return (
     <>
       {/* Mobile */}

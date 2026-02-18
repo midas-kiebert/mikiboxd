@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Password input. This keeps common UI patterns consistent.
+ */
 "use client"
 
 import type {
@@ -151,6 +154,7 @@ export const PasswordStrengthMeter = forwardRef<
 })
 
 function getColorPalette(percent: number) {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   switch (true) {
     case percent < 33:
       return { label: "Low", colorPalette: "red" }

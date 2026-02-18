@@ -1,3 +1,6 @@
+/**
+ * Mobile showtimes feature component: Showtime Card.
+ */
 import { Image, StyleSheet, TouchableOpacity, View } from "react-native";
 import { DateTime } from "luxon";
 import { useRouter } from "expo-router";
@@ -16,7 +19,9 @@ type ShowtimeCardProps = {
 const POSTER_HEIGHT = 112;
 
 export default function ShowtimeCard({ showtime, onPress }: ShowtimeCardProps) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
+  // Read the active theme color tokens used by this screen/component.
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const date = DateTime.fromISO(showtime.datetime);
@@ -42,6 +47,7 @@ export default function ShowtimeCard({ showtime, onPress }: ShowtimeCardProps) {
       : showtime.going === "INTERESTED"
         ? styles.dateColumnInterested
         : undefined;
+  // Handle press behavior for this module.
   const handlePress = () => {
     if (onPress) {
       onPress(showtime);
@@ -50,6 +56,7 @@ export default function ShowtimeCard({ showtime, onPress }: ShowtimeCardProps) {
     router.push(`/movie/${showtime.movie.id}`);
   };
 
+  // Render/output using the state and derived values prepared above.
   return (
     <View style={[styles.cardGlow, cardGlowStyle]}>
       <TouchableOpacity

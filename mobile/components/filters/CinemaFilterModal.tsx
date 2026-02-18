@@ -1,3 +1,6 @@
+/**
+ * Mobile filter UI component: Cinema Filter Modal.
+ */
 import { useCallback, useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
@@ -56,6 +59,7 @@ function groupCinemas(cinemas: CinemaPublic[]) {
   const groupedCities: CityGroup[] = [];
   const ungrouped: CinemaPublic[] = [];
 
+  // Only larger cities get a dedicated group; small city lists are merged into "Other cinemas".
   sortedGroups.forEach((group) => {
     if (group.cinemas.length >= GROUPING_MINIMUM) {
       groupedCities.push(group);
@@ -79,14 +83,18 @@ const selectionsMatch = (left: number[], right: number[]) => {
 };
 
 export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModalProps) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
+  // Data hooks keep this module synced with backend data and shared cache state.
   const { data: cinemas } = useFetchCinemas();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
   const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
     useSessionCinemaSelections();
 
+  // Persist current session selections as the user's preferred cinemas.
   const savePreferredMutation = useMutation({
     mutationFn: (data: MeSetCinemaSelectionsData) => MeService.setCinemaSelections(data),
     onSuccess: (_data, variables) => {
@@ -94,6 +102,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     },
   });
 
+  // Seed session state from saved preferences so the modal starts with familiar selections.
   useEffect(() => {
     if (sessionCinemaIds === undefined && preferredCinemaIds !== undefined) {
       setSessionCinemaIds(preferredCinemaIds);
@@ -121,6 +130,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     [cinemas]
   );
 
+  // Collect all cinema IDs for bulk select/deselect actions.
   const allCinemaIds = useMemo(
     () => cinemaList.map((cinema) => cinema.id),
     [cinemas]
@@ -129,6 +139,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
   const allSelected =
     allCinemaIds.length > 0 && allCinemaIds.every((id) => selectedCinemas.includes(id));
 
+  // Toggle a single cinema in this modal session.
   const handleToggle = (cinemaId: number) => {
     const select = !selectedCinemas.includes(cinemaId);
     const next = select
@@ -137,6 +148,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     setSessionCinemaIds(next);
   };
 
+  // Toggle every cinema inside one city section.
   const handleToggleCity = (cityId: number) => {
     const cityCinemas = groupedCities.find((group) => group.city.id === cityId)?.cinemas || [];
     if (cityCinemas.length === 0) return;
@@ -148,6 +160,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     setSessionCinemaIds(next);
   };
 
+  // Toggle the entire list in one action.
   const handleToggleAll = () => {
     const isAllSelected =
       allCinemaIds.length > 0 && allCinemaIds.every((id) => selectedCinemas.includes(id));
@@ -160,16 +173,19 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     }
   };
 
+  // Restore the saved preferred selection into the current session.
   const handleUsePreferred = useCallback(() => {
     if (preferredCinemaIds === undefined) return;
     setSessionCinemaIds(preferredCinemaIds);
   }, [preferredCinemaIds, setSessionCinemaIds]);
 
+  // Save the current session selection as preferred cinemas on the backend.
   const handleSavePreferred = useCallback(() => {
     if (preferredCinemaIds === undefined) return;
     savePreferredMutation.mutate({ requestBody: selectedCinemas });
   }, [preferredCinemaIds, savePreferredMutation, selectedCinemas]);
 
+  // Render one selectable cinema row inside the modal list.
   const renderCinemaRow = (cinema: CinemaPublic, showCity = false) => {
     const selected = selectedCinemas.includes(cinema.id);
     return (
@@ -200,6 +216,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
   const isLoading =
     cinemas === undefined || (sessionCinemaIds === undefined && preferredCinemaIds === undefined);
 
+  // Render/output using the state and derived values prepared above.
   return (
     <Modal
       animationType="slide"

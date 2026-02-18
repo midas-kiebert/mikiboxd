@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Original Title.
+ */
 import { Heading, Box } from "@chakra-ui/react";
 
 type OriginalTitleProps = {
@@ -5,9 +8,11 @@ type OriginalTitleProps = {
 };
 
 export default function OriginalTitle({ originalTitle }: OriginalTitleProps) {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     if (!originalTitle) {
         return null;
     }
+    // Render/output using the state and derived values prepared above.
     return (
         <Box
         maxW={"40%"}

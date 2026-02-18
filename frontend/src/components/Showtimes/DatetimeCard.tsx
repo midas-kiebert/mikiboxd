@@ -1,3 +1,6 @@
+/**
+ * Showtimes feature component: Datetime Card.
+ */
 import { Text, VStack } from "@chakra-ui/react";
 import days from "dayjs"
 import type { ShowtimeLoggedIn } from "shared";
@@ -9,6 +12,7 @@ type DatetimeCardProps = {
 }
 
 const DatetimeCard = ({ showtime }: DatetimeCardProps) => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const datetime = new Date(showtime.datetime);
     const day = days(datetime).format('D');
     const month = days(datetime).format('MMMM');
@@ -21,6 +25,7 @@ const DatetimeCard = ({ showtime }: DatetimeCardProps) => {
 
 
 
+    // Render/output using the state and derived values prepared above.
     return (
         <VStack
             gap={0}

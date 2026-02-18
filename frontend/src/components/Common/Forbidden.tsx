@@ -1,7 +1,11 @@
+/**
+ * Shared web layout/presentation component: Forbidden.
+ */
 import { Button, Center, Flex, Text } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
 
 const Forbidden = () => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   return (
     <>
       <Flex

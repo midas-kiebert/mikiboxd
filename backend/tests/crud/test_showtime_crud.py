@@ -242,6 +242,30 @@ def test_get_main_page_showtimes_filters_by_selected_statuses(
     assert showtime_other_user not in interested
 
 
+def test_get_main_page_showtimes_returns_all_showtimes_when_no_selected_statuses(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+
+    showtime_a = showtime_factory()
+    showtime_b = showtime_factory()
+
+    showtimes = showtime_crud.get_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+        ),
+    )
+
+    assert {s.id for s in showtimes} == {showtime_a.id, showtime_b.id}
+
+
 def test_get_main_page_showtimes_applies_cinema_day_time_query_and_watchlist_filters(
     *,
     db_transaction: Session,

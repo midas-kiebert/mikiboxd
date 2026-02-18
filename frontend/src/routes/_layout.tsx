@@ -1,3 +1,6 @@
+/**
+ * TanStack Router route module for . It connects URL state to the matching page component.
+ */
 import { Flex } from "@chakra-ui/react"
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router"
 
@@ -20,10 +23,12 @@ export const Route = createFileRoute("/_layout")({
 })
 
 function Layout() {
+  // Read flow: route state and data hooks first, then handlers, then page JSX.
   const isMobile = useIsMobile();
 
   const height = isMobile ? "calc(100% - 60px)" : "100%";
 
+  // Render/output using the state and derived values prepared above.
   return (
     <Flex direction="column" height="100vh">
       {/* <Navbar /> */}

@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Cinema Badges.
+ */
 import { Box, Flex } from "@chakra-ui/react";
 import CinemaBadge from "@/components/Common/CinemaBadge";
 import type { CinemaPublic } from "shared";
@@ -10,6 +13,7 @@ type CinemaBadgesProps = {
 
 const CinemaBadges = ({ cinemas }: CinemaBadgesProps) => {
 
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     // sort cinemas by length of name, so that the shortest names are shown first
     cinemas.sort((a, b) => a.name.length - b.name.length);
 
@@ -59,6 +63,7 @@ const CinemaBadges = ({ cinemas }: CinemaBadgesProps) => {
         }
     }, [cinemas]);
 
+    // Render/output using the state and derived values prepared above.
     return (
         <Box overflowX="hidden" flex={"1"} position="relative">
         <Flex

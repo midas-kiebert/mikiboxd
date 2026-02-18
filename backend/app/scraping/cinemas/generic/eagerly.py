@@ -61,7 +61,6 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                 continue
             title_query = clean_title(slug)
             directors_str = value["director_name"]
-            print(value, directors_str)
             directors = (
                 [director.strip() for director in directors_str["value"].split(",")]
                 if directors_str

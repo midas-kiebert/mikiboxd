@@ -5,6 +5,7 @@ from uuid import UUID
 import httpx
 from sqlmodel import Session
 
+from app.core.config import settings
 from app.core.enums import GoingStatus
 from app.crud import push_token as push_token_crud
 from app.crud import showtime as showtime_crud
@@ -13,6 +14,10 @@ from app.models.showtime import Showtime
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 ANDROID_PUSH_CHANNEL_ID = "heads-up"
+NOTIFICATION_CARD_IMAGE_PATH = "/assets/images/notification-card-image.png"
+DEFAULT_NOTIFICATION_CARD_IMAGE_URL = (
+    "https://mikino.nl/assets/images/notification-card-image.png"
+)
 
 logger = getLogger(__name__)
 
@@ -21,6 +26,13 @@ def _token_hint(token: str) -> str:
     if len(token) <= 16:
         return token
     return f"{token[:12]}...{token[-4:]}"
+
+
+def _notification_card_image_url() -> str:
+    frontend_host = settings.FRONTEND_HOST.rstrip("/")
+    if frontend_host.startswith("https://"):
+        return f"{frontend_host}{NOTIFICATION_CARD_IMAGE_PATH}"
+    return DEFAULT_NOTIFICATION_CARD_IMAGE_URL
 
 
 def notify_friends_on_showtime_selection(
@@ -72,6 +84,7 @@ def notify_friends_on_showtime_selection(
         "actorId": str(actor_id),
         "status": going_status.value,
     }
+    rich_content = {"image": _notification_card_image_url()}
 
     messages = [
         {
@@ -79,6 +92,7 @@ def notify_friends_on_showtime_selection(
             "title": title,
             "body": body,
             "data": data,
+            "richContent": rich_content,
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
@@ -117,6 +131,7 @@ def notify_user_on_friend_request(
         return
 
     sender_name = sender.display_name or "Someone"
+    rich_content = {"image": _notification_card_image_url()}
     messages = [
         {
             "to": token.token,
@@ -126,6 +141,7 @@ def notify_user_on_friend_request(
                 "type": "friend_request_received",
                 "senderId": str(sender_id),
             },
+            "richContent": rich_content,
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
@@ -164,6 +180,7 @@ def notify_user_on_friend_request_accepted(
         return
 
     accepter_name = accepter.display_name or "Someone"
+    rich_content = {"image": _notification_card_image_url()}
     messages = [
         {
             "to": token.token,
@@ -173,6 +190,7 @@ def notify_user_on_friend_request_accepted(
                 "type": "friend_request_accepted",
                 "accepterId": str(accepter_id),
             },
+            "richContent": rich_content,
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,

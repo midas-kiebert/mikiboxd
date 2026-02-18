@@ -1,9 +1,11 @@
 /**
  * Expo Router screen/module for movie / [id]. It controls navigation and screen-level state for this route.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   FlatList,
   Image,
   Modal,
@@ -14,12 +16,14 @@ import {
   Linking,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import { BlurView } from "expo-blur";
 import type { GoingStatus, MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
 import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
+import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import { ThemedText } from "@/components/themed-text";
@@ -27,7 +31,10 @@ import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import FilterPills from "@/components/filters/FilterPills";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
 import DayFilterModal from "@/components/filters/DayFilterModal";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { IconSymbol } from "@/components/ui/icon-symbol";
+import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selection";
 
 const SHOWTIMES_PAGE_SIZE = 20;
 // Filter pill definitions rendered in the top filter row.
@@ -41,8 +48,10 @@ type ShowtimeFilter = "all" | "going" | "interested";
 
 export default function MoviePage() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
+  const colorScheme = useColorScheme();
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  const router = useRouter();
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
   // Safe-area inset values used to avoid notches/home indicators.
@@ -52,6 +61,7 @@ export default function MoviePage() {
   const [selectedFilter, setSelectedFilter] = useState<ShowtimeFilter>("all");
   // Stores the showtime currently selected for status/ticket actions.
   const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeInMovieLoggedIn | null>(null);
+  const modalProgress = useRef(new Animated.Value(0)).current;
   // Controls visibility of the cinema-filter modal.
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   // Controls visibility of the day-filter modal.
@@ -67,6 +77,21 @@ export default function MoviePage() {
     []
   );
   const { selections: sessionCinemaIds } = useSessionCinemaSelections();
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  useEffect(() => {
+    if (!selectedShowtime) {
+      modalProgress.setValue(0);
+      return;
+    }
+    modalProgress.setValue(0);
+    Animated.timing(modalProgress, {
+      toValue: 1,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [modalProgress, selectedShowtime]);
+
   // UI filter state is translated into backend filter params here.
   const showtimesFilters = useMemo(() => {
     const selectedStatuses: GoingStatus[] | undefined =
@@ -224,6 +249,23 @@ export default function MoviePage() {
   const isGoingSelected = selectedShowtime?.going === "GOING";
   const isInterestedSelected = selectedShowtime?.going === "INTERESTED";
   const isNotGoingSelected = selectedShowtime?.going === "NOT_GOING";
+  const statusModalBackdropAnimatedStyle = {
+    opacity: modalProgress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 1],
+    }),
+  };
+  const statusModalCardAnimatedStyle = {
+    opacity: modalProgress,
+    transform: [
+      {
+        translateY: modalProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [18, 0],
+        }),
+      },
+    ],
+  };
 
   // Handle filter pill presses and update active filter state.
   const handleSelectFilter = (filterId: string) => {
@@ -263,6 +305,15 @@ export default function MoviePage() {
     });
   }, [selectedDays.length, selectedFilter]);
 
+  const isCinemaFilterActive = useMemo(
+    () =>
+      isCinemaSelectionDifferentFromPreferred({
+        sessionCinemaIds,
+        preferredCinemaIds,
+      }),
+    [sessionCinemaIds, preferredCinemaIds]
+  );
+
   // Compute which filter pills should render as active.
   const activeFilterIds = useMemo(() => {
     const active: string[] = [];
@@ -272,27 +323,46 @@ export default function MoviePage() {
     if (selectedDays.length > 0) {
       active.push("days");
     }
-    if (sessionCinemaIds !== undefined) {
+    if (isCinemaFilterActive) {
       active.push("cinemas");
     }
     return active;
-  }, [selectedFilter, selectedDays.length, sessionCinemaIds]);
+  }, [selectedFilter, selectedDays.length, isCinemaFilterActive]);
 
   // Render/output using the state and derived values prepared above.
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <Stack.Screen options={{ title: movie?.title ?? "Movie" }} />
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.compactHeader}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          onPress={() => router.back()}
+          style={styles.compactBackButton}
+          hitSlop={8}
+          activeOpacity={0.75}
+        >
+          <IconSymbol size={20} name="chevron.left" color={colors.tint} />
+        </TouchableOpacity>
+      </View>
       <Modal
         transparent
         visible={!!selectedShowtime}
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => {
           if (!isUpdatingShowtimeSelection) {
             setSelectedShowtime(null);
           }
         }}
       >
-        <View style={styles.statusModalBackdrop}>
+        <Animated.View style={[styles.statusModalBackdrop, statusModalBackdropAnimatedStyle]}>
+          <BlurView
+            style={styles.statusModalBlur}
+            intensity={4}
+            tint={colorScheme === "dark" ? "dark" : "light"}
+            experimentalBlurMethod="dimezisBlurView"
+          />
+          <View style={styles.statusModalTint} />
           <Pressable
             style={styles.statusModalDismissArea}
             onPress={() => {
@@ -301,7 +371,7 @@ export default function MoviePage() {
               }
             }}
           />
-          <View style={styles.statusModalCard}>
+          <Animated.View style={[styles.statusModalCard, statusModalCardAnimatedStyle]}>
             <ThemedText style={styles.statusModalTitle}>Update your status</ThemedText>
             {selectedShowtime ? (
               <ThemedText style={styles.statusModalSubtitle}>
@@ -393,8 +463,8 @@ export default function MoviePage() {
                 {isUpdatingShowtimeSelection ? "Updating..." : "Cancel"}
               </ThemedText>
             </TouchableOpacity>
-          </View>
-        </View>
+          </Animated.View>
+        </Animated.View>
       </Modal>
       {isMovieLoading ? (
         <View style={styles.centered}>
@@ -508,6 +578,18 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flex: 1,
       backgroundColor: colors.background,
     },
+    compactHeader: {
+      height: 30,
+      paddingHorizontal: 8,
+      justifyContent: "center",
+      backgroundColor: colors.background,
+    },
+    compactBackButton: {
+      alignItems: "center",
+      justifyContent: "center",
+      width: 28,
+      height: 28,
+    },
     content: {
       padding: 16,
       gap: 16,
@@ -604,9 +686,15 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     statusModalBackdrop: {
       flex: 1,
-      backgroundColor: "rgba(0, 0, 0, 0.45)",
       justifyContent: "center",
       padding: 20,
+    },
+    statusModalBlur: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    statusModalTint: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0, 0, 0, 0.06)",
     },
     statusModalDismissArea: {
       ...StyleSheet.absoluteFillObject,

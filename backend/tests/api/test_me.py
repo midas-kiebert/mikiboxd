@@ -10,8 +10,11 @@ def test_get_me_superuser(
     current_user = r.json()
     assert current_user
     assert current_user["is_active"] is True
-    assert current_user["is_superuser"]
-    assert current_user["email"] == settings.FIRST_SUPERUSER
+    assert "is_superuser" not in current_user
+    assert "email" not in current_user
+    assert "notify_on_friend_showtime_match" not in current_user
+    assert "letterboxd_username" not in current_user
+    assert "last_watchlist_sync" not in current_user
 
 
 def test_get_me_normal_user(
@@ -21,8 +24,11 @@ def test_get_me_normal_user(
     current_user = r.json()
     assert current_user
     assert current_user["is_active"] is True
-    assert current_user["is_superuser"] is False
-    assert current_user["email"] == settings.EMAIL_TEST_USER
+    assert "is_superuser" not in current_user
+    assert "email" not in current_user
+    assert "notify_on_friend_showtime_match" not in current_user
+    assert "letterboxd_username" not in current_user
+    assert "last_watchlist_sync" not in current_user
 
 
 def test_update_me_notification_preference(
@@ -34,11 +40,11 @@ def test_update_me_notification_preference(
         json={"notify_on_friend_showtime_match": True},
     )
     assert 200 <= update_response.status_code < 300
-    assert update_response.json()["notify_on_friend_showtime_match"] is True
+    assert "notify_on_friend_showtime_match" not in update_response.json()
 
     me_response = client.get(
         f"{settings.API_V1_STR}/me",
         headers=normal_user_token_headers,
     )
     assert 200 <= me_response.status_code < 300
-    assert me_response.json()["notify_on_friend_showtime_match"] is True
+    assert "notify_on_friend_showtime_match" not in me_response.json()

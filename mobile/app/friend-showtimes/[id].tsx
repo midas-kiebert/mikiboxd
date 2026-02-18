@@ -1,11 +1,12 @@
 /**
- * Expo Router screen/module for (tabs) / agenda. It controls navigation and screen-level state for this route.
+ * Expo Router screen/module for friend-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
 import { useMemo, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { DateTime } from 'luxon';
-import { useQueryClient } from '@tanstack/react-query';
-import type { GoingStatus } from 'shared';
-import { useFetchMyShowtimes } from 'shared/hooks/useFetchMyShowtimes';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { UsersService, type GoingStatus } from 'shared';
+import { useFetchUserShowtimes } from 'shared/hooks/useFetchUserShowtimes';
 import { useSessionCinemaSelections } from 'shared/hooks/useSessionCinemaSelections';
 
 import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
@@ -17,13 +18,25 @@ const BASE_FILTERS = [
   { id: 'watchlist-only', label: 'Watchlist Only' },
 ] as const;
 
-type AgendaFilterId = (typeof BASE_FILTERS)[number]['id'];
+type FriendAgendaFilterId = (typeof BASE_FILTERS)[number]['id'];
 
-export default function AgendaScreen() {
+const getRouteParam = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+
+const getFriendTitle = (displayName: string | null | undefined, email: string) => {
+  const trimmedDisplayName = displayName?.trim();
+  if (trimmedDisplayName) return trimmedDisplayName;
+  const emailName = email.split('@')[0]?.trim();
+  return emailName || 'Agenda';
+};
+
+export default function FriendShowtimesScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
+  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const userId = useMemo(() => getRouteParam(id), [id]);
   const [searchQuery, setSearchQuery] = useState('');
   // Tracks which filter pills are toggled on (multi-select).
-  const [activeFilterIds, setActiveFilterIds] = useState<AgendaFilterId[]>([]);
+  const [activeFilterIds, setActiveFilterIds] = useState<FriendAgendaFilterId[]>([]);
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
   // Snapshot timestamp used to keep paginated API responses consistent.
@@ -35,6 +48,18 @@ export default function AgendaScreen() {
 
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
+
+  // Data hooks keep this module synced with backend data and shared cache state.
+  const { data: friend } = useQuery({
+    queryKey: ['user', userId],
+    enabled: !!userId,
+    queryFn: () => UsersService.getUser({ userId: userId! }),
+  });
+
+  const topBarTitle = useMemo(
+    () => (friend ? getFriendTitle(friend.display_name, friend.email) : 'Agenda'),
+    [friend]
+  );
 
   // Build the filter payload from current UI selections.
   const showtimesFilters = useMemo(() => {
@@ -59,10 +84,12 @@ export default function AgendaScreen() {
     isFetching,
     hasNextPage,
     fetchNextPage,
-  } = useFetchMyShowtimes({
+  } = useFetchUserShowtimes({
     limit: 20,
     snapshotTime,
+    userId: userId ?? '',
     filters: showtimesFilters,
+    enabled: !!userId,
   });
 
   // Flatten/derive list data for rendering efficiency.
@@ -70,8 +97,9 @@ export default function AgendaScreen() {
 
   // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
+    if (!userId) return;
     setRefreshing(true);
-    await resetInfiniteQuery(queryClient, ['showtimes', 'me', showtimesFilters]);
+    await resetInfiniteQuery(queryClient, ['showtimes', 'user', userId, showtimesFilters]);
     setSnapshotTime(DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
     setRefreshing(false);
   };
@@ -84,16 +112,18 @@ export default function AgendaScreen() {
   };
 
   // Handle filter pill presses and update active filter state.
-  const handleToggleFilter = (filterId: AgendaFilterId) => {
+  const handleToggleFilter = (filterId: FriendAgendaFilterId) => {
     setActiveFilterIds((prev) => {
       const isActive = prev.includes(filterId);
-      return isActive ? prev.filter((id) => id !== filterId) : [...prev, filterId];
+      return isActive ? prev.filter((idValue) => idValue !== filterId) : [...prev, filterId];
     });
   };
 
   // Render/output using the state and derived values prepared above.
   return (
     <ShowtimesScreen
+      topBarTitle={topBarTitle}
+      topBarShowBackButton
       showtimes={showtimes}
       isLoading={isLoading}
       isFetching={isFetching}
@@ -107,7 +137,7 @@ export default function AgendaScreen() {
       filters={BASE_FILTERS}
       activeFilterIds={activeFilterIds}
       onToggleFilter={handleToggleFilter}
-      emptyText="No showtimes in your agenda"
+      emptyText="No showtimes in this agenda"
     />
   );
 }

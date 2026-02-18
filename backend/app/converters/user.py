@@ -13,12 +13,10 @@ from app.utils import now_amsterdam_naive
 
 def to_public(user: User) -> UserPublic:
     User.model_validate(user)
-    last_watchlist_sync = (
-        user.letterboxd.last_watchlist_sync if user.letterboxd else None
-    )
     return UserPublic(
-        **user.model_dump(),
-        last_watchlist_sync=last_watchlist_sync,
+        id=user.id,
+        is_active=user.is_active,
+        display_name=user.display_name,
     )
 
 
@@ -57,16 +55,13 @@ def to_with_friend_status(
         sender_id=user.id,
         receiver_id=current_user,
     )
-    last_watchlist_sync = (
-        user.letterboxd.last_watchlist_sync if user.letterboxd else None
-    )
-
     return UserWithFriendStatus(
-        **user.model_dump(),
+        id=user.id,
+        is_active=user.is_active,
+        display_name=user.display_name,
         is_friend=is_friend,
         sent_request=sent_request,
         received_request=received_request,
-        last_watchlist_sync=last_watchlist_sync,
     )
 
 
@@ -107,12 +102,9 @@ def to_with_showtimes_public(
         )
     ]
 
-    last_watchlist_sync = (
-        user.letterboxd.last_watchlist_sync if user.letterboxd else None
-    )
-
     return UserWithShowtimesPublic(
-        **user.model_dump(),
+        id=user.id,
+        is_active=user.is_active,
+        display_name=user.display_name,
         showtimes_going=showtimes,
-        last_watchlist_sync=last_watchlist_sync,
     )

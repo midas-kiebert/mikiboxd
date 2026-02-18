@@ -144,7 +144,7 @@ export default function TabLayout() {
               <IconSymbol size={28} name="person.2.fill" color={color} />
               {/* Small notification badge on top of the tab icon. */}
               {showBadge ? (
-                <View style={[styles.badge, { backgroundColor: palette.red.secondary }]}>
+                <View style={[styles.badge, { backgroundColor: palette.notificationBadge }]}>
                   <Text style={styles.badgeText}>{badgeLabel}</Text>
                 </View>
               ) : null}

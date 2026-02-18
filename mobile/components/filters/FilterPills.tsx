@@ -127,13 +127,16 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingHorizontal: 5,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.red.secondary,
+      backgroundColor: colors.notificationBadge,
       zIndex: 1,
       elevation: 2,
     },
     badgeText: {
       fontSize: 10,
+      lineHeight: 10,
       fontWeight: "700",
       color: "#fff",
+      includeFontPadding: false,
+      textAlignVertical: "center",
     },
   });

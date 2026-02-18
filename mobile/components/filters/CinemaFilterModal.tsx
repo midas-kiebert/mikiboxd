@@ -1,15 +1,17 @@
 /**
  * Mobile filter UI component: Cinema Filter Modal.
  */
-import { useCallback, useEffect, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
+  type ListRenderItem,
   Modal,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
 } from "react-native";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CinemaPublic, CityPublic } from "shared";
@@ -29,6 +31,31 @@ type CinemaFilterModalProps = {
 type CityGroup = {
   city: CityPublic;
   cinemas: CinemaPublic[];
+};
+
+type CinemaSection = {
+  key: string;
+  title: string;
+  meta?: string;
+  cinemas: CinemaPublic[];
+  cityId?: number;
+  showCity?: boolean;
+};
+
+type CinemaColorKey =
+  | "pink"
+  | "purple"
+  | "green"
+  | "orange"
+  | "yellow"
+  | "blue"
+  | "teal"
+  | "red"
+  | "cyan";
+
+type CinemaColorPalette = {
+  primary: string;
+  secondary: string;
 };
 
 const GROUPING_MINIMUM = 3;
@@ -77,15 +104,79 @@ function groupCinemas(cinemas: CinemaPublic[]) {
   return { groupedCities, ungrouped };
 }
 
-const selectionsMatch = (left: number[], right: number[]) => {
-  if (left.length !== right.length) return false;
-  return left.every((id) => right.includes(id));
+const sortCinemaIds = (cinemaIds: Iterable<number>) => Array.from(cinemaIds).sort((a, b) => a - b);
+const setsMatch = (left: Set<number>, right: Set<number>) => {
+  if (left.size !== right.size) return false;
+  for (const id of left) {
+    if (!right.has(id)) return false;
+  }
+  return true;
+};
+
+type CinemaRowChipProps = {
+  cinema: CinemaPublic;
+  showCity: boolean;
+  selected: boolean;
+  accentColor: string;
+  checkColor: string;
+  styles: ReturnType<typeof createStyles>;
+  onToggle: (cinemaId: number) => void;
+};
+
+const CinemaRowChip = memo(function CinemaRowChip({
+  cinema,
+  showCity,
+  selected,
+  accentColor,
+  checkColor,
+  styles,
+  onToggle,
+}: CinemaRowChipProps) {
+  return (
+    <TouchableOpacity
+      style={[styles.cinemaRow, selected && styles.cinemaRowSelected]}
+      onPressIn={() => onToggle(cinema.id)}
+      activeOpacity={0.8}
+    >
+      <View style={styles.cinemaInfo}>
+        <View style={styles.cinemaNameRow}>
+          <ThemedText numberOfLines={1} style={styles.cinemaName}>
+            {cinema.name}
+          </ThemedText>
+        </View>
+        {showCity ? (
+          <ThemedText numberOfLines={1} style={styles.cinemaCity}>
+            {cinema.city.name}
+          </ThemedText>
+        ) : null}
+      </View>
+      <View
+        style={[
+          styles.checkbox,
+          selected && { borderColor: accentColor, backgroundColor: accentColor },
+        ]}
+      >
+        {selected ? <MaterialIcons name="check" size={11} color={checkColor} /> : null}
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+const getCinemaPalette = (
+  colors: typeof import("@/constants/theme").Colors.light,
+  cinema: CinemaPublic
+) => {
+  const cinemaColorKey = cinema.badge_bg_color as CinemaColorKey;
+  const cinemaPalette = (colors as Record<CinemaColorKey, CinemaColorPalette>)[cinemaColorKey];
+  return {
+    accentColor: cinemaPalette?.secondary ?? colors.textSecondary,
+  };
 };
 
 export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModalProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
-  const styles = createStyles(colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
   // Data hooks keep this module synced with backend data and shared cache state.
@@ -109,10 +200,25 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     }
   }, [sessionCinemaIds, preferredCinemaIds, setSessionCinemaIds]);
 
-  const selectedCinemas = sessionCinemaIds ?? preferredCinemaIds ?? [];
+  const selectedCinemas = useMemo(
+    () => sessionCinemaIds ?? preferredCinemaIds ?? [],
+    [sessionCinemaIds, preferredCinemaIds]
+  );
+  const [localSelectedCinemaSet, setLocalSelectedCinemaSet] = useState<Set<number>>(
+    () => new Set(selectedCinemas)
+  );
+  const selectedCinemaSet = useMemo(() => new Set(selectedCinemas), [selectedCinemas]);
+  const preferredCinemaSet = useMemo(() => new Set(preferredCinemaIds ?? []), [preferredCinemaIds]);
+
+  // Keep modal interactions local for instant UI feedback; commit to shared state on close.
+  useEffect(() => {
+    if (!visible) return;
+    setLocalSelectedCinemaSet(new Set(selectedCinemas));
+  }, [visible, selectedCinemas]);
+
   const hasPreferredSelection = preferredCinemaIds !== undefined;
   const selectionMatchesPreferred = hasPreferredSelection
-    ? selectionsMatch(selectedCinemas, preferredCinemaIds)
+    ? setsMatch(localSelectedCinemaSet, preferredCinemaSet)
     : true;
   const preferenceStatus = hasPreferredSelection
     ? selectionMatchesPreferred
@@ -122,96 +228,166 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
   const isSavingPreferred = savePreferredMutation.isPending;
   const canSavePreferred = hasPreferredSelection && !isSavingPreferred && !selectionMatchesPreferred;
   const canUsePreferred = hasPreferredSelection && !isSavingPreferred && !selectionMatchesPreferred;
+  const selectedCount = localSelectedCinemaSet.size;
 
-  const cinemaList = cinemas ?? [];
+  const cinemaList = useMemo(() => cinemas ?? [], [cinemas]);
 
   const { groupedCities, ungrouped } = useMemo(
     () => groupCinemas(cinemaList),
-    [cinemas]
+    [cinemaList]
+  );
+
+  const cinemaSections = useMemo<CinemaSection[]>(
+    () => [
+      ...groupedCities.map((group) => ({
+        key: `city-${group.city.id}`,
+        title: group.city.name,
+        meta: `${group.cinemas.length} cinemas`,
+        cinemas: group.cinemas,
+        cityId: group.city.id,
+      })),
+      ...(ungrouped.length > 0
+        ? [
+            {
+              key: "other-cinemas",
+              title: "Other cinemas",
+              cinemas: ungrouped,
+              showCity: true,
+            },
+          ]
+        : []),
+    ],
+    [groupedCities, ungrouped]
   );
 
   // Collect all cinema IDs for bulk select/deselect actions.
   const allCinemaIds = useMemo(
     () => cinemaList.map((cinema) => cinema.id),
-    [cinemas]
+    [cinemaList]
   );
 
   const allSelected =
-    allCinemaIds.length > 0 && allCinemaIds.every((id) => selectedCinemas.includes(id));
+    allCinemaIds.length > 0 && allCinemaIds.every((id) => localSelectedCinemaSet.has(id));
+
+  const accentColorByCinemaId = useMemo(
+    () =>
+      new Map(
+        cinemaList.map((cinema) => [cinema.id, getCinemaPalette(colors, cinema).accentColor] as const)
+      ),
+    [cinemaList, colors]
+  );
 
   // Toggle a single cinema in this modal session.
-  const handleToggle = (cinemaId: number) => {
-    const select = !selectedCinemas.includes(cinemaId);
-    const next = select
-      ? [...new Set([...selectedCinemas, cinemaId])]
-      : selectedCinemas.filter((id) => id !== cinemaId);
-    setSessionCinemaIds(next);
-  };
+  const handleToggle = useCallback((cinemaId: number) => {
+    setLocalSelectedCinemaSet((current) => {
+      const next = new Set(current);
+      if (next.has(cinemaId)) {
+        next.delete(cinemaId);
+      } else {
+        next.add(cinemaId);
+      }
+      return next;
+    });
+  }, []);
 
   // Toggle every cinema inside one city section.
-  const handleToggleCity = (cityId: number) => {
+  const handleToggleCity = useCallback((cityId: number) => {
     const cityCinemas = groupedCities.find((group) => group.city.id === cityId)?.cinemas || [];
     if (cityCinemas.length === 0) return;
-
-    const isAllSelected = cityCinemas.every((cinema) => selectedCinemas.includes(cinema.id));
-    const next = isAllSelected
-      ? selectedCinemas.filter((id) => !cityCinemas.some((cinema) => cinema.id === id))
-      : [...new Set([...selectedCinemas, ...cityCinemas.map((cinema) => cinema.id)])];
-    setSessionCinemaIds(next);
-  };
+    setLocalSelectedCinemaSet((current) => {
+      const next = new Set(current);
+      const cityCinemaIds = cityCinemas.map((cinema) => cinema.id);
+      const isAllSelected = cityCinemaIds.every((id) => next.has(id));
+      if (isAllSelected) {
+        cityCinemaIds.forEach((id) => next.delete(id));
+      } else {
+        cityCinemaIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }, [groupedCities]);
 
   // Toggle the entire list in one action.
-  const handleToggleAll = () => {
-    const isAllSelected =
-      allCinemaIds.length > 0 && allCinemaIds.every((id) => selectedCinemas.includes(id));
-    const next = isAllSelected ? [] : [...new Set(allCinemaIds)];
-    if (
-      selectedCinemas.length !== next.length ||
-      !selectedCinemas.every((id) => next.includes(id))
-    ) {
-      setSessionCinemaIds(next);
-    }
-  };
+  const handleToggleAll = useCallback(() => {
+    setLocalSelectedCinemaSet((current) => {
+      const isAllSelected = allCinemaIds.length > 0 && allCinemaIds.every((id) => current.has(id));
+      if (isAllSelected) return new Set<number>();
+      return new Set(allCinemaIds);
+    });
+  }, [allCinemaIds]);
 
   // Restore the saved preferred selection into the current session.
   const handleUsePreferred = useCallback(() => {
     if (preferredCinemaIds === undefined) return;
-    setSessionCinemaIds(preferredCinemaIds);
-  }, [preferredCinemaIds, setSessionCinemaIds]);
+    setLocalSelectedCinemaSet(new Set(preferredCinemaIds));
+  }, [preferredCinemaIds]);
 
   // Save the current session selection as preferred cinemas on the backend.
   const handleSavePreferred = useCallback(() => {
     if (preferredCinemaIds === undefined) return;
-    savePreferredMutation.mutate({ requestBody: selectedCinemas });
-  }, [preferredCinemaIds, savePreferredMutation, selectedCinemas]);
+    savePreferredMutation.mutate({ requestBody: sortCinemaIds(localSelectedCinemaSet) });
+  }, [preferredCinemaIds, savePreferredMutation, localSelectedCinemaSet]);
 
-  // Render one selectable cinema row inside the modal list.
-  const renderCinemaRow = (cinema: CinemaPublic, showCity = false) => {
-    const selected = selectedCinemas.includes(cinema.id);
-    return (
-      <TouchableOpacity
-        key={cinema.id}
-        style={[styles.cinemaRow, selected && styles.cinemaRowSelected]}
-        onPress={() => handleToggle(cinema.id)}
-        activeOpacity={0.8}
-      >
-        <View style={styles.cinemaInfo}>
-          <ThemedText
-            numberOfLines={1}
-            style={[styles.cinemaName, selected && styles.cinemaNameSelected]}
-          >
-            {cinema.name}
-          </ThemedText>
-          {showCity && (
-            <ThemedText numberOfLines={1} style={styles.cinemaCity}>
-              {cinema.city.name}
-            </ThemedText>
-          )}
+  const handleClose = useCallback(() => {
+    if (!setsMatch(localSelectedCinemaSet, selectedCinemaSet)) {
+      setSessionCinemaIds(sortCinemaIds(localSelectedCinemaSet));
+    }
+    onClose();
+  }, [localSelectedCinemaSet, onClose, selectedCinemaSet, setSessionCinemaIds]);
+
+  const renderCinemaSection: ListRenderItem<CinemaSection> = useCallback(
+    ({ item }) => {
+      const citySelected =
+        item.cityId !== undefined &&
+        item.cinemas.length > 0 &&
+        item.cinemas.every((cinema) => localSelectedCinemaSet.has(cinema.id));
+
+      return (
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View>
+              <ThemedText style={styles.cityTitle}>{item.title}</ThemedText>
+              {item.meta ? <ThemedText style={styles.sectionMeta}>{item.meta}</ThemedText> : null}
+            </View>
+            {item.cityId !== undefined ? (
+              <TouchableOpacity
+                style={styles.toggleButton}
+                onPress={() => handleToggleCity(item.cityId!)}
+                activeOpacity={0.8}
+              >
+                <ThemedText style={styles.toggleButtonText}>
+                  {citySelected ? "Deselect all" : "Select all"}
+                </ThemedText>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <View style={styles.cinemaList}>
+            {item.cinemas.map((cinema) => (
+              <CinemaRowChip
+                key={cinema.id}
+                cinema={cinema}
+                showCity={item.showCity === true}
+                selected={localSelectedCinemaSet.has(cinema.id)}
+                accentColor={accentColorByCinemaId.get(cinema.id) ?? colors.textSecondary}
+                checkColor={colors.pillActiveText}
+                styles={styles}
+                onToggle={handleToggle}
+              />
+            ))}
+          </View>
         </View>
-        <View style={[styles.checkbox, selected && styles.checkboxSelected]} />
-      </TouchableOpacity>
-    );
-  };
+      );
+    },
+    [
+      accentColorByCinemaId,
+      colors.pillActiveText,
+      colors.textSecondary,
+      handleToggle,
+      handleToggleCity,
+      localSelectedCinemaSet,
+      styles,
+    ]
+  );
 
   const isLoading =
     cinemas === undefined || (sessionCinemaIds === undefined && preferredCinemaIds === undefined);
@@ -221,13 +397,13 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     <Modal
       animationType="slide"
       visible={visible}
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
       presentationStyle="pageSheet"
     >
       <SafeAreaView style={styles.modalContainer} edges={["top", "bottom"]}>
         <View style={styles.header}>
           <ThemedText style={styles.title}>Cinemas</ThemedText>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.8}>
+          <TouchableOpacity onPress={handleClose} style={styles.closeButton} activeOpacity={0.8}>
             <ThemedText style={styles.closeButtonText}>Close</ThemedText>
           </TouchableOpacity>
         </View>
@@ -238,104 +414,102 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
             <ThemedText style={styles.loadingText}>Loading cinemas...</ThemedText>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            <View style={styles.preferenceRow}>
-              <View style={styles.preferenceText}>
-                <ThemedText style={styles.preferenceTitle}>Session selection</ThemedText>
-                <ThemedText style={styles.preferenceSubtitle}>{preferenceStatus}</ThemedText>
-              </View>
-              <View style={styles.preferenceActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.preferenceButton,
-                    !canUsePreferred && styles.preferenceButtonDisabled,
-                  ]}
-                  onPress={handleUsePreferred}
-                  activeOpacity={0.8}
-                  disabled={!canUsePreferred}
-                >
-                  <ThemedText
-                    style={[
-                      styles.preferenceButtonText,
-                      !canUsePreferred && styles.preferenceButtonTextDisabled,
-                    ]}
-                  >
-                    Use preferred
-                  </ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.preferenceButton,
-                    styles.preferenceButtonPrimary,
-                    !canSavePreferred && styles.preferenceButtonDisabled,
-                  ]}
-                  onPress={handleSavePreferred}
-                  activeOpacity={0.8}
-                  disabled={!canSavePreferred}
-                >
-                  <ThemedText
-                    style={[
-                      styles.preferenceButtonText,
-                      styles.preferenceButtonTextPrimary,
-                      !canSavePreferred && styles.preferenceButtonTextDisabled,
-                    ]}
-                  >
-                    {isSavingPreferred ? "Saving..." : "Save as preferred"}
-                  </ThemedText>
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={styles.sectionHeader}>
-              <ThemedText style={styles.sectionTitle}>All cinemas</ThemedText>
-              <TouchableOpacity
-                style={styles.toggleButton}
-                onPress={handleToggleAll}
-                activeOpacity={0.8}
-              >
-                <ThemedText style={styles.toggleButtonText}>
-                  {allSelected ? "Deselect All" : "Select All"}
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-
-            {groupedCities.map((group) => {
-              const citySelected = group.cinemas.every((cinema) =>
-                selectedCinemas.includes(cinema.id)
-              );
-
-              return (
-                <View key={group.city.id} style={styles.citySection}>
-                  <View style={styles.sectionHeader}>
-                    <ThemedText style={styles.cityTitle}>{group.city.name}</ThemedText>
-                    <TouchableOpacity
-                      style={styles.toggleButton}
-                      onPress={() => handleToggleCity(group.city.id)}
-                      activeOpacity={0.8}
-                    >
-                      <ThemedText style={styles.toggleButtonText}>
-                        {citySelected ? "Deselect All" : "Select All"}
-                      </ThemedText>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.cinemaList}>
-                    {group.cinemas.map((cinema) => renderCinemaRow(cinema))}
-                  </View>
-                </View>
-              );
-            })}
-
-            {ungrouped.length > 0 && (
-              <View style={styles.citySection}>
+          <FlatList
+            style={styles.mainContent}
+            contentContainerStyle={styles.content}
+            data={cinemaSections}
+            keyExtractor={(item) => item.key}
+            renderItem={renderCinemaSection}
+            initialNumToRender={2}
+            maxToRenderPerBatch={2}
+            windowSize={5}
+            removeClippedSubviews
+            showsVerticalScrollIndicator={false}
+            ListHeaderComponent={
+              <View style={styles.sectionCard}>
                 <View style={styles.sectionHeader}>
-                  <ThemedText style={styles.cityTitle}>Other cinemas</ThemedText>
-                </View>
-                <View style={styles.cinemaList}>
-                  {ungrouped.map((cinema) => renderCinemaRow(cinema, true))}
+                  <View>
+                    <ThemedText style={styles.sectionTitle}>All cinemas</ThemedText>
+                    <ThemedText style={styles.sectionMeta}>
+                      {selectedCount} of {allCinemaIds.length} selected
+                    </ThemedText>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.toggleButton}
+                    onPress={handleToggleAll}
+                    activeOpacity={0.8}
+                  >
+                    <ThemedText style={styles.toggleButtonText}>
+                      {allSelected ? "Deselect all" : "Select all"}
+                    </ThemedText>
+                  </TouchableOpacity>
                 </View>
               </View>
-            )}
-          </ScrollView>
+            }
+            ItemSeparatorComponent={() => <View style={styles.sectionSeparator} />}
+          />
         )}
+
+        <View style={styles.preferenceFooter}>
+          <View style={styles.preferenceText}>
+            <ThemedText style={styles.preferenceTitle}>Session selection</ThemedText>
+            <ThemedText style={styles.preferenceSubtitle}>{preferenceStatus}</ThemedText>
+          </View>
+          <View style={styles.preferenceActions}>
+            <TouchableOpacity
+              style={[
+                styles.preferenceButton,
+                styles.usePreferredButton,
+                styles.preferenceButtonPrimary,
+                !canUsePreferred && styles.preferenceButtonDisabled,
+              ]}
+              onPress={handleUsePreferred}
+              activeOpacity={0.8}
+              disabled={!canUsePreferred}
+            >
+              <View style={styles.preferenceButtonInner}>
+                <MaterialIcons
+                  name="history"
+                  size={16}
+                  color={canUsePreferred ? colors.pillActiveText : colors.textSecondary}
+                />
+                <ThemedText
+                  style={[
+                    styles.preferenceButtonText,
+                    styles.preferenceButtonTextPrimary,
+                    !canUsePreferred && styles.preferenceButtonTextDisabled,
+                  ]}
+                >
+                  Use preferred
+                </ThemedText>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.preferenceButton,
+                styles.savePreferredButton,
+                styles.preferenceButtonSubtle,
+                !canSavePreferred && styles.preferenceButtonDisabled,
+              ]}
+              onPress={handleSavePreferred}
+              activeOpacity={0.8}
+              disabled={!canSavePreferred}
+            >
+              <View style={styles.preferenceButtonInner}>
+                <MaterialIcons name="bookmark-border" size={16} color={colors.textSecondary} />
+                <ThemedText
+                  style={[
+                    styles.preferenceButtonText,
+                    styles.preferenceButtonTextSubtle,
+                    !canSavePreferred && styles.preferenceButtonTextDisabled,
+                  ]}
+                >
+                  {isSavingPreferred ? "Saving..." : "Save as preferred"}
+                </ThemedText>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
       </SafeAreaView>
     </Modal>
   );
@@ -360,6 +534,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 18,
       fontWeight: "700",
     },
+    mainContent: {
+      flex: 1,
+    },
     closeButton: {
       paddingHorizontal: 12,
       paddingVertical: 6,
@@ -373,40 +550,64 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     content: {
       padding: 16,
-      paddingBottom: 32,
-      gap: 20,
+      paddingBottom: 20,
     },
-    preferenceRow: {
-      padding: 12,
+    sectionSeparator: {
+      height: 14,
+    },
+    sectionCard: {
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
+      padding: 12,
+    },
+    sectionMeta: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    preferenceFooter: {
+      borderTopWidth: 1,
+      borderTopColor: colors.divider,
+      backgroundColor: colors.background,
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      paddingBottom: 10,
       gap: 10,
     },
     preferenceText: {
-      gap: 4,
-    },
-    preferenceTitle: {
-      fontSize: 13,
-      fontWeight: "700",
+      gap: 3,
     },
     preferenceSubtitle: {
       fontSize: 12,
       color: colors.textSecondary,
     },
+    preferenceTitle: {
+      fontSize: 13,
+      fontWeight: "700",
+    },
     preferenceActions: {
       flexDirection: "row",
+      alignItems: "center",
       gap: 8,
-      flexWrap: "wrap",
     },
     preferenceButton: {
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 14,
+      minHeight: 40,
+      paddingHorizontal: 12,
+      borderRadius: 12,
       borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    usePreferredButton: {
+      flex: 1,
+    },
+    savePreferredButton: {
+      paddingHorizontal: 10,
+    },
+    preferenceButtonSubtle: {
+      backgroundColor: colors.cardBackground,
       borderColor: colors.divider,
-      backgroundColor: colors.pillBackground,
     },
     preferenceButtonPrimary: {
       backgroundColor: colors.tint,
@@ -415,13 +616,20 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     preferenceButtonDisabled: {
       opacity: 0.5,
     },
+    preferenceButtonInner: {
+      flexDirection: "row",
+      alignItems: "center",
+      columnGap: 6,
+    },
     preferenceButtonText: {
       fontSize: 12,
       fontWeight: "600",
-      color: colors.textSecondary,
     },
     preferenceButtonTextPrimary: {
-      color: colors.background,
+      color: colors.pillActiveText,
+    },
+    preferenceButtonTextSubtle: {
+      color: colors.textSecondary,
     },
     preferenceButtonTextDisabled: {
       color: colors.textSecondary,
@@ -452,7 +660,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "700",
     },
     toggleButton: {
-      paddingHorizontal: 10,
+      paddingHorizontal: 12,
       paddingVertical: 4,
       borderRadius: 14,
       borderWidth: 1,
@@ -464,16 +672,19 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "600",
       color: colors.textSecondary,
     },
-    citySection: {
-      gap: 10,
-    },
     cinemaList: {
-      gap: 10,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginTop: 8,
     },
     cinemaRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
+      justifyContent: "flex-start",
+      alignSelf: "flex-start",
+      maxWidth: "100%",
+      columnGap: 10,
       paddingHorizontal: 12,
       paddingVertical: 10,
       borderRadius: 12,
@@ -482,35 +693,32 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.cardBackground,
     },
     cinemaRowSelected: {
-      borderColor: colors.tint,
       backgroundColor: colors.pillBackground,
     },
     cinemaInfo: {
-      flex: 1,
-      marginRight: 12,
+      flexShrink: 1,
       gap: 2,
+    },
+    cinemaNameRow: {
+      flexDirection: "row",
+      alignItems: "center",
     },
     cinemaName: {
       fontSize: 14,
       fontWeight: "600",
-    },
-    cinemaNameSelected: {
-      color: colors.text,
     },
     cinemaCity: {
       fontSize: 12,
       color: colors.textSecondary,
     },
     checkbox: {
-      width: 18,
-      height: 18,
-      borderRadius: 9,
-      borderWidth: 2,
-      borderColor: colors.textSecondary,
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      borderWidth: 1.5,
+      borderColor: colors.divider,
       backgroundColor: "transparent",
-    },
-    checkboxSelected: {
-      borderColor: colors.tint,
-      backgroundColor: colors.tint,
+      alignItems: "center",
+      justifyContent: "center",
     },
   });

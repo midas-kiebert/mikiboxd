@@ -3,10 +3,12 @@
  */
 import {
   StyleSheet,
-  View,
+  TouchableOpacity,
+  type GestureResponderEvent,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import { useRouter } from "expo-router";
 import type { CinemaPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
@@ -38,8 +40,11 @@ type VariantStyles = {
   text: TextStyle;
 };
 
+const CINEMA_PILL_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
+
 export default function CinemaPill({ cinema, variant = "default" }: CinemaPillProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
+  const router = useRouter();
   const colors = useThemeColors();
   const styles = createStyles(colors);
   // Size variant keeps the same badge logic reusable in compact rows and full cards.
@@ -62,9 +67,20 @@ export default function CinemaPill({ cinema, variant = "default" }: CinemaPillPr
   const cinemaBackground = cinemaPalette?.primary ?? colors.pillBackground;
   const cinemaText = cinemaPalette?.secondary ?? colors.textSecondary;
 
+  const handlePress = (event: GestureResponderEvent) => {
+    event.stopPropagation();
+    router.push({
+      pathname: "/cinema-showtimes/[id]",
+      params: { id: cinema.id.toString(), name: cinema.name, city: cinema.city.name },
+    });
+  };
+
   // Render/output using the state and derived values prepared above.
   return (
-    <View
+    <TouchableOpacity
+      onPress={handlePress}
+      activeOpacity={0.75}
+      hitSlop={CINEMA_PILL_HIT_SLOP}
       style={[
         styles.container,
         sizeStyles.container,
@@ -77,7 +93,7 @@ export default function CinemaPill({ cinema, variant = "default" }: CinemaPillPr
       >
         {cinema.name}
       </ThemedText>
-    </View>
+    </TouchableOpacity>
   );
 }
 

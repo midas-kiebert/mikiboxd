@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
+import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { useSessionCinemaSelections } from 'shared/hooks/useSessionCinemaSelections';
 import { useSessionDaySelections } from 'shared/hooks/useSessionDaySelections';
 import { DateTime } from 'luxon';
@@ -24,6 +25,7 @@ import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import DayFilterModal from '@/components/filters/DayFilterModal';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import MovieCard from '@/components/movies/MovieCard';
+import { isCinemaSelectionDifferentFromPreferred } from '@/utils/cinema-selection';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
 // Filter pill definitions rendered in the top filter row.
@@ -56,6 +58,7 @@ export default function MovieScreen() {
   );
 
   const { selections: sessionCinemaIds } = useSessionCinemaSelections();
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
 
   // Read the active theme color tokens used by this screen/component.
   const colors = useThemeColors();
@@ -160,6 +163,16 @@ export default function MovieScreen() {
     );
   }, [selectedDays.length]);
 
+  // Cinema pill should only be active when current session differs from preferred cinemas.
+  const isCinemaFilterActive = useMemo(
+    () =>
+      isCinemaSelectionDifferentFromPreferred({
+        sessionCinemaIds,
+        preferredCinemaIds,
+      }),
+    [sessionCinemaIds, preferredCinemaIds]
+  );
+
   // These ids drive highlighted filter pills in the UI.
   const activeFilterIds = useMemo(() => {
     const active: string[] = [];
@@ -169,11 +182,11 @@ export default function MovieScreen() {
     if (selectedDays.length > 0) {
       active.push('days');
     }
-    if ((sessionCinemaIds?.length ?? 0) > 0) {
+    if (isCinemaFilterActive) {
       active.push('cinemas');
     }
     return active;
-  }, [watchlistOnly, selectedDays.length, sessionCinemaIds]);
+  }, [watchlistOnly, selectedDays.length, isCinemaFilterActive]);
 
   // Render/output using the state and derived values prepared above.
   return (

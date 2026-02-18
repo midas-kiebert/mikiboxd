@@ -65,6 +65,10 @@ def test_notify_friends_only_for_opted_in_recipients(
     assert sent_payload[0]["to"] == token.token
     assert sent_payload[0]["title"] == "Alex is going"
     assert sent_payload[0]["body"] == showtime.movie.title
+    assert (
+        sent_payload[0]["richContent"]["image"]
+        == push_notifications._notification_card_image_url()
+    )
     handle_results.assert_called_once()
 
 
@@ -145,6 +149,10 @@ def test_notify_user_on_friend_request(
     assert sent_payload[0]["body"] == "Alex sent you a friend request"
     assert sent_payload[0]["data"]["type"] == "friend_request_received"
     assert sent_payload[0]["data"]["senderId"] == str(sender_id)
+    assert (
+        sent_payload[0]["richContent"]["image"]
+        == push_notifications._notification_card_image_url()
+    )
     handle_results.assert_called_once()
 
 
@@ -190,6 +198,10 @@ def test_notify_user_on_friend_request_accepted(
     assert sent_payload[0]["body"] == "Alex accepted your friend request"
     assert sent_payload[0]["data"]["type"] == "friend_request_accepted"
     assert sent_payload[0]["data"]["accepterId"] == str(accepter_id)
+    assert (
+        sent_payload[0]["richContent"]["image"]
+        == push_notifications._notification_card_image_url()
+    )
     handle_results.assert_called_once()
 
 

@@ -16,7 +16,7 @@ class TmdbLookupCache(SQLModel, table=True):
             name="uq_tmdblookupcache_hash_payload",
         ),
     )
-    id: int = Field(primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     lookup_hash: str = Field(index=True)
     lookup_payload: str
     tmdb_id: int | None = None

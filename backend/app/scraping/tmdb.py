@@ -1,9 +1,11 @@
 import asyncio
 import hashlib
+import html
 import json
+import re
 import unicodedata
 from collections.abc import Sequence
-from threading import local
+from threading import Event, Lock, local
 from typing import Any
 
 import aiohttp
@@ -28,10 +30,60 @@ LETTERBOXD_SEARCH_URL = "https://letterboxd.com/search/"
 TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 
 FUZZ_THRESHOLD = 60  # Minimum score for a match
-TMDB_LOOKUP_PAYLOAD_VERSION = 1
+RELAXED_FUZZ_THRESHOLD = 45
+STRONG_METADATA_FUZZ_THRESHOLD = 35
+TMDB_LOOKUP_PAYLOAD_VERSION = 2
+PERSON_NAME_SPLIT_RE = re.compile(
+    r"\s*(?:,|/|;|&|\band\b|\ben\b)\s*",
+    flags=re.IGNORECASE,
+)
+NON_MOVIE_TITLE_MARKERS = (
+    "filmquiz",
+    "quiz",
+    "masterclass",
+    "workshop",
+    "filmcursus",
+    "filmcollege",
+    "lecture",
+    "talk",
+    "festival",
+    "on tour",
+    "silent disco",
+    "filmblok",
+    "filmclub",
+    "cinemini",
+    "peuterfilmpret",
+    "sneak preview",
+    "shorts collection",
+)
+PLACEHOLDER_PERSON_VALUES = {
+    "",
+    "?",
+    "unknown",
+    "onbekend",
+    "nvt",
+    "n.v.t",
+    "none",
+    "div",
+    "diversen",
+    "diverse",
+    "various",
+}
 
 _thread_local = local()
 _tmdb_cache_available: bool | None = None
+_tmdb_lookup_audit_lock = Lock()
+_tmdb_lookup_audit_events: list[dict[str, Any]] = []
+_lookup_result_cache_lock = Lock()
+_lookup_result_cache: dict[tuple[str, str], int | None] = {}
+_inflight_lookup_lock = Lock()
+_inflight_lookup_events: dict[tuple[str, str], Event] = {}
+_person_ids_cache_lock = Lock()
+_person_ids_cache: dict[str, tuple[str, ...]] = {}
+_person_movies_cache_lock = Lock()
+_person_movies_cache: dict[tuple[str, str, int | None], list[dict[str, Any]]] = {}
+_title_search_cache_lock = Lock()
+_title_search_cache: dict[str, list[dict[str, Any]]] = {}
 
 
 def _get_session() -> requests.Session:
@@ -55,11 +107,16 @@ def _build_lookup_payload(
     actor_name: str | None,
     year: int | None,
 ) -> dict[str, Any]:
+    normalized_title_query = _normalize_title_search_query(title_query)
+    title_variants = _build_title_variants(normalized_title_query)
+    normalized_director_names = _expand_person_names(director_names)
+    normalized_actor_names = _expand_person_names([actor_name] if actor_name else [])
     return {
         "version": TMDB_LOOKUP_PAYLOAD_VERSION,
-        "title_query": title_query,
-        "director_names": [strip_accents(name) for name in director_names],
-        "actor_name": actor_name,
+        "title_query": normalized_title_query,
+        "title_variants": title_variants,
+        "director_names": normalized_director_names,
+        "actor_names": normalized_actor_names,
         "year": year,
     }
 
@@ -70,6 +127,119 @@ def _payload_to_canonical_json(payload: dict[str, Any]) -> str:
 
 def _payload_hash(payload_json: str) -> str:
     return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+
+
+def _payload_string_list(payload: dict[str, Any], key: str) -> list[str]:
+    value = payload.get(key, [])
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
+
+
+def _memory_lookup_cache_get(
+    *,
+    payload_json: str,
+    payload_hash: str,
+) -> tuple[bool, int | None]:
+    key = (payload_hash, payload_json)
+    with _lookup_result_cache_lock:
+        if key not in _lookup_result_cache:
+            return False, None
+        return True, _lookup_result_cache[key]
+
+
+def _memory_lookup_cache_set(
+    *,
+    payload_json: str,
+    payload_hash: str,
+    tmdb_id: int | None,
+) -> None:
+    key = (payload_hash, payload_json)
+    with _lookup_result_cache_lock:
+        _lookup_result_cache[key] = tmdb_id
+
+
+def _begin_inflight_lookup(
+    *,
+    payload_json: str,
+    payload_hash: str,
+) -> tuple[bool, Event]:
+    key = (payload_hash, payload_json)
+    with _inflight_lookup_lock:
+        existing = _inflight_lookup_events.get(key)
+        if existing is not None:
+            return False, existing
+        event = Event()
+        _inflight_lookup_events[key] = event
+        return True, event
+
+
+def _finish_inflight_lookup(
+    *,
+    payload_json: str,
+    payload_hash: str,
+    event: Event,
+) -> None:
+    key = (payload_hash, payload_json)
+    with _inflight_lookup_lock:
+        current = _inflight_lookup_events.get(key)
+        if current is event:
+            del _inflight_lookup_events[key]
+    event.set()
+
+
+def _memory_person_ids_get(name: str) -> list[str] | None:
+    with _person_ids_cache_lock:
+        cached = _person_ids_cache.get(name)
+    if cached is None:
+        return None
+    return list(cached)
+
+
+def _memory_person_ids_set(name: str, person_ids: Sequence[str]) -> None:
+    with _person_ids_cache_lock:
+        _person_ids_cache[name] = tuple(str(person_id) for person_id in person_ids)
+
+
+def _memory_person_movies_get(
+    *,
+    person_id: str,
+    job: str,
+    year: int | None,
+) -> list[dict[str, Any]] | None:
+    key = (person_id, job, year)
+    with _person_movies_cache_lock:
+        cached = _person_movies_cache.get(key)
+    if cached is None:
+        return None
+    return list(cached)
+
+
+def _memory_person_movies_set(
+    *,
+    person_id: str,
+    job: str,
+    year: int | None,
+    movies: list[dict[str, Any]],
+) -> None:
+    key = (person_id, job, year)
+    with _person_movies_cache_lock:
+        _person_movies_cache[key] = list(movies)
+
+
+def _memory_title_search_get(title: str) -> list[dict[str, Any]] | None:
+    key = title.strip().lower()
+    with _title_search_cache_lock:
+        cached = _title_search_cache.get(key)
+    if cached is None:
+        return None
+    return list(cached)
+
+
+def _memory_title_search_set(title: str, results: list[dict[str, Any]]) -> None:
+    key = title.strip().lower()
+    with _title_search_cache_lock:
+        _title_search_cache[key] = list(results)
 
 
 def _get_cached_tmdb_id(
@@ -138,6 +308,36 @@ def _store_cached_tmdb_id(
         _tmdb_cache_available = False
 
 
+def _record_tmdb_lookup_event(
+    *,
+    payload_json: str,
+    tmdb_id: int | None,
+    cache_hit: bool,
+    cache_source: str | None = None,
+) -> None:
+    try:
+        payload = json.loads(payload_json)
+    except json.JSONDecodeError:
+        payload = {"raw_payload": payload_json}
+    event = {
+        "timestamp": now_amsterdam_naive().isoformat(),
+        "payload": payload,
+        "tmdb_id": tmdb_id,
+        "cache_hit": cache_hit,
+    }
+    if cache_source is not None:
+        event["cache_source"] = cache_source
+    with _tmdb_lookup_audit_lock:
+        _tmdb_lookup_audit_events.append(event)
+
+
+def consume_tmdb_lookup_events() -> list[dict[str, Any]]:
+    with _tmdb_lookup_audit_lock:
+        events = list(_tmdb_lookup_audit_events)
+        _tmdb_lookup_audit_events.clear()
+    return events
+
+
 async def _get_json_async(
     *,
     session: aiohttp.ClientSession,
@@ -157,7 +357,24 @@ async def _get_json_async(
     return payload
 
 
+def _extract_ids(items: Any) -> list[str]:
+    if not isinstance(items, list):
+        return []
+    ids: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item_id = _movie_id(item)
+        if item_id is not None:
+            ids.append(str(item_id))
+    return ids
+
+
 def get_person_ids(name: str) -> Sequence[str]:
+    cached = _memory_person_ids_get(name)
+    if cached is not None:
+        return cached
+
     try:
         res = _get_session().get(
             SEARCH_PERSON_URL, params={"api_key": TMDB_API_KEY, "query": name}
@@ -169,11 +386,14 @@ def get_person_ids(name: str) -> Sequence[str]:
     response = res.json()
 
     results = response.get("results", [])
-    if not results:
+    person_ids = _extract_ids(results)
+    if not person_ids:
         logger.warning(f"{name} could not be found on TMDB.")
+        _memory_person_ids_set(name, [])
         return []
 
-    return [result["id"] for result in results]
+    _memory_person_ids_set(name, person_ids)
+    return person_ids
 
 
 async def get_person_ids_async(
@@ -181,6 +401,10 @@ async def get_person_ids_async(
     session: aiohttp.ClientSession,
     name: str,
 ) -> Sequence[str]:
+    cached = _memory_person_ids_get(name)
+    if cached is not None:
+        return cached
+
     response = await _get_json_async(
         session=session,
         url=SEARCH_PERSON_URL,
@@ -190,26 +414,38 @@ async def get_person_ids_async(
         return []
 
     results = response.get("results", [])
-    if not results:
+    person_ids = _extract_ids(results)
+    if not person_ids:
         logger.warning(f"{name} could not be found on TMDB.")
+        _memory_person_ids_set(name, [])
         return []
 
-    return [result["id"] for result in results if isinstance(result, dict)]
+    _memory_person_ids_set(name, person_ids)
+    return person_ids
 
 
-def search_tmdb(title: str) -> list[dict[str, str]]:
+def search_tmdb(title: str) -> list[dict[str, Any]]:
+    cached = _memory_title_search_get(title)
+    if cached is not None:
+        return cached
+
     params = {
         "api_key": TMDB_API_KEY,
         "query": title,
     }
 
     try:
-        response = requests.get(TMDB_SEARCH_URL, params=params)
+        response = _get_session().get(TMDB_SEARCH_URL, params=params)
         response.raise_for_status()
     except requests.RequestException as e:
         logger.warning(f"Failed to search TMDB for title '{title}'. Error: {e}")
         return []
-    results: list[dict[str, str]] = response.json().get("results", [])
+    raw_results = response.json().get("results", [])
+    if not isinstance(raw_results, list):
+        _memory_title_search_set(title, [])
+        return []
+    results = [item for item in raw_results if isinstance(item, dict)]
+    _memory_title_search_set(title, results)
     return results
 
 
@@ -218,6 +454,10 @@ async def search_tmdb_async(
     session: aiohttp.ClientSession,
     title: str,
 ) -> list[dict[str, Any]]:
+    cached = _memory_title_search_get(title)
+    if cached is not None:
+        return cached
+
     response = await _get_json_async(
         session=session,
         url=TMDB_SEARCH_URL,
@@ -228,12 +468,43 @@ async def search_tmdb_async(
     results = response.get("results", [])
     if not isinstance(results, list):
         return []
-    return [item for item in results if isinstance(item, dict)]
+    parsed_results = [item for item in results if isinstance(item, dict)]
+    _memory_title_search_set(title, parsed_results)
+    return parsed_results
+
+
+def _search_tmdb_with_variants(title_variants: Sequence[str]) -> list[dict[str, Any]]:
+    merged_results: list[dict[str, Any]] = []
+    for variant in title_variants:
+        if not variant:
+            continue
+        merged_results.extend(search_tmdb(variant))
+    return _dedupe_movies_by_id(merged_results)
+
+
+async def _search_tmdb_with_variants_async(
+    *,
+    session: aiohttp.ClientSession,
+    title_variants: Sequence[str],
+) -> list[dict[str, Any]]:
+    queries = [variant for variant in title_variants if variant]
+    if not queries:
+        return []
+    result_lists = await asyncio.gather(
+        *(search_tmdb_async(session=session, title=query) for query in queries),
+        return_exceptions=False,
+    )
+    merged_results = [movie for result in result_lists for movie in result]
+    return _dedupe_movies_by_id(merged_results)
 
 
 def get_persons_movies(
     person_id: str, job: str = "Director", year: int | None = None
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
+    cached = _memory_person_movies_get(person_id=person_id, job=job, year=year)
+    if cached is not None:
+        return cached
+
     credits_url = CREDITS_URL_TEMPLATE.format(id=person_id)
     try:
         res = _get_session().get(credits_url, params={"api_key": TMDB_API_KEY})
@@ -243,18 +514,31 @@ def get_persons_movies(
         return []
     response = res.json()
 
-    movies: list[dict[str, str]] = []
+    movies: list[dict[str, Any]] = []
 
     if job == "Director":
         crew = response.get("crew", [])
-        movies = [movie for movie in crew if movie["job"] == job]
+        if isinstance(crew, list):
+            movies = [
+                movie
+                for movie in crew
+                if isinstance(movie, dict) and movie.get("job") == job
+            ]
     elif job == "Actor":
-        movies = response.get("cast", [])
+        cast = response.get("cast", [])
+        if isinstance(cast, list):
+            movies = [movie for movie in cast if isinstance(movie, dict)]
 
     if year:
         allowed_years = {str(y) for y in range(year - 2, year + 3)}
         movies = [m for m in movies if m.get("release_date", "")[:4] in allowed_years]
 
+    _memory_person_movies_set(
+        person_id=person_id,
+        job=job,
+        year=year,
+        movies=movies,
+    )
     return movies
 
 
@@ -265,6 +549,10 @@ async def get_persons_movies_async(
     job: str = "Director",
     year: int | None = None,
 ) -> list[dict[str, Any]]:
+    cached = _memory_person_movies_get(person_id=person_id, job=job, year=year)
+    if cached is not None:
+        return cached
+
     credits_url = CREDITS_URL_TEMPLATE.format(id=person_id)
     response = await _get_json_async(
         session=session,
@@ -292,6 +580,12 @@ async def get_persons_movies_async(
         allowed_years = {str(y) for y in range(year - 2, year + 3)}
         movies = [m for m in movies if m.get("release_date", "")[:4] in allowed_years]
 
+    _memory_person_movies_set(
+        person_id=person_id,
+        job=job,
+        year=year,
+        movies=movies,
+    )
     return movies
 
 
@@ -299,6 +593,103 @@ def strip_accents(text: str) -> str:
     return "".join(
         c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)
     )
+
+
+def _normalize_spaces(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _normalize_title_search_query(title: str) -> str:
+    normalized = html.unescape(title)
+    normalized = normalized.replace("’", "'")
+    normalized = normalized.replace("–", "-").replace("—", "-")
+    return _normalize_spaces(normalized)
+
+
+def _normalize_title_for_match(title: str) -> str:
+    normalized = strip_accents(_normalize_title_search_query(title)).lower()
+    normalized = re.sub(r"[^\w\s'-]", " ", normalized)
+    return _normalize_spaces(normalized)
+
+
+def _normalize_person_name(name: str) -> str | None:
+    normalized = html.unescape(name)
+    normalized = strip_accents(normalized)
+    normalized = _normalize_spaces(normalized)
+    if not normalized:
+        return None
+    placeholder_key = re.sub(r"[^a-z0-9]+", "", normalized.lower())
+    if placeholder_key in PLACEHOLDER_PERSON_VALUES:
+        return None
+    return normalized
+
+
+def _expand_person_names(names: Sequence[str | None]) -> list[str]:
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for raw_name in names:
+        if raw_name is None:
+            continue
+        unescaped_name = html.unescape(raw_name)
+        for part in PERSON_NAME_SPLIT_RE.split(unescaped_name):
+            normalized = _normalize_person_name(part)
+            if normalized is None:
+                continue
+            dedupe_key = normalized.lower()
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            expanded.append(normalized)
+    return expanded
+
+
+def _build_title_variants(title_query: str) -> list[str]:
+    base = _normalize_title_search_query(title_query)
+    if not base:
+        return []
+    candidates: list[str] = [base]
+
+    without_brackets = _normalize_spaces(re.sub(r"\([^)]*\)", " ", base))
+    if without_brackets and without_brackets != base:
+        candidates.append(without_brackets)
+
+    for candidate in list(candidates):
+        for separator in (":", " - ", " – ", " — ", " –", " —"):
+            if separator not in candidate:
+                continue
+            _, tail = candidate.split(separator, 1)
+            tail = _normalize_spaces(tail)
+            if len(tail) >= 2:
+                candidates.append(tail)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+    return deduped
+
+
+def _is_probably_non_movie_event(
+    *,
+    title_query: str,
+    director_names: list[str],
+    actor_names: list[str],
+) -> bool:
+    normalized_title = _normalize_title_for_match(title_query)
+    if not normalized_title:
+        return True
+
+    # If concrete people metadata exists, still attempt TMDB matching.
+    if director_names or actor_names:
+        return False
+
+    return any(marker in normalized_title for marker in NON_MOVIE_TITLE_MARKERS)
 
 
 def _movie_id(movie: dict[str, Any]) -> int | None:
@@ -329,53 +720,190 @@ def _movie_popularity(movie: dict[str, Any]) -> float:
         return 0.0
 
 
+def _movie_release_year(movie: dict[str, Any]) -> int | None:
+    release_date = movie.get("release_date")
+    if not isinstance(release_date, str) or len(release_date) < 4:
+        return None
+    year_text = release_date[:4]
+    if not year_text.isdigit():
+        return None
+    return int(year_text)
+
+
+def _dedupe_ids(items: Sequence[str]) -> list[str]:
+    return list(dict.fromkeys(str(item) for item in items))
+
+
+def _dedupe_movies_by_id(movies: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen_ids: set[int] = set()
+    for movie in movies:
+        movie_id = _movie_id(movie)
+        if movie_id is None:
+            deduped.append(movie)
+            continue
+        if movie_id in seen_ids:
+            continue
+        seen_ids.add(movie_id)
+        deduped.append(movie)
+    return deduped
+
+
+def _merge_candidate_movies(
+    *movie_lists: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen_ids: set[int] = set()
+    seen_object_ids: set[int] = set()
+    for movie_list in movie_lists:
+        for movie in movie_list:
+            movie_id = _movie_id(movie)
+            if movie_id is not None:
+                if movie_id in seen_ids:
+                    continue
+                seen_ids.add(movie_id)
+                merged.append(movie)
+                continue
+            object_id = id(movie)
+            if object_id in seen_object_ids:
+                continue
+            seen_object_ids.add(object_id)
+            merged.append(movie)
+    return merged
+
+
+def _title_match_score(
+    *,
+    title_variants: Sequence[str],
+    movie: dict[str, Any],
+) -> float:
+    normalized_movie_title = _normalize_title_for_match(_movie_title(movie))
+    normalized_movie_original_title = _normalize_title_for_match(
+        _movie_original_title(movie)
+    )
+    best_score = 0.0
+    for variant in title_variants:
+        normalized_variant = _normalize_title_for_match(variant)
+        if not normalized_variant:
+            continue
+        if normalized_movie_title:
+            best_score = max(
+                best_score,
+                float(fuzz.token_set_ratio(normalized_variant, normalized_movie_title)),
+                float(fuzz.ratio(normalized_variant, normalized_movie_title)),
+            )
+        if normalized_movie_original_title:
+            best_score = max(
+                best_score,
+                float(
+                    fuzz.token_set_ratio(
+                        normalized_variant,
+                        normalized_movie_original_title,
+                    )
+                ),
+                float(fuzz.ratio(normalized_variant, normalized_movie_original_title)),
+            )
+    return best_score
+
+
+def _year_score(
+    *,
+    query_year: int | None,
+    movie: dict[str, Any],
+) -> float:
+    if query_year is None:
+        return 0.0
+    release_year = _movie_release_year(movie)
+    if release_year is None:
+        return 0.0
+    diff = abs(release_year - query_year)
+    if diff == 0:
+        return 10.0
+    if diff == 1:
+        return 7.0
+    if diff <= 2:
+        return 4.0
+    return -6.0
+
+
 def _resolve_tmdb_id(
     *,
     title_query: str,
+    title_variants: list[str],
     director_names: list[str],
-    actor_name: str | None,
+    actor_names: list[str],
     potential_movies: list[dict[str, Any]],
     search_results: list[dict[str, Any]],
+    directed_movie_ids: set[int],
+    acted_movie_ids: set[int],
+    year: int | None,
 ) -> int | None:
-    if not potential_movies:
+    candidates = _merge_candidate_movies(potential_movies, search_results)
+    if not candidates:
         logger.debug(
-            f"No potential movies found for '{title_query}' with director '{director_names}' and actor '{actor_name}'."
+            f"No TMDB candidates found for '{title_query}' with directors={director_names} actors={actor_names}."
         )
         return None
 
-    if search_results:
-        search_ids = {movie_id for m in search_results if (movie_id := _movie_id(m))}
-        potential_movies_filtered = [
-            m for m in potential_movies if _movie_id(m) in search_ids
-        ]
-        if potential_movies_filtered:
-            potential_movies_filtered.sort(key=_movie_popularity)
-            best = potential_movies_filtered[-1]
-            return _movie_id(best)
+    has_director_evidence = bool(director_names) and bool(directed_movie_ids)
+    has_actor_evidence = bool(actor_names) and bool(acted_movie_ids)
+    lookup_variants = title_variants or [title_query]
 
-    logger.debug(
-        f"No direct match found for '{title_query}' with director '{director_names}' and actor '{actor_name}'. Fuzzy matching..."
+    scored: list[tuple[float, float, float, bool, bool, dict[str, Any]]] = []
+    for movie in candidates:
+        movie_id = _movie_id(movie)
+        director_match = (
+            movie_id in directed_movie_ids if movie_id is not None else False
+        )
+        actor_match = movie_id in acted_movie_ids if movie_id is not None else False
+        title_score = _title_match_score(title_variants=lookup_variants, movie=movie)
+        metadata_bonus = 0.0
+        if has_director_evidence:
+            metadata_bonus += 18.0 if director_match else -6.0
+        if has_actor_evidence:
+            metadata_bonus += 14.0 if actor_match else -4.0
+        popularity_bonus = min(_movie_popularity(movie), 100.0) / 20.0
+        total_score = (
+            title_score
+            + metadata_bonus
+            + _year_score(query_year=year, movie=movie)
+            + popularity_bonus
+        )
+        scored.append(
+            (
+                total_score,
+                title_score,
+                _movie_popularity(movie),
+                director_match,
+                actor_match,
+                movie,
+            )
+        )
+
+    (
+        best_total_score,
+        best_title_score,
+        _,
+        best_director_match,
+        best_actor_match,
+        best,
+    ) = max(scored, key=lambda item: (item[0], item[1], item[2]))
+    strong_metadata_match = (
+        (not has_director_evidence or best_director_match)
+        and (not has_actor_evidence or best_actor_match)
+        and (has_director_evidence or has_actor_evidence)
     )
-    scored = [
-        (
-            max(
-                fuzz.token_set_ratio(title_query.lower(), _movie_title(movie).lower()),
-                fuzz.token_set_ratio(
-                    title_query.lower(), _movie_original_title(movie).lower()
-                ),
-            ),
-            movie,
-        )
-        for movie in potential_movies
-    ]
-    if not scored:
-        return None
-    best_score, best = max(scored, key=lambda x: x[0])
+    min_title_score = FUZZ_THRESHOLD
+    if has_director_evidence or has_actor_evidence:
+        min_title_score = RELAXED_FUZZ_THRESHOLD
 
-    if best_score < FUZZ_THRESHOLD:
+    if best_title_score < min_title_score and not (
+        strong_metadata_match and best_title_score >= STRONG_METADATA_FUZZ_THRESHOLD
+    ):
         best_title = _movie_title(best) or "unknown"
         logger.debug(
-            f"Best match score ({best_title}) for '{title_query}' is below threshold: {best_score}."
+            "Best TMDB candidate rejected for "
+            f"'{title_query}': title={best_title}, title_score={best_title_score:.1f}, total_score={best_total_score:.1f}."
         )
         return None
 
@@ -385,40 +913,66 @@ def _resolve_tmdb_id(
 def _find_tmdb_id_uncached(
     *,
     title_query: str,
+    title_variants: list[str],
     director_names: list[str],
-    actor_name: str | None,
+    actor_names: list[str],
     year: int | None,
 ) -> int | None:
+    if _is_probably_non_movie_event(
+        title_query=title_query,
+        director_names=director_names,
+        actor_names=actor_names,
+    ):
+        logger.debug(f"Skipping TMDB lookup for likely non-film item: {title_query}")
+        return None
+
     director_ids: list[str] = []
     directed_movies: list[dict[str, Any]] = []
     for name in director_names:
         director_ids += get_person_ids(name)
+    director_ids = _dedupe_ids(director_ids)
     for person_id in director_ids:
         directed_movies += get_persons_movies(person_id, "Director", year)
+    directed_movies = _dedupe_movies_by_id(directed_movies)
+    directed_movie_ids = {
+        movie_id
+        for movie in directed_movies
+        if (movie_id := _movie_id(movie)) is not None
+    }
 
-    potential_movies: list[dict[str, Any]] = []
-    if actor_name:
-        actor_ids = get_person_ids(actor_name)
-        if not actor_ids:
-            potential_movies = directed_movies
-        directed_movie_ids = {_movie_id(movie) for movie in directed_movies}
-        for actor_id in actor_ids:
-            acted_movies: list[dict[str, Any]] = get_persons_movies(
-                actor_id, "Actor", year
-            )
-            if directed_movies:
-                potential_movies += [
-                    movie
-                    for movie in acted_movies
-                    if _movie_id(movie) in directed_movie_ids
-                ]
-            else:
-                potential_movies += acted_movies
-    else:
+    actor_ids: list[str] = []
+    for name in actor_names:
+        actor_ids += get_person_ids(name)
+    actor_ids = _dedupe_ids(actor_ids)
+
+    acted_movies: list[dict[str, Any]] = []
+    for actor_id in actor_ids:
+        acted_movies += get_persons_movies(actor_id, "Actor", year)
+    acted_movies = _dedupe_movies_by_id(acted_movies)
+    acted_movie_ids = {
+        movie_id for movie in acted_movies if (movie_id := _movie_id(movie)) is not None
+    }
+
+    potential_movies: list[dict[str, Any]]
+    if directed_movie_ids and acted_movie_ids:
+        intersected_movie_ids = directed_movie_ids & acted_movie_ids
+        potential_movies = [
+            movie
+            for movie in _merge_candidate_movies(directed_movies, acted_movies)
+            if (movie_id := _movie_id(movie)) is not None
+            and movie_id in intersected_movie_ids
+        ]
+    elif directed_movies:
         potential_movies = directed_movies
+    elif acted_movies:
+        potential_movies = acted_movies
+    else:
+        potential_movies = []
+    potential_movies = _dedupe_movies_by_id(potential_movies)
 
-    if not director_names and not actor_name:
-        search_results = search_tmdb(title_query)
+    lookup_title_variants = title_variants or [title_query]
+    search_results = _search_tmdb_with_variants(lookup_title_variants)
+    if not director_names and not actor_names:
         if search_results:
             best = search_results[0]
             best_id = _movie_id(best)
@@ -429,13 +983,16 @@ def _find_tmdb_id_uncached(
                 )
                 return best_id
 
-    search_results = search_tmdb(title_query)
     return _resolve_tmdb_id(
         title_query=title_query,
+        title_variants=lookup_title_variants,
         director_names=director_names,
-        actor_name=actor_name,
+        actor_names=actor_names,
         potential_movies=potential_movies,
         search_results=search_results,
+        directed_movie_ids=directed_movie_ids,
+        acted_movie_ids=acted_movie_ids,
+        year=year,
     )
 
 
@@ -443,15 +1000,26 @@ async def _find_tmdb_id_uncached_async(
     *,
     session: aiohttp.ClientSession,
     title_query: str,
+    title_variants: list[str],
     director_names: list[str],
-    actor_name: str | None,
+    actor_names: list[str],
     year: int | None,
 ) -> int | None:
+    if _is_probably_non_movie_event(
+        title_query=title_query,
+        director_names=director_names,
+        actor_names=actor_names,
+    ):
+        logger.debug(f"Skipping TMDB lookup for likely non-film item: {title_query}")
+        return None
+
     director_id_lists = await asyncio.gather(
         *(get_person_ids_async(session=session, name=name) for name in director_names),
         return_exceptions=False,
     )
-    director_ids = [person_id for ids in director_id_lists for person_id in ids]
+    director_ids = _dedupe_ids(
+        [person_id for ids in director_id_lists for person_id in ids]
+    )
 
     directed_movie_lists = await asyncio.gather(
         *(
@@ -465,44 +1033,63 @@ async def _find_tmdb_id_uncached_async(
         ),
         return_exceptions=False,
     )
-    directed_movies = [
-        movie for movie_list in directed_movie_lists for movie in movie_list
-    ]
+    directed_movies = _dedupe_movies_by_id(
+        [movie for movie_list in directed_movie_lists for movie in movie_list]
+    )
+    directed_movie_ids = {
+        movie_id
+        for movie in directed_movies
+        if (movie_id := _movie_id(movie)) is not None
+    }
 
-    potential_movies: list[dict[str, Any]] = []
-    if actor_name:
-        actor_ids = await get_person_ids_async(session=session, name=actor_name)
-        if not actor_ids:
-            potential_movies = directed_movies
+    actor_id_lists = await asyncio.gather(
+        *(get_person_ids_async(session=session, name=name) for name in actor_names),
+        return_exceptions=False,
+    )
+    actor_ids = _dedupe_ids([person_id for ids in actor_id_lists for person_id in ids])
 
-        directed_movie_ids = {_movie_id(movie) for movie in directed_movies}
-        acted_movie_lists = await asyncio.gather(
-            *(
-                get_persons_movies_async(
-                    session=session,
-                    person_id=actor_id,
-                    job="Actor",
-                    year=year,
-                )
-                for actor_id in actor_ids
-            ),
-            return_exceptions=False,
-        )
-        acted_movies = [movie for movie_list in acted_movie_lists for movie in movie_list]
+    acted_movie_lists = await asyncio.gather(
+        *(
+            get_persons_movies_async(
+                session=session,
+                person_id=actor_id,
+                job="Actor",
+                year=year,
+            )
+            for actor_id in actor_ids
+        ),
+        return_exceptions=False,
+    )
+    acted_movies = _dedupe_movies_by_id(
+        [movie for movie_list in acted_movie_lists for movie in movie_list]
+    )
+    acted_movie_ids = {
+        movie_id for movie in acted_movies if (movie_id := _movie_id(movie)) is not None
+    }
 
-        if directed_movies:
-            potential_movies = [
-                movie
-                for movie in acted_movies
-                if _movie_id(movie) in directed_movie_ids
-            ]
-        else:
-            potential_movies = acted_movies
-    else:
+    potential_movies: list[dict[str, Any]]
+    if directed_movie_ids and acted_movie_ids:
+        intersected_movie_ids = directed_movie_ids & acted_movie_ids
+        potential_movies = [
+            movie
+            for movie in _merge_candidate_movies(directed_movies, acted_movies)
+            if (movie_id := _movie_id(movie)) is not None
+            and movie_id in intersected_movie_ids
+        ]
+    elif directed_movies:
         potential_movies = directed_movies
+    elif acted_movies:
+        potential_movies = acted_movies
+    else:
+        potential_movies = []
+    potential_movies = _dedupe_movies_by_id(potential_movies)
 
-    if not director_names and not actor_name:
-        search_results = await search_tmdb_async(session=session, title=title_query)
+    lookup_title_variants = title_variants or [title_query]
+    search_results = await _search_tmdb_with_variants_async(
+        session=session,
+        title_variants=lookup_title_variants,
+    )
+    if not director_names and not actor_names:
         if search_results:
             best = search_results[0]
             best_id = _movie_id(best)
@@ -513,13 +1100,16 @@ async def _find_tmdb_id_uncached_async(
                 )
                 return best_id
 
-    search_results = await search_tmdb_async(session=session, title=title_query)
     return _resolve_tmdb_id(
         title_query=title_query,
+        title_variants=lookup_title_variants,
         director_names=director_names,
-        actor_name=actor_name,
+        actor_names=actor_names,
         potential_movies=potential_movies,
         search_results=search_results,
+        directed_movie_ids=directed_movie_ids,
+        acted_movie_ids=acted_movie_ids,
+        year=year,
     )
 
 
@@ -538,25 +1128,114 @@ def find_tmdb_id(
     payload_json = _payload_to_canonical_json(payload)
     payload_hash = _payload_hash(payload_json)
 
-    cache_hit, cached_tmdb_id = _get_cached_tmdb_id(
-        payload_json=payload_json,
-        payload_hash=payload_hash,
-    )
-    if cache_hit:
-        return cached_tmdb_id
+    inflight_event: Event
+    while True:
+        memory_hit, memory_tmdb_id = _memory_lookup_cache_get(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+        )
+        if memory_hit:
+            logger.debug(
+                "TMDB cache hit (memory) for "
+                f"title='{title_query}' hash={payload_hash[:8]} -> {memory_tmdb_id}"
+            )
+            _record_tmdb_lookup_event(
+                payload_json=payload_json,
+                tmdb_id=memory_tmdb_id,
+                cache_hit=True,
+                cache_source="memory",
+            )
+            return memory_tmdb_id
 
-    normalized_directors = payload["director_names"]
-    assert isinstance(normalized_directors, list)
-    tmdb_id = _find_tmdb_id_uncached(
-        title_query=title_query,
-        director_names=[str(name) for name in normalized_directors],
-        actor_name=actor_name,
-        year=year,
-    )
-    _store_cached_tmdb_id(
+        cache_hit, cached_tmdb_id = _get_cached_tmdb_id(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+        )
+        if cache_hit:
+            logger.debug(
+                "TMDB cache hit (database) for "
+                f"title='{title_query}' hash={payload_hash[:8]} -> {cached_tmdb_id}"
+            )
+            _memory_lookup_cache_set(
+                payload_json=payload_json,
+                payload_hash=payload_hash,
+                tmdb_id=cached_tmdb_id,
+            )
+            _record_tmdb_lookup_event(
+                payload_json=payload_json,
+                tmdb_id=cached_tmdb_id,
+                cache_hit=True,
+                cache_source="database",
+            )
+            return cached_tmdb_id
+
+        is_owner, inflight_event = _begin_inflight_lookup(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+        )
+        if is_owner:
+            break
+
+        logger.debug(
+            "TMDB single-flight wait for "
+            f"title='{title_query}' hash={payload_hash[:8]}"
+        )
+        inflight_event.wait()
+        wait_hit, wait_tmdb_id = _memory_lookup_cache_get(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+        )
+        if wait_hit:
+            logger.debug(
+                "TMDB cache hit (singleflight) for "
+                f"title='{title_query}' hash={payload_hash[:8]} -> {wait_tmdb_id}"
+            )
+            _record_tmdb_lookup_event(
+                payload_json=payload_json,
+                tmdb_id=wait_tmdb_id,
+                cache_hit=True,
+                cache_source="singleflight",
+            )
+            return wait_tmdb_id
+
+    try:
+        normalized_title_query = str(payload.get("title_query", title_query))
+        normalized_title_variants = _payload_string_list(payload, "title_variants")
+        normalized_directors = _payload_string_list(payload, "director_names")
+        normalized_actors = _payload_string_list(payload, "actor_names")
+        tmdb_id = _find_tmdb_id_uncached(
+            title_query=normalized_title_query,
+            title_variants=normalized_title_variants,
+            director_names=normalized_directors,
+            actor_names=normalized_actors,
+            year=year,
+        )
+        _store_cached_tmdb_id(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+            tmdb_id=tmdb_id,
+        )
+        _memory_lookup_cache_set(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+            tmdb_id=tmdb_id,
+        )
+    finally:
+        _finish_inflight_lookup(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+            event=inflight_event,
+        )
+
+    _record_tmdb_lookup_event(
         payload_json=payload_json,
-        payload_hash=payload_hash,
         tmdb_id=tmdb_id,
+        cache_hit=False,
+        cache_source="network",
+    )
+    logger.debug(
+        "TMDB cache miss (network lookup) for "
+        f"title='{title_query}' hash={payload_hash[:8]} -> {tmdb_id}"
     )
     return tmdb_id
 
@@ -578,29 +1257,118 @@ async def find_tmdb_id_async(
     payload_json = _payload_to_canonical_json(payload)
     payload_hash = _payload_hash(payload_json)
 
-    cache_hit, cached_tmdb_id = await asyncio.to_thread(
-        _get_cached_tmdb_id,
-        payload_json=payload_json,
-        payload_hash=payload_hash,
-    )
-    if cache_hit:
-        return cached_tmdb_id
+    inflight_event: Event
+    while True:
+        memory_hit, memory_tmdb_id = _memory_lookup_cache_get(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+        )
+        if memory_hit:
+            logger.debug(
+                "TMDB cache hit (memory) for "
+                f"title='{title_query}' hash={payload_hash[:8]} -> {memory_tmdb_id}"
+            )
+            _record_tmdb_lookup_event(
+                payload_json=payload_json,
+                tmdb_id=memory_tmdb_id,
+                cache_hit=True,
+                cache_source="memory",
+            )
+            return memory_tmdb_id
 
-    normalized_directors = payload["director_names"]
-    assert isinstance(normalized_directors, list)
-    tmdb_id = await _find_tmdb_id_uncached_async(
-        session=session,
-        title_query=title_query,
-        director_names=[str(name) for name in normalized_directors],
-        actor_name=actor_name,
-        year=year,
-    )
+        cache_hit, cached_tmdb_id = await asyncio.to_thread(
+            _get_cached_tmdb_id,
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+        )
+        if cache_hit:
+            logger.debug(
+                "TMDB cache hit (database) for "
+                f"title='{title_query}' hash={payload_hash[:8]} -> {cached_tmdb_id}"
+            )
+            _memory_lookup_cache_set(
+                payload_json=payload_json,
+                tmdb_id=cached_tmdb_id,
+                payload_hash=payload_hash,
+            )
+            _record_tmdb_lookup_event(
+                payload_json=payload_json,
+                tmdb_id=cached_tmdb_id,
+                cache_hit=True,
+                cache_source="database",
+            )
+            return cached_tmdb_id
 
-    await asyncio.to_thread(
-        _store_cached_tmdb_id,
+        is_owner, inflight_event = _begin_inflight_lookup(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+        )
+        if is_owner:
+            break
+
+        logger.debug(
+            "TMDB single-flight wait for "
+            f"title='{title_query}' hash={payload_hash[:8]}"
+        )
+        await asyncio.to_thread(inflight_event.wait)
+        wait_hit, wait_tmdb_id = _memory_lookup_cache_get(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+        )
+        if wait_hit:
+            logger.debug(
+                "TMDB cache hit (singleflight) for "
+                f"title='{title_query}' hash={payload_hash[:8]} -> {wait_tmdb_id}"
+            )
+            _record_tmdb_lookup_event(
+                payload_json=payload_json,
+                tmdb_id=wait_tmdb_id,
+                cache_hit=True,
+                cache_source="singleflight",
+            )
+            return wait_tmdb_id
+
+    try:
+        normalized_title_query = str(payload.get("title_query", title_query))
+        normalized_title_variants = _payload_string_list(payload, "title_variants")
+        normalized_directors = _payload_string_list(payload, "director_names")
+        normalized_actors = _payload_string_list(payload, "actor_names")
+        tmdb_id = await _find_tmdb_id_uncached_async(
+            session=session,
+            title_query=normalized_title_query,
+            title_variants=normalized_title_variants,
+            director_names=normalized_directors,
+            actor_names=normalized_actors,
+            year=year,
+        )
+
+        await asyncio.to_thread(
+            _store_cached_tmdb_id,
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+            tmdb_id=tmdb_id,
+        )
+        _memory_lookup_cache_set(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+            tmdb_id=tmdb_id,
+        )
+    finally:
+        _finish_inflight_lookup(
+            payload_json=payload_json,
+            payload_hash=payload_hash,
+            event=inflight_event,
+        )
+
+    _record_tmdb_lookup_event(
         payload_json=payload_json,
-        payload_hash=payload_hash,
         tmdb_id=tmdb_id,
+        cache_hit=False,
+        cache_source="network",
+    )
+    logger.debug(
+        "TMDB cache miss (network lookup) for "
+        f"title='{title_query}' hash={payload_hash[:8]} -> {tmdb_id}"
     )
     return tmdb_id
 

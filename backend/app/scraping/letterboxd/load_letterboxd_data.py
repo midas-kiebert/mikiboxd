@@ -1,6 +1,11 @@
 import asyncio
 import json
+import os
+import random
+import time
 from dataclasses import dataclass
+from threading import BoundedSemaphore, Event, Lock
+from typing import Any
 from urllib.parse import urlparse
 
 import aiohttp
@@ -14,9 +19,54 @@ from app.scraping.logger import logger
 
 HEADERS = {
     "referer": "https://letterboxd.com",
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "allow-redirects": "true",
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "accept-language": "en-US,en;q=0.9",
+    "user-agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/133.0.0.0 Safari/537.36"
+    ),
 }
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return default
+
+
+LETTERBOXD_HTTP_CONCURRENCY = _env_int("LETTERBOXD_HTTP_CONCURRENCY", 4)
+LETTERBOXD_HTTP_RETRIES = _env_int("LETTERBOXD_HTTP_RETRIES", 2)
+LETTERBOXD_HTTP_BACKOFF_SECONDS = _env_float("LETTERBOXD_HTTP_BACKOFF_SECONDS", 0.4)
+LETTERBOXD_REQUEST_TIMEOUT_SECONDS = _env_float(
+    "LETTERBOXD_REQUEST_TIMEOUT_SECONDS",
+    20.0,
+)
+LETTERBOXD_CF_BLOCK_SECONDS = _env_float("LETTERBOXD_CF_BLOCK_SECONDS", 900.0)
+_letterboxd_http_sync_semaphore = BoundedSemaphore(LETTERBOXD_HTTP_CONCURRENCY)
+_letterboxd_http_async_semaphore = asyncio.Semaphore(LETTERBOXD_HTTP_CONCURRENCY)
+_letterboxd_challenge_block_lock = Lock()
+_letterboxd_challenge_block_until: float = 0.0
+_letterboxd_challenge_logged_until: float = 0.0
+
+_letterboxd_cache_lock = Lock()
+_letterboxd_cache: dict[int, "LetterboxdMovieData | None"] = {}
+_letterboxd_inflight_lock = Lock()
+_letterboxd_inflight: dict[int, Event] = {}
 
 
 @dataclass(frozen=True)
@@ -36,22 +86,127 @@ class LetterboxdMovieData(BaseModel):
     top250: int | None = None
 
 
+def _cache_get(tmdb_id: int) -> tuple[bool, LetterboxdMovieData | None]:
+    with _letterboxd_cache_lock:
+        if tmdb_id not in _letterboxd_cache:
+            return False, None
+        return True, _letterboxd_cache[tmdb_id]
+
+
+def _cache_set(tmdb_id: int, value: LetterboxdMovieData | None) -> None:
+    with _letterboxd_cache_lock:
+        _letterboxd_cache[tmdb_id] = value
+
+
+def _begin_inflight(tmdb_id: int) -> tuple[bool, Event]:
+    with _letterboxd_inflight_lock:
+        existing = _letterboxd_inflight.get(tmdb_id)
+        if existing is not None:
+            return False, existing
+        event = Event()
+        _letterboxd_inflight[tmdb_id] = event
+        return True, event
+
+
+def _finish_inflight(tmdb_id: int, event: Event) -> None:
+    with _letterboxd_inflight_lock:
+        current = _letterboxd_inflight.get(tmdb_id)
+        if current is event:
+            del _letterboxd_inflight[tmdb_id]
+    event.set()
+
+
+def _is_retryable_status(status: int) -> bool:
+    return status in {403, 408, 425, 429, 500, 502, 503, 504}
+
+
+def _retry_delay(attempt: int) -> float:
+    jitter = random.uniform(0.0, 0.25)
+    return LETTERBOXD_HTTP_BACKOFF_SECONDS * (2**attempt) + jitter
+
+
+def _set_challenge_block() -> None:
+    global _letterboxd_challenge_block_until, _letterboxd_challenge_logged_until
+    now = time.monotonic()
+    block_until = now + LETTERBOXD_CF_BLOCK_SECONDS
+    with _letterboxd_challenge_block_lock:
+        if block_until > _letterboxd_challenge_block_until:
+            _letterboxd_challenge_block_until = block_until
+        if now >= _letterboxd_challenge_logged_until:
+            _letterboxd_challenge_logged_until = block_until
+            logger.warning(
+                "Letterboxd returned Cloudflare challenge; suppressing Letterboxd HTTP "
+                f"calls for {LETTERBOXD_CF_BLOCK_SECONDS:.0f}s."
+            )
+
+
+def _challenge_block_active() -> bool:
+    with _letterboxd_challenge_block_lock:
+        return time.monotonic() < _letterboxd_challenge_block_until
+
+
+def is_letterboxd_temporarily_blocked() -> bool:
+    return _challenge_block_active()
+
+
+def _is_cloudflare_challenge(headers: Any) -> bool:
+    raw_value = None
+    if hasattr(headers, "get"):
+        raw_value = headers.get("cf-mitigated")
+    value = str(raw_value) if raw_value is not None else ""
+    return value.lower() == "challenge"
+
+
 def get_page(url: str) -> Response | None:
-    try:
-        response = requests.get(url, headers=HEADERS)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        logger.warning(f"Failed to load page {url}. Error: {e}")
+    if _challenge_block_active():
+        logger.debug(f"Skipping Letterboxd call during challenge cooldown: {url}")
         return None
-    if response.status_code != 200:
+
+    attempts = LETTERBOXD_HTTP_RETRIES + 1
+    for attempt in range(attempts):
+        try:
+            with _letterboxd_http_sync_semaphore:
+                response = requests.get(
+                    url,
+                    headers=HEADERS,
+                    allow_redirects=True,
+                    timeout=LETTERBOXD_REQUEST_TIMEOUT_SECONDS,
+                )
+        except requests.RequestException as e:
+            if attempt < attempts - 1:
+                delay = _retry_delay(attempt)
+                logger.debug(
+                    f"Retrying Letterboxd page {url} after request error ({type(e).__name__}): {delay:.2f}s"
+                )
+                time.sleep(delay)
+                continue
+            logger.warning(f"Failed to load page {url}. Error: {e}")
+            return None
+
+        if response.status_code == 200:
+            return response
+
+        if response.status_code == 404:
+            return None
+
+        if response.status_code == 403 and _is_cloudflare_challenge(response.headers):
+            _set_challenge_block()
+            return None
+
+        if _is_retryable_status(response.status_code) and attempt < attempts - 1:
+            delay = _retry_delay(attempt)
+            logger.debug(
+                f"Retrying Letterboxd page {url} after status {response.status_code}: {delay:.2f}s"
+            )
+            time.sleep(delay)
+            continue
+
         logger.warning(
-            "Failed to fetch page:",
-            url,
-            "Status code:",
-            response.status_code,
+            f"Failed to load page {url}. Status code: {response.status_code}"
         )
         return None
-    return response
+
+    return None
 
 
 async def get_page_async(
@@ -59,19 +214,52 @@ async def get_page_async(
     session: aiohttp.ClientSession,
     url: str,
 ) -> AsyncPageResponse | None:
-    try:
-        async with session.get(url, headers=HEADERS, allow_redirects=True) as response:
-            response.raise_for_status()
-            text = await response.text()
-            if response.status != 200:
-                logger.warning(
-                    f"Failed to fetch page {url}. Status code: {response.status}"
-                )
-                return None
-            return AsyncPageResponse(url=str(response.url), text=text)
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        logger.warning(f"Failed to load page {url}. Error: {e}")
+    if _challenge_block_active():
+        logger.debug(f"Skipping Letterboxd call during challenge cooldown: {url}")
         return None
+
+    attempts = LETTERBOXD_HTTP_RETRIES + 1
+    for attempt in range(attempts):
+        try:
+            async with _letterboxd_http_async_semaphore:
+                async with session.get(
+                    url,
+                    headers=HEADERS,
+                    allow_redirects=True,
+                ) as response:
+                    text = await response.text()
+                    if response.status == 200:
+                        return AsyncPageResponse(url=str(response.url), text=text)
+                    if response.status == 404:
+                        return None
+                    if response.status == 403 and _is_cloudflare_challenge(
+                        dict(response.headers)
+                    ):
+                        _set_challenge_block()
+                        return None
+                    if _is_retryable_status(response.status) and attempt < attempts - 1:
+                        delay = _retry_delay(attempt)
+                        logger.debug(
+                            f"Retrying Letterboxd page {url} after status {response.status}: {delay:.2f}s"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    logger.warning(
+                        f"Failed to fetch page {url}. Status code: {response.status}"
+                    )
+                    return None
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            if attempt < attempts - 1:
+                delay = _retry_delay(attempt)
+                logger.debug(
+                    f"Retrying Letterboxd page {url} after request error ({type(e).__name__}): {delay:.2f}s"
+                )
+                await asyncio.sleep(delay)
+                continue
+            logger.warning(f"Failed to load page {url}. Error: {e}")
+            return None
+
+    return None
 
 
 def get_letterboxd_page(tmdb_id: int) -> Response | None:
@@ -126,16 +314,12 @@ async def get_poster_url_async(
     slug: str,
 ) -> str | None:
     url = f"https://letterboxd.com/film/{slug}/poster/std/230/"
-    try:
-        async with session.get(url, headers=HEADERS) as response:
-            response.raise_for_status()
-            payload_text = await response.text()
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        logger.warning(f"Failed to load page {url}. Error: {e}")
+    response = await get_page_async(session=session, url=url)
+    if response is None:
         return None
 
     try:
-        payload = json.loads(payload_text)
+        payload = json.loads(response.text)
     except json.JSONDecodeError as e:
         logger.warning(f"Invalid poster payload for {url}. Error: {e}")
         return None
@@ -310,37 +494,53 @@ def film_not_found_text(text: str) -> bool:
 
 
 def scrape_letterboxd(tmdb_id: int) -> LetterboxdMovieData | None:
-    response = get_letterboxd_page(tmdb_id)
-    if response is None:
-        return None
+    inflight_event: Event
+    while True:
+        cache_hit, cached = _cache_get(tmdb_id)
+        if cache_hit:
+            logger.debug(f"Letterboxd cache hit for TMDB ID {tmdb_id}")
+            return cached
+        is_owner, inflight_event = _begin_inflight(tmdb_id)
+        if is_owner:
+            break
+        logger.debug(f"Letterboxd single-flight wait for TMDB ID {tmdb_id}")
+        inflight_event.wait()
 
-    slug = get_slug(response)
-    if slug is None:
-        return None
-
-    parsed_page = parse_page(response)
-    if film_not_found(response):
-        logger.warning(f"Letterboxd page not found for TMDB ID {tmdb_id}")
-        return None
-
-    poster_url = get_poster_url(slug)
-    title = get_english_title(parsed_page)
-    original_title = get_original_title(parsed_page)
-    release_year = get_year(parsed_page)
-    directors = get_directors(parsed_page)
-    rating = get_rating(slug)
-    top250 = get_top250_position(slug)
-
-    return LetterboxdMovieData(
-        slug=slug,
-        poster_url=poster_url,
-        title=title,
-        original_title=original_title,
-        release_year=release_year,
-        directors=directors,
-        rating=rating,
-        top250=top250,
-    )
+    try:
+        response = get_letterboxd_page(tmdb_id)
+        if response is None:
+            result = None
+        else:
+            slug = get_slug(response)
+            if slug is None:
+                result = None
+            else:
+                parsed_page = parse_page(response)
+                if film_not_found(response):
+                    logger.warning(f"Letterboxd page not found for TMDB ID {tmdb_id}")
+                    result = None
+                else:
+                    poster_url = get_poster_url(slug)
+                    title = get_english_title(parsed_page)
+                    original_title = get_original_title(parsed_page)
+                    release_year = get_year(parsed_page)
+                    directors = get_directors(parsed_page)
+                    rating = get_rating(slug)
+                    top250 = get_top250_position(slug)
+                    result = LetterboxdMovieData(
+                        slug=slug,
+                        poster_url=poster_url,
+                        title=title,
+                        original_title=original_title,
+                        release_year=release_year,
+                        directors=directors,
+                        rating=rating,
+                        top250=top250,
+                    )
+        _cache_set(tmdb_id, result)
+        return result
+    finally:
+        _finish_inflight(tmdb_id, inflight_event)
 
 
 async def scrape_letterboxd_async(
@@ -348,29 +548,52 @@ async def scrape_letterboxd_async(
     tmdb_id: int,
     session: aiohttp.ClientSession | None = None,
 ) -> LetterboxdMovieData | None:
-    close_session = session is None
-    if close_session:
-        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15))
+    inflight_event: Event
+    while True:
+        cache_hit, cached = _cache_get(tmdb_id)
+        if cache_hit:
+            logger.debug(f"Letterboxd cache hit for TMDB ID {tmdb_id}")
+            return cached
+        is_owner, inflight_event = _begin_inflight(tmdb_id)
+        if is_owner:
+            break
+        logger.debug(f"Letterboxd single-flight wait for TMDB ID {tmdb_id}")
+        await asyncio.to_thread(inflight_event.wait)
 
-    assert session is not None
+    local_session = session
+    close_session = local_session is None
     try:
-        response = await get_letterboxd_page_async(session=session, tmdb_id=tmdb_id)
+        if close_session:
+            local_session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=LETTERBOXD_REQUEST_TIMEOUT_SECONDS)
+            )
+        assert local_session is not None
+
+        response = await get_letterboxd_page_async(
+            session=local_session, tmdb_id=tmdb_id
+        )
         if response is None:
-            return None
+            result = None
+            _cache_set(tmdb_id, result)
+            return result
 
         slug = get_slug_from_url(response.url)
         if slug is None:
-            return None
+            result = None
+            _cache_set(tmdb_id, result)
+            return result
 
         parsed_page = parse_page_text(response.text)
         if film_not_found_text(response.text):
             logger.warning(f"Letterboxd page not found for TMDB ID {tmdb_id}")
-            return None
+            result = None
+            _cache_set(tmdb_id, result)
+            return result
 
         poster_url, rating, top250 = await asyncio.gather(
-            get_poster_url_async(session=session, slug=slug),
-            get_rating_async(session=session, slug=slug),
-            get_top250_position_async(session=session, slug=slug),
+            get_poster_url_async(session=local_session, slug=slug),
+            get_rating_async(session=local_session, slug=slug),
+            get_top250_position_async(session=local_session, slug=slug),
         )
 
         title = get_english_title(parsed_page)
@@ -378,7 +601,7 @@ async def scrape_letterboxd_async(
         release_year = get_year(parsed_page)
         directors = get_directors(parsed_page)
 
-        return LetterboxdMovieData(
+        result = LetterboxdMovieData(
             slug=slug,
             poster_url=poster_url,
             title=title,
@@ -388,9 +611,12 @@ async def scrape_letterboxd_async(
             rating=rating,
             top250=top250,
         )
+        _cache_set(tmdb_id, result)
+        return result
     finally:
-        if close_session:
-            await session.close()
+        if close_session and local_session is not None:
+            await local_session.close()
+        _finish_inflight(tmdb_id, inflight_event)
 
 
 if __name__ == "__main__":

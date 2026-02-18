@@ -114,6 +114,7 @@ def insert_showtime_if_not_exists(
     *,
     session: Session,
     showtime_create: ShowtimeCreate,
+    commit: bool = True,
 ) -> bool:
     """
     Insert a showtime into the database if it does not already exist.
@@ -134,9 +135,27 @@ def insert_showtime_if_not_exists(
         delta=timedelta(hours=1),
     )
 
-    if existing_showtime is not None:
+    if commit:
+        if existing_showtime is not None:
+            try:
+                existing_showtime.datetime = showtime_create.datetime
+                session.commit()
+                return True
+            except IntegrityError as e:
+                session.rollback()
+                if isinstance(e.orig, UniqueViolation):
+                    return False
+                else:
+                    raise AppError from e
+            except Exception as e:
+                session.rollback()
+                raise AppError from e
+
         try:
-            existing_showtime.datetime = showtime_create.datetime
+            showtimes_crud.create_showtime(
+                session=session,
+                showtime_create=showtime_create,
+            )
             session.commit()
             return True
         except IntegrityError as e:
@@ -150,20 +169,22 @@ def insert_showtime_if_not_exists(
             raise AppError from e
 
     try:
-        showtimes_crud.create_showtime(
-            session=session,
-            showtime_create=showtime_create,
-        )
-        session.commit()
+        with session.begin_nested():
+            if existing_showtime is not None:
+                existing_showtime.datetime = showtime_create.datetime
+            else:
+                showtimes_crud.create_showtime(
+                    session=session,
+                    showtime_create=showtime_create,
+                )
+            session.flush()
         return True
     except IntegrityError as e:
-        session.rollback()
         if isinstance(e.orig, UniqueViolation):
             return False
         else:
             raise AppError from e
     except Exception as e:
-        session.rollback()
         raise AppError from e
 
 
@@ -171,6 +192,7 @@ def upsert_showtime(
     *,
     session: Session,
     showtime_create: ShowtimeCreate,
+    commit: bool = True,
 ) -> Showtime:
     """
     Insert or update a showtime and return the resulting database row.
@@ -182,13 +204,38 @@ def upsert_showtime(
         delta=timedelta(hours=1),
     )
 
-    if existing_showtime is not None:
+    if commit:
+        if existing_showtime is not None:
+            try:
+                existing_showtime.datetime = showtime_create.datetime
+                existing_showtime.ticket_link = showtime_create.ticket_link
+                session.commit()
+                session.refresh(existing_showtime)
+                return existing_showtime
+            except IntegrityError as e:
+                session.rollback()
+                if isinstance(e.orig, UniqueViolation):
+                    existing_exact = showtimes_crud.get_showtime_by_unique_fields(
+                        session=session,
+                        movie_id=showtime_create.movie_id,
+                        cinema_id=showtime_create.cinema_id,
+                        datetime=showtime_create.datetime,
+                    )
+                    if existing_exact is not None:
+                        return existing_exact
+                raise AppError from e
+            except Exception as e:
+                session.rollback()
+                raise AppError from e
+
         try:
-            existing_showtime.datetime = showtime_create.datetime
-            existing_showtime.ticket_link = showtime_create.ticket_link
+            showtime = showtimes_crud.create_showtime(
+                session=session,
+                showtime_create=showtime_create,
+            )
             session.commit()
-            session.refresh(existing_showtime)
-            return existing_showtime
+            session.refresh(showtime)
+            return showtime
         except IntegrityError as e:
             session.rollback()
             if isinstance(e.orig, UniqueViolation):
@@ -206,15 +253,20 @@ def upsert_showtime(
             raise AppError from e
 
     try:
-        showtime = showtimes_crud.create_showtime(
-            session=session,
-            showtime_create=showtime_create,
-        )
-        session.commit()
-        session.refresh(showtime)
-        return showtime
+        with session.begin_nested():
+            if existing_showtime is not None:
+                existing_showtime.datetime = showtime_create.datetime
+                existing_showtime.ticket_link = showtime_create.ticket_link
+                session.flush()
+                return existing_showtime
+
+            showtime = showtimes_crud.create_showtime(
+                session=session,
+                showtime_create=showtime_create,
+            )
+            session.flush()
+            return showtime
     except IntegrityError as e:
-        session.rollback()
         if isinstance(e.orig, UniqueViolation):
             existing_exact = showtimes_crud.get_showtime_by_unique_fields(
                 session=session,
@@ -226,7 +278,6 @@ def upsert_showtime(
                 return existing_exact
         raise AppError from e
     except Exception as e:
-        session.rollback()
         raise AppError from e
 
 

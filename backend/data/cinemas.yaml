@@ -452,5 +452,5 @@
 - name: Cinema The Pulse
   city: Amsterdam
   cineville: true
-  badge_bg_color: "purple"
+  badge_bg_color: "red"
   url: "https://www.cinemathepulse.com"

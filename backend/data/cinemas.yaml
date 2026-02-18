@@ -448,3 +448,9 @@
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.worm.org"
+
+- name: Cinema The Pulse
+  city: Amsterdam
+  cineville: true
+  badge_bg_color: "purple"
+  url: "https://www.cinemathepulse.com"

@@ -3,11 +3,14 @@
  */
 import {
   StyleSheet,
+  TouchableOpacity,
   View,
+  type GestureResponderEvent,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import { useRouter } from "expo-router";
 import type { UserPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
@@ -21,9 +24,10 @@ type FriendBadgesProps = {
 };
 
 type FriendBadgeProps = {
+  friendId: string;
   label: string;
-  color: string;
-  textColor: string;
+  backgroundColor: string;
+  accentColor: string;
   styles: ReturnType<typeof createStyles>;
   variant: "compact" | "default";
 };
@@ -31,42 +35,66 @@ type FriendBadgeProps = {
 type VariantStyles = {
   badge: ViewStyle;
   badgeText: TextStyle;
+  statusDot: ViewStyle;
 };
+
+const FRIEND_BADGE_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
 const getFriendLabel = (user: UserPublic) => {
   // Prefer display name when it exists.
   const displayName = user.display_name?.trim();
   if (displayName) return displayName;
 
-  // Fallback to the email prefix when no display name is set.
-  const emailName = user.email?.split("@")[0]?.trim();
-  if (emailName) return emailName;
-
   return "Friend";
 };
 
-const FriendBadge = ({ label, color, textColor, styles, variant }: FriendBadgeProps) => {
+const FriendBadge = ({
+  friendId,
+  label,
+  backgroundColor,
+  accentColor,
+  styles,
+  variant,
+}: FriendBadgeProps) => {
+  const router = useRouter();
   const sizeStyles: VariantStyles =
     variant === "compact"
       ? {
           badge: styles.compactBadge,
           badgeText: styles.compactBadgeText,
+          statusDot: styles.compactStatusDot,
         }
       : {
           badge: styles.defaultBadge,
           badgeText: styles.defaultBadgeText,
+          statusDot: styles.defaultStatusDot,
         };
 
+  const handlePress = (event: GestureResponderEvent) => {
+    event.stopPropagation();
+    router.push(`/friend-showtimes/${friendId}`);
+  };
+
   return (
-    <View style={[styles.badge, sizeStyles.badge, { backgroundColor: color, borderColor: textColor }]}>
+    <TouchableOpacity
+      activeOpacity={0.75}
+      onPress={handlePress}
+      hitSlop={FRIEND_BADGE_HIT_SLOP}
+      style={[
+        styles.badge,
+        sizeStyles.badge,
+        { backgroundColor, borderColor: accentColor },
+      ]}
+    >
+      <View style={[styles.statusDot, sizeStyles.statusDot, { backgroundColor: accentColor }]} />
       <ThemedText
-        style={[styles.badgeText, sizeStyles.badgeText, { color: textColor }]}
+        style={[styles.badgeText, sizeStyles.badgeText, { color: accentColor }]}
         numberOfLines={1}
         ellipsizeMode="tail"
       >
         {label}
       </ThemedText>
-    </View>
+    </TouchableOpacity>
   );
 };
 
@@ -83,13 +111,13 @@ export default function FriendBadges({
   const items = [
     ...friendsGoing.map((friend) => ({
       friend,
-      color: colors.green.primary,
-      textColor: colors.green.secondary,
+      backgroundColor: colors.pillBackground,
+      accentColor: colors.friendGoing.secondary,
     })),
     ...friendsInterested.map((friend) => ({
       friend,
-      color: colors.orange.primary,
-      textColor: colors.orange.secondary,
+      backgroundColor: colors.pillBackground,
+      accentColor: colors.friendInterested.secondary,
     })),
   ];
 
@@ -98,12 +126,13 @@ export default function FriendBadges({
   // Render/output using the state and derived values prepared above.
   return (
     <View style={[styles.row, variant === "compact" ? styles.rowCompact : styles.rowDefault, style]}>
-      {items.map(({ friend, color, textColor }) => (
+      {items.map(({ friend, backgroundColor, accentColor }) => (
         <FriendBadge
           key={friend.id}
+          friendId={friend.id}
           label={getFriendLabel(friend)}
-          color={color}
-          textColor={textColor}
+          backgroundColor={backgroundColor}
+          accentColor={accentColor}
           styles={styles}
           variant={variant}
         />
@@ -131,11 +160,17 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     badge: {
       borderWidth: 1,
-      borderRadius: 3,
+      borderRadius: 999,
       alignItems: "center",
-      justifyContent: "center",
+      justifyContent: "flex-start",
+      flexDirection: "row",
+      columnGap: 4,
       paddingHorizontal: 6,
       maxWidth: 140,
+    },
+    statusDot: {
+      borderRadius: 999,
+      flexShrink: 0,
     },
     badgeText: {
       fontWeight: "600",
@@ -143,9 +178,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     compactBadge: {
       height: 12,
-      borderRadius: 2,
       paddingHorizontal: 4,
       maxWidth: 90,
+    },
+    compactStatusDot: {
+      width: 4,
+      height: 4,
     },
     compactBadgeText: {
       fontSize: 9,
@@ -155,6 +193,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     defaultBadge: {
       height: 16,
       paddingHorizontal: 6,
+    },
+    defaultStatusDot: {
+      width: 6,
+      height: 6,
     },
     defaultBadgeText: {
       fontSize: 11,

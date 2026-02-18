@@ -10,8 +10,11 @@ def test_get_me_superuser(
     current_user = r.json()
     assert current_user
     assert current_user["is_active"] is True
-    assert current_user["is_superuser"]
+    assert current_user["is_superuser"] is True
     assert current_user["email"] == settings.FIRST_SUPERUSER
+    assert isinstance(current_user["notify_on_friend_showtime_match"], bool)
+    assert "letterboxd_username" in current_user
+    assert "last_watchlist_sync" not in current_user
 
 
 def test_get_me_normal_user(
@@ -23,6 +26,9 @@ def test_get_me_normal_user(
     assert current_user["is_active"] is True
     assert current_user["is_superuser"] is False
     assert current_user["email"] == settings.EMAIL_TEST_USER
+    assert isinstance(current_user["notify_on_friend_showtime_match"], bool)
+    assert "letterboxd_username" in current_user
+    assert "last_watchlist_sync" not in current_user
 
 
 def test_update_me_notification_preference(

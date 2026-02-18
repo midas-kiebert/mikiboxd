@@ -74,8 +74,8 @@ axios.defaults.transformRequest = [
   ...defaultTransformers,
 ]
 
-OpenAPI.BASE = "http://192.168.1.121:8000";
-// OpenAPI.BASE = "https://api.mikino.nl";
+// OpenAPI.BASE = "http://192.168.1.121:8000";
+OpenAPI.BASE = "https://api.mikino.nl";
 
 // Attach bearer token from secure storage to every generated client request.
 OpenAPI.TOKEN = async () => {
@@ -155,7 +155,7 @@ function RootLayourContent() {
     if (isChecking) return
 
     // Only these route groups require an authenticated session.
-    const authRoutes = new Set(['(tabs)', 'movie'])
+    const authRoutes = new Set(['(tabs)', 'movie', 'friend-showtimes', 'cinema-showtimes'])
     const inAuthGroup = authRoutes.has(segments[0])
 
     if (!isAuthenticated && inAuthGroup) {
@@ -176,6 +176,8 @@ function RootLayourContent() {
     <>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="friend-showtimes/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="cinema-showtimes/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />

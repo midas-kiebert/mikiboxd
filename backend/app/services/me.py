@@ -11,7 +11,7 @@ from app.crud import user as users_crud
 from app.exceptions.base import AppError
 from app.exceptions.user_exceptions import EmailAlreadyExists
 from app.models.user import User, UserUpdate
-from app.schemas.user import UserPublic
+from app.schemas.user import UserMe
 
 logger = getLogger(__name__)
 
@@ -21,7 +21,7 @@ def update_me(
     session: Session,
     user_in: UserUpdate,
     current_user: User,
-) -> UserPublic:
+) -> UserMe:
     try:
         users_crud.update_user(
             session=session,
@@ -37,7 +37,7 @@ def update_me(
     except Exception as e:
         raise AppError() from e
     session.commit()
-    user_public = user_converters.to_public(current_user)
+    user_public = user_converters.to_me(current_user)
     return user_public
 
 

@@ -1,13 +1,26 @@
 import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
-import { UsersService, UsersGetUserSelectedShowtimesResponse } from "../client";
-import { UUID } from "crypto";
-import { ApiError } from "../client";
+import {
+    ApiError,
+    type GoingStatus,
+    UsersService,
+    UsersGetUserSelectedShowtimesResponse,
+} from "../client";
+
+type ShowtimesFilters = {
+    query?: string;
+    days?: string[];
+    selectedCinemaIds?: number[];
+    timeRanges?: string[];
+    watchlistOnly?: boolean;
+    selectedStatuses?: GoingStatus[];
+};
 
 type useFetchUserShowtimesProps = {
     limit?: number;
     snapshotTime?: string;
-    userId: UUID;
-    selectedCinemaIds?: number[];
+    userId: string;
+    filters?: ShowtimesFilters;
+    enabled?: boolean;
 };
 
 export function useFetchUserShowtimes(
@@ -15,17 +28,19 @@ export function useFetchUserShowtimes(
         limit,
         snapshotTime,
         userId,
-        selectedCinemaIds,
+        filters = {},
+        enabled = true,
     } : useFetchUserShowtimesProps
 ): UseInfiniteQueryResult<InfiniteData<UsersGetUserSelectedShowtimesResponse>, Error>{
     const result = useInfiniteQuery<
         UsersGetUserSelectedShowtimesResponse,
         Error,
         InfiniteData<UsersGetUserSelectedShowtimesResponse>,
-        [string, string, number[] | null],
+        [string, string, string, ShowtimesFilters],
         number
     >({
-        queryKey: ["showtimes", userId, selectedCinemaIds ?? null],
+        queryKey: ["showtimes", "user", userId, filters],
+        enabled,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
@@ -35,7 +50,7 @@ export function useFetchUserShowtimes(
                 limit: limit,
                 snapshotTime: snapshotTime,
                 userId: userId,
-                selectedCinemaIds: selectedCinemaIds,
+                ...filters,
             });
         },
         retry: (failureCount, error) => {

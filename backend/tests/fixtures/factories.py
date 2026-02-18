@@ -253,12 +253,8 @@ class UserPublicFactory(Factory):
         model = UserPublic
 
     id = Faker("uuid4")
-    email = Faker("email")
     display_name = Faker("name")
-    letterboxd_username = Faker("user_name")
     is_active = True
-    is_superuser = False
-    last_watchlist_sync = Faker("date_time_this_year", before_now=True, after_now=False)
 
 
 @pytest.fixture

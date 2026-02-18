@@ -298,7 +298,7 @@ export class LoginService {
 export class MeService {
   /**
    * Get Current User
-   * @returns UserPublic Successful Response
+   * @returns UserMe Successful Response
    * @throws ApiError
    */
   public static getCurrentUser(): CancelablePromise<MeGetCurrentUserResponse> {
@@ -324,7 +324,7 @@ export class MeService {
    * Update User Me
    * @param data The data for the request.
    * @param data.requestBody
-   * @returns UserPublic Successful Response
+   * @returns UserMe Successful Response
    * @throws ApiError
    */
   public static updateUserMe(

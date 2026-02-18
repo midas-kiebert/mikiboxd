@@ -164,7 +164,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
     },
     friendBadges: {
-      marginTop: 2,
+      marginTop: 3,
     },
     moreShowtimesText: {
       fontSize: 9,

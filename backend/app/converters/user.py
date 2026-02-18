@@ -7,18 +7,34 @@ from app.crud import friendship as friendship_crud
 from app.crud import user as user_crud
 from app.inputs.movie import Filters
 from app.models.user import User
-from app.schemas.user import UserPublic, UserWithFriendStatus, UserWithShowtimesPublic
+from app.schemas.user import (
+    UserMe,
+    UserPublic,
+    UserWithFriendStatus,
+    UserWithShowtimesPublic,
+)
 from app.utils import now_amsterdam_naive
 
 
 def to_public(user: User) -> UserPublic:
     User.model_validate(user)
-    last_watchlist_sync = (
-        user.letterboxd.last_watchlist_sync if user.letterboxd else None
-    )
     return UserPublic(
-        **user.model_dump(),
-        last_watchlist_sync=last_watchlist_sync,
+        id=user.id,
+        is_active=user.is_active,
+        display_name=user.display_name,
+    )
+
+
+def to_me(user: User) -> UserMe:
+    User.model_validate(user)
+    return UserMe(
+        id=user.id,
+        is_active=user.is_active,
+        display_name=user.display_name,
+        email=user.email,
+        is_superuser=user.is_superuser,
+        notify_on_friend_showtime_match=user.notify_on_friend_showtime_match,
+        letterboxd_username=user.letterboxd_username,
     )
 
 
@@ -57,16 +73,13 @@ def to_with_friend_status(
         sender_id=user.id,
         receiver_id=current_user,
     )
-    last_watchlist_sync = (
-        user.letterboxd.last_watchlist_sync if user.letterboxd else None
-    )
-
     return UserWithFriendStatus(
-        **user.model_dump(),
+        id=user.id,
+        is_active=user.is_active,
+        display_name=user.display_name,
         is_friend=is_friend,
         sent_request=sent_request,
         received_request=received_request,
-        last_watchlist_sync=last_watchlist_sync,
     )
 
 
@@ -107,12 +120,9 @@ def to_with_showtimes_public(
         )
     ]
 
-    last_watchlist_sync = (
-        user.letterboxd.last_watchlist_sync if user.letterboxd else None
-    )
-
     return UserWithShowtimesPublic(
-        **user.model_dump(),
+        id=user.id,
+        is_active=user.is_active,
+        display_name=user.display_name,
         showtimes_going=showtimes,
-        last_watchlist_sync=last_watchlist_sync,
     )

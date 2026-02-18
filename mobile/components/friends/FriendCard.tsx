@@ -2,6 +2,7 @@
  * Mobile friends feature component: Friend Card.
  */
 import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
+import { useRouter } from "expo-router";
 import type { UserWithFriendStatus } from "shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -28,10 +29,11 @@ type FriendAction = {
 };
 
 const getFriendName = (friend: UserWithFriendStatus) =>
-  friend.display_name?.trim() || friend.email?.split("@")[0] || friend.email;
+  friend.display_name?.trim() || "Friend";
 
 export default function FriendCard({ user }: FriendCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
+  const router = useRouter();
   const colors = useThemeColors();
   const styles = createStyles(colors);
   // React Query client used for cache updates and invalidation.
@@ -161,9 +163,15 @@ export default function FriendCard({ user }: FriendCardProps) {
     return [styles.actionButtonNeutral, styles.actionTextNeutral] as const;
   };
 
-  // Render/output using the state and derived values prepared above.
-  return (
-    <View style={[styles.card, isBusy && styles.cardDisabled]}>
+  const canOpenFriendShowtimes = user.is_friend && !isBusy;
+
+  const handleOpenFriendShowtimes = () => {
+    if (!canOpenFriendShowtimes) return;
+    router.push(`/friend-showtimes/${user.id}`);
+  };
+
+  const cardContent = (
+    <>
       <View style={styles.info}>
         <View style={styles.nameRow}>
           <ThemedText style={styles.name} numberOfLines={1} ellipsizeMode="tail">
@@ -180,9 +188,6 @@ export default function FriendCard({ user }: FriendCardProps) {
             </View>
           ) : null}
         </View>
-        <ThemedText style={styles.email} numberOfLines={1} ellipsizeMode="tail">
-          {user.email}
-        </ThemedText>
       </View>
       <View style={styles.actions}>
         {actions.map((action) => {
@@ -191,7 +196,10 @@ export default function FriendCard({ user }: FriendCardProps) {
             <TouchableOpacity
               key={action.label}
               style={[styles.actionButton, buttonStyle]}
-              onPress={action.onPress}
+              onPress={(event) => {
+                event.stopPropagation();
+                action.onPress();
+              }}
               disabled={isBusy}
               activeOpacity={0.75}
             >
@@ -200,7 +208,23 @@ export default function FriendCard({ user }: FriendCardProps) {
           );
         })}
       </View>
-    </View>
+    </>
+  );
+
+  // Render/output using the state and derived values prepared above.
+  if (!user.is_friend) {
+    return <View style={[styles.card, isBusy && styles.cardDisabled]}>{cardContent}</View>;
+  }
+
+  return (
+    <TouchableOpacity
+      style={[styles.card, isBusy && styles.cardDisabled]}
+      activeOpacity={0.8}
+      onPress={handleOpenFriendShowtimes}
+      disabled={!canOpenFriendShowtimes}
+    >
+      {cardContent}
+    </TouchableOpacity>
   );
 }
 
@@ -234,10 +258,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 16,
       fontWeight: "700",
       color: colors.text,
-    },
-    email: {
-      fontSize: 12,
-      color: colors.textSecondary,
     },
     badge: {
       borderWidth: 1,

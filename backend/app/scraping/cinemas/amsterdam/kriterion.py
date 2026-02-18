@@ -14,6 +14,7 @@ from app.scraping.letterboxd.load_letterboxd_data import scrape_letterboxd
 from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 from app.services import movies as movies_services
+from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_services
 
 CINEMA = "Kriterion"
@@ -52,7 +53,7 @@ class KriterionScraper(BaseCinemaScraper):
                 session=session, name=CINEMA
             )
 
-    def scrape(self) -> None:
+    def scrape(self) -> list[tuple[str, int]]:
         assert self.cinema_id is not None
         url_movies = "https://kritsite-cms-mxa7oxwmcq-ez.a.run.app/api/films?populate=*&pagination[page]=1&pagination[pageSize]=1000&sort=release:asc"
         url_showtimes = "https://storage.googleapis.com/kritsite-buffer/shows.json"
@@ -103,6 +104,7 @@ class KriterionScraper(BaseCinemaScraper):
                 ticket_link=ticket_link,
             )
             self.showtimes.append(showtime)
+        observed_presences: list[tuple[str, int]] = []
         with get_db_context() as session:
             # logger.trace(f"Inserting {len(self.movies)} movies and {len(self.showtimes)} showtimes")
             for movie_create in self.movies:
@@ -110,9 +112,17 @@ class KriterionScraper(BaseCinemaScraper):
                     session=session, movie_create=movie_create
                 )
             for showtime in self.showtimes:
-                showtimes_services.insert_showtime_if_not_exists(
+                db_showtime = showtimes_services.upsert_showtime(
                     session=session, showtime_create=showtime
                 )
+                source_event_key = scrape_sync_service.fallback_source_event_key(
+                    movie_id=showtime.movie_id,
+                    cinema_id=showtime.cinema_id,
+                    dt=showtime.datetime,
+                    ticket_link=showtime.ticket_link,
+                )
+                observed_presences.append((source_event_key, db_showtime.id))
+        return observed_presences
 
 
 def get_movie(

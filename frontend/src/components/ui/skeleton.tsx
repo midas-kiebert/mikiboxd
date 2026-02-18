@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Skeleton. This keeps common UI patterns consistent.
+ */
 import type {
   SkeletonProps as ChakraSkeletonProps,
   CircleProps,

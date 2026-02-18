@@ -1,11 +1,16 @@
+/**
+ * User settings feature component: Appearance.
+ */
 import { Container, Heading, Stack } from "@chakra-ui/react"
 import { useTheme } from "next-themes"
 
 import { Radio, RadioGroup } from "@/components/ui/radio"
 
 const Appearance = () => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   const { theme, setTheme } = useTheme()
 
+  // Render/output using the state and derived values prepared above.
   return (
     <>
       <Container maxW="full">

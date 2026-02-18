@@ -1,3 +1,6 @@
+/**
+ * Shared web layout/presentation component: Navbar.
+ */
 import { Flex, Image, useBreakpointValue } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
 
@@ -5,8 +8,10 @@ import Logo from "/assets/images/fastapi-logo.svg"
 import UserMenu from "./UserMenu"
 
 function Navbar() {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   const display = useBreakpointValue({ base: "none", md: "flex" })
 
+  // Render/output using the state and derived values prepared above.
   return (
     <Flex
       display={display}

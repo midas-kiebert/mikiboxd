@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Watchlist Toggle.
+ */
 import { Box, SegmentGroup } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 
@@ -11,6 +14,7 @@ export default function WatchlistToggle({
     watchlistOnly,
     setWatchlistOnly,
 }: WatchlistToggleProps) {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const [localValue, setLocalValue] = useState<string>(watchlistOnly ? "Watchlisted" : "All");
 
     useEffect(() => {
@@ -27,6 +31,7 @@ export default function WatchlistToggle({
         }, 180); // Delay to let animation finish
     }
 
+    // Render/output using the state and derived values prepared above.
     return (
         <Box>
             <SegmentGroup.Root

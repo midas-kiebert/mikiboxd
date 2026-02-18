@@ -1,3 +1,6 @@
+/**
+ * Expo Router screen/module for (tabs) / movies. It controls navigation and screen-level state for this route.
+ */
 import { useMemo, useState } from 'react';
 import {
   StyleSheet,
@@ -9,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import { useSessionCinemaSelections } from 'shared/hooks/useSessionCinemaSelections';
+import { useSessionDaySelections } from 'shared/hooks/useSessionDaySelections';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
 import { ThemedView } from '@/components/themed-view';
@@ -22,31 +26,45 @@ import { useThemeColors } from '@/hooks/use-theme-color';
 import MovieCard from '@/components/movies/MovieCard';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
+// Filter pill definitions rendered in the top filter row.
 const BASE_FILTERS = [
   { id: 'watchlist-only', label: 'Watchlist Only' },
   { id: 'cinemas', label: 'Cinemas' },
   { id: 'days', label: 'Days' },
 ];
 
+const EMPTY_DAYS: string[] = [];
+
 export default function MovieScreen() {
+  // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const router = useRouter();
+  // Current text typed into the search input.
   const [searchQuery, setSearchQuery] = useState('');
+  // Whether the list should be limited to movies in the user's watchlist.
   const [watchlistOnly, setWatchlistOnly] = useState(false);
+  // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
+  // Controls visibility of the cinema-filter modal.
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
+  // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
-  const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const { selections: sessionDays, setSelections: setSessionDays } = useSessionDaySelections();
+  const selectedDays = sessionDays ?? EMPTY_DAYS;
+  // Snapshot time is part of the query key so pull-to-refresh can force a full refresh.
   const [snapshotTime, setSnapshotTime] = useState(() =>
     DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")
   );
 
   const { selections: sessionCinemaIds } = useSessionCinemaSelections();
 
+  // Read the active theme color tokens used by this screen/component.
   const colors = useThemeColors();
   const styles = createStyles(colors);
 
+  // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
+  // Build the filter payload once per relevant state change to avoid unnecessary refetches.
   const movieFilters = useMemo<MovieFilters>(
     () => ({
       query: searchQuery,
@@ -57,6 +75,7 @@ export default function MovieScreen() {
     [searchQuery, watchlistOnly, selectedDays, sessionCinemaIds]
   );
 
+  // Data hooks keep this module synced with backend data and shared cache state.
   const {
     data: moviesData,
     isLoading,
@@ -70,15 +89,19 @@ export default function MovieScreen() {
     filters: movieFilters,
   });
 
+  // Flatten paginated query results into one array for list rendering.
   const movies = moviesData?.pages.flat() || [];
 
+  // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
     setRefreshing(true);
+    // Reset cached pages for the current filters, then bump snapshot to request fresh data.
     await resetInfiniteQuery(queryClient, ['movies', movieFilters]);
     setSnapshotTime(DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
     setRefreshing(false);
   };
 
+  // Render infinite-scroll loading feedback at the bottom of the list.
   const renderFooter = () => {
     if (!isFetchingNextPage) return null;
     return (
@@ -88,6 +111,7 @@ export default function MovieScreen() {
     );
   };
 
+  // Render the empty/loading state when list data is unavailable.
   const renderEmpty = () => {
     if (isLoading || isFetching) {
       return (
@@ -103,12 +127,14 @@ export default function MovieScreen() {
     );
   };
 
+  // Request the next page when the list nears the end.
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
   };
 
+  // Handle filter pill presses and update active filter state.
   const handleSelectFilter = (filterId: string) => {
     if (filterId === 'watchlist-only') {
       setWatchlistOnly((prev) => !prev);
@@ -124,6 +150,7 @@ export default function MovieScreen() {
     }
   };
 
+  // Only decorate the day pill label when the filter is actually active.
   const pillFilters = useMemo(() => {
     if (selectedDays.length === 0) return BASE_FILTERS;
     return BASE_FILTERS.map((filter) =>
@@ -133,6 +160,7 @@ export default function MovieScreen() {
     );
   }, [selectedDays.length]);
 
+  // These ids drive highlighted filter pills in the UI.
   const activeFilterIds = useMemo(() => {
     const active: string[] = [];
     if (watchlistOnly) {
@@ -147,6 +175,7 @@ export default function MovieScreen() {
     return active;
   }, [watchlistOnly, selectedDays.length, sessionCinemaIds]);
 
+  // Render/output using the state and derived values prepared above.
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <TopBar />
@@ -165,7 +194,7 @@ export default function MovieScreen() {
         visible={dayModalVisible}
         onClose={() => setDayModalVisible(false)}
         selectedDays={selectedDays}
-        onChange={setSelectedDays}
+        onChange={setSessionDays}
       />
 
       {/* Movie Feed */}

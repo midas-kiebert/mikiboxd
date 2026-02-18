@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: City Cinemas.
+ */
 import CinemaToggle from '@/components/Common/CinemaToggle';
 import { Box, Heading, Flex, Button } from '@chakra-ui/react';
 import type { CityPublic, CinemaPublic } from 'shared';
@@ -18,8 +21,10 @@ const CityCinemas = (({
     handleToggleCity,
 }: CityCinemasProps) => {
 
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const allSelected = cinemasForCity.every(cinema => selectedCinemas.includes(cinema.id));
 
+    // Render/output using the state and derived values prepared above.
     return (
         <Box key={city.id} mb={4}>
             <Flex>

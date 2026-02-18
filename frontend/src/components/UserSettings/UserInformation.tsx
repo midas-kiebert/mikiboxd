@@ -1,3 +1,6 @@
+/**
+ * User settings feature component: User Information.
+ */
 import {
   Box,
   Button,
@@ -23,9 +26,11 @@ import { emailPattern, handleError } from "@/utils"
 import { Field } from "../ui/field"
 
 const UserInformation = () => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   const queryClient = useQueryClient()
   const { showSuccessToast } = useCustomToast()
   const [editMode, setEditMode] = useState(false)
+  // Data hooks keep this module synced with backend data and shared cache state.
   const { user: currentUser } = useAuth()
   const {
     register,
@@ -71,6 +76,7 @@ const UserInformation = () => {
     toggleEditMode()
   }
 
+  // Render/output using the state and derived values prepared above.
   return (
     <>
       <Container maxW="full">

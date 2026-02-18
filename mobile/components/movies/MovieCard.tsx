@@ -1,3 +1,6 @@
+/**
+ * Mobile movies feature component: Movie Card.
+ */
 import {
   Image,
   StyleSheet,
@@ -26,8 +29,10 @@ const formatLastShowtime = (datetime: string) =>
   DateTime.fromISO(datetime).toFormat("ccc, LLL d");
 
 export default function MovieCard({ movie, onPress }: MovieCardProps) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // Use backend totals when available so collapsed rows still show accurate "+N more" text.
   const showtimes = movie.showtimes || [];
   const totalShowtimes = movie.total_showtimes ?? showtimes.length;
   const shouldShowMoreLine =
@@ -51,8 +56,10 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
         ? styles.movieCardGlowInterested
         : undefined;
 
+  // Render/output using the state and derived values prepared above.
   return (
     <View style={[styles.movieCardGlow, cardGlowStyle]}>
+      {/* Whole card is tappable so users can quickly jump to the full movie detail screen. */}
       <TouchableOpacity style={[styles.movieCard, cardStatusStyle]} onPress={() => onPress?.(movie)}>
         <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
         <View style={styles.movieInfo}>

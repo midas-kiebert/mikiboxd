@@ -1,8 +1,12 @@
+/**
+ * Custom web hook for Use Custom Toast. It encapsulates reusable stateful behavior.
+ */
 "use client"
 
 import { toaster } from "@/components/ui/toaster"
 
 const useCustomToast = () => {
+  // Read flow: derive reusable behavior first, then expose the hook API.
   const showSuccessToast = (description: string) => {
     toaster.create({
       title: "Success!",
@@ -19,6 +23,7 @@ const useCustomToast = () => {
     })
   }
 
+  // Return the hook API that callers consume.
   return { showSuccessToast, showErrorToast }
 }
 

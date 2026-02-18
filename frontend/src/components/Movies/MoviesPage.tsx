@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Movies Page.
+ */
 import { useSearch, useNavigate } from "@tanstack/react-router";
 import Movies from "@/components/Movies/Movies";
 import { useState, useEffect, useRef } from "react";
@@ -13,7 +16,9 @@ import useInfiniteScroll from "@/hooks/useInfiniteScroll";
 import { DateTime } from "luxon";
 
 const MoviesPage = () => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const limit = 20;
+    // Keep one fixed snapshot timestamp so pagination pages stay consistent while scrolling.
     const [snapshotTime] = useState(() => DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const search = useSearch({ from: "/_layout/movies" });
@@ -40,6 +45,7 @@ const MoviesPage = () => {
 
     const queryClient = useQueryClient();
 
+    // Data hooks keep this module synced with backend data and shared cache state.
     const { mutate: fetchWatchlist } = useMutation({
         mutationFn: () => MeService.syncWatchlist(),
         onSuccess: () => {
@@ -47,6 +53,7 @@ const MoviesPage = () => {
         },
     });
 
+    // Sync watchlist once on initial mount so server watchlist state is current.
     const hasFetched = useRef(false);
 
     useEffect(() => {
@@ -55,6 +62,7 @@ const MoviesPage = () => {
         hasFetched.current = true;
     }, [])
 
+    // Persist search/filter state into the URL so refresh/share keeps the same view.
     useEffect(() => {
         const isSame = search.query === debouncedSearchQuery &&
                        search.watchlistOnly === watchlistOnly;
@@ -70,6 +78,7 @@ const MoviesPage = () => {
         })
     }, [debouncedSearchQuery, watchlistOnly, navigate]);
 
+    // The fetch hook uses these filters as part of its query key.
     const filters: MovieFilters = {
         query: debouncedSearchQuery,
         watchlistOnly: watchlistOnly,
@@ -94,9 +103,11 @@ const MoviesPage = () => {
         hasNextPage,
         isFetchingNextPage,
         loadMoreRef,
+        // Start prefetching before the user reaches the bottom for smoother infinite scroll.
         rootMargin: "2000px",
     });
 
+    // Render/output using the state and derived values prepared above.
     return (
         <>
             <Flex>

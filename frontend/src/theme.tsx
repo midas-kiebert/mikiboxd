@@ -1,3 +1,6 @@
+/**
+ * Theme configuration for Chakra UI styling in the web app.
+ */
 import { createSystem, defaultConfig } from "@chakra-ui/react"
 import { buttonRecipe } from "./theme/button.recipe"
 

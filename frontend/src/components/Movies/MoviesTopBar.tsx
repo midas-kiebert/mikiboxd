@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Movies Top Bar.
+ */
 import SearchBar from "../Common/SearchBar";
 import WatchlistToggle from "./WatchlistToggle";
 import TopBar from "../Common/TopBar";
@@ -24,6 +27,7 @@ const MoviesTopBar = ({
     handleDaysChange,
 
 }: MoviesTopBarProps) => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     return (
         <TopBar>
             <SearchBar

@@ -1,3 +1,6 @@
+/**
+ * TanStack Router route module for settings. It connects URL state to the matching page component.
+ */
 import { Container, Heading, Tabs } from "@chakra-ui/react"
 import { createFileRoute } from "@tanstack/react-router"
 
@@ -26,6 +29,7 @@ export const Route = createFileRoute("/_layout/settings")({
 })
 
 function UserSettings() {
+  // Read flow: route state and data hooks first, then handlers, then page JSX.
   const { user: currentUser } = useAuth()
   const finalTabs = currentUser?.is_superuser
     ? tabsConfig.filter((tab) => tab.value !== "danger-zone")
@@ -35,6 +39,7 @@ function UserSettings() {
     return null
   }
 
+  // Render/output using the state and derived values prepared above.
   return (
     <Page>
       <Container maxW="full">

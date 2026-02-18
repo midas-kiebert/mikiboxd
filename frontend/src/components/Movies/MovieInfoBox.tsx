@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Movie Info Box.
+ */
 import { Separator, Flex } from "@chakra-ui/react";
 import MovieTitle from "./MovieTitle";
 import OriginalTitle from "./OriginalTitle";
@@ -20,6 +23,7 @@ const goingBorderMap: Record<string, string> = {
 
 
 export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const showtimes = movie.showtimes || [];
     const cinemas = movie.cinemas || [];
     const lastShowtime = movie.last_showtime_datetime || null;
@@ -27,6 +31,7 @@ export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
     const friends_going = movie.friends_going || [];
     const friends_interested = movie.friends_interested || [];
     const original_title = movie.original_title || null;
+    // Render/output using the state and derived values prepared above.
     return (
         <Flex
             ml={{base: 2, md: 8}}

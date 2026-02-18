@@ -157,27 +157,7 @@ def get_main_page_showtimes(
     filters: Filters,
     letterboxd_username: str | None = None,
 ) -> list[Showtime]:
-    friends_subq = select(Friendship.friend_id).where(Friendship.user_id == user_id)
-
-    stmt = (
-        select(Showtime)
-        .join(
-            ShowtimeSelection,
-            col(Showtime.id) == ShowtimeSelection.showtime_id,
-        )
-        .where(
-            or_(
-                col(ShowtimeSelection.user_id).in_(friends_subq),
-                ShowtimeSelection.user_id == user_id,
-            ),
-            Showtime.datetime >= filters.snapshot_time,
-        )
-    )
-
-    if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
-        stmt = stmt.where(
-            col(ShowtimeSelection.going_status).in_(filters.selected_statuses)
-        )
+    stmt = select(Showtime).where(Showtime.datetime >= filters.snapshot_time)
 
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
         stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
@@ -211,6 +191,23 @@ def get_main_page_showtimes(
             WatchlistSelection,
             col(WatchlistSelection.movie_id) == col(Showtime.movie_id),
         ).where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
+
+    if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
+        friends_subq = select(Friendship.friend_id).where(Friendship.user_id == user_id)
+        stmt = (
+            stmt.join(
+                ShowtimeSelection,
+                col(Showtime.id) == col(ShowtimeSelection.showtime_id),
+            )
+            .where(
+                or_(
+                    col(ShowtimeSelection.user_id).in_(friends_subq),
+                    ShowtimeSelection.user_id == user_id,
+                ),
+                col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
+            )
+            .distinct()
+        )
 
     stmt = stmt.order_by(col(Showtime.datetime)).limit(limit).offset(offset)
     showtimes = list(session.exec(stmt).all())

@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Field. This keeps common UI patterns consistent.
+ */
 import { Field as ChakraField } from "@chakra-ui/react"
 import * as React from "react"
 

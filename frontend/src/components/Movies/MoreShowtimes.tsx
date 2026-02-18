@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: More Showtimes.
+ */
 import {Box, Text} from "@chakra-ui/react";
 
 function formatDate(datetime: string): string {
@@ -15,6 +18,7 @@ type MoreShowtimesProps = {
 };
 
 const MoreShowtimes = ({ lastShowtime, additional_showtime_count }: MoreShowtimesProps) => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     return (
         <Box
             maxH={"2em"}

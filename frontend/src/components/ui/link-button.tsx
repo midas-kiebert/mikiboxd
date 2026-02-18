@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Link button. This keeps common UI patterns consistent.
+ */
 "use client"
 
 import type { HTMLChakraProps, RecipeProps } from "@chakra-ui/react"

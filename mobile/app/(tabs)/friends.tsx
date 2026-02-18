@@ -66,7 +66,7 @@ export default function FriendsScreen() {
 
   // Build the filter payload from current UI selections.
   const userFilters = useMemo(
-    () => ({ query: normalizedSearchQuery || undefined }),
+    () => ({ query: normalizedSearchQuery }),
     [normalizedSearchQuery]
   );
 

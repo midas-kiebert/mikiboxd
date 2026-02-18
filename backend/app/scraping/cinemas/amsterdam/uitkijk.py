@@ -1,4 +1,5 @@
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from re import sub
 
@@ -12,10 +13,14 @@ from app.crud import cinema as cinema_crud
 from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
-from app.scraping.letterboxd.load_letterboxd_data import scrape_letterboxd
+from app.scraping.letterboxd.load_letterboxd_data import (
+    is_letterboxd_temporarily_blocked,
+    scrape_letterboxd,
+)
 from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 from app.services import movies as movies_services
+from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_services
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -51,8 +56,6 @@ class Response(BaseModel):
 
 class UitkijkScraper(BaseCinemaScraper):
     def __init__(self) -> None:
-        self.movies: list[MovieCreate] = []
-        self.showtimes: list[ShowtimeCreate] = []
         with get_db_context() as session:
             self.cinema_id = cinema_crud.get_cinema_id_by_name(
                 session=session, name=CINEMA
@@ -61,14 +64,12 @@ class UitkijkScraper(BaseCinemaScraper):
                 logger.error(f"Cinema {CINEMA} not found in database")
                 raise ValueError(f"Cinema {CINEMA} not found in database")
 
-    def scrape(self) -> None:
+    def scrape(self) -> list[tuple[str, int]]:
         if not self.cinema_id:
             raise ValueError("Cinema id not set")
 
         url: str | None = "https://api.uitkijk.nl/z-tickets/ladder?offset=0&limit=20"
-        # logger.trace(f"{url = }")
-
-        movie_cache: dict[str, MovieCreate] = {}
+        all_shows: list[Show] = []
 
         while url:
             response = requests.get(url, verify=False)
@@ -84,36 +85,75 @@ class UitkijkScraper(BaseCinemaScraper):
                 if not day.shows:
                     continue
                 for show in day.shows:
-                    title_query = clean_title(show.title)
-                    start_datetime_str = show.start_date
-                    dt = datetime.strptime(start_datetime_str, "%Y-%m-%dT%H:%M:%S.%fZ")
-                    start_datetime = dt.replace(tzinfo=None)
-                    slug = show.slug
+                    all_shows.append(show)
 
-                    if slug not in movie_cache:
-                        movie = get_movie(slug=slug, title_query=title_query)
-                        if not movie:
-                            continue
-                        movie_cache[slug] = movie
-                        self.movies.append(movie)
+        movie_cache: dict[str, MovieCreate] = {}
+        slug_to_title_query: dict[str, str] = {}
+        for show in all_shows:
+            slug_to_title_query.setdefault(show.slug, clean_title(show.title))
 
-                    showtime = ShowtimeCreate(
-                        movie_id=movie_cache[slug].id,
-                        datetime=start_datetime,
-                        cinema_id=self.cinema_id,
-                        ticket_link=f"https://www.uitkijk.nl/film/{slug}",
-                    )
-                    self.showtimes.append(showtime)
+        max_workers = min(len(slug_to_title_query), self.item_concurrency()) or 1
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_slug = {
+                executor.submit(
+                    get_movie,
+                    slug=slug,
+                    title_query=title_query,
+                ): slug
+                for slug, title_query in slug_to_title_query.items()
+            }
+            for future in as_completed(future_to_slug):
+                slug = future_to_slug[future]
+                try:
+                    movie = future.result()
+                except Exception:
+                    logger.exception(f"Failed processing Uitkijk movie slug {slug}")
+                    continue
+                if movie is None:
+                    continue
+                movie_cache[slug] = movie
+
+        movies_by_id: dict[int, MovieCreate] = {}
+        showtimes: list[ShowtimeCreate] = []
+        for show in all_shows:
+            movie = movie_cache.get(show.slug)
+            if movie is None:
+                continue
+            dt = datetime.strptime(show.start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
+            start_datetime = dt.replace(tzinfo=None)
+            showtimes.append(
+                ShowtimeCreate(
+                    movie_id=movie.id,
+                    datetime=start_datetime,
+                    cinema_id=self.cinema_id,
+                    ticket_link=f"https://www.uitkijk.nl/film/{show.slug}",
+                )
+            )
+            movies_by_id[movie.id] = movie
+
+        observed_presences: list[tuple[str, int]] = []
         with get_db_context() as session:
-            # logger.trace(f"Inserting {len(self.movies)} movies and {len(self.showtimes)} showtimes")
-            for movie_create in self.movies:
+            for movie_create in movies_by_id.values():
                 movies_services.insert_movie_if_not_exists(
-                    session=session, movie_create=movie_create
+                    session=session,
+                    movie_create=movie_create,
+                    commit=False,
                 )
-            for showtime_create in self.showtimes:
-                showtimes_services.insert_showtime_if_not_exists(
-                    session=session, showtime_create=showtime_create
+            for showtime_create in showtimes:
+                showtime = showtimes_services.upsert_showtime(
+                    session=session,
+                    showtime_create=showtime_create,
+                    commit=False,
                 )
+                source_event_key = scrape_sync_service.fallback_source_event_key(
+                    movie_id=showtime_create.movie_id,
+                    cinema_id=showtime_create.cinema_id,
+                    dt=showtime_create.datetime,
+                    ticket_link=showtime_create.ticket_link,
+                )
+                observed_presences.append((source_event_key, showtime.id))
+            session.commit()
+        return observed_presences
 
 
 def get_movie(slug: str, title_query: str) -> MovieCreate | None:
@@ -175,7 +215,10 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
 
     letterboxd_data = scrape_letterboxd(tmdb_id)
     if letterboxd_data is None:
-        logger.warning(f"No Letterboxd data found for {title_query}, skipping")
+        if is_letterboxd_temporarily_blocked():
+            logger.debug(f"Letterboxd temporarily blocked; skipping TMDB ID {tmdb_id}")
+        else:
+            logger.warning(f"No Letterboxd data found for {title_query}, skipping")
         return None
 
     movie = MovieCreate(
@@ -188,5 +231,5 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
         release_year=letterboxd_data.release_year,
         rating=letterboxd_data.rating,
     )
-    logger.debug(f"Found TMDB id {tmdb_id} for {letterboxd_data.title}")
+    logger.debug(f"Resolved TMDB id {tmdb_id} for {letterboxd_data.title}")
     return movie

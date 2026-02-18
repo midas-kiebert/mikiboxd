@@ -1,4 +1,5 @@
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from bs4 import BeautifulSoup
@@ -10,10 +11,14 @@ from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.date_conversion import get_closest_exact_date
-from app.scraping.letterboxd.load_letterboxd_data import scrape_letterboxd
+from app.scraping.letterboxd.load_letterboxd_data import (
+    is_letterboxd_temporarily_blocked,
+    scrape_letterboxd,
+)
 from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 from app.services import movies as movies_services
+from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_services
 
 CINEMA = "LAB111"
@@ -32,8 +37,6 @@ def clean_title(title: str) -> str:
 
 class LAB111Scraper(BaseCinemaScraper):
     def __init__(self) -> None:
-        self.movies: list[MovieCreate] = []
-        self.showtimes: list[ShowtimeCreate] = []
         with get_db_context() as session:
             self.cinema_id = cinema_crud.get_cinema_id_by_name(
                 session=session, name=CINEMA
@@ -42,7 +45,80 @@ class LAB111Scraper(BaseCinemaScraper):
                 logger.error(f"Cinema {CINEMA} not found in database")
                 raise ValueError(f"Cinema {CINEMA} not found in database")
 
-    def scrape(self) -> None:
+    def _process_film_div(
+        self,
+        div: Tag,
+    ) -> tuple[MovieCreate, list[ShowtimeCreate]] | None:
+        assert self.cinema_id is not None
+        raw_title = div.get("data-title")
+        if raw_title is None or not isinstance(raw_title, str):
+            logger.warning("Skipping div without a valid data-title attribute")
+            return None
+        title_query = clean_title(raw_title)
+        directors = extract_name(div, "Regisseur:")
+        actors = extract_name(div, "Acteurs:")
+        actor = actors[0] if actors else None
+
+        tmdb_id = find_tmdb_id(
+            title_query=title_query,
+            director_names=directors,
+            actor_name=actor,
+        )
+        if tmdb_id is None:
+            logger.warning(f"No TMDB id found for {title_query}, skipping")
+            return None
+
+        letterboxd_data = scrape_letterboxd(tmdb_id)
+        if letterboxd_data is None:
+            if is_letterboxd_temporarily_blocked():
+                logger.debug(
+                    f"Letterboxd temporarily blocked; skipping TMDB ID {tmdb_id}"
+                )
+            else:
+                logger.warning(
+                    f"No Letterboxd data found for TMDB id {tmdb_id}, skipping"
+                )
+            return None
+
+        movie = MovieCreate(
+            id=int(tmdb_id),
+            title=letterboxd_data.title,
+            poster_link=letterboxd_data.poster_url,
+            letterboxd_slug=letterboxd_data.slug,
+            top250=letterboxd_data.top250,
+            directors=letterboxd_data.directors,
+            release_year=letterboxd_data.release_year,
+            rating=letterboxd_data.rating,
+        )
+
+        showtimes: list[ShowtimeCreate] = []
+        days = div.find_all("tr", class_="day")
+        for day in days:
+            if not isinstance(day, Tag):
+                continue
+            links = day.find_all("a")
+            if len(links) == 0:
+                logger.debug(f"No links found for {letterboxd_data.title}, skipping")
+                continue
+            link = links[0]
+            if not isinstance(link, Tag):
+                continue
+            potential_showtime = link.get_text(strip=True)
+            date = get_closest_exact_date(potential_showtime)
+            ticket_link = link["href"]
+            if not isinstance(ticket_link, str):
+                continue
+            showtimes.append(
+                ShowtimeCreate(
+                    movie_id=movie.id,
+                    datetime=date,
+                    cinema_id=self.cinema_id,
+                    ticket_link=ticket_link,
+                )
+            )
+        return movie, showtimes
+
+    def scrape(self) -> list[tuple[str, int]]:
         assert self.cinema_id is not None
         url = "https://lab111.nl/programma"
         response = requests.get(url)
@@ -54,86 +130,57 @@ class LAB111Scraper(BaseCinemaScraper):
 
         if not film_divs:
             logger.debug("No film divs found in LAB111")
-            return
+            return []
 
+        work_items: list[Tag] = []
         for div in film_divs:
             if not isinstance(div, Tag):
                 logger.warning("Skipping non-Tag element in film divs")
                 continue
-            raw_title = div.get("data-title")
-            if raw_title is None or not isinstance(raw_title, str):
-                logger.warning("Skipping div without a valid data-title attribute")
-                continue
-            title_query = clean_title(raw_title)
-            directors = extract_name(div, "Regisseur:")  # Extract director name
-            actors = extract_name(div, "Acteurs:")  # Extract actor name
-            actor = actors[0] if actors else None
+            work_items.append(div)
 
-            # Try to find the tmdb_id
-            tmdb_id = find_tmdb_id(
-                title_query=title_query, director_names=directors, actor_name=actor
-            )
-            if tmdb_id is None:
-                logger.warning(f"No TMDB id found for {title_query}, skipping")
-                continue
-
-            letterboxd_data = scrape_letterboxd(tmdb_id)
-            if letterboxd_data is None:
-                logger.warning(
-                    f"No Letterboxd data found for TMDB id {tmdb_id}, skipping"
-                )
-                continue
-
-            # Get film from the database, check on id first, title as backup.
-            # Add into the database if needed
-            movie = MovieCreate(
-                id=int(tmdb_id),
-                title=letterboxd_data.title,
-                poster_link=letterboxd_data.poster_url,
-                letterboxd_slug=letterboxd_data.slug,
-                top250=letterboxd_data.top250,
-                directors=letterboxd_data.directors,
-                release_year=letterboxd_data.release_year,
-                rating=letterboxd_data.rating,
-            )
-            self.movies.append(movie)
-            # logger.debug(f"Found TMDB id {tmdb_id} for {title}")
-
-            days = div.find_all("tr", class_="day")
-            # logger.trace(f"Found {len(days)} showtimes for {title}")
-            for day in days:
-                assert isinstance(day, Tag)
-
-                # Get the date and ticket link
-                links = day.find_all("a")
-                if len(links) == 0:
-                    logger.debug(
-                        f"No links found for {letterboxd_data.title}, skipping"
-                    )
+        max_workers = min(len(work_items), self.item_concurrency()) or 1
+        movies_by_id: dict[int, MovieCreate] = {}
+        showtimes: list[ShowtimeCreate] = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(self._process_film_div, div) for div in work_items
+            ]
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                except Exception:
+                    logger.exception("Error processing LAB111 film entry")
                     continue
-                link = links[0]
-                assert isinstance(link, Tag)
-                potential_showtime = link.get_text(strip=True)
-                date = get_closest_exact_date(potential_showtime)
-                ticket_link = link["href"]
-                assert isinstance(ticket_link, str)
-                showtime = ShowtimeCreate(
-                    movie_id=movie.id,
-                    datetime=date,
-                    cinema_id=self.cinema_id,
-                    ticket_link=ticket_link,
-                )
-                self.showtimes.append(showtime)
+                if result is None:
+                    continue
+                movie, movie_showtimes = result
+                movies_by_id[movie.id] = movie
+                showtimes.extend(movie_showtimes)
+
+        observed_presences: list[tuple[str, int]] = []
         with get_db_context() as session:
-            # logger.trace(f"Inserting {len(self.movies)} movies and {len(self.showtimes)} showtimes")
-            for movie_create in self.movies:
+            for movie_create in movies_by_id.values():
                 movies_services.insert_movie_if_not_exists(
-                    session=session, movie_create=movie_create
+                    session=session,
+                    movie_create=movie_create,
+                    commit=False,
                 )
-            for showtime_create in self.showtimes:
-                showtimes_services.insert_showtime_if_not_exists(
-                    session=session, showtime_create=showtime_create
+            for showtime_create in showtimes:
+                showtime = showtimes_services.upsert_showtime(
+                    session=session,
+                    showtime_create=showtime_create,
+                    commit=False,
                 )
+                source_event_key = scrape_sync_service.fallback_source_event_key(
+                    movie_id=showtime_create.movie_id,
+                    cinema_id=showtime_create.cinema_id,
+                    dt=showtime_create.datetime,
+                    ticket_link=showtime_create.ticket_link,
+                )
+                observed_presences.append((source_event_key, showtime.id))
+            session.commit()
+        return observed_presences
 
 
 def extract_name(tag: Tag, label: str) -> list[str]:

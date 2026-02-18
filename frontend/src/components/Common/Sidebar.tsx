@@ -8,7 +8,7 @@ import { useState } from "react"
 import { FaBars } from "react-icons/fa"
 import { FiLogOut } from "react-icons/fi"
 
-import type { UserPublic } from "shared"
+import type { MeGetCurrentUserResponse } from "shared"
 import useAuth from "shared/hooks/useAuth"
 import {
   DrawerBackdrop,
@@ -27,7 +27,7 @@ const Sidebar = () => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
-  const currentUser = queryClient.getQueryData<UserPublic>(["currentUser"])
+  const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>(["currentUser"])
   // Data hooks keep this module synced with backend data and shared cache state.
   const { logout } = useAuth(
     () => navigate({ to: "/" }), // onLoginSuccess

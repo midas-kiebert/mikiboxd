@@ -1,4 +1,5 @@
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 import httpx
@@ -12,10 +13,14 @@ from app.crud import cinema as cinema_crud
 from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
-from app.scraping.letterboxd.load_letterboxd_data import scrape_letterboxd
+from app.scraping.letterboxd.load_letterboxd_data import (
+    is_letterboxd_temporarily_blocked,
+    scrape_letterboxd,
+)
 from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 from app.services import movies as movies_service
+from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
 
 
@@ -57,15 +62,12 @@ def clean_title(title: str) -> str:
 
 class EyeScraper(BaseCinemaScraper):
     def __init__(self) -> None:
-        self.movies: list[MovieCreate] = []
-        self.showtimes: list[ShowtimeCreate] = []
-        self.movie_cache: dict[int, MovieCreate] = {}
         with get_db_context() as session:
             self.cinema_id = cinema_crud.get_cinema_id_by_name(
                 session=session, name=CINEMA
             )
 
-    def scrape(self) -> None:
+    def scrape(self) -> list[tuple[str, int]]:
         # logger.trace(f"Running eye scraper")
         current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -82,55 +84,87 @@ class EyeScraper(BaseCinemaScraper):
                 headers=HEADERS,
                 json={"query": QUERY, "variables": variables, "operationName": "shows"},
             )
+        response.raise_for_status()
         shows = Response.model_validate(response.json()).data.shows
 
+        valid_shows: list[Show] = []
+        movie_inputs: dict[int, tuple[str, str]] = {}
         for show in shows:
-            # logger.trace(f"Proccessing show: {show}")
-            self.process_show(show)
+            production_type = show.relatedProduction.productionType
+            if production_type != "1" or not show.production:
+                continue
+            production = show.production[0]
+            valid_shows.append(show)
+            movie_inputs.setdefault(
+                production.id,
+                (clean_title(production.title), show.url),
+            )
 
+        movies_by_production_id: dict[int, MovieCreate] = {}
+        max_workers = min(len(movie_inputs), self.item_concurrency()) or 1
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_production_id = {
+                executor.submit(
+                    get_movie, title_query=title_query, url=url
+                ): production_id
+                for production_id, (title_query, url) in movie_inputs.items()
+            }
+            for future in as_completed(future_to_production_id):
+                production_id = future_to_production_id[future]
+                try:
+                    movie = future.result()
+                except Exception:
+                    logger.exception(
+                        f"Failed to process Eye production {production_id}"
+                    )
+                    continue
+                if movie is None:
+                    continue
+                movies_by_production_id[production_id] = movie
+
+        movies_by_id: dict[int, MovieCreate] = {}
+        showtimes: list[ShowtimeCreate] = []
+        for show in valid_shows:
+            production = show.production[0]
+            movie = movies_by_production_id.get(production.id)
+            if movie is None:
+                continue
+            start_datetime = datetime.fromisoformat(show.startDateTime).replace(
+                tzinfo=None
+            )
+            showtimes.append(
+                ShowtimeCreate(
+                    movie_id=movie.id,
+                    datetime=start_datetime,
+                    cinema_id=self.cinema_id,
+                    ticket_link=show.ticketUrl,
+                )
+            )
+            movies_by_id[movie.id] = movie
+
+        observed_presences: list[tuple[str, int]] = []
         with get_db_context() as session:
-            # logger.trace(f"Inserting {len(self.movies)} movies and {len(self.showtimes)} showtimes")
-            for movie_create in self.movies:
+            for movie_create in movies_by_id.values():
                 movies_service.insert_movie_if_not_exists(
-                    session=session, movie_create=movie_create
+                    session=session,
+                    movie_create=movie_create,
+                    commit=False,
                 )
-            for showtime_create in self.showtimes:
-                showtimes_service.insert_showtime_if_not_exists(
-                    session=session, showtime_create=showtime_create
+            for showtime_create in showtimes:
+                showtime = showtimes_service.upsert_showtime(
+                    session=session,
+                    showtime_create=showtime_create,
+                    commit=False,
                 )
-
-    def process_show(self, show: Show) -> None:
-        assert self.cinema_id is not None
-        production_type = show.relatedProduction.productionType
-        # logger.trace(f"Processing show with production type {production_type}")
-        if production_type != "1":
-            # logger.trace(f"Skipping show with production type {production_type}, only movies are processed")
-            return
-        # logger.trace(f"Processing show: {show}")
-        url = show.url
-        start_datetime_str = show.startDateTime
-        ticket_url = show.ticketUrl
-        title_query = clean_title(show.production[0].title)
-        movie_id = show.production[0].id
-        start_datetime = datetime.fromisoformat(start_datetime_str).replace(tzinfo=None)
-
-        if movie_id not in self.movie_cache:
-            movie = get_movie(title_query=title_query, url=url)
-            if not movie:
-                return
-            self.movie_cache[movie_id] = movie
-            self.movies.append(movie)
-        else:
-            movie = self.movie_cache[movie_id]
-
-        showtime = ShowtimeCreate(
-            movie_id=movie.id,
-            datetime=start_datetime,
-            cinema_id=self.cinema_id,
-            ticket_link=ticket_url,
-        )
-
-        self.showtimes.append(showtime)
+                source_event_key = scrape_sync_service.fallback_source_event_key(
+                    movie_id=showtime_create.movie_id,
+                    cinema_id=showtime_create.cinema_id,
+                    dt=showtime_create.datetime,
+                    ticket_link=showtime_create.ticket_link,
+                )
+                observed_presences.append((source_event_key, showtime.id))
+            session.commit()
+        return observed_presences
 
 
 def get_movie(title_query: str, url: str) -> MovieCreate | None:
@@ -171,7 +205,10 @@ def get_movie(title_query: str, url: str) -> MovieCreate | None:
     letterboxd_data = scrape_letterboxd(tmdb_id)
 
     if letterboxd_data is None:
-        logger.warning(f"No Letterboxd data found for TMDB id {tmdb_id}, skipping")
+        if is_letterboxd_temporarily_blocked():
+            logger.debug(f"Letterboxd temporarily blocked; skipping TMDB ID {tmdb_id}")
+        else:
+            logger.warning(f"No Letterboxd data found for TMDB id {tmdb_id}, skipping")
         return None
 
     return MovieCreate(

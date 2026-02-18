@@ -139,6 +139,7 @@ def upsert_movie(
     *,
     session: Session,
     movie_create: MovieCreate,
+    commit: bool = True,
 ):
     """
     Insert or update a movie in the database.
@@ -147,14 +148,27 @@ def upsert_movie(
         session (Session): Database session.
         movie_create (MovieCreate): Movie data to insert or update.
     """
+    if commit:
+        try:
+            movie = movies_crud.upsert_movie(
+                session=session,
+                movie_create=movie_create,
+            )
+            session.commit()
+            return movie
+        except Exception as e:
+            session.rollback()
+            raise AppError from e
+
     try:
-        movies_crud.upsert_movie(
-            session=session,
-            movie_create=movie_create,
-        )
-        session.commit()
+        with session.begin_nested():
+            movie = movies_crud.upsert_movie(
+                session=session,
+                movie_create=movie_create,
+            )
+            session.flush()
+            return movie
     except Exception as e:
-        session.rollback()
         raise AppError from e
 
 
@@ -162,6 +176,7 @@ def insert_movie_if_not_exists(
     *,
     session: Session,
     movie_create: MovieCreate,
+    commit: bool = True,
 ) -> bool:
     """
     Insert a movie into the database if it does not already exist.
@@ -172,21 +187,38 @@ def insert_movie_if_not_exists(
     Returns:
         bool: True if the movie was inserted, False if it already exists.
     """
+    if commit:
+        try:
+            movies_crud.create_movie(
+                session=session,
+                movie_create=movie_create,
+            )
+            session.commit()
+            return True
+        except IntegrityError as e:
+            session.rollback()
+            if isinstance(e.orig, UniqueViolation):
+                return False
+            else:
+                raise AppError from e
+        except Exception as e:
+            session.rollback()
+            raise AppError from e
+
     try:
-        movies_crud.create_movie(
-            session=session,
-            movie_create=movie_create,
-        )
-        session.commit()
-        return True
+        with session.begin_nested():
+            movies_crud.create_movie(
+                session=session,
+                movie_create=movie_create,
+            )
+            session.flush()
+            return True
     except IntegrityError as e:
-        session.rollback()
         if isinstance(e.orig, UniqueViolation):
             return False
         else:
             raise AppError from e
     except Exception as e:
-        session.rollback()
         raise AppError from e
 
 

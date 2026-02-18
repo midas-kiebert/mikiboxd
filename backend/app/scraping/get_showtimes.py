@@ -1,6 +1,7 @@
-import json
+import asyncio
 from datetime import datetime
 
+import aiohttp
 import requests
 from pydantic import BaseModel, Field
 
@@ -51,6 +52,60 @@ def truncate_ticket_link(ticketUrl: str | None) -> str | None:
     return ticketUrl
 
 
+async def get_showtimes_json_async(
+    productionId: str,
+    session: aiohttp.ClientSession | None = None,
+) -> list[ShowtimeResponse]:
+    url = "https://api.cineville.nl/events/search?page[limit]=1000"
+    headers = {
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "productionId": {"eq": productionId},
+        "startDate": {"gte": datetime.utcnow().isoformat()},
+        "embed": {"venue": True},
+        "sort": {"startDate": "asc"},
+    }
+
+    close_session = session is None
+    if close_session:
+        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
+
+    assert session is not None
+    try:
+        async with session.post(url, headers=headers, json=payload) as response:
+            response.raise_for_status()
+            response_json = await response.json()
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        logger.warning(
+            f"Failed to fetch showtimes for production ID {productionId}. Error: {e}"
+        )
+        return []
+    finally:
+        if close_session:
+            await session.close()
+
+    try:
+        parsed_response = Response.model_validate(response_json)
+    except Exception as e:
+        logger.warning(
+            f"Error parsing showtimes response for production ID {productionId}. Error: {e}"
+        )
+        return []
+
+    return [
+        ShowtimeResponse.model_validate(
+            {
+                "id": event.id,
+                "startDate": event.startDate,
+                "venueName": event.embedded.venue.name,
+                "ticketUrl": truncate_ticket_link(event.ticketingUrl),
+            }
+        )
+        for event in parsed_response.embedded.events
+    ]
+
+
 def get_showtimes_json(productionId: str) -> list[ShowtimeResponse]:
     url = "https://api.cineville.nl/events/search?page[limit]=1000"
 
@@ -69,16 +124,13 @@ def get_showtimes_json(productionId: str) -> list[ShowtimeResponse]:
         res = requests.post(
             url,
             headers=headers,
-            data=json.dumps(payload),
+            json=payload,
             timeout=10,
         )
         res.raise_for_status()
     except requests.RequestException as e:
         logger.warning(
-            "Failed to fetch showtimes for production ID:",
-            productionId,
-            "Error:",
-            str(e),
+            f"Failed to fetch showtimes for production ID {productionId}. Error: {e}"
         )
         return []
 
@@ -86,25 +138,18 @@ def get_showtimes_json(productionId: str) -> list[ShowtimeResponse]:
         response = Response.model_validate(res.json())
     except Exception as e:
         logger.warning(
-            "Error parsing showtimes response for production ID:",
-            productionId,
-            "Error:",
-            str(e),
+            f"Error parsing showtimes response for production ID {productionId}. Error: {e}"
         )
         return []
 
-    clean_events: list[ShowtimeResponse] = []
-
-    for event in response.embedded.events:
-        clean_events.append(
-            ShowtimeResponse.model_validate(
-                {
-                    "id": event.id,
-                    "startDate": event.startDate,
-                    "venueName": event.embedded.venue.name,
-                    "ticketUrl": truncate_ticket_link(event.ticketingUrl),
-                }
-            )
+    return [
+        ShowtimeResponse.model_validate(
+            {
+                "id": event.id,
+                "startDate": event.startDate,
+                "venueName": event.embedded.venue.name,
+                "ticketUrl": truncate_ticket_link(event.ticketingUrl),
+            }
         )
-
-    return clean_events
+        for event in response.embedded.events
+    ]

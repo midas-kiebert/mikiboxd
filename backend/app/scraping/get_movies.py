@@ -1,6 +1,7 @@
-import json
+import asyncio
 from datetime import datetime
 
+import aiohttp
 import requests
 from pydantic import BaseModel
 
@@ -27,14 +28,8 @@ class Response(BaseModel):
     data: ResponseData
 
 
-def get_movies_json() -> list[Film]:
-    url = "https://cineville.nl/api/graphql"
-
-    headers = {
-        "content-type": "application/json",
-    }
-
-    payload = {
+def _movies_payload() -> dict:
+    return {
         "operationName": "films",
         "query": """query films($filters: FilmsFilters, $page: CursorPagination) {
     films(
@@ -75,21 +70,64 @@ def get_movies_json() -> list[Film]:
         },
     }
 
+
+async def get_movies_json_async(
+    session: aiohttp.ClientSession | None = None,
+) -> list[Film]:
+    url = "https://cineville.nl/api/graphql"
+    headers = {
+        "content-type": "application/json",
+    }
+    payload = _movies_payload()
+
+    close_session = session is None
+    if close_session:
+        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
+
+    assert session is not None
     try:
-        res = requests.post(url, headers=headers, data=json.dumps(payload), timeout=10)
+        async with session.post(url, headers=headers, json=payload) as response:
+            response.raise_for_status()
+            response_json = await response.json()
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        logger.warning(f"Failed to fetch movies data. Error: {e}")
+        return []
+    finally:
+        if close_session:
+            await session.close()
+
+    try:
+        movies_response = Response.model_validate(response_json)
+    except Exception as e:
+        logger.warning(f"Error parsing movies response. Error: {e}")
+        return []
+
+    return movies_response.data.films.data
+
+
+def get_movies_json() -> list[Film]:
+    url = "https://cineville.nl/api/graphql"
+
+    headers = {
+        "content-type": "application/json",
+    }
+
+    payload = _movies_payload()
+
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=10)
         res.raise_for_status()
     except requests.RequestException as e:
-        logger.warning("Failed to fetch movies data. Error:", str(e))
+        logger.warning(f"Failed to fetch movies data. Error: {e}")
         return []
 
     try:
         movies_response = Response.model_validate(res.json())
     except Exception as e:
-        logger.warning("Error parsing movies response. Error:", str(e))
+        logger.warning(f"Error parsing movies response. Error: {e}")
         return []
-    movies_data = movies_response.data.films.data
 
-    return movies_data
+    return movies_response.data.films.data
 
 
 if __name__ == "__main__":

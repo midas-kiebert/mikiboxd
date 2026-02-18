@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from re import split, sub
 
 import requests
@@ -14,6 +15,7 @@ from app.scraping.letterboxd.load_letterboxd_data import scrape_letterboxd
 from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 from app.services import movies as movies_services
+from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_services
 
 CINEMA = "Kriterion"
@@ -45,14 +47,12 @@ class Shows(BaseModel):
 
 class KriterionScraper(BaseCinemaScraper):
     def __init__(self) -> None:
-        self.movies: list[MovieCreate] = []
-        self.showtimes: list[ShowtimeCreate] = []
         with get_db_context() as session:
             self.cinema_id = cinema_crud.get_cinema_id_by_name(
                 session=session, name=CINEMA
             )
 
-    def scrape(self) -> None:
+    def scrape(self) -> list[tuple[str, int]]:
         assert self.cinema_id is not None
         url_movies = "https://kritsite-cms-mxa7oxwmcq-ez.a.run.app/api/films?populate=*&pagination[page]=1&pagination[pageSize]=1000&sort=release:asc"
         url_showtimes = "https://storage.googleapis.com/kritsite-buffer/shows.json"
@@ -81,38 +81,81 @@ class KriterionScraper(BaseCinemaScraper):
             movies_directors.append((title, directors))
             # logger.trace(f"title: {title}, director: {director}")
 
-        movie_cache: dict[int, MovieCreate] = {}
+        shows_by_production_id: dict[int, Show] = {}
         for show in shows:
-            movie_id = show.production_id
-            if movie_id not in movie_cache:
-                movie = get_movie(show=show, movies_directors=movies_directors)
-                if not movie:
-                    # logger.trace(f"Could not process show {show}")
+            shows_by_production_id.setdefault(show.production_id, show)
+
+        movie_cache: dict[int, MovieCreate] = {}
+        max_workers = min(len(shows_by_production_id), self.item_concurrency()) or 1
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_production_id = {
+                executor.submit(
+                    get_movie,
+                    show=show,
+                    movies_directors=movies_directors,
+                ): production_id
+                for production_id, show in shows_by_production_id.items()
+            }
+            for future in as_completed(future_to_production_id):
+                production_id = future_to_production_id[future]
+                try:
+                    movie = future.result()
+                except Exception:
+                    logger.exception(
+                        f"Could not process Kriterion production {production_id}"
+                    )
+                    continue
+                if movie is None:
+                    show = shows_by_production_id[production_id]
                     logger.warning(f"Could not process show {show.name}")
                     continue
-                self.movies.append(movie)
-                movie_cache[movie_id] = movie
+                movie_cache[production_id] = movie
+
+        movies_by_id: dict[int, MovieCreate] = {}
+        showtimes: list[ShowtimeCreate] = []
+        for show in shows:
+            movie = movie_cache.get(show.production_id)
+            if movie is None:
+                continue
             datetime_str = show.start_date
             start_datetime = parser.parse(datetime_str).replace(tzinfo=None)
-            ticket_link = f"https://tickets.kriterion.nl/kriterion/nl/flow_configs/webshop/steps/start/show/{show.id}"
-
-            showtime = ShowtimeCreate(
-                movie_id=movie_cache[movie_id].id,
-                datetime=start_datetime,
-                cinema_id=self.cinema_id,
-                ticket_link=ticket_link,
+            ticket_link = (
+                "https://tickets.kriterion.nl/kriterion/nl/flow_configs/"
+                f"webshop/steps/start/show/{show.id}"
             )
-            self.showtimes.append(showtime)
+            showtimes.append(
+                ShowtimeCreate(
+                    movie_id=movie.id,
+                    datetime=start_datetime,
+                    cinema_id=self.cinema_id,
+                    ticket_link=ticket_link,
+                )
+            )
+            movies_by_id[movie.id] = movie
+
+        observed_presences: list[tuple[str, int]] = []
         with get_db_context() as session:
-            # logger.trace(f"Inserting {len(self.movies)} movies and {len(self.showtimes)} showtimes")
-            for movie_create in self.movies:
+            for movie_create in movies_by_id.values():
                 movies_services.insert_movie_if_not_exists(
-                    session=session, movie_create=movie_create
+                    session=session,
+                    movie_create=movie_create,
+                    commit=False,
                 )
-            for showtime in self.showtimes:
-                showtimes_services.insert_showtime_if_not_exists(
-                    session=session, showtime_create=showtime
+            for showtime in showtimes:
+                db_showtime = showtimes_services.upsert_showtime(
+                    session=session,
+                    showtime_create=showtime,
+                    commit=False,
                 )
+                source_event_key = scrape_sync_service.fallback_source_event_key(
+                    movie_id=showtime.movie_id,
+                    cinema_id=showtime.cinema_id,
+                    dt=showtime.datetime,
+                    ticket_link=showtime.ticket_link,
+                )
+                observed_presences.append((source_event_key, db_showtime.id))
+            session.commit()
+        return observed_presences
 
 
 def get_movie(
@@ -154,6 +197,6 @@ def get_movie(
         release_year=letterboxd_data.release_year,
         rating=letterboxd_data.rating,
     )
-    logger.debug(f"Found TMDB id {tmdb_id} for {title}")
+    logger.debug(f"Resolved TMDB id {tmdb_id} for {title_query}")
 
     return movie

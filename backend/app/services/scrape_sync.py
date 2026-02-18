@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import exists
 from sqlmodel import Session, col, delete, select
@@ -19,6 +19,17 @@ ORPHAN_DELETE_CUTOFF_DAYS = 1
 class ObservedPresence:
     source_event_key: str
     showtime_id: int
+
+
+@dataclass(frozen=True)
+class DeletedShowtimeInfo:
+    showtime_id: int
+    movie_id: int
+    movie_title: str
+    cinema_id: int
+    cinema_name: str
+    datetime: datetime
+    ticket_link: str | None
 
 
 def fallback_source_event_key(
@@ -140,7 +151,7 @@ def _mark_missing_for_unseen(
 ) -> None:
     stmt = select(ShowtimeSourcePresence).where(
         ShowtimeSourcePresence.source_stream == source_stream,
-        ShowtimeSourcePresence.active.is_(True),
+        col(ShowtimeSourcePresence.active).is_(True),
     )
     presences = list(session.exec(stmt).all())
     for presence in presences:
@@ -151,11 +162,48 @@ def _mark_missing_for_unseen(
             presence.active = False
 
 
+def _seed_pending_missing_after_remap(
+    *,
+    session: Session,
+    source_stream: str,
+    remapped_showtime_ids: set[int],
+    run_id: int,
+    seen_at: datetime,
+) -> None:
+    if not remapped_showtime_ids:
+        return
+    for showtime_id in remapped_showtime_ids:
+        synthetic_key = f"__remap_old__:{showtime_id}"
+        stmt = select(ShowtimeSourcePresence).where(
+            ShowtimeSourcePresence.source_stream == source_stream,
+            ShowtimeSourcePresence.source_event_key == synthetic_key,
+        )
+        existing = session.exec(stmt).first()
+        if existing is None:
+            session.add(
+                ShowtimeSourcePresence(
+                    source_stream=source_stream,
+                    source_event_key=synthetic_key,
+                    showtime_id=showtime_id,
+                    last_seen_run_id=run_id,
+                    last_seen_at=seen_at,
+                    # Start at one miss so it deactivates only after the next miss.
+                    missing_streak=1,
+                    active=True,
+                )
+            )
+            continue
+        existing.showtime_id = showtime_id
+        existing.last_seen_run_id = run_id
+        existing.last_seen_at = seen_at
+        existing.missing_streak = 1
+        existing.active = True
+
+
 def _delete_orphaned_managed_showtimes(
     *,
     session: Session,
-    forced_candidate_ids: set[int] | None = None,
-) -> int:
+) -> list[DeletedShowtimeInfo]:
     cutoff = now_amsterdam_naive() - timedelta(days=ORPHAN_DELETE_CUTOFF_DAYS)
 
     any_presence_exists = exists(
@@ -166,7 +214,7 @@ def _delete_orphaned_managed_showtimes(
     active_presence_exists = exists(
         select(ShowtimeSourcePresence.id).where(
             ShowtimeSourcePresence.showtime_id == Showtime.id,
-            ShowtimeSourcePresence.active.is_(True),
+            col(ShowtimeSourcePresence.active).is_(True),
         )
     )
 
@@ -177,21 +225,28 @@ def _delete_orphaned_managed_showtimes(
     )
     showtime_ids = set(session.exec(stmt_ids).all())
 
-    if forced_candidate_ids:
-        stmt_forced = select(Showtime.id).where(
-            col(Showtime.id).in_(forced_candidate_ids),
-            ~active_presence_exists,
-            Showtime.datetime >= cutoff,
-        )
-        showtime_ids.update(session.exec(stmt_forced).all())
-
     showtime_ids_list = list(showtime_ids)
     if not showtime_ids_list:
-        return 0
+        return []
+
+    stmt_showtimes = select(Showtime).where(col(Showtime.id).in_(showtime_ids_list))
+    showtimes = list(session.exec(stmt_showtimes).all())
+    deleted_showtimes = [
+        DeletedShowtimeInfo(
+            showtime_id=showtime.id,
+            movie_id=showtime.movie_id,
+            movie_title=showtime.movie.title,
+            cinema_id=showtime.cinema_id,
+            cinema_name=showtime.cinema.name,
+            datetime=showtime.datetime,
+            ticket_link=showtime.ticket_link,
+        )
+        for showtime in showtimes
+    ]
 
     stmt_delete = delete(Showtime).where(col(Showtime.id).in_(showtime_ids_list))
-    session.exec(stmt_delete)
-    return len(showtime_ids_list)
+    session.execute(stmt_delete)
+    return deleted_showtimes
 
 
 def record_success_run(
@@ -200,7 +255,7 @@ def record_success_run(
     source_stream: str,
     observed_presences: list[ObservedPresence],
     started_at=None,
-) -> tuple[ScrapeRunStatus, int]:
+) -> tuple[ScrapeRunStatus, list[DeletedShowtimeInfo]]:
     started = started_at or now_amsterdam_naive()
     finished = now_amsterdam_naive()
 
@@ -274,16 +329,22 @@ def record_success_run(
         if remapped_old_id is not None:
             remapped_showtime_ids.add(remapped_old_id)
 
-    deleted_count = 0
+    deleted_showtimes: list[DeletedShowtimeInfo] = []
     if degraded_reason is None:
         _mark_missing_for_unseen(
             session=session,
             source_stream=source_stream,
             seen_keys=seen_keys,
         )
-        deleted_count = _delete_orphaned_managed_showtimes(
+        _seed_pending_missing_after_remap(
             session=session,
-            forced_candidate_ids=remapped_showtime_ids,
+            source_stream=source_stream,
+            remapped_showtime_ids=remapped_showtime_ids,
+            run_id=run.id,
+            seen_at=finished,
+        )
+        deleted_showtimes = _delete_orphaned_managed_showtimes(
+            session=session,
         )
         run.status = ScrapeRunStatus.SUCCESS
         run.error = None
@@ -295,4 +356,4 @@ def record_success_run(
     run.observed_showtime_count = observed_count
     session.add(run)
     session.commit()
-    return run.status, deleted_count
+    return run.status, deleted_showtimes

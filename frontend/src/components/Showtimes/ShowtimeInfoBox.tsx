@@ -1,3 +1,6 @@
+/**
+ * Showtimes feature component: Showtime Info Box.
+ */
 import { Flex, Stack } from "@chakra-ui/react";
 import MovieTitle from "../Movies/MovieTitle";
 import FriendBadges from "../Movies/FriendBadges";
@@ -11,9 +14,11 @@ type ShowtimeInfoBoxProps = {
 };
 
 export default function ShowtimeInfoBox({ showtime } : ShowtimeInfoBoxProps) {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const friendsGoing = showtime.friends_going;
     const friendsInterested = showtime.friends_interested;
     const isMobile = useIsMobile();
+    // Render/output using the state and derived values prepared above.
     return (
         <Flex
             ml={ isMobile ? 2 : 8}

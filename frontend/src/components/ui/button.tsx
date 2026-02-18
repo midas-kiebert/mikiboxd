@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Button. This keeps common UI patterns consistent.
+ */
 import type { ButtonProps as ChakraButtonProps } from "@chakra-ui/react"
 import {
   AbsoluteCenter,

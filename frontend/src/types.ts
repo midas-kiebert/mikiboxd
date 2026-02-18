@@ -1,3 +1,6 @@
+/**
+ * Shared TypeScript type aliases and interfaces for the web app.
+ */
 import type { GoingStatus } from "shared";
 
 type Breakpoint = "base" | "sm" | "md" | "lg" | "xl" | "2xl";

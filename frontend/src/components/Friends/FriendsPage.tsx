@@ -1,3 +1,6 @@
+/**
+ * Friends feature component: Friends Page.
+ */
 import { Flex, Box, Grid } from "@chakra-ui/react";
 import Page from "@/components/Common/Page";
 import FriendsTopBar from "@/components/Friends/FriendsTopBar";
@@ -8,8 +11,10 @@ import ReceivedRequests from "@/components/Friends/ReceivedRequests";
 import SentRequests from "@/components/Friends/SentRequests";
 
 const FriendsPage = () => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const [searchQuery, setSearchQuery] = useState<string>("");
 
+    // Render/output using the state and derived values prepared above.
     return (
         <>
             <Flex>

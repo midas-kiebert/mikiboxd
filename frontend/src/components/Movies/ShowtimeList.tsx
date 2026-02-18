@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Showtime List.
+ */
 import { Box, Text } from "@chakra-ui/react";
 import type { ShowtimeInMovieLoggedIn } from "shared";
 import CinemaBadge from "../Common/CinemaBadge";
@@ -18,6 +21,7 @@ type ShowtimeListProps = {
 }
 
 const ShowtimeList = ({ showtimes }: ShowtimeListProps) => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     return (
         <Box>
             {showtimes.map((s) => (

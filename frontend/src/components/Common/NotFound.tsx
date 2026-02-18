@@ -1,7 +1,11 @@
+/**
+ * Shared web layout/presentation component: Not Found.
+ */
 import { Button, Center, Flex, Text } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
 
 const NotFound = () => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   return (
     <>
       <Flex

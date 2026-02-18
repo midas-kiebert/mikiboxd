@@ -1,3 +1,6 @@
+/**
+ * Single-movie detail feature component: Showtime Row.
+ */
 import { Flex, Text, HStack, IconButton, Link } from "@chakra-ui/react";
 import CinemaBadge from "../Common/CinemaBadge";
 import FriendBadges from "../Movies/FriendBadges";
@@ -12,6 +15,7 @@ type ShowtimeRowProps = {
 }
 
 export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     // unpack showtime data
     const {datetime, cinema, friends_going, friends_interested, going} = showtime;
 

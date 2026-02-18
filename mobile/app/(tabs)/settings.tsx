@@ -1,8 +1,12 @@
-import { Alert, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+/**
+ * Expo Router screen/module for (tabs) / settings. It controls navigation and screen-level state for this route.
+ */
+import { Alert, Linking, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
@@ -25,25 +29,37 @@ type PasswordState = {
 };
 
 export default function SettingsScreen() {
+  // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // Router instance used for in-app navigation actions.
   const router = useRouter();
+  // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
+  // Data hooks keep this module synced with backend data and shared cache state.
   const { user, logout } = useAuth(undefined, () => router.replace('/login'));
 
+  // Editable form state for profile fields.
   const [profile, setProfile] = useState<ProfileState>({
     display_name: '',
     email: '',
     letterboxd_username: '',
   });
+  // Editable form state for password fields.
   const [passwords, setPasswords] = useState<PasswordState>({
     current_password: '',
     new_password: '',
     confirm_password: '',
   });
-  const [isRegisteringPush, setIsRegisteringPush] = useState(false);
+  // Current OS permission status for notifications.
+  const [notificationPermissionStatus, setNotificationPermissionStatus] =
+    useState<Notifications.PermissionStatus | null>(null);
+  // True while enabling notifications (permissions/token + backend preference update).
+  const [isEnablingNotifications, setIsEnablingNotifications] = useState(false);
+  // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
+  // Populate editable form state once user data has loaded.
   useEffect(() => {
     if (!user) return;
     setProfile({
@@ -53,6 +69,17 @@ export default function SettingsScreen() {
     });
   }, [user]);
 
+  // Read the current OS-level notification permission status for friendly UI feedback.
+  useEffect(() => {
+    Notifications.getPermissionsAsync()
+      .then((permissions) => setNotificationPermissionStatus(permissions.status))
+      .catch((error) => {
+        console.error('Error reading notification permissions:', error);
+        setNotificationPermissionStatus(null);
+      });
+  }, []);
+
+  // Profile updates are persisted to backend and then current-user cache is refreshed.
   const profileMutation = useMutation({
     mutationFn: (data: UserUpdate) => MeService.updateUserMe({ requestBody: data }),
     onSuccess: () => {
@@ -65,6 +92,7 @@ export default function SettingsScreen() {
     },
   });
 
+  // Password changes are isolated from profile updates so errors stay scoped.
   const passwordMutation = useMutation({
     mutationFn: (data: UpdatePassword) => MeService.updatePasswordMe({ requestBody: data }),
     onSuccess: () => {
@@ -77,6 +105,7 @@ export default function SettingsScreen() {
     },
   });
 
+  // Account deletion is destructive, so the user is logged out immediately after success.
   const deleteMutation = useMutation({
     mutationFn: () => MeService.deleteUserMe(),
     onSuccess: async () => {
@@ -89,6 +118,24 @@ export default function SettingsScreen() {
     },
   });
 
+  // Notification preference updates are persisted to the backend.
+  const notificationPreferenceMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      MeService.updateUserMe({
+        requestBody: {
+          notify_on_friend_showtime_match: enabled,
+        },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+    },
+    onError: (error) => {
+      console.error('Error updating notification preferences:', error);
+      Alert.alert('Error', 'Could not update notification preferences.');
+    },
+  });
+
+  // Basic client-side validation prevents obvious round trips before API calls.
   const handleProfileSave = () => {
     if (!profile.email || !emailPattern.value.test(profile.email)) {
       Alert.alert('Invalid email', 'Please enter a valid email address.');
@@ -102,6 +149,7 @@ export default function SettingsScreen() {
     });
   };
 
+  // Keep password validation local so users get immediate feedback.
   const handlePasswordSave = () => {
     if (!passwords.current_password || !passwords.new_password) {
       Alert.alert('Missing fields', 'Please fill in all password fields.');
@@ -122,6 +170,7 @@ export default function SettingsScreen() {
     });
   };
 
+  // Run a confirmed destructive action and handle the result.
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete account',
@@ -133,6 +182,7 @@ export default function SettingsScreen() {
     );
   };
 
+  // Confirm logout and clear the local auth session.
   const handleLogout = () => {
     Alert.alert(
       'Log out',
@@ -155,29 +205,53 @@ export default function SettingsScreen() {
     );
   };
 
-  const handleRegisterPush = async () => {
+  // Enable friend overlap notifications (OS permission + push token + backend preference).
+  const handleEnableNotifications = async () => {
+    if (!user) return;
     try {
-      setIsRegisteringPush(true);
+      setIsEnablingNotifications(true);
       const token = await registerPushTokenForCurrentDevice();
+      const permissions = await Notifications.getPermissionsAsync();
+      setNotificationPermissionStatus(permissions.status);
       if (!token) {
         Alert.alert(
-          'Permission required',
-          'Enable notifications for this app to receive push updates.'
+          'Enable notifications',
+          'To receive notifications, allow them in your system settings.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Open settings', onPress: () => Linking.openSettings() },
+          ]
         );
         return;
       }
-      Alert.alert('Push ready', 'This device is now registered for push notifications.');
+      await notificationPreferenceMutation.mutateAsync(true);
+      Alert.alert('Notifications enabled', 'You’ll get friend overlap updates.');
     } catch (error) {
-      console.error('Error registering push token:', error);
-      Alert.alert('Error', 'Could not register this device for push notifications.');
+      console.error('Error enabling notifications:', error);
+      Alert.alert('Error', 'Could not enable notifications.');
     } finally {
-      setIsRegisteringPush(false);
+      setIsEnablingNotifications(false);
+    }
+  };
+
+  // Disable friend overlap notifications (backend preference only).
+  const handleDisableNotifications = async () => {
+    if (!user) return;
+    try {
+      await notificationPreferenceMutation.mutateAsync(false);
+      Alert.alert('Notifications disabled', 'You can re-enable them at any time.');
+    } catch (error) {
+      console.error('Error disabling notifications:', error);
+      // Error alert handled by mutation onError.
     }
   };
 
   const isProfileSaving = profileMutation.isPending;
   const isPasswordSaving = passwordMutation.isPending;
+  const isNotificationPreferenceEnabled = !!user?.notify_on_friend_showtime_match;
+  const isUpdatingNotifications = isEnablingNotifications || notificationPreferenceMutation.isPending;
 
+  // Render/output using the state and derived values prepared above.
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <TopBar title="Settings" />
@@ -276,23 +350,45 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>Push notifications</ThemedText>
+          <ThemedText style={styles.sectionTitle}>Notifications</ThemedText>
           <View style={styles.card}>
             <ThemedText style={styles.helperText}>
-              Website preference: {user?.notify_on_friend_showtime_match ? 'Enabled' : 'Disabled'}.
+              Get notified when a friend marks themselves as going or interested in a showtime you
+              also selected.
             </ThemedText>
             <ThemedText style={styles.helperText}>
-              Enable friend overlap notifications on the website, then register this device.
+              Friend overlap notifications: {isNotificationPreferenceEnabled ? 'Enabled' : 'Disabled'}.
             </ThemedText>
+            {notificationPermissionStatus ? (
+              <ThemedText style={styles.helperText}>
+                System permission: {notificationPermissionStatus === 'granted' ? 'Allowed' : 'Not allowed'}.
+              </ThemedText>
+            ) : null}
             <TouchableOpacity
-              style={[styles.primaryButton, isRegisteringPush && styles.buttonDisabled]}
-              onPress={handleRegisterPush}
-              disabled={isRegisteringPush}
+              style={[
+                isNotificationPreferenceEnabled ? styles.secondaryButton : styles.primaryButton,
+                isUpdatingNotifications && styles.buttonDisabled,
+              ]}
+              onPress={isNotificationPreferenceEnabled ? handleDisableNotifications : handleEnableNotifications}
+              disabled={!user || isUpdatingNotifications}
             >
-              <ThemedText style={styles.primaryButtonText}>
-                {isRegisteringPush ? 'Registering...' : 'Register this device for push'}
+              <ThemedText style={isNotificationPreferenceEnabled ? styles.secondaryButtonText : styles.primaryButtonText}>
+                {isUpdatingNotifications
+                  ? 'Updating...'
+                  : isNotificationPreferenceEnabled
+                    ? 'Disable notifications'
+                    : 'Enable notifications'}
               </ThemedText>
             </TouchableOpacity>
+            {notificationPermissionStatus === 'denied' ? (
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => Linking.openSettings()}
+                activeOpacity={0.8}
+              >
+                <ThemedText style={styles.secondaryButtonText}>Open system notification settings</ThemedText>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 

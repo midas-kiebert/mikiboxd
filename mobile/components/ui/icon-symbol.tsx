@@ -42,5 +42,7 @@ export function IconSymbol({
   style?: StyleProp<TextStyle>;
   weight?: SymbolWeight;
 }) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
+  // Map SF Symbol names to Material Icons for non-iOS platforms.
   return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
 }

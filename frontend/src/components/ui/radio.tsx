@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Radio. This keeps common UI patterns consistent.
+ */
 import { RadioGroup as ChakraRadioGroup } from "@chakra-ui/react"
 import * as React from "react"
 

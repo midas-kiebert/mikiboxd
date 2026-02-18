@@ -1,3 +1,6 @@
+/**
+ * Expo Router screen/module for movie / [id]. It controls navigation and screen-level state for this route.
+ */
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -27,6 +30,7 @@ import DayFilterModal from "@/components/filters/DayFilterModal";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 const SHOWTIMES_PAGE_SIZE = 20;
+// Filter pill definitions rendered in the top filter row.
 const BASE_FILTERS = [
   { id: "showtime-filter", label: "All Showtimes" },
   { id: "cinemas", label: "Cinemas" },
@@ -36,37 +40,50 @@ const BASE_FILTERS = [
 type ShowtimeFilter = "all" | "going" | "interested";
 
 export default function MoviePage() {
+  // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
+  // Safe-area inset values used to avoid notches/home indicators.
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
+  // Tracks the selected showtime-status mode (all / interested / going).
   const [selectedFilter, setSelectedFilter] = useState<ShowtimeFilter>("all");
+  // Stores the showtime currently selected for status/ticket actions.
   const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeInMovieLoggedIn | null>(null);
+  // Controls visibility of the cinema-filter modal.
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
+  // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
+  // Tracks selected day values used by date filtering.
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
 
+  // Convert route param to numeric movie ID for API calls/query keys.
   const movieId = useMemo(() => Number(id), [id]);
+  // Keep one snapshot timestamp so list pages stay consistent while scrolling.
   const snapshotTime = useMemo(
     () => DateTime.now().setZone("Europe/Amsterdam").toFormat("yyyy-MM-dd'T'HH:mm:ss"),
     []
   );
   const { selections: sessionCinemaIds } = useSessionCinemaSelections();
-  const showtimesFilters = useMemo(
-    () => ({
+  // UI filter state is translated into backend filter params here.
+  const showtimesFilters = useMemo(() => {
+    const selectedStatuses: GoingStatus[] | undefined =
+      selectedFilter === "all"
+        ? undefined
+        : selectedFilter === "going"
+          ? ["GOING"]
+          : ["GOING", "INTERESTED"];
+
+    return {
       selectedCinemaIds: sessionCinemaIds,
       days: selectedDays.length > 0 ? selectedDays : undefined,
-      selectedStatuses:
-        (selectedFilter === "all"
-          ? undefined
-          : selectedFilter === "going"
-            ? ["GOING"]
-            : ["GOING", "INTERESTED"]) as GoingStatus[] | undefined,
-    }),
-    [selectedDays, selectedFilter, sessionCinemaIds]
-  );
+      selectedStatuses,
+    };
+  }, [selectedDays, selectedFilter, sessionCinemaIds]);
 
+  // Data hooks keep this module synced with backend data and shared cache state.
   const { data: movie, isLoading: isMovieLoading, isError: isMovieError } = useQuery<MovieLoggedIn, Error>({
     queryKey: ["movie", movieId, sessionCinemaIds ?? null],
     queryFn: () =>
@@ -93,13 +110,16 @@ export default function MoviePage() {
     filters: showtimesFilters,
   });
 
+  // Flatten/derive list data for rendering efficiency.
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
+  // Request the next page when the list nears the end.
   const handleEndReached = () => {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
   };
 
+  // Update all relevant query caches so the status chip updates instantly across screens.
   const updateShowtimeInCaches = (showtimeId: number, going: GoingStatus) => {
     queryClient.setQueriesData(
       { queryKey: ["movie", movieId, "showtimes"] },
@@ -142,6 +162,7 @@ export default function MoviePage() {
         },
       }),
     onMutate: async ({ showtimeId, going }) => {
+      // Pause active requests so optimistic updates are not immediately overwritten.
       await Promise.all([
         queryClient.cancelQueries({ queryKey: ["movie", movieId, "showtimes"] }),
         queryClient.cancelQueries({ queryKey: ["movie", movieId] }),
@@ -186,10 +207,12 @@ export default function MoviePage() {
     },
   });
 
+  // Submit the selected going/interested/not-going status.
   const handleShowtimeStatusUpdate = (going: GoingStatus) => {
     if (!selectedShowtime || isUpdatingShowtimeSelection) return;
     updateShowtimeSelection({ showtimeId: selectedShowtime.id, going });
   };
+  // Open the selected showtime ticket URL in the system browser.
   const handleOpenTicketLink = async () => {
     const ticketLink = selectedShowtime?.ticket_link;
     if (!ticketLink) return;
@@ -202,8 +225,10 @@ export default function MoviePage() {
   const isInterestedSelected = selectedShowtime?.going === "INTERESTED";
   const isNotGoingSelected = selectedShowtime?.going === "NOT_GOING";
 
+  // Handle filter pill presses and update active filter state.
   const handleSelectFilter = (filterId: string) => {
     if (filterId === "showtime-filter") {
+      // Tap cycles all -> interested -> going -> all for quick triaging.
       setSelectedFilter((prev) =>
         prev === "all" ? "interested" : prev === "interested" ? "going" : "all"
       );
@@ -219,6 +244,7 @@ export default function MoviePage() {
     }
   };
 
+  // Build the filter payload from current UI selections.
   const pillFilters = useMemo(() => {
     return BASE_FILTERS.map((filter) => {
       if (filter.id === "showtime-filter") {
@@ -237,6 +263,7 @@ export default function MoviePage() {
     });
   }, [selectedDays.length, selectedFilter]);
 
+  // Compute which filter pills should render as active.
   const activeFilterIds = useMemo(() => {
     const active: string[] = [];
     if (selectedFilter !== "all") {
@@ -251,6 +278,7 @@ export default function MoviePage() {
     return active;
   }, [selectedFilter, selectedDays.length, sessionCinemaIds]);
 
+  // Render/output using the state and derived values prepared above.
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <Stack.Screen options={{ title: movie?.title ?? "Movie" }} />

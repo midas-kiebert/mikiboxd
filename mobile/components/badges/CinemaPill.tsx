@@ -1,3 +1,6 @@
+/**
+ * Mobile badge component: Cinema Pill.
+ */
 import {
   StyleSheet,
   View,
@@ -36,8 +39,10 @@ type VariantStyles = {
 };
 
 export default function CinemaPill({ cinema, variant = "default" }: CinemaPillProps) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // Size variant keeps the same badge logic reusable in compact rows and full cards.
   const sizeStyles: VariantStyles =
     variant === "compact"
       ? {
@@ -49,6 +54,7 @@ export default function CinemaPill({ cinema, variant = "default" }: CinemaPillPr
           text: styles.defaultText,
         };
 
+  // Backend provides a color key string; map it to the theme palette safely.
   const cinemaColorKey = cinema.badge_bg_color as CinemaColorKey;
   const cinemaPalette = (colors as Record<CinemaColorKey, CinemaColorPalette>)[
     cinemaColorKey
@@ -56,6 +62,7 @@ export default function CinemaPill({ cinema, variant = "default" }: CinemaPillPr
   const cinemaBackground = cinemaPalette?.primary ?? colors.pillBackground;
   const cinemaText = cinemaPalette?.secondary ?? colors.textSecondary;
 
+  // Render/output using the state and derived values prepared above.
   return (
     <View
       style={[

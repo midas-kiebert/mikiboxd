@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Friend Badges.
+ */
 import { Box } from "@chakra-ui/react";
 import type {UserPublic} from "shared";
 import FriendBadge from "@/components/Common/FriendBadge";
@@ -17,7 +20,9 @@ const goingColor : Record<GoingStatus, string> = {
 
 
 const FriendBadges = ({friends, goingStatus}: FriendBadgesProps) => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const isMobile = useIsMobile();
+    // Render/output using the state and derived values prepared above.
     return (
         <Box gap={4}>
             {friends.map((friend) => (

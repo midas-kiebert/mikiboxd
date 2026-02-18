@@ -1,3 +1,6 @@
+/**
+ * Shared web layout/presentation component: Friend Badge.
+ */
 import { Badge } from "@chakra-ui/react";
 import { Responsive } from "@/types";
 import { Link } from "@tanstack/react-router";
@@ -17,6 +20,7 @@ const FriendBadge = ({
     size="sm",
     colorPalette="gray"
 } : FriendBadgeProps) => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     return (
         <Link
             to={ShowtimesRoute.to}

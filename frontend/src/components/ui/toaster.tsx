@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Toaster. This keeps common UI patterns consistent.
+ */
 "use client"
 
 import {

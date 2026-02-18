@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Color mode. This keeps common UI patterns consistent.
+ */
 "use client"
 
 import type { IconButtonProps, SpanProps } from "@chakra-ui/react"
@@ -10,6 +13,7 @@ import { LuMoon, LuSun } from "react-icons/lu"
 export interface ColorModeProviderProps extends ThemeProviderProps {}
 
 export function ColorModeProvider(props: ColorModeProviderProps) {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   return (
     <ThemeProvider attribute="class" disableTransitionOnChange {...props} />
   )

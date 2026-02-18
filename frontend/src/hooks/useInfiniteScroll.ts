@@ -1,3 +1,6 @@
+/**
+ * Custom web hook for Use Infinite Scroll. It encapsulates reusable stateful behavior.
+ */
 import { useEffect } from "react";
 
 interface InfiniteScrollProps {
@@ -17,6 +20,7 @@ const useInfiniteScroll = ({
     loadMoreRef,
     rootMargin = "200px",
 }: InfiniteScrollProps) => {
+    // Read flow: derive reusable behavior first, then expose the hook API.
     useEffect(() => {
         if (!hasNextPage || isFetchingNextPage) return;
 

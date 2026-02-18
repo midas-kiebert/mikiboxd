@@ -8,6 +8,7 @@ import { Platform } from 'react-native';
 const tintColorLight = '#0a7ea4';
 const tintColorDark = '#04c24a';
 
+// App-wide color tokens consumed by themed UI helpers/components.
 export const Colors = {
   light: {
     text: '#11181C',
@@ -119,6 +120,7 @@ export const Colors = {
   },
 };
 
+// Font stacks are platform-aware so text looks native on iOS/Android/Web.
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */

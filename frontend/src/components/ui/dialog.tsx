@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Dialog. This keeps common UI patterns consistent.
+ */
 import { Dialog as ChakraDialog, Portal } from "@chakra-ui/react"
 import * as React from "react"
 import { CloseButton } from "./close-button"

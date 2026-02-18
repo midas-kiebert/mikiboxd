@@ -1,3 +1,6 @@
+/**
+ * Showtimes feature component: Showtimes.
+ */
 import type { ShowtimeLoggedIn } from "shared"
 import ShowtimeCard from "./ShowtimeCard";
 import MoviesContainer from "../Movies/MoviesContainer";
@@ -7,6 +10,7 @@ type ShowtimeProps = {
 }
 
 export function Showtimes( { showtimes } : ShowtimeProps  ) {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     return (
         <MoviesContainer>
             {

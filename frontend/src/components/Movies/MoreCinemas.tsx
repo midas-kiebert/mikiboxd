@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: More Cinemas.
+ */
 import { Popover, Badge, Portal, For } from "@chakra-ui/react";
 import type { CinemaPublic } from "shared";
 import CinemaBadge from "@/components/Common/CinemaBadge";
@@ -16,8 +19,10 @@ const MoreCinemas = ({
     moreRef
 }: MoreCinemasProps) => {
 
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const hidden = cinemas.length - visibleCount;
 
+    // Render/output using the state and derived values prepared above.
     return (
         <Popover.Root>
             <Popover.Trigger asChild>

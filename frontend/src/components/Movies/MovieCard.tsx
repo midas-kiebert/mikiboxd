@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Movie Card.
+ */
 import { Flex } from "@chakra-ui/react";
 import MoviePoster from "./MoviePoster";
 import MovieInfoBox from "./MovieInfoBox";

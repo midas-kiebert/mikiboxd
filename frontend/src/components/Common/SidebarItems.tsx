@@ -1,3 +1,6 @@
+/**
+ * Shared web layout/presentation component: Sidebar Items.
+ */
 import { Box, Flex, Icon, Text } from "@chakra-ui/react"
 import { Link as RouterLink } from "@tanstack/react-router"
 import { FiFilm, FiHome, FiSettings } from "react-icons/fi"
@@ -19,6 +22,7 @@ interface SidebarItemsProps {
 
 const SidebarItems = ({ onClose }: SidebarItemsProps) => {
 
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   const listItems = items.map(({ icon, title, path }) => (
     <RouterLink key={title} to={path} onClick={onClose}>
       <Flex
@@ -37,6 +41,7 @@ const SidebarItems = ({ onClose }: SidebarItemsProps) => {
     </RouterLink>
   ))
 
+  // Render/output using the state and derived values prepared above.
   return (
     <>
       <Text fontSize="xs" px={4} py={2} fontWeight="bold">

@@ -1,3 +1,6 @@
+/**
+ * Mobile filter UI component: Day Filter Modal.
+ */
 import { useMemo } from "react";
 import { Modal, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -29,17 +32,20 @@ export default function DayFilterModal({
   selectedDays,
   onChange,
 }: DayFilterModalProps) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
 
   const today = DateTime.now().setZone(AMSTERDAM_ZONE).startOf("day");
   const todayKey = today.toISODate() ?? "";
 
+  // Build/selectable day chips once per "today" key change.
   const availableDays = useMemo(() => {
     if (!todayKey) return [];
     return buildDays(todayKey);
   }, [todayKey]);
 
+  // Toggle the selection/state tied to the tapped UI element.
   const handleToggleDay = (day: string) => {
     const isSelected = selectedDays.includes(day);
     const next = isSelected
@@ -49,8 +55,10 @@ export default function DayFilterModal({
     onChange(next);
   };
 
+  // Clear all selected day filters in one action.
   const handleClear = () => onChange([]);
 
+  // Render/output using the state and derived values prepared above.
   return (
     <Modal
       animationType="slide"

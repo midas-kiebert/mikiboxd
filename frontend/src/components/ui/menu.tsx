@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Menu. This keeps common UI patterns consistent.
+ */
 "use client"
 
 import { AbsoluteCenter, Menu as ChakraMenu, Portal } from "@chakra-ui/react"

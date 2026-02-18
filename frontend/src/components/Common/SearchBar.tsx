@@ -1,3 +1,6 @@
+/**
+ * Shared web layout/presentation component: Search Bar.
+ */
 import { Input, InputGroup } from "@chakra-ui/react";
 import { FaSearch } from "react-icons/fa";
 
@@ -8,6 +11,7 @@ type SearchBarProps = {
 };
 
 export default function SearchBar({ query, setQuery, placeholder }: SearchBarProps) {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   return (
       <InputGroup
         maxW={  { base: "100%", md: "400px" }}

@@ -1,3 +1,6 @@
+/**
+ * Shared web layout/presentation component: Page.
+ */
 import { Box } from "@chakra-ui/react";
 import { SIDEBAR_WIDTH } from "@/constants";
 import { ReactNode } from "react";
@@ -12,6 +15,7 @@ interface Props {
 
 const Page = ({ children, sidebarWidth = SIDEBAR_WIDTH, topbarHeight = TOPBAR_HEIGHT } : Props) => {
 
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const isMobile = useIsMobile();
 
 
@@ -20,6 +24,7 @@ const Page = ({ children, sidebarWidth = SIDEBAR_WIDTH, topbarHeight = TOPBAR_HE
         topbarHeight = 50;
     }
 
+    // Render/output using the state and derived values prepared above.
     return (
         <Box
             ml={ sidebarWidth }

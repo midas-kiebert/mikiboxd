@@ -1,3 +1,6 @@
+/**
+ * User settings feature component: Notifications.
+ */
 import { Button, Container, Heading, Text, VStack } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
@@ -9,7 +12,9 @@ import { handleError } from "@/utils"
 import { Checkbox } from "../ui/checkbox"
 
 const Notifications = () => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   const queryClient = useQueryClient()
+  // Data hooks keep this module synced with backend data and shared cache state.
   const { user: currentUser } = useAuth()
   const { showSuccessToast } = useCustomToast()
   const [friendMatchEnabled, setFriendMatchEnabled] = useState(false)
@@ -34,6 +39,7 @@ const Notifications = () => {
     },
   })
 
+  // Render/output using the state and derived values prepared above.
   return (
     <Container maxW="full">
       <Heading size="sm" py={4}>

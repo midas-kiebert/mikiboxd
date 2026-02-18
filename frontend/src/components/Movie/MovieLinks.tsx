@@ -1,3 +1,6 @@
+/**
+ * Single-movie detail feature component: Movie Links.
+ */
 import { HStack } from '@chakra-ui/react';
 import Badge from '@/components/Common/Badge';
 
@@ -7,6 +10,7 @@ type MovieLinksProps = {
 };
 
 export default function MovieLinks({ imdb, letterboxd }: MovieLinksProps) {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     return (
         <HStack gap={1} my={2}>
             {letterboxd &&

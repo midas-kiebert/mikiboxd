@@ -1,3 +1,6 @@
+/**
+ * Mobile badge component: Friend Badges.
+ */
 import {
   StyleSheet,
   View,
@@ -31,9 +34,11 @@ type VariantStyles = {
 };
 
 const getFriendLabel = (user: UserPublic) => {
+  // Prefer display name when it exists.
   const displayName = user.display_name?.trim();
   if (displayName) return displayName;
 
+  // Fallback to the email prefix when no display name is set.
   const emailName = user.email?.split("@")[0]?.trim();
   if (emailName) return emailName;
 
@@ -71,6 +76,7 @@ export default function FriendBadges({
   variant = "default",
   style,
 }: FriendBadgesProps) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
 
@@ -89,6 +95,7 @@ export default function FriendBadges({
 
   if (items.length === 0) return null;
 
+  // Render/output using the state and derived values prepared above.
   return (
     <View style={[styles.row, variant === "compact" ? styles.rowCompact : styles.rowDefault, style]}>
       {items.map(({ friend, color, textColor }) => (

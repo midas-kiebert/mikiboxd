@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Drawer. This keeps common UI patterns consistent.
+ */
 import { Drawer as ChakraDrawer, Portal } from "@chakra-ui/react"
 import * as React from "react"
 import { CloseButton } from "./close-button"

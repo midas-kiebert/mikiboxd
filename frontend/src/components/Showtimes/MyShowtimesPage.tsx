@@ -1,3 +1,6 @@
+/**
+ * Showtimes feature component: My Showtimes Page.
+ */
 import { useState, useRef } from "react";
 import { useFetchMyShowtimes } from "shared/hooks/useFetchMyShowtimes";
 import { Spinner, Center } from "@chakra-ui/react";
@@ -7,10 +10,12 @@ import { DateTime } from "luxon";
 import { Showtimes } from "@/components/Showtimes/Showtimes";
 
 const MyShowtimesPage = () => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const limit = 20;
     const [snapshotTime] = useState(() => DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
+    // Data hooks keep this module synced with backend data and shared cache state.
     const {
         data,
         fetchNextPage,
@@ -43,6 +48,7 @@ const MyShowtimesPage = () => {
         );
     }
 
+    // Render/output using the state and derived values prepared above.
     return (
         <>
             <Page>

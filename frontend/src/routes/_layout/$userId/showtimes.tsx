@@ -1,3 +1,6 @@
+/**
+ * TanStack Router route module for $userId / showtimes. It connects URL state to the matching page component.
+ */
 import { createFileRoute } from '@tanstack/react-router'
 import ShowtimesPage from '@/components/Showtimes/ShowtimesPage'
 import { UUID } from 'crypto'

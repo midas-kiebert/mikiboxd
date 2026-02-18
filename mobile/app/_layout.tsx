@@ -1,3 +1,6 @@
+/**
+ * Expo Router root layout. It wires global providers, auth-based redirects, and app-wide API config.
+ */
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -20,6 +23,7 @@ export const unstable_settings = {
 };
 
 setStorage({
+  // Route shared storage calls through SecureStore on native devices.
   getItem: async (key: string) => {
     return await SecureStore.getItemAsync(key);
   },
@@ -70,9 +74,10 @@ axios.defaults.transformRequest = [
   ...defaultTransformers,
 ]
 
-// OpenAPI.BASE = "http://192.168.1.121:8000";
-OpenAPI.BASE = "https://api.mikino.nl";
+OpenAPI.BASE = "http://192.168.1.121:8000";
+// OpenAPI.BASE = "https://api.mikino.nl";
 
+// Attach bearer token from secure storage to every generated client request.
 OpenAPI.TOKEN = async () => {
   const token = await storage.getItem('access_token');
   return token || '';
@@ -94,6 +99,7 @@ if (__DEV__ && !apiLoggingEnabled) {
 
 const queryClient = new QueryClient();
 
+// Default foreground notification behavior for this app.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
@@ -106,12 +112,18 @@ Notifications.setNotificationHandler({
 
 
 function RootLayourContent() {
+  // Current route segments let us detect whether the user is in a protected area.
   const segments = useSegments();
+  // Router instance used for in-app navigation actions.
   const router = useRouter();
+  // Tracks whether auth state is still being resolved.
   const [isChecking, setIsChecking] = useState(true)
+  // Tracks whether a valid access token exists.
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  // Keeps the previous token for dev logging without causing rerenders.
   const lastTokenRef = useRef<string | null>(null)
 
+  // Shared auth check used on mount and whenever route segments change.
   const checkAuth = useCallback(async (shouldBlock = false) => {
     if (shouldBlock) setIsChecking(true)
     try {
@@ -129,17 +141,20 @@ function RootLayourContent() {
   }, [])
 
   useEffect(() => {
+    // Initial blocking auth check before routing users.
     checkAuth(true)
   }, [checkAuth])
 
   useEffect(() => {
     if (isChecking) return
+    // Re-check auth after navigation to catch token changes from other flows.
     checkAuth(false)
   }, [segments, checkAuth, isChecking])
 
   useEffect(() => {
     if (isChecking) return
 
+    // Only these route groups require an authenticated session.
     const authRoutes = new Set(['(tabs)', 'movie'])
     const inAuthGroup = authRoutes.has(segments[0])
 
@@ -154,6 +169,7 @@ function RootLayourContent() {
   }, [isAuthenticated, segments, isChecking])
 
   if (isChecking) {
+    // Avoid flashing protected screens before auth status is known.
     return null; // or a loading spinner
   }
   return (
@@ -175,8 +191,11 @@ function RootLayourContent() {
 
 
 export default function RootLayout() {
+  // Read flow: local state and data hooks first, then handlers, then the JSX screen.
+  // Theme mode selects the matching React Navigation theme object.
   const colorScheme = useColorScheme();
 
+  // Render/output using the state and derived values prepared above.
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

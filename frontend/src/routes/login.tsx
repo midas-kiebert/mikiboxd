@@ -1,3 +1,6 @@
+/**
+ * TanStack Router route module for login. It connects URL state to the matching page component.
+ */
 import { Container, Image, Input, Text } from "@chakra-ui/react"
 import {
   Link as RouterLink,
@@ -29,7 +32,9 @@ export const Route = createFileRoute("/login")({
 })
 
 function Login() {
+  // Read flow: route state and data hooks first, then handlers, then page JSX.
   const navigate = useNavigate()
+  // Data hooks keep this module synced with backend data and shared cache state.
   const { loginMutation, error, resetError } = useAuth(
     () => navigate({ to: "/" }), // onLoginSuccess
     () => navigate({ to: "/login" }) // onLogout
@@ -59,6 +64,7 @@ function Login() {
     }
   }
 
+  // Render/output using the state and derived values prepared above.
   return (
     <>
       <Container

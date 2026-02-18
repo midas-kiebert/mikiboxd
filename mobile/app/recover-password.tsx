@@ -1,3 +1,6 @@
+/**
+ * Expo Router screen/module for recover-password. It controls navigation and screen-level state for this route.
+ */
 import {
   ActivityIndicator,
   Alert,
@@ -24,11 +27,15 @@ type RecoverPasswordForm = {
 const COOLDOWN_SECONDS = 30;
 
 export default function RecoverPasswordScreen() {
+  // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const router = useRouter();
+  // Read the active theme color tokens used by this screen/component.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // Seconds remaining before the user can retry sending another email.
   const [cooldown, setCooldown] = useState(0);
 
+  // Data hooks keep this module synced with backend data and shared cache state.
   const {
     control,
     handleSubmit,
@@ -46,6 +53,7 @@ export default function RecoverPasswordScreen() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
+  // Calls the backend endpoint that triggers password-recovery email delivery.
   const recoverPasswordMutation = useMutation({
     mutationFn: (data: RecoverPasswordForm) =>
       LoginService.recoverPassword({
@@ -63,11 +71,13 @@ export default function RecoverPasswordScreen() {
   });
 
   const onSubmit = async (data: RecoverPasswordForm) => {
+    // Guard against repeated taps while cooldown is active.
     if (cooldown > 0) return;
     setCooldown(COOLDOWN_SECONDS);
     await recoverPasswordMutation.mutateAsync(data);
   };
 
+  // Render/output using the state and derived values prepared above.
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

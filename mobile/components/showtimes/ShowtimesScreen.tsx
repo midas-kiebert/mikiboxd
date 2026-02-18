@@ -1,3 +1,6 @@
+/**
+ * Mobile showtimes feature component: Showtimes Screen.
+ */
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { ShowtimeLoggedIn } from "shared";
@@ -9,12 +12,13 @@ import SearchBar from "@/components/inputs/SearchBar";
 import FilterPills from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
 
-type FilterOption = {
-  id: string;
+type FilterOption<TId extends string = string> = {
+  id: TId;
   label: string;
+  badgeCount?: number;
 };
 
-type ShowtimesScreenProps = {
+type ShowtimesScreenProps<TFilterId extends string = string> = {
   showtimes: ShowtimeLoggedIn[];
   isLoading: boolean;
   isFetching: boolean;
@@ -25,14 +29,13 @@ type ShowtimesScreenProps = {
   onRefresh: () => void;
   searchQuery: string;
   onSearchChange: (value: string) => void;
-  filters: FilterOption[];
-  selectedFilter: string;
-  onSelectFilter: (id: string) => void;
-  activeFilterIds?: string[];
+  filters: ReadonlyArray<FilterOption<TFilterId>>;
+  activeFilterIds: ReadonlyArray<TFilterId>;
+  onToggleFilter: (id: TFilterId) => void;
   emptyText?: string;
 };
 
-export default function ShowtimesScreen({
+export default function ShowtimesScreen<TFilterId extends string = string>({
   showtimes,
   isLoading,
   isFetching,
@@ -44,14 +47,15 @@ export default function ShowtimesScreen({
   searchQuery,
   onSearchChange,
   filters,
-  selectedFilter,
-  onSelectFilter,
   activeFilterIds,
+  onToggleFilter,
   emptyText = "No showtimes found",
-}: ShowtimesScreenProps) {
+}: ShowtimesScreenProps<TFilterId>) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
 
+  // Render infinite-scroll loading feedback at the bottom of the list.
   const renderFooter = () => {
     if (!isFetchingNextPage) return null;
     return (
@@ -61,6 +65,7 @@ export default function ShowtimesScreen({
     );
   };
 
+  // Render the empty/loading state when list data is unavailable.
   const renderEmpty = () => {
     if (isLoading || isFetching) {
       return (
@@ -76,6 +81,7 @@ export default function ShowtimesScreen({
     );
   };
 
+  // Render/output using the state and derived values prepared above.
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <TopBar />
@@ -86,8 +92,8 @@ export default function ShowtimesScreen({
       />
       <FilterPills
         filters={filters}
-        selectedId={selectedFilter}
-        onSelect={onSelectFilter}
+        selectedId=""
+        onSelect={onToggleFilter}
         activeIds={activeFilterIds}
       />
       <FlatList

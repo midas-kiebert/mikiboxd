@@ -1,3 +1,6 @@
+/**
+ * User settings feature component: Delete Confirmation.
+ */
 import { Button, ButtonGroup, Text } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
@@ -21,10 +24,12 @@ import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 
 const DeleteConfirmation = () => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
   const navigate = useNavigate()
   const [isOpen, setIsOpen] = useState(false)
   const queryClient = useQueryClient()
   const { showSuccessToast } = useCustomToast()
+  // Data hooks keep this module synced with backend data and shared cache state.
   const {
     handleSubmit,
     formState: { isSubmitting },
@@ -53,6 +58,7 @@ const DeleteConfirmation = () => {
     mutation.mutate()
   }
 
+  // Render/output using the state and derived values prepared above.
   return (
     <>
       <DialogRoot

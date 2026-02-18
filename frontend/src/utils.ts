@@ -1,3 +1,6 @@
+/**
+ * Shared frontend utility helpers for formatting and small data transforms.
+ */
 import type { ApiError } from "shared/client"
 import useCustomToast from "./hooks/useCustomToast"
 

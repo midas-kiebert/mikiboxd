@@ -1,3 +1,6 @@
+/**
+ * Shared mobile UI component: Themed text.
+ */
 import { StyleSheet, Text, type TextProps } from 'react-native';
 
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -15,8 +18,11 @@ export function ThemedText({
   type = 'default',
   ...rest
 }: ThemedTextProps) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
+  // `useThemeColor` resolves explicit overrides first, then theme defaults.
   const color = useThemeColor({ light: lightColor, dark: darkColor }, 'text');
 
+  // Render/output using the state and derived values prepared above.
   return (
     <Text
       style={[

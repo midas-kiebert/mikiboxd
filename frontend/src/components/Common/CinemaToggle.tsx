@@ -10,6 +10,7 @@ interface CinemaToggleProps {
 
 const CinemaToggle = ({ cinema, enabled, handleToggle } : CinemaToggleProps) => {
 
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     return (
             <CinemaBadge
                 cinema={cinema}

@@ -1,13 +1,18 @@
+/**
+ * Friends feature component: Sent Requests.
+ */
 import { Box, Heading } from '@chakra-ui/react';
 import { useFetchSentRequests } from 'shared/hooks/useFetchSentRequests';
 import UserCard from './UserCard';
 
 
 const SentRequests = () => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const {
         data : requests,
     } = useFetchSentRequests();
 
+    // Render/output using the state and derived values prepared above.
     return (
         <Box>
             { requests?.length! > 0 && (

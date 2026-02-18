@@ -1,3 +1,6 @@
+/**
+ * Mobile reusable UI helper component: Collapsible.
+ */
 import { PropsWithChildren, useState } from 'react';
 import { StyleSheet, TouchableOpacity } from 'react-native';
 
@@ -8,9 +11,13 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export function Collapsible({ children, title }: PropsWithChildren & { title: string }) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
+  // Tracks whether the collapsible section is expanded.
   const [isOpen, setIsOpen] = useState(false);
+  // Use current theme mode to pick icon color.
   const theme = useColorScheme() ?? 'light';
 
+  // Render/output using the state and derived values prepared above.
   return (
     <ThemedView>
       <TouchableOpacity

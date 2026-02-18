@@ -1,3 +1,6 @@
+/**
+ * Expo Router screen/module for signup. It controls navigation and screen-level state for this route.
+ */
 import {
   View,
   Text,
@@ -20,9 +23,12 @@ type SignUpForm = UserRegister & {
 };
 
 export default function SignUpScreen() {
+  // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const router = useRouter();
+  // Read the active theme color tokens used by this screen/component.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // Data hooks keep this module synced with backend data and shared cache state.
   const { signUpMutation, error, resetError } = useAuth(
     () => router.replace('/login'),
     () => router.replace('/login')
@@ -34,6 +40,7 @@ export default function SignUpScreen() {
     getValues,
     formState: { errors, isSubmitting },
   } = useForm<SignUpForm>({
+    // Default empty values keep every input controlled from the first render.
     defaultValues: {
       display_name: '',
       email: '',
@@ -43,8 +50,10 @@ export default function SignUpScreen() {
   });
 
   const onSubmit = async (data: SignUpForm) => {
+    // Guard against duplicate submits from rapid taps.
     if (isSubmitting || signUpMutation.isPending) return;
     resetError();
+    // Submit only backend-required fields (confirm_password is local validation only).
     await signUpMutation.mutateAsync({
       display_name: data.display_name,
       email: data.email,
@@ -52,6 +61,7 @@ export default function SignUpScreen() {
     });
   };
 
+  // Render/output using the state and derived values prepared above.
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -66,6 +76,7 @@ export default function SignUpScreen() {
           </View>
         ) : null}
 
+        {/* Display name helps other users identify this account in social screens. */}
         <Controller
           control={control}
           name="display_name"
@@ -96,6 +107,7 @@ export default function SignUpScreen() {
           )}
         />
 
+        {/* Email is the login identifier and must be in valid email format. */}
         <Controller
           control={control}
           name="email"
@@ -125,6 +137,7 @@ export default function SignUpScreen() {
           )}
         />
 
+        {/* Password minimum mirrors backend auth requirements. */}
         <Controller
           control={control}
           name="password"
@@ -156,6 +169,7 @@ export default function SignUpScreen() {
           )}
         />
 
+        {/* Confirm password runs local cross-field validation against `password`. */}
         <Controller
           control={control}
           name="confirm_password"

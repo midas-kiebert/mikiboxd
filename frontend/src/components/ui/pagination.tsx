@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Pagination. This keeps common UI patterns consistent.
+ */
 "use client"
 
 import type { ButtonProps, TextProps } from "@chakra-ui/react"

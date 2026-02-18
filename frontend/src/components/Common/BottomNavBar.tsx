@@ -1,3 +1,6 @@
+/**
+ * Shared web layout/presentation component: Bottom Nav Bar.
+ */
 import { Box, Grid } from "@chakra-ui/react";
 import { FiFilm, FiHome, FiSettings } from "react-icons/fi"
 import { FaUserFriends } from "react-icons/fa"
@@ -13,6 +16,7 @@ const items = [
 ]
 
 const BottomNavBar = () => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const listItems = items.map(({ icon: Icon, title, path }) => (
         <RouterLink key={title} to={path} style={{ width: "100%", height: "100%" }}>
             <Box
@@ -28,6 +32,7 @@ const BottomNavBar = () => {
         </RouterLink>
     ))
 
+    // Render/output using the state and derived values prepared above.
     return (
         <Box
             position="fixed"

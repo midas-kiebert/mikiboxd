@@ -1,3 +1,6 @@
+/**
+ * Mobile showtimes feature component: Showtime Row.
+ */
 import { StyleSheet, View } from "react-native";
 import { DateTime } from "luxon";
 import type { CinemaPublic, UserPublic } from "shared";
@@ -28,10 +31,13 @@ export default function ShowtimeRow({
   variant = "default",
   showFriends = false,
 }: ShowtimeRowProps) {
+  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // Compact mode is used in dense cards; default mode is used in full showtime lists.
   const isCompact = variant === "compact";
 
+  // Render/output using the state and derived values prepared above.
   return (
     <View style={[styles.container, isCompact ? styles.compactContainer : styles.defaultContainer]}>
       <View style={styles.header}>

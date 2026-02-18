@@ -1,3 +1,6 @@
+/**
+ * Reusable Chakra-based UI primitive: Close button. This keeps common UI patterns consistent.
+ */
 import type { ButtonProps } from "@chakra-ui/react"
 import { IconButton as ChakraIconButton } from "@chakra-ui/react"
 import * as React from "react"

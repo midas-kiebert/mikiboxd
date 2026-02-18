@@ -1,3 +1,6 @@
+/**
+ * Shared web layout/presentation component: Layout.
+ */
 import React, { ReactNode } from "react";
 import { Box } from "@chakra-ui/react";
 

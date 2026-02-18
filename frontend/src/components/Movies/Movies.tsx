@@ -14,6 +14,7 @@ type MoviesProps = {
 }
 
 export default function Movies( { movies, isLoading } : MoviesProps) {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     // keep track of the scroll position at all times
     const isMobile = useIsMobile();
     useEffect(() => {
@@ -44,6 +45,7 @@ export default function Movies( { movies, isLoading } : MoviesProps) {
         );
     }
 
+    // Render/output using the state and derived values prepared above.
     return (
         <MoviesContainer>
                 <div

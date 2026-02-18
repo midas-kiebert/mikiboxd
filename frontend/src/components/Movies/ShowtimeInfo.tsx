@@ -1,3 +1,6 @@
+/**
+ * Movies list feature component: Showtime Info.
+ */
 import { Box } from "@chakra-ui/react";
 import ShowtimeList from "@/components/Movies/ShowtimeList";
 import type { ShowtimeInMovieLoggedIn } from "shared";
@@ -17,6 +20,7 @@ export default function ShowtimeInfo({
     lastShowtime = null,
     total_showtimes = 0,
 }: ShowtimeInfoProps) {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     return (
         <Box
             // bg="orange.100"

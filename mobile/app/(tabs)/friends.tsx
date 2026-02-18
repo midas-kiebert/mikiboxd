@@ -1,3 +1,6 @@
+/**
+ * Expo Router screen/module for (tabs) / friends. It controls navigation and screen-level state for this route.
+ */
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, ScrollView, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,17 +18,26 @@ import FriendCard from '@/components/friends/FriendCard';
 import FilterPills from '@/components/filters/FilterPills';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
+type FriendsTabId = 'users' | 'received' | 'sent' | 'friends';
+
 export default function FriendsScreen() {
+  // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
+  // Current text typed into the search input.
   const [searchQuery, setSearchQuery] = useState('');
+  // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'received' | 'sent' | 'friends'>('users');
+  // Keeps track of the currently selected tab on this screen.
+  const [activeTab, setActiveTab] = useState<FriendsTabId>('users');
 
+  // Build the filter payload from current UI selections.
   const userFilters = useMemo(() => ({ query: searchQuery }), [searchQuery]);
 
+  // "All users" is the only tab that needs infinite pagination.
   const {
     data: usersData,
     fetchNextPage,
@@ -46,13 +58,16 @@ export default function FriendsScreen() {
     enabled: activeTab === 'sent',
   });
 
+  // Flatten/derive list data for rendering efficiency.
   const users = useMemo(() => usersData?.pages.flat() ?? [], [usersData]);
   const friends = friendsData ?? [];
   const received = receivedRequests ?? [];
   const sent = sentRequests ?? [];
 
+  // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
     setRefreshing(true);
+    // Refresh only the currently visible tab to keep network usage predictable.
     if (activeTab === 'users') {
       await resetInfiniteQuery(queryClient, ['users', userFilters]);
     } else if (activeTab === 'received') {
@@ -65,13 +80,15 @@ export default function FriendsScreen() {
     setRefreshing(false);
   };
 
+  // Request the next page when the list nears the end.
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
   };
 
-  const tabs = useMemo(
+  // FilterPills acts as the tab bar for this screen.
+  const tabs = useMemo<ReadonlyArray<{ id: FriendsTabId; label: string; badgeCount?: number }>>(
     () => [
       { id: 'users', label: 'All Users' },
       { id: 'received', label: 'Requests Received', badgeCount: received.length },
@@ -81,13 +98,14 @@ export default function FriendsScreen() {
     [received.length]
   );
 
+  // Render/output using the state and derived values prepared above.
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <TopBar title="Friends" />
       <FilterPills
         filters={tabs}
         selectedId={activeTab}
-        onSelect={(id) => setActiveTab(id as typeof activeTab)}
+        onSelect={setActiveTab}
       />
       {activeTab === 'users' ? (
         <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search users" />

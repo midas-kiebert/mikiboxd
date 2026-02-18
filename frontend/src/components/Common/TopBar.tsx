@@ -1,3 +1,6 @@
+/**
+ * Shared web layout/presentation component: Top Bar.
+ */
 import { Box } from "@chakra-ui/react";
 import { SIDEBAR_WIDTH } from "@/constants";
 import { ReactNode } from "react";
@@ -10,6 +13,7 @@ interface Props {
 
 
 const TopBar = ({ children } : Props) => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     return (
         <Box
             position="fixed"

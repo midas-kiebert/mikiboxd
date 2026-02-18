@@ -1,3 +1,6 @@
+/**
+ * TanStack Router route module for movies. It connects URL state to the matching page component.
+ */
 import { createFileRoute } from "@tanstack/react-router";
 
 import MoviesPage from "@/components/Movies/MoviesPage";

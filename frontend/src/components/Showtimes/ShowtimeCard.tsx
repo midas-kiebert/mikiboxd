@@ -1,3 +1,6 @@
+/**
+ * Showtimes feature component: Showtime Card.
+ */
 import type { GoingStatus, ShowtimeLoggedIn } from "shared";
 import { Flex } from "@chakra-ui/react";
 import MoviePoster from "../Movies/MoviePoster";
@@ -11,9 +14,11 @@ type ShowtimeCardProps = {
 };
 
 const ShowtimeCard = ({ showtime, going_status }: ShowtimeCardProps) => {
+    // Read flow: prepare derived values/handlers first, then return component JSX.
     const isMobile = useIsMobile();
     const HEIGHT = isMobile ? 115 : 150;
 
+    // Render/output using the state and derived values prepared above.
     return (
         <>
         <Flex

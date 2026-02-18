@@ -16,7 +16,6 @@ import { type SubmitHandler, useForm } from "react-hook-form"
 
 import {
   type ApiError,
-  type UserPublic,
   type UserUpdate,
   MeService,
 } from "shared"
@@ -38,7 +37,7 @@ const UserInformation = () => {
     reset,
     getValues,
     formState: { isSubmitting, errors, isDirty },
-  } = useForm<UserPublic>({
+  } = useForm<UserUpdate>({
     mode: "onBlur",
     criteriaMode: "all",
     defaultValues: {

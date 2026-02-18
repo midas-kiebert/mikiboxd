@@ -23,11 +23,10 @@ type FriendAgendaFilterId = (typeof BASE_FILTERS)[number]['id'];
 const getRouteParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 
-const getFriendTitle = (displayName: string | null | undefined, email: string) => {
+const getFriendTitle = (displayName: string | null | undefined) => {
   const trimmedDisplayName = displayName?.trim();
   if (trimmedDisplayName) return trimmedDisplayName;
-  const emailName = email.split('@')[0]?.trim();
-  return emailName || 'Agenda';
+  return 'Agenda';
 };
 
 export default function FriendShowtimesScreen() {
@@ -57,7 +56,7 @@ export default function FriendShowtimesScreen() {
   });
 
   const topBarTitle = useMemo(
-    () => (friend ? getFriendTitle(friend.display_name, friend.email) : 'Agenda'),
+    () => (friend ? getFriendTitle(friend.display_name) : 'Agenda'),
     [friend]
   );
 

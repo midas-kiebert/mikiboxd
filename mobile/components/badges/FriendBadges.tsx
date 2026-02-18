@@ -45,10 +45,6 @@ const getFriendLabel = (user: UserPublic) => {
   const displayName = user.display_name?.trim();
   if (displayName) return displayName;
 
-  // Fallback to the email prefix when no display name is set.
-  const emailName = user.email?.split("@")[0]?.trim();
-  if (emailName) return emailName;
-
   return "Friend";
 };
 

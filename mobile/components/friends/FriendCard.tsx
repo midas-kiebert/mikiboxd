@@ -29,7 +29,7 @@ type FriendAction = {
 };
 
 const getFriendName = (friend: UserWithFriendStatus) =>
-  friend.display_name?.trim() || friend.email?.split("@")[0] || friend.email;
+  friend.display_name?.trim() || "Friend";
 
 export default function FriendCard({ user }: FriendCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.

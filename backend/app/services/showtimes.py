@@ -14,7 +14,7 @@ from app.exceptions.showtime_exceptions import (
     ShowtimeNotFoundError,
 )
 from app.inputs.movie import Filters
-from app.models.showtime import ShowtimeCreate
+from app.models.showtime import Showtime, ShowtimeCreate
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.services import push_notifications
 
@@ -162,6 +162,69 @@ def insert_showtime_if_not_exists(
             return False
         else:
             raise AppError from e
+    except Exception as e:
+        session.rollback()
+        raise AppError from e
+
+
+def upsert_showtime(
+    *,
+    session: Session,
+    showtime_create: ShowtimeCreate,
+) -> Showtime:
+    """
+    Insert or update a showtime and return the resulting database row.
+    Uses the same +/-1h time-shift heuristic as insert_showtime_if_not_exists.
+    """
+    existing_showtime = showtimes_crud.get_showtime_close_in_time(
+        session=session,
+        showtime_create=showtime_create,
+        delta=timedelta(hours=1),
+    )
+
+    if existing_showtime is not None:
+        try:
+            existing_showtime.datetime = showtime_create.datetime
+            existing_showtime.ticket_link = showtime_create.ticket_link
+            session.commit()
+            session.refresh(existing_showtime)
+            return existing_showtime
+        except IntegrityError as e:
+            session.rollback()
+            if isinstance(e.orig, UniqueViolation):
+                existing_exact = showtimes_crud.get_showtime_by_unique_fields(
+                    session=session,
+                    movie_id=showtime_create.movie_id,
+                    cinema_id=showtime_create.cinema_id,
+                    datetime=showtime_create.datetime,
+                )
+                if existing_exact is not None:
+                    return existing_exact
+            raise AppError from e
+        except Exception as e:
+            session.rollback()
+            raise AppError from e
+
+    try:
+        showtime = showtimes_crud.create_showtime(
+            session=session,
+            showtime_create=showtime_create,
+        )
+        session.commit()
+        session.refresh(showtime)
+        return showtime
+    except IntegrityError as e:
+        session.rollback()
+        if isinstance(e.orig, UniqueViolation):
+            existing_exact = showtimes_crud.get_showtime_by_unique_fields(
+                session=session,
+                movie_id=showtime_create.movie_id,
+                cinema_id=showtime_create.cinema_id,
+                datetime=showtime_create.datetime,
+            )
+            if existing_exact is not None:
+                return existing_exact
+        raise AppError from e
     except Exception as e:
         session.rollback()
         raise AppError from e

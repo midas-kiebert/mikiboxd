@@ -13,6 +13,7 @@ from app.scraping.letterboxd.load_letterboxd_data import scrape_letterboxd
 from app.scraping.logger import logger
 from app.scraping.tmdb import find_tmdb_id
 from app.services import movies as movies_service
+from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
 
 # Generic scraper for cinemas using the Eagerly website.
@@ -45,7 +46,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         self.movies: list[MovieCreate] = []
         self.showtimes: list[ShowtimeCreate] = []
 
-    def scrape(self) -> None:
+    def scrape(self) -> list[tuple[str, int]]:
         # logger.trace(f"Running {self.cinema} scraper...")
         response = requests.get(self.url)
         response.raise_for_status()
@@ -123,6 +124,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                     ticket_link=ticket_link,
                 )
                 self.showtimes.append(showtime)
+        observed_presences: list[tuple[str, int]] = []
         with get_db_context() as session:
             # logger.trace(f"Inserting {len(self.movies)} movies and {len(self.showtimes)} showtimes")
             for movie_create in self.movies:
@@ -130,6 +132,14 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                     session=session, movie_create=movie_create
                 )
             for showtime_create in self.showtimes:
-                showtimes_service.insert_showtime_if_not_exists(
+                showtime = showtimes_service.upsert_showtime(
                     session=session, showtime_create=showtime_create
                 )
+                source_event_key = scrape_sync_service.fallback_source_event_key(
+                    movie_id=showtime_create.movie_id,
+                    cinema_id=showtime_create.cinema_id,
+                    dt=showtime_create.datetime,
+                    ticket_link=showtime_create.ticket_link,
+                )
+                observed_presences.append((source_event_key, showtime.id))
+        return observed_presences

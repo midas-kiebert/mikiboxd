@@ -71,6 +71,21 @@ def get_showtime_close_in_time(
     return result.scalars().first()
 
 
+def get_showtime_by_unique_fields(
+    *,
+    session: Session,
+    movie_id: int,
+    cinema_id: int,
+    datetime,
+) -> Showtime | None:
+    stmt = select(Showtime).where(
+        Showtime.movie_id == movie_id,
+        Showtime.cinema_id == cinema_id,
+        Showtime.datetime == datetime,
+    )
+    return session.execute(stmt).scalars().one_or_none()
+
+
 def create_showtime(
     *,
     session: Session,

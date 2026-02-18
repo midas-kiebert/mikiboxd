@@ -124,14 +124,9 @@ export type UpdatePassword = {
 }
 
 export type UserPublic = {
-  email: string
-  is_active?: boolean
-  is_superuser?: boolean
-  notify_on_friend_showtime_match?: boolean
-  display_name?: string | null
-  letterboxd_username?: string | null
   id: string
-  last_watchlist_sync: string | null
+  is_active: boolean
+  display_name: string | null
 }
 
 export type UserRegister = {
@@ -149,14 +144,9 @@ export type UserUpdate = {
 }
 
 export type UserWithFriendStatus = {
-  email: string
-  is_active?: boolean
-  is_superuser?: boolean
-  notify_on_friend_showtime_match?: boolean
-  display_name?: string | null
-  letterboxd_username?: string | null
   id: string
-  last_watchlist_sync: string | null
+  is_active: boolean
+  display_name: string | null
   is_friend: boolean
   sent_request: boolean
   received_request: boolean

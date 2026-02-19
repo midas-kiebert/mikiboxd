@@ -10,10 +10,14 @@ from sqlalchemy import func
 from sqlmodel import col, select
 
 from app.api.deps import get_db_context
+from app.models.cinema import Cinema
 from app.models.movie import Movie
 from app.models.scrape_run import ScrapeRun, ScrapeRunStatus
 from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
+from app.scraping.letterboxd.load_letterboxd_data import (
+    consume_letterboxd_failure_events,
+)
 from app.scraping.logger import logger
 from app.scraping.scrape import (
     ScrapeExecutionSummary,
@@ -186,6 +190,29 @@ def _load_scrape_run_details(
     return details
 
 
+def _load_cinema_name_by_id() -> dict[int, str]:
+    try:
+        with get_db_context() as session:
+            rows = list(session.exec(select(Cinema.id, Cinema.name)).all())
+    except Exception as e:
+        logger.error(f"Failed to load cinema names for recap. Error: {e}")
+        return {}
+    return {int(cinema_id): str(cinema_name) for cinema_id, cinema_name in rows}
+
+
+def _stream_display_name(source_stream: str, cinema_name_by_id: dict[int, str]) -> str:
+    if not source_stream.startswith("cinema_scraper:"):
+        return source_stream
+    _, _, suffix = source_stream.partition(":")
+    if not suffix.isdigit():
+        return source_stream
+    cinema_id = int(suffix)
+    cinema_name = cinema_name_by_id.get(cinema_id)
+    if cinema_name is None:
+        return source_stream
+    return f"{source_stream} ({cinema_name})"
+
+
 def _load_presence_health_snapshot() -> PresenceHealthSnapshot:
     threshold_minus_one = max(0, scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE - 1)
     try:
@@ -286,6 +313,23 @@ def _tmdb_cache_breakdown(tmdb_lookups: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
+def _letterboxd_failure_breakdown(
+    letterboxd_failures: list[dict[str, Any]],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for failure in letterboxd_failures:
+        event_type_raw = failure.get("event_type")
+        event_type = (
+            str(event_type_raw).strip()
+            if event_type_raw is not None
+            else "unknown_failure"
+        )
+        if not event_type:
+            event_type = "unknown_failure"
+        counts[event_type] = counts.get(event_type, 0) + 1
+    return counts
+
+
 def _load_scrape_run_status_counts(
     *,
     started_at,
@@ -317,6 +361,7 @@ def _render_recap_html(
     finished_at,
     tmdb_lookups: list[dict],
     tmdb_misses: list[dict],
+    letterboxd_failures: list[dict[str, Any]],
     deleted_showtimes: list[DeletedShowtimeInfo],
     errors: list[str],
     missing_cinemas: list[str],
@@ -330,10 +375,14 @@ def _render_recap_html(
     tmdb_cache_counts: dict[str, int],
     scrape_status_counts: dict[str, int],
     scrape_run_details: list[ScrapeRunDetail],
+    cinema_scraper_details: list[ScrapeRunDetail],
+    cinema_scraper_status_counts: dict[str, int],
+    cinema_name_by_id: dict[int, str],
     slowest_run_details: list[ScrapeRunDetail],
     presence_health: PresenceHealthSnapshot,
     tmdb_miss_titles: list[tuple[str, int]],
     error_stage_counts: dict[str, int],
+    letterboxd_failure_counts: dict[str, int],
 ) -> str:
     deleted_items = (
         "".join(
@@ -406,6 +455,13 @@ def _render_recap_html(
         f"<li>{escape(status)}: <b>{count}</b></li>"
         for status, count in sorted(scrape_status_counts.items())
     )
+    cinema_scraper_status_items = (
+        "".join(
+            f"<li>{escape(status)}: <b>{count}</b></li>"
+            for status, count in sorted(cinema_scraper_status_counts.items())
+        )
+        or "<li>None</li>"
+    )
     pending_delete_items = (
         "".join(
             f"<li>{escape(source_stream)}: <b>{count}</b></li>"
@@ -440,6 +496,68 @@ def _render_recap_html(
         )
         or "<li>None</li>"
     )
+    cinema_scraper_detail_items = (
+        "".join(
+            "<li>"
+            f"{escape(detail.started_at.isoformat())} | "
+            f"{escape(_stream_display_name(detail.source_stream, cinema_name_by_id))} | "
+            f"status={escape(detail.status)} | "
+            f"duration={f'{detail.duration_seconds:.1f}s' if detail.duration_seconds is not None else '-'} | "
+            f"observed={detail.observed_showtime_count if detail.observed_showtime_count is not None else '-'}"
+            + (f" | error={escape(detail.error)}" if detail.error else "")
+            + "</li>"
+            for detail in cinema_scraper_details
+        )
+        or "<li>None</li>"
+    )
+    letterboxd_failure_items = (
+        "".join(
+            "<li>"
+            + escape(
+                " | ".join(
+                    str(part)
+                    for part in [
+                        failure.get("timestamp", "unknown_time"),
+                        f"event={failure.get('event_type', 'unknown_failure')}",
+                        (
+                            f"tmdb_id={failure.get('tmdb_id')}"
+                            if failure.get("tmdb_id") is not None
+                            else None
+                        ),
+                        (
+                            f"status={failure.get('status_code')}"
+                            if failure.get("status_code") is not None
+                            else None
+                        ),
+                        (
+                            f"reason={failure.get('reason')}"
+                            if failure.get("reason") is not None
+                            else None
+                        ),
+                        (
+                            f"url={failure.get('url')}"
+                            if failure.get("url") is not None
+                            else None
+                        ),
+                    ]
+                    if part is not None
+                )
+            )
+            + "</li>"
+            for failure in letterboxd_failures
+        )
+        or "<li>None</li>"
+    )
+    letterboxd_failure_breakdown_items = (
+        "".join(
+            f"<li>{escape(event_type)}: <b>{count}</b></li>"
+            for event_type, count in sorted(
+                letterboxd_failure_counts.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        )
+        or "<li>None</li>"
+    )
 
     return f"""
     <h2>Scrape Recap</h2>
@@ -460,13 +578,19 @@ def _render_recap_html(
     <p>TMDB ID not found count: <b>{len(tmdb_misses)}</b></p>
     <p>Future showtimes deleted (no longer found): <b>{len(deleted_showtimes)}</b></p>
     <p>Error count: <b>{len(errors)}</b></p>
+    <p>Letterboxd failure count: <b>{len(letterboxd_failures)}</b></p>
     <p>Missing cinemas count: <b>{len(missing_cinemas)}</b></p>
     <p>Missing-cinema insert failure count: <b>{len(missing_cinema_insert_failures)}</b></p>
     <p>Total scrape streams recorded: <b>{len(scrape_run_details)}</b></p>
+    <p>Cinema scraper streams recorded: <b>{len(cinema_scraper_details)}</b></p>
     <h3>TMDB Cache Breakdown</h3>
     <ul>{tmdb_cache_breakdown_items}</ul>
     <h3>Scrape Run Statuses</h3>
     <ul>{scrape_status_items}</ul>
+    <h3>Cinema Scraper Statuses</h3>
+    <ul>{cinema_scraper_status_items}</ul>
+    <h3>Letterboxd Failure Breakdown</h3>
+    <ul>{letterboxd_failure_breakdown_items}</ul>
     <h3>Sync Safety Guardrail</h3>
     <ul>
       <li>Deletion threshold: <b>{scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE}</b> consecutive misses.</li>
@@ -486,6 +610,10 @@ def _render_recap_html(
     <ul>{new_movie_items}</ul>
     <h3>Per-Stream Run Details</h3>
     <ul>{run_detail_items}</ul>
+    <h3>Per Cinema Scraper Detail</h3>
+    <ul>{cinema_scraper_detail_items}</ul>
+    <h3>Letterboxd Failure Events</h3>
+    <ul>{letterboxd_failure_items}</ul>
     <h3>TMDB ID Not Found</h3>
     <ul>{tmdb_miss_items}</ul>
     <h3>Showtimes No Longer Found (Future Only)</h3>
@@ -496,7 +624,7 @@ def _render_recap_html(
     <ul>{missing_cinema_insert_failure_items}</ul>
     <h3>Errors</h3>
     <ul>{error_items}</ul>
-    <p>Attachments include TMDB lookups and full per-stream run details.</p>
+    <p>Attachments include TMDB lookups, Letterboxd failures, and full run details.</p>
     """
 
 
@@ -506,6 +634,7 @@ def _send_recap_email(
     finished_at,
     summary: ScrapeExecutionSummary,
     tmdb_lookups: list[dict],
+    letterboxd_failures: list[dict[str, Any]],
     before_snapshot: FutureSnapshot,
     after_snapshot: FutureSnapshot,
 ) -> None:
@@ -536,6 +665,18 @@ def _send_recap_email(
         started_at=started_at,
         finished_at=finished_at,
     )
+    cinema_scraper_details = [
+        detail
+        for detail in scrape_run_details
+        if detail.source_stream.startswith("cinema_scraper:")
+    ]
+    cinema_scraper_status_counts: dict[str, int] = {}
+    for detail in cinema_scraper_details:
+        cinema_scraper_status_counts[detail.status] = (
+            cinema_scraper_status_counts.get(detail.status, 0) + 1
+        )
+    cinema_name_by_id = _load_cinema_name_by_id()
+    letterboxd_failure_counts = _letterboxd_failure_breakdown(letterboxd_failures)
     slowest_run_details = sorted(
         [
             detail
@@ -557,6 +698,7 @@ def _send_recap_email(
         finished_at=finished_at,
         tmdb_lookups=tmdb_lookups,
         tmdb_misses=tmdb_misses,
+        letterboxd_failures=letterboxd_failures,
         deleted_showtimes=deleted_showtimes,
         errors=errors,
         missing_cinemas=missing_cinemas,
@@ -570,10 +712,14 @@ def _send_recap_email(
         tmdb_cache_counts=tmdb_cache_counts,
         scrape_status_counts=scrape_status_counts,
         scrape_run_details=scrape_run_details,
+        cinema_scraper_details=cinema_scraper_details,
+        cinema_scraper_status_counts=cinema_scraper_status_counts,
+        cinema_name_by_id=cinema_name_by_id,
         slowest_run_details=slowest_run_details,
         presence_health=presence_health,
         tmdb_miss_titles=tmdb_miss_titles,
         error_stage_counts=error_stage_counts,
+        letterboxd_failure_counts=letterboxd_failure_counts,
     )
 
     tmdb_lookup_attachment_data = json.dumps(
@@ -588,6 +734,10 @@ def _send_recap_email(
         [
             {
                 "source_stream": detail.source_stream,
+                "source_stream_display": _stream_display_name(
+                    detail.source_stream,
+                    cinema_name_by_id,
+                ),
                 "status": detail.status,
                 "started_at": detail.started_at.isoformat(),
                 "finished_at": (
@@ -606,6 +756,44 @@ def _send_recap_email(
         sort_keys=True,
     ).encode("utf-8")
     scrape_runs_attachment_name = f"scrape_runs_{started_at:%Y%m%d_%H%M%S}.json"
+    cinema_scraper_runs_attachment_data = json.dumps(
+        [
+            {
+                "source_stream": detail.source_stream,
+                "source_stream_display": _stream_display_name(
+                    detail.source_stream,
+                    cinema_name_by_id,
+                ),
+                "status": detail.status,
+                "started_at": detail.started_at.isoformat(),
+                "finished_at": (
+                    detail.finished_at.isoformat()
+                    if detail.finished_at is not None
+                    else None
+                ),
+                "duration_seconds": detail.duration_seconds,
+                "observed_showtime_count": detail.observed_showtime_count,
+                "error": detail.error,
+            }
+            for detail in cinema_scraper_details
+        ],
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8")
+    cinema_scraper_runs_attachment_name = (
+        f"cinema_scraper_runs_{started_at:%Y%m%d_%H%M%S}.json"
+    )
+
+    letterboxd_failures_attachment_data = json.dumps(
+        letterboxd_failures,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8")
+    letterboxd_failures_attachment_name = (
+        f"letterboxd_failures_{started_at:%Y%m%d_%H%M%S}.json"
+    )
 
     presence_health_attachment_data = json.dumps(
         {
@@ -654,6 +842,16 @@ def _send_recap_email(
                 "mime_type": "application/json",
             },
             {
+                "filename": cinema_scraper_runs_attachment_name,
+                "data": cinema_scraper_runs_attachment_data,
+                "mime_type": "application/json",
+            },
+            {
+                "filename": letterboxd_failures_attachment_name,
+                "data": letterboxd_failures_attachment_data,
+                "mime_type": "application/json",
+            },
+            {
                 "filename": presence_health_attachment_name,
                 "data": presence_health_attachment_data,
                 "mime_type": "application/json",
@@ -672,6 +870,7 @@ def run() -> None:
     before_snapshot = _load_future_snapshot(snapshot_time=started_at)
     summary = ScrapeExecutionSummary()
     tmdb_lookups: list[dict] = []
+    letterboxd_failures: list[dict[str, Any]] = []
     fatal_error: Exception | None = None
     try:
         logger.info("Starting cineville scraper...")
@@ -690,12 +889,14 @@ def run() -> None:
         finished_at = now_amsterdam_naive()
         after_snapshot = _load_future_snapshot(snapshot_time=started_at)
         tmdb_lookups = consume_tmdb_lookup_events()
+        letterboxd_failures = consume_letterboxd_failure_events()
         try:
             _send_recap_email(
                 started_at=started_at,
                 finished_at=finished_at,
                 summary=summary,
                 tmdb_lookups=tmdb_lookups,
+                letterboxd_failures=letterboxd_failures,
                 before_snapshot=before_snapshot,
                 after_snapshot=after_snapshot,
             )

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlmodel import Column, Field, SQLModel
@@ -29,7 +31,7 @@ class MovieBase(SQLModel):
 
 # Properties to receive on movie creation
 class MovieCreate(MovieBase):
-    pass
+    letterboxd_last_enriched_at: datetime | None = None
 
 
 # Properties to receive on movie update
@@ -39,8 +41,9 @@ class MovieUpdate(SQLModel):
     letterboxd_slug: str | None = None
     top250: int | None = None
     rating: float | None = None
+    letterboxd_last_enriched_at: datetime | None = None
 
 
 # Database model, database table inferred from class name
 class Movie(MovieBase, table=True):
-    pass
+    letterboxd_last_enriched_at: datetime | None = None

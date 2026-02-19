@@ -62,6 +62,8 @@ import type {
   UtilsTestEmailData,
   UtilsTestEmailResponse,
   UtilsHealthCheckResponse,
+  UtilsOverrideTmdbCacheEntryData,
+  UtilsOverrideTmdbCacheEntryResponse,
 } from "./types.gen"
 
 export class CinemasService {
@@ -872,6 +874,27 @@ export class UtilsService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/utils/health-check/",
+    })
+  }
+
+  /**
+   * Override Tmdb Cache Entry
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns TmdbCacheOverrideResponse Successful Response
+   * @throws ApiError
+   */
+  public static overrideTmdbCacheEntry(
+    data: UtilsOverrideTmdbCacheEntryData,
+  ): CancelablePromise<UtilsOverrideTmdbCacheEntryResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/utils/tmdb-cache/override/",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
     })
   }
 }

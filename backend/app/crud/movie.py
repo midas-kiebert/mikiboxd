@@ -17,6 +17,34 @@ from app.models.user import User
 from app.models.watchlist_selection import WatchlistSelection
 
 
+def _normalized_original_title(
+    *,
+    title: str | None,
+    original_title: str | None,
+) -> str | None:
+    if original_title is None:
+        return None
+    normalized_original_title = original_title.strip()
+    if not normalized_original_title:
+        return None
+    normalized_title = title.strip() if isinstance(title, str) else None
+    if (
+        normalized_title
+        and normalized_original_title.casefold() == normalized_title.casefold()
+    ):
+        return None
+    return normalized_original_title
+
+
+def _normalized_letterboxd_slug(slug: str | None) -> str | None:
+    if slug is None:
+        return None
+    normalized_slug = slug.strip()
+    if not normalized_slug:
+        return None
+    return normalized_slug
+
+
 def time_range_clause(
     datetime_column,
     start: time,
@@ -58,12 +86,45 @@ def upsert_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
         Movie: The inserted or updated movie object.
     """
     db_obj = session.get(Movie, movie_create.id)
+    movie_payload = movie_create.model_dump()
+    movie_payload["original_title"] = _normalized_original_title(
+        title=movie_payload.get("title")
+        if isinstance(movie_payload.get("title"), str)
+        else None,
+        original_title=movie_payload.get("original_title")
+        if isinstance(movie_payload.get("original_title"), str)
+        else None,
+    )
+    movie_payload["letterboxd_slug"] = _normalized_letterboxd_slug(
+        movie_payload.get("letterboxd_slug")
+        if isinstance(movie_payload.get("letterboxd_slug"), str)
+        else None
+    )
     if db_obj is None:
-        db_obj = Movie(**movie_create.model_dump())
+        db_obj = Movie(**movie_payload)
         session.add(db_obj)
         session.flush()  # Check for Unique Violations
         return db_obj
     movie_data = movie_create.model_dump(exclude_unset=True)
+    if "original_title" in movie_data:
+        movie_data["original_title"] = _normalized_original_title(
+            title=movie_data.get("title")
+            if isinstance(movie_data.get("title"), str)
+            else db_obj.title,
+            original_title=movie_data.get("original_title")
+            if isinstance(movie_data.get("original_title"), str)
+            else None,
+        )
+    if "letterboxd_slug" in movie_data:
+        normalized_slug = _normalized_letterboxd_slug(
+            movie_data.get("letterboxd_slug")
+            if isinstance(movie_data.get("letterboxd_slug"), str)
+            else None
+        )
+        if normalized_slug is None:
+            movie_data.pop("letterboxd_slug", None)
+        else:
+            movie_data["letterboxd_slug"] = normalized_slug
     db_obj.sqlmodel_update(movie_data)
     return db_obj
 
@@ -80,7 +141,21 @@ def create_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
     Raises:
         IntegrityError: If a movie with the same id already exists.
     """
-    db_obj = Movie(**movie_create.model_dump())
+    movie_payload = movie_create.model_dump()
+    movie_payload["original_title"] = _normalized_original_title(
+        title=movie_payload.get("title")
+        if isinstance(movie_payload.get("title"), str)
+        else None,
+        original_title=movie_payload.get("original_title")
+        if isinstance(movie_payload.get("original_title"), str)
+        else None,
+    )
+    movie_payload["letterboxd_slug"] = _normalized_letterboxd_slug(
+        movie_payload.get("letterboxd_slug")
+        if isinstance(movie_payload.get("letterboxd_slug"), str)
+        else None
+    )
+    db_obj = Movie(**movie_payload)
     session.add(db_obj)
     session.flush()  # Check for Unique Violations
     return db_obj
@@ -133,6 +208,16 @@ def update_movie(*, db_movie: Movie, movie_update: MovieUpdate) -> Movie:
         Movie: The updated movie object.
     """
     movie_data = movie_update.model_dump(exclude_unset=True)
+    if "letterboxd_slug" in movie_data:
+        normalized_slug = _normalized_letterboxd_slug(
+            movie_data.get("letterboxd_slug")
+            if isinstance(movie_data.get("letterboxd_slug"), str)
+            else None
+        )
+        if normalized_slug is None:
+            movie_data.pop("letterboxd_slug", None)
+        else:
+            movie_data["letterboxd_slug"] = normalized_slug
     db_movie.sqlmodel_update(movie_data)
     return db_movie
 

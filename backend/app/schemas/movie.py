@@ -24,16 +24,12 @@ class MovieSummaryLoggedIn(MovieBase):
     friends_interested: list["UserPublic"]
     going: GoingStatus
     original_title: str | None = None
-    top250: int | None = None
     release_year: int | None = None
-    rating: float | None = None
     directors: list[str] | None = None
 
 
 class MovieLoggedIn(MovieBase):
     showtimes: list["ShowtimeInMovieLoggedIn"]
     original_title: str | None = None
-    top250: int | None = None
     release_year: int | None = None
-    rating: float | None = None
     directors: list[str] | None = None

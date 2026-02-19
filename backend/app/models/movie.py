@@ -23,15 +23,13 @@ class MovieBase(SQLModel):
     original_title: str | None = None
     poster_link: str | None = None
     letterboxd_slug: str | None = None
-    top250: int | None = None
     directors: list[str] | None = Field(sa_column=Column(ARRAY(String)), default=None)
     release_year: int | None = None
-    rating: float | None = None
 
 
 # Properties to receive on movie creation
 class MovieCreate(MovieBase):
-    letterboxd_last_enriched_at: datetime | None = None
+    tmdb_last_enriched_at: datetime | None = None
 
 
 # Properties to receive on movie update
@@ -39,11 +37,9 @@ class MovieUpdate(SQLModel):
     title: str | None = None
     poster_link: str | None = None
     letterboxd_slug: str | None = None
-    top250: int | None = None
-    rating: float | None = None
-    letterboxd_last_enriched_at: datetime | None = None
+    tmdb_last_enriched_at: datetime | None = None
 
 
 # Database model, database table inferred from class name
 class Movie(MovieBase, table=True):
-    letterboxd_last_enriched_at: datetime | None = None
+    tmdb_last_enriched_at: datetime | None = None

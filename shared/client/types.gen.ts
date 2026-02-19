@@ -106,6 +106,20 @@ export type ShowtimeSelectionUpdate = {
   going_status: GoingStatus
 }
 
+export type TmdbCacheOverrideRequest = {
+  title_query: string
+  director_names?: Array<string>
+  actor_name?: string | null
+  year?: number | null
+  tmdb_id?: number | null
+}
+
+export type TmdbCacheOverrideResponse = {
+  lookup_hash: string
+  lookup_payload: string
+  tmdb_id: number | null
+}
+
 export type Token = {
   access_token: string
   /**
@@ -451,3 +465,9 @@ export type UtilsTestEmailData = {
 export type UtilsTestEmailResponse = Message
 
 export type UtilsHealthCheckResponse = boolean
+
+export type UtilsOverrideTmdbCacheEntryData = {
+  requestBody: TmdbCacheOverrideRequest
+}
+
+export type UtilsOverrideTmdbCacheEntryResponse = TmdbCacheOverrideResponse

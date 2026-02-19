@@ -7,6 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from pydantic import BaseModel
+from rapidfuzz import fuzz
 
 from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
@@ -14,7 +15,7 @@ from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
-from app.scraping.tmdb import find_tmdb_id, get_tmdb_movie_details
+from app.scraping.tmdb import TmdbMovieDetails, find_tmdb_id, get_tmdb_movie_details
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
@@ -54,6 +55,92 @@ def clean_title(title: str) -> str:
     title = re.sub(r"\(.*\)", "", title)  # Remove everything in parentheses
     title = re.sub(r"\s+", " ", title).strip()  # Normalize whitespace
     return title
+
+
+def _normalize_confidence_text(value: str | None) -> str:
+    if value is None:
+        return ""
+    return re.sub(r"\s+", " ", value).strip().lower()
+
+
+def _tmdb_match_confidence(
+    *,
+    query: str,
+    directors: list[str],
+    tmdb_details: TmdbMovieDetails | None,
+) -> float:
+    if tmdb_details is None:
+        return 0.0
+
+    normalized_query = _normalize_confidence_text(query)
+    if not normalized_query:
+        return 0.0
+
+    title_candidates = [
+        _normalize_confidence_text(tmdb_details.title),
+        _normalize_confidence_text(tmdb_details.original_title),
+    ]
+    title_score = 0.0
+    for candidate in title_candidates:
+        if not candidate:
+            continue
+        title_score = max(
+            title_score,
+            float(fuzz.token_set_ratio(normalized_query, candidate)),
+            float(fuzz.ratio(normalized_query, candidate)),
+        )
+
+    normalized_directors = {
+        _normalize_confidence_text(name) for name in directors if name.strip()
+    }
+    normalized_tmdb_directors = {
+        _normalize_confidence_text(name)
+        for name in (tmdb_details.directors or [])
+        if name.strip()
+    }
+
+    director_bonus = 0.0
+    if normalized_directors and normalized_tmdb_directors:
+        director_bonus = (
+            8.0
+            if normalized_directors.intersection(normalized_tmdb_directors)
+            else -8.0
+        )
+    return title_score + director_bonus
+
+
+def _pick_best_tmdb_candidate(
+    *,
+    candidate_queries: list[str],
+    directors: list[str],
+) -> tuple[int, TmdbMovieDetails | None, str, float] | None:
+    details_by_id: dict[int, TmdbMovieDetails | None] = {}
+    scored_candidates: list[tuple[float, int, bool, str]] = []
+    primary_query = candidate_queries[0] if candidate_queries else ""
+
+    for query in candidate_queries:
+        tmdb_id = find_tmdb_id(title_query=query, director_names=directors)
+        if tmdb_id is None:
+            continue
+
+        if tmdb_id not in details_by_id:
+            details_by_id[tmdb_id] = get_tmdb_movie_details(tmdb_id)
+        tmdb_details = details_by_id[tmdb_id]
+        confidence = _tmdb_match_confidence(
+            query=query,
+            directors=directors,
+            tmdb_details=tmdb_details,
+        )
+        scored_candidates.append((confidence, tmdb_id, query == primary_query, query))
+
+    if not scored_candidates:
+        return None
+
+    best_confidence, best_id, _, best_query = max(
+        scored_candidates,
+        key=lambda item: (item[0], item[2]),
+    )
+    return best_id, details_by_id[best_id], best_query, best_confidence
 
 
 class EyeScraper(BaseCinemaScraper):
@@ -190,15 +277,31 @@ def get_movie(title_query: str, url: str) -> MovieCreate | None:
         logger.debug(f"Did not find original title for {title_query}")
         original_title = None
 
-    if original_title:
-        title_query = original_title
+    candidate_queries = [title_query]
+    if original_title and original_title.casefold() != title_query.casefold():
+        candidate_queries.append(original_title)
 
-    tmdb_id = find_tmdb_id(title_query=title_query, director_names=directors)
-    if tmdb_id is None:
-        logger.warning(f"No TMDB id found for {title_query}, skipping")
+    best_candidate = _pick_best_tmdb_candidate(
+        candidate_queries=candidate_queries,
+        directors=directors,
+    )
+    if best_candidate is None:
+        logger.warning(
+            f"No TMDB id found for Eye movie candidates {candidate_queries}, skipping"
+        )
         return None
 
-    tmdb_details = get_tmdb_movie_details(tmdb_id)
+    tmdb_id, tmdb_details, chosen_query, confidence = best_candidate
+    if len(candidate_queries) > 1:
+        logger.debug(
+            "Eye TMDB title resolution: chosen query '%s' for candidates=%s "
+            "(tmdb_id=%s, confidence=%.2f)",
+            chosen_query,
+            candidate_queries,
+            tmdb_id,
+            confidence,
+        )
+
     if tmdb_details is None:
         logger.warning(
             f"TMDB details not found for TMDB ID {tmdb_id}; using fallback metadata."

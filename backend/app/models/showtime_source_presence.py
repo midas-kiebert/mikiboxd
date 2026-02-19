@@ -16,7 +16,7 @@ class ShowtimeSourcePresence(SQLModel, table=True):
             name="uq_showtime_source_event",
         ),
     )
-    id: int = Field(primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     source_stream: str = Field(index=True)
     source_event_key: str = Field(index=True)
     showtime_id: int = Field(

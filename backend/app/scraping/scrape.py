@@ -23,17 +23,13 @@ from app.scraping.cinemas.amsterdam.lab111 import LAB111Scraper
 from app.scraping.cinemas.amsterdam.themovies import TheMoviesScraper
 from app.scraping.cinemas.amsterdam.uitkijk import UitkijkScraper
 from app.scraping.logger import logger
-from app.scraping.tmdb import find_tmdb_id_async
+from app.scraping.tmdb import find_tmdb_id_async, get_tmdb_movie_details_async
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
 from app.utils import clean_title, now_amsterdam_naive, to_amsterdam_time
 
 from . import get_movies, get_showtimes
-from .letterboxd.load_letterboxd_data import (
-    is_letterboxd_temporarily_blocked,
-    scrape_letterboxd_async,
-)
 
 ScraperFactory = Callable[[], BaseCinemaScraper]
 
@@ -170,9 +166,7 @@ def _persist_cineville_results_batch(
                     commit=False,
                 )
                 inserted_movie_ids.add(movie.id)
-                logger.info(
-                    f"Inserted movie: {movie.title} (TMDB ID: {movie.id}, Letterboxd slug: {movie.letterboxd_slug})"
-                )
+                logger.info(f"Inserted movie: {movie.title} (TMDB ID: {movie.id})")
 
             for showtime_data in prepared_movie.showtimes:
                 source_stream: str | None = None
@@ -326,31 +320,13 @@ async def _process_cineville_movie_async(
             logger.warning(f"TMDB ID not found for movie: {title_query}")
             return None, []
 
-        try:
-            letterboxd_data = await scrape_letterboxd_async(
-                tmdb_id=tmdb_id,
-                session=session,
+        tmdb_details = await get_tmdb_movie_details_async(
+            session=session, tmdb_id=tmdb_id
+        )
+        if tmdb_details is None:
+            logger.warning(
+                f"TMDB details not found for TMDB ID {tmdb_id}; using fallback metadata."
             )
-        except Exception as e:
-            return (
-                None,
-                [
-                    _format_error_context(
-                        stage="letterboxd_lookup",
-                        error=e,
-                        movie_title=movie_title,
-                        production_id=production_id,
-                    )
-                ],
-            )
-        if letterboxd_data is None:
-            if is_letterboxd_temporarily_blocked():
-                logger.debug(
-                    f"Letterboxd temporarily blocked; skipping TMDB ID {tmdb_id}"
-                )
-            else:
-                logger.warning(f"Letterboxd data not found for TMDB ID: {tmdb_id}")
-            return None, []
 
         try:
             showtimes_data = await get_showtimes.get_showtimes_json_async(
@@ -369,17 +345,28 @@ async def _process_cineville_movie_async(
                     )
                 ],
             )
+
+        tmdb_title = (
+            tmdb_details.title if tmdb_details is not None else movie_data.title
+        )
+        tmdb_directors = (
+            tmdb_details.directors if tmdb_details is not None else list(directors)
+        )
         movie = MovieCreate(
-            title=letterboxd_data.title,
+            title=tmdb_title,
             id=tmdb_id,
-            poster_link=letterboxd_data.poster_url,
-            letterboxd_slug=letterboxd_data.slug,
-            top250=letterboxd_data.top250,
-            directors=letterboxd_data.directors,
-            release_year=letterboxd_data.release_year,
-            rating=letterboxd_data.rating,
-            original_title=letterboxd_data.original_title,
-            letterboxd_last_enriched_at=letterboxd_data.enriched_at,
+            poster_link=tmdb_details.poster_url if tmdb_details is not None else None,
+            letterboxd_slug=None,
+            directors=tmdb_directors if tmdb_directors else None,
+            release_year=(
+                tmdb_details.release_year if tmdb_details is not None else None
+            ),
+            original_title=(
+                tmdb_details.original_title if tmdb_details is not None else None
+            ),
+            tmdb_last_enriched_at=(
+                now_amsterdam_naive() if tmdb_details is not None else None
+            ),
         )
         prepared_showtimes = [
             PreparedCinevilleShowtime(

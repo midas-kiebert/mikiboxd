@@ -17,6 +17,7 @@ from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
 from app.scraping.letterboxd.load_letterboxd_data import (
     consume_letterboxd_failure_events,
+    reset_letterboxd_request_budget,
 )
 from app.scraping.logger import logger
 from app.scraping.scrape import (
@@ -867,6 +868,7 @@ def _send_recap_email(
 
 def run() -> None:
     started_at = now_amsterdam_naive()
+    reset_letterboxd_request_budget()
     before_snapshot = _load_future_snapshot(snapshot_time=started_at)
     summary = ScrapeExecutionSummary()
     tmdb_lookups: list[dict] = []

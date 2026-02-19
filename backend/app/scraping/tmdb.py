@@ -5,6 +5,7 @@ import json
 import re
 import unicodedata
 from collections.abc import Sequence
+from dataclasses import dataclass
 from threading import Event, Lock, local
 from typing import Any
 
@@ -26,6 +27,7 @@ TMDB_API_KEY = settings.TMDB_KEY
 SEARCH_PERSON_URL = "https://api.themoviedb.org/3/search/person"
 CREDITS_URL_TEMPLATE = "https://api.themoviedb.org/3/person/{id}/movie_credits"
 MOVIE_URL_TEMPLATE = "https://api.themoviedb.org/3/movie/{id}"
+TMDB_POSTER_BASE_URL = "https://image.tmdb.org/t/p/w342"
 LETTERBOXD_SEARCH_URL = "https://letterboxd.com/search/"
 TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 
@@ -84,6 +86,17 @@ _person_movies_cache_lock = Lock()
 _person_movies_cache: dict[tuple[str, str, int | None], list[dict[str, Any]]] = {}
 _title_search_cache_lock = Lock()
 _title_search_cache: dict[str, list[dict[str, Any]]] = {}
+_movie_details_cache_lock = Lock()
+_movie_details_cache: dict[int, "TmdbMovieDetails | None"] = {}
+
+
+@dataclass(frozen=True)
+class TmdbMovieDetails:
+    title: str
+    original_title: str | None
+    release_year: int | None
+    directors: list[str]
+    poster_url: str | None
 
 
 def _get_session() -> requests.Session:
@@ -240,6 +253,125 @@ def _memory_title_search_set(title: str, results: list[dict[str, Any]]) -> None:
     key = title.strip().lower()
     with _title_search_cache_lock:
         _title_search_cache[key] = list(results)
+
+
+def _memory_movie_details_get(tmdb_id: int) -> tuple[bool, TmdbMovieDetails | None]:
+    with _movie_details_cache_lock:
+        if tmdb_id not in _movie_details_cache:
+            return False, None
+        return True, _movie_details_cache[tmdb_id]
+
+
+def _memory_movie_details_set(tmdb_id: int, details: TmdbMovieDetails | None) -> None:
+    with _movie_details_cache_lock:
+        _movie_details_cache[tmdb_id] = details
+
+
+def _parse_tmdb_movie_details(payload: dict[str, Any]) -> TmdbMovieDetails | None:
+    title_raw = payload.get("title")
+    original_title_raw = payload.get("original_title")
+    title = title_raw.strip() if isinstance(title_raw, str) else ""
+    original_title = (
+        original_title_raw.strip() if isinstance(original_title_raw, str) else None
+    )
+    if not title and original_title:
+        title = original_title
+    if not title:
+        return None
+    if original_title and original_title.casefold() == title.casefold():
+        original_title = None
+
+    release_year = _movie_release_year(payload)
+    credits = payload.get("credits")
+    crew = credits.get("crew", []) if isinstance(credits, dict) else []
+    directors: list[str] = []
+    seen: set[str] = set()
+    for member in crew:
+        if not isinstance(member, dict) or member.get("job") != "Director":
+            continue
+        name_raw = member.get("name")
+        if not isinstance(name_raw, str):
+            continue
+        name = name_raw.strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        directors.append(name)
+
+    poster_path = payload.get("poster_path")
+    poster_url = (
+        f"{TMDB_POSTER_BASE_URL}{poster_path}"
+        if isinstance(poster_path, str) and poster_path.strip()
+        else None
+    )
+
+    return TmdbMovieDetails(
+        title=title,
+        original_title=original_title,
+        release_year=release_year,
+        directors=directors,
+        poster_url=poster_url,
+    )
+
+
+def get_tmdb_movie_details(tmdb_id: int) -> TmdbMovieDetails | None:
+    cache_hit, cached = _memory_movie_details_get(tmdb_id)
+    if cache_hit:
+        return cached
+
+    url = MOVIE_URL_TEMPLATE.format(id=tmdb_id)
+    try:
+        response = _get_session().get(
+            url,
+            params={
+                "api_key": TMDB_API_KEY,
+                "append_to_response": "credits",
+            },
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logger.warning(f"Failed to fetch TMDB movie details for {tmdb_id}. Error: {e}")
+        _memory_movie_details_set(tmdb_id, None)
+        return None
+
+    payload = response.json()
+    if not isinstance(payload, dict):
+        logger.warning(f"Unexpected TMDB movie details payload for {tmdb_id}.")
+        _memory_movie_details_set(tmdb_id, None)
+        return None
+
+    details = _parse_tmdb_movie_details(payload)
+    _memory_movie_details_set(tmdb_id, details)
+    return details
+
+
+async def get_tmdb_movie_details_async(
+    *,
+    session: aiohttp.ClientSession,
+    tmdb_id: int,
+) -> TmdbMovieDetails | None:
+    cache_hit, cached = _memory_movie_details_get(tmdb_id)
+    if cache_hit:
+        return cached
+
+    url = MOVIE_URL_TEMPLATE.format(id=tmdb_id)
+    payload = await _get_json_async(
+        session=session,
+        url=url,
+        params={
+            "api_key": TMDB_API_KEY,
+            "append_to_response": "credits",
+        },
+    )
+    if payload is None:
+        _memory_movie_details_set(tmdb_id, None)
+        return None
+    details = _parse_tmdb_movie_details(payload)
+    _memory_movie_details_set(tmdb_id, details)
+    return details
 
 
 def _get_cached_tmdb_id(

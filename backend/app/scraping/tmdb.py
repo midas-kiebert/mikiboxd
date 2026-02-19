@@ -2,10 +2,13 @@ import asyncio
 import hashlib
 import html
 import json
+import os
+import random
 import re
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from threading import Event, Lock, local
 from typing import Any
 
@@ -19,6 +22,8 @@ from urllib3.util.retry import Retry
 
 from app.api.deps import get_db_context
 from app.core.config import settings
+from app.crud import movie as movies_crud
+from app.models.movie import Movie
 from app.models.tmdb_lookup_cache import TmdbLookupCache
 from app.scraping.logger import logger
 from app.utils import now_amsterdam_naive
@@ -30,6 +35,52 @@ MOVIE_URL_TEMPLATE = "https://api.themoviedb.org/3/movie/{id}"
 TMDB_POSTER_BASE_URL = "https://image.tmdb.org/t/p/w342"
 LETTERBOXD_SEARCH_URL = "https://letterboxd.com/search/"
 TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
+
+
+def _env_non_negative_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return default
+
+
+def _env_probability(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        parsed = float(raw)
+    except ValueError:
+        return default
+    return min(1.0, max(0.0, parsed))
+
+
+TMDB_REFRESH_AFTER_DAYS = _env_non_negative_int("TMDB_REFRESH_AFTER_DAYS", 5)
+TMDB_STALE_REFRESH_BASE_PROBABILITY = _env_probability(
+    "TMDB_STALE_REFRESH_BASE_PROBABILITY",
+    0.05,
+)
+TMDB_STALE_REFRESH_DAILY_INCREASE = _env_float(
+    "TMDB_STALE_REFRESH_DAILY_INCREASE",
+    0.03,
+)
+TMDB_STALE_REFRESH_MAX_PROBABILITY = _env_probability(
+    "TMDB_STALE_REFRESH_MAX_PROBABILITY",
+    1.0,
+)
 
 FUZZ_THRESHOLD = 60  # Minimum score for a match
 RELAXED_FUZZ_THRESHOLD = 45
@@ -97,6 +148,16 @@ class TmdbMovieDetails:
     release_year: int | None
     directors: list[str]
     poster_url: str | None
+    enriched_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class ExistingTmdbResolution:
+    movie_data: TmdbMovieDetails | None
+    should_refetch: bool
+    decision_reason: str
+    age_days: float | None = None
+    refresh_probability: float = 0.0
 
 
 def _get_session() -> requests.Session:
@@ -267,7 +328,104 @@ def _memory_movie_details_set(tmdb_id: int, details: TmdbMovieDetails | None) ->
         _movie_details_cache[tmdb_id] = details
 
 
-def _parse_tmdb_movie_details(payload: dict[str, Any]) -> TmdbMovieDetails | None:
+def _movie_to_tmdb_details(movie: Movie) -> TmdbMovieDetails | None:
+    title = movie.title.strip()
+    if not title:
+        return None
+    original_title = (
+        movie.original_title.strip()
+        if isinstance(movie.original_title, str) and movie.original_title.strip()
+        else None
+    )
+    if original_title and original_title.casefold() == title.casefold():
+        original_title = None
+    return TmdbMovieDetails(
+        title=title,
+        original_title=original_title,
+        release_year=movie.release_year,
+        directors=list(movie.directors) if movie.directors else [],
+        poster_url=movie.poster_link,
+        enriched_at=movie.tmdb_last_enriched_at,
+    )
+
+
+def _load_existing_movie(tmdb_id: int) -> Movie | None:
+    with get_db_context() as session:
+        return movies_crud.get_movie_by_id(session=session, id=tmdb_id)
+
+
+def _age_days(movie: Movie, now: datetime) -> float | None:
+    enriched_at = movie.tmdb_last_enriched_at
+    if enriched_at is None:
+        return None
+    return max(0.0, (now - enriched_at).total_seconds() / 86400.0)
+
+
+def _stale_refresh_probability(age_days: float | None) -> float:
+    if age_days is None:
+        # Unknown age; keep TMDB load low while still allowing eventual refresh.
+        return TMDB_STALE_REFRESH_BASE_PROBABILITY
+    if age_days < TMDB_REFRESH_AFTER_DAYS:
+        return 0.0
+
+    days_over_threshold = age_days - float(TMDB_REFRESH_AFTER_DAYS)
+    probability = (
+        TMDB_STALE_REFRESH_BASE_PROBABILITY
+        + days_over_threshold * TMDB_STALE_REFRESH_DAILY_INCREASE
+    )
+    return min(
+        TMDB_STALE_REFRESH_MAX_PROBABILITY,
+        max(0.0, probability),
+    )
+
+
+def _resolve_existing_movie(tmdb_id: int) -> ExistingTmdbResolution:
+    movie = _load_existing_movie(tmdb_id)
+    if movie is None:
+        return ExistingTmdbResolution(
+            movie_data=None,
+            should_refetch=True,
+            decision_reason="movie_missing_in_db",
+        )
+
+    existing_data = _movie_to_tmdb_details(movie)
+    if existing_data is None:
+        return ExistingTmdbResolution(
+            movie_data=None,
+            should_refetch=True,
+            decision_reason="movie_missing_local_metadata",
+        )
+
+    age_days = _age_days(movie, now_amsterdam_naive())
+    refresh_probability = _stale_refresh_probability(age_days)
+    if refresh_probability <= 0.0:
+        return ExistingTmdbResolution(
+            movie_data=existing_data,
+            should_refetch=False,
+            decision_reason="fresh_enrichment_in_db",
+            age_days=age_days,
+            refresh_probability=refresh_probability,
+        )
+
+    should_refetch = random.random() < refresh_probability
+    return ExistingTmdbResolution(
+        movie_data=existing_data,
+        should_refetch=should_refetch,
+        decision_reason=(
+            "stale_refresh_selected"
+            if should_refetch
+            else "stale_refresh_deferred_probability_gate"
+        ),
+        age_days=age_days,
+        refresh_probability=refresh_probability,
+    )
+
+
+def _parse_tmdb_movie_details(
+    payload: dict[str, Any],
+    *,
+    enriched_at: datetime | None,
+) -> TmdbMovieDetails | None:
     title_raw = payload.get("title")
     original_title_raw = payload.get("original_title")
     title = title_raw.strip() if isinstance(title_raw, str) else ""
@@ -314,14 +472,11 @@ def _parse_tmdb_movie_details(payload: dict[str, Any]) -> TmdbMovieDetails | Non
         release_year=release_year,
         directors=directors,
         poster_url=poster_url,
+        enriched_at=enriched_at,
     )
 
 
-def get_tmdb_movie_details(tmdb_id: int) -> TmdbMovieDetails | None:
-    cache_hit, cached = _memory_movie_details_get(tmdb_id)
-    if cache_hit:
-        return cached
-
+def _fetch_tmdb_movie_details_sync(tmdb_id: int) -> TmdbMovieDetails | None:
     url = MOVIE_URL_TEMPLATE.format(id=tmdb_id)
     try:
         response = _get_session().get(
@@ -334,16 +489,73 @@ def get_tmdb_movie_details(tmdb_id: int) -> TmdbMovieDetails | None:
         response.raise_for_status()
     except requests.RequestException as e:
         logger.warning(f"Failed to fetch TMDB movie details for {tmdb_id}. Error: {e}")
-        _memory_movie_details_set(tmdb_id, None)
         return None
 
     payload = response.json()
     if not isinstance(payload, dict):
         logger.warning(f"Unexpected TMDB movie details payload for {tmdb_id}.")
+        return None
+
+    details = _parse_tmdb_movie_details(payload, enriched_at=now_amsterdam_naive())
+    return details
+
+
+async def _fetch_tmdb_movie_details_async(
+    *,
+    session: aiohttp.ClientSession,
+    tmdb_id: int,
+) -> TmdbMovieDetails | None:
+    url = MOVIE_URL_TEMPLATE.format(id=tmdb_id)
+    payload = await _get_json_async(
+        session=session,
+        url=url,
+        params={
+            "api_key": TMDB_API_KEY,
+            "append_to_response": "credits",
+        },
+    )
+    if payload is None:
+        return None
+    return _parse_tmdb_movie_details(payload, enriched_at=now_amsterdam_naive())
+
+
+def get_tmdb_movie_details(tmdb_id: int) -> TmdbMovieDetails | None:
+    cache_hit, cached = _memory_movie_details_get(tmdb_id)
+    if cache_hit:
+        return cached
+
+    existing_resolution = _resolve_existing_movie(tmdb_id)
+    logger.debug(
+        "TMDB details decision for TMDB ID %s: %s (%s, age_days=%s, p=%.4f)",
+        tmdb_id,
+        "fetch network" if existing_resolution.should_refetch else "skip network",
+        existing_resolution.decision_reason,
+        (
+            f"{existing_resolution.age_days:.2f}"
+            if existing_resolution.age_days is not None
+            else "n/a"
+        ),
+        existing_resolution.refresh_probability,
+    )
+    if (
+        existing_resolution.movie_data is not None
+        and not existing_resolution.should_refetch
+    ):
+        _memory_movie_details_set(tmdb_id, existing_resolution.movie_data)
+        return existing_resolution.movie_data
+
+    details = _fetch_tmdb_movie_details_sync(tmdb_id)
+    if details is None:
+        if existing_resolution.movie_data is not None:
+            logger.debug(
+                "TMDB details fetch unavailable for TMDB ID %s; using existing DB data",
+                tmdb_id,
+            )
+            _memory_movie_details_set(tmdb_id, existing_resolution.movie_data)
+            return existing_resolution.movie_data
         _memory_movie_details_set(tmdb_id, None)
         return None
 
-    details = _parse_tmdb_movie_details(payload)
     _memory_movie_details_set(tmdb_id, details)
     return details
 
@@ -357,19 +569,38 @@ async def get_tmdb_movie_details_async(
     if cache_hit:
         return cached
 
-    url = MOVIE_URL_TEMPLATE.format(id=tmdb_id)
-    payload = await _get_json_async(
-        session=session,
-        url=url,
-        params={
-            "api_key": TMDB_API_KEY,
-            "append_to_response": "credits",
-        },
+    existing_resolution = await asyncio.to_thread(_resolve_existing_movie, tmdb_id)
+    logger.debug(
+        "TMDB details decision for TMDB ID %s: %s (%s, age_days=%s, p=%.4f)",
+        tmdb_id,
+        "fetch network" if existing_resolution.should_refetch else "skip network",
+        existing_resolution.decision_reason,
+        (
+            f"{existing_resolution.age_days:.2f}"
+            if existing_resolution.age_days is not None
+            else "n/a"
+        ),
+        existing_resolution.refresh_probability,
     )
-    if payload is None:
+    if (
+        existing_resolution.movie_data is not None
+        and not existing_resolution.should_refetch
+    ):
+        _memory_movie_details_set(tmdb_id, existing_resolution.movie_data)
+        return existing_resolution.movie_data
+
+    details = await _fetch_tmdb_movie_details_async(session=session, tmdb_id=tmdb_id)
+    if details is None:
+        if existing_resolution.movie_data is not None:
+            logger.debug(
+                "TMDB details fetch unavailable for TMDB ID %s; using existing DB data",
+                tmdb_id,
+            )
+            _memory_movie_details_set(tmdb_id, existing_resolution.movie_data)
+            return existing_resolution.movie_data
         _memory_movie_details_set(tmdb_id, None)
         return None
-    details = _parse_tmdb_movie_details(payload)
+
     _memory_movie_details_set(tmdb_id, details)
     return details
 

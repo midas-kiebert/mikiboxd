@@ -16,7 +16,6 @@ from app.scraping.tmdb import find_tmdb_id, get_tmdb_movie_details
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
-from app.utils import now_amsterdam_naive
 
 CINEMA = "FC Hyena"
 
@@ -104,7 +103,7 @@ class FCHyenaScraper(BaseCinemaScraper):
                 tmdb_details.original_title if tmdb_details is not None else None
             ),
             tmdb_last_enriched_at=(
-                now_amsterdam_naive() if tmdb_details is not None else None
+                tmdb_details.enriched_at if tmdb_details is not None else None
             ),
         )
 

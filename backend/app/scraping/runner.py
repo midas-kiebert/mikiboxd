@@ -25,7 +25,7 @@ from app.scraping.scrape import (
     run_cinema_scrapers,
     scrape_cineville,
 )
-from app.scraping.tmdb import consume_tmdb_lookup_events
+from app.scraping.tmdb import consume_tmdb_lookup_events, reset_tmdb_runtime_state
 from app.services import scrape_sync as scrape_sync_service
 from app.services.scrape_sync import DeletedShowtimeInfo
 from app.utils import now_amsterdam_naive, send_email
@@ -868,6 +868,7 @@ def _send_recap_email(
 
 def run() -> None:
     started_at = now_amsterdam_naive()
+    reset_tmdb_runtime_state()
     reset_letterboxd_request_budget()
     before_snapshot = _load_future_snapshot(snapshot_time=started_at)
     summary = ScrapeExecutionSummary()

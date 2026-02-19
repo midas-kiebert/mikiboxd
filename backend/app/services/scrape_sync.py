@@ -276,16 +276,18 @@ def record_success_run(
     )
     session.add(run)
     session.flush()
+    assert run.id is not None
+    run_id = run.id
 
     previous_success_count = _latest_success_observed_count(
         session=session,
         source_stream=source_stream,
-        exclude_run_id=run.id,
+        exclude_run_id=run_id,
     )
     previous_run = _latest_run(
         session=session,
         source_stream=source_stream,
-        exclude_run_id=run.id,
+        exclude_run_id=run_id,
     )
 
     degraded_reason: str | None = None
@@ -323,7 +325,7 @@ def record_success_run(
                 source_event_key=source_event_key,
                 showtime_id=showtime_id,
             ),
-            run_id=run.id,
+            run_id=run_id,
             seen_at=finished,
         )
         if remapped_old_id is not None:
@@ -340,7 +342,7 @@ def record_success_run(
             session=session,
             source_stream=source_stream,
             remapped_showtime_ids=remapped_showtime_ids,
-            run_id=run.id,
+            run_id=run_id,
             seen_at=finished,
         )
         deleted_showtimes = _delete_orphaned_managed_showtimes(

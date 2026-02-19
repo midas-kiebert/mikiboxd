@@ -17,7 +17,7 @@ import requests
 from rapidfuzz import fuzz
 from requests.adapters import HTTPAdapter
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlmodel import select
+from sqlmodel import Session, select
 from urllib3.util.retry import Retry
 
 from app.api.deps import get_db_context
@@ -158,6 +158,13 @@ class ExistingTmdbResolution:
     decision_reason: str
     age_days: float | None = None
     refresh_probability: float = 0.0
+
+
+@dataclass(frozen=True)
+class TmdbLookupCacheEntry:
+    lookup_hash: str
+    lookup_payload: str
+    tmdb_id: int | None
 
 
 def _get_session() -> requests.Session:
@@ -699,6 +706,97 @@ def consume_tmdb_lookup_events() -> list[dict[str, Any]]:
         events = list(_tmdb_lookup_audit_events)
         _tmdb_lookup_audit_events.clear()
     return events
+
+
+def upsert_tmdb_lookup_cache_entry(
+    *,
+    title_query: str,
+    director_names: list[str],
+    actor_name: str | None = None,
+    year: int | None = None,
+    tmdb_id: int | None,
+    session: Session | None = None,
+) -> TmdbLookupCacheEntry:
+    payload = _build_lookup_payload(
+        title_query=title_query,
+        director_names=director_names,
+        actor_name=actor_name,
+        year=year,
+    )
+    payload_json = _payload_to_canonical_json(payload)
+    payload_hash = _payload_hash(payload_json)
+    now = now_amsterdam_naive()
+
+    def upsert_in_session(db_session: Session) -> None:
+        stmt = select(TmdbLookupCache).where(
+            TmdbLookupCache.lookup_hash == payload_hash,
+            TmdbLookupCache.lookup_payload == payload_json,
+        )
+        cached = db_session.exec(stmt).first()
+        if cached is None:
+            db_session.add(
+                TmdbLookupCache(
+                    lookup_hash=payload_hash,
+                    lookup_payload=payload_json,
+                    tmdb_id=tmdb_id,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        else:
+            cached.tmdb_id = tmdb_id
+            cached.updated_at = now
+        db_session.commit()
+
+    if session is not None:
+        try:
+            upsert_in_session(session)
+        except IntegrityError:
+            session.rollback()
+            upsert_in_session(session)
+    else:
+        try:
+            with get_db_context() as db_session:
+                upsert_in_session(db_session)
+        except IntegrityError:
+            # A concurrent writer inserted the same lookup key; apply the override update.
+            with get_db_context() as db_session:
+                upsert_in_session(db_session)
+
+    _memory_lookup_cache_set(
+        payload_json=payload_json,
+        payload_hash=payload_hash,
+        tmdb_id=tmdb_id,
+    )
+    global _tmdb_cache_available
+    _tmdb_cache_available = True
+    return TmdbLookupCacheEntry(
+        lookup_hash=payload_hash,
+        lookup_payload=payload_json,
+        tmdb_id=tmdb_id,
+    )
+
+
+def reset_tmdb_runtime_state() -> None:
+    global _tmdb_cache_available
+    with _lookup_result_cache_lock:
+        _lookup_result_cache.clear()
+    with _inflight_lookup_lock:
+        waiting_events = list(_inflight_lookup_events.values())
+        _inflight_lookup_events.clear()
+    with _person_ids_cache_lock:
+        _person_ids_cache.clear()
+    with _person_movies_cache_lock:
+        _person_movies_cache.clear()
+    with _title_search_cache_lock:
+        _title_search_cache.clear()
+    with _movie_details_cache_lock:
+        _movie_details_cache.clear()
+
+    for waiting_event in waiting_events:
+        waiting_event.set()
+
+    _tmdb_cache_available = None
 
 
 async def _get_json_async(

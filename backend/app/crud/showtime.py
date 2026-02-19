@@ -71,6 +71,31 @@ def get_showtime_close_in_time(
     return result.scalars().first()
 
 
+def get_showtime_reassignment_candidate(
+    *,
+    session: Session,
+    showtime_create: ShowtimeCreate,
+    delta: timedelta = timedelta(minutes=60),
+) -> Showtime | None:
+    datetime = showtime_create.datetime
+    time_window_start = datetime - delta
+    time_window_end = datetime + delta
+    stmt = select(Showtime).where(
+        Showtime.cinema_id == showtime_create.cinema_id,
+        col(Showtime.datetime).between(time_window_start, time_window_end),
+        Showtime.movie_id != showtime_create.movie_id,
+    )
+    if showtime_create.ticket_link is None:
+        stmt = stmt.where(col(Showtime.ticket_link).is_(None))
+    else:
+        stmt = stmt.where(Showtime.ticket_link == showtime_create.ticket_link)
+
+    candidates = list(session.exec(stmt.limit(2)).all())
+    if len(candidates) != 1:
+        return None
+    return candidates[0]
+
+
 def get_showtime_by_unique_fields(
     *,
     session: Session,

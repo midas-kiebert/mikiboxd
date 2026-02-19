@@ -365,7 +365,7 @@ async def _process_cineville_movie_async(
                 tmdb_details.original_title if tmdb_details is not None else None
             ),
             tmdb_last_enriched_at=(
-                now_amsterdam_naive() if tmdb_details is not None else None
+                tmdb_details.enriched_at if tmdb_details is not None else None
             ),
         )
         prepared_showtimes = [

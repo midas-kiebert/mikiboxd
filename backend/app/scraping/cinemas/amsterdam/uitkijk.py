@@ -18,7 +18,6 @@ from app.scraping.tmdb import find_tmdb_id, get_tmdb_movie_details
 from app.services import movies as movies_services
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_services
-from app.utils import now_amsterdam_naive
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -230,7 +229,7 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
             tmdb_details.original_title if tmdb_details is not None else None
         ),
         tmdb_last_enriched_at=(
-            now_amsterdam_naive() if tmdb_details is not None else None
+            tmdb_details.enriched_at if tmdb_details is not None else None
         ),
     )
     logger.debug(f"Resolved TMDB id {tmdb_id} for {movie.title}")

@@ -197,16 +197,25 @@ def upsert_showtime(
     """
     Insert or update a showtime and return the resulting database row.
     Uses the same +/-1h time-shift heuristic as insert_showtime_if_not_exists.
+    If the only close match differs by movie_id (for example after a TMDB cache
+    correction), reassign that existing showtime to the new movie_id.
     """
     existing_showtime = showtimes_crud.get_showtime_close_in_time(
         session=session,
         showtime_create=showtime_create,
         delta=timedelta(hours=1),
     )
+    if existing_showtime is None:
+        existing_showtime = showtimes_crud.get_showtime_reassignment_candidate(
+            session=session,
+            showtime_create=showtime_create,
+            delta=timedelta(hours=1),
+        )
 
     if commit:
         if existing_showtime is not None:
             try:
+                existing_showtime.movie_id = showtime_create.movie_id
                 existing_showtime.datetime = showtime_create.datetime
                 existing_showtime.ticket_link = showtime_create.ticket_link
                 session.commit()
@@ -255,6 +264,7 @@ def upsert_showtime(
     try:
         with session.begin_nested():
             if existing_showtime is not None:
+                existing_showtime.movie_id = showtime_create.movie_id
                 existing_showtime.datetime = showtime_create.datetime
                 existing_showtime.ticket_link = showtime_create.ticket_link
                 session.flush()

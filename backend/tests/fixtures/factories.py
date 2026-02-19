@@ -113,7 +113,6 @@ class CinemaFactory(SQLModelFactory):
     badge_bg_color = Faker("color")
     badge_text_color = Faker("color")
     url = Faker("url")
-    city_id = Faker("random_int", min=1, max=1000)  # Random city ID for testing
     city = SubFactory(CityFactory)
     city_id = SelfAttribute("city.id")
 

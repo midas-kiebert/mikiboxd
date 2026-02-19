@@ -17,7 +17,7 @@ class ScrapeRunStatus(str, Enum):
 
 
 class ScrapeRun(SQLModel, table=True):
-    id: int = Field(primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     source_stream: str = Field(index=True)
     status: ScrapeRunStatus = Field(
         sa_column=Column(

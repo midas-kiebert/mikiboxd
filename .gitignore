@@ -9,3 +9,4 @@ app/logs
 test.py
 google-services.json
 mobile/google-services.json
+logs.txt

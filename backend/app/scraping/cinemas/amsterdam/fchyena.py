@@ -11,15 +11,12 @@ from app.crud import cinema as cinema_crud
 from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
-from app.scraping.letterboxd.load_letterboxd_data import (
-    is_letterboxd_temporarily_blocked,
-    scrape_letterboxd,
-)
 from app.scraping.logger import logger
-from app.scraping.tmdb import find_tmdb_id
+from app.scraping.tmdb import find_tmdb_id, get_tmdb_movie_details
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
+from app.utils import now_amsterdam_naive
 
 CINEMA = "FC Hyena"
 
@@ -85,26 +82,30 @@ class FCHyenaScraper(BaseCinemaScraper):
             logger.warning(f"No TMDB id found for {title_query}, skipping")
             return None
 
-        letterboxd_data = scrape_letterboxd(tmdb_id)
-        if letterboxd_data is None:
-            if is_letterboxd_temporarily_blocked():
-                logger.debug(
-                    f"Letterboxd temporarily blocked; skipping TMDB ID {tmdb_id}"
-                )
-            else:
-                logger.warning(f"No Letterboxd data found for {title_query}, skipping")
-            return None
+        tmdb_details = get_tmdb_movie_details(tmdb_id)
+        if tmdb_details is None:
+            logger.warning(
+                f"TMDB details not found for TMDB ID {tmdb_id}; using fallback metadata."
+            )
 
+        tmdb_directors = (
+            tmdb_details.directors if tmdb_details is not None else list(directors)
+        )
         movie = MovieCreate(
             id=int(tmdb_id),
-            title=letterboxd_data.title,
-            poster_link=letterboxd_data.poster_url,
-            letterboxd_slug=letterboxd_data.slug,
-            top250=letterboxd_data.top250,
-            directors=letterboxd_data.directors,
-            release_year=letterboxd_data.release_year,
-            rating=letterboxd_data.rating,
-            letterboxd_last_enriched_at=letterboxd_data.enriched_at,
+            title=tmdb_details.title if tmdb_details is not None else raw_title,
+            poster_link=tmdb_details.poster_url if tmdb_details is not None else None,
+            letterboxd_slug=None,
+            directors=tmdb_directors if tmdb_directors else None,
+            release_year=(
+                tmdb_details.release_year if tmdb_details is not None else None
+            ),
+            original_title=(
+                tmdb_details.original_title if tmdb_details is not None else None
+            ),
+            tmdb_last_enriched_at=(
+                now_amsterdam_naive() if tmdb_details is not None else None
+            ),
         )
 
         showtimes_url = (

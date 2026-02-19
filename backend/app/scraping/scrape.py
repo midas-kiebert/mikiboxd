@@ -379,6 +379,7 @@ async def _process_cineville_movie_async(
             release_year=letterboxd_data.release_year,
             rating=letterboxd_data.rating,
             original_title=letterboxd_data.original_title,
+            letterboxd_last_enriched_at=letterboxd_data.enriched_at,
         )
         prepared_showtimes = [
             PreparedCinevilleShowtime(

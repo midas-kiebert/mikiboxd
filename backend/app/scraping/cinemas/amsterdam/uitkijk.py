@@ -134,7 +134,7 @@ class UitkijkScraper(BaseCinemaScraper):
         observed_presences: list[tuple[str, int]] = []
         with get_db_context() as session:
             for movie_create in movies_by_id.values():
-                movies_services.insert_movie_if_not_exists(
+                movies_services.upsert_movie(
                     session=session,
                     movie_create=movie_create,
                     commit=False,
@@ -230,6 +230,7 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
         directors=letterboxd_data.directors,
         release_year=letterboxd_data.release_year,
         rating=letterboxd_data.rating,
+        letterboxd_last_enriched_at=letterboxd_data.enriched_at,
     )
     logger.debug(f"Resolved TMDB id {tmdb_id} for {letterboxd_data.title}")
     return movie

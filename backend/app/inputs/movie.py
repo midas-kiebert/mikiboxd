@@ -1,17 +1,18 @@
 # app/inputs/movies.py
 
 from datetime import date, datetime, time
+from typing import Annotated
 
 from fastapi import Query
 from pydantic import BaseModel
 
-from app.core.enums import GoingStatus
+from app.core.enums import GoingStatus, TimeOfDay
 from app.utils import now_amsterdam_naive
 
 
 class TimeRange(BaseModel):
-    start: time
-    end: time
+    start: time | None
+    end: time | None
 
 
 class Filters(BaseModel):
@@ -25,36 +26,63 @@ class Filters(BaseModel):
 
 
 def parse_time_ranges(value: str) -> TimeRange:
-    start_str, end_str = value.split("-")
-    start = time.fromisoformat(start_str)
-    end = time.fromisoformat(end_str)
+    start_str, end_str = value.split("-", 1)
+    start = time.fromisoformat(start_str) if start_str else None
+    end = time.fromisoformat(end_str) if end_str else None
+    if start is None and end is None:
+        raise ValueError("At least one side of time range must be set")
     return TimeRange(start=start, end=end)
 
 
+def time_range_from_time_of_day(value: TimeOfDay) -> TimeRange:
+    if value == TimeOfDay.MORNING:
+        return TimeRange(start=time(6, 0), end=time(11, 59, 59))
+    if value == TimeOfDay.AFTERNOON:
+        return TimeRange(start=time(12, 0), end=time(17, 59, 59))
+    if value == TimeOfDay.EVENING:
+        return TimeRange(start=time(18, 0), end=time(21, 59, 59))
+    return TimeRange(start=time(22, 0), end=time(5, 59, 59))
+
+
 def get_filters(
-    query: str | None = Query(None),
-    snapshot_time: datetime = Query(
-        default_factory=now_amsterdam_naive,
-        description="Only show showtimes after this moment",
-    ),
-    watchlist_only: bool = Query(False),
-    selected_cinema_ids: list[int] | None = Query(
-        None,
-        description="Filter showtimes to only these cinema IDs",
-    ),
-    days: list[date] | None = Query(None),
-    time_ranges_raw: list[str] | None = Query(None, alias="time_ranges"),
-    selected_statuses: list[GoingStatus] | None = Query(
-        None,
-        alias="selected_statuses",
-        description="Filter by selection statuses (GOING/INTERESTED)",
-    ),
+    query: Annotated[str | None, Query()] = None,
+    snapshot_time: Annotated[
+        datetime | None,
+        Query(description="Only show showtimes after this moment"),
+    ] = None,
+    watchlist_only: Annotated[bool, Query()] = False,
+    selected_cinema_ids: Annotated[
+        list[int] | None,
+        Query(description="Filter showtimes to only these cinema IDs"),
+    ] = None,
+    days: Annotated[list[date] | None, Query()] = None,
+    time_ranges_raw: Annotated[
+        list[str] | None,
+        Query(alias="time_ranges"),
+    ] = None,
+    times_of_day: Annotated[
+        list[TimeOfDay] | None,
+        Query(
+            alias="times_of_day",
+            description="Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)",
+        ),
+    ] = None,
+    selected_statuses: Annotated[
+        list[GoingStatus] | None,
+        Query(
+            alias="selected_statuses",
+            description="Filter by selection statuses (GOING/INTERESTED)",
+        ),
+    ] = None,
 ) -> Filters:
-    time_ranges = (
-        [parse_time_ranges(tr) for tr in time_ranges_raw]
-        if time_ranges_raw is not None
-        else None
-    )
+    if snapshot_time is None:
+        snapshot_time = now_amsterdam_naive()
+
+    time_ranges: list[TimeRange] = []
+    if time_ranges_raw is not None:
+        time_ranges.extend(parse_time_ranges(tr) for tr in time_ranges_raw)
+    if times_of_day is not None:
+        time_ranges.extend(time_range_from_time_of_day(value) for value in times_of_day)
 
     return Filters(
         query=query,
@@ -62,6 +90,6 @@ def get_filters(
         watchlist_only=watchlist_only,
         selected_cinema_ids=selected_cinema_ids,
         days=days,
-        time_ranges=time_ranges,
+        time_ranges=time_ranges or None,
         selected_statuses=selected_statuses,
     )

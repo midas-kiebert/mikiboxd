@@ -33,6 +33,32 @@ export type CityPublic = {
   id: number
 }
 
+export type FilterPresetCreate = {
+  name: string
+  scope: FilterPresetScope
+  filters: FilterPresetFilters
+}
+
+export type FilterPresetFilters = {
+  selected_showtime_filter?: "all" | "interested" | "going" | null
+  watchlist_only?: boolean
+  selected_cinema_ids?: Array<number> | null
+  days?: Array<string> | null
+  time_ranges?: Array<string> | null
+}
+
+export type FilterPresetPublic = {
+  id: string
+  name: string
+  scope: FilterPresetScope
+  is_default: boolean
+  filters: FilterPresetFilters
+  created_at: string
+  updated_at: string
+}
+
+export type FilterPresetScope = "SHOWTIMES" | "MOVIES"
+
 export type GoingStatus = "GOING" | "NOT_GOING" | "INTERESTED"
 
 export type HTTPValidationError = {
@@ -105,6 +131,8 @@ export type ShowtimeLoggedIn = {
 export type ShowtimeSelectionUpdate = {
   going_status: GoingStatus
 }
+
+export type TimeOfDay = "MORNING" | "AFTERNOON" | "EVENING" | "NIGHT"
 
 export type TmdbCacheOverrideRequest = {
   title_query: string
@@ -246,6 +274,24 @@ export type MeUpdateUserMeData = {
 
 export type MeUpdateUserMeResponse = UserMe
 
+export type MeGetFilterPresetsData = {
+  scope: FilterPresetScope
+}
+
+export type MeGetFilterPresetsResponse = Array<FilterPresetPublic>
+
+export type MeSaveFilterPresetData = {
+  requestBody: FilterPresetCreate
+}
+
+export type MeSaveFilterPresetResponse = FilterPresetPublic
+
+export type MeDeleteFilterPresetData = {
+  presetId: string
+}
+
+export type MeDeleteFilterPresetResponse = Message
+
 export type MeUpdatePasswordMeData = {
   requestBody: UpdatePassword
 }
@@ -268,8 +314,12 @@ export type MeGetMyShowtimesData = {
   /**
    * Only show showtimes after this moment
    */
-  snapshotTime?: string
+  snapshotTime?: string | null
   timeRanges?: Array<string> | null
+  /**
+   * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   */
+  timesOfDay?: Array<TimeOfDay> | null
   watchlistOnly?: boolean
 }
 
@@ -314,8 +364,12 @@ export type MoviesReadMoviesData = {
   /**
    * Only show showtimes after this moment
    */
-  snapshotTime?: string
+  snapshotTime?: string | null
   timeRanges?: Array<string> | null
+  /**
+   * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   */
+  timesOfDay?: Array<TimeOfDay> | null
   watchlistOnly?: boolean
 }
 
@@ -338,8 +392,12 @@ export type MoviesReadMovieShowtimesData = {
   /**
    * Only show showtimes after this moment
    */
-  snapshotTime?: string
+  snapshotTime?: string | null
   timeRanges?: Array<string> | null
+  /**
+   * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   */
+  timesOfDay?: Array<TimeOfDay> | null
   watchlistOnly?: boolean
 }
 
@@ -361,8 +419,12 @@ export type MoviesReadMovieData = {
   /**
    * Only show showtimes after this moment
    */
-  snapshotTime?: string
+  snapshotTime?: string | null
   timeRanges?: Array<string> | null
+  /**
+   * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   */
+  timesOfDay?: Array<TimeOfDay> | null
   watchlistOnly?: boolean
 }
 
@@ -384,8 +446,12 @@ export type ShowtimesUpdateShowtimeSelectionData = {
   /**
    * Only show showtimes after this moment
    */
-  snapshotTime?: string
+  snapshotTime?: string | null
   timeRanges?: Array<string> | null
+  /**
+   * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   */
+  timesOfDay?: Array<TimeOfDay> | null
   watchlistOnly?: boolean
 }
 
@@ -407,8 +473,12 @@ export type ShowtimesGetMainPageShowtimesData = {
   /**
    * Only show showtimes after this moment
    */
-  snapshotTime?: string
+  snapshotTime?: string | null
   timeRanges?: Array<string> | null
+  /**
+   * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   */
+  timesOfDay?: Array<TimeOfDay> | null
   watchlistOnly?: boolean
 }
 
@@ -450,8 +520,12 @@ export type UsersGetUserSelectedShowtimesData = {
   /**
    * Only show showtimes after this moment
    */
-  snapshotTime?: string
+  snapshotTime?: string | null
   timeRanges?: Array<string> | null
+  /**
+   * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   */
+  timesOfDay?: Array<TimeOfDay> | null
   userId: string
   watchlistOnly?: boolean
 }

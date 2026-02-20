@@ -8,31 +8,35 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { GoingStatus } from "shared";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
 import { useSessionDaySelections } from "shared/hooks/useSessionDaySelections";
+import { useSessionTimeRangeSelections } from "shared/hooks/useSessionTimeRangeSelections";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 
 import ShowtimesScreen from "@/components/showtimes/ShowtimesScreen";
 import DayFilterModal from "@/components/filters/DayFilterModal";
+import TimeFilterModal from "@/components/filters/TimeFilterModal";
 import { resetInfiniteQuery } from "@/utils/reset-infinite-query";
+import { useThemeColors } from "@/hooks/use-theme-color";
 
 // Filter pill definitions rendered in the top filter row.
 const BASE_FILTERS = [
-  { id: "all", label: "All Showtimes" },
-  { id: "interested", label: "Interested" },
-  { id: "going", label: "Going" },
+  { id: "showtime-filter", label: "Any Status" },
   { id: "watchlist-only", label: "Watchlist Only" },
   { id: "days", label: "Days" },
+  { id: "times", label: "Times" },
 ] as const;
 
 type CinemaShowtimesFilterId = (typeof BASE_FILTERS)[number]["id"];
-type ShowtimeStatusFilterId = Exclude<CinemaShowtimesFilterId, "days" | "watchlist-only">;
+type ShowtimeFilter = "all" | "interested" | "going";
 
 const EMPTY_DAYS: string[] = [];
+const EMPTY_TIME_RANGES: string[] = [];
 
 const getRouteParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 
 export default function CinemaShowtimesScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
+  const colors = useThemeColors();
   const { id, name, city } = useLocalSearchParams<{
     id?: string | string[];
     name?: string | string[];
@@ -45,20 +49,25 @@ export default function CinemaShowtimesScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   // Tracks the selected showtime-status mode (interested / going / all).
   const [selectedShowtimeFilter, setSelectedShowtimeFilter] =
-    useState<ShowtimeStatusFilterId>("all");
+    useState<ShowtimeFilter>("all");
   // Whether the list should be limited to movies in the user's watchlist.
   const [watchlistOnly, setWatchlistOnly] = useState(false);
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
+  // Controls visibility of the time-filter modal.
+  const [timeModalVisible, setTimeModalVisible] = useState(false);
   // Snapshot timestamp used to keep paginated API responses consistent.
   const [snapshotTime, setSnapshotTime] = useState(() =>
     DateTime.now().setZone("Europe/Amsterdam").toFormat("yyyy-MM-dd'T'HH:mm:ss")
   );
 
   const { selections: sessionDays, setSelections: setSessionDays } = useSessionDaySelections();
+  const { selections: sessionTimeRanges, setSelections: setSessionTimeRanges } =
+    useSessionTimeRangeSelections();
   const selectedDays = sessionDays ?? EMPTY_DAYS;
+  const selectedTimeRanges = sessionTimeRanges ?? EMPTY_TIME_RANGES;
   const { data: cinemas } = useFetchCinemas();
 
   // React Query client used for cache updates and invalidation.
@@ -85,34 +94,81 @@ export default function CinemaShowtimesScreen() {
       query: searchQuery || undefined,
       selectedCinemaIds: [cinemaId],
       days: selectedDays.length > 0 ? selectedDays : undefined,
+      timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       selectedStatuses,
       watchlistOnly: watchlistOnly ? true : undefined,
     };
-  }, [cinemaId, searchQuery, selectedDays, selectedShowtimeFilter, watchlistOnly]);
+  }, [
+    cinemaId,
+    searchQuery,
+    selectedDays,
+    selectedShowtimeFilter,
+    selectedTimeRanges,
+    watchlistOnly,
+  ]);
 
   // Only decorate the day pill label when the filter is actually active.
   const pillFilters = useMemo(() => {
-    if (selectedDays.length === 0) return BASE_FILTERS;
-    return BASE_FILTERS.map((filter) =>
-      filter.id === "days"
-        ? { ...filter, label: `Days (${selectedDays.length})` }
-        : filter
-    );
-  }, [selectedDays.length]);
+    return BASE_FILTERS.map((filter) => {
+      if (filter.id === "showtime-filter") {
+        const label =
+          selectedShowtimeFilter === "all"
+            ? "Any Status"
+            : selectedShowtimeFilter === "going"
+              ? "Going"
+              : "Interested";
+        return {
+          ...filter,
+          label,
+          activeBackgroundColor:
+            selectedShowtimeFilter === "going"
+              ? colors.green.primary
+              : selectedShowtimeFilter === "interested"
+                ? colors.orange.primary
+                : undefined,
+          activeTextColor:
+            selectedShowtimeFilter === "going"
+              ? colors.green.secondary
+              : selectedShowtimeFilter === "interested"
+                ? colors.orange.secondary
+                : undefined,
+          activeBorderColor:
+            selectedShowtimeFilter === "going"
+              ? colors.green.secondary
+              : selectedShowtimeFilter === "interested"
+                ? colors.orange.secondary
+                : undefined,
+        };
+      }
+      if (filter.id === "days" && selectedDays.length > 0) {
+        return { ...filter, label: `Days (${selectedDays.length})` };
+      }
+      if (filter.id === "times" && selectedTimeRanges.length > 0) {
+        return { ...filter, label: `Times (${selectedTimeRanges.length})` };
+      }
+      return filter;
+    });
+  }, [colors, selectedDays.length, selectedShowtimeFilter, selectedTimeRanges.length]);
 
   // Compute which filter pills should render as active.
   const activeFilterIds = useMemo<CinemaShowtimesFilterId[]>(
     () => {
-      const active: CinemaShowtimesFilterId[] = [selectedShowtimeFilter];
+      const active: CinemaShowtimesFilterId[] = [];
+      if (selectedShowtimeFilter !== "all") {
+        active.push("showtime-filter");
+      }
       if (selectedDays.length > 0) {
         active.push("days");
+      }
+      if (selectedTimeRanges.length > 0) {
+        active.push("times");
       }
       if (watchlistOnly) {
         active.push("watchlist-only");
       }
       return active;
     },
-    [selectedShowtimeFilter, selectedDays.length, watchlistOnly]
+    [selectedShowtimeFilter, selectedDays.length, selectedTimeRanges.length, watchlistOnly]
   );
 
   // Data hooks keep this module synced with backend data and shared cache state.
@@ -149,15 +205,25 @@ export default function CinemaShowtimesScreen() {
 
   // Handle filter pill presses and update filter state.
   const handleToggleFilter = (filterId: CinemaShowtimesFilterId) => {
+    if (filterId === "showtime-filter") {
+      // Tap cycles all -> interested -> going -> all for quick triaging.
+      setSelectedShowtimeFilter((prev) =>
+        prev === "all" ? "interested" : prev === "interested" ? "going" : "all"
+      );
+      return;
+    }
     if (filterId === "days") {
       setDayModalVisible(true);
+      return;
+    }
+    if (filterId === "times") {
+      setTimeModalVisible(true);
       return;
     }
     if (filterId === "watchlist-only") {
       setWatchlistOnly((prev) => !prev);
       return;
     }
-    setSelectedShowtimeFilter(filterId);
   };
 
   // Render/output using the state and derived values prepared above.
@@ -187,6 +253,12 @@ export default function CinemaShowtimesScreen() {
         onClose={() => setDayModalVisible(false)}
         selectedDays={selectedDays}
         onChange={setSessionDays}
+      />
+      <TimeFilterModal
+        visible={timeModalVisible}
+        onClose={() => setTimeModalVisible(false)}
+        selectedTimeRanges={selectedTimeRanges}
+        onChange={setSessionTimeRanges}
       />
     </>
   );

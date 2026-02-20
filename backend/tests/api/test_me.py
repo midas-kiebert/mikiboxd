@@ -122,6 +122,48 @@ def test_filter_presets_are_scoped_and_include_all_pill_filters(
     assert movies_presets[0]["filters"]["selected_showtime_filter"] is None
 
 
+def test_filter_preset_accepts_relative_and_weekday_days(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    payload = {
+        "name": "Flexible Days",
+        "scope": "SHOWTIMES",
+        "filters": {
+            "selected_showtime_filter": "interested",
+            "watchlist_only": True,
+            "selected_cinema_ids": [1, 3],
+            "days": [
+                "relative:today",
+                "relative:tomorrow",
+                "relative:day_after_tomorrow",
+                "weekday:1",
+                "weekday:5",
+                "2026-03-01",
+            ],
+            "time_ranges": ["18:00-21:59"],
+        },
+    }
+
+    save_response = client.post(
+        f"{settings.API_V1_STR}/me/filter-presets",
+        headers=normal_user_token_headers,
+        json=payload,
+    )
+    assert save_response.status_code == 200
+    save_body = save_response.json()
+    assert save_body["filters"]["days"] == payload["filters"]["days"]
+
+    list_response = client.get(
+        f"{settings.API_V1_STR}/me/filter-presets",
+        headers=normal_user_token_headers,
+        params={"scope": "SHOWTIMES"},
+    )
+    assert list_response.status_code == 200
+    presets = list_response.json()
+    assert len(presets) == 1
+    assert presets[0]["filters"]["days"] == payload["filters"]["days"]
+
+
 def test_filter_preset_upsert_and_delete(
     client: TestClient, normal_user_token_headers: dict[str, str]
 ) -> None:

@@ -14,14 +14,28 @@ from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
 from app.models.watchlist_selection import WatchlistSelection
 
+DAY_BUCKET_CUTOFF = time(4, 0)
+
 
 def time_range_clause(
     datetime_column,
-    start: time,
-    end: time,
+    start: time | None,
+    end: time | None,
 ) -> ColumnElement[bool]:
     time_col = cast(datetime_column, Time)
 
+    if start is None and end is None:
+        return time_col.is_not(None)
+    if start is None:
+        return time_col <= end
+    if end is None:
+        # Open-ended "start-" ranges are bounded by the day-bucket cutoff (04:00).
+        if start <= DAY_BUCKET_CUTOFF:
+            return time_col.between(start, DAY_BUCKET_CUTOFF)
+        return or_(
+            time_col >= start,
+            time_col <= DAY_BUCKET_CUTOFF,
+        )
     if start <= end:
         return time_col.between(start, end)
 
@@ -30,6 +44,11 @@ def time_range_clause(
         time_col >= start,
         time_col <= end,
     )
+
+
+def day_bucket_date_clause(datetime_column):
+    # Shift by 4 hours so 00:00-03:59 belongs to previous calendar day for filtering.
+    return func.date(datetime_column - timedelta(hours=4))
 
 
 def get_showtime_by_id(
@@ -203,7 +222,9 @@ def get_main_page_showtimes(
         stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
 
     if filters.days is not None and len(filters.days) > 0:
-        stmt = stmt.where(func.date(col(Showtime.datetime)).in_(filters.days))
+        stmt = stmt.where(
+            day_bucket_date_clause(col(Showtime.datetime)).in_(filters.days)
+        )
 
     if filters.time_ranges is not None and len(filters.time_ranges) > 0:
         stmt = stmt.where(

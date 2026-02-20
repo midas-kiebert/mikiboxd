@@ -33,6 +33,9 @@ type FilterOption<TId extends string = string> = {
   id: TId;
   label: string;
   badgeCount?: number;
+  activeBackgroundColor?: string;
+  activeTextColor?: string;
+  activeBorderColor?: string;
 };
 
 type ShowtimesScreenProps<TFilterId extends string = string> = {

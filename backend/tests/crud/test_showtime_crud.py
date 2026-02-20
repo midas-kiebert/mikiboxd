@@ -341,3 +341,70 @@ def test_get_main_page_showtimes_applies_cinema_day_time_query_and_watchlist_fil
     )
 
     assert showtimes == [showtime_match]
+
+
+def test_get_main_page_showtimes_day_filter_uses_four_hour_day_bucket(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+
+    day = now_amsterdam_naive().replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    same_day_evening = day.replace(hour=23, minute=0)
+    next_day_early = (day + timedelta(days=1)).replace(hour=2, minute=0)
+    same_day_early = day.replace(hour=2, minute=0)
+    next_day_morning = (day + timedelta(days=1)).replace(hour=5, minute=0)
+
+    showtime_should_match_evening = showtime_factory(datetime=same_day_evening)
+    showtime_should_match_next_day_early = showtime_factory(datetime=next_day_early)
+    showtime_should_not_match_same_day_early = showtime_factory(datetime=same_day_early)
+    showtime_should_not_match_next_day_morning = showtime_factory(datetime=next_day_morning)
+
+    showtimes = showtime_crud.get_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=day - timedelta(days=1),
+            days=[day.date()],
+        ),
+    )
+
+    assert showtime_should_match_evening in showtimes
+    assert showtime_should_match_next_day_early in showtimes
+    assert showtime_should_not_match_same_day_early not in showtimes
+    assert showtime_should_not_match_next_day_morning not in showtimes
+
+
+def test_get_main_page_showtimes_open_ended_start_range_includes_until_4am(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    base_day = now_amsterdam_naive().replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+    showtime_early_evening = showtime_factory(datetime=base_day.replace(hour=21, minute=30))
+    showtime_night = showtime_factory(datetime=base_day.replace(hour=22, minute=30))
+    showtime_after_midnight = showtime_factory(datetime=(base_day + timedelta(days=1)).replace(hour=2, minute=30))
+    showtime_after_cutoff = showtime_factory(datetime=(base_day + timedelta(days=1)).replace(hour=5, minute=0))
+
+    showtimes = showtime_crud.get_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=base_day - timedelta(days=1),
+            time_ranges=[TimeRange(start=time(22, 0), end=None)],
+        ),
+    )
+
+    assert showtime_early_evening not in showtimes
+    assert showtime_night in showtimes
+    assert showtime_after_midnight in showtimes
+    assert showtime_after_cutoff not in showtimes

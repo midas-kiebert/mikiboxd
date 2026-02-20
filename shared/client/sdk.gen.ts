@@ -28,6 +28,12 @@ import type {
   MeDeleteUserMeResponse,
   MeUpdateUserMeData,
   MeUpdateUserMeResponse,
+  MeGetFilterPresetsData,
+  MeGetFilterPresetsResponse,
+  MeSaveFilterPresetData,
+  MeSaveFilterPresetResponse,
+  MeDeleteFilterPresetData,
+  MeDeleteFilterPresetResponse,
   MeUpdatePasswordMeData,
   MeUpdatePasswordMeResponse,
   MeGetMyShowtimesData,
@@ -344,6 +350,71 @@ export class MeService {
   }
 
   /**
+   * Get Filter Presets
+   * @param data The data for the request.
+   * @param data.scope
+   * @returns FilterPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static getFilterPresets(
+    data: MeGetFilterPresetsData,
+  ): CancelablePromise<MeGetFilterPresetsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/filter-presets",
+      query: {
+        scope: data.scope,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Save Filter Preset
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns FilterPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static saveFilterPreset(
+    data: MeSaveFilterPresetData,
+  ): CancelablePromise<MeSaveFilterPresetResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/filter-presets",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Delete Filter Preset
+   * @param data The data for the request.
+   * @param data.presetId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static deleteFilterPreset(
+    data: MeDeleteFilterPresetData,
+  ): CancelablePromise<MeDeleteFilterPresetResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/filter-presets/{preset_id}",
+      path: {
+        preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Update Password Me
    * @param data The data for the request.
    * @param data.requestBody
@@ -375,6 +446,7 @@ export class MeService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
@@ -394,6 +466,7 @@ export class MeService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
       },
       errors: {
@@ -535,6 +608,7 @@ export class MoviesService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns MovieSummaryLoggedIn Successful Response
    * @throws ApiError
@@ -555,6 +629,7 @@ export class MoviesService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
       },
       errors: {
@@ -575,6 +650,7 @@ export class MoviesService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns ShowtimeInMovieLoggedIn Successful Response
    * @throws ApiError
@@ -597,6 +673,7 @@ export class MoviesService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
       },
       errors: {
@@ -616,6 +693,7 @@ export class MoviesService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns MovieLoggedIn Successful Response
    * @throws ApiError
@@ -637,6 +715,7 @@ export class MoviesService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
       },
       errors: {
@@ -658,6 +737,7 @@ export class ShowtimesService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
@@ -678,6 +758,7 @@ export class ShowtimesService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
       },
       body: data.requestBody,
@@ -699,6 +780,7 @@ export class ShowtimesService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
@@ -718,6 +800,7 @@ export class ShowtimesService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
       },
       errors: {
@@ -810,6 +893,7 @@ export class UsersService {
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
+   * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
@@ -832,6 +916,7 @@ export class UsersService {
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
+        times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
       },
       errors: {

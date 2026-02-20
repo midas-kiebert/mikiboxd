@@ -7,6 +7,7 @@ export type MovieFilters = {
     watchlistOnly?: boolean;
     days?: string[];
     selectedCinemaIds?: number[];
+    timeRanges?: string[];
 };
 
 type useFetchMoviesProps = {

@@ -21,7 +21,7 @@ export function useSessionCinemaSelections() {
   });
 
   const setSelections = useCallback(
-    (next: number[]) => {
+    (next: number[] | undefined) => {
       queryClient.setQueryData(SESSION_CINEMA_SELECTIONS_KEY, next);
     },
     [queryClient]

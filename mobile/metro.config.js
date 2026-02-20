@@ -8,6 +8,9 @@ const config = getDefaultConfig(__dirname);
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '..');
 
+// Required for pnpm/workspace symlinked packages like `shared`.
+config.resolver.unstable_enableSymlinks = true;
+
 // Watch the entire monorepo
 config.watchFolders = [workspaceRoot];
 

@@ -243,18 +243,40 @@ export default function DayFilterModal({
     return isoSelections;
   }, [localSelectedDaySet, todayKey]);
 
+  const relativeTokenByIsoDay = useMemo(() => {
+    const byIsoDay = new Map<string, string>();
+    if (!todayKey) return byIsoDay;
+
+    const today = DateTime.fromISO(todayKey, { zone: AMSTERDAM_ZONE });
+    RELATIVE_DAY_OPTIONS.forEach((option) => {
+      const iso = today.plus({ days: option.offset }).toISODate();
+      if (!iso) return;
+      byIsoDay.set(iso, option.token);
+    });
+    return byIsoDay;
+  }, [todayKey]);
+
   // Toggle the selection/state tied to the tapped UI element.
   const handleToggleDay = useCallback((day: string) => {
     setLocalSelectedDaySet((current) => {
       const next = new Set(current);
-      if (next.has(day)) {
+
+      const linkedRelativeToken = relativeTokenByIsoDay.get(day);
+      const isSelected =
+        next.has(day) ||
+        (linkedRelativeToken !== undefined && next.has(linkedRelativeToken));
+
+      if (isSelected) {
         next.delete(day);
+        if (linkedRelativeToken !== undefined) {
+          next.delete(linkedRelativeToken);
+        }
       } else {
         next.add(day);
       }
       return next;
     });
-  }, []);
+  }, [relativeTokenByIsoDay]);
 
   // Clear all selected day filters in one action.
   const handleClear = useCallback(() => setLocalSelectedDaySet(new Set()), []);

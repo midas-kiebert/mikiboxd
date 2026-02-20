@@ -95,7 +95,6 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         movie = MovieCreate(
             id=int(tmdb_id),
             title=tmdb_title,
-            poster_link=tmdb_details.poster_url if tmdb_details is not None else None,
             letterboxd_slug=None,
             directors=tmdb_directors if tmdb_directors else None,
             release_year=(

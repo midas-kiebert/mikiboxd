@@ -9,6 +9,21 @@ export type Body_login_login_access_token = {
   client_secret?: string | null
 }
 
+export type CinemaPresetCreate = {
+  name: string
+  cinema_ids?: Array<number>
+  is_favorite?: boolean | null
+}
+
+export type CinemaPresetPublic = {
+  id: string
+  name: string
+  cinema_ids: Array<number>
+  is_favorite: boolean
+  created_at: string
+  updated_at: string
+}
+
 export type CinemaPublic = {
   /**
    * Name of the cinema
@@ -54,21 +69,6 @@ export type FilterPresetPublic = {
   is_default: boolean
   is_favorite: boolean
   filters: FilterPresetFilters
-  created_at: string
-  updated_at: string
-}
-
-export type CinemaPresetCreate = {
-  name: string
-  cinema_ids?: Array<number>
-  is_favorite?: boolean | null
-}
-
-export type CinemaPresetPublic = {
-  id: string
-  name: string
-  cinema_ids: Array<number>
-  is_favorite: boolean
   created_at: string
   updated_at: string
 }
@@ -308,17 +308,17 @@ export type MeGetFavoriteFilterPresetData = {
 
 export type MeGetFavoriteFilterPresetResponse = FilterPresetPublic | null
 
-export type MeSetFavoriteFilterPresetData = {
-  presetId: string
-}
-
-export type MeSetFavoriteFilterPresetResponse = FilterPresetPublic
-
 export type MeClearFavoriteFilterPresetData = {
   scope: FilterPresetScope
 }
 
 export type MeClearFavoriteFilterPresetResponse = Message
+
+export type MeSetFavoriteFilterPresetData = {
+  presetId: string
+}
+
+export type MeSetFavoriteFilterPresetResponse = FilterPresetPublic
 
 export type MeDeleteFilterPresetData = {
   presetId: string
@@ -328,21 +328,21 @@ export type MeDeleteFilterPresetResponse = Message
 
 export type MeGetCinemaPresetsResponse = Array<CinemaPresetPublic>
 
-export type MeGetFavoriteCinemaPresetResponse = CinemaPresetPublic | null
-
 export type MeSaveCinemaPresetData = {
   requestBody: CinemaPresetCreate
 }
 
 export type MeSaveCinemaPresetResponse = CinemaPresetPublic
 
+export type MeGetFavoriteCinemaPresetResponse = CinemaPresetPublic | null
+
+export type MeClearFavoriteCinemaPresetResponse = Message
+
 export type MeSetFavoriteCinemaPresetData = {
   presetId: string
 }
 
 export type MeSetFavoriteCinemaPresetResponse = CinemaPresetPublic
-
-export type MeClearFavoriteCinemaPresetResponse = Message
 
 export type MeDeleteCinemaPresetData = {
   presetId: string

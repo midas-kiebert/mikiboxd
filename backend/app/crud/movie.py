@@ -436,6 +436,7 @@ def get_total_number_of_future_showtimes(
 def get_movies(
     *,
     session: Session,
+    current_user_id: UUID,
     letterboxd_username: str | None,
     limit: int,
     offset: int,
@@ -474,6 +475,21 @@ def get_movies(
                     for tr in filters.time_ranges
                 ]
             )
+        )
+
+    if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
+        friends_subq = select(col(Friendship.friend_id)).where(
+            col(Friendship.user_id) == current_user_id
+        )
+        stmt = stmt.join(
+            ShowtimeSelection,
+            col(Showtime.id) == col(ShowtimeSelection.showtime_id),
+        ).where(
+            or_(
+                col(ShowtimeSelection.user_id).in_(friends_subq),
+                ShowtimeSelection.user_id == current_user_id,
+            ),
+            col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
         )
 
     stmt = (

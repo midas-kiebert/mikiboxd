@@ -16,6 +16,7 @@ type useFetchMainPageShowtimesProps = {
     limit?: number;
     snapshotTime?: string;
     filters?: ShowtimesFilters;
+    enabled?: boolean;
 };
 
 export function useFetchMainPageShowtimes(
@@ -23,6 +24,7 @@ export function useFetchMainPageShowtimes(
         limit,
         snapshotTime,
         filters = {},
+        enabled = true,
     } : useFetchMainPageShowtimesProps
 ): UseInfiniteQueryResult<InfiniteData<ShowtimesGetMainPageShowtimesResponse>, Error>{
     const result = useInfiniteQuery<
@@ -33,6 +35,7 @@ export function useFetchMainPageShowtimes(
         number
     >({
         queryKey: ["showtimes", "main", filters],
+        enabled,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,

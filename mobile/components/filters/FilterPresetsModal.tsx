@@ -19,6 +19,11 @@ import {
 } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
+import {
+  canonicalizeDaySelections,
+  getDaySelectionLabels,
+} from "@/components/filters/day-filter-utils";
+import { getPresetForRange } from "@/components/filters/time-filter-presets";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 export type PageFilterPresetState = {
@@ -37,15 +42,11 @@ type FilterPresetsModalProps = {
   onApply: (filters: PageFilterPresetState) => void;
 };
 
-const normalizeFilters = (filters: PageFilterPresetState): PageFilterPresetState => ({
-  selected_showtime_filter: filters.selected_showtime_filter ?? null,
-  watchlist_only: Boolean(filters.watchlist_only),
-  selected_cinema_ids: filters.selected_cinema_ids ?? null,
-  days: filters.days ?? null,
-  time_ranges: filters.time_ranges ?? null,
-});
-
-const serializeFilters = (filters: PageFilterPresetState) => JSON.stringify(normalizeFilters(filters));
+type PresetDetail = {
+  key: string;
+  label: string;
+  value: string;
+};
 
 const getScopeLabel = (scope: FilterPresetScope) => {
   if (scope === "SHOWTIMES") return "Showtimes";
@@ -62,13 +63,96 @@ const getSortedUniqueStrings = (values?: string[] | null): string[] | null => {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 };
 
-const toPresetBodyFilters = (filters: PageFilterPresetState): PageFilterPresetState => ({
-  selected_showtime_filter: filters.selected_showtime_filter ?? null,
+const normalizeFilters = (filters: PageFilterPresetState): PageFilterPresetState => ({
+  selected_showtime_filter:
+    filters.selected_showtime_filter === "all" ||
+    filters.selected_showtime_filter === "interested" ||
+    filters.selected_showtime_filter === "going"
+      ? filters.selected_showtime_filter
+      : null,
   watchlist_only: Boolean(filters.watchlist_only),
   selected_cinema_ids: getSortedUniqueNumbers(filters.selected_cinema_ids),
-  days: getSortedUniqueStrings(filters.days),
+  days: canonicalizeDaySelections(filters.days),
   time_ranges: getSortedUniqueStrings(filters.time_ranges),
 });
+
+const serializeFilters = (filters: PageFilterPresetState) => JSON.stringify(normalizeFilters(filters));
+
+const toPresetBodyFilters = (filters: PageFilterPresetState): PageFilterPresetState =>
+  normalizeFilters(filters);
+
+const getShowtimeFilterLabel = (
+  selectedShowtimeFilter: PageFilterPresetState["selected_showtime_filter"]
+) => {
+  if (selectedShowtimeFilter === "going") return "Going only";
+  if (selectedShowtimeFilter === "interested") return "Interested + Going";
+  return "Any status";
+};
+
+const getWatchlistFilterLabel = (watchlistOnly: boolean | undefined) =>
+  watchlistOnly ? "Only watchlist titles" : "Include all titles";
+
+const getCinemaFilterLabel = (selectedCinemaIds?: number[] | null) => {
+  const sortedCinemaIds = getSortedUniqueNumbers(selectedCinemaIds);
+  if (!sortedCinemaIds || sortedCinemaIds.length === 0) return "All cinemas";
+  if (sortedCinemaIds.length === 1) return `1 cinema (${sortedCinemaIds[0]})`;
+  return `${sortedCinemaIds.length} cinemas (${sortedCinemaIds.join(", ")})`;
+};
+
+const getDaysFilterLabel = (days?: string[] | null) => {
+  const labels = getDaySelectionLabels(days);
+  if (labels.length === 0) return "Any day";
+  return labels.join(", ");
+};
+
+const getTimeRangesFilterLabel = (timeRanges?: string[] | null) => {
+  const normalizedRanges = getSortedUniqueStrings(timeRanges);
+  if (!normalizedRanges || normalizedRanges.length === 0) return "Any time";
+  return normalizedRanges
+    .map((range) => {
+      const preset = getPresetForRange(range);
+      if (!preset) return range;
+      return `${preset.label} (${preset.range})`;
+    })
+    .join(", ");
+};
+
+const getPresetDetails = (
+  scope: FilterPresetScope,
+  filters: PageFilterPresetState
+): PresetDetail[] => {
+  const details: PresetDetail[] = [];
+  if (scope === "SHOWTIMES") {
+    details.push({
+      key: "status",
+      label: "Status",
+      value: getShowtimeFilterLabel(filters.selected_showtime_filter),
+    });
+  }
+  details.push(
+    {
+      key: "watchlist",
+      label: "Watchlist",
+      value: getWatchlistFilterLabel(filters.watchlist_only),
+    },
+    {
+      key: "cinemas",
+      label: "Cinemas",
+      value: getCinemaFilterLabel(filters.selected_cinema_ids),
+    },
+    {
+      key: "days",
+      label: "Days",
+      value: getDaysFilterLabel(filters.days),
+    },
+    {
+      key: "times",
+      label: "Times",
+      value: getTimeRangesFilterLabel(filters.time_ranges),
+    }
+  );
+  return details;
+};
 
 export default function FilterPresetsModal({
   visible,
@@ -97,8 +181,7 @@ export default function FilterPresetsModal({
   });
 
   const savePresetMutation = useMutation({
-    mutationFn: (requestBody: FilterPresetCreate) =>
-      MeService.saveFilterPreset({ requestBody }),
+    mutationFn: (requestBody: FilterPresetCreate) => MeService.saveFilterPreset({ requestBody }),
     onSuccess: () => {
       setPresetName("");
       setSaveError(null);
@@ -116,10 +199,7 @@ export default function FilterPresetsModal({
     },
   });
 
-  const activeFilterSignature = useMemo(
-    () => serializeFilters(currentFilters),
-    [currentFilters]
-  );
+  const activeFilterSignature = useMemo(() => serializeFilters(currentFilters), [currentFilters]);
 
   const handleSavePreset = useCallback(() => {
     const trimmed = presetName.trim();
@@ -153,7 +233,9 @@ export default function FilterPresetsModal({
 
   const renderPreset: ListRenderItem<FilterPresetPublic> = useCallback(
     ({ item }) => {
-      const isCurrent = serializeFilters(item.filters) === activeFilterSignature;
+      const normalizedItemFilters = normalizeFilters(item.filters);
+      const isCurrent = serializeFilters(normalizedItemFilters) === activeFilterSignature;
+      const details = getPresetDetails(scope, normalizedItemFilters);
 
       return (
         <View style={styles.presetCard}>
@@ -174,6 +256,16 @@ export default function FilterPresetsModal({
               </View>
             </View>
           </View>
+
+          <View style={styles.presetDetails}>
+            {details.map((detail) => (
+              <View key={`${item.id}-${detail.key}`} style={styles.detailRow}>
+                <ThemedText style={styles.detailLabel}>{detail.label}</ThemedText>
+                <ThemedText style={styles.detailValue}>{detail.value}</ThemedText>
+              </View>
+            ))}
+          </View>
+
           <View style={styles.presetActions}>
             <TouchableOpacity
               style={[styles.actionButton, styles.applyButton]}
@@ -198,7 +290,7 @@ export default function FilterPresetsModal({
         </View>
       );
     },
-    [activeFilterSignature, deletePresetMutation.isPending, handleApplyPreset, handleDeletePreset, styles]
+    [activeFilterSignature, deletePresetMutation.isPending, handleApplyPreset, handleDeletePreset, scope, styles]
   );
 
   return (
@@ -219,32 +311,35 @@ export default function FilterPresetsModal({
           </TouchableOpacity>
         </View>
 
-        <View style={styles.saveRow}>
-          <TextInput
-            value={presetName}
-            onChangeText={setPresetName}
-            placeholder="Preset name"
-            placeholderTextColor={colors.textSecondary}
-            style={styles.input}
-            maxLength={80}
-            autoCapitalize="words"
-            autoCorrect={false}
-          />
-          <TouchableOpacity
-            style={[
-              styles.saveButton,
-              (savePresetMutation.isPending || presetName.trim().length === 0) && styles.saveButtonDisabled,
-            ]}
-            onPress={handleSavePreset}
-            activeOpacity={0.8}
-            disabled={savePresetMutation.isPending || presetName.trim().length === 0}
-          >
-            <ThemedText style={styles.saveButtonText}>
-              {savePresetMutation.isPending ? "Saving..." : "Save"}
-            </ThemedText>
-          </TouchableOpacity>
+        <View style={styles.saveSection}>
+          <View style={styles.saveRow}>
+            <TextInput
+              value={presetName}
+              onChangeText={setPresetName}
+              placeholder="Preset name"
+              placeholderTextColor={colors.textSecondary}
+              style={styles.input}
+              maxLength={80}
+              autoCapitalize="words"
+              autoCorrect={false}
+            />
+            <TouchableOpacity
+              style={[
+                styles.saveButton,
+                (savePresetMutation.isPending || presetName.trim().length === 0) &&
+                  styles.saveButtonDisabled,
+              ]}
+              onPress={handleSavePreset}
+              activeOpacity={0.8}
+              disabled={savePresetMutation.isPending || presetName.trim().length === 0}
+            >
+              <ThemedText style={styles.saveButtonText}>
+                {savePresetMutation.isPending ? "Saving..." : "Save"}
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+          {saveError ? <ThemedText style={styles.errorText}>{saveError}</ThemedText> : null}
         </View>
-        {saveError ? <ThemedText style={styles.errorText}>{saveError}</ThemedText> : null}
 
         {isLoading ? (
           <View style={styles.loading}>
@@ -280,7 +375,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     header: {
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingVertical: 14,
       borderBottomWidth: 1,
       borderBottomColor: colors.divider,
       flexDirection: "row",
@@ -295,6 +390,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     subtitle: {
       fontSize: 12,
       color: colors.textSecondary,
+      marginTop: 2,
     },
     closeButton: {
       borderRadius: 14,
@@ -304,12 +400,15 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     closeButtonText: {
       fontSize: 12,
-      fontWeight: "600",
+      fontWeight: "700",
       color: colors.textSecondary,
     },
-    saveRow: {
+    saveSection: {
       paddingHorizontal: 16,
       paddingTop: 12,
+      gap: 8,
+    },
+    saveRow: {
       flexDirection: "row",
       columnGap: 8,
     },
@@ -317,7 +416,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flex: 1,
       borderWidth: 1,
       borderColor: colors.divider,
-      borderRadius: 10,
+      borderRadius: 12,
       paddingHorizontal: 12,
       paddingVertical: 10,
       backgroundColor: colors.cardBackground,
@@ -326,7 +425,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "500",
     },
     saveButton: {
-      borderRadius: 10,
+      borderRadius: 12,
       paddingHorizontal: 14,
       alignItems: "center",
       justifyContent: "center",
@@ -341,8 +440,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "700",
     },
     errorText: {
-      paddingHorizontal: 16,
-      paddingTop: 8,
       fontSize: 12,
       color: colors.red.secondary,
     },
@@ -373,9 +470,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       textAlign: "center",
     },
     presetCard: {
-      borderRadius: 12,
+      borderRadius: 16,
       borderWidth: 1,
-      borderColor: colors.divider,
+      borderColor: colors.cardBorder,
       backgroundColor: colors.cardBackground,
       padding: 12,
       gap: 10,
@@ -407,7 +504,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     badgeText: {
       fontSize: 11,
-      fontWeight: "600",
+      fontWeight: "700",
       color: colors.textSecondary,
     },
     currentBadge: {
@@ -415,6 +512,35 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     currentBadgeText: {
       color: colors.pillActiveText,
+    },
+    presetDetails: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      backgroundColor: colors.pillBackground,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      gap: 6,
+    },
+    detailRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      columnGap: 8,
+    },
+    detailLabel: {
+      minWidth: 64,
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.textSecondary,
+      textTransform: "uppercase",
+    },
+    detailValue: {
+      flex: 1,
+      textAlign: "right",
+      fontSize: 12,
+      fontWeight: "600",
+      color: colors.text,
     },
     presetActions: {
       flexDirection: "row",

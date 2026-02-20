@@ -4,12 +4,9 @@
 import { useMemo, useState } from 'react';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
-import type { GoingStatus } from 'shared';
+import { useIsFocused } from '@react-navigation/native';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
-import { useSessionCinemaSelections } from 'shared/hooks/useSessionCinemaSelections';
-import { useSessionDaySelections } from 'shared/hooks/useSessionDaySelections';
-import { useSessionTimeRangeSelections } from 'shared/hooks/useSessionTimeRangeSelections';
 
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import DayFilterModal from '@/components/filters/DayFilterModal';
@@ -17,36 +14,26 @@ import FilterPresetsModal, {
   type PageFilterPresetState,
 } from '@/components/filters/FilterPresetsModal';
 import TimeFilterModal from '@/components/filters/TimeFilterModal';
+import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
+import {
+  SHARED_TAB_FILTER_PRESET_SCOPE,
+  buildSharedTabActiveFilterIds,
+  buildSharedTabPillFilters,
+  cycleSharedTabShowtimeFilter,
+  getSelectedStatusesFromShowtimeFilter,
+  toSharedTabShowtimeFilter,
+  type SharedTabFilterId,
+} from '@/components/filters/shared-tab-filters';
 import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
 import { isCinemaSelectionDifferentFromPreferred } from '@/utils/cinema-selection';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 import { useThemeColors } from '@/hooks/use-theme-color';
-
-// Filter pill definitions rendered in the top filter row.
-const BASE_FILTERS = [
-  { id: 'showtime-filter', label: 'Interested' },
-  { id: 'watchlist-only', label: 'Watchlist Only' },
-  { id: 'cinemas', label: 'Cinemas' },
-  { id: 'days', label: 'Days' },
-  { id: 'times', label: 'Times' },
-  { id: 'presets', label: 'Presets' },
-] as const;
-
-type MainShowtimesFilterId = (typeof BASE_FILTERS)[number]['id'];
-type ShowtimeFilter = 'all' | 'interested' | 'going';
-
-const EMPTY_DAYS: string[] = [];
-const EMPTY_TIME_RANGES: string[] = [];
+import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 
 export default function MainShowtimesScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const [searchQuery, setSearchQuery] = useState('');
-  // Tracks the selected showtime-status mode (interested / going / all).
-  const [selectedShowtimeFilter, setSelectedShowtimeFilter] =
-    useState<ShowtimeFilter>('interested');
-  // Whether the list should be limited to movies in the user's watchlist.
-  const [watchlistOnly, setWatchlistOnly] = useState(false);
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
   // Controls visibility of the cinema-filter modal.
@@ -62,41 +49,44 @@ export default function MainShowtimesScreen() {
     DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")
   );
 
-  const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
-    useSessionCinemaSelections();
+  const {
+    selectedShowtimeFilter,
+    setSelectedShowtimeFilter,
+    watchlistOnly,
+    setWatchlistOnly,
+    sessionCinemaIds,
+    setSessionCinemaIds,
+    selectedDays,
+    setSelectedDays,
+    selectedTimeRanges,
+    setSelectedTimeRanges,
+  } = useSharedTabFilters();
+  const isFocused = useIsFocused();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
-  const { selections: sessionDays, setSelections: setSessionDays } = useSessionDaySelections();
-  const { selections: sessionTimeRanges, setSelections: setSessionTimeRanges } =
-    useSessionTimeRangeSelections();
-  const selectedDays = sessionDays ?? EMPTY_DAYS;
-  const selectedTimeRanges = sessionTimeRanges ?? EMPTY_TIME_RANGES;
+  const dayAnchorKey =
+    DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
+  const resolvedApiDays = useMemo(
+    () => resolveDaySelectionsForApi(selectedDays),
+    [dayAnchorKey, selectedDays]
+  );
 
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
   // Build the filter payload from current UI selections.
   const showtimesFilters = useMemo(() => {
-    // This local variable annotation gives `selectedStatuses` the correct type
-    // without needing an `as ...` cast on the ternary expression.
-    const selectedStatuses: GoingStatus[] | undefined =
-      selectedShowtimeFilter === 'all'
-        ? undefined
-        : selectedShowtimeFilter === 'going'
-          ? ['GOING']
-          : ['GOING', 'INTERESTED'];
-
     return {
       query: searchQuery || undefined,
       selectedCinemaIds: sessionCinemaIds,
-      days: selectedDays.length > 0 ? selectedDays : undefined,
+      days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
-      selectedStatuses,
+      selectedStatuses: getSelectedStatusesFromShowtimeFilter(selectedShowtimeFilter),
       watchlistOnly: watchlistOnly ? true : undefined,
     };
   }, [
     searchQuery,
     selectedShowtimeFilter,
-    selectedDays,
+    resolvedApiDays,
     selectedTimeRanges,
     sessionCinemaIds,
     watchlistOnly,
@@ -119,48 +109,17 @@ export default function MainShowtimesScreen() {
     ]
   );
 
-  // Only decorate the day pill label when the filter is actually active.
-  const pillFilters = useMemo(() => {
-    return BASE_FILTERS.map((filter) => {
-      if (filter.id === 'showtime-filter') {
-        const label =
-          selectedShowtimeFilter === 'all'
-            ? 'Any Status'
-            : selectedShowtimeFilter === 'going'
-              ? 'Going'
-              : 'Interested';
-        return {
-          ...filter,
-          label,
-          activeBackgroundColor:
-            selectedShowtimeFilter === 'going'
-              ? colors.green.primary
-              : selectedShowtimeFilter === 'interested'
-                ? colors.orange.primary
-                : undefined,
-          activeTextColor:
-            selectedShowtimeFilter === 'going'
-              ? colors.green.secondary
-              : selectedShowtimeFilter === 'interested'
-                ? colors.orange.secondary
-                : undefined,
-          activeBorderColor:
-            selectedShowtimeFilter === 'going'
-              ? colors.green.secondary
-              : selectedShowtimeFilter === 'interested'
-                ? colors.orange.secondary
-                : undefined,
-        };
-      }
-      if (filter.id === 'days' && selectedDays.length > 0) {
-        return { ...filter, label: `Days (${selectedDays.length})` };
-      }
-      if (filter.id === 'times' && selectedTimeRanges.length > 0) {
-        return { ...filter, label: `Times (${selectedTimeRanges.length})` };
-      }
-      return filter;
-    });
-  }, [colors, selectedDays.length, selectedShowtimeFilter, selectedTimeRanges.length]);
+  // Build shared filter pills used by both Movies and Showtimes tabs.
+  const pillFilters = useMemo(
+    () =>
+      buildSharedTabPillFilters({
+        colors,
+        selectedShowtimeFilter,
+        selectedDaysCount: selectedDays.length,
+        selectedTimeRangesCount: selectedTimeRanges.length,
+      }),
+    [colors, selectedDays.length, selectedShowtimeFilter, selectedTimeRanges.length]
+  );
 
   // Cinema pill should only be active when current session differs from preferred cinemas.
   const isCinemaFilterActive = useMemo(
@@ -172,34 +131,17 @@ export default function MainShowtimesScreen() {
     [sessionCinemaIds, preferredCinemaIds]
   );
 
-  // Compute which filter pills should render as active.
-  const activeFilterIds = useMemo<MainShowtimesFilterId[]>(
-    () => {
-      const active: MainShowtimesFilterId[] = [];
-      if (selectedShowtimeFilter !== 'all') {
-        active.push('showtime-filter');
-      }
-      if (selectedDays.length > 0) {
-        active.push('days');
-      }
-      if (selectedTimeRanges.length > 0) {
-        active.push('times');
-      }
-      if (isCinemaFilterActive) {
-        active.push('cinemas');
-      }
-      if (watchlistOnly) {
-        active.push('watchlist-only');
-      }
-      return active;
-    },
-    [
-      selectedShowtimeFilter,
-      selectedDays.length,
-      selectedTimeRanges.length,
-      isCinemaFilterActive,
-      watchlistOnly,
-    ]
+  // Compute shared active filter ids used by both Movies and Showtimes tabs.
+  const activeFilterIds = useMemo<SharedTabFilterId[]>(
+    () =>
+      buildSharedTabActiveFilterIds({
+        selectedShowtimeFilter,
+        watchlistOnly,
+        selectedDaysCount: selectedDays.length,
+        selectedTimeRangesCount: selectedTimeRanges.length,
+        isCinemaFilterActive,
+      }),
+    [selectedShowtimeFilter, watchlistOnly, selectedDays.length, selectedTimeRanges.length, isCinemaFilterActive]
   );
 
   // Data hooks keep this module synced with backend data and shared cache state.
@@ -214,6 +156,7 @@ export default function MainShowtimesScreen() {
     limit: 20,
     snapshotTime,
     filters: showtimesFilters,
+    enabled: isFocused,
   });
 
   // Flatten/derive list data for rendering efficiency.
@@ -235,12 +178,9 @@ export default function MainShowtimesScreen() {
   };
 
   // Handle filter pill presses and update filter state.
-  const handleToggleFilter = (filterId: MainShowtimesFilterId) => {
+  const handleToggleFilter = (filterId: SharedTabFilterId) => {
     if (filterId === 'showtime-filter') {
-      // Tap cycles all -> interested -> going -> all for quick triaging.
-      setSelectedShowtimeFilter((prev) =>
-        prev === 'all' ? 'interested' : prev === 'interested' ? 'going' : 'all'
-      );
+      setSelectedShowtimeFilter(cycleSharedTabShowtimeFilter(selectedShowtimeFilter));
       return;
     }
     if (filterId === 'cinemas') {
@@ -260,22 +200,17 @@ export default function MainShowtimesScreen() {
       return;
     }
     if (filterId === 'watchlist-only') {
-      setWatchlistOnly((prev) => !prev);
+      setWatchlistOnly(!watchlistOnly);
       return;
     }
   };
 
   const handleApplyPreset = (filters: PageFilterPresetState) => {
-    const showtimeFilter = filters.selected_showtime_filter;
-    setSelectedShowtimeFilter(
-      showtimeFilter === 'going' || showtimeFilter === 'interested' || showtimeFilter === 'all'
-        ? showtimeFilter
-        : 'all'
-    );
+    setSelectedShowtimeFilter(toSharedTabShowtimeFilter(filters.selected_showtime_filter));
     setWatchlistOnly(Boolean(filters.watchlist_only));
     setSessionCinemaIds(filters.selected_cinema_ids ?? undefined);
-    setSessionDays(filters.days ?? []);
-    setSessionTimeRanges(filters.time_ranges ?? []);
+    setSelectedDays(filters.days ?? []);
+    setSelectedTimeRanges(filters.time_ranges ?? []);
   };
 
   // Render/output using the state and derived values prepared above.
@@ -305,18 +240,18 @@ export default function MainShowtimesScreen() {
         visible={dayModalVisible}
         onClose={() => setDayModalVisible(false)}
         selectedDays={selectedDays}
-        onChange={setSessionDays}
+        onChange={setSelectedDays}
       />
       <TimeFilterModal
         visible={timeModalVisible}
         onClose={() => setTimeModalVisible(false)}
         selectedTimeRanges={selectedTimeRanges}
-        onChange={setSessionTimeRanges}
+        onChange={setSelectedTimeRanges}
       />
       <FilterPresetsModal
         visible={presetModalVisible}
         onClose={() => setPresetModalVisible(false)}
-        scope="SHOWTIMES"
+        scope={SHARED_TAB_FILTER_PRESET_SCOPE}
         currentFilters={currentPresetFilters}
         onApply={handleApplyPreset}
       />

@@ -32,6 +32,7 @@ import FilterPills from "@/components/filters/FilterPills";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
 import DayFilterModal from "@/components/filters/DayFilterModal";
 import TimeFilterModal from "@/components/filters/TimeFilterModal";
+import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { IconSymbol } from "@/components/ui/icon-symbol";
@@ -74,6 +75,12 @@ export default function MoviePage() {
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   // Tracks selected time ranges used by time filtering.
   const [selectedTimeRanges, setSelectedTimeRanges] = useState<string[]>([]);
+  const dayAnchorKey =
+    DateTime.now().setZone("Europe/Amsterdam").startOf("day").toISODate() ?? "";
+  const resolvedApiDays = useMemo(
+    () => resolveDaySelectionsForApi(selectedDays),
+    [dayAnchorKey, selectedDays]
+  );
 
   // Convert route param to numeric movie ID for API calls/query keys.
   const movieId = useMemo(() => Number(id), [id]);
@@ -109,11 +116,11 @@ export default function MoviePage() {
 
     return {
       selectedCinemaIds: sessionCinemaIds,
-      days: selectedDays.length > 0 ? selectedDays : undefined,
+      days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       selectedStatuses,
     };
-  }, [selectedDays, selectedFilter, selectedTimeRanges, sessionCinemaIds]);
+  }, [resolvedApiDays, selectedFilter, selectedTimeRanges, sessionCinemaIds]);
 
   // Data hooks keep this module synced with backend data and shared cache state.
   const { data: movie, isLoading: isMovieLoading, isError: isMovieError } = useQuery<MovieLoggedIn, Error>({

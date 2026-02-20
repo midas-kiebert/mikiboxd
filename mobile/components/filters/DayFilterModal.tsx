@@ -14,6 +14,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { DateTime } from "luxon";
 
 import { ThemedText } from "@/components/themed-text";
+import {
+  AMSTERDAM_ZONE,
+  RELATIVE_DAY_OPTIONS,
+  WEEKDAY_DAY_OPTIONS,
+  canonicalizeDaySelections,
+  isIsoDaySelection,
+} from "@/components/filters/day-filter-utils";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 type DayFilterModalProps = {
@@ -35,7 +42,6 @@ type CalendarMonth = {
 };
 
 const DAY_RANGE = 180;
-const AMSTERDAM_ZONE = "Europe/Amsterdam";
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 const selectionsMatch = (left: string[], right: string[]) => {
@@ -93,6 +99,32 @@ function buildCalendarMonths(startIso: string): CalendarMonth[] {
 }
 
 type DayModalStyles = ReturnType<typeof createStyles>;
+
+type DayShortcutChipProps = {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  styles: DayModalStyles;
+};
+
+const DayShortcutChip = memo(function DayShortcutChip({
+  label,
+  selected,
+  onPress,
+  styles,
+}: DayShortcutChipProps) {
+  return (
+    <TouchableOpacity
+      style={[styles.shortcutChip, selected && styles.shortcutChipSelected]}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <ThemedText style={[styles.shortcutChipText, selected && styles.shortcutChipTextSelected]}>
+        {label}
+      </ThemedText>
+    </TouchableOpacity>
+  );
+});
 
 type DayCellProps = {
   cell: CalendarDay | null;
@@ -177,11 +209,10 @@ export default function DayFilterModal({
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [localSelectedDaySet, setLocalSelectedDaySet] = useState<Set<string>>(
-    () => new Set(selectedDays)
+    () => new Set(canonicalizeDaySelections(selectedDays) ?? [])
   );
 
-  const today = DateTime.now().setZone(AMSTERDAM_ZONE).startOf("day");
-  const todayKey = today.toISODate() ?? "";
+  const todayKey = DateTime.now().setZone(AMSTERDAM_ZONE).startOf("day").toISODate() ?? "";
 
   // Build/selectable calendar month sections once per "today" key change.
   const calendarMonths = useMemo(() => {
@@ -192,8 +223,25 @@ export default function DayFilterModal({
   // Start each modal session with current external selection.
   useEffect(() => {
     if (!visible) return;
-    setLocalSelectedDaySet(new Set(selectedDays));
+    setLocalSelectedDaySet(new Set(canonicalizeDaySelections(selectedDays) ?? []));
   }, [visible, selectedDays]);
+
+  const selectedCalendarDaySet = useMemo(() => {
+    if (!todayKey) return new Set<string>();
+    const today = DateTime.fromISO(todayKey, { zone: AMSTERDAM_ZONE });
+    const isoSelections = new Set<string>();
+    localSelectedDaySet.forEach((value) => {
+      if (isIsoDaySelection(value)) {
+        isoSelections.add(value);
+      }
+    });
+    RELATIVE_DAY_OPTIONS.forEach((option) => {
+      if (!localSelectedDaySet.has(option.token)) return;
+      const iso = today.plus({ days: option.offset }).toISODate();
+      if (iso) isoSelections.add(iso);
+    });
+    return isoSelections;
+  }, [localSelectedDaySet, todayKey]);
 
   // Toggle the selection/state tied to the tapped UI element.
   const handleToggleDay = useCallback((day: string) => {
@@ -212,8 +260,9 @@ export default function DayFilterModal({
   const handleClear = useCallback(() => setLocalSelectedDaySet(new Set()), []);
 
   const handleClose = useCallback(() => {
-    const nextSelectedDays = Array.from(localSelectedDaySet).sort();
-    if (!selectionsMatch(nextSelectedDays, selectedDays)) {
+    const nextSelectedDays = canonicalizeDaySelections(Array.from(localSelectedDaySet)) ?? [];
+    const currentSelectedDays = canonicalizeDaySelections(selectedDays) ?? [];
+    if (!selectionsMatch(nextSelectedDays, currentSelectedDays)) {
       onChange(nextSelectedDays);
     }
     onClose();
@@ -223,12 +272,12 @@ export default function DayFilterModal({
     ({ item }) => (
       <CalendarMonthSection
         month={item}
-        selectedDaySet={localSelectedDaySet}
+        selectedDaySet={selectedCalendarDaySet}
         onToggleDay={handleToggleDay}
         styles={styles}
       />
     ),
-    [handleToggleDay, localSelectedDaySet, styles]
+    [handleToggleDay, selectedCalendarDaySet, styles]
   );
 
   // Render/output using the state and derived values prepared above.
@@ -255,6 +304,42 @@ export default function DayFilterModal({
           data={calendarMonths}
           keyExtractor={(item) => item.key}
           renderItem={renderMonth}
+          ListHeaderComponent={
+            <View style={styles.shortcutSections}>
+              <View style={styles.shortcutSection}>
+                <ThemedText style={styles.shortcutSectionTitle}>Relative Days</ThemedText>
+                <ThemedText style={styles.shortcutSectionSubtitle}>
+                  These stay relative when saved in presets.
+                </ThemedText>
+                <View style={styles.shortcutChipWrap}>
+                  {RELATIVE_DAY_OPTIONS.map((option) => (
+                    <DayShortcutChip
+                      key={option.token}
+                      label={option.label}
+                      selected={localSelectedDaySet.has(option.token)}
+                      onPress={() => handleToggleDay(option.token)}
+                      styles={styles}
+                    />
+                  ))}
+                </View>
+              </View>
+              <View style={styles.shortcutSection}>
+                <ThemedText style={styles.shortcutSectionTitle}>Days of Week</ThemedText>
+                <View style={styles.shortcutChipWrap}>
+                  {WEEKDAY_DAY_OPTIONS.map((option) => (
+                    <DayShortcutChip
+                      key={option.token}
+                      label={option.shortLabel}
+                      selected={localSelectedDaySet.has(option.token)}
+                      onPress={() => handleToggleDay(option.token)}
+                      styles={styles}
+                    />
+                  ))}
+                </View>
+              </View>
+            </View>
+          }
+          ListHeaderComponentStyle={styles.shortcutHeader}
           initialNumToRender={2}
           maxToRenderPerBatch={2}
           windowSize={5}
@@ -329,6 +414,55 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       padding: 16,
       paddingBottom: 20,
       gap: 16,
+    },
+    shortcutHeader: {
+      marginBottom: 12,
+    },
+    shortcutSections: {
+      gap: 10,
+    },
+    shortcutSection: {
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      gap: 10,
+    },
+    shortcutSectionTitle: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    shortcutSectionSubtitle: {
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
+    shortcutChipWrap: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    shortcutChip: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      backgroundColor: colors.background,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    shortcutChipSelected: {
+      borderColor: colors.tint,
+      backgroundColor: colors.tint,
+    },
+    shortcutChipText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    shortcutChipTextSelected: {
+      color: colors.pillActiveText,
     },
     monthSection: {
       borderRadius: 14,

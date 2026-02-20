@@ -1,22 +1,21 @@
-import asyncio
 import json
 import os
 import random
+import subprocess
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from threading import BoundedSemaphore, Event, Lock
+from threading import BoundedSemaphore, Lock
 from typing import Any
 from urllib.parse import urlparse
 
-import httpx
 from bs4 import BeautifulSoup, Tag
 from pydantic import BaseModel
 
 from app.api.deps import get_db_context
 from app.crud import movie as movies_crud
 from app.exceptions import scraper_exceptions
-from app.models.movie import Movie
+from app.models.movie import MovieUpdate
 from app.scraping.logger import logger
 from app.utils import now_amsterdam_naive
 
@@ -73,19 +72,14 @@ def _env_probability(name: str, default: float) -> float:
     return min(1.0, max(0.0, parsed))
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    value = raw.strip().lower()
-    if value in {"1", "true", "yes", "y", "on"}:
-        return True
-    if value in {"0", "false", "no", "n", "off"}:
-        return False
-    return default
-
-
-LETTERBOXD_HTTP_CONCURRENCY = _env_int("LETTERBOXD_HTTP_CONCURRENCY", 1)
+_configured_letterboxd_http_concurrency = _env_int("LETTERBOXD_HTTP_CONCURRENCY", 1)
+# Force single-threaded outbound traffic to reduce Cloudflare sensitivity.
+LETTERBOXD_HTTP_CONCURRENCY = 1
+if _configured_letterboxd_http_concurrency != 1:
+    logger.warning(
+        "LETTERBOXD_HTTP_CONCURRENCY=%s ignored; forcing 1 for Cloudflare friendliness.",
+        _configured_letterboxd_http_concurrency,
+    )
 LETTERBOXD_HTTP_RETRIES = _env_int("LETTERBOXD_HTTP_RETRIES", 2)
 LETTERBOXD_HTTP_BACKOFF_SECONDS = _env_float("LETTERBOXD_HTTP_BACKOFF_SECONDS", 0.4)
 LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS = _env_float(
@@ -103,9 +97,8 @@ LETTERBOXD_BLOCK_STATE_FILE = os.getenv(
 )
 LETTERBOXD_HTTP_MAX_CALLS_PER_RUN = _env_non_negative_int(
     "LETTERBOXD_HTTP_MAX_CALLS_PER_RUN",
-    20,
+    0,
 )
-LETTERBOXD_HTTP_DRY_RUN = _env_bool("LETTERBOXD_HTTP_DRY_RUN", False)
 LETTERBOXD_REFRESH_AFTER_DAYS = _env_non_negative_int(
     "LETTERBOXD_REFRESH_AFTER_DAYS",
     5,
@@ -123,7 +116,6 @@ LETTERBOXD_STALE_REFRESH_MAX_PROBABILITY = _env_probability(
     1.0,
 )
 _letterboxd_http_sync_semaphore = BoundedSemaphore(LETTERBOXD_HTTP_CONCURRENCY)
-_letterboxd_http_async_semaphore = asyncio.Semaphore(LETTERBOXD_HTTP_CONCURRENCY)
 _letterboxd_rate_limit_lock = Lock()
 _letterboxd_next_request_at: float = 0.0
 _letterboxd_challenge_block_lock = Lock()
@@ -135,34 +127,23 @@ _letterboxd_failure_audit_events: list[dict[str, Any]] = []
 _letterboxd_request_budget_lock = Lock()
 _letterboxd_http_calls_this_run: int = 0
 _letterboxd_http_budget_exhausted_logged: bool = False
-_letterboxd_dry_run_request_calls: int = 0
-_letterboxd_dry_run_notice_logged: bool = False
 _letterboxd_real_request_attempt_calls: int = 0
 _letterboxd_real_request_success_calls: int = 0
 
-_letterboxd_cache_lock = Lock()
-_letterboxd_cache: dict[int, "LetterboxdMovieData | None"] = {}
-_letterboxd_inflight_lock = Lock()
-_letterboxd_inflight: dict[int, Event] = {}
-
 
 @dataclass(frozen=True)
-class AsyncPageResponse:
+class CurlResponse:
     url: str
     text: str
+    status_code: int
+
+    def json(self) -> Any:
+        return json.loads(self.text)
 
 
 @dataclass(frozen=True)
 class SyncPageFetchResult:
-    response: httpx.Response | None
-    status_code: int | None
-    not_found: bool = False
-    blocked: bool = False
-
-
-@dataclass(frozen=True)
-class AsyncPageFetchResult:
-    response: AsyncPageResponse | None
+    response: CurlResponse | None
     status_code: int | None
     not_found: bool = False
     blocked: bool = False
@@ -171,12 +152,6 @@ class AsyncPageFetchResult:
 class LetterboxdMovieData(BaseModel):
     slug: str
     poster_url: str | None
-    title: str
-    original_title: str | None
-    release_year: int | None
-    directors: list[str]
-    rating: float | None = None
-    top250: int | None = None
     enriched_at: datetime | None = None
 
 
@@ -187,34 +162,6 @@ class ExistingMovieResolution:
     decision_reason: str
     age_days: float | None = None
     refresh_probability: float = 0.0
-
-
-def _movie_to_letterboxd_data(movie: Movie) -> LetterboxdMovieData | None:
-    if not movie.letterboxd_slug:
-        return None
-    return LetterboxdMovieData(
-        slug=movie.letterboxd_slug,
-        poster_url=movie.poster_link,
-        title=movie.title,
-        original_title=movie.original_title,
-        release_year=movie.release_year,
-        directors=movie.directors or [],
-        rating=None,
-        top250=None,
-        enriched_at=movie.tmdb_last_enriched_at,
-    )
-
-
-def _load_existing_movie(tmdb_id: int) -> Movie | None:
-    with get_db_context() as session:
-        return movies_crud.get_movie_by_id(session=session, id=tmdb_id)
-
-
-def _age_days(movie: Movie, now: datetime) -> float | None:
-    enriched_at = movie.tmdb_last_enriched_at
-    if enriched_at is None:
-        return None
-    return max(0.0, (now - enriched_at).total_seconds() / 86400.0)
 
 
 def _stale_refresh_probability(age_days: float | None) -> float:
@@ -236,7 +183,8 @@ def _stale_refresh_probability(age_days: float | None) -> float:
 
 
 def _resolve_existing_movie(tmdb_id: int) -> ExistingMovieResolution:
-    movie = _load_existing_movie(tmdb_id)
+    with get_db_context() as session:
+        movie = movies_crud.get_movie_by_id(session=session, id=tmdb_id)
     if movie is None:
         return ExistingMovieResolution(
             movie_data=None,
@@ -244,8 +192,7 @@ def _resolve_existing_movie(tmdb_id: int) -> ExistingMovieResolution:
             decision_reason="movie_missing_in_db",
         )
 
-    existing_data = _movie_to_letterboxd_data(movie)
-    if existing_data is None:
+    if not movie.letterboxd_slug:
         # No Letterboxd slug stored yet; try network fetch.
         return ExistingMovieResolution(
             movie_data=None,
@@ -253,7 +200,19 @@ def _resolve_existing_movie(tmdb_id: int) -> ExistingMovieResolution:
             decision_reason="movie_without_letterboxd_slug",
         )
 
-    age_days = _age_days(movie, now_amsterdam_naive())
+    existing_data = LetterboxdMovieData(
+        slug=movie.letterboxd_slug,
+        poster_url=movie.poster_link,
+        enriched_at=movie.tmdb_last_enriched_at,
+    )
+    if movie.tmdb_last_enriched_at is None:
+        age_days: float | None = None
+    else:
+        age_days = max(
+            0.0,
+            (now_amsterdam_naive() - movie.tmdb_last_enriched_at).total_seconds()
+            / 86400.0,
+        )
     refresh_probability = _stale_refresh_probability(age_days)
     if refresh_probability <= 0.0:
         return ExistingMovieResolution(
@@ -276,40 +235,6 @@ def _resolve_existing_movie(tmdb_id: int) -> ExistingMovieResolution:
         age_days=age_days,
         refresh_probability=refresh_probability,
     )
-
-
-def _cache_get(tmdb_id: int) -> tuple[bool, LetterboxdMovieData | None]:
-    with _letterboxd_cache_lock:
-        if tmdb_id not in _letterboxd_cache:
-            return False, None
-        return True, _letterboxd_cache[tmdb_id]
-
-
-def _cache_set(tmdb_id: int, value: LetterboxdMovieData | None) -> None:
-    with _letterboxd_cache_lock:
-        _letterboxd_cache[tmdb_id] = value
-
-
-def _begin_inflight(tmdb_id: int) -> tuple[bool, Event]:
-    with _letterboxd_inflight_lock:
-        existing = _letterboxd_inflight.get(tmdb_id)
-        if existing is not None:
-            return False, existing
-        event = Event()
-        _letterboxd_inflight[tmdb_id] = event
-        return True, event
-
-
-def _finish_inflight(tmdb_id: int, event: Event) -> None:
-    with _letterboxd_inflight_lock:
-        current = _letterboxd_inflight.get(tmdb_id)
-        if current is event:
-            del _letterboxd_inflight[tmdb_id]
-    event.set()
-
-
-def _is_retryable_status(status: int) -> bool:
-    return status in {408, 425, 500, 502, 503, 504}
 
 
 def _retry_delay(attempt: int) -> float:
@@ -358,15 +283,11 @@ def consume_letterboxd_failure_events() -> list[dict[str, Any]]:
 def reset_letterboxd_request_budget() -> None:
     global _letterboxd_http_calls_this_run
     global _letterboxd_http_budget_exhausted_logged
-    global _letterboxd_dry_run_request_calls
-    global _letterboxd_dry_run_notice_logged
     global _letterboxd_real_request_attempt_calls
     global _letterboxd_real_request_success_calls
     with _letterboxd_request_budget_lock:
         _letterboxd_http_calls_this_run = 0
         _letterboxd_http_budget_exhausted_logged = False
-        _letterboxd_dry_run_request_calls = 0
-        _letterboxd_dry_run_notice_logged = False
         _letterboxd_real_request_attempt_calls = 0
         _letterboxd_real_request_success_calls = 0
 
@@ -375,7 +296,7 @@ def _consume_request_budget(url: str) -> bool:
     global _letterboxd_http_calls_this_run
     global _letterboxd_http_budget_exhausted_logged
     if LETTERBOXD_HTTP_MAX_CALLS_PER_RUN <= 0:
-        return False
+        return True
     with _letterboxd_request_budget_lock:
         if _letterboxd_http_calls_this_run >= LETTERBOXD_HTTP_MAX_CALLS_PER_RUN:
             should_log = not _letterboxd_http_budget_exhausted_logged
@@ -396,35 +317,6 @@ def _consume_request_budget(url: str) -> bool:
             reason=f"max_calls_per_run={LETTERBOXD_HTTP_MAX_CALLS_PER_RUN}",
         )
     return False
-
-
-def _record_dry_run_request(url: str, transport: str) -> None:
-    global _letterboxd_dry_run_request_calls
-    global _letterboxd_dry_run_notice_logged
-    with _letterboxd_request_budget_lock:
-        _letterboxd_dry_run_request_calls += 1
-        call_number = _letterboxd_dry_run_request_calls
-        should_log_notice = not _letterboxd_dry_run_notice_logged
-        if should_log_notice:
-            _letterboxd_dry_run_notice_logged = True
-
-    if should_log_notice:
-        logger.warning(
-            "LETTERBOXD_HTTP_DRY_RUN is enabled; suppressing all outbound "
-            "Letterboxd HTTP requests and logging would-be calls."
-        )
-    logger.info(
-        "Letterboxd dry-run would-request #%s (%s): %s",
-        call_number,
-        transport,
-        url,
-    )
-    _record_letterboxd_failure_event(
-        event_type="dry_run_would_request",
-        url=url,
-        tmdb_id=_extract_tmdb_id_from_url(url),
-        reason=f"transport={transport}",
-    )
 
 
 def _record_real_outbound_request_attempt(url: str, transport: str) -> None:
@@ -451,16 +343,6 @@ def _record_real_outbound_request_success(url: str, transport: str) -> None:
         transport,
         url,
     )
-
-
-def _request_counter_snapshot() -> dict[str, int]:
-    with _letterboxd_request_budget_lock:
-        return {
-            "budget_consumed": _letterboxd_http_calls_this_run,
-            "dry_run_would_request": _letterboxd_dry_run_request_calls,
-            "real_attempts": _letterboxd_real_request_attempt_calls,
-            "real_successes": _letterboxd_real_request_success_calls,
-        }
 
 
 def _extract_tmdb_id_from_url(url: str | None) -> int | None:
@@ -535,32 +417,6 @@ def _load_persisted_challenge_block_state() -> None:
     )
 
 
-def _take_rate_limit_slot() -> float:
-    global _letterboxd_next_request_at
-    if LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS <= 0:
-        return 0.0
-    with _letterboxd_rate_limit_lock:
-        now = time.monotonic()
-        wait_for = max(0.0, _letterboxd_next_request_at - now)
-        scheduled_at = now + wait_for
-        _letterboxd_next_request_at = (
-            scheduled_at + LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS
-        )
-    return wait_for
-
-
-def _wait_for_rate_limit_sync() -> None:
-    wait_for = _take_rate_limit_slot()
-    if wait_for > 0:
-        time.sleep(wait_for)
-
-
-async def _wait_for_rate_limit_async() -> None:
-    wait_for = _take_rate_limit_slot()
-    if wait_for > 0:
-        await asyncio.sleep(wait_for)
-
-
 def _set_challenge_block(
     *,
     reason: str,
@@ -575,7 +431,12 @@ def _set_challenge_block(
     block_until = now + LETTERBOXD_CF_BLOCK_SECONDS
     block_remaining_seconds = LETTERBOXD_CF_BLOCK_SECONDS
     block_until_unix = now_unix + LETTERBOXD_CF_BLOCK_SECONDS
-    request_counters = _request_counter_snapshot()
+    with _letterboxd_request_budget_lock:
+        request_counters = {
+            "budget_consumed": _letterboxd_http_calls_this_run,
+            "real_attempts": _letterboxd_real_request_attempt_calls,
+            "real_successes": _letterboxd_real_request_success_calls,
+        }
     attempts_before_trigger = max(0, request_counters["real_attempts"] - 1)
     successful_before_trigger = request_counters["real_successes"]
     should_log = False
@@ -608,7 +469,7 @@ def _set_challenge_block(
         logger.warning(
             "Letterboxd challenge diagnostics: url=%s status=%s "
             "attempts_before_trigger=%s successful_200_before_trigger=%s "
-            "attempts_total=%s successful_200_total=%s budget_consumed=%s dry_run_would_request=%s",
+            "attempts_total=%s successful_200_total=%s budget_consumed=%s",
             url or "n/a",
             status_code if status_code is not None else "n/a",
             attempts_before_trigger,
@@ -616,7 +477,6 @@ def _set_challenge_block(
             request_counters["real_attempts"],
             request_counters["real_successes"],
             request_counters["budget_consumed"],
-            request_counters["dry_run_would_request"],
         )
 
     _record_letterboxd_failure_event(
@@ -630,34 +490,7 @@ def _set_challenge_block(
     )
 
 
-def _challenge_block_active() -> bool:
-    with _letterboxd_challenge_block_lock:
-        return time.monotonic() < _letterboxd_challenge_block_until
-
-
-def _challenge_block_remaining_seconds() -> float:
-    with _letterboxd_challenge_block_lock:
-        return max(0.0, _letterboxd_challenge_block_until - time.monotonic())
-
-
-def _challenge_block_reason() -> str | None:
-    with _letterboxd_challenge_block_lock:
-        return _letterboxd_challenge_reason
-
-
 _load_persisted_challenge_block_state()
-
-
-def is_letterboxd_temporarily_blocked() -> bool:
-    return _challenge_block_active()
-
-
-def _is_cloudflare_challenge(headers: Any) -> bool:
-    raw_value = None
-    if hasattr(headers, "get"):
-        raw_value = headers.get("cf-mitigated")
-    value = str(raw_value) if raw_value is not None else ""
-    return value.lower() == "challenge"
 
 
 def _is_cloudflare_challenge_text(text: str) -> bool:
@@ -673,10 +506,72 @@ def _is_cloudflare_challenge_text(text: str) -> bool:
     )
 
 
+def _fetch_with_curl(url: str) -> CurlResponse:
+    status_marker = "__CINEMA_CURL_HTTP_CODE__:"
+    effective_url_marker = "__CINEMA_CURL_EFFECTIVE_URL__:"
+    write_out = (
+        f"\n{status_marker}%{{http_code}}\n{effective_url_marker}%{{url_effective}}\n"
+    )
+
+    command = [
+        "curl",
+        "--silent",
+        "--show-error",
+        "--location",
+        "--http2",
+        "--compressed",
+        "--max-time",
+        f"{LETTERBOXD_REQUEST_TIMEOUT_SECONDS:.2f}",
+        *[arg for name, value in HEADERS.items() for arg in ("-H", f"{name}: {value}")],
+        "--write-out",
+        write_out,
+        url,
+    ]
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip() or "curl failed"
+        raise RuntimeError(stderr)
+
+    output = result.stdout
+    marker_index = output.rfind(status_marker)
+    if marker_index < 0:
+        raise RuntimeError("curl output missing status marker")
+
+    body = output[:marker_index]
+    metadata = output[marker_index:].splitlines()
+    raw_status = ""
+    effective_url = url
+    for line in metadata:
+        if line.startswith(status_marker):
+            raw_status = line[len(status_marker) :].strip()
+        elif line.startswith(effective_url_marker):
+            parsed_effective_url = line[len(effective_url_marker) :].strip()
+            if parsed_effective_url:
+                effective_url = parsed_effective_url
+    try:
+        status_code = int(raw_status)
+    except ValueError as e:
+        raise RuntimeError(f"invalid curl status code: {raw_status}") from e
+
+    return CurlResponse(
+        url=effective_url,
+        text=body,
+        status_code=status_code,
+    )
+
+
 def _fetch_page(url: str) -> SyncPageFetchResult:
-    if _challenge_block_active() and not LETTERBOXD_HTTP_DRY_RUN:
-        reason = _challenge_block_reason() or "cooldown_active"
-        remaining = _challenge_block_remaining_seconds()
+    with _letterboxd_challenge_block_lock:
+        remaining = max(0.0, _letterboxd_challenge_block_until - time.monotonic())
+        reason = _letterboxd_challenge_reason or "cooldown_active"
+        block_active = remaining > 0
+
+    if block_active:
         logger.debug(
             "Skipping Letterboxd call during challenge cooldown "
             f"(reason={reason}, remaining={remaining:.0f}s): {url}"
@@ -694,14 +589,6 @@ def _fetch_page(url: str) -> SyncPageFetchResult:
             blocked=True,
         )
 
-    if LETTERBOXD_HTTP_DRY_RUN:
-        _record_dry_run_request(url=url, transport="sync")
-        return SyncPageFetchResult(
-            response=None,
-            status_code=None,
-            blocked=True,
-        )
-
     if not _consume_request_budget(url):
         return SyncPageFetchResult(
             response=None,
@@ -713,18 +600,20 @@ def _fetch_page(url: str) -> SyncPageFetchResult:
     for attempt in range(attempts):
         try:
             with _letterboxd_http_sync_semaphore:
-                _wait_for_rate_limit_sync()
+                if LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS > 0:
+                    global _letterboxd_next_request_at
+                    with _letterboxd_rate_limit_lock:
+                        now = time.monotonic()
+                        wait_for = max(0.0, _letterboxd_next_request_at - now)
+                        scheduled_at = now + wait_for
+                        _letterboxd_next_request_at = (
+                            scheduled_at + LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS
+                        )
+                    if wait_for > 0:
+                        time.sleep(wait_for)
                 _record_real_outbound_request_attempt(url=url, transport="sync")
-                with httpx.Client(
-                    http2=True,
-                    follow_redirects=True,
-                    timeout=LETTERBOXD_REQUEST_TIMEOUT_SECONDS,
-                ) as client:
-                    response = client.get(
-                        url,
-                        headers=HEADERS,
-                    )
-        except httpx.RequestError as e:
+                response = _fetch_with_curl(url)
+        except RuntimeError as e:
             if attempt < attempts - 1:
                 delay = _retry_delay(attempt)
                 logger.debug(
@@ -759,10 +648,7 @@ def _fetch_page(url: str) -> SyncPageFetchResult:
                 not_found=True,
             )
 
-        if response.status_code == 403 and (
-            _is_cloudflare_challenge(response.headers)
-            or _is_cloudflare_challenge_text(response.text)
-        ):
+        if response.status_code == 403 and _is_cloudflare_challenge_text(response.text):
             _set_challenge_block(
                 reason="cloudflare_challenge",
                 url=url,
@@ -786,7 +672,10 @@ def _fetch_page(url: str) -> SyncPageFetchResult:
                 blocked=True,
             )
 
-        if _is_retryable_status(response.status_code) and attempt < attempts - 1:
+        if (
+            response.status_code in {408, 425, 500, 502, 503, 504}
+            and attempt < attempts - 1
+        ):
             delay = _retry_delay(attempt)
             logger.debug(
                 f"Retrying Letterboxd page {url} after status {response.status_code}: {delay:.2f}s"
@@ -809,195 +698,10 @@ def _fetch_page(url: str) -> SyncPageFetchResult:
     return SyncPageFetchResult(response=None, status_code=None)
 
 
-def get_page(url: str) -> httpx.Response | None:
-    return _fetch_page(url).response
-
-
-async def _fetch_page_async(
-    *,
-    session: httpx.AsyncClient,
-    url: str,
-) -> AsyncPageFetchResult:
-    if _challenge_block_active() and not LETTERBOXD_HTTP_DRY_RUN:
-        reason = _challenge_block_reason() or "cooldown_active"
-        remaining = _challenge_block_remaining_seconds()
-        logger.debug(
-            "Skipping Letterboxd call during challenge cooldown "
-            f"(reason={reason}, remaining={remaining:.0f}s): {url}"
-        )
-        _record_letterboxd_failure_event(
-            event_type="cooldown_skip",
-            url=url,
-            tmdb_id=_extract_tmdb_id_from_url(url),
-            reason=reason,
-            block_remaining_seconds=remaining,
-        )
-        return AsyncPageFetchResult(
-            response=None,
-            status_code=None,
-            blocked=True,
-        )
-
-    if LETTERBOXD_HTTP_DRY_RUN:
-        _record_dry_run_request(url=url, transport="async")
-        return AsyncPageFetchResult(
-            response=None,
-            status_code=None,
-            blocked=True,
-        )
-
-    if not _consume_request_budget(url):
-        return AsyncPageFetchResult(
-            response=None,
-            status_code=None,
-            blocked=True,
-        )
-
-    attempts = LETTERBOXD_HTTP_RETRIES + 1
-    for attempt in range(attempts):
-        try:
-            async with _letterboxd_http_async_semaphore:
-                await _wait_for_rate_limit_async()
-                _record_real_outbound_request_attempt(url=url, transport="async")
-                response = await session.get(
-                    url,
-                    headers=HEADERS,
-                )
-                text = response.text
-                if response.status_code == 200:
-                    _record_real_outbound_request_success(url=url, transport="async")
-                    return AsyncPageFetchResult(
-                        response=AsyncPageResponse(url=str(response.url), text=text),
-                        status_code=200,
-                    )
-                if response.status_code == 404:
-                    _record_letterboxd_failure_event(
-                        event_type="not_found",
-                        url=url,
-                        tmdb_id=_extract_tmdb_id_from_url(url),
-                        status_code=404,
-                        reason="http_404",
-                    )
-                    return AsyncPageFetchResult(
-                        response=None,
-                        status_code=404,
-                        not_found=True,
-                    )
-                if response.status_code == 403 and (
-                    _is_cloudflare_challenge(response.headers)
-                    or _is_cloudflare_challenge_text(text)
-                ):
-                    _set_challenge_block(
-                        reason="cloudflare_challenge",
-                        url=url,
-                        status_code=403,
-                    )
-                    return AsyncPageFetchResult(
-                        response=None,
-                        status_code=403,
-                        blocked=True,
-                    )
-                if response.status_code == 429:
-                    _set_challenge_block(
-                        reason="rate_limited",
-                        url=url,
-                        status_code=429,
-                    )
-                    return AsyncPageFetchResult(
-                        response=None,
-                        status_code=429,
-                        blocked=True,
-                    )
-                if (
-                    _is_retryable_status(response.status_code)
-                    and attempt < attempts - 1
-                ):
-                    delay = _retry_delay(attempt)
-                    logger.debug(
-                        f"Retrying Letterboxd page {url} after status {response.status_code}: {delay:.2f}s"
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-                logger.warning(
-                    f"Failed to fetch page {url}. Status code: {response.status_code}"
-                )
-                _record_letterboxd_failure_event(
-                    event_type="http_error",
-                    url=url,
-                    tmdb_id=_extract_tmdb_id_from_url(url),
-                    status_code=response.status_code,
-                    reason=f"http_{response.status_code}",
-                )
-                return AsyncPageFetchResult(
-                    response=None,
-                    status_code=response.status_code,
-                )
-        except httpx.RequestError as e:
-            if attempt < attempts - 1:
-                delay = _retry_delay(attempt)
-                logger.debug(
-                    f"Retrying Letterboxd page {url} after request error ({type(e).__name__}): {delay:.2f}s"
-                )
-                await asyncio.sleep(delay)
-                continue
-            logger.warning(f"Failed to load page {url}. Error: {e}")
-            _record_letterboxd_failure_event(
-                event_type="request_error",
-                url=url,
-                tmdb_id=_extract_tmdb_id_from_url(url),
-                reason=f"{type(e).__name__}: {e}",
-            )
-            return AsyncPageFetchResult(response=None, status_code=None)
-
-    return AsyncPageFetchResult(response=None, status_code=None)
-
-
-async def get_page_async(
-    *,
-    session: httpx.AsyncClient,
-    url: str,
-) -> AsyncPageResponse | None:
-    return (await _fetch_page_async(session=session, url=url)).response
-
-
-def get_letterboxd_page(tmdb_id: int) -> SyncPageFetchResult:
-    url = f"https://letterboxd.com/tmdb/{tmdb_id}/"
-    return _fetch_page(url)
-
-
-async def get_letterboxd_page_async(
-    *,
-    session: httpx.AsyncClient,
-    tmdb_id: int,
-) -> AsyncPageFetchResult:
-    url = f"https://letterboxd.com/tmdb/{tmdb_id}/"
-    return await _fetch_page_async(session=session, url=url)
-
-
-def parse_page(response: httpx.Response) -> BeautifulSoup:
-    return BeautifulSoup(response.text, "lxml")
-
-
-def parse_page_text(text: str) -> BeautifulSoup:
-    return BeautifulSoup(text, "lxml")
-
-
-def get_slug(response: httpx.Response) -> str:
-    final_url = str(response.url)
-    slug = final_url.split("/")[-2]
-    return slug
-
-
-def get_slug_from_url(url: str) -> str | None:
-    url_parts = [part for part in urlparse(url).path.split("/") if part]
-    if not url_parts:
-        return None
-    return url_parts[-1]
-
-
 def get_poster_url(slug: str) -> str | None:
     url = f"https://letterboxd.com/film/{slug}/poster/std/230/"
-    response = get_page(url)
+    fetch_result = _fetch_page(url)
+    response = fetch_result.response
     if response is None:
         return None
     json = response.json()
@@ -1006,225 +710,14 @@ def get_poster_url(slug: str) -> str | None:
     return json.get("url")
 
 
-async def get_poster_url_async(
-    *,
-    session: httpx.AsyncClient,
-    slug: str,
-) -> str | None:
-    url = f"https://letterboxd.com/film/{slug}/poster/std/230/"
-    response = await get_page_async(session=session, url=url)
-    if response is None:
-        return None
-
-    try:
-        payload = json.loads(response.text)
-    except json.JSONDecodeError as e:
-        logger.warning(f"Invalid poster payload for {url}. Error: {e}")
-        return None
-
-    if not isinstance(payload, dict):
-        raise scraper_exceptions.ScraperStructureError()
-    poster_url = payload.get("url")
-    return poster_url if isinstance(poster_url, str) else None
-
-
-def get_english_title(page: BeautifulSoup) -> str:
-    title_tag = page.find("h1", class_="primaryname")
-    if not isinstance(title_tag, Tag):
-        raise scraper_exceptions.ScraperStructureError()
-    span = title_tag.find("span", class_="name")
-    if not isinstance(span, Tag):
-        raise scraper_exceptions.ScraperStructureError()
-    title_text = span.text
-    if not isinstance(title_text, str):
-        raise scraper_exceptions.ScraperStructureError()
-    return title_text.strip()
-
-
-def get_original_title(page: BeautifulSoup) -> str | None:
-    original_title_tag = page.find("h2", class_="originalname")
-    if not original_title_tag:
-        return None
-    if not isinstance(original_title_tag, Tag):
-        raise scraper_exceptions.ScraperStructureError()
-    em = original_title_tag.find("em")
-    if not isinstance(em, Tag):
-        raise scraper_exceptions.ScraperStructureError()
-    original_title_text = em.text
-    if not isinstance(original_title_text, str):
-        raise scraper_exceptions.ScraperStructureError()
-    return original_title_text.strip()
-
-
-def get_year(page: BeautifulSoup) -> int | None:
-    year_tag = page.find("span", class_="releasedate")
-    if year_tag is None:
-        return None
-    if not isinstance(year_tag, Tag):
-        raise scraper_exceptions.ScraperStructureError()
-    a = year_tag.find("a")
-    if not isinstance(a, Tag):
-        raise scraper_exceptions.ScraperStructureError()
-    year_text = a.text
-    if not isinstance(year_text, str):
-        raise scraper_exceptions.ScraperStructureError()
-    year = int(year_text.strip())
-    return year
-
-
-def get_directors(page: BeautifulSoup) -> list[str]:
-    creator_list = page.find("span", class_="creatorlist")
-    if not creator_list:
-        return []
-    if not isinstance(creator_list, Tag):
-        raise scraper_exceptions.ScraperStructureError()
-    contributors = creator_list.find_all("a", class_="contributor")
-    directors = []
-    for contributor in contributors:
-        if not isinstance(contributor, Tag):
-            raise scraper_exceptions.ScraperStructureError()
-        span = contributor.find("span")
-        if not isinstance(span, Tag):
-            raise scraper_exceptions.ScraperStructureError()
-        name = span.text
-        if not isinstance(name, str):
-            raise scraper_exceptions.ScraperStructureError()
-        directors.append(name.strip())
-    return directors
-
-
-def get_rating(slug: str) -> float | None:
-    url = f"https://letterboxd.com/csi/film/{slug}/ratings-summary/"
-    response = get_page(url)
-    if response is None:
-        return None
-    page = BeautifulSoup(response.text, "lxml")
-    rating_tag = page.find("a", class_="display-rating")
-    if not isinstance(rating_tag, Tag):
-        return None
-    rating_text = rating_tag.text
-    if not isinstance(rating_text, str):
-        raise scraper_exceptions.ScraperStructureError()
-    rating = float(rating_text.strip())
-    return rating
-
-
-async def get_rating_async(
-    *,
-    session: httpx.AsyncClient,
-    slug: str,
-) -> float | None:
-    url = f"https://letterboxd.com/csi/film/{slug}/ratings-summary/"
-    response = await get_page_async(session=session, url=url)
-    if response is None:
-        return None
-    page = BeautifulSoup(response.text, "lxml")
-    rating_tag = page.find("a", class_="display-rating")
-    if not isinstance(rating_tag, Tag):
-        return None
-    rating_text = rating_tag.text
-    if not isinstance(rating_text, str):
-        raise scraper_exceptions.ScraperStructureError()
-    return float(rating_text.strip())
-
-
-def get_top250_position(slug: str) -> int | None:
-    url = f"https://letterboxd.com/csi/film/{slug}/stats/"
-    response = get_page(url)
-    if response is None:
-        return None
-    page = BeautifulSoup(response.text, "lxml")
-    position_tag = page.find("div", class_="-top250")
-    if not isinstance(position_tag, Tag):
-        return None
-    a = position_tag.find("a")
-    if not isinstance(a, Tag):
-        raise scraper_exceptions.ScraperStructureError()
-    span = a.find("span")
-    if not isinstance(span, Tag):
-        raise scraper_exceptions.ScraperStructureError()
-    position_text = span.text
-    if not isinstance(position_text, str):
-        raise scraper_exceptions.ScraperStructureError()
-    position = int(position_text.strip())
-    return position
-
-
-async def get_top250_position_async(
-    *,
-    session: httpx.AsyncClient,
-    slug: str,
-) -> int | None:
-    url = f"https://letterboxd.com/csi/film/{slug}/stats/"
-    response = await get_page_async(session=session, url=url)
-    if response is None:
-        return None
-    page = BeautifulSoup(response.text, "lxml")
-    position_tag = page.find("div", class_="-top250")
-    if not isinstance(position_tag, Tag):
-        return None
-    a = position_tag.find("a")
-    if not isinstance(a, Tag):
-        raise scraper_exceptions.ScraperStructureError()
-    span = a.find("span")
-    if not isinstance(span, Tag):
-        raise scraper_exceptions.ScraperStructureError()
-    position_text = span.text
-    if not isinstance(position_text, str):
-        raise scraper_exceptions.ScraperStructureError()
-    return int(position_text.strip())
-
-
-def film_not_found(response: httpx.Response) -> bool:
-    page = BeautifulSoup(response.text, "lxml")
-    not_found_tag = page.find("h1", class_="title")
-    if not isinstance(not_found_tag, Tag):
-        return False
-    return not_found_tag.text == "Film not found"
-
-
-def film_not_found_text(text: str) -> bool:
-    page = BeautifulSoup(text, "lxml")
-    not_found_tag = page.find("h1", class_="title")
-    if not isinstance(not_found_tag, Tag):
-        return False
-    return not_found_tag.text == "Film not found"
-
-
 def scrape_letterboxd(tmdb_id: int) -> LetterboxdMovieData | None:
-    inflight_event: Event
-    while True:
-        cache_hit, cached = _cache_get(tmdb_id)
-        if cache_hit:
-            logger.debug(f"Letterboxd cache hit for TMDB ID {tmdb_id}")
-            return cached
-        is_owner, inflight_event = _begin_inflight(tmdb_id)
-        if is_owner:
-            break
-        logger.debug(f"Letterboxd single-flight wait for TMDB ID {tmdb_id}")
-        inflight_event.wait()
-
-    try:
-        existing_resolution = _resolve_existing_movie(tmdb_id)
-        if (
-            existing_resolution.movie_data is not None
-            and not existing_resolution.should_refetch
-        ):
-            logger.debug(
-                "Letterboxd decision for TMDB ID %s: skip network (%s, age_days=%s, p=%.4f)",
-                tmdb_id,
-                existing_resolution.decision_reason,
-                (
-                    f"{existing_resolution.age_days:.2f}"
-                    if existing_resolution.age_days is not None
-                    else "n/a"
-                ),
-                existing_resolution.refresh_probability,
-            )
-            _cache_set(tmdb_id, existing_resolution.movie_data)
-            return existing_resolution.movie_data
+    existing_resolution = _resolve_existing_movie(tmdb_id)
+    if (
+        existing_resolution.movie_data is not None
+        and not existing_resolution.should_refetch
+    ):
         logger.debug(
-            "Letterboxd decision for TMDB ID %s: fetch network (%s, age_days=%s, p=%.4f)",
+            "Letterboxd decision for TMDB ID %s: skip network (%s, age_days=%s, p=%.4f)",
             tmdb_id,
             existing_resolution.decision_reason,
             (
@@ -1234,229 +727,144 @@ def scrape_letterboxd(tmdb_id: int) -> LetterboxdMovieData | None:
             ),
             existing_resolution.refresh_probability,
         )
+        return existing_resolution.movie_data
+    logger.debug(
+        "Letterboxd decision for TMDB ID %s: fetch network (%s, age_days=%s, p=%.4f)",
+        tmdb_id,
+        existing_resolution.decision_reason,
+        (
+            f"{existing_resolution.age_days:.2f}"
+            if existing_resolution.age_days is not None
+            else "n/a"
+        ),
+        existing_resolution.refresh_probability,
+    )
 
-        fetch_result = get_letterboxd_page(tmdb_id)
-        if fetch_result.response is None:
-            if fetch_result.not_found:
-                if existing_resolution.movie_data is not None:
-                    logger.debug(
-                        "Letterboxd fetch 404 for TMDB ID %s; using existing DB data",
-                        tmdb_id,
-                    )
-                    _cache_set(tmdb_id, existing_resolution.movie_data)
-                    return existing_resolution.movie_data
-                _cache_set(tmdb_id, None)
-                return None
+    fetch_result = _fetch_page(f"https://letterboxd.com/tmdb/{tmdb_id}/")
+    if fetch_result.response is None:
+        if fetch_result.not_found:
             if existing_resolution.movie_data is not None:
                 logger.debug(
-                    "Letterboxd fetch unavailable for TMDB ID %s; using existing DB data",
+                    "Letterboxd fetch 404 for TMDB ID %s; using existing DB data",
                     tmdb_id,
                 )
-                _cache_set(tmdb_id, existing_resolution.movie_data)
                 return existing_resolution.movie_data
             return None
-
-        response = fetch_result.response
-        slug = get_slug(response)
-        if slug is None:
-            _record_letterboxd_failure_event(
-                event_type="slug_parse_failed",
-                tmdb_id=tmdb_id,
-                url=str(response.url),
-                reason="missing_slug",
-            )
-            if existing_resolution.movie_data is not None:
-                logger.debug(
-                    "Letterboxd slug parse failed for TMDB ID %s; using existing DB data",
-                    tmdb_id,
-                )
-                _cache_set(tmdb_id, existing_resolution.movie_data)
-                return existing_resolution.movie_data
-            return None
-
-        parsed_page = parse_page(response)
-        if film_not_found(response):
-            logger.warning(f"Letterboxd page not found for TMDB ID {tmdb_id}")
-            _record_letterboxd_failure_event(
-                event_type="film_not_found_marker",
-                tmdb_id=tmdb_id,
-                url=str(response.url),
-                reason="film_not_found_marker",
-            )
-            if existing_resolution.movie_data is not None:
-                logger.debug(
-                    "Letterboxd not-found marker for TMDB ID %s; using existing DB data",
-                    tmdb_id,
-                )
-                _cache_set(tmdb_id, existing_resolution.movie_data)
-                return existing_resolution.movie_data
-            _cache_set(tmdb_id, None)
-            return None
-
-        poster_url = get_poster_url(slug)
-        title = get_english_title(parsed_page)
-        original_title = get_original_title(parsed_page)
-        release_year = get_year(parsed_page)
-        directors = get_directors(parsed_page)
-        result = LetterboxdMovieData(
-            slug=slug,
-            poster_url=poster_url,
-            title=title,
-            original_title=original_title,
-            release_year=release_year,
-            directors=directors,
-            rating=None,
-            top250=None,
-            enriched_at=now_amsterdam_naive(),
-        )
-        _cache_set(tmdb_id, result)
-        return result
-    finally:
-        _finish_inflight(tmdb_id, inflight_event)
-
-
-async def scrape_letterboxd_async(
-    *,
-    tmdb_id: int,
-    session: httpx.AsyncClient | None = None,
-) -> LetterboxdMovieData | None:
-    inflight_event: Event
-    while True:
-        cache_hit, cached = _cache_get(tmdb_id)
-        if cache_hit:
-            logger.debug(f"Letterboxd cache hit for TMDB ID {tmdb_id}")
-            return cached
-        is_owner, inflight_event = _begin_inflight(tmdb_id)
-        if is_owner:
-            break
-        logger.debug(f"Letterboxd single-flight wait for TMDB ID {tmdb_id}")
-        await asyncio.to_thread(inflight_event.wait)
-
-    local_session = session
-    close_session = local_session is None
-    try:
-        existing_resolution = await asyncio.to_thread(_resolve_existing_movie, tmdb_id)
-        if (
-            existing_resolution.movie_data is not None
-            and not existing_resolution.should_refetch
-        ):
+        if existing_resolution.movie_data is not None:
             logger.debug(
-                "Letterboxd decision for TMDB ID %s: skip network (%s, age_days=%s, p=%.4f)",
+                "Letterboxd fetch unavailable for TMDB ID %s; using existing DB data",
                 tmdb_id,
-                existing_resolution.decision_reason,
-                (
-                    f"{existing_resolution.age_days:.2f}"
-                    if existing_resolution.age_days is not None
-                    else "n/a"
-                ),
-                existing_resolution.refresh_probability,
             )
-            _cache_set(tmdb_id, existing_resolution.movie_data)
             return existing_resolution.movie_data
-        logger.debug(
-            "Letterboxd decision for TMDB ID %s: fetch network (%s, age_days=%s, p=%.4f)",
-            tmdb_id,
-            existing_resolution.decision_reason,
-            (
-                f"{existing_resolution.age_days:.2f}"
-                if existing_resolution.age_days is not None
-                else "n/a"
-            ),
-            existing_resolution.refresh_probability,
+        return None
+
+    response = fetch_result.response
+    final_url_parts = [
+        part for part in urlparse(str(response.url)).path.split("/") if part
+    ]
+    slug = final_url_parts[-1] if final_url_parts else None
+    if slug is None:
+        _record_letterboxd_failure_event(
+            event_type="slug_parse_failed",
+            tmdb_id=tmdb_id,
+            url=str(response.url),
+            reason="missing_slug",
         )
-
-        if close_session:
-            local_session = httpx.AsyncClient(
-                http2=True,
-                follow_redirects=True,
-                timeout=LETTERBOXD_REQUEST_TIMEOUT_SECONDS,
+        if existing_resolution.movie_data is not None:
+            logger.debug(
+                "Letterboxd slug parse failed for TMDB ID %s; using existing DB data",
+                tmdb_id,
             )
-        assert local_session is not None
+            return existing_resolution.movie_data
+        return None
 
-        fetch_result = await get_letterboxd_page_async(
-            session=local_session, tmdb_id=tmdb_id
+    page = BeautifulSoup(response.text, "lxml")
+    not_found_tag = page.find("h1", class_="title")
+    if isinstance(not_found_tag, Tag) and not_found_tag.text == "Film not found":
+        logger.warning(f"Letterboxd page not found for TMDB ID {tmdb_id}")
+        _record_letterboxd_failure_event(
+            event_type="film_not_found_marker",
+            tmdb_id=tmdb_id,
+            url=str(response.url),
+            reason="film_not_found_marker",
         )
-        if fetch_result.response is None:
-            if fetch_result.not_found:
-                if existing_resolution.movie_data is not None:
-                    logger.debug(
-                        "Letterboxd fetch 404 for TMDB ID %s; using existing DB data",
-                        tmdb_id,
-                    )
-                    _cache_set(tmdb_id, existing_resolution.movie_data)
-                    return existing_resolution.movie_data
-                _cache_set(tmdb_id, None)
-                return None
-            if existing_resolution.movie_data is not None:
-                logger.debug(
-                    "Letterboxd fetch unavailable for TMDB ID %s; using existing DB data",
-                    tmdb_id,
-                )
-                _cache_set(tmdb_id, existing_resolution.movie_data)
-                return existing_resolution.movie_data
-            return None
-
-        response = fetch_result.response
-        slug = get_slug_from_url(response.url)
-        if slug is None:
-            _record_letterboxd_failure_event(
-                event_type="slug_parse_failed",
-                tmdb_id=tmdb_id,
-                url=response.url,
-                reason="missing_slug",
+        if existing_resolution.movie_data is not None:
+            logger.debug(
+                "Letterboxd not-found marker for TMDB ID %s; using existing DB data",
+                tmdb_id,
             )
-            if existing_resolution.movie_data is not None:
-                logger.debug(
-                    "Letterboxd slug parse failed for TMDB ID %s; using existing DB data",
-                    tmdb_id,
-                )
-                _cache_set(tmdb_id, existing_resolution.movie_data)
-                return existing_resolution.movie_data
-            return None
+            return existing_resolution.movie_data
+        return None
 
-        parsed_page = parse_page_text(response.text)
-        if film_not_found_text(response.text):
-            logger.warning(f"Letterboxd page not found for TMDB ID {tmdb_id}")
-            _record_letterboxd_failure_event(
-                event_type="film_not_found_marker",
-                tmdb_id=tmdb_id,
-                url=response.url,
-                reason="film_not_found_marker",
-            )
-            if existing_resolution.movie_data is not None:
-                logger.debug(
-                    "Letterboxd not-found marker for TMDB ID %s; using existing DB data",
-                    tmdb_id,
-                )
-                _cache_set(tmdb_id, existing_resolution.movie_data)
-                return existing_resolution.movie_data
-            _cache_set(tmdb_id, None)
-            return None
+    poster_url = get_poster_url(slug)
+    return LetterboxdMovieData(
+        slug=slug,
+        poster_url=poster_url,
+        enriched_at=now_amsterdam_naive(),
+    )
 
-        poster_url = await get_poster_url_async(session=local_session, slug=slug)
 
-        title = get_english_title(parsed_page)
-        original_title = get_original_title(parsed_page)
-        release_year = get_year(parsed_page)
-        directors = get_directors(parsed_page)
+@dataclass(frozen=True)
+class LetterboxdBackfillSummary:
+    candidates: int
+    updated: int
+    skipped: int
+    failed: int
 
-        result = LetterboxdMovieData(
-            slug=slug,
-            poster_url=poster_url,
-            title=title,
-            original_title=original_title,
-            release_year=release_year,
-            directors=directors,
-            rating=None,
-            top250=None,
-            enriched_at=now_amsterdam_naive(),
+
+def backfill_missing_letterboxd_data() -> LetterboxdBackfillSummary:
+    with get_db_context() as session:
+        candidate_ids = [
+            movie.id
+            for movie in movies_crud.get_movies_without_letterboxd_slug(session=session)
+        ]
+
+    if not candidate_ids:
+        logger.info("Letterboxd backfill: no movies without slug found.")
+        return LetterboxdBackfillSummary(candidates=0, updated=0, skipped=0, failed=0)
+
+    updated = 0
+    skipped = 0
+    failed = 0
+
+    for tmdb_id in candidate_ids:
+        letterboxd_data = scrape_letterboxd(tmdb_id)
+        if letterboxd_data is None or not letterboxd_data.slug:
+            failed += 1
+            continue
+
+        movie_update = MovieUpdate(
+            letterboxd_slug=letterboxd_data.slug,
+            poster_link=letterboxd_data.poster_url,
+            tmdb_last_enriched_at=letterboxd_data.enriched_at,
         )
-        _cache_set(tmdb_id, result)
-        return result
-    finally:
-        if close_session and local_session is not None:
-            await local_session.aclose()
-        _finish_inflight(tmdb_id, inflight_event)
+        with get_db_context() as session:
+            db_movie = movies_crud.get_movie_by_id(session=session, id=tmdb_id)
+            if db_movie is None:
+                failed += 1
+                continue
+            if db_movie.letterboxd_slug:
+                skipped += 1
+                continue
+            movies_crud.update_movie(db_movie=db_movie, movie_update=movie_update)
+            session.add(db_movie)
+            session.commit()
+            updated += 1
+
+    summary = LetterboxdBackfillSummary(
+        candidates=len(candidate_ids),
+        updated=updated,
+        skipped=skipped,
+        failed=failed,
+    )
+    logger.info(
+        "Letterboxd backfill complete: candidates=%s updated=%s skipped=%s failed=%s",
+        summary.candidates,
+        summary.updated,
+        summary.skipped,
+        summary.failed,
+    )
+    return summary
 
 
 if __name__ == "__main__":

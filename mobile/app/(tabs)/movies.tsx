@@ -14,6 +14,7 @@ import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { useSessionCinemaSelections } from 'shared/hooks/useSessionCinemaSelections';
 import { useSessionDaySelections } from 'shared/hooks/useSessionDaySelections';
+import { useSessionTimeRangeSelections } from 'shared/hooks/useSessionTimeRangeSelections';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
 import { ThemedView } from '@/components/themed-view';
@@ -23,6 +24,10 @@ import SearchBar from '@/components/inputs/SearchBar';
 import FilterPills from '@/components/filters/FilterPills';
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import DayFilterModal from '@/components/filters/DayFilterModal';
+import FilterPresetsModal, {
+  type PageFilterPresetState,
+} from '@/components/filters/FilterPresetsModal';
+import TimeFilterModal from '@/components/filters/TimeFilterModal';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import MovieCard from '@/components/movies/MovieCard';
 import { isCinemaSelectionDifferentFromPreferred } from '@/utils/cinema-selection';
@@ -33,9 +38,12 @@ const BASE_FILTERS = [
   { id: 'watchlist-only', label: 'Watchlist Only' },
   { id: 'cinemas', label: 'Cinemas' },
   { id: 'days', label: 'Days' },
+  { id: 'times', label: 'Times' },
+  { id: 'presets', label: 'Presets' },
 ];
 
 const EMPTY_DAYS: string[] = [];
+const EMPTY_TIME_RANGES: string[] = [];
 
 export default function MovieScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -50,14 +58,22 @@ export default function MovieScreen() {
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
+  // Controls visibility of the time-filter modal.
+  const [timeModalVisible, setTimeModalVisible] = useState(false);
+  // Controls visibility of the filter-presets modal.
+  const [presetModalVisible, setPresetModalVisible] = useState(false);
   const { selections: sessionDays, setSelections: setSessionDays } = useSessionDaySelections();
+  const { selections: sessionTimeRanges, setSelections: setSessionTimeRanges } =
+    useSessionTimeRangeSelections();
   const selectedDays = sessionDays ?? EMPTY_DAYS;
+  const selectedTimeRanges = sessionTimeRanges ?? EMPTY_TIME_RANGES;
   // Snapshot time is part of the query key so pull-to-refresh can force a full refresh.
   const [snapshotTime, setSnapshotTime] = useState(() =>
     DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")
   );
 
-  const { selections: sessionCinemaIds } = useSessionCinemaSelections();
+  const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
+    useSessionCinemaSelections();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
 
   // Read the active theme color tokens used by this screen/component.
@@ -73,9 +89,20 @@ export default function MovieScreen() {
       query: searchQuery,
       watchlistOnly: watchlistOnly ? true : undefined,
       days: selectedDays.length > 0 ? selectedDays : undefined,
+      timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       selectedCinemaIds: sessionCinemaIds,
     }),
-    [searchQuery, watchlistOnly, selectedDays, sessionCinemaIds]
+    [searchQuery, watchlistOnly, selectedDays, selectedTimeRanges, sessionCinemaIds]
+  );
+
+  const currentPresetFilters = useMemo<PageFilterPresetState>(
+    () => ({
+      watchlist_only: watchlistOnly,
+      selected_cinema_ids: sessionCinemaIds ?? null,
+      days: selectedDays.length > 0 ? selectedDays : null,
+      time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
+    }),
+    [watchlistOnly, sessionCinemaIds, selectedDays, selectedTimeRanges]
   );
 
   // Data hooks keep this module synced with backend data and shared cache state.
@@ -151,17 +178,35 @@ export default function MovieScreen() {
       setDayModalVisible(true);
       return;
     }
+    if (filterId === 'times') {
+      setTimeModalVisible(true);
+      return;
+    }
+    if (filterId === 'presets') {
+      setPresetModalVisible(true);
+      return;
+    }
+  };
+
+  const handleApplyPreset = (filters: PageFilterPresetState) => {
+    setWatchlistOnly(Boolean(filters.watchlist_only));
+    setSessionCinemaIds(filters.selected_cinema_ids ?? undefined);
+    setSessionDays(filters.days ?? []);
+    setSessionTimeRanges(filters.time_ranges ?? []);
   };
 
   // Only decorate the day pill label when the filter is actually active.
   const pillFilters = useMemo(() => {
-    if (selectedDays.length === 0) return BASE_FILTERS;
-    return BASE_FILTERS.map((filter) =>
-      filter.id === 'days'
-        ? { ...filter, label: `Days (${selectedDays.length})` }
-        : filter
-    );
-  }, [selectedDays.length]);
+    return BASE_FILTERS.map((filter) => {
+      if (filter.id === 'days' && selectedDays.length > 0) {
+        return { ...filter, label: `Days (${selectedDays.length})` };
+      }
+      if (filter.id === 'times' && selectedTimeRanges.length > 0) {
+        return { ...filter, label: `Times (${selectedTimeRanges.length})` };
+      }
+      return filter;
+    });
+  }, [selectedDays.length, selectedTimeRanges.length]);
 
   // Cinema pill should only be active when current session differs from preferred cinemas.
   const isCinemaFilterActive = useMemo(
@@ -182,11 +227,14 @@ export default function MovieScreen() {
     if (selectedDays.length > 0) {
       active.push('days');
     }
+    if (selectedTimeRanges.length > 0) {
+      active.push('times');
+    }
     if (isCinemaFilterActive) {
       active.push('cinemas');
     }
     return active;
-  }, [watchlistOnly, selectedDays.length, isCinemaFilterActive]);
+  }, [watchlistOnly, selectedDays.length, selectedTimeRanges.length, isCinemaFilterActive]);
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -208,6 +256,19 @@ export default function MovieScreen() {
         onClose={() => setDayModalVisible(false)}
         selectedDays={selectedDays}
         onChange={setSessionDays}
+      />
+      <TimeFilterModal
+        visible={timeModalVisible}
+        onClose={() => setTimeModalVisible(false)}
+        selectedTimeRanges={selectedTimeRanges}
+        onChange={setSessionTimeRanges}
+      />
+      <FilterPresetsModal
+        visible={presetModalVisible}
+        onClose={() => setPresetModalVisible(false)}
+        scope="MOVIES"
+        currentFilters={currentPresetFilters}
+        onApply={handleApplyPreset}
       />
 
       {/* Movie Feed */}

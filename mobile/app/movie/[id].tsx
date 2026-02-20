@@ -31,6 +31,7 @@ import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import FilterPills from "@/components/filters/FilterPills";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
 import DayFilterModal from "@/components/filters/DayFilterModal";
+import TimeFilterModal from "@/components/filters/TimeFilterModal";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { IconSymbol } from "@/components/ui/icon-symbol";
@@ -39,9 +40,10 @@ import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selectio
 const SHOWTIMES_PAGE_SIZE = 20;
 // Filter pill definitions rendered in the top filter row.
 const BASE_FILTERS = [
-  { id: "showtime-filter", label: "All Showtimes" },
+  { id: "showtime-filter", label: "Any Status" },
   { id: "cinemas", label: "Cinemas" },
   { id: "days", label: "Days" },
+  { id: "times", label: "Times" },
 ];
 
 type ShowtimeFilter = "all" | "going" | "interested";
@@ -66,8 +68,12 @@ export default function MoviePage() {
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
+  // Controls visibility of the time-filter modal.
+  const [timeModalVisible, setTimeModalVisible] = useState(false);
   // Tracks selected day values used by date filtering.
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  // Tracks selected time ranges used by time filtering.
+  const [selectedTimeRanges, setSelectedTimeRanges] = useState<string[]>([]);
 
   // Convert route param to numeric movie ID for API calls/query keys.
   const movieId = useMemo(() => Number(id), [id]);
@@ -104,9 +110,10 @@ export default function MoviePage() {
     return {
       selectedCinemaIds: sessionCinemaIds,
       days: selectedDays.length > 0 ? selectedDays : undefined,
+      timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       selectedStatuses,
     };
-  }, [selectedDays, selectedFilter, sessionCinemaIds]);
+  }, [selectedDays, selectedFilter, selectedTimeRanges, sessionCinemaIds]);
 
   // Data hooks keep this module synced with backend data and shared cache state.
   const { data: movie, isLoading: isMovieLoading, isError: isMovieError } = useQuery<MovieLoggedIn, Error>({
@@ -284,6 +291,10 @@ export default function MoviePage() {
       setDayModalVisible(true);
       return;
     }
+    if (filterId === "times") {
+      setTimeModalVisible(true);
+      return;
+    }
   };
 
   // Build the filter payload from current UI selections.
@@ -292,18 +303,42 @@ export default function MoviePage() {
       if (filter.id === "showtime-filter") {
         const label =
           selectedFilter === "all"
-            ? "All Showtimes"
+            ? "Any Status"
             : selectedFilter === "going"
               ? "Going"
               : "Interested";
-        return { ...filter, label };
+        return {
+          ...filter,
+          label,
+          activeBackgroundColor:
+            selectedFilter === "going"
+              ? colors.green.primary
+              : selectedFilter === "interested"
+                ? colors.orange.primary
+                : undefined,
+          activeTextColor:
+            selectedFilter === "going"
+              ? colors.green.secondary
+              : selectedFilter === "interested"
+                ? colors.orange.secondary
+                : undefined,
+          activeBorderColor:
+            selectedFilter === "going"
+              ? colors.green.secondary
+              : selectedFilter === "interested"
+                ? colors.orange.secondary
+                : undefined,
+        };
       }
       if (filter.id === "days" && selectedDays.length > 0) {
         return { ...filter, label: `Days (${selectedDays.length})` };
       }
+      if (filter.id === "times" && selectedTimeRanges.length > 0) {
+        return { ...filter, label: `Times (${selectedTimeRanges.length})` };
+      }
       return filter;
     });
-  }, [selectedDays.length, selectedFilter]);
+  }, [colors, selectedDays.length, selectedFilter, selectedTimeRanges.length]);
 
   const isCinemaFilterActive = useMemo(
     () =>
@@ -323,11 +358,14 @@ export default function MoviePage() {
     if (selectedDays.length > 0) {
       active.push("days");
     }
+    if (selectedTimeRanges.length > 0) {
+      active.push("times");
+    }
     if (isCinemaFilterActive) {
       active.push("cinemas");
     }
     return active;
-  }, [selectedFilter, selectedDays.length, isCinemaFilterActive]);
+  }, [selectedFilter, selectedDays.length, selectedTimeRanges.length, isCinemaFilterActive]);
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -565,6 +603,12 @@ export default function MoviePage() {
             onClose={() => setDayModalVisible(false)}
             selectedDays={selectedDays}
             onChange={setSelectedDays}
+          />
+          <TimeFilterModal
+            visible={timeModalVisible}
+            onClose={() => setTimeModalVisible(false)}
+            selectedTimeRanges={selectedTimeRanges}
+            onChange={setSelectedTimeRanges}
           />
         </>
       )}

@@ -10,6 +10,9 @@ type FilterOption<TId extends string = string> = {
   id: TId;
   label: string;
   badgeCount?: number;
+  activeBackgroundColor?: string;
+  activeTextColor?: string;
+  activeBorderColor?: string;
 };
 
 type FilterPillsProps<TId extends string = string> = {
@@ -52,6 +55,12 @@ export default function FilterPills<TId extends string = string>({
               style={[
                 styles.pill,
                 isActive && styles.pillActive,
+                isActive && item.activeBackgroundColor
+                  ? { backgroundColor: item.activeBackgroundColor }
+                  : null,
+                isActive && item.activeBorderColor
+                  ? { borderWidth: 1, borderColor: item.activeBorderColor }
+                  : null,
               ]}
               onPress={() => onSelect(item.id)}
             >
@@ -61,6 +70,7 @@ export default function FilterPills<TId extends string = string>({
                   style={[
                     styles.pillText,
                     isActive && styles.pillTextActive,
+                    isActive && item.activeTextColor ? { color: item.activeTextColor } : null,
                   ]}
                 >
                   {item.label}

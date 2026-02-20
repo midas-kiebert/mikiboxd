@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import (
@@ -5,10 +7,12 @@ from app.api.deps import (
     SessionDep,
 )
 from app.converters import user as user_converters
+from app.core.enums import FilterPresetScope
 from app.core.security import get_password_hash, verify_password
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
+from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
 from app.schemas.push_token import PushTokenRegister
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.user import UserMe, UserWithFriendStatus
@@ -22,6 +26,50 @@ router = APIRouter(prefix="/me", tags=["me"])
 @router.get("/", response_model=UserMe)
 def get_current_user(current_user: CurrentUser) -> UserMe:
     return user_converters.to_me(current_user)
+
+
+@router.get("/filter-presets", response_model=list[FilterPresetPublic])
+def get_filter_presets(
+    session: SessionDep,
+    current_user: CurrentUser,
+    scope: FilterPresetScope = Query(...),
+) -> list[FilterPresetPublic]:
+    return me_service.list_filter_presets(
+        session=session,
+        user_id=current_user.id,
+        scope=scope,
+    )
+
+
+@router.post("/filter-presets", response_model=FilterPresetPublic)
+def save_filter_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    payload: FilterPresetCreate,
+) -> FilterPresetPublic:
+    if not payload.name.strip():
+        raise HTTPException(status_code=400, detail="Preset name cannot be empty")
+    return me_service.save_filter_preset(
+        session=session,
+        user_id=current_user.id,
+        payload=payload,
+    )
+
+
+@router.delete("/filter-presets/{preset_id}", response_model=Message)
+def delete_filter_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    preset_id: UUID,
+) -> Message:
+    deleted = me_service.delete_filter_preset(
+        session=session,
+        user_id=current_user.id,
+        preset_id=preset_id,
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Filter preset not found")
+    return Message(message="Filter preset deleted successfully")
 
 
 @router.delete("/", response_model=Message)

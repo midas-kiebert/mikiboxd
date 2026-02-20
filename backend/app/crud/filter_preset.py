@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func
-from sqlmodel import Session, and_, col, delete, or_, select
+from sqlmodel import Session, and_, col, or_, select
 
 from app.core.enums import FilterPresetScope
 from app.models.filter_preset import FilterPreset
@@ -106,9 +106,13 @@ def delete_user_preset(
     user_id: UUID,
     preset_id: UUID,
 ) -> bool:
-    stmt = delete(FilterPreset).where(
+    stmt = select(FilterPreset).where(
         col(FilterPreset.id) == preset_id,
         col(FilterPreset.owner_user_id) == user_id,
     )
-    result = session.exec(stmt)
-    return result.rowcount > 0
+    preset = session.exec(stmt).one_or_none()
+    if preset is None:
+        return False
+    session.delete(preset)
+    session.flush()
+    return True

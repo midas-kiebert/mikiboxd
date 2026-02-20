@@ -7,6 +7,7 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.core.enums import GoingStatus
+from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import showtime as showtimes_crud
 from app.crud import user as user_crud
 from app.exceptions.base import AppError
@@ -299,6 +300,20 @@ def get_main_page_showtimes(
     offset: int,
     filters: Filters,
 ) -> list[ShowtimeLoggedIn]:
+    if filters.selected_cinema_ids is None:
+        favorite_preset = cinema_presets_crud.get_user_favorite_preset(
+            session=session,
+            user_id=current_user_id,
+        )
+        if favorite_preset is not None:
+            filters.selected_cinema_ids = list(favorite_preset.cinema_ids)
+        else:
+            # Compatibility fallback for users still on legacy cinema selections.
+            filters.selected_cinema_ids = user_crud.get_selected_cinemas_ids(
+                session=session,
+                user_id=current_user_id,
+            )
+
     letterboxd_username = None
     if filters.watchlist_only:
         letterboxd_username = user_crud.get_letterboxd_username(

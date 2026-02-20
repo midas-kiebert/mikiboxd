@@ -32,7 +32,6 @@ DAY_SELECTION_VALIDATION_ERROR = (
 class FilterPresetFilters(SQLModel):
     selected_showtime_filter: Literal["all", "interested", "going"] | None = None
     watchlist_only: bool = False
-    selected_cinema_ids: list[int] | None = None
     days: list[str] | None = None
     time_ranges: list[str] | None = None
 
@@ -62,6 +61,7 @@ class FilterPresetCreate(SQLModel):
     name: str = Field(min_length=1, max_length=80)
     scope: FilterPresetScope
     filters: FilterPresetFilters
+    is_favorite: bool | None = None
 
 
 class FilterPresetPublic(SQLModel):
@@ -69,6 +69,7 @@ class FilterPresetPublic(SQLModel):
     name: str
     scope: FilterPresetScope
     is_default: bool
+    is_favorite: bool
     filters: FilterPresetFilters
     created_at: datetime
     updated_at: datetime

@@ -32,8 +32,23 @@ import type {
   MeGetFilterPresetsResponse,
   MeSaveFilterPresetData,
   MeSaveFilterPresetResponse,
+  MeGetFavoriteFilterPresetData,
+  MeGetFavoriteFilterPresetResponse,
+  MeSetFavoriteFilterPresetData,
+  MeSetFavoriteFilterPresetResponse,
+  MeClearFavoriteFilterPresetData,
+  MeClearFavoriteFilterPresetResponse,
   MeDeleteFilterPresetData,
   MeDeleteFilterPresetResponse,
+  MeGetCinemaPresetsResponse,
+  MeGetFavoriteCinemaPresetResponse,
+  MeSaveCinemaPresetData,
+  MeSaveCinemaPresetResponse,
+  MeSetFavoriteCinemaPresetData,
+  MeSetFavoriteCinemaPresetResponse,
+  MeClearFavoriteCinemaPresetResponse,
+  MeDeleteCinemaPresetData,
+  MeDeleteCinemaPresetResponse,
   MeUpdatePasswordMeData,
   MeUpdatePasswordMeResponse,
   MeGetMyShowtimesData,
@@ -393,6 +408,72 @@ export class MeService {
   }
 
   /**
+   * Get Favorite Filter Preset
+   * @param data The data for the request.
+   * @param data.scope
+   * @returns FilterPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static getFavoriteFilterPreset(
+    data: MeGetFavoriteFilterPresetData,
+  ): CancelablePromise<MeGetFavoriteFilterPresetResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/filter-presets/favorite",
+      query: {
+        scope: data.scope,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Set Favorite Filter Preset
+   * @param data The data for the request.
+   * @param data.presetId
+   * @returns FilterPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static setFavoriteFilterPreset(
+    data: MeSetFavoriteFilterPresetData,
+  ): CancelablePromise<MeSetFavoriteFilterPresetResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/me/filter-presets/{preset_id}/favorite",
+      path: {
+        preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Clear Favorite Filter Preset
+   * @param data The data for the request.
+   * @param data.scope
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static clearFavoriteFilterPreset(
+    data: MeClearFavoriteFilterPresetData,
+  ): CancelablePromise<MeClearFavoriteFilterPresetResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/filter-presets/favorite",
+      query: {
+        scope: data.scope,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Delete Filter Preset
    * @param data The data for the request.
    * @param data.presetId
@@ -520,6 +601,107 @@ export class MeService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/me/requests/received",
+    })
+  }
+
+  /**
+   * Get Cinema Presets
+   * @returns CinemaPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static getCinemaPresets(): CancelablePromise<MeGetCinemaPresetsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/cinema-presets",
+    })
+  }
+
+  /**
+   * Get Favorite Cinema Preset
+   * @returns CinemaPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static getFavoriteCinemaPreset(): CancelablePromise<MeGetFavoriteCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/cinema-presets/favorite",
+    })
+  }
+
+  /**
+   * Save Cinema Preset
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns CinemaPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static saveCinemaPreset(
+    data: MeSaveCinemaPresetData,
+  ): CancelablePromise<MeSaveCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/cinema-presets",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Set Favorite Cinema Preset
+   * @param data The data for the request.
+   * @param data.presetId
+   * @returns CinemaPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static setFavoriteCinemaPreset(
+    data: MeSetFavoriteCinemaPresetData,
+  ): CancelablePromise<MeSetFavoriteCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/me/cinema-presets/{preset_id}/favorite",
+      path: {
+        preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Clear Favorite Cinema Preset
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static clearFavoriteCinemaPreset(): CancelablePromise<MeClearFavoriteCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/cinema-presets/favorite",
+    })
+  }
+
+  /**
+   * Delete Cinema Preset
+   * @param data The data for the request.
+   * @param data.presetId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static deleteCinemaPreset(
+    data: MeDeleteCinemaPresetData,
+  ): CancelablePromise<MeDeleteCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/cinema-presets/{preset_id}",
+      path: {
+        preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
     })
   }
 

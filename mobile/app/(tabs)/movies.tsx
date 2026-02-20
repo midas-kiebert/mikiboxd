@@ -63,7 +63,6 @@ export default function MovieScreen() {
     watchlistOnly,
     setWatchlistOnly,
     sessionCinemaIds,
-    setSessionCinemaIds,
     selectedDays,
     setSelectedDays,
     selectedTimeRanges,
@@ -114,11 +113,10 @@ export default function MovieScreen() {
     () => ({
       selected_showtime_filter: selectedShowtimeFilter,
       watchlist_only: watchlistOnly,
-      selected_cinema_ids: sessionCinemaIds ?? null,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
     }),
-    [selectedShowtimeFilter, watchlistOnly, sessionCinemaIds, selectedDays, selectedTimeRanges]
+    [selectedShowtimeFilter, watchlistOnly, selectedDays, selectedTimeRanges]
   );
 
   // Data hooks keep this module synced with backend data and shared cache state.
@@ -212,7 +210,6 @@ export default function MovieScreen() {
   const handleApplyPreset = (filters: PageFilterPresetState) => {
     setSelectedShowtimeFilter(toSharedTabShowtimeFilter(filters.selected_showtime_filter));
     setWatchlistOnly(Boolean(filters.watchlist_only));
-    setSessionCinemaIds(filters.selected_cinema_ids ?? undefined);
     setSelectedDays(filters.days ?? []);
     setSelectedTimeRanges(filters.time_ranges ?? []);
   };

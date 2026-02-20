@@ -29,7 +29,6 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 export type PageFilterPresetState = {
   selected_showtime_filter?: "all" | "interested" | "going" | null;
   watchlist_only?: boolean;
-  selected_cinema_ids?: number[] | null;
   days?: string[] | null;
   time_ranges?: string[] | null;
 };
@@ -53,11 +52,6 @@ const getScopeLabel = (scope: FilterPresetScope) => {
   return "Movies";
 };
 
-const getSortedUniqueNumbers = (values?: number[] | null): number[] | null => {
-  if (!values || values.length === 0) return null;
-  return Array.from(new Set(values)).sort((a, b) => a - b);
-};
-
 const getSortedUniqueStrings = (values?: string[] | null): string[] | null => {
   if (!values || values.length === 0) return null;
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
@@ -71,7 +65,6 @@ const normalizeFilters = (filters: PageFilterPresetState): PageFilterPresetState
       ? filters.selected_showtime_filter
       : null,
   watchlist_only: Boolean(filters.watchlist_only),
-  selected_cinema_ids: getSortedUniqueNumbers(filters.selected_cinema_ids),
   days: canonicalizeDaySelections(filters.days),
   time_ranges: getSortedUniqueStrings(filters.time_ranges),
 });
@@ -91,13 +84,6 @@ const getShowtimeFilterLabel = (
 
 const getWatchlistFilterLabel = (watchlistOnly: boolean | undefined) =>
   watchlistOnly ? "Only watchlist titles" : "Include all titles";
-
-const getCinemaFilterLabel = (selectedCinemaIds?: number[] | null) => {
-  const sortedCinemaIds = getSortedUniqueNumbers(selectedCinemaIds);
-  if (!sortedCinemaIds || sortedCinemaIds.length === 0) return "All cinemas";
-  if (sortedCinemaIds.length === 1) return `1 cinema (${sortedCinemaIds[0]})`;
-  return `${sortedCinemaIds.length} cinemas (${sortedCinemaIds.join(", ")})`;
-};
 
 const getDaysFilterLabel = (days?: string[] | null) => {
   const labels = getDaySelectionLabels(days);
@@ -134,11 +120,6 @@ const getPresetDetails = (
       key: "watchlist",
       label: "Watchlist",
       value: getWatchlistFilterLabel(filters.watchlist_only),
-    },
-    {
-      key: "cinemas",
-      label: "Cinemas",
-      value: getCinemaFilterLabel(filters.selected_cinema_ids),
     },
     {
       key: "days",
@@ -186,6 +167,7 @@ export default function FilterPresetsModal({
       setPresetName("");
       setSaveError(null);
       queryClient.invalidateQueries({ queryKey: presetsQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["user", "favorite_filter_preset", scope] });
     },
     onError: () => {
       setSaveError("Could not save preset. Please try again.");
@@ -196,6 +178,15 @@ export default function FilterPresetsModal({
     mutationFn: (presetId: string) => MeService.deleteFilterPreset({ presetId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: presetsQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["user", "favorite_filter_preset", scope] });
+    },
+  });
+
+  const setFavoritePresetMutation = useMutation({
+    mutationFn: (presetId: string) => MeService.setFavoriteFilterPreset({ presetId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: presetsQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["user", "favorite_filter_preset", scope] });
     },
   });
 
@@ -231,6 +222,14 @@ export default function FilterPresetsModal({
     [deletePresetMutation]
   );
 
+  const handleSetFavoritePreset = useCallback(
+    (preset: FilterPresetPublic) => {
+      if (preset.is_favorite || preset.is_default) return;
+      setFavoritePresetMutation.mutate(preset.id);
+    },
+    [setFavoritePresetMutation]
+  );
+
   const renderPreset: ListRenderItem<FilterPresetPublic> = useCallback(
     ({ item }) => {
       const normalizedItemFilters = normalizeFilters(item.filters);
@@ -246,6 +245,11 @@ export default function FilterPresetsModal({
                 {item.is_default ? (
                   <View style={styles.badge}>
                     <ThemedText style={styles.badgeText}>Default</ThemedText>
+                  </View>
+                ) : null}
+                {item.is_favorite ? (
+                  <View style={[styles.badge, styles.favoriteBadge]}>
+                    <ThemedText style={[styles.badgeText, styles.favoriteBadgeText]}>Favorite</ThemedText>
                   </View>
                 ) : null}
                 {isCurrent ? (
@@ -276,6 +280,30 @@ export default function FilterPresetsModal({
             </TouchableOpacity>
             {!item.is_default ? (
               <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  item.is_favorite ? styles.favoriteButtonActive : styles.favoriteButton,
+                ]}
+                onPress={() => handleSetFavoritePreset(item)}
+                activeOpacity={0.8}
+                disabled={item.is_favorite || setFavoritePresetMutation.isPending}
+              >
+                <ThemedText
+                  style={[
+                    styles.actionText,
+                    item.is_favorite ? styles.favoriteButtonActiveText : styles.favoriteButtonText,
+                  ]}
+                >
+                  {item.is_favorite
+                    ? "Favorited"
+                    : setFavoritePresetMutation.isPending
+                      ? "Saving..."
+                      : "Favorite"}
+                </ThemedText>
+              </TouchableOpacity>
+            ) : null}
+            {!item.is_default ? (
+              <TouchableOpacity
                 style={[styles.actionButton, styles.deleteButton]}
                 onPress={() => handleDeletePreset(item)}
                 activeOpacity={0.8}
@@ -290,7 +318,16 @@ export default function FilterPresetsModal({
         </View>
       );
     },
-    [activeFilterSignature, deletePresetMutation.isPending, handleApplyPreset, handleDeletePreset, scope, styles]
+    [
+      activeFilterSignature,
+      deletePresetMutation.isPending,
+      handleApplyPreset,
+      handleDeletePreset,
+      handleSetFavoritePreset,
+      scope,
+      setFavoritePresetMutation.isPending,
+      styles,
+    ]
   );
 
   return (
@@ -513,6 +550,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     currentBadgeText: {
       color: colors.pillActiveText,
     },
+    favoriteBadge: {
+      backgroundColor: colors.yellow.primary,
+    },
+    favoriteBadgeText: {
+      color: colors.yellow.secondary,
+    },
     presetDetails: {
       borderRadius: 12,
       borderWidth: 1,
@@ -568,6 +611,20 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     deleteButtonText: {
       color: colors.textSecondary,
+    },
+    favoriteButton: {
+      backgroundColor: colors.cardBackground,
+      borderColor: colors.divider,
+    },
+    favoriteButtonText: {
+      color: colors.textSecondary,
+    },
+    favoriteButtonActive: {
+      backgroundColor: colors.yellow.primary,
+      borderColor: colors.yellow.secondary,
+    },
+    favoriteButtonActiveText: {
+      color: colors.yellow.secondary,
     },
     actionText: {
       fontSize: 12,

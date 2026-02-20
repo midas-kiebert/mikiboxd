@@ -8,14 +8,20 @@ import {
   type ListRenderItem,
   Modal,
   StyleSheet,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { CinemaPublic, CityPublic } from "shared";
-import { MeService, type MeSetCinemaSelectionsData } from "shared/client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  MeService,
+  type CinemaPresetCreate,
+  type CinemaPresetPublic,
+  type CinemaPublic,
+  type CityPublic,
+} from "shared";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
@@ -57,6 +63,8 @@ type CinemaColorPalette = {
   primary: string;
   secondary: string;
 };
+
+type CinemaModalPage = "selection" | "presets";
 
 const GROUPING_MINIMUM = 3;
 
@@ -104,7 +112,9 @@ function groupCinemas(cinemas: CinemaPublic[]) {
   return { groupedCities, ungrouped };
 }
 
-const sortCinemaIds = (cinemaIds: Iterable<number>) => Array.from(cinemaIds).sort((a, b) => a - b);
+const sortCinemaIds = (cinemaIds: Iterable<number>) => Array.from(new Set(cinemaIds)).sort((a, b) => a - b);
+const serializeCinemaIds = (cinemaIds: Iterable<number>) => JSON.stringify(sortCinemaIds(cinemaIds));
+
 const setsMatch = (left: Set<number>, right: Set<number>) => {
   if (left.size !== right.size) return false;
   for (const id of left) {
@@ -179,63 +189,92 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
   const styles = useMemo(() => createStyles(colors), [colors]);
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
+
+  const [page, setPage] = useState<CinemaModalPage>("selection");
+  const [presetName, setPresetName] = useState("");
+  const [presetError, setPresetError] = useState<string | null>(null);
+
   // Data hooks keep this module synced with backend data and shared cache state.
   const { data: cinemas } = useFetchCinemas();
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  const { data: favoriteCinemaIds } = useFetchSelectedCinemas();
   const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
     useSessionCinemaSelections();
 
-  // Persist current session selections as the user's preferred cinemas.
-  const savePreferredMutation = useMutation({
-    mutationFn: (data: MeSetCinemaSelectionsData) => MeService.setCinemaSelections(data),
-    onSuccess: (_data, variables) => {
-      queryClient.setQueryData(["user", "cinema_selections"], variables.requestBody);
-    },
-  });
-
-  // Seed session state from saved preferences so the modal starts with familiar selections.
-  useEffect(() => {
-    if (sessionCinemaIds === undefined && preferredCinemaIds !== undefined) {
-      setSessionCinemaIds(preferredCinemaIds);
-    }
-  }, [sessionCinemaIds, preferredCinemaIds, setSessionCinemaIds]);
-
   const selectedCinemas = useMemo(
-    () => sessionCinemaIds ?? preferredCinemaIds ?? [],
-    [sessionCinemaIds, preferredCinemaIds]
+    () => sessionCinemaIds ?? favoriteCinemaIds ?? [],
+    [sessionCinemaIds, favoriteCinemaIds]
   );
   const [localSelectedCinemaSet, setLocalSelectedCinemaSet] = useState<Set<number>>(
     () => new Set(selectedCinemas)
   );
   const selectedCinemaSet = useMemo(() => new Set(selectedCinemas), [selectedCinemas]);
-  const preferredCinemaSet = useMemo(() => new Set(preferredCinemaIds ?? []), [preferredCinemaIds]);
+  const favoriteCinemaSet = useMemo(() => new Set(favoriteCinemaIds ?? []), [favoriteCinemaIds]);
 
   // Keep modal interactions local for instant UI feedback; commit to shared state on close.
   useEffect(() => {
     if (!visible) return;
     setLocalSelectedCinemaSet(new Set(selectedCinemas));
+    setPresetError(null);
+    setPresetName("");
+    setPage("selection");
   }, [visible, selectedCinemas]);
 
-  const hasPreferredSelection = preferredCinemaIds !== undefined;
-  const selectionMatchesPreferred = hasPreferredSelection
-    ? setsMatch(localSelectedCinemaSet, preferredCinemaSet)
-    : true;
-  const preferenceStatus = hasPreferredSelection
-    ? selectionMatchesPreferred
-      ? "Matches your preferred cinemas."
-      : "Not saved to your preferred cinemas."
-    : "Loading preferred cinemas...";
-  const isSavingPreferred = savePreferredMutation.isPending;
-  const canSavePreferred = hasPreferredSelection && !isSavingPreferred && !selectionMatchesPreferred;
-  const canUsePreferred = hasPreferredSelection && !isSavingPreferred && !selectionMatchesPreferred;
+  const presetsQueryKey = useMemo(() => ["cinema-presets"] as const, []);
+  const { data: presets = [], isLoading: isPresetsLoading } = useQuery({
+    queryKey: presetsQueryKey,
+    enabled: visible,
+    queryFn: () => MeService.getCinemaPresets(),
+  });
+
+  const savePresetMutation = useMutation({
+    mutationFn: (requestBody: CinemaPresetCreate) => MeService.saveCinemaPreset({ requestBody }),
+    onSuccess: () => {
+      setPresetError(null);
+      setPresetName("");
+      queryClient.invalidateQueries({ queryKey: presetsQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["user", "cinema_selections"] });
+    },
+    onError: () => {
+      setPresetError("Could not save cinema preset. Please try again.");
+    },
+  });
+
+  const deletePresetMutation = useMutation({
+    mutationFn: (presetId: string) => MeService.deleteCinemaPreset({ presetId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: presetsQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["user", "cinema_selections"] });
+    },
+  });
+
+  const setFavoritePresetMutation = useMutation({
+    mutationFn: (presetId: string) => MeService.setFavoriteCinemaPreset({ presetId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: presetsQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["user", "cinema_selections"] });
+    },
+  });
+
   const selectedCount = localSelectedCinemaSet.size;
+  const hasFavoriteSelection = favoriteCinemaIds !== undefined;
+  const selectionMatchesFavorite = hasFavoriteSelection
+    ? setsMatch(localSelectedCinemaSet, favoriteCinemaSet)
+    : true;
+  const favoriteStatus = hasFavoriteSelection
+    ? selectionMatchesFavorite
+      ? "Matches your favorite cinema preset."
+      : "Different from your favorite cinema preset."
+    : "No favorite cinema preset selected.";
+  const canUseFavorite = hasFavoriteSelection && !selectionMatchesFavorite;
+
+  const currentSelectionSignature = useMemo(
+    () => serializeCinemaIds(localSelectedCinemaSet),
+    [localSelectedCinemaSet]
+  );
 
   const cinemaList = useMemo(() => cinemas ?? [], [cinemas]);
 
-  const { groupedCities, ungrouped } = useMemo(
-    () => groupCinemas(cinemaList),
-    [cinemaList]
-  );
+  const { groupedCities, ungrouped } = useMemo(() => groupCinemas(cinemaList), [cinemaList]);
 
   const cinemaSections = useMemo<CinemaSection[]>(
     () => [
@@ -261,11 +300,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
   );
 
   // Collect all cinema IDs for bulk select/deselect actions.
-  const allCinemaIds = useMemo(
-    () => cinemaList.map((cinema) => cinema.id),
-    [cinemaList]
-  );
-
+  const allCinemaIds = useMemo(() => cinemaList.map((cinema) => cinema.id), [cinemaList]);
   const allSelected =
     allCinemaIds.length > 0 && allCinemaIds.every((id) => localSelectedCinemaSet.has(id));
 
@@ -291,21 +326,24 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
   }, []);
 
   // Toggle every cinema inside one city section.
-  const handleToggleCity = useCallback((cityId: number) => {
-    const cityCinemas = groupedCities.find((group) => group.city.id === cityId)?.cinemas || [];
-    if (cityCinemas.length === 0) return;
-    setLocalSelectedCinemaSet((current) => {
-      const next = new Set(current);
-      const cityCinemaIds = cityCinemas.map((cinema) => cinema.id);
-      const isAllSelected = cityCinemaIds.every((id) => next.has(id));
-      if (isAllSelected) {
-        cityCinemaIds.forEach((id) => next.delete(id));
-      } else {
-        cityCinemaIds.forEach((id) => next.add(id));
-      }
-      return next;
-    });
-  }, [groupedCities]);
+  const handleToggleCity = useCallback(
+    (cityId: number) => {
+      const cityCinemas = groupedCities.find((group) => group.city.id === cityId)?.cinemas || [];
+      if (cityCinemas.length === 0) return;
+      setLocalSelectedCinemaSet((current) => {
+        const next = new Set(current);
+        const cityCinemaIds = cityCinemas.map((cinema) => cinema.id);
+        const isAllSelected = cityCinemaIds.every((id) => next.has(id));
+        if (isAllSelected) {
+          cityCinemaIds.forEach((id) => next.delete(id));
+        } else {
+          cityCinemaIds.forEach((id) => next.add(id));
+        }
+        return next;
+      });
+    },
+    [groupedCities]
+  );
 
   // Toggle the entire list in one action.
   const handleToggleAll = useCallback(() => {
@@ -316,17 +354,10 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     });
   }, [allCinemaIds]);
 
-  // Restore the saved preferred selection into the current session.
-  const handleUsePreferred = useCallback(() => {
-    if (preferredCinemaIds === undefined) return;
-    setLocalSelectedCinemaSet(new Set(preferredCinemaIds));
-  }, [preferredCinemaIds]);
-
-  // Save the current session selection as preferred cinemas on the backend.
-  const handleSavePreferred = useCallback(() => {
-    if (preferredCinemaIds === undefined) return;
-    savePreferredMutation.mutate({ requestBody: sortCinemaIds(localSelectedCinemaSet) });
-  }, [preferredCinemaIds, savePreferredMutation, localSelectedCinemaSet]);
+  const handleUseFavorite = useCallback(() => {
+    if (favoriteCinemaIds === undefined) return;
+    setLocalSelectedCinemaSet(new Set(favoriteCinemaIds));
+  }, [favoriteCinemaIds]);
 
   const handleClose = useCallback(() => {
     if (!setsMatch(localSelectedCinemaSet, selectedCinemaSet)) {
@@ -334,6 +365,39 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     }
     onClose();
   }, [localSelectedCinemaSet, onClose, selectedCinemaSet, setSessionCinemaIds]);
+
+  const handleSavePreset = useCallback(() => {
+    const trimmed = presetName.trim();
+    if (!trimmed) {
+      setPresetError("Enter a preset name.");
+      return;
+    }
+
+    savePresetMutation.mutate({
+      name: trimmed,
+      cinema_ids: sortCinemaIds(localSelectedCinemaSet),
+    });
+  }, [localSelectedCinemaSet, presetName, savePresetMutation]);
+
+  const handleApplyPreset = useCallback((preset: CinemaPresetPublic) => {
+    setLocalSelectedCinemaSet(new Set(preset.cinema_ids));
+    setPage("selection");
+  }, []);
+
+  const handleDeletePreset = useCallback(
+    (preset: CinemaPresetPublic) => {
+      deletePresetMutation.mutate(preset.id);
+    },
+    [deletePresetMutation]
+  );
+
+  const handleSetFavoritePreset = useCallback(
+    (preset: CinemaPresetPublic) => {
+      if (preset.is_favorite) return;
+      setFavoritePresetMutation.mutate(preset.id);
+    },
+    [setFavoritePresetMutation]
+  );
 
   const renderCinemaSection: ListRenderItem<CinemaSection> = useCallback(
     ({ item }) => {
@@ -389,8 +453,92 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     ]
   );
 
-  const isLoading =
-    cinemas === undefined || (sessionCinemaIds === undefined && preferredCinemaIds === undefined);
+  const renderPreset: ListRenderItem<CinemaPresetPublic> = useCallback(
+    ({ item }) => {
+      const isCurrent = serializeCinemaIds(item.cinema_ids) === currentSelectionSignature;
+
+      return (
+        <View style={styles.presetCard}>
+          <View style={styles.presetHeader}>
+            <View style={styles.presetTitleWrap}>
+              <ThemedText style={styles.presetName}>{item.name}</ThemedText>
+              <ThemedText style={styles.presetMeta}>
+                {item.cinema_ids.length} cinema{item.cinema_ids.length === 1 ? "" : "s"}
+              </ThemedText>
+            </View>
+            <View style={styles.presetBadges}>
+              {item.is_favorite ? (
+                <View style={[styles.presetBadge, styles.favoriteBadge]}>
+                  <ThemedText style={[styles.presetBadgeText, styles.favoriteBadgeText]}>
+                    Favorite
+                  </ThemedText>
+                </View>
+              ) : null}
+              {isCurrent ? (
+                <View style={[styles.presetBadge, styles.currentBadge]}>
+                  <ThemedText style={[styles.presetBadgeText, styles.currentBadgeText]}>Current</ThemedText>
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={styles.presetActions}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.applyButton]}
+              onPress={() => handleApplyPreset(item)}
+              activeOpacity={0.8}
+            >
+              <ThemedText style={[styles.actionButtonText, styles.applyButtonText]}>Apply</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                item.is_favorite ? styles.favoriteActionButtonActive : styles.favoriteActionButton,
+              ]}
+              onPress={() => handleSetFavoritePreset(item)}
+              activeOpacity={0.8}
+              disabled={item.is_favorite || setFavoritePresetMutation.isPending}
+            >
+              <ThemedText
+                style={[
+                  styles.actionButtonText,
+                  item.is_favorite ? styles.favoriteActionButtonTextActive : styles.favoriteActionButtonText,
+                ]}
+              >
+                {item.is_favorite
+                  ? "Favorited"
+                  : setFavoritePresetMutation.isPending
+                    ? "Saving..."
+                    : "Favorite"}
+              </ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.deleteButton]}
+              onPress={() => handleDeletePreset(item)}
+              activeOpacity={0.8}
+              disabled={deletePresetMutation.isPending}
+            >
+              <ThemedText style={[styles.actionButtonText, styles.deleteButtonText]}>
+                {deletePresetMutation.isPending ? "Deleting..." : "Delete"}
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    },
+    [
+      currentSelectionSignature,
+      deletePresetMutation.isPending,
+      handleApplyPreset,
+      handleDeletePreset,
+      handleSetFavoritePreset,
+      setFavoritePresetMutation.isPending,
+      styles,
+    ]
+  );
+
+  const isLoadingSelection =
+    cinemas === undefined || (sessionCinemaIds === undefined && favoriteCinemaIds === undefined);
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -408,107 +556,195 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
           </TouchableOpacity>
         </View>
 
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.tint} />
-            <ThemedText style={styles.loadingText}>Loading cinemas...</ThemedText>
-          </View>
+        <View style={styles.pageSwitcher}>
+          <TouchableOpacity
+            style={[styles.pageButton, page === "selection" && styles.pageButtonActive]}
+            onPress={() => setPage("selection")}
+            activeOpacity={0.8}
+          >
+            <ThemedText
+              style={[styles.pageButtonText, page === "selection" && styles.pageButtonTextActive]}
+            >
+              Selection
+            </ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.pageButton, page === "presets" && styles.pageButtonActive]}
+            onPress={() => setPage("presets")}
+            activeOpacity={0.8}
+          >
+            <ThemedText
+              style={[styles.pageButtonText, page === "presets" && styles.pageButtonTextActive]}
+            >
+              Presets
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
+
+        {page === "selection" ? (
+          isLoadingSelection ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.tint} />
+              <ThemedText style={styles.loadingText}>Loading cinemas...</ThemedText>
+            </View>
+          ) : (
+            <FlatList
+              style={styles.mainContent}
+              contentContainerStyle={styles.content}
+              data={cinemaSections}
+              keyExtractor={(item) => item.key}
+              renderItem={renderCinemaSection}
+              initialNumToRender={2}
+              maxToRenderPerBatch={2}
+              windowSize={5}
+              removeClippedSubviews
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionHeader}>
+                    <View>
+                      <ThemedText style={styles.sectionTitle}>All cinemas</ThemedText>
+                      <ThemedText style={styles.sectionMeta}>
+                        {selectedCount} of {allCinemaIds.length} selected
+                      </ThemedText>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.toggleButton}
+                      onPress={handleToggleAll}
+                      activeOpacity={0.8}
+                    >
+                      <ThemedText style={styles.toggleButtonText}>
+                        {allSelected ? "Deselect all" : "Select all"}
+                      </ThemedText>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              }
+              ItemSeparatorComponent={() => <View style={styles.sectionSeparator} />}
+            />
+          )
         ) : (
-          <FlatList
-            style={styles.mainContent}
-            contentContainerStyle={styles.content}
-            data={cinemaSections}
-            keyExtractor={(item) => item.key}
-            renderItem={renderCinemaSection}
-            initialNumToRender={2}
-            maxToRenderPerBatch={2}
-            windowSize={5}
-            removeClippedSubviews
-            showsVerticalScrollIndicator={false}
-            ListHeaderComponent={
-              <View style={styles.sectionCard}>
-                <View style={styles.sectionHeader}>
-                  <View>
-                    <ThemedText style={styles.sectionTitle}>All cinemas</ThemedText>
-                    <ThemedText style={styles.sectionMeta}>
-                      {selectedCount} of {allCinemaIds.length} selected
+          <View style={styles.presetsContainer}>
+            <View style={styles.savePresetSection}>
+              <View style={styles.savePresetRow}>
+                <TextInput
+                  value={presetName}
+                  onChangeText={setPresetName}
+                  placeholder="Cinema preset name"
+                  placeholderTextColor={colors.textSecondary}
+                  style={styles.presetInput}
+                  maxLength={80}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.savePresetButton,
+                    (savePresetMutation.isPending || presetName.trim().length === 0) &&
+                      styles.savePresetButtonDisabled,
+                  ]}
+                  onPress={handleSavePreset}
+                  activeOpacity={0.8}
+                  disabled={savePresetMutation.isPending || presetName.trim().length === 0}
+                >
+                  <ThemedText style={styles.savePresetButtonText}>
+                    {savePresetMutation.isPending ? "Saving..." : "Save"}
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+              {presetError ? <ThemedText style={styles.presetErrorText}>{presetError}</ThemedText> : null}
+            </View>
+
+            {isPresetsLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.tint} />
+                <ThemedText style={styles.loadingText}>Loading presets...</ThemedText>
+              </View>
+            ) : (
+              <FlatList
+                data={presets}
+                keyExtractor={(item) => item.id}
+                renderItem={renderPreset}
+                style={styles.mainContent}
+                contentContainerStyle={styles.content}
+                ItemSeparatorComponent={() => <View style={styles.sectionSeparator} />}
+                ListEmptyComponent={
+                  <View style={styles.emptyPresets}>
+                    <ThemedText style={styles.emptyPresetsText}>
+                      No cinema presets yet. Save your current cinema selection.
                     </ThemedText>
                   </View>
-                  <TouchableOpacity
-                    style={styles.toggleButton}
-                    onPress={handleToggleAll}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText style={styles.toggleButtonText}>
-                      {allSelected ? "Deselect all" : "Select all"}
-                    </ThemedText>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            }
-            ItemSeparatorComponent={() => <View style={styles.sectionSeparator} />}
-          />
+                }
+              />
+            )}
+          </View>
         )}
 
         <View style={styles.preferenceFooter}>
-          <View style={styles.preferenceText}>
-            <ThemedText style={styles.preferenceTitle}>Session selection</ThemedText>
-            <ThemedText style={styles.preferenceSubtitle}>{preferenceStatus}</ThemedText>
-          </View>
-          <View style={styles.preferenceActions}>
-            <TouchableOpacity
-              style={[
-                styles.preferenceButton,
-                styles.usePreferredButton,
-                styles.preferenceButtonPrimary,
-                !canUsePreferred && styles.preferenceButtonDisabled,
-              ]}
-              onPress={handleUsePreferred}
-              activeOpacity={0.8}
-              disabled={!canUsePreferred}
-            >
-              <View style={styles.preferenceButtonInner}>
-                <MaterialIcons
-                  name="history"
-                  size={16}
-                  color={canUsePreferred ? colors.pillActiveText : colors.textSecondary}
-                />
-                <ThemedText
-                  style={[
-                    styles.preferenceButtonText,
-                    styles.preferenceButtonTextPrimary,
-                    !canUsePreferred && styles.preferenceButtonTextDisabled,
-                  ]}
-                >
-                  Use preferred
-                </ThemedText>
+          {page === "selection" ? (
+            <>
+              <View style={styles.preferenceText}>
+                <ThemedText style={styles.preferenceTitle}>Session selection</ThemedText>
+                <ThemedText style={styles.preferenceSubtitle}>{favoriteStatus}</ThemedText>
               </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.preferenceButton,
-                styles.savePreferredButton,
-                styles.preferenceButtonSubtle,
-                !canSavePreferred && styles.preferenceButtonDisabled,
-              ]}
-              onPress={handleSavePreferred}
-              activeOpacity={0.8}
-              disabled={!canSavePreferred}
-            >
-              <View style={styles.preferenceButtonInner}>
-                <MaterialIcons name="bookmark-border" size={16} color={colors.textSecondary} />
-                <ThemedText
+              <View style={styles.preferenceActions}>
+                <TouchableOpacity
                   style={[
-                    styles.preferenceButtonText,
-                    styles.preferenceButtonTextSubtle,
-                    !canSavePreferred && styles.preferenceButtonTextDisabled,
+                    styles.preferenceButton,
+                    styles.preferenceButtonPrimary,
+                    !canUseFavorite && styles.preferenceButtonDisabled,
                   ]}
+                  onPress={handleUseFavorite}
+                  activeOpacity={0.8}
+                  disabled={!canUseFavorite}
                 >
-                  {isSavingPreferred ? "Saving..." : "Save as preferred"}
-                </ThemedText>
+                  <View style={styles.preferenceButtonInner}>
+                    <MaterialIcons
+                      name="history"
+                      size={16}
+                      color={canUseFavorite ? colors.pillActiveText : colors.textSecondary}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.preferenceButtonText,
+                        styles.preferenceButtonTextPrimary,
+                        !canUseFavorite && styles.preferenceButtonTextDisabled,
+                      ]}
+                    >
+                      Use favorite
+                    </ThemedText>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.preferenceButton, styles.preferenceButtonSubtle]}
+                  onPress={() => setPage("presets")}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.preferenceButtonInner}>
+                    <MaterialIcons name="bookmark-border" size={16} color={colors.textSecondary} />
+                    <ThemedText style={[styles.preferenceButtonText, styles.preferenceButtonTextSubtle]}>
+                      Presets
+                    </ThemedText>
+                  </View>
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-          </View>
+            </>
+          ) : (
+            <View style={styles.preferenceActions}>
+              <TouchableOpacity
+                style={[styles.preferenceButton, styles.preferenceButtonSubtle]}
+                onPress={() => setPage("selection")}
+                activeOpacity={0.8}
+              >
+                <View style={styles.preferenceButtonInner}>
+                  <MaterialIcons name="arrow-back" size={16} color={colors.textSecondary} />
+                  <ThemedText style={[styles.preferenceButtonText, styles.preferenceButtonTextSubtle]}>
+                    Back to selection
+                  </ThemedText>
+                </View>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </SafeAreaView>
     </Modal>
@@ -534,9 +770,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 18,
       fontWeight: "700",
     },
-    mainContent: {
-      flex: 1,
-    },
     closeButton: {
       paddingHorizontal: 12,
       paddingVertical: 6,
@@ -547,6 +780,39 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 13,
       fontWeight: "600",
       color: colors.textSecondary,
+    },
+    pageSwitcher: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.divider,
+      flexDirection: "row",
+      gap: 8,
+    },
+    pageButton: {
+      flex: 1,
+      minHeight: 38,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      backgroundColor: colors.cardBackground,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    pageButtonActive: {
+      backgroundColor: colors.tint,
+      borderColor: colors.tint,
+    },
+    pageButtonText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
+    pageButtonTextActive: {
+      color: colors.pillActiveText,
+    },
+    mainContent: {
+      flex: 1,
     },
     content: {
       padding: 16,
@@ -564,74 +830,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     sectionMeta: {
       fontSize: 12,
-      color: colors.textSecondary,
-    },
-    preferenceFooter: {
-      borderTopWidth: 1,
-      borderTopColor: colors.divider,
-      backgroundColor: colors.background,
-      paddingHorizontal: 16,
-      paddingTop: 10,
-      paddingBottom: 10,
-      gap: 10,
-    },
-    preferenceText: {
-      gap: 3,
-    },
-    preferenceSubtitle: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    preferenceTitle: {
-      fontSize: 13,
-      fontWeight: "700",
-    },
-    preferenceActions: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    preferenceButton: {
-      minHeight: 40,
-      paddingHorizontal: 12,
-      borderRadius: 12,
-      borderWidth: 1,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    usePreferredButton: {
-      flex: 1,
-    },
-    savePreferredButton: {
-      paddingHorizontal: 10,
-    },
-    preferenceButtonSubtle: {
-      backgroundColor: colors.cardBackground,
-      borderColor: colors.divider,
-    },
-    preferenceButtonPrimary: {
-      backgroundColor: colors.tint,
-      borderColor: colors.tint,
-    },
-    preferenceButtonDisabled: {
-      opacity: 0.5,
-    },
-    preferenceButtonInner: {
-      flexDirection: "row",
-      alignItems: "center",
-      columnGap: 6,
-    },
-    preferenceButtonText: {
-      fontSize: 12,
-      fontWeight: "600",
-    },
-    preferenceButtonTextPrimary: {
-      color: colors.pillActiveText,
-    },
-    preferenceButtonTextSubtle: {
-      color: colors.textSecondary,
-    },
-    preferenceButtonTextDisabled: {
       color: colors.textSecondary,
     },
     loadingContainer: {
@@ -720,5 +918,221 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: "transparent",
       alignItems: "center",
       justifyContent: "center",
+    },
+    presetsContainer: {
+      flex: 1,
+    },
+    savePresetSection: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      gap: 8,
+    },
+    savePresetRow: {
+      flexDirection: "row",
+      columnGap: 8,
+    },
+    presetInput: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      backgroundColor: colors.cardBackground,
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: "500",
+    },
+    savePresetButton: {
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.tint,
+    },
+    savePresetButtonDisabled: {
+      opacity: 0.5,
+    },
+    savePresetButtonText: {
+      color: colors.pillActiveText,
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    presetErrorText: {
+      fontSize: 12,
+      color: colors.red.secondary,
+    },
+    presetCard: {
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      padding: 12,
+      gap: 10,
+    },
+    presetHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 8,
+    },
+    presetTitleWrap: {
+      flex: 1,
+      gap: 3,
+    },
+    presetName: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    presetMeta: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    presetBadges: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    presetBadge: {
+      borderRadius: 10,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      backgroundColor: colors.pillBackground,
+    },
+    presetBadgeText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
+    favoriteBadge: {
+      backgroundColor: colors.yellow.primary,
+    },
+    favoriteBadgeText: {
+      color: colors.yellow.secondary,
+    },
+    currentBadge: {
+      backgroundColor: colors.tint,
+    },
+    currentBadgeText: {
+      color: colors.pillActiveText,
+    },
+    presetActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    actionButton: {
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    actionButtonText: {
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    applyButton: {
+      backgroundColor: colors.tint,
+      borderColor: colors.tint,
+    },
+    applyButtonText: {
+      color: colors.pillActiveText,
+    },
+    favoriteActionButton: {
+      backgroundColor: colors.cardBackground,
+      borderColor: colors.divider,
+    },
+    favoriteActionButtonText: {
+      color: colors.textSecondary,
+    },
+    favoriteActionButtonActive: {
+      backgroundColor: colors.yellow.primary,
+      borderColor: colors.yellow.secondary,
+    },
+    favoriteActionButtonTextActive: {
+      color: colors.yellow.secondary,
+    },
+    deleteButton: {
+      backgroundColor: colors.cardBackground,
+      borderColor: colors.divider,
+    },
+    deleteButtonText: {
+      color: colors.textSecondary,
+    },
+    emptyPresets: {
+      paddingVertical: 40,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    emptyPresetsText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: "center",
+    },
+    preferenceFooter: {
+      borderTopWidth: 1,
+      borderTopColor: colors.divider,
+      backgroundColor: colors.background,
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      paddingBottom: 10,
+      gap: 10,
+    },
+    preferenceText: {
+      gap: 3,
+    },
+    preferenceSubtitle: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    preferenceTitle: {
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    preferenceActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    preferenceButton: {
+      minHeight: 40,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    preferenceButtonSubtle: {
+      backgroundColor: colors.cardBackground,
+      borderColor: colors.divider,
+    },
+    preferenceButtonPrimary: {
+      backgroundColor: colors.tint,
+      borderColor: colors.tint,
+      flex: 1,
+    },
+    preferenceButtonDisabled: {
+      opacity: 0.5,
+    },
+    preferenceButtonInner: {
+      flexDirection: "row",
+      alignItems: "center",
+      columnGap: 6,
+    },
+    preferenceButtonText: {
+      fontSize: 12,
+      fontWeight: "600",
+    },
+    preferenceButtonTextPrimary: {
+      color: colors.pillActiveText,
+    },
+    preferenceButtonTextSubtle: {
+      color: colors.textSecondary,
+    },
+    preferenceButtonTextDisabled: {
+      color: colors.textSecondary,
     },
   });

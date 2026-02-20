@@ -405,21 +405,23 @@ def test_legacy_preferred_cinemas_still_work_on_me_cinemas(
 ) -> None:
     first_cinema = cinema_factory()
     second_cinema = cinema_factory()
+    first_cinema_id = first_cinema.id
+    second_cinema_id = second_cinema.id
 
-    user = db_transaction.exec(
-        select(User).where(User.email == settings.EMAIL_TEST_USER)
+    user_id = db_transaction.exec(
+        select(User.id).where(User.email == settings.EMAIL_TEST_USER)
     ).one()
 
     db_transaction.add(
         CinemaSelection(
-            user_id=user.id,
-            cinema_id=first_cinema.id,
+            user_id=user_id,
+            cinema_id=first_cinema_id,
         )
     )
     db_transaction.add(
         CinemaSelection(
-            user_id=user.id,
-            cinema_id=second_cinema.id,
+            user_id=user_id,
+            cinema_id=second_cinema_id,
         )
     )
     db_transaction.commit()
@@ -429,12 +431,12 @@ def test_legacy_preferred_cinemas_still_work_on_me_cinemas(
         headers=normal_user_token_headers,
     )
     assert legacy_get.status_code == 200
-    assert sorted(legacy_get.json()) == sorted([first_cinema.id, second_cinema.id])
+    assert sorted(legacy_get.json()) == sorted([first_cinema_id, second_cinema_id])
 
     set_favorite = client.post(
         f"{settings.API_V1_STR}/me/cinemas",
         headers=normal_user_token_headers,
-        json=[first_cinema.id],
+        json=[first_cinema_id],
     )
     assert set_favorite.status_code == 200
 
@@ -443,4 +445,4 @@ def test_legacy_preferred_cinemas_still_work_on_me_cinemas(
         headers=normal_user_token_headers,
     )
     assert favorite_get.status_code == 200
-    assert favorite_get.json() == [first_cinema.id]
+    assert favorite_get.json() == [first_cinema_id]

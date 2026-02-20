@@ -6,6 +6,7 @@ from sqlmodel import Session
 
 from app.converters import movie as movie_converters
 from app.converters import showtime as showtime_converters
+from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import movie as movies_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
@@ -30,10 +31,18 @@ def get_movie_summaries(
         user_id=user_id,
     )
     if filters.selected_cinema_ids is None:
-        filters.selected_cinema_ids = users_crud.get_selected_cinemas_ids(
+        favorite_preset = cinema_presets_crud.get_user_favorite_preset(
             session=session,
             user_id=user_id,
         )
+        if favorite_preset is not None:
+            filters.selected_cinema_ids = list(favorite_preset.cinema_ids)
+        else:
+            # Compatibility fallback for users still on legacy cinema selections.
+            filters.selected_cinema_ids = users_crud.get_selected_cinemas_ids(
+                session=session,
+                user_id=user_id,
+            )
 
     movies_db = movies_crud.get_movies(
         session=session,

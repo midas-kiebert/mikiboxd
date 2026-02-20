@@ -55,7 +55,6 @@ export default function MainShowtimesScreen() {
     watchlistOnly,
     setWatchlistOnly,
     sessionCinemaIds,
-    setSessionCinemaIds,
     selectedDays,
     setSelectedDays,
     selectedTimeRanges,
@@ -96,17 +95,10 @@ export default function MainShowtimesScreen() {
     () => ({
       selected_showtime_filter: selectedShowtimeFilter,
       watchlist_only: watchlistOnly,
-      selected_cinema_ids: sessionCinemaIds ?? null,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
     }),
-    [
-      selectedShowtimeFilter,
-      watchlistOnly,
-      sessionCinemaIds,
-      selectedDays,
-      selectedTimeRanges,
-    ]
+    [selectedShowtimeFilter, watchlistOnly, selectedDays, selectedTimeRanges]
   );
 
   // Build shared filter pills used by both Movies and Showtimes tabs.
@@ -208,7 +200,6 @@ export default function MainShowtimesScreen() {
   const handleApplyPreset = (filters: PageFilterPresetState) => {
     setSelectedShowtimeFilter(toSharedTabShowtimeFilter(filters.selected_showtime_filter));
     setWatchlistOnly(Boolean(filters.watchlist_only));
-    setSessionCinemaIds(filters.selected_cinema_ids ?? undefined);
     setSelectedDays(filters.days ?? []);
     setSelectedTimeRanges(filters.time_ranges ?? []);
   };

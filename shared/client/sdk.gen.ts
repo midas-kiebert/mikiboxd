@@ -32,8 +32,23 @@ import type {
   MeGetFilterPresetsResponse,
   MeSaveFilterPresetData,
   MeSaveFilterPresetResponse,
+  MeGetFavoriteFilterPresetData,
+  MeGetFavoriteFilterPresetResponse,
+  MeClearFavoriteFilterPresetData,
+  MeClearFavoriteFilterPresetResponse,
+  MeSetFavoriteFilterPresetData,
+  MeSetFavoriteFilterPresetResponse,
   MeDeleteFilterPresetData,
   MeDeleteFilterPresetResponse,
+  MeGetCinemaPresetsResponse,
+  MeSaveCinemaPresetData,
+  MeSaveCinemaPresetResponse,
+  MeGetFavoriteCinemaPresetResponse,
+  MeClearFavoriteCinemaPresetResponse,
+  MeSetFavoriteCinemaPresetData,
+  MeSetFavoriteCinemaPresetResponse,
+  MeDeleteCinemaPresetData,
+  MeDeleteCinemaPresetResponse,
   MeUpdatePasswordMeData,
   MeUpdatePasswordMeResponse,
   MeGetMyShowtimesData,
@@ -393,6 +408,72 @@ export class MeService {
   }
 
   /**
+   * Get Favorite Filter Preset
+   * @param data The data for the request.
+   * @param data.scope
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static getFavoriteFilterPreset(
+    data: MeGetFavoriteFilterPresetData,
+  ): CancelablePromise<MeGetFavoriteFilterPresetResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/filter-presets/favorite",
+      query: {
+        scope: data.scope,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Clear Favorite Filter Preset
+   * @param data The data for the request.
+   * @param data.scope
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static clearFavoriteFilterPreset(
+    data: MeClearFavoriteFilterPresetData,
+  ): CancelablePromise<MeClearFavoriteFilterPresetResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/filter-presets/favorite",
+      query: {
+        scope: data.scope,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Set Favorite Filter Preset
+   * @param data The data for the request.
+   * @param data.presetId
+   * @returns FilterPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static setFavoriteFilterPreset(
+    data: MeSetFavoriteFilterPresetData,
+  ): CancelablePromise<MeSetFavoriteFilterPresetResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/me/filter-presets/{preset_id}/favorite",
+      path: {
+        preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Delete Filter Preset
    * @param data The data for the request.
    * @param data.presetId
@@ -405,6 +486,107 @@ export class MeService {
     return __request(OpenAPI, {
       method: "DELETE",
       url: "/api/v1/me/filter-presets/{preset_id}",
+      path: {
+        preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Cinema Presets
+   * @returns CinemaPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static getCinemaPresets(): CancelablePromise<MeGetCinemaPresetsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/cinema-presets",
+    })
+  }
+
+  /**
+   * Save Cinema Preset
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns CinemaPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static saveCinemaPreset(
+    data: MeSaveCinemaPresetData,
+  ): CancelablePromise<MeSaveCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/cinema-presets",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Favorite Cinema Preset
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static getFavoriteCinemaPreset(): CancelablePromise<MeGetFavoriteCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/cinema-presets/favorite",
+    })
+  }
+
+  /**
+   * Clear Favorite Cinema Preset
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static clearFavoriteCinemaPreset(): CancelablePromise<MeClearFavoriteCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/cinema-presets/favorite",
+    })
+  }
+
+  /**
+   * Set Favorite Cinema Preset
+   * @param data The data for the request.
+   * @param data.presetId
+   * @returns CinemaPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static setFavoriteCinemaPreset(
+    data: MeSetFavoriteCinemaPresetData,
+  ): CancelablePromise<MeSetFavoriteCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/me/cinema-presets/{preset_id}/favorite",
+      path: {
+        preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Delete Cinema Preset
+   * @param data The data for the request.
+   * @param data.presetId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static deleteCinemaPreset(
+    data: MeDeleteCinemaPresetData,
+  ): CancelablePromise<MeDeleteCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/cinema-presets/{preset_id}",
       path: {
         preset_id: data.presetId,
       },
@@ -525,14 +707,6 @@ export class MeService {
 
   /**
    * Get Cinema Selections
-   * Get the IDs of cinemas selected by the current user.
-   *
-   * Parameters:
-   * session (SessionDep): The SQLAlchemy session to use for the operation.
-   * current_user (CurrentUser): The currently authenticated user.
-   *
-   * Returns:
-   * list[int]: List of cinema IDs selected by the user.
    * @returns number Successful Response
    * @throws ApiError
    */
@@ -545,15 +719,6 @@ export class MeService {
 
   /**
    * Set Cinema Selections
-   * Set the cinemas selected by the current user.
-   *
-   * Parameters:
-   * session (SessionDep): The SQLAlchemy session to use for the operation.
-   * current_user (CurrentUser): The currently authenticated user.
-   * cinema_ids (list[int]): List of cinema IDs to set as selected.
-   *
-   * Returns:
-   * Message: Confirmation message indicating success.
    * @param data The data for the request.
    * @param data.requestBody
    * @returns Message Successful Response

@@ -221,7 +221,6 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
     movie = MovieCreate(
         id=int(tmdb_id),
         title=tmdb_details.title if tmdb_details is not None else title_query,
-        poster_link=tmdb_details.poster_url if tmdb_details is not None else None,
         letterboxd_slug=None,
         directors=tmdb_directors if tmdb_directors else None,
         release_year=tmdb_details.release_year if tmdb_details is not None else None,

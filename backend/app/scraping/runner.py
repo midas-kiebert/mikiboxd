@@ -16,6 +16,7 @@ from app.models.scrape_run import ScrapeRun, ScrapeRunStatus
 from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
 from app.scraping.letterboxd.load_letterboxd_data import (
+    backfill_missing_letterboxd_data,
     consume_letterboxd_failure_events,
     reset_letterboxd_request_budget,
 )
@@ -884,6 +885,15 @@ def run() -> None:
         cinema_summary = run_cinema_scrapers()
         _combine_summaries(current=summary, new=cinema_summary)
         logger.info("Ran all cinema scrapers.")
+        logger.info("Starting Letterboxd slug/poster backfill...")
+        letterboxd_backfill_summary = backfill_missing_letterboxd_data()
+        logger.info(
+            "Letterboxd backfill done (candidates=%s updated=%s skipped=%s failed=%s).",
+            letterboxd_backfill_summary.candidates,
+            letterboxd_backfill_summary.updated,
+            letterboxd_backfill_summary.skipped,
+            letterboxd_backfill_summary.failed,
+        )
     except Exception as e:
         fatal_error = e
         summary.errors.append(str(e))

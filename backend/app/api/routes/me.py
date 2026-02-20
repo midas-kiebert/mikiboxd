@@ -12,6 +12,7 @@ from app.core.security import get_password_hash, verify_password
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
+from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
 from app.schemas.push_token import PushTokenRegister
 from app.schemas.showtime import ShowtimeLoggedIn
@@ -56,6 +57,49 @@ def save_filter_preset(
     )
 
 
+@router.get("/filter-presets/favorite", response_model=FilterPresetPublic | None)
+def get_favorite_filter_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    scope: FilterPresetScope = Query(...),
+) -> FilterPresetPublic | None:
+    return me_service.get_favorite_filter_preset(
+        session=session,
+        user_id=current_user.id,
+        scope=scope,
+    )
+
+
+@router.put("/filter-presets/{preset_id}/favorite", response_model=FilterPresetPublic)
+def set_favorite_filter_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    preset_id: UUID,
+) -> FilterPresetPublic:
+    favorite = me_service.set_favorite_filter_preset(
+        session=session,
+        user_id=current_user.id,
+        preset_id=preset_id,
+    )
+    if favorite is None:
+        raise HTTPException(status_code=404, detail="Filter preset not found")
+    return favorite
+
+
+@router.delete("/filter-presets/favorite", response_model=Message)
+def clear_favorite_filter_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    scope: FilterPresetScope = Query(...),
+) -> Message:
+    me_service.clear_favorite_filter_preset(
+        session=session,
+        user_id=current_user.id,
+        scope=scope,
+    )
+    return Message(message="Favorite filter preset cleared successfully")
+
+
 @router.delete("/filter-presets/{preset_id}", response_model=Message)
 def delete_filter_preset(
     session: SessionDep,
@@ -70,6 +114,87 @@ def delete_filter_preset(
     if not deleted:
         raise HTTPException(status_code=404, detail="Filter preset not found")
     return Message(message="Filter preset deleted successfully")
+
+
+@router.get("/cinema-presets", response_model=list[CinemaPresetPublic])
+def get_cinema_presets(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> list[CinemaPresetPublic]:
+    return me_service.list_cinema_presets(
+        session=session,
+        user_id=current_user.id,
+    )
+
+
+@router.get("/cinema-presets/favorite", response_model=CinemaPresetPublic | None)
+def get_favorite_cinema_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> CinemaPresetPublic | None:
+    return me_service.get_favorite_cinema_preset(
+        session=session,
+        user_id=current_user.id,
+    )
+
+
+@router.post("/cinema-presets", response_model=CinemaPresetPublic)
+def save_cinema_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    payload: CinemaPresetCreate,
+) -> CinemaPresetPublic:
+    if not payload.name.strip():
+        raise HTTPException(status_code=400, detail="Preset name cannot be empty")
+    return me_service.save_cinema_preset(
+        session=session,
+        user_id=current_user.id,
+        payload=payload,
+    )
+
+
+@router.put("/cinema-presets/{preset_id}/favorite", response_model=CinemaPresetPublic)
+def set_favorite_cinema_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    preset_id: UUID,
+) -> CinemaPresetPublic:
+    favorite = me_service.set_favorite_cinema_preset(
+        session=session,
+        user_id=current_user.id,
+        preset_id=preset_id,
+    )
+    if favorite is None:
+        raise HTTPException(status_code=404, detail="Cinema preset not found")
+    return favorite
+
+
+@router.delete("/cinema-presets/favorite", response_model=Message)
+def clear_favorite_cinema_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Message:
+    me_service.clear_favorite_cinema_preset(
+        session=session,
+        user_id=current_user.id,
+    )
+    return Message(message="Favorite cinema preset cleared successfully")
+
+
+@router.delete("/cinema-presets/{preset_id}", response_model=Message)
+def delete_cinema_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    preset_id: UUID,
+) -> Message:
+    deleted = me_service.delete_cinema_preset(
+        session=session,
+        user_id=current_user.id,
+        preset_id=preset_id,
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Cinema preset not found")
+    return Message(message="Cinema preset deleted successfully")
 
 
 @router.delete("/", response_model=Message)
@@ -170,19 +295,7 @@ def get_cinema_selections(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> list[int]:
-    """
-    Get the IDs of cinemas selected by the current user.
-
-    Parameters:
-        session (SessionDep): The SQLAlchemy session to use for the operation.
-        current_user (CurrentUser): The currently authenticated user.
-
-    Returns:
-        list[int]: List of cinema IDs selected by the user.
-    """
-    return users_service.get_selected_cinemas_ids(
-        session=session, user_id=current_user.id
-    )
+    return me_service.get_favorite_cinema_ids(session=session, user_id=current_user.id)
 
 
 @router.post("/cinemas", response_model=Message)
@@ -191,18 +304,7 @@ def set_cinema_selections(
     current_user: CurrentUser,
     cinema_ids: list[int],
 ) -> Message:
-    """
-    Set the cinemas selected by the current user.
-
-    Parameters:
-        session (SessionDep): The SQLAlchemy session to use for the operation.
-        current_user (CurrentUser): The currently authenticated user.
-        cinema_ids (list[int]): List of cinema IDs to set as selected.
-
-    Returns:
-        Message: Confirmation message indicating success.
-    """
-    users_service.set_cinema_selections(
+    me_service.set_favorite_cinema_ids(
         session=session, user_id=current_user.id, cinema_ids=cinema_ids
     )
     return Message(message="Cinemas updated successfully")

@@ -1,47 +1,36 @@
 import uuid
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import JSON, UniqueConstraint
-from sqlalchemy import Enum as SAEnum
 from sqlmodel import Column, Field, SQLModel
 
-from app.core.enums import FilterPresetScope
 from app.utils import now_amsterdam_naive
 
 __all__ = [
-    "FilterPreset",
+    "CinemaPreset",
 ]
 
 
-class FilterPreset(SQLModel, table=True):
+class CinemaPreset(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint(
             "owner_user_id",
-            "scope",
             "name",
-            name="uq_filter_preset_owner_scope_name",
+            name="uq_cinema_preset_owner_name",
         ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    owner_user_id: uuid.UUID | None = Field(
-        default=None,
+    owner_user_id: uuid.UUID = Field(
         foreign_key="user.id",
         ondelete="CASCADE",
         index=True,
     )
     name: str = Field(max_length=80)
-    scope: FilterPresetScope = Field(
-        sa_column=Column(
-            SAEnum(FilterPresetScope, native_enum=False), nullable=False, index=True
-        ),
-    )
-    is_default: bool = Field(default=False, nullable=False, index=True)
-    is_favorite: bool = Field(default=False, nullable=False, index=True)
-    filters: dict[str, Any] = Field(
-        default_factory=dict,
+    cinema_ids: list[int] = Field(
+        default_factory=list,
         sa_column=Column(JSON, nullable=False),
     )
+    is_favorite: bool = Field(default=False, nullable=False, index=True)
     created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
     updated_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)

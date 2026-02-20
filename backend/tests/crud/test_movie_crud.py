@@ -361,6 +361,80 @@ def test_get_showtimes_for_movie_filters_by_selected_statuses(
     assert showtime_not_friend not in interested_filtered
 
 
+def test_get_movies_filters_by_selected_statuses(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    friend = user_factory()
+    stranger = user_factory()
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=user.id,
+        friend_id=friend.id,
+    )
+
+    movie_going = movie_factory()
+    movie_interested = movie_factory()
+    movie_stranger_only = movie_factory()
+
+    showtime_going = showtime_factory(movie=movie_going)
+    showtime_interested = showtime_factory(movie=movie_interested)
+    showtime_stranger_only = showtime_factory(movie=movie_stranger_only)
+
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_going.id,
+        user_id=user.id,
+        going_status=GoingStatus.GOING,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_interested.id,
+        user_id=friend.id,
+        going_status=GoingStatus.INTERESTED,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_stranger_only.id,
+        user_id=stranger.id,
+        going_status=GoingStatus.GOING,
+    )
+
+    going_only = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_statuses=[GoingStatus.GOING],
+        ),
+    )
+    assert {movie.id for movie in going_only} == {movie_going.id}
+
+    going_or_interested = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_statuses=[GoingStatus.GOING, GoingStatus.INTERESTED],
+        ),
+    )
+    assert {movie.id for movie in going_or_interested} == {
+        movie_going.id,
+        movie_interested.id,
+    }
+
+
 # def test_get_showtimes_for_movie(
 #     *,
 #     db_transaction: Session,

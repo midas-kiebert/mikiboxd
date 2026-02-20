@@ -37,6 +37,7 @@ def get_movie_summaries(
 
     movies_db = movies_crud.get_movies(
         session=session,
+        current_user_id=user_id,
         letterboxd_username=letterboxd_username,
         limit=limit,
         offset=offset,

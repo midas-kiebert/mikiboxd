@@ -14,6 +14,7 @@ import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import ShowtimesScreen from "@/components/showtimes/ShowtimesScreen";
 import DayFilterModal from "@/components/filters/DayFilterModal";
 import TimeFilterModal from "@/components/filters/TimeFilterModal";
+import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
 import { resetInfiniteQuery } from "@/utils/reset-infinite-query";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
@@ -68,6 +69,12 @@ export default function CinemaShowtimesScreen() {
     useSessionTimeRangeSelections();
   const selectedDays = sessionDays ?? EMPTY_DAYS;
   const selectedTimeRanges = sessionTimeRanges ?? EMPTY_TIME_RANGES;
+  const dayAnchorKey =
+    DateTime.now().setZone("Europe/Amsterdam").startOf("day").toISODate() ?? "";
+  const resolvedApiDays = useMemo(
+    () => resolveDaySelectionsForApi(selectedDays),
+    [dayAnchorKey, selectedDays]
+  );
   const { data: cinemas } = useFetchCinemas();
 
   // React Query client used for cache updates and invalidation.
@@ -93,7 +100,7 @@ export default function CinemaShowtimesScreen() {
     return {
       query: searchQuery || undefined,
       selectedCinemaIds: [cinemaId],
-      days: selectedDays.length > 0 ? selectedDays : undefined,
+      days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       selectedStatuses,
       watchlistOnly: watchlistOnly ? true : undefined,
@@ -101,7 +108,7 @@ export default function CinemaShowtimesScreen() {
   }, [
     cinemaId,
     searchQuery,
-    selectedDays,
+    resolvedApiDays,
     selectedShowtimeFilter,
     selectedTimeRanges,
     watchlistOnly,

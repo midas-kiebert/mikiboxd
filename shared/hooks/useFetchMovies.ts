@@ -1,5 +1,6 @@
 import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { MoviesService, MoviesReadMoviesResponse } from "../client";
+import type { GoingStatus } from "../client";
 import { DateTime } from "luxon";
 
 export type MovieFilters = {
@@ -8,12 +9,14 @@ export type MovieFilters = {
     days?: string[];
     selectedCinemaIds?: number[];
     timeRanges?: string[];
+    selectedStatuses?: GoingStatus[];
 };
 
 type useFetchMoviesProps = {
     limit?: number;
     snapshotTime?: string;
     filters?: MovieFilters;
+    enabled?: boolean;
 };
 
 
@@ -21,11 +24,13 @@ export function useFetchMovies(
     {
         limit = 20,
         snapshotTime = DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"),
-        filters = {}
+        filters = {},
+        enabled = true,
     }: useFetchMoviesProps = {}
 ): UseInfiniteQueryResult<InfiniteData<MoviesReadMoviesResponse>, Error>{
     const result = useInfiniteQuery<MoviesReadMoviesResponse, Error, InfiniteData<MoviesReadMoviesResponse>, [string, MovieFilters], number>({
         queryKey: ["movies", filters],
+        enabled,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,

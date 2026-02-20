@@ -28,6 +28,7 @@ def get_visible_presets(
         )
         .order_by(
             col(FilterPreset.is_default).desc(),
+            col(FilterPreset.is_favorite).desc(),
             func.lower(col(FilterPreset.name)),
             col(FilterPreset.created_at),
         )
@@ -46,6 +47,20 @@ def get_user_preset_by_name(
         col(FilterPreset.owner_user_id) == user_id,
         col(FilterPreset.scope) == scope,
         col(FilterPreset.name) == name,
+    )
+    return session.exec(stmt).one_or_none()
+
+
+def get_user_favorite_preset(
+    *,
+    session: Session,
+    user_id: UUID,
+    scope: FilterPresetScope,
+) -> FilterPreset | None:
+    stmt = select(FilterPreset).where(
+        col(FilterPreset.owner_user_id) == user_id,
+        col(FilterPreset.scope) == scope,
+        col(FilterPreset.is_favorite).is_(True),
     )
     return session.exec(stmt).one_or_none()
 
@@ -70,6 +85,7 @@ def create_preset(
     name: str,
     scope: FilterPresetScope,
     filters: dict,
+    is_favorite: bool,
     now: datetime,
 ) -> FilterPreset:
     preset = FilterPreset(
@@ -77,6 +93,7 @@ def create_preset(
         name=name,
         scope=scope,
         is_default=False,
+        is_favorite=is_favorite,
         filters=filters,
         created_at=now,
         updated_at=now,
@@ -91,9 +108,44 @@ def update_preset(
     session: Session,
     preset: FilterPreset,
     filters: dict,
+    is_favorite: bool | None,
     now: datetime,
 ) -> FilterPreset:
     preset.filters = filters
+    if is_favorite is not None:
+        preset.is_favorite = is_favorite
+    preset.updated_at = now
+    session.add(preset)
+    session.flush()
+    return preset
+
+
+def clear_user_favorite_preset(
+    *,
+    session: Session,
+    user_id: UUID,
+    scope: FilterPresetScope,
+) -> None:
+    stmt = select(FilterPreset).where(
+        col(FilterPreset.owner_user_id) == user_id,
+        col(FilterPreset.scope) == scope,
+        col(FilterPreset.is_favorite).is_(True),
+    )
+    presets = list(session.exec(stmt).all())
+    for preset in presets:
+        preset.is_favorite = False
+        session.add(preset)
+    session.flush()
+
+
+def set_preset_favorite(
+    *,
+    session: Session,
+    preset: FilterPreset,
+    is_favorite: bool,
+    now: datetime,
+) -> FilterPreset:
+    preset.is_favorite = is_favorite
     preset.updated_at = now
     session.add(preset)
     session.flush()

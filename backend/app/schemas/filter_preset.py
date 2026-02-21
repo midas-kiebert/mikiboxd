@@ -31,6 +31,7 @@ DAY_SELECTION_VALIDATION_ERROR = (
 
 class FilterPresetFilters(SQLModel):
     selected_showtime_filter: Literal["all", "interested", "going"] | None = None
+    showtime_audience: Literal["including-friends", "only-you"] = "including-friends"
     watchlist_only: bool = False
     days: list[str] | None = None
     time_ranges: list[str] | None = None

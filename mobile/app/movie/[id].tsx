@@ -197,7 +197,6 @@ export default function MoviePage() {
 
       // Optimistic update for immediate UI feedback.
       updateShowtimeInCaches(showtimeId, going);
-      setSelectedShowtime(null);
 
       return {
         previousMovieShowtimeQueries,
@@ -229,6 +228,7 @@ export default function MoviePage() {
   // Submit the selected going/interested/not-going status.
   const handleShowtimeStatusUpdate = (going: GoingStatus) => {
     if (!selectedShowtime || isUpdatingShowtimeSelection) return;
+    setSelectedShowtime((previous) => (previous ? { ...previous, going } : previous));
     updateShowtimeSelection({ showtimeId: selectedShowtime.id, going });
   };
 

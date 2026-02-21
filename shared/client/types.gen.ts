@@ -515,6 +515,13 @@ export type ShowtimesUpdateShowtimeSelectionData = {
 
 export type ShowtimesUpdateShowtimeSelectionResponse = ShowtimeLoggedIn
 
+export type ShowtimesPingFriendForShowtimeData = {
+  friendId: string
+  showtimeId: number
+}
+
+export type ShowtimesPingFriendForShowtimeResponse = Message
+
 export type ShowtimesGetMainPageShowtimesData = {
   days?: Array<string> | null
   limit?: number

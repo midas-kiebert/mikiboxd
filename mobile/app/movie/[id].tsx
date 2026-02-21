@@ -4,12 +4,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Easing,
   FlatList,
   Image,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -23,6 +25,7 @@ import { BlurView } from "expo-blur";
 import type { GoingStatus, MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
 import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
+import { useFetchFriends } from "shared/hooks/useFetchFriends";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
@@ -37,6 +40,8 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selection";
+
+type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
 
 const SHOWTIMES_PAGE_SIZE = 20;
 // Filter pill definitions rendered in the top filter row.
@@ -64,6 +69,8 @@ export default function MoviePage() {
   const [selectedFilter, setSelectedFilter] = useState<ShowtimeFilter>("all");
   // Stores the showtime currently selected for status/ticket actions.
   const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeInMovieLoggedIn | null>(null);
+  const [pingListOpen, setPingListOpen] = useState(false);
+  const [pingedFriendIds, setPingedFriendIds] = useState<string[]>([]);
   const modalProgress = useRef(new Animated.Value(0)).current;
   // Controls visibility of the cinema-filter modal.
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
@@ -91,11 +98,16 @@ export default function MoviePage() {
   );
   const { selections: sessionCinemaIds } = useSessionCinemaSelections();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  const { data: friends } = useFetchFriends({ enabled: !!selectedShowtime });
   useEffect(() => {
     if (!selectedShowtime) {
       modalProgress.setValue(0);
+      setPingListOpen(false);
+      setPingedFriendIds([]);
       return;
     }
+    setPingListOpen(false);
+    setPingedFriendIds([]);
     modalProgress.setValue(0);
     Animated.timing(modalProgress, {
       toValue: 1,
@@ -246,23 +258,117 @@ export default function MoviePage() {
     },
   });
 
+  const { mutate: pingFriendForShowtime, isPending: isPingingFriend } = useMutation({
+    mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
+      ShowtimesService.pingFriendForShowtime({
+        showtimeId,
+        friendId,
+      }),
+    onSuccess: (_message, variables) => {
+      setPingedFriendIds((previous) =>
+        previous.includes(variables.friendId) ? previous : [...previous, variables.friendId]
+      );
+    },
+    onError: (error) => {
+      console.error("Error pinging friend for showtime:", error);
+      Alert.alert("Error", "Could not send ping.");
+    },
+  });
+
   // Submit the selected going/interested/not-going status.
   const handleShowtimeStatusUpdate = (going: GoingStatus) => {
     if (!selectedShowtime || isUpdatingShowtimeSelection) return;
     updateShowtimeSelection({ showtimeId: selectedShowtime.id, going });
   };
+  const handlePingFriend = (friendId: string) => {
+    if (!selectedShowtime || isPingingFriend) return;
+    pingFriendForShowtime({
+      showtimeId: selectedShowtime.id,
+      friendId,
+    });
+  };
   // Open the selected showtime ticket URL in the system browser.
   const handleOpenTicketLink = async () => {
     const ticketLink = selectedShowtime?.ticket_link;
     if (!ticketLink) return;
-    const canOpen = await Linking.canOpenURL(ticketLink);
-    if (canOpen) {
+    try {
       await Linking.openURL(ticketLink);
+    } catch {
+      // Ignore open failures to keep the movie page interaction non-blocking.
+    }
+  };
+  const letterboxdSlug = movie?.letterboxd_slug?.trim() ?? "";
+  const letterboxdSearchQuery = movie?.title
+    ? `${movie.title}${movie.release_year ? ` ${movie.release_year}` : ""}`
+    : "";
+  const letterboxdSearchUrl = letterboxdSearchQuery
+    ? `https://letterboxd.com/search/${encodeURIComponent(letterboxdSearchQuery)}/`
+    : null;
+  const letterboxdUrl = letterboxdSlug
+    ? `https://letterboxd.com/film/${letterboxdSlug}`
+    : letterboxdSearchUrl;
+  // Open the movie's Letterboxd page from the poster on the movie detail header.
+  const handleOpenLetterboxd = async () => {
+    if (!letterboxdUrl) return;
+    try {
+      await Linking.openURL(letterboxdUrl);
+    } catch {
+      // Ignore open failures to keep the movie page interaction non-blocking.
     }
   };
   const isGoingSelected = selectedShowtime?.going === "GOING";
   const isInterestedSelected = selectedShowtime?.going === "INTERESTED";
   const isNotGoingSelected = selectedShowtime?.going === "NOT_GOING";
+  const friendsGoingIds = useMemo(() => {
+    if (!selectedShowtime) {
+      return new Set<string>();
+    }
+    return new Set<string>(selectedShowtime.friends_going.map((friend) => friend.id));
+  }, [selectedShowtime]);
+  const friendsInterestedIds = useMemo(() => {
+    if (!selectedShowtime) {
+      return new Set<string>();
+    }
+    return new Set<string>(
+      selectedShowtime.friends_interested.map((friend) => friend.id)
+    );
+  }, [selectedShowtime]);
+  const friendsForPing = useMemo(() => {
+    const availabilityRank: Record<FriendPingAvailability, number> = {
+      eligible: 0,
+      pinged: 1,
+      interested: 2,
+      going: 3,
+    };
+    return (friends ?? [])
+      .map((friend) => {
+        const isGoing = friendsGoingIds.has(friend.id);
+        const isInterested = friendsInterestedIds.has(friend.id);
+        const alreadyPinged = pingedFriendIds.includes(friend.id);
+        const availability: FriendPingAvailability = isGoing
+          ? "going"
+          : isInterested
+            ? "interested"
+            : alreadyPinged
+              ? "pinged"
+              : "eligible";
+        const label = friend.display_name?.trim() || "Friend";
+        return {
+          id: friend.id,
+          label,
+          initial: label.charAt(0).toUpperCase(),
+          availability,
+        };
+      })
+      .sort((left, right) => {
+        const rankDifference =
+          availabilityRank[left.availability] - availabilityRank[right.availability];
+        if (rankDifference !== 0) {
+          return rankDifference;
+        }
+        return left.label.localeCompare(right.label);
+      });
+  }, [friends, friendsGoingIds, friendsInterestedIds, pingedFriendIds]);
   const statusModalBackdropAnimatedStyle = {
     opacity: modalProgress.interpolate({
       inputRange: [0, 1],
@@ -377,7 +483,13 @@ export default function MoviePage() {
   // Render/output using the state and derived values prepared above.
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen
+        options={{
+          headerShown: false,
+          animation: "none",
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      />
       <View style={styles.compactHeader}>
         <TouchableOpacity
           accessibilityRole="button"
@@ -499,6 +611,82 @@ export default function MoviePage() {
               </TouchableOpacity>
             </View>
             <TouchableOpacity
+              style={styles.pingToggleButton}
+              disabled={isPingingFriend}
+              onPress={() => setPingListOpen((previous) => !previous)}
+              activeOpacity={0.8}
+            >
+              <ThemedText style={styles.pingToggleText}>
+                {pingListOpen ? "Hide friends" : "Ping friends"}
+              </ThemedText>
+            </TouchableOpacity>
+            {pingListOpen ? (
+              <View style={styles.pingList}>
+                <View style={styles.pingListHeader}>
+                  <ThemedText style={styles.pingListTitle}>
+                    Friends ({friendsForPing.length})
+                  </ThemedText>
+                </View>
+                {friendsForPing.length === 0 ? (
+                  <ThemedText style={styles.pingListEmpty}>
+                    No friends yet.
+                  </ThemedText>
+                ) : (
+                  <ScrollView
+                    style={styles.pingListScroll}
+                    contentContainerStyle={styles.pingListContent}
+                    showsVerticalScrollIndicator
+                    nestedScrollEnabled
+                  >
+                    {friendsForPing.map((friend) => {
+                      const canPing = friend.availability === "eligible" && !isPingingFriend;
+                      const statusLabel =
+                        friend.availability === "going"
+                          ? "Going"
+                          : friend.availability === "interested"
+                            ? "Interested"
+                            : friend.availability === "pinged"
+                              ? "Pinged"
+                              : "Ready";
+                      return (
+                        <View key={friend.id} style={styles.pingRow}>
+                          <View style={styles.pingFriendIdentity}>
+                            <View style={styles.pingFriendAvatar}>
+                              <ThemedText style={styles.pingFriendAvatarText}>
+                                {friend.initial || "F"}
+                              </ThemedText>
+                            </View>
+                            <View style={styles.pingFriendMeta}>
+                              <ThemedText style={styles.pingFriendName}>{friend.label}</ThemedText>
+                              <ThemedText style={styles.pingFriendStatus}>{statusLabel}</ThemedText>
+                            </View>
+                          </View>
+                          <TouchableOpacity
+                            style={[
+                              styles.pingButton,
+                              !canPing && styles.pingButtonDisabled,
+                            ]}
+                            disabled={!canPing}
+                            onPress={() => handlePingFriend(friend.id)}
+                            activeOpacity={0.8}
+                          >
+                            <ThemedText
+                              style={[
+                                styles.pingButtonText,
+                                !canPing && styles.pingButtonTextDisabled,
+                              ]}
+                            >
+                              {friend.availability === "eligible" ? "Ping" : statusLabel}
+                            </ThemedText>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+              </View>
+            ) : null}
+            <TouchableOpacity
               style={styles.statusCancelButton}
               disabled={isUpdatingShowtimeSelection}
               onPress={() => setSelectedShowtime(null)}
@@ -557,7 +745,13 @@ export default function MoviePage() {
             ListHeaderComponent={
               <View style={styles.headerSection}>
                 <View style={styles.header}>
-                  <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
+                  <TouchableOpacity
+                    onPress={handleOpenLetterboxd}
+                    activeOpacity={0.85}
+                    disabled={!letterboxdUrl}
+                  >
+                    <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
+                  </TouchableOpacity>
                   <View style={styles.headerInfo}>
                     <ThemedText style={styles.title}>{movie.title}</ThemedText>
                     {movie.original_title ? (
@@ -835,6 +1029,114 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     statusCancelText: {
       fontSize: 13,
       fontWeight: "600",
+      color: colors.textSecondary,
+    },
+    pingToggleButton: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.tint,
+      backgroundColor: colors.cardBackground,
+      alignItems: "center",
+      paddingVertical: 9,
+      paddingHorizontal: 12,
+    },
+    pingToggleText: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.tint,
+    },
+    pingList: {
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      borderRadius: 10,
+      padding: 10,
+      gap: 8,
+      backgroundColor: colors.pillBackground,
+    },
+    pingListHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    pingListTitle: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
+    pingListScroll: {
+      maxHeight: 240,
+    },
+    pingListContent: {
+      gap: 8,
+    },
+    pingListEmpty: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    pingRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingHorizontal: 8,
+      paddingVertical: 7,
+    },
+    pingFriendIdentity: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    pingFriendAvatar: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.pillBackground,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    pingFriendAvatarText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    pingFriendMeta: {
+      flex: 1,
+      gap: 2,
+    },
+    pingFriendName: {
+      flex: 1,
+      fontSize: 13,
+      color: colors.text,
+    },
+    pingFriendStatus: {
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
+    pingButton: {
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.tint,
+      paddingVertical: 5,
+      paddingHorizontal: 11,
+      backgroundColor: colors.cardBackground,
+    },
+    pingButtonDisabled: {
+      borderColor: colors.divider,
+      backgroundColor: colors.pillBackground,
+    },
+    pingButtonText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.tint,
+    },
+    pingButtonTextDisabled: {
       color: colors.textSecondary,
     },
   });

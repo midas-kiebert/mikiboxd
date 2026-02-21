@@ -2,6 +2,7 @@ import json
 import os
 import random
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -23,6 +24,13 @@ HEADERS = {
     "referer": "https://letterboxd.com",
     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "accept-language": "en-US,en;q=0.9",
+    "cache-control": "no-cache",
+    "pragma": "no-cache",
+    "upgrade-insecure-requests": "1",
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-site": "same-origin",
+    "sec-fetch-user": "?1",
     "user-agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -95,6 +103,22 @@ LETTERBOXD_BLOCK_STATE_FILE = os.getenv(
     "LETTERBOXD_BLOCK_STATE_FILE",
     "/tmp/cinema_agenda_letterboxd_block_state.json",
 )
+LETTERBOXD_COOKIE_JAR_FILE = os.getenv(
+    "LETTERBOXD_COOKIE_JAR_FILE",
+    "/tmp/cinema_agenda_letterboxd_cookies.txt",
+)
+LETTERBOXD_SESSION_REFRESH_URL = os.getenv(
+    "LETTERBOXD_SESSION_REFRESH_URL",
+    "https://letterboxd.com/",
+)
+LETTERBOXD_HTTP_403_RETRY_ATTEMPTS = _env_non_negative_int(
+    "LETTERBOXD_HTTP_403_RETRY_ATTEMPTS",
+    1,
+)
+LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD = _env_int(
+    "LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD",
+    2,
+)
 LETTERBOXD_HTTP_MAX_CALLS_PER_RUN = _env_non_negative_int(
     "LETTERBOXD_HTTP_MAX_CALLS_PER_RUN",
     0,
@@ -118,6 +142,8 @@ LETTERBOXD_STALE_REFRESH_MAX_PROBABILITY = _env_probability(
 _letterboxd_http_sync_semaphore = BoundedSemaphore(LETTERBOXD_HTTP_CONCURRENCY)
 _letterboxd_rate_limit_lock = Lock()
 _letterboxd_next_request_at: float = 0.0
+_letterboxd_403_streak_lock = Lock()
+_letterboxd_consecutive_403_count: int = 0
 _letterboxd_challenge_block_lock = Lock()
 _letterboxd_challenge_block_until: float = 0.0
 _letterboxd_challenge_logged_until: float = 0.0
@@ -136,6 +162,7 @@ class CurlResponse:
     url: str
     text: str
     status_code: int
+    headers: dict[str, str]
 
     def json(self) -> Any:
         return json.loads(self.text)
@@ -251,6 +278,7 @@ def _record_letterboxd_failure_event(
     reason: str | None = None,
     block_remaining_seconds: float | None = None,
     request_counters: dict[str, int] | None = None,
+    response_meta: dict[str, Any] | None = None,
 ) -> None:
     event: dict[str, Any] = {
         "timestamp": f"{datetime.utcnow().isoformat()}Z",
@@ -268,6 +296,8 @@ def _record_letterboxd_failure_event(
         event["block_remaining_seconds"] = round(max(0.0, block_remaining_seconds), 2)
     if request_counters is not None:
         event["request_counters"] = request_counters
+    if response_meta is not None:
+        event["response_meta"] = response_meta
 
     with _letterboxd_failure_audit_lock:
         _letterboxd_failure_audit_events.append(event)
@@ -290,6 +320,20 @@ def reset_letterboxd_request_budget() -> None:
         _letterboxd_http_budget_exhausted_logged = False
         _letterboxd_real_request_attempt_calls = 0
         _letterboxd_real_request_success_calls = 0
+    _reset_consecutive_403_counter()
+
+
+def _reset_consecutive_403_counter() -> None:
+    global _letterboxd_consecutive_403_count
+    with _letterboxd_403_streak_lock:
+        _letterboxd_consecutive_403_count = 0
+
+
+def _increment_consecutive_403_counter() -> int:
+    global _letterboxd_consecutive_403_count
+    with _letterboxd_403_streak_lock:
+        _letterboxd_consecutive_403_count += 1
+        return _letterboxd_consecutive_403_count
 
 
 def _consume_request_budget(url: str) -> bool:
@@ -422,6 +466,7 @@ def _set_challenge_block(
     reason: str,
     url: str | None = None,
     status_code: int | None = None,
+    response_meta: dict[str, Any] | None = None,
 ) -> None:
     global _letterboxd_challenge_block_until
     global _letterboxd_challenge_logged_until
@@ -461,6 +506,11 @@ def _set_challenge_block(
                 "Letterboxd returned Cloudflare challenge; suppressing Letterboxd HTTP "
                 f"calls for {LETTERBOXD_CF_BLOCK_SECONDS:.0f}s."
             )
+        elif reason in {"http_403_block", "http_403_streak_block"}:
+            logger.warning(
+                "Letterboxd returned repeated HTTP 403 responses; suppressing "
+                f"Letterboxd HTTP calls for {LETTERBOXD_CF_BLOCK_SECONDS:.0f}s."
+            )
         else:
             logger.warning(
                 "Letterboxd temporarily rate-limited; suppressing Letterboxd HTTP "
@@ -487,6 +537,7 @@ def _set_challenge_block(
         reason=reason,
         block_remaining_seconds=block_remaining_seconds,
         request_counters=request_counters,
+        response_meta=response_meta,
     )
 
 
@@ -495,14 +546,182 @@ _load_persisted_challenge_block_state()
 
 def _is_cloudflare_challenge_text(text: str) -> bool:
     lowered = text.lower()
-    return "cf-challenge" in lowered or (
-        "cloudflare" in lowered
-        and (
-            "attention required" in lowered
-            or "just a moment" in lowered
-            or "verify you are human" in lowered
-            or "please enable javascript" in lowered
+    return (
+        "cf-challenge" in lowered
+        or "error code 1020" in lowered
+        or "sorry, you have been blocked" in lowered
+        or "verify you are human" in lowered
+        or (
+            "cloudflare" in lowered
+            and (
+                "attention required" in lowered
+                or "just a moment" in lowered
+                or "please enable javascript" in lowered
+                or "access denied" in lowered
+            )
         )
+    )
+
+
+def _is_access_denied_text(text: str) -> bool:
+    lowered = text.lower()
+    return (
+        "access denied" in lowered
+        or "forbidden" in lowered
+        or "error code 1020" in lowered
+    )
+
+
+def _response_meta(response: CurlResponse) -> dict[str, Any]:
+    server = response.headers.get("server")
+    cf_ray = response.headers.get("cf-ray")
+    return {
+        "effective_url": response.url,
+        "server": server,
+        "cf_ray": cf_ray,
+        "cf_cache_status": response.headers.get("cf-cache-status"),
+        "x_cache": response.headers.get("x-cache"),
+        "x_cache_hits": response.headers.get("x-cache-hits"),
+        "location": response.headers.get("location"),
+        "content_type": response.headers.get("content-type"),
+        "content_language": response.headers.get("content-language"),
+        "challenge_marker_detected": _is_cloudflare_challenge_text(response.text),
+        "access_denied_marker_detected": _is_access_denied_text(response.text),
+        "cloudflare_header_detected": (
+            bool(cf_ray) or (server is not None and "cloudflare" in server.lower())
+        ),
+    }
+
+
+def _is_probable_automated_block(response: CurlResponse) -> bool:
+    if response.status_code != 403:
+        return False
+    if _is_cloudflare_challenge_text(response.text):
+        return True
+    metadata = _response_meta(response)
+    if metadata["access_denied_marker_detected"]:
+        return True
+    return bool(metadata["cloudflare_header_detected"])
+
+
+def _parse_curl_headers(raw: str) -> dict[str, str]:
+    blocks: list[list[str]] = []
+    current_block: list[str] = []
+    for raw_line in raw.splitlines():
+        line = raw_line.strip("\r")
+        if line.startswith("HTTP/"):
+            if current_block:
+                blocks.append(current_block)
+            current_block = [line]
+            continue
+        if not line:
+            if current_block:
+                blocks.append(current_block)
+                current_block = []
+            continue
+        if current_block:
+            current_block.append(line)
+    if current_block:
+        blocks.append(current_block)
+
+    if not blocks:
+        return {}
+
+    headers: dict[str, str] = {}
+    for line in blocks[-1][1:]:
+        if ":" not in line:
+            continue
+        key_raw, value_raw = line.split(":", 1)
+        key = key_raw.strip().lower()
+        value = value_raw.strip()
+        if not key:
+            continue
+        if key in headers:
+            headers[key] = f"{headers[key]}, {value}"
+        else:
+            headers[key] = value
+    return headers
+
+
+def _sleep_for_rate_limit_if_needed() -> None:
+    if LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS <= 0:
+        return
+    global _letterboxd_next_request_at
+    with _letterboxd_rate_limit_lock:
+        now = time.monotonic()
+        wait_for = max(0.0, _letterboxd_next_request_at - now)
+        scheduled_at = now + wait_for
+        _letterboxd_next_request_at = (
+            scheduled_at + LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS
+        )
+    if wait_for > 0:
+        time.sleep(wait_for)
+
+
+def _perform_rate_limited_sync_request(*, url: str, transport: str) -> CurlResponse:
+    with _letterboxd_http_sync_semaphore:
+        _sleep_for_rate_limit_if_needed()
+        _record_real_outbound_request_attempt(url=url, transport=transport)
+        return _fetch_with_curl(url)
+
+
+def _attempt_session_refresh_after_403(*, blocked_url: str, attempt: int) -> None:
+    refresh_url = LETTERBOXD_SESSION_REFRESH_URL
+    if not _consume_request_budget(refresh_url):
+        logger.warning(
+            "Letterboxd 403 recovery skipped session refresh because request budget is exhausted "
+            "(blocked_url=%s attempt=%s).",
+            blocked_url,
+            attempt,
+        )
+        return
+
+    try:
+        refresh_response = _perform_rate_limited_sync_request(
+            url=refresh_url,
+            transport="sync_refresh",
+        )
+    except RuntimeError as e:
+        logger.warning(
+            "Letterboxd 403 recovery session refresh failed "
+            "(blocked_url=%s attempt=%s). Error: %s",
+            blocked_url,
+            attempt,
+            e,
+        )
+        _record_letterboxd_failure_event(
+            event_type="session_refresh_error",
+            url=refresh_url,
+            reason=f"{type(e).__name__}: {e}",
+        )
+        return
+
+    refresh_meta = _response_meta(refresh_response)
+    if refresh_response.status_code == 200:
+        _record_real_outbound_request_success(url=refresh_url, transport="sync_refresh")
+        logger.debug(
+            "Letterboxd session refresh succeeded after 403 "
+            "(blocked_url=%s attempt=%s cf_ray=%s).",
+            blocked_url,
+            attempt,
+            refresh_meta.get("cf_ray"),
+        )
+        return
+
+    logger.warning(
+        "Letterboxd session refresh returned non-200 status after 403 "
+        "(blocked_url=%s attempt=%s status=%s cf_ray=%s).",
+        blocked_url,
+        attempt,
+        refresh_response.status_code,
+        refresh_meta.get("cf_ray"),
+    )
+    _record_letterboxd_failure_event(
+        event_type="session_refresh_http_error",
+        url=refresh_url,
+        status_code=refresh_response.status_code,
+        reason=f"http_{refresh_response.status_code}",
+        response_meta=refresh_meta,
     )
 
 
@@ -513,6 +732,18 @@ def _fetch_with_curl(url: str) -> CurlResponse:
         f"\n{status_marker}%{{http_code}}\n{effective_url_marker}%{{url_effective}}\n"
     )
 
+    cookie_jar_dir = os.path.dirname(LETTERBOXD_COOKIE_JAR_FILE)
+    if cookie_jar_dir:
+        os.makedirs(cookie_jar_dir, exist_ok=True)
+
+    header_file_path: str | None = None
+    with tempfile.NamedTemporaryFile(
+        mode="w+",
+        prefix="letterboxd_headers_",
+        delete=False,
+    ) as header_file:
+        header_file_path = header_file.name
+
     command = [
         "curl",
         "--silent",
@@ -522,17 +753,36 @@ def _fetch_with_curl(url: str) -> CurlResponse:
         "--compressed",
         "--max-time",
         f"{LETTERBOXD_REQUEST_TIMEOUT_SECONDS:.2f}",
+        "--cookie",
+        LETTERBOXD_COOKIE_JAR_FILE,
+        "--cookie-jar",
+        LETTERBOXD_COOKIE_JAR_FILE,
+        "--dump-header",
+        header_file_path,
         *[arg for name, value in HEADERS.items() for arg in ("-H", f"{name}: {value}")],
         "--write-out",
         write_out,
         url,
     ]
-    result = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        headers_text = ""
+        if header_file_path is not None:
+            try:
+                with open(header_file_path, encoding="utf-8") as fp:
+                    headers_text = fp.read()
+            except Exception:
+                headers_text = ""
+            try:
+                os.remove(header_file_path)
+            except OSError:
+                pass
     if result.returncode != 0:
         stderr = result.stderr.strip() or "curl failed"
         raise RuntimeError(stderr)
@@ -558,10 +808,12 @@ def _fetch_with_curl(url: str) -> CurlResponse:
     except ValueError as e:
         raise RuntimeError(f"invalid curl status code: {raw_status}") from e
 
+    headers = _parse_curl_headers(headers_text)
     return CurlResponse(
         url=effective_url,
         text=body,
         status_code=status_code,
+        headers=headers,
     )
 
 
@@ -596,23 +848,14 @@ def _fetch_page(url: str) -> SyncPageFetchResult:
             blocked=True,
         )
 
-    attempts = LETTERBOXD_HTTP_RETRIES + 1
+    attempts = max(
+        LETTERBOXD_HTTP_RETRIES + 1,
+        LETTERBOXD_HTTP_403_RETRY_ATTEMPTS + 1,
+    )
+    observed_403_attempts = 0
     for attempt in range(attempts):
         try:
-            with _letterboxd_http_sync_semaphore:
-                if LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS > 0:
-                    global _letterboxd_next_request_at
-                    with _letterboxd_rate_limit_lock:
-                        now = time.monotonic()
-                        wait_for = max(0.0, _letterboxd_next_request_at - now)
-                        scheduled_at = now + wait_for
-                        _letterboxd_next_request_at = (
-                            scheduled_at + LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS
-                        )
-                    if wait_for > 0:
-                        time.sleep(wait_for)
-                _record_real_outbound_request_attempt(url=url, transport="sync")
-                response = _fetch_with_curl(url)
+            response = _perform_rate_limited_sync_request(url=url, transport="sync")
         except RuntimeError as e:
             if attempt < attempts - 1:
                 delay = _retry_delay(attempt)
@@ -629,6 +872,9 @@ def _fetch_page(url: str) -> SyncPageFetchResult:
                 reason=f"{type(e).__name__}: {e}",
             )
             return SyncPageFetchResult(response=None, status_code=None)
+
+        if response.status_code != 403:
+            _reset_consecutive_403_counter()
 
         if response.status_code == 200:
             _record_real_outbound_request_success(url=url, transport="sync")
@@ -648,23 +894,95 @@ def _fetch_page(url: str) -> SyncPageFetchResult:
                 not_found=True,
             )
 
-        if response.status_code == 403 and _is_cloudflare_challenge_text(response.text):
-            _set_challenge_block(
-                reason="cloudflare_challenge",
+        if response.status_code == 403:
+            observed_403_attempts += 1
+            probable_block = _is_probable_automated_block(response)
+            consecutive_403_count = _increment_consecutive_403_counter()
+            response_meta = _response_meta(response)
+            response_meta["attempt"] = attempt + 1
+            response_meta["attempts_total"] = attempts
+            response_meta["observed_403_attempts"] = observed_403_attempts
+            response_meta["consecutive_403_count"] = consecutive_403_count
+            response_meta["probable_automated_block"] = probable_block
+
+            should_retry_403 = (
+                probable_block
+                and attempt < attempts - 1
+                and observed_403_attempts <= LETTERBOXD_HTTP_403_RETRY_ATTEMPTS
+            )
+
+            _record_letterboxd_failure_event(
+                event_type="http_403_observed",
                 url=url,
+                tmdb_id=_extract_tmdb_id_from_url(url),
                 status_code=403,
+                reason=(
+                    "http_403_probable_automated_block"
+                    if probable_block
+                    else "http_403_unclassified"
+                ),
+                response_meta=response_meta,
             )
-            return SyncPageFetchResult(
-                response=None,
+
+            if should_retry_403:
+                logger.warning(
+                    "Letterboxd returned HTTP 403; retrying with session refresh "
+                    "(attempt=%s/%s consecutive_403=%s probable_block=%s cf_ray=%s url=%s)",
+                    attempt + 1,
+                    attempts,
+                    consecutive_403_count,
+                    probable_block,
+                    response_meta.get("cf_ray"),
+                    url,
+                )
+                _attempt_session_refresh_after_403(
+                    blocked_url=url,
+                    attempt=attempt + 1,
+                )
+                delay = _retry_delay(attempt)
+                time.sleep(delay)
+                continue
+
+            if probable_block:
+                block_reason = "http_403_block"
+                if consecutive_403_count >= LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD:
+                    block_reason = "http_403_streak_block"
+                _set_challenge_block(
+                    reason=block_reason,
+                    url=url,
+                    status_code=403,
+                    response_meta=response_meta,
+                )
+                return SyncPageFetchResult(
+                    response=None,
+                    status_code=403,
+                    blocked=True,
+                )
+
+            logger.warning(
+                "Letterboxd returned unclassified HTTP 403 "
+                "(attempt=%s/%s cf_ray=%s url=%s)",
+                attempt + 1,
+                attempts,
+                response_meta.get("cf_ray"),
+                url,
+            )
+            _record_letterboxd_failure_event(
+                event_type="http_error",
+                url=url,
+                tmdb_id=_extract_tmdb_id_from_url(url),
                 status_code=403,
-                blocked=True,
+                reason="http_403",
+                response_meta=response_meta,
             )
+            return SyncPageFetchResult(response=None, status_code=403)
 
         if response.status_code == 429:
             _set_challenge_block(
                 reason="rate_limited",
                 url=url,
                 status_code=429,
+                response_meta=_response_meta(response),
             )
             return SyncPageFetchResult(
                 response=None,
@@ -692,6 +1010,7 @@ def _fetch_page(url: str) -> SyncPageFetchResult:
             tmdb_id=_extract_tmdb_id_from_url(url),
             status_code=response.status_code,
             reason=f"http_{response.status_code}",
+            response_meta=_response_meta(response),
         )
         return SyncPageFetchResult(response=None, status_code=response.status_code)
 

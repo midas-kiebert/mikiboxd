@@ -3,7 +3,7 @@
  */
 import { Tabs } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
-import { Alert, AppState, Linking, StyleSheet, Text, View } from 'react-native';
+import { AppState, StyleSheet, Text, View } from 'react-native';
 
 import { useQueryClient } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
@@ -22,6 +22,7 @@ import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications';
 const NOTIFICATION_PERMISSION_ONBOARDING_KEY = 'mobile.notifications.permission_prompted_v2';
 const WATCHLIST_LAST_SYNC_KEY = 'mobile.watchlist.last_sync_at';
 const WATCHLIST_SYNC_COOLDOWN_MS = 30 * 60 * 1000;
+const NOTIFICATION_PROMPT_DELAY_MS = 700;
 
 export default function TabLayout() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -90,32 +91,50 @@ export default function TabLayout() {
     };
   }, [queryClient, user]);
 
-  // Ask for notification permission immediately once per user and initialize preferences.
+  // Ask for notification permission immediately when the authenticated tabs mount.
+  useEffect(() => {
+    const maybePromptForNotificationPermission = async () => {
+      try {
+        const accessToken = await storage.getItem('access_token');
+        if (!accessToken) return;
+
+        const permissions = await Notifications.getPermissionsAsync();
+
+        let finalPermissionStatus = permissions.status;
+        if (permissions.status === 'undetermined') {
+          const requestedPermissions = await Notifications.requestPermissionsAsync();
+          finalPermissionStatus = requestedPermissions.status;
+        }
+
+        if (finalPermissionStatus !== 'granted') {
+          return;
+        }
+
+        await registerPushTokenForCurrentDevice();
+      } catch (error) {
+        console.error('Error running notification permission onboarding:', error);
+      }
+    };
+
+    // Delay slightly so the OS permission sheet is requested after initial tab mount/render.
+    const timeout = setTimeout(() => {
+      void maybePromptForNotificationPermission();
+    }, NOTIFICATION_PROMPT_DELAY_MS);
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  // Initialize default notification toggles once per user after profile data is loaded.
   useEffect(() => {
     if (!user) return;
 
-    const maybePromptForNotificationPermission = async () => {
+    const maybeInitializeNotificationPreferences = async () => {
       const storageKey = `${NOTIFICATION_PERMISSION_ONBOARDING_KEY}:${user.id}`;
       try {
-        const alreadyPrompted = await storage.getItem(storageKey);
-        if (alreadyPrompted === '1') return;
-
-        const token = await registerPushTokenForCurrentDevice();
-        const permissions = await Notifications.getPermissionsAsync();
-
-        if (!token) {
-          if (permissions.status === 'denied') {
-            Alert.alert(
-              'Notifications disabled',
-              'To receive notifications, allow them in your system settings.',
-              [
-                { text: 'Not now', style: 'cancel' },
-                { text: 'Open settings', onPress: () => Linking.openSettings() },
-              ]
-            );
-          }
-          return;
-        }
+        const alreadyInitialized = await storage.getItem(storageKey);
+        if (alreadyInitialized === '1') return;
 
         const hasAnyNotificationPreferenceEnabled =
           user.notify_on_friend_showtime_match ||
@@ -134,15 +153,14 @@ export default function TabLayout() {
           });
           queryClient.invalidateQueries({ queryKey: ['currentUser'] });
         }
-      } catch (error) {
-        console.error('Error running notification permission onboarding:', error);
-      } finally {
-        // Mark as prompted so this runs once per user.
+
         await storage.setItem(storageKey, '1');
+      } catch (error) {
+        console.error('Error initializing notification preferences:', error);
       }
     };
 
-    void maybePromptForNotificationPermission();
+    void maybeInitializeNotificationPreferences();
   }, [queryClient, user]);
 
   // Render/output using the state and derived values prepared above.

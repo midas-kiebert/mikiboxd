@@ -1,17 +1,11 @@
 /**
  * Expo Router screen/module for movie / [id]. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  Animated,
-  Easing,
   FlatList,
   Image,
-  Modal,
-  Pressable,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -21,27 +15,23 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
-import { BlurView } from "expo-blur";
 import type { GoingStatus, MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
 import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
-import { useFetchFriends } from "shared/hooks/useFetchFriends";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import { ThemedText } from "@/components/themed-text";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
+import ShowtimeActionModal from "@/components/showtimes/ShowtimeActionModal";
 import FilterPills from "@/components/filters/FilterPills";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
 import DayFilterModal from "@/components/filters/DayFilterModal";
 import TimeFilterModal from "@/components/filters/TimeFilterModal";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selection";
-
-type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
 
 const SHOWTIMES_PAGE_SIZE = 20;
 // Filter pill definitions rendered in the top filter row.
@@ -56,7 +46,6 @@ type ShowtimeFilter = "all" | "going" | "interested";
 
 export default function MoviePage() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
-  const colorScheme = useColorScheme();
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
@@ -69,8 +58,6 @@ export default function MoviePage() {
   const [selectedFilter, setSelectedFilter] = useState<ShowtimeFilter>("all");
   // Stores the showtime currently selected for status/ticket actions.
   const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeInMovieLoggedIn | null>(null);
-  const [pingListOpen, setPingListOpen] = useState(false);
-  const modalProgress = useRef(new Animated.Value(0)).current;
   // Controls visibility of the cinema-filter modal.
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   // Controls visibility of the day-filter modal.
@@ -97,36 +84,6 @@ export default function MoviePage() {
   );
   const { selections: sessionCinemaIds } = useSessionCinemaSelections();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
-  const { data: friends } = useFetchFriends({ enabled: !!selectedShowtime });
-  const selectedShowtimeId = selectedShowtime?.id ?? null;
-  const { data: pingedFriendIds = [], isFetching: isFetchingPingedFriends } = useQuery<
-    string[],
-    Error
-  >({
-    queryKey: ["showtimes", "pingedFriends", selectedShowtimeId],
-    enabled: selectedShowtimeId !== null,
-    queryFn: () =>
-      ShowtimesService.getPingedFriendIdsForShowtime({
-        showtimeId: selectedShowtimeId as number,
-      }),
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
-  });
-  useEffect(() => {
-    if (!selectedShowtime) {
-      modalProgress.setValue(0);
-      setPingListOpen(false);
-      return;
-    }
-    setPingListOpen(false);
-    modalProgress.setValue(0);
-    Animated.timing(modalProgress, {
-      toValue: 1,
-      duration: 220,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [modalProgress, selectedShowtime]);
 
   // UI filter state is translated into backend filter params here.
   const showtimesFilters = useMemo(() => {
@@ -269,56 +226,12 @@ export default function MoviePage() {
     },
   });
 
-  const { mutate: pingFriendForShowtime, isPending: isPingingFriend } = useMutation({
-    mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
-      ShowtimesService.pingFriendForShowtime({
-        showtimeId,
-        friendId,
-      }),
-    onSuccess: (_message, variables) => {
-      queryClient.setQueryData<string[]>(
-        ["showtimes", "pingedFriends", variables.showtimeId],
-        (previous) =>
-          previous?.includes(variables.friendId)
-            ? previous
-            : [...(previous ?? []), variables.friendId]
-      );
-    },
-    onError: (error) => {
-      console.error("Error pinging friend for showtime:", error);
-      const detail =
-        typeof error === "object" &&
-        error !== null &&
-        "body" in error &&
-        typeof (error as { body?: { detail?: unknown } }).body?.detail === "string"
-          ? (error as { body?: { detail?: string } }).body?.detail
-          : undefined;
-      Alert.alert("Error", detail ?? "Could not send ping.");
-    },
-  });
-
   // Submit the selected going/interested/not-going status.
   const handleShowtimeStatusUpdate = (going: GoingStatus) => {
     if (!selectedShowtime || isUpdatingShowtimeSelection) return;
     updateShowtimeSelection({ showtimeId: selectedShowtime.id, going });
   };
-  const handlePingFriend = (friendId: string) => {
-    if (!selectedShowtime || isPingingFriend) return;
-    pingFriendForShowtime({
-      showtimeId: selectedShowtime.id,
-      friendId,
-    });
-  };
-  // Open the selected showtime ticket URL in the system browser.
-  const handleOpenTicketLink = async () => {
-    const ticketLink = selectedShowtime?.ticket_link;
-    if (!ticketLink) return;
-    try {
-      await Linking.openURL(ticketLink);
-    } catch {
-      // Ignore open failures to keep the movie page interaction non-blocking.
-    }
-  };
+
   const letterboxdSlug = movie?.letterboxd_slug?.trim() ?? "";
   const letterboxdSearchQuery = movie?.title
     ? `${movie.title}${movie.release_year ? ` ${movie.release_year}` : ""}`
@@ -337,76 +250,6 @@ export default function MoviePage() {
     } catch {
       // Ignore open failures to keep the movie page interaction non-blocking.
     }
-  };
-  const isGoingSelected = selectedShowtime?.going === "GOING";
-  const isInterestedSelected = selectedShowtime?.going === "INTERESTED";
-  const isNotGoingSelected = selectedShowtime?.going === "NOT_GOING";
-  const friendsGoingIds = useMemo(() => {
-    if (!selectedShowtime) {
-      return new Set<string>();
-    }
-    return new Set<string>(selectedShowtime.friends_going.map((friend) => friend.id));
-  }, [selectedShowtime]);
-  const friendsInterestedIds = useMemo(() => {
-    if (!selectedShowtime) {
-      return new Set<string>();
-    }
-    return new Set<string>(
-      selectedShowtime.friends_interested.map((friend) => friend.id)
-    );
-  }, [selectedShowtime]);
-  const friendsForPing = useMemo(() => {
-    const availabilityRank: Record<FriendPingAvailability, number> = {
-      eligible: 0,
-      pinged: 1,
-      interested: 2,
-      going: 3,
-    };
-    return (friends ?? [])
-      .map((friend) => {
-        const isGoing = friendsGoingIds.has(friend.id);
-        const isInterested = friendsInterestedIds.has(friend.id);
-        const alreadyPinged = pingedFriendIds.includes(friend.id);
-        const availability: FriendPingAvailability = isGoing
-          ? "going"
-          : isInterested
-            ? "interested"
-            : alreadyPinged
-              ? "pinged"
-              : "eligible";
-        const label = friend.display_name?.trim() || "Friend";
-        return {
-          id: friend.id,
-          label,
-          initial: label.charAt(0).toUpperCase(),
-          availability,
-        };
-      })
-      .sort((left, right) => {
-        const rankDifference =
-          availabilityRank[left.availability] - availabilityRank[right.availability];
-        if (rankDifference !== 0) {
-          return rankDifference;
-        }
-        return left.label.localeCompare(right.label);
-      });
-  }, [friends, friendsGoingIds, friendsInterestedIds, pingedFriendIds]);
-  const statusModalBackdropAnimatedStyle = {
-    opacity: modalProgress.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0, 1],
-    }),
-  };
-  const statusModalCardAnimatedStyle = {
-    opacity: modalProgress,
-    transform: [
-      {
-        translateY: modalProgress.interpolate({
-          inputRange: [0, 1],
-          outputRange: [18, 0],
-        }),
-      },
-    ],
   };
 
   // Handle filter pill presses and update active filter state.
@@ -524,206 +367,14 @@ export default function MoviePage() {
           <IconSymbol size={20} name="chevron.left" color={colors.tint} />
         </TouchableOpacity>
       </View>
-      <Modal
-        transparent
-        visible={!!selectedShowtime}
-        animationType="none"
-        onRequestClose={() => {
-          if (!isUpdatingShowtimeSelection) {
-            setSelectedShowtime(null);
-          }
-        }}
-      >
-        <Animated.View style={[styles.statusModalBackdrop, statusModalBackdropAnimatedStyle]}>
-          <BlurView
-            style={styles.statusModalBlur}
-            intensity={4}
-            tint={colorScheme === "dark" ? "dark" : "light"}
-            experimentalBlurMethod="dimezisBlurView"
-          />
-          <View style={styles.statusModalTint} />
-          <Pressable
-            style={styles.statusModalDismissArea}
-            onPress={() => {
-              if (!isUpdatingShowtimeSelection) {
-                setSelectedShowtime(null);
-              }
-            }}
-          />
-          <Animated.View style={[styles.statusModalCard, statusModalCardAnimatedStyle]}>
-            <ThemedText style={styles.statusModalTitle}>Update your status</ThemedText>
-            {selectedShowtime ? (
-              <ThemedText style={styles.statusModalSubtitle}>
-                {DateTime.fromISO(selectedShowtime.datetime).toFormat("ccc, LLL d, HH:mm")} •{" "}
-                {selectedShowtime.cinema.name}
-              </ThemedText>
-            ) : null}
-            <TouchableOpacity
-              style={[
-                styles.ticketButton,
-                !selectedShowtime?.ticket_link && styles.ticketButtonDisabled,
-              ]}
-              disabled={!selectedShowtime?.ticket_link}
-              onPress={handleOpenTicketLink}
-              activeOpacity={0.8}
-            >
-              <ThemedText
-                style={[
-                  styles.ticketButtonText,
-                  !selectedShowtime?.ticket_link && styles.ticketButtonTextDisabled,
-                ]}
-              >
-                {selectedShowtime?.ticket_link ? "Open Ticket Link" : "No ticket link available"}
-              </ThemedText>
-            </TouchableOpacity>
-            <View style={styles.statusButtons}>
-              <TouchableOpacity
-                style={[
-                  styles.statusButton,
-                  styles.statusButtonGoing,
-                  isGoingSelected && styles.statusButtonActive,
-                ]}
-                disabled={isUpdatingShowtimeSelection}
-                onPress={() => handleShowtimeStatusUpdate("GOING")}
-                activeOpacity={0.8}
-              >
-                <ThemedText
-                  style={[styles.statusButtonText, isGoingSelected && styles.statusButtonTextActive]}
-                >
-                  I'm Going
-                </ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.statusButton,
-                  styles.statusButtonInterested,
-                  isInterestedSelected && styles.statusButtonActive,
-                ]}
-                disabled={isUpdatingShowtimeSelection}
-                onPress={() => handleShowtimeStatusUpdate("INTERESTED")}
-                activeOpacity={0.8}
-              >
-                <ThemedText
-                  style={[
-                    styles.statusButtonText,
-                    isInterestedSelected && styles.statusButtonTextActive,
-                  ]}
-                >
-                  I'm Interested
-                </ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.statusButton,
-                  styles.statusButtonNotGoing,
-                  isNotGoingSelected && styles.statusButtonActive,
-                ]}
-                disabled={isUpdatingShowtimeSelection}
-                onPress={() => handleShowtimeStatusUpdate("NOT_GOING")}
-                activeOpacity={0.8}
-              >
-                <ThemedText
-                  style={[
-                    styles.statusButtonText,
-                    isNotGoingSelected && styles.statusButtonTextActive,
-                  ]}
-                >
-                  I'm Not Going
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={styles.pingToggleButton}
-              disabled={isPingingFriend}
-              onPress={() => setPingListOpen((previous) => !previous)}
-              activeOpacity={0.8}
-            >
-              <ThemedText style={styles.pingToggleText}>
-                {pingListOpen ? "Hide friends" : "Ping friends"}
-              </ThemedText>
-            </TouchableOpacity>
-            {pingListOpen ? (
-              <View style={styles.pingList}>
-                <View style={styles.pingListHeader}>
-                  <ThemedText style={styles.pingListTitle}>
-                    Friends ({friendsForPing.length})
-                  </ThemedText>
-                </View>
-                {friendsForPing.length === 0 ? (
-                  <ThemedText style={styles.pingListEmpty}>
-                    No friends yet.
-                  </ThemedText>
-                ) : (
-                  <ScrollView
-                    style={styles.pingListScroll}
-                    contentContainerStyle={styles.pingListContent}
-                    showsVerticalScrollIndicator
-                    nestedScrollEnabled
-                  >
-                    {friendsForPing.map((friend) => {
-                      const canPing =
-                        friend.availability === "eligible" &&
-                        !isPingingFriend &&
-                        !isFetchingPingedFriends;
-                      const statusLabel =
-                        friend.availability === "going"
-                          ? "Going"
-                          : friend.availability === "interested"
-                            ? "Interested"
-                            : friend.availability === "pinged"
-                              ? "Pinged"
-                              : "Ready";
-                      return (
-                        <View key={friend.id} style={styles.pingRow}>
-                          <View style={styles.pingFriendIdentity}>
-                            <View style={styles.pingFriendAvatar}>
-                              <ThemedText style={styles.pingFriendAvatarText}>
-                                {friend.initial || "F"}
-                              </ThemedText>
-                            </View>
-                            <View style={styles.pingFriendMeta}>
-                              <ThemedText style={styles.pingFriendName}>{friend.label}</ThemedText>
-                              <ThemedText style={styles.pingFriendStatus}>{statusLabel}</ThemedText>
-                            </View>
-                          </View>
-                          <TouchableOpacity
-                            style={[
-                              styles.pingButton,
-                              !canPing && styles.pingButtonDisabled,
-                            ]}
-                            disabled={!canPing}
-                            onPress={() => handlePingFriend(friend.id)}
-                            activeOpacity={0.8}
-                          >
-                            <ThemedText
-                              style={[
-                                styles.pingButtonText,
-                                !canPing && styles.pingButtonTextDisabled,
-                              ]}
-                            >
-                              {friend.availability === "eligible" ? "Ping" : statusLabel}
-                            </ThemedText>
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    })}
-                  </ScrollView>
-                )}
-              </View>
-            ) : null}
-            <TouchableOpacity
-              style={styles.statusCancelButton}
-              disabled={isUpdatingShowtimeSelection}
-              onPress={() => setSelectedShowtime(null)}
-              activeOpacity={0.8}
-            >
-              <ThemedText style={styles.statusCancelText}>
-                {isUpdatingShowtimeSelection ? "Updating..." : "Cancel"}
-              </ThemedText>
-            </TouchableOpacity>
-          </Animated.View>
-        </Animated.View>
-      </Modal>
+      <ShowtimeActionModal
+        visible={selectedShowtime !== null}
+        showtime={selectedShowtime}
+        movieTitle={movie?.title ?? ""}
+        isUpdatingStatus={isUpdatingShowtimeSelection}
+        onUpdateStatus={handleShowtimeStatusUpdate}
+        onClose={() => setSelectedShowtime(null)}
+      />
       {isMovieLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.tint} />

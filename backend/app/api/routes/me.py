@@ -7,7 +7,7 @@ from app.api.deps import (
     SessionDep,
 )
 from app.converters import user as user_converters
-from app.core.enums import FilterPresetScope
+from app.core.enums import FilterPresetScope, ShowtimePingSort
 from app.core.security import get_password_hash, verify_password
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message, UpdatePassword
@@ -259,10 +259,12 @@ def get_my_showtime_pings(
     current_user: CurrentUser,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    sort_by: ShowtimePingSort = Query(ShowtimePingSort.PING_CREATED_AT),
 ) -> list[ShowtimePingPublic]:
     return me_service.get_received_showtime_pings(
         session=session,
         user_id=current_user.id,
+        sort_by=sort_by,
         limit=limit,
         offset=offset,
     )
@@ -289,6 +291,22 @@ def mark_my_showtime_pings_seen(
         user_id=current_user.id,
     )
     return Message(message="Showtime pings marked as seen")
+
+
+@router.delete("/pings/{ping_id}", response_model=Message)
+def delete_my_showtime_ping(
+    session: SessionDep,
+    current_user: CurrentUser,
+    ping_id: int,
+) -> Message:
+    deleted = me_service.delete_received_showtime_ping(
+        session=session,
+        user_id=current_user.id,
+        ping_id=ping_id,
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Showtime ping not found")
+    return Message(message="Showtime ping deleted successfully")
 
 
 @router.put("/watchlist", response_model=Message)

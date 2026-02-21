@@ -11,6 +11,7 @@ from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.exceptions.base import AppError
 from app.exceptions.showtime_exceptions import (
@@ -24,6 +25,7 @@ from app.inputs.movie import Filters
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.schemas.showtime import ShowtimeLoggedIn
+from app.schemas.showtime_visibility import ShowtimeVisibilityPublic
 from app.services import push_notifications
 from app.utils import now_amsterdam_naive
 
@@ -201,6 +203,87 @@ def get_pinged_friend_ids_for_showtime(
         session=session,
         showtime_id=showtime_id,
         sender_id=actor_id,
+    )
+
+
+def get_showtime_visibility(
+    *,
+    session: Session,
+    showtime_id: int,
+    actor_id: UUID,
+) -> ShowtimeVisibilityPublic:
+    showtime = showtimes_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
+    if showtime is None:
+        raise ShowtimeNotFoundError(showtime_id)
+
+    friends = user_crud.get_friends(session=session, user_id=actor_id)
+    all_friend_ids = sorted((friend.id for friend in friends), key=str)
+    explicit_visible_friend_ids = (
+        showtime_visibility_crud.get_visible_friend_ids_for_movie(
+            session=session,
+            owner_id=actor_id,
+            movie_id=showtime.movie_id,
+        )
+    )
+
+    if explicit_visible_friend_ids is None:
+        visible_friend_ids = all_friend_ids
+        all_friends_selected = True
+    else:
+        visible_friend_ids = [
+            friend_id
+            for friend_id in all_friend_ids
+            if friend_id in explicit_visible_friend_ids
+        ]
+        all_friends_selected = len(visible_friend_ids) == len(all_friend_ids)
+
+    return ShowtimeVisibilityPublic(
+        showtime_id=showtime_id,
+        movie_id=showtime.movie_id,
+        visible_friend_ids=visible_friend_ids,
+        all_friends_selected=all_friends_selected,
+    )
+
+
+def update_showtime_visibility(
+    *,
+    session: Session,
+    showtime_id: int,
+    actor_id: UUID,
+    visible_friend_ids: list[UUID],
+) -> ShowtimeVisibilityPublic:
+    showtime = showtimes_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
+    if showtime is None:
+        raise ShowtimeNotFoundError(showtime_id)
+
+    friends = user_crud.get_friends(session=session, user_id=actor_id)
+    all_friend_ids = {friend.id for friend in friends}
+    normalized_visible_friend_ids = sorted(set(visible_friend_ids), key=str)
+    invalid_friend_ids = [
+        friend_id
+        for friend_id in normalized_visible_friend_ids
+        if friend_id not in all_friend_ids
+    ]
+    if invalid_friend_ids:
+        raise ValueError("Visibility list contains users who are not your friends.")
+
+    showtime_visibility_crud.set_visible_friend_ids_for_movie(
+        session=session,
+        owner_id=actor_id,
+        movie_id=showtime.movie_id,
+        visible_friend_ids=normalized_visible_friend_ids,
+        all_friend_ids=all_friend_ids,
+        now=now_amsterdam_naive(),
+    )
+    session.commit()
+    return get_showtime_visibility(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=actor_id,
     )
 
 

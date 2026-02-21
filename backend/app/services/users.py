@@ -111,6 +111,7 @@ def get_selected_showtimes(
     showtimes = users_crud.get_selected_showtimes(
         session=session,
         user_id=user_id,
+        viewer_id=current_user_id,
         limit=limit,
         offset=offset,
         filters=filters,

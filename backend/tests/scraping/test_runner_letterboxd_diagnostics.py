@@ -1,8 +1,10 @@
+from typing import Any
+
 from app.scraping import runner
 
 
 def test_letterboxd_403_diagnostics_counts_events() -> None:
-    failures = [
+    failures: list[dict[str, Any]] = [
         {
             "event_type": "http_403_observed",
             "tmdb_id": 1,

@@ -15,12 +15,19 @@ type FilterOption<TId extends string = string> = {
   activeBorderColor?: string;
 };
 
+type CompoundRightToggle = {
+  anchorId: string;
+  label: string;
+  onPress: () => void;
+};
+
 type FilterPillsProps<TId extends string = string> = {
   filters: ReadonlyArray<FilterOption<TId>>;
   // For "single select" mode you pass a real id; for "multi active" mode most screens pass "".
   selectedId: TId | "";
   onSelect: (id: TId) => void;
   activeIds?: ReadonlyArray<TId>;
+  compoundRightToggle?: CompoundRightToggle;
 };
 
 export default function FilterPills<TId extends string = string>({
@@ -28,6 +35,7 @@ export default function FilterPills<TId extends string = string>({
   selectedId,
   onSelect,
   activeIds,
+  compoundRightToggle,
 }: FilterPillsProps<TId>) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
@@ -50,6 +58,51 @@ export default function FilterPills<TId extends string = string>({
           const isActive = selectedId === item.id || activeIds?.includes(item.id);
           const showBadge = typeof item.badgeCount === "number" && item.badgeCount > 0;
           const badgeText = item.badgeCount && item.badgeCount > 99 ? "99+" : String(item.badgeCount ?? 0);
+
+          if (compoundRightToggle && item.id === compoundRightToggle.anchorId) {
+            return (
+              <View style={styles.compoundPill}>
+                <TouchableOpacity
+                  style={[
+                    styles.compoundLeft,
+                    isActive && styles.pillActive,
+                    isActive && item.activeBackgroundColor
+                      ? { backgroundColor: item.activeBackgroundColor }
+                      : null,
+                    isActive && item.activeBorderColor
+                      ? { borderWidth: 1, borderColor: item.activeBorderColor }
+                      : null,
+                  ]}
+                  onPress={() => onSelect(item.id)}
+                >
+                  <View style={styles.pillContent}>
+                    <ThemedText
+                      numberOfLines={1}
+                      style={[
+                        styles.pillText,
+                        isActive && styles.pillTextActive,
+                        isActive && item.activeTextColor ? { color: item.activeTextColor } : null,
+                      ]}
+                    >
+                      {item.label}
+                    </ThemedText>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.compoundRight}
+                  onPress={compoundRightToggle.onPress}
+                >
+                  <ThemedText
+                    numberOfLines={1}
+                    style={styles.compoundRightText}
+                  >
+                    {compoundRightToggle.label}
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+            );
+          }
+
           return (
             <TouchableOpacity
               style={[
@@ -110,6 +163,32 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 20,
       backgroundColor: colors.pillBackground,
       marginRight: 2,
+    },
+    compoundPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 20,
+      backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      padding: 1,
+      marginRight: 2,
+      gap: 2,
+    },
+    compoundLeft: {
+      borderRadius: 18,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+    },
+    compoundRight: {
+      borderRadius: 18,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+    },
+    compoundRightText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.pillText,
     },
     pillContent: {
       flexDirection: "row",

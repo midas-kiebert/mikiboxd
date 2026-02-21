@@ -2,13 +2,14 @@
  * Expo Router screen/module for (tabs) / _layout. It controls navigation and screen-level state for this route.
  */
 import { Tabs } from 'expo-router';
-import React, { useEffect } from 'react';
-import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Alert, AppState, Linking, StyleSheet, Text, View } from 'react-native';
 
 import { useQueryClient } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
 import { MeService } from 'shared';
 import { useFetchReceivedRequests } from 'shared/hooks/useFetchReceivedRequests';
+import { useFetchUnseenShowtimePingCount } from 'shared/hooks/useFetchUnseenShowtimePingCount';
 import useAuth from 'shared/hooks/useAuth';
 import { storage } from 'shared/storage';
 
@@ -18,7 +19,9 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications';
 
-const NOTIFICATION_ONBOARDING_KEY = 'mobile.notifications.onboarding_prompted';
+const NOTIFICATION_PERMISSION_ONBOARDING_KEY = 'mobile.notifications.permission_prompted_v2';
+const WATCHLIST_LAST_SYNC_KEY = 'mobile.watchlist.last_sync_at';
+const WATCHLIST_SYNC_COOLDOWN_MS = 30 * 60 * 1000;
 
 export default function TabLayout() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -31,71 +34,115 @@ export default function TabLayout() {
   const { user } = useAuth();
   // Data hooks keep this module synced with backend data and shared cache state.
   const { data: receivedRequests } = useFetchReceivedRequests({ refetchIntervalMs: 15000 });
+  const { data: unseenPingCount = 0 } = useFetchUnseenShowtimePingCount({
+    enabled: !!user,
+    refetchIntervalMs: 15000,
+  });
   // Friends tab badge shows pending received requests, capped at "99+".
   const receivedCount = receivedRequests?.length ?? 0;
-  const showBadge = receivedCount > 0;
-  const badgeLabel = receivedCount > 99 ? '99+' : String(receivedCount);
+  const showFriendRequestsBadge = receivedCount > 0;
+  const friendRequestsBadgeLabel = receivedCount > 99 ? '99+' : String(receivedCount);
+  const showPingBadge = unseenPingCount > 0;
+  const pingBadgeLabel = unseenPingCount > 99 ? '99+' : String(unseenPingCount);
+  const isSyncingWatchlistRef = useRef(false);
 
-  // One-time friendly prompt to enable notifications for new installs.
+  // Keep server watchlist state in sync when entering or returning to the app.
   useEffect(() => {
     if (!user) return;
 
-    const maybePrompt = async () => {
+    const maybeSyncWatchlist = async () => {
+      if (isSyncingWatchlistRef.current) return;
+
       try {
-        const storageKey = `${NOTIFICATION_ONBOARDING_KEY}:${user.id}`;
-        const alreadyPrompted = await storage.getItem(storageKey);
-        if (alreadyPrompted === '1') return;
+        const storageKey = `${WATCHLIST_LAST_SYNC_KEY}:${user.id}`;
+        const lastSyncRaw = await storage.getItem(storageKey);
+        const lastSyncMs = Number(lastSyncRaw ?? '0');
+        const now = Date.now();
 
-        // Mark as prompted immediately to prevent repeat alerts across rerenders/restarts.
-        await storage.setItem(storageKey, '1');
+        if (Number.isFinite(lastSyncMs) && now - lastSyncMs < WATCHLIST_SYNC_COOLDOWN_MS) {
+          return;
+        }
 
-        if (user.notify_on_friend_showtime_match) return;
+        isSyncingWatchlistRef.current = true;
+        await MeService.syncWatchlist();
+        await storage.setItem(storageKey, String(now));
 
-        Alert.alert(
-          'Enable notifications?',
-          'Get a notification when a friend marks Going or Interested for a showtime you also selected.',
-          [
-            { text: 'Not now', style: 'cancel' },
-            {
-              text: 'Enable',
-              onPress: async () => {
-                try {
-                  const token = await registerPushTokenForCurrentDevice();
-                  const permissions = await Notifications.getPermissionsAsync();
-
-                  if (!token) {
-                    Alert.alert(
-                      'Permission required',
-                      'To receive notifications, allow them in your system settings.',
-                      permissions.status === 'denied'
-                        ? [
-                            { text: 'Not now', style: 'cancel' },
-                            { text: 'Open settings', onPress: () => Linking.openSettings() },
-                          ]
-                        : [{ text: 'OK' }]
-                    );
-                    return;
-                  }
-
-                  await MeService.updateUserMe({
-                    requestBody: { notify_on_friend_showtime_match: true },
-                  });
-                  queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-                  Alert.alert('Notifications enabled', 'You’ll get friend overlap updates.');
-                } catch (error) {
-                  console.error('Error enabling notifications:', error);
-                  Alert.alert('Error', 'Could not enable notifications.');
-                }
-              },
-            },
-          ]
-        );
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['movies'] }),
+          queryClient.invalidateQueries({ queryKey: ['movie'] }),
+          queryClient.invalidateQueries({ queryKey: ['showtimes'] }),
+        ]);
       } catch (error) {
-        console.error('Error running notification onboarding prompt:', error);
+        console.error('Error syncing watchlist:', error);
+      } finally {
+        isSyncingWatchlistRef.current = false;
       }
     };
 
-    void maybePrompt();
+    void maybeSyncWatchlist();
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      void maybeSyncWatchlist();
+    });
+
+    return () => {
+      appStateSubscription.remove();
+    };
+  }, [queryClient, user]);
+
+  // Ask for notification permission immediately once per user and initialize preferences.
+  useEffect(() => {
+    if (!user) return;
+
+    const maybePromptForNotificationPermission = async () => {
+      const storageKey = `${NOTIFICATION_PERMISSION_ONBOARDING_KEY}:${user.id}`;
+      try {
+        const alreadyPrompted = await storage.getItem(storageKey);
+        if (alreadyPrompted === '1') return;
+
+        const token = await registerPushTokenForCurrentDevice();
+        const permissions = await Notifications.getPermissionsAsync();
+
+        if (!token) {
+          if (permissions.status === 'denied') {
+            Alert.alert(
+              'Notifications disabled',
+              'To receive notifications, allow them in your system settings.',
+              [
+                { text: 'Not now', style: 'cancel' },
+                { text: 'Open settings', onPress: () => Linking.openSettings() },
+              ]
+            );
+          }
+          return;
+        }
+
+        const hasAnyNotificationPreferenceEnabled =
+          user.notify_on_friend_showtime_match ||
+          user.notify_on_friend_requests ||
+          user.notify_on_showtime_ping ||
+          user.notify_on_interest_reminder;
+
+        if (!hasAnyNotificationPreferenceEnabled) {
+          await MeService.updateUserMe({
+            requestBody: {
+              notify_on_friend_showtime_match: true,
+              notify_on_friend_requests: true,
+              notify_on_showtime_ping: true,
+              notify_on_interest_reminder: true,
+            },
+          });
+          queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+        }
+      } catch (error) {
+        console.error('Error running notification permission onboarding:', error);
+      } finally {
+        // Mark as prompted so this runs once per user.
+        await storage.setItem(storageKey, '1');
+      }
+    };
+
+    void maybePromptForNotificationPermission();
   }, [queryClient, user]);
 
   // Render/output using the state and derived values prepared above.
@@ -114,12 +161,11 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
         }}
       />
-
       <Tabs.Screen
-        name="agenda"
+        name="movies"
         options={{
-          title: 'Agenda',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="calendar" color={color} />,
+          title: 'Movies',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="film.fill" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -130,10 +176,19 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="movies"
+        name="pings"
         options={{
-          title: 'Movies',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="film.fill" color={color} />,
+          title: 'Pings',
+          tabBarIcon: ({ color }) => (
+            <View style={styles.iconContainer}>
+              <IconSymbol size={28} name="bell.fill" color={color} />
+              {showPingBadge ? (
+                <View style={[styles.badge, { backgroundColor: palette.notificationBadge }]}>
+                  <Text style={styles.badgeText}>{pingBadgeLabel}</Text>
+                </View>
+              ) : null}
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
@@ -144,9 +199,9 @@ export default function TabLayout() {
             <View style={styles.iconContainer}>
               <IconSymbol size={28} name="person.2.fill" color={color} />
               {/* Small notification badge on top of the tab icon. */}
-              {showBadge ? (
+              {showFriendRequestsBadge ? (
                 <View style={[styles.badge, { backgroundColor: palette.notificationBadge }]}>
-                  <Text style={styles.badgeText}>{badgeLabel}</Text>
+                  <Text style={styles.badgeText}>{friendRequestsBadgeLabel}</Text>
                 </View>
               ) : null}
             </View>

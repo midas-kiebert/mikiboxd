@@ -3,7 +3,15 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.models.cinema_selection import CinemaSelection
+from app.models.showtime_ping import ShowtimePing
 from app.models.user import User
+from app.utils import now_amsterdam_naive
+
+
+def _normal_user_id(db_transaction: Session):
+    return db_transaction.exec(
+        select(User.id).where(User.email == settings.EMAIL_TEST_USER)
+    ).one()
 
 
 def test_get_me_superuser(
@@ -16,6 +24,9 @@ def test_get_me_superuser(
     assert current_user["is_superuser"] is True
     assert current_user["email"] == settings.FIRST_SUPERUSER
     assert isinstance(current_user["notify_on_friend_showtime_match"], bool)
+    assert isinstance(current_user["notify_on_friend_requests"], bool)
+    assert isinstance(current_user["notify_on_showtime_ping"], bool)
+    assert isinstance(current_user["notify_on_interest_reminder"], bool)
     assert "letterboxd_username" in current_user
     assert "last_watchlist_sync" not in current_user
 
@@ -30,6 +41,9 @@ def test_get_me_normal_user(
     assert current_user["is_superuser"] is False
     assert current_user["email"] == settings.EMAIL_TEST_USER
     assert isinstance(current_user["notify_on_friend_showtime_match"], bool)
+    assert isinstance(current_user["notify_on_friend_requests"], bool)
+    assert isinstance(current_user["notify_on_showtime_ping"], bool)
+    assert isinstance(current_user["notify_on_interest_reminder"], bool)
     assert "letterboxd_username" in current_user
     assert "last_watchlist_sync" not in current_user
 
@@ -40,17 +54,123 @@ def test_update_me_notification_preference(
     update_response = client.patch(
         f"{settings.API_V1_STR}/me/",
         headers=normal_user_token_headers,
-        json={"notify_on_friend_showtime_match": True},
+        json={
+            "notify_on_friend_showtime_match": False,
+            "notify_on_friend_requests": False,
+            "notify_on_showtime_ping": False,
+            "notify_on_interest_reminder": False,
+        },
     )
     assert 200 <= update_response.status_code < 300
-    assert update_response.json()["notify_on_friend_showtime_match"] is True
+    assert update_response.json()["notify_on_friend_showtime_match"] is False
+    assert update_response.json()["notify_on_friend_requests"] is False
+    assert update_response.json()["notify_on_showtime_ping"] is False
+    assert update_response.json()["notify_on_interest_reminder"] is False
 
     me_response = client.get(
         f"{settings.API_V1_STR}/me",
         headers=normal_user_token_headers,
     )
     assert 200 <= me_response.status_code < 300
-    assert me_response.json()["notify_on_friend_showtime_match"] is True
+    assert me_response.json()["notify_on_friend_showtime_match"] is False
+    assert me_response.json()["notify_on_friend_requests"] is False
+    assert me_response.json()["notify_on_showtime_ping"] is False
+    assert me_response.json()["notify_on_interest_reminder"] is False
+
+
+def test_update_me_rejects_duplicate_display_name(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    user_factory,
+) -> None:
+    user_factory(display_name="Taken Name")
+
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": "taken name"},
+    )
+
+    assert update_response.status_code == 409
+    assert update_response.json()["detail"] == "User with display name taken name already exists."
+
+
+def test_update_me_allows_duplicate_letterboxd_username_and_normalizes_lowercase(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+) -> None:
+    existing_user = user_factory()
+    existing_letterboxd_username = existing_user.letterboxd_username
+    assert existing_letterboxd_username is not None
+
+    mixed_case_username = existing_letterboxd_username.upper()
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"letterboxd_username": mixed_case_username},
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json()["letterboxd_username"] == existing_letterboxd_username
+
+    normal_user = db_transaction.exec(
+        select(User).where(User.email == settings.EMAIL_TEST_USER)
+    ).one()
+    assert normal_user.letterboxd_username == existing_letterboxd_username
+
+
+def test_showtime_pings_endpoints(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    receiver_id = _normal_user_id(db_transaction)
+    sender = user_factory()
+    showtime = showtime_factory()
+    ping = ShowtimePing(
+        showtime_id=showtime.id,
+        sender_id=sender.id,
+        receiver_id=receiver_id,
+        created_at=now_amsterdam_naive(),
+    )
+    db_transaction.add(ping)
+    db_transaction.commit()
+
+    list_response = client.get(
+        f"{settings.API_V1_STR}/me/pings",
+        headers=normal_user_token_headers,
+    )
+    assert list_response.status_code == 200
+    pings = list_response.json()
+    assert len(pings) == 1
+    assert pings[0]["showtime_id"] == showtime.id
+    assert pings[0]["movie_id"] == showtime.movie_id
+    assert pings[0]["sender"]["id"] == str(sender.id)
+    assert pings[0]["seen_at"] is None
+
+    unseen_count_response = client.get(
+        f"{settings.API_V1_STR}/me/pings/unseen-count",
+        headers=normal_user_token_headers,
+    )
+    assert unseen_count_response.status_code == 200
+    assert unseen_count_response.json() == 1
+
+    mark_seen_response = client.post(
+        f"{settings.API_V1_STR}/me/pings/mark-seen",
+        headers=normal_user_token_headers,
+    )
+    assert mark_seen_response.status_code == 200
+
+    unseen_count_after_mark_response = client.get(
+        f"{settings.API_V1_STR}/me/pings/unseen-count",
+        headers=normal_user_token_headers,
+    )
+    assert unseen_count_after_mark_response.status_code == 200
+    assert unseen_count_after_mark_response.json() == 0
 
 
 def test_filter_presets_are_scoped_and_include_all_pill_filters(

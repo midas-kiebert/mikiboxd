@@ -17,7 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
@@ -43,6 +43,13 @@ type FilterOption<TId extends string = string> = {
   activeBorderColor?: string;
 };
 
+type AudienceToggleValue = "including-friends" | "only-you";
+
+type AudienceToggleOption = {
+  value: AudienceToggleValue;
+  onChange: (value: AudienceToggleValue) => void;
+};
+
 type ShowtimesScreenProps<TFilterId extends string = string> = {
   topBarTitle?: string;
   topBarTitleSuffix?: string;
@@ -60,6 +67,7 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   filters: ReadonlyArray<FilterOption<TFilterId>>;
   activeFilterIds: ReadonlyArray<TFilterId>;
   onToggleFilter: (id: TFilterId) => void;
+  audienceToggle?: AudienceToggleOption;
   emptyText?: string;
 };
 
@@ -80,6 +88,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   filters,
   activeFilterIds,
   onToggleFilter,
+  audienceToggle,
   emptyText = "No showtimes found",
 }: ShowtimesScreenProps<TFilterId>) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
@@ -88,21 +97,32 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   const styles = createStyles(colors);
   const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeLoggedIn | null>(null);
   const [pingListOpen, setPingListOpen] = useState(false);
-  const [pingedFriendIds, setPingedFriendIds] = useState<string[]>([]);
   const modalProgress = useRef(new Animated.Value(0)).current;
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
   const { data: friends } = useFetchFriends({ enabled: !!selectedShowtime });
+  const selectedShowtimeId = selectedShowtime?.id ?? null;
+  const { data: pingedFriendIds = [], isFetching: isFetchingPingedFriends } = useQuery<
+    string[],
+    Error
+  >({
+    queryKey: ["showtimes", "pingedFriends", selectedShowtimeId],
+    enabled: selectedShowtimeId !== null,
+    queryFn: () =>
+      ShowtimesService.getPingedFriendIdsForShowtime({
+        showtimeId: selectedShowtimeId as number,
+      }),
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
+  });
 
   useEffect(() => {
     if (!selectedShowtime) {
       modalProgress.setValue(0);
       setPingListOpen(false);
-      setPingedFriendIds([]);
       return;
     }
     setPingListOpen(false);
-    setPingedFriendIds([]);
     modalProgress.setValue(0);
     Animated.timing(modalProgress, {
       toValue: 1,
@@ -140,13 +160,24 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         friendId,
       }),
     onSuccess: (_message, variables) => {
-      setPingedFriendIds((previous) =>
-        previous.includes(variables.friendId) ? previous : [...previous, variables.friendId]
+      queryClient.setQueryData<string[]>(
+        ["showtimes", "pingedFriends", variables.showtimeId],
+        (previous) =>
+          previous?.includes(variables.friendId)
+            ? previous
+            : [...(previous ?? []), variables.friendId]
       );
     },
     onError: (error) => {
       console.error("Error pinging friend for showtime:", error);
-      Alert.alert("Error", "Could not send ping.");
+      const detail =
+        typeof error === "object" &&
+        error !== null &&
+        "body" in error &&
+        typeof (error as { body?: { detail?: unknown } }).body?.detail === "string"
+          ? (error as { body?: { detail?: string } }).body?.detail
+          : undefined;
+      Alert.alert("Error", detail ?? "Could not send ping.");
     },
   });
 
@@ -247,6 +278,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
       },
     ],
   };
+  const isOnlyYouAudienceActive = audienceToggle?.value === "only-you";
 
   // Render infinite-scroll loading feedback at the bottom of the list.
   const renderFooter = () => {
@@ -419,7 +451,10 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
                     nestedScrollEnabled
                   >
                     {friendsForPing.map((friend) => {
-                      const canPing = friend.availability === "eligible" && !isPingingFriend;
+                      const canPing =
+                        friend.availability === "eligible" &&
+                        !isPingingFriend &&
+                        !isFetchingPingedFriends;
                       const statusLabel =
                         friend.availability === "going"
                           ? "Going"
@@ -489,6 +524,18 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         selectedId=""
         onSelect={onToggleFilter}
         activeIds={activeFilterIds}
+        compoundRightToggle={
+          audienceToggle
+            ? {
+                anchorId: "showtime-filter",
+                label: isOnlyYouAudienceActive ? "Only You" : "Including Friends",
+                onPress: () =>
+                  audienceToggle.onChange(
+                    isOnlyYouAudienceActive ? "including-friends" : "only-you"
+                  ),
+              }
+            : undefined
+        }
       />
       <FlatList
         data={showtimes}

@@ -58,6 +58,7 @@ export default function FriendsScreen() {
   // Current text typed into the search input.
   const [searchQuery, setSearchQuery] = useState('');
   const normalizedSearchQuery = searchQuery.trim();
+  const normalizedSearchQueryLower = normalizedSearchQuery.toLowerCase();
   const hasUserSearch = normalizedSearchQuery.length > 0;
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
@@ -97,9 +98,27 @@ export default function FriendsScreen() {
   const friends = friendsData ?? [];
   const received = receivedRequests ?? [];
   const sent = sentRequests ?? [];
+  const matchName = (value: string | null | undefined) =>
+    normalizedSearchQueryLower.length === 0 ||
+    (value ?? '').toLowerCase().includes(normalizedSearchQueryLower);
+  const displayedReceived = useMemo(
+    () => received.filter((user) => matchName(user.display_name)),
+    [received, normalizedSearchQueryLower]
+  );
+  const displayedSent = useMemo(
+    () => sent.filter((user) => matchName(user.display_name)),
+    [sent, normalizedSearchQueryLower]
+  );
+  const displayedFriends = useMemo(
+    () => friends.filter((user) => matchName(user.display_name)),
+    [friends, normalizedSearchQueryLower]
+  );
   const activeTabMeta = TAB_META[activeTab];
   const activeSectionSubtitle =
-    activeTab === 'users' && !hasUserSearch ? 'Start typing to search for users.' : activeTabMeta.subtitle;
+    activeTab === 'users' && !hasUserSearch
+      ? 'Start typing to search for users.'
+      : activeTabMeta.subtitle;
+  const searchPlaceholder = activeTab === 'users' ? 'Search users' : 'Search friends';
 
   // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
@@ -146,11 +165,9 @@ export default function FriendsScreen() {
         selectedId={activeTab}
         onSelect={setActiveTab}
       />
-      {activeTab === 'users' ? (
-        <View style={styles.searchBarContainer}>
-          <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search users" />
-        </View>
-      ) : null}
+      <View style={styles.searchBarContainer}>
+        <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder={searchPlaceholder} />
+      </View>
 
       {activeTab === 'users' ? (
         <FlatList
@@ -209,17 +226,21 @@ export default function FriendsScreen() {
 
           {activeTab === 'received' ? (
             <View style={styles.section}>
-              {isFetchingReceived && received.length === 0 ? (
+              {isFetchingReceived && displayedReceived.length === 0 ? (
                 <View style={styles.centerContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />
                 </View>
-              ) : received.length === 0 ? (
+              ) : displayedReceived.length === 0 ? (
                 <View style={styles.emptyCard}>
-                  <ThemedText style={styles.emptyText}>{TAB_META.received.emptyText}</ThemedText>
+                  <ThemedText style={styles.emptyText}>
+                    {normalizedSearchQueryLower.length > 0
+                      ? 'No matching requests'
+                      : TAB_META.received.emptyText}
+                  </ThemedText>
                 </View>
               ) : (
                 <View style={styles.list}>
-                  {received.map((user) => (
+                  {displayedReceived.map((user) => (
                     <FriendCard key={`received-${user.id}`} user={user} />
                   ))}
                 </View>
@@ -229,17 +250,21 @@ export default function FriendsScreen() {
 
           {activeTab === 'sent' ? (
             <View style={styles.section}>
-              {isFetchingSent && sent.length === 0 ? (
+              {isFetchingSent && displayedSent.length === 0 ? (
                 <View style={styles.centerContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />
                 </View>
-              ) : sent.length === 0 ? (
+              ) : displayedSent.length === 0 ? (
                 <View style={styles.emptyCard}>
-                  <ThemedText style={styles.emptyText}>{TAB_META.sent.emptyText}</ThemedText>
+                  <ThemedText style={styles.emptyText}>
+                    {normalizedSearchQueryLower.length > 0
+                      ? 'No matching requests'
+                      : TAB_META.sent.emptyText}
+                  </ThemedText>
                 </View>
               ) : (
                 <View style={styles.list}>
-                  {sent.map((user) => (
+                  {displayedSent.map((user) => (
                     <FriendCard key={`sent-${user.id}`} user={user} />
                   ))}
                 </View>
@@ -249,17 +274,21 @@ export default function FriendsScreen() {
 
           {activeTab === 'friends' ? (
             <View style={styles.section}>
-              {isFetchingFriends && friends.length === 0 ? (
+              {isFetchingFriends && displayedFriends.length === 0 ? (
                 <View style={styles.centerContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />
                 </View>
-              ) : friends.length === 0 ? (
+              ) : displayedFriends.length === 0 ? (
                 <View style={styles.emptyCard}>
-                  <ThemedText style={styles.emptyText}>{TAB_META.friends.emptyText}</ThemedText>
+                  <ThemedText style={styles.emptyText}>
+                    {normalizedSearchQueryLower.length > 0
+                      ? 'No matching friends'
+                      : TAB_META.friends.emptyText}
+                  </ThemedText>
                 </View>
               ) : (
                 <View style={styles.list}>
-                  {friends.map((user) => (
+                  {displayedFriends.map((user) => (
                     <FriendCard key={`friend-${user.id}`} user={user} />
                   ))}
                 </View>

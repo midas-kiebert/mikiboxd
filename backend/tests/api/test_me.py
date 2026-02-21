@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -193,6 +195,173 @@ def test_showtime_pings_endpoints(
     assert unseen_count_after_mark_response.json() == 0
 
 
+def test_delete_showtime_ping_endpoint(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    receiver_id = _normal_user_id(db_transaction)
+    sender = user_factory()
+    other_receiver = user_factory()
+    showtime = showtime_factory()
+
+    ping_for_me = ShowtimePing(
+        showtime_id=showtime.id,
+        sender_id=sender.id,
+        receiver_id=receiver_id,
+        created_at=now_amsterdam_naive(),
+    )
+    ping_for_other_user = ShowtimePing(
+        showtime_id=showtime.id,
+        sender_id=sender.id,
+        receiver_id=other_receiver.id,
+        created_at=now_amsterdam_naive(),
+    )
+    db_transaction.add(ping_for_me)
+    db_transaction.add(ping_for_other_user)
+    db_transaction.commit()
+
+    assert ping_for_me.id is not None
+    assert ping_for_other_user.id is not None
+    ping_for_me_id = ping_for_me.id
+    ping_for_other_user_id = ping_for_other_user.id
+
+    delete_response = client.delete(
+        f"{settings.API_V1_STR}/me/pings/{ping_for_me_id}",
+        headers=normal_user_token_headers,
+    )
+    assert delete_response.status_code == 200
+    assert delete_response.json()["message"] == "Showtime ping deleted successfully"
+
+    deleted_ping = db_transaction.exec(
+        select(ShowtimePing).where(ShowtimePing.id == ping_for_me_id)
+    ).one_or_none()
+    assert deleted_ping is None
+
+    still_existing_ping = db_transaction.exec(
+        select(ShowtimePing).where(ShowtimePing.id == ping_for_other_user_id)
+    ).one_or_none()
+    assert still_existing_ping is not None
+
+    delete_missing_response = client.delete(
+        f"{settings.API_V1_STR}/me/pings/{ping_for_other_user_id}",
+        headers=normal_user_token_headers,
+    )
+    assert delete_missing_response.status_code == 404
+    assert delete_missing_response.json()["detail"] == "Showtime ping not found"
+
+
+def test_me_pings_prune_past_showtimes_and_return_only_future(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    receiver_id = _normal_user_id(db_transaction)
+    sender = user_factory()
+    now = now_amsterdam_naive()
+    past_showtime = showtime_factory(datetime=now - timedelta(hours=3))
+    future_showtime = showtime_factory(datetime=now + timedelta(days=1))
+
+    past_ping = ShowtimePing(
+        showtime_id=past_showtime.id,
+        sender_id=sender.id,
+        receiver_id=receiver_id,
+        created_at=now,
+    )
+    future_ping = ShowtimePing(
+        showtime_id=future_showtime.id,
+        sender_id=sender.id,
+        receiver_id=receiver_id,
+        created_at=now,
+    )
+    db_transaction.add(past_ping)
+    db_transaction.add(future_ping)
+    db_transaction.commit()
+
+    assert past_ping.id is not None
+    assert future_ping.id is not None
+    past_ping_id = past_ping.id
+    future_ping_id = future_ping.id
+
+    list_response = client.get(
+        f"{settings.API_V1_STR}/me/pings",
+        headers=normal_user_token_headers,
+    )
+    assert list_response.status_code == 200
+    response_body = list_response.json()
+    assert len(response_body) == 1
+    assert response_body[0]["showtime_id"] == future_showtime.id
+
+    past_ping_in_db = db_transaction.exec(
+        select(ShowtimePing).where(ShowtimePing.id == past_ping_id)
+    ).one_or_none()
+    assert past_ping_in_db is None
+
+    future_ping_in_db = db_transaction.exec(
+        select(ShowtimePing).where(ShowtimePing.id == future_ping_id)
+    ).one_or_none()
+    assert future_ping_in_db is not None
+
+    unseen_count_response = client.get(
+        f"{settings.API_V1_STR}/me/pings/unseen-count",
+        headers=normal_user_token_headers,
+    )
+    assert unseen_count_response.status_code == 200
+    assert unseen_count_response.json() == 1
+
+
+def test_me_pings_sorting_is_done_in_backend(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    receiver_id = _normal_user_id(db_transaction)
+    sender = user_factory()
+    now = now_amsterdam_naive()
+    later_showtime = showtime_factory(datetime=now + timedelta(days=3))
+    earlier_showtime = showtime_factory(datetime=now + timedelta(days=1))
+
+    # Newer ping on earlier showtime: default sort should place this first.
+    newer_ping = ShowtimePing(
+        showtime_id=earlier_showtime.id,
+        sender_id=sender.id,
+        receiver_id=receiver_id,
+        created_at=now,
+    )
+    older_ping = ShowtimePing(
+        showtime_id=later_showtime.id,
+        sender_id=sender.id,
+        receiver_id=receiver_id,
+        created_at=now - timedelta(hours=2),
+    )
+    db_transaction.add(newer_ping)
+    db_transaction.add(older_ping)
+    db_transaction.commit()
+
+    default_sorted_response = client.get(
+        f"{settings.API_V1_STR}/me/pings",
+        headers=normal_user_token_headers,
+    )
+    assert default_sorted_response.status_code == 200
+    default_showtime_ids = [item["showtime_id"] for item in default_sorted_response.json()]
+    assert default_showtime_ids == [earlier_showtime.id, later_showtime.id]
+
+    showtime_sorted_response = client.get(
+        f"{settings.API_V1_STR}/me/pings",
+        headers=normal_user_token_headers,
+        params={"sort_by": "showtime_datetime"},
+    )
+    assert showtime_sorted_response.status_code == 200
+    showtime_sorted_ids = [item["showtime_id"] for item in showtime_sorted_response.json()]
+    assert showtime_sorted_ids == [later_showtime.id, earlier_showtime.id]
+
+
 def test_filter_presets_are_scoped_and_include_all_pill_filters(
     client: TestClient, normal_user_token_headers: dict[str, str]
 ) -> None:
@@ -266,20 +435,21 @@ def test_filter_presets_are_scoped_and_include_all_pill_filters(
 def test_filter_preset_accepts_relative_and_weekday_days(
     client: TestClient, normal_user_token_headers: dict[str, str]
 ) -> None:
+    expected_days = [
+        "relative:today",
+        "relative:tomorrow",
+        "relative:day_after_tomorrow",
+        "weekday:1",
+        "weekday:5",
+        "2026-03-01",
+    ]
     payload = {
         "name": "Flexible Days",
         "scope": "SHOWTIMES",
         "filters": {
             "selected_showtime_filter": "interested",
             "watchlist_only": True,
-            "days": [
-                "relative:today",
-                "relative:tomorrow",
-                "relative:day_after_tomorrow",
-                "weekday:1",
-                "weekday:5",
-                "2026-03-01",
-            ],
+            "days": expected_days,
             "time_ranges": ["18:00-21:59"],
         },
     }
@@ -291,7 +461,7 @@ def test_filter_preset_accepts_relative_and_weekday_days(
     )
     assert save_response.status_code == 200
     save_body = save_response.json()
-    assert save_body["filters"]["days"] == payload["filters"]["days"]
+    assert save_body["filters"]["days"] == expected_days
 
     list_response = client.get(
         f"{settings.API_V1_STR}/me/filter-presets",
@@ -301,7 +471,7 @@ def test_filter_preset_accepts_relative_and_weekday_days(
     assert list_response.status_code == 200
     presets = list_response.json()
     assert len(presets) == 1
-    assert presets[0]["filters"]["days"] == payload["filters"]["days"]
+    assert presets[0]["filters"]["days"] == expected_days
 
 
 def test_filter_preset_upsert_and_delete(

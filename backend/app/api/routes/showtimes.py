@@ -1,11 +1,15 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import CurrentUser, SessionDep
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message
 from app.schemas.showtime import ShowtimeLoggedIn, ShowtimeSelectionUpdate
+from app.schemas.showtime_visibility import (
+    ShowtimeVisibilityPublic,
+    ShowtimeVisibilityUpdate,
+)
 from app.services import showtimes as showtimes_service
 
 router = APIRouter(prefix="/showtimes", tags=["showtimes"])
@@ -57,6 +61,39 @@ def get_pinged_friend_ids_for_showtime(
         showtime_id=showtime_id,
         actor_id=current_user.id,
     )
+
+
+@router.get("/{showtime_id}/visibility", response_model=ShowtimeVisibilityPublic)
+def get_showtime_visibility(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> ShowtimeVisibilityPublic:
+    return showtimes_service.get_showtime_visibility(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+    )
+
+
+@router.put("/{showtime_id}/visibility", response_model=ShowtimeVisibilityPublic)
+def update_showtime_visibility(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    payload: ShowtimeVisibilityUpdate,
+    current_user: CurrentUser,
+) -> ShowtimeVisibilityPublic:
+    try:
+        return showtimes_service.update_showtime_visibility(
+            session=session,
+            showtime_id=showtime_id,
+            actor_id=current_user.id,
+            visible_friend_ids=payload.visible_friend_ids,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
 
 @router.get("/")

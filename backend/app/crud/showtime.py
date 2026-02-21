@@ -6,6 +6,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_, select
 
 from app.core.enums import GoingStatus
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.inputs.movie import Filters
 from app.models.friendship import Friendship
 from app.models.movie import Movie
@@ -177,10 +178,16 @@ def get_friends_for_showtime(
         select(User)
         .join(Friendship, col(Friendship.friend_id) == User.id)
         .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == User.id)
+        .join(Showtime, col(Showtime.id) == col(ShowtimeSelection.showtime_id))
         .where(
             Friendship.user_id == user_id,
             ShowtimeSelection.showtime_id == showtime_id,
             ShowtimeSelection.going_status == going_status,
+            showtime_visibility_crud.is_movie_visible_to_viewer(
+                owner_id_value=col(User.id),
+                movie_id_value=col(Showtime.movie_id),
+                viewer_id_value=user_id,
+            ),
         )
     )
     result = session.execute(stmt)
@@ -199,10 +206,16 @@ def get_friends_with_showtime_selection(
     stmt = (
         select(User)
         .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == User.id)
+        .join(Showtime, col(Showtime.id) == col(ShowtimeSelection.showtime_id))
         .where(
             col(User.id).in_(friends_subq),
             ShowtimeSelection.showtime_id == showtime_id,
             col(ShowtimeSelection.going_status).in_(statuses),
+            showtime_visibility_crud.is_movie_visible_to_viewer(
+                owner_id_value=friend_id,
+                movie_id_value=col(Showtime.movie_id),
+                viewer_id_value=col(User.id),
+            ),
         )
     )
     return list(session.exec(stmt).all())
@@ -295,8 +308,15 @@ def get_main_page_showtimes(
             )
             .where(
                 or_(
-                    col(ShowtimeSelection.user_id).in_(friends_subq),
                     ShowtimeSelection.user_id == user_id,
+                    (
+                        col(ShowtimeSelection.user_id).in_(friends_subq)
+                        & showtime_visibility_crud.is_movie_visible_to_viewer(
+                            owner_id_value=col(ShowtimeSelection.user_id),
+                            movie_id_value=col(Showtime.movie_id),
+                            viewer_id_value=user_id,
+                        )
+                    ),
                 ),
                 col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
             )

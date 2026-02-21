@@ -144,6 +144,20 @@ export type ShowtimeLoggedIn = {
   going: GoingStatus
 }
 
+export type ShowtimePingPublic = {
+  id: number
+  showtime_id: number
+  movie_id: number
+  movie_title: string
+  movie_poster_link: string | null
+  cinema_name: string
+  datetime: string
+  ticket_link: string | null
+  sender: UserPublic
+  created_at: string
+  seen_at: string | null
+}
+
 export type ShowtimeSelectionUpdate = {
   going_status: GoingStatus
 }
@@ -211,20 +225,6 @@ export type UserUpdate = {
   notify_on_showtime_ping?: boolean | null
   notify_on_interest_reminder?: boolean | null
   password?: string | null
-}
-
-export type ShowtimePingPublic = {
-  id: number
-  showtime_id: number
-  movie_id: number
-  movie_title: string
-  movie_poster_link: string | null
-  cinema_name: string
-  datetime: string
-  ticket_link: string | null
-  sender: UserPublic
-  created_at: string
-  seen_at: string | null
 }
 
 export type UserWithFriendStatus = {

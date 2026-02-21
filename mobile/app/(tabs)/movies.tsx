@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for (tabs) / movies. It controls navigation and screen-level state for this route.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   StyleSheet,
   FlatList,
@@ -35,6 +35,7 @@ import {
   getSelectedStatusesFromShowtimeFilter,
   toSharedTabShowtimeFilter,
   type SharedTabFilterId,
+  type SharedTabShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
@@ -57,10 +58,14 @@ export default function MovieScreen() {
   const [timeModalVisible, setTimeModalVisible] = useState(false);
   // Controls visibility of the filter-presets modal.
   const [presetModalVisible, setPresetModalVisible] = useState(false);
+  const [selectedMovieShowtimeFilter, setSelectedMovieShowtimeFilterState] =
+    useState<SharedTabShowtimeFilter>('all');
+  const [appliedMovieShowtimeFilter, setAppliedMovieShowtimeFilterState] =
+    useState<SharedTabShowtimeFilter>('all');
+  const applyMovieShowtimeFilterFrameRef = useRef<number | null>(null);
   const {
-    selectedShowtimeFilter,
-    setSelectedShowtimeFilter,
     watchlistOnly,
+    appliedWatchlistOnly,
     setWatchlistOnly,
     sessionCinemaIds,
     selectedDays,
@@ -93,30 +98,51 @@ export default function MovieScreen() {
   const movieFilters = useMemo<MovieFilters>(
     () => ({
       query: searchQuery,
-      watchlistOnly: watchlistOnly ? true : undefined,
+      watchlistOnly: appliedWatchlistOnly ? true : undefined,
       days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       selectedCinemaIds: sessionCinemaIds,
-      selectedStatuses: getSelectedStatusesFromShowtimeFilter(selectedShowtimeFilter),
+      selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedMovieShowtimeFilter),
     }),
     [
       searchQuery,
-      watchlistOnly,
+      appliedWatchlistOnly,
       resolvedApiDays,
       selectedTimeRanges,
       sessionCinemaIds,
-      selectedShowtimeFilter,
+      appliedMovieShowtimeFilter,
     ]
   );
 
   const currentPresetFilters = useMemo<PageFilterPresetState>(
     () => ({
-      selected_showtime_filter: selectedShowtimeFilter,
+      selected_showtime_filter: selectedMovieShowtimeFilter,
+      showtime_audience: 'including-friends',
       watchlist_only: watchlistOnly,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
     }),
-    [selectedShowtimeFilter, watchlistOnly, selectedDays, selectedTimeRanges]
+    [selectedMovieShowtimeFilter, watchlistOnly, selectedDays, selectedTimeRanges]
+  );
+
+  const setSelectedMovieShowtimeFilter = useCallback((next: SharedTabShowtimeFilter) => {
+    setSelectedMovieShowtimeFilterState(next);
+    if (applyMovieShowtimeFilterFrameRef.current !== null) {
+      cancelAnimationFrame(applyMovieShowtimeFilterFrameRef.current);
+    }
+    applyMovieShowtimeFilterFrameRef.current = requestAnimationFrame(() => {
+      applyMovieShowtimeFilterFrameRef.current = null;
+      setAppliedMovieShowtimeFilterState(next);
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (applyMovieShowtimeFilterFrameRef.current !== null) {
+        cancelAnimationFrame(applyMovieShowtimeFilterFrameRef.current);
+      }
+    },
+    []
   );
 
   // Data hooks keep this module synced with backend data and shared cache state.
@@ -182,7 +208,9 @@ export default function MovieScreen() {
   // Handle filter pill presses and update active filter state.
   const handleSelectFilter = (filterId: SharedTabFilterId) => {
     if (filterId === 'showtime-filter') {
-      setSelectedShowtimeFilter(cycleSharedTabShowtimeFilter(selectedShowtimeFilter));
+      setSelectedMovieShowtimeFilter(
+        cycleSharedTabShowtimeFilter(selectedMovieShowtimeFilter)
+      );
       return;
     }
     if (filterId === 'watchlist-only') {
@@ -208,21 +236,26 @@ export default function MovieScreen() {
   };
 
   const handleApplyPreset = (filters: PageFilterPresetState) => {
-    setSelectedShowtimeFilter(toSharedTabShowtimeFilter(filters.selected_showtime_filter));
+    setSelectedMovieShowtimeFilter(toSharedTabShowtimeFilter(filters.selected_showtime_filter));
     setWatchlistOnly(Boolean(filters.watchlist_only));
     setSelectedDays(filters.days ?? []);
     setSelectedTimeRanges(filters.time_ranges ?? []);
   };
 
   const pillFilters = useMemo(
-    () =>
-      buildSharedTabPillFilters({
+    () => {
+      const filters = buildSharedTabPillFilters({
         colors,
-        selectedShowtimeFilter,
+        selectedShowtimeFilter: selectedMovieShowtimeFilter,
         selectedDaysCount: selectedDays.length,
         selectedTimeRangesCount: selectedTimeRanges.length,
-      }),
-    [colors, selectedShowtimeFilter, selectedDays.length, selectedTimeRanges.length]
+      });
+      // Movies tab status pill should not draw the extra active border.
+      return filters.map((filter) =>
+        filter.id === 'showtime-filter' ? { ...filter, activeBorderColor: undefined } : filter
+      );
+    },
+    [colors, selectedMovieShowtimeFilter, selectedDays.length, selectedTimeRanges.length]
   );
 
   // Cinema pill should only be active when current session differs from preferred cinemas.
@@ -239,13 +272,19 @@ export default function MovieScreen() {
   const activeFilterIds = useMemo(
     () =>
       buildSharedTabActiveFilterIds({
-        selectedShowtimeFilter,
+        selectedShowtimeFilter: selectedMovieShowtimeFilter,
         watchlistOnly,
         selectedDaysCount: selectedDays.length,
         selectedTimeRangesCount: selectedTimeRanges.length,
         isCinemaFilterActive,
       }),
-    [selectedShowtimeFilter, watchlistOnly, selectedDays.length, selectedTimeRanges.length, isCinemaFilterActive]
+    [
+      selectedMovieShowtimeFilter,
+      watchlistOnly,
+      selectedDays.length,
+      selectedTimeRanges.length,
+      isCinemaFilterActive,
+    ]
   );
 
   // Render/output using the state and derived values prepared above.

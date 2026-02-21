@@ -20,30 +20,20 @@ import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
 type FriendsTabId = 'users' | 'received' | 'sent' | 'friends';
 type FriendsTabMeta = {
-  title: string;
-  subtitle: string;
   emptyText: string;
 };
 
 const TAB_META: Record<FriendsTabId, FriendsTabMeta> = {
   users: {
-    title: 'All Users',
-    subtitle: 'Discover people and send friend requests.',
     emptyText: 'No users found',
   },
   received: {
-    title: 'Requests Received',
-    subtitle: 'Respond to incoming friend requests.',
     emptyText: 'No requests received',
   },
   sent: {
-    title: 'Requests Sent',
-    subtitle: 'Requests waiting for a response.',
     emptyText: 'No requests sent',
   },
   friends: {
-    title: 'Friends',
-    subtitle: 'People you already connected with.',
     emptyText: 'No friends yet',
   },
 };
@@ -114,10 +104,6 @@ export default function FriendsScreen() {
     [friends, normalizedSearchQueryLower]
   );
   const activeTabMeta = TAB_META[activeTab];
-  const activeSectionSubtitle =
-    activeTab === 'users' && !hasUserSearch
-      ? 'Start typing to search for users.'
-      : activeTabMeta.subtitle;
   const searchPlaceholder = activeTab === 'users' ? 'Search users' : 'Search friends';
 
   // Refresh the current dataset and reset any stale pagination state.
@@ -176,14 +162,6 @@ export default function FriendsScreen() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-          ListHeaderComponent={
-            <View style={styles.sectionIntro}>
-              <View style={styles.sectionIntroText}>
-                <ThemedText style={styles.sectionTitle}>{activeTabMeta.title}</ThemedText>
-                <ThemedText style={styles.sectionSubtitle}>{activeSectionSubtitle}</ThemedText>
-              </View>
-            </View>
-          }
           renderItem={({ item }) => <FriendCard user={item} />}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           onEndReached={handleLoadMore}
@@ -217,13 +195,6 @@ export default function FriendsScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         >
-          <View style={styles.sectionIntro}>
-            <View style={styles.sectionIntroText}>
-              <ThemedText style={styles.sectionTitle}>{activeTabMeta.title}</ThemedText>
-              <ThemedText style={styles.sectionSubtitle}>{activeSectionSubtitle}</ThemedText>
-            </View>
-          </View>
-
           {activeTab === 'received' ? (
             <View style={styles.section}>
               {isFetchingReceived && displayedReceived.length === 0 ? (
@@ -316,26 +287,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       paddingTop: 10,
       paddingBottom: 24,
       gap: 12,
-    },
-    sectionIntro: {
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-    },
-    sectionIntroText: {
-      gap: 2,
-    },
-    sectionTitle: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.text,
-    },
-    sectionSubtitle: {
-      fontSize: 12,
-      color: colors.textSecondary,
     },
     section: {
       gap: 12,

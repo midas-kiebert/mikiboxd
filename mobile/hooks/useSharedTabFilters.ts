@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchFavoriteFilterPreset } from "shared/hooks/useFetchFavoriteFilterPreset";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
@@ -25,6 +25,8 @@ const SESSION_WATCHLIST_ONLY_KEY = ["session", "watchlist_only"] as const;
 export function useSharedTabFilters() {
   const queryClient = useQueryClient();
   const initializedFromFavoritesRef = useRef(false);
+  const applyShowtimeFilterFrameRef = useRef<number | null>(null);
+  const applyWatchlistOnlyFrameRef = useRef<number | null>(null);
 
   const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
     useSessionCinemaSelections();
@@ -34,21 +36,78 @@ export function useSharedTabFilters() {
     useSessionTimeRangeSelections();
   const { selection: sessionShowtimeFilter, setSelection: setSessionShowtimeFilter } =
     useSessionShowtimeFilter();
-  const { selection: watchlistOnly, setSelection: setWatchlistOnly } = useSessionWatchlistOnly();
+  const { selection: sessionWatchlistOnly, setSelection: setSessionWatchlistOnly } =
+    useSessionWatchlistOnly();
   const favoriteFilterPresetQuery = useFetchFavoriteFilterPreset({
     scope: SHARED_TAB_FILTER_PRESET_SCOPE,
   });
   const favoriteCinemasQuery = useFetchSelectedCinemas();
 
-  const selectedShowtimeFilter = toSharedTabShowtimeFilter(sessionShowtimeFilter);
+  const initialShowtimeFilter = toSharedTabShowtimeFilter(sessionShowtimeFilter);
+  const initialWatchlistOnly = Boolean(sessionWatchlistOnly);
+  const [selectedShowtimeFilter, setSelectedShowtimeFilterState] =
+    useState<SharedTabShowtimeFilter>(initialShowtimeFilter);
+  const [appliedShowtimeFilter, setAppliedShowtimeFilterState] =
+    useState<SharedTabShowtimeFilter>(initialShowtimeFilter);
+  const [watchlistOnly, setWatchlistOnlyState] = useState<boolean>(initialWatchlistOnly);
+  const [appliedWatchlistOnly, setAppliedWatchlistOnlyState] = useState<boolean>(initialWatchlistOnly);
   const selectedDays = sessionDays ?? EMPTY_DAYS;
   const selectedTimeRanges = sessionTimeRanges ?? EMPTY_TIME_RANGES;
 
   const setSelectedShowtimeFilter = useCallback(
     (next: SharedTabShowtimeFilter) => {
-      setSessionShowtimeFilter(next);
+      // Update pill visuals immediately, defer cache+query-facing state by one frame.
+      setSelectedShowtimeFilterState(next);
+      if (applyShowtimeFilterFrameRef.current !== null) {
+        cancelAnimationFrame(applyShowtimeFilterFrameRef.current);
+      }
+      applyShowtimeFilterFrameRef.current = requestAnimationFrame(() => {
+        applyShowtimeFilterFrameRef.current = null;
+        setAppliedShowtimeFilterState(next);
+        setSessionShowtimeFilter(next);
+      });
     },
     [setSessionShowtimeFilter]
+  );
+
+  const setWatchlistOnly = useCallback(
+    (next: boolean) => {
+      // Update pill visuals immediately, defer cache+query-facing state by one frame.
+      setWatchlistOnlyState(next);
+      if (applyWatchlistOnlyFrameRef.current !== null) {
+        cancelAnimationFrame(applyWatchlistOnlyFrameRef.current);
+      }
+      applyWatchlistOnlyFrameRef.current = requestAnimationFrame(() => {
+        applyWatchlistOnlyFrameRef.current = null;
+        setAppliedWatchlistOnlyState(next);
+        setSessionWatchlistOnly(next);
+      });
+    },
+    [setSessionWatchlistOnly]
+  );
+
+  useEffect(() => {
+    const normalized = toSharedTabShowtimeFilter(sessionShowtimeFilter);
+    setSelectedShowtimeFilterState(normalized);
+    setAppliedShowtimeFilterState(normalized);
+  }, [sessionShowtimeFilter]);
+
+  useEffect(() => {
+    const normalized = Boolean(sessionWatchlistOnly);
+    setWatchlistOnlyState(normalized);
+    setAppliedWatchlistOnlyState(normalized);
+  }, [sessionWatchlistOnly]);
+
+  useEffect(
+    () => () => {
+      if (applyShowtimeFilterFrameRef.current !== null) {
+        cancelAnimationFrame(applyShowtimeFilterFrameRef.current);
+      }
+      if (applyWatchlistOnlyFrameRef.current !== null) {
+        cancelAnimationFrame(applyWatchlistOnlyFrameRef.current);
+      }
+    },
+    []
   );
 
   useEffect(() => {
@@ -68,7 +127,7 @@ export function useSharedTabFilters() {
         SESSION_SHOWTIME_FILTER_KEY
       );
       if (rawSessionShowtimeFilter === undefined) {
-        setSessionShowtimeFilter(
+        setSelectedShowtimeFilter(
           toSharedTabShowtimeFilter(favoritePreset.filters.selected_showtime_filter)
         );
       }
@@ -100,15 +159,17 @@ export function useSharedTabFilters() {
     queryClient,
     setSessionCinemaIds,
     setSessionDays,
-    setSessionShowtimeFilter,
+    setSelectedShowtimeFilter,
     setSessionTimeRanges,
     setWatchlistOnly,
   ]);
 
   return {
     selectedShowtimeFilter,
+    appliedShowtimeFilter,
     setSelectedShowtimeFilter,
     watchlistOnly,
+    appliedWatchlistOnly,
     setWatchlistOnly,
     sessionCinemaIds,
     setSessionCinemaIds,

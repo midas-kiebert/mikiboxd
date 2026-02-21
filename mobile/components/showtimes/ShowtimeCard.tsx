@@ -1,10 +1,11 @@
 /**
  * Mobile showtimes feature component: Showtime Card.
  */
-import { Image, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Image, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useRef } from "react";
 import { DateTime } from "luxon";
 import { useRouter } from "expo-router";
+import * as Haptics from "expo-haptics";
 import type { ShowtimeLoggedIn } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
@@ -67,6 +68,11 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const handleLongPress = () => {
     if (!onLongPress) return;
     suppressNextPressRef.current = true;
+    if (Platform.OS === "android") {
+      Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Long_Press);
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
     onLongPress(showtime);
   };
 

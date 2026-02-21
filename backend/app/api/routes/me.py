@@ -16,6 +16,7 @@ from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
 from app.schemas.push_token import PushTokenRegister
 from app.schemas.showtime import ShowtimeLoggedIn
+from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe, UserWithFriendStatus
 from app.services import me as me_service
 from app.services import users as users_service
@@ -250,6 +251,44 @@ def get_my_showtimes(
         offset=offset,
         filters=filters,
     )
+
+
+@router.get("/pings", response_model=list[ShowtimePingPublic])
+def get_my_showtime_pings(
+    session: SessionDep,
+    current_user: CurrentUser,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> list[ShowtimePingPublic]:
+    return me_service.get_received_showtime_pings(
+        session=session,
+        user_id=current_user.id,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/pings/unseen-count", response_model=int)
+def get_my_unseen_showtime_ping_count(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> int:
+    return me_service.get_unseen_showtime_ping_count(
+        session=session,
+        user_id=current_user.id,
+    )
+
+
+@router.post("/pings/mark-seen", response_model=Message)
+def mark_my_showtime_pings_seen(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Message:
+    me_service.mark_showtime_pings_seen(
+        session=session,
+        user_id=current_user.id,
+    )
+    return Message(message="Showtime pings marked as seen")
 
 
 @router.put("/watchlist", response_model=Message)

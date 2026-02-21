@@ -25,6 +25,9 @@ class UserMe(UserPublic):
     email: EmailStr
     is_superuser: bool
     notify_on_friend_showtime_match: bool
+    notify_on_friend_requests: bool
+    notify_on_showtime_ping: bool
+    notify_on_interest_reminder: bool
     letterboxd_username: str | None
 
 

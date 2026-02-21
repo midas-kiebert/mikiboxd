@@ -1,13 +1,14 @@
 /**
  * Expo Router screen/module for (tabs) / index. It controls navigation and screen-level state for this route.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
 import { useIsFocused } from '@react-navigation/native';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useFetchMyShowtimes } from 'shared/hooks/useFetchMyShowtimes';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
+import { useFetchFavoriteFilterPreset } from 'shared/hooks/useFetchFavoriteFilterPreset';
 
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import DayFilterModal from '@/components/filters/DayFilterModal';
@@ -33,12 +34,20 @@ import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 
 type AudienceFilter = 'including-friends' | 'only-you';
 type MainShowtimesFilterId = SharedTabFilterId;
+const toAudienceFilter = (
+  value: PageFilterPresetState['showtime_audience'] | undefined
+): AudienceFilter => (value === 'only-you' ? 'only-you' : 'including-friends');
 
 export default function MainShowtimesScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const [searchQuery, setSearchQuery] = useState('');
   const [audienceFilter, setAudienceFilter] = useState<AudienceFilter>('including-friends');
+  const [appliedAudienceFilter, setAppliedAudienceFilter] =
+    useState<AudienceFilter>('including-friends');
+  const [isFilterTransitionLoading, setIsFilterTransitionLoading] = useState(false);
+  const applyAudienceFilterFrameRef = useRef<number | null>(null);
+  const initializedAudienceFromFavoriteRef = useRef(false);
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
   // Controls visibility of the cinema-filter modal.
@@ -56,8 +65,10 @@ export default function MainShowtimesScreen() {
 
   const {
     selectedShowtimeFilter,
+    appliedShowtimeFilter,
     setSelectedShowtimeFilter,
     watchlistOnly,
+    appliedWatchlistOnly,
     setWatchlistOnly,
     sessionCinemaIds,
     selectedDays,
@@ -67,6 +78,9 @@ export default function MainShowtimesScreen() {
   } = useSharedTabFilters();
   const isFocused = useIsFocused();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  const favoriteFilterPresetQuery = useFetchFavoriteFilterPreset({
+    scope: SHARED_TAB_FILTER_PRESET_SCOPE,
+  });
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
   const resolvedApiDays = useMemo(
@@ -75,7 +89,7 @@ export default function MainShowtimesScreen() {
   );
   const shouldShowAudienceToggle = selectedShowtimeFilter !== 'all';
   const effectiveAudienceFilter: AudienceFilter = shouldShowAudienceToggle
-    ? audienceFilter
+    ? appliedAudienceFilter
     : 'including-friends';
 
   // React Query client used for cache updates and invalidation.
@@ -88,26 +102,27 @@ export default function MainShowtimesScreen() {
       selectedCinemaIds: sessionCinemaIds,
       days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
-      selectedStatuses: getSelectedStatusesFromShowtimeFilter(selectedShowtimeFilter),
-      watchlistOnly: watchlistOnly ? true : undefined,
+      selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
+      watchlistOnly: appliedWatchlistOnly ? true : undefined,
     };
   }, [
     searchQuery,
-    selectedShowtimeFilter,
+    appliedShowtimeFilter,
     resolvedApiDays,
     selectedTimeRanges,
     sessionCinemaIds,
-    watchlistOnly,
+    appliedWatchlistOnly,
   ]);
 
   const currentPresetFilters = useMemo<PageFilterPresetState>(
     () => ({
       selected_showtime_filter: selectedShowtimeFilter,
+      showtime_audience: shouldShowAudienceToggle ? audienceFilter : 'including-friends',
       watchlist_only: watchlistOnly,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
     }),
-    [selectedShowtimeFilter, watchlistOnly, selectedDays, selectedTimeRanges]
+    [audienceFilter, selectedShowtimeFilter, selectedDays, selectedTimeRanges, shouldShowAudienceToggle, watchlistOnly]
   );
 
   // Build shared filter pills used by both Movies and Showtimes tabs.
@@ -168,9 +183,60 @@ export default function MainShowtimesScreen() {
     hasNextPage,
     fetchNextPage,
   } = activeShowtimesQuery;
+  const isAudienceTransitionPending =
+    shouldShowAudienceToggle && audienceFilter !== appliedAudienceFilter;
+  const isAppliedFilterTransitionPending =
+    selectedShowtimeFilter !== appliedShowtimeFilter ||
+    watchlistOnly !== appliedWatchlistOnly ||
+    isAudienceTransitionPending;
 
   // Flatten/derive list data for rendering efficiency.
   const showtimes = useMemo(() => data?.pages.flat() ?? [], [data]);
+  const visibleShowtimes = isFilterTransitionLoading ? [] : showtimes;
+
+  const startFilterTransitionLoading = () => {
+    setIsFilterTransitionLoading(true);
+  };
+
+  const applyAudienceFilter = (next: AudienceFilter) => {
+    setAudienceFilter(next);
+    if (applyAudienceFilterFrameRef.current !== null) {
+      cancelAnimationFrame(applyAudienceFilterFrameRef.current);
+    }
+    applyAudienceFilterFrameRef.current = requestAnimationFrame(() => {
+      applyAudienceFilterFrameRef.current = null;
+      setAppliedAudienceFilter(next);
+    });
+  };
+
+  useEffect(
+    () => () => {
+      if (applyAudienceFilterFrameRef.current !== null) {
+        cancelAnimationFrame(applyAudienceFilterFrameRef.current);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (initializedAudienceFromFavoriteRef.current) return;
+    if (!favoriteFilterPresetQuery.isFetched) return;
+
+    const favoriteAudience = toAudienceFilter(favoriteFilterPresetQuery.data?.filters.showtime_audience);
+    setAudienceFilter(favoriteAudience);
+    setAppliedAudienceFilter(favoriteAudience);
+    initializedAudienceFromFavoriteRef.current = true;
+  }, [favoriteFilterPresetQuery.data, favoriteFilterPresetQuery.isFetched]);
+
+  useEffect(() => {
+    if (!isFilterTransitionLoading) return;
+    if (isAppliedFilterTransitionPending) return;
+
+    const frame = requestAnimationFrame(() => {
+      setIsFilterTransitionLoading(false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isAppliedFilterTransitionPending, isFilterTransitionLoading]);
 
   // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
@@ -195,6 +261,7 @@ export default function MainShowtimesScreen() {
   // Handle filter pill presses and update filter state.
   const handleToggleFilter = (filterId: MainShowtimesFilterId) => {
     if (filterId === 'showtime-filter') {
+      startFilterTransitionLoading();
       setSelectedShowtimeFilter(cycleSharedTabShowtimeFilter(selectedShowtimeFilter));
       return;
     }
@@ -215,6 +282,7 @@ export default function MainShowtimesScreen() {
       return;
     }
     if (filterId === 'watchlist-only') {
+      startFilterTransitionLoading();
       setWatchlistOnly(!watchlistOnly);
       return;
     }
@@ -222,6 +290,7 @@ export default function MainShowtimesScreen() {
 
   const handleApplyPreset = (filters: PageFilterPresetState) => {
     setSelectedShowtimeFilter(toSharedTabShowtimeFilter(filters.selected_showtime_filter));
+    applyAudienceFilter(toAudienceFilter(filters.showtime_audience));
     setWatchlistOnly(Boolean(filters.watchlist_only));
     setSelectedDays(filters.days ?? []);
     setSelectedTimeRanges(filters.time_ranges ?? []);
@@ -238,9 +307,9 @@ export default function MainShowtimesScreen() {
   return (
     <>
       <ShowtimesScreen
-        showtimes={showtimes}
-        isLoading={isLoading}
-        isFetching={isFetching}
+        showtimes={visibleShowtimes}
+        isLoading={isLoading || isFilterTransitionLoading}
+        isFetching={isFetching || isFilterTransitionLoading}
         isFetchingNextPage={isFetchingNextPage}
         hasNextPage={hasNextPage}
         onLoadMore={handleLoadMore}
@@ -254,8 +323,11 @@ export default function MainShowtimesScreen() {
         audienceToggle={
           shouldShowAudienceToggle
             ? {
-                value: effectiveAudienceFilter,
-                onChange: setAudienceFilter,
+                value: audienceFilter,
+                onChange: (value) => {
+                  startFilterTransitionLoading();
+                  applyAudienceFilter(value);
+                },
               }
             : undefined
         }

@@ -411,24 +411,24 @@ export default function SettingsScreen() {
     {
       key: 'notify_on_friend_showtime_match',
       channelKey: 'notify_channel_friend_showtime_match',
-      label: 'Friend showtime updates',
-      description: 'When friends change Going/Interested status on your shared showtimes.',
+      label: 'Friend Status Updates',
+      description: 'When friends change their status on showtimes you are interested in.',
       value: notificationPreferences.notify_on_friend_showtime_match,
       channel: notificationChannels.notify_channel_friend_showtime_match,
     },
     {
       key: 'notify_on_showtime_ping',
       channelKey: 'notify_channel_showtime_ping',
-      label: 'Showtime pings',
-      description: 'When a friend pings you to join a specific showtime.',
+      label: 'Pings',
+      description: 'When a friend pings you to go to a showtime.',
       value: notificationPreferences.notify_on_showtime_ping,
       channel: notificationChannels.notify_channel_showtime_ping,
     },
     {
       key: 'notify_on_interest_reminder',
       channelKey: 'notify_channel_interest_reminder',
-      label: 'Interested reminders',
-      description: 'Reminder before showtimes you marked as Interested.',
+      label: 'Reminders',
+      description: 'Reminder for showtimes you marked as Interested.',
       value: notificationPreferences.notify_on_interest_reminder,
       channel: notificationChannels.notify_channel_interest_reminder,
     },
@@ -436,7 +436,7 @@ export default function SettingsScreen() {
       key: 'notify_on_friend_requests',
       channelKey: 'notify_channel_friend_requests',
       label: 'Friend requests',
-      description: 'When you receive a friend request or someone accepts yours.',
+      description: 'When you receive a friend request.',
       value: notificationPreferences.notify_on_friend_requests,
       channel: notificationChannels.notify_channel_friend_requests,
     },
@@ -450,7 +450,7 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>My profile</ThemedText>
           <View style={styles.card}>
-            <ThemedText style={styles.label}>Full name</ThemedText>
+            <ThemedText style={styles.label}>Display name</ThemedText>
             <TextInput
               style={styles.input}
               value={profile.display_name}
@@ -546,11 +546,11 @@ export default function SettingsScreen() {
             <ThemedText style={styles.helperText}>
               Choose which notification types you want to receive.
             </ThemedText>
-            {notificationPermissionStatus ? (
+            {/* {notificationPermissionStatus ? (
               <ThemedText style={styles.helperText}>
                 System permission: {notificationPermissionStatus === 'granted' ? 'Allowed' : 'Not allowed'}.
               </ThemedText>
-            ) : null}
+            ) : null} */}
             {notificationToggles.map((toggle) => (
               <View key={toggle.key} style={styles.notificationToggleRow}>
                 <View style={styles.notificationToggleHeader}>
@@ -780,6 +780,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     notificationToggleDescription: {
       fontSize: 11,
       color: colors.textSecondary,
+      lineHeight: 15,
     },
     notificationChannelRow: {
       flexDirection: 'row',

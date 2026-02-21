@@ -27,6 +27,33 @@ from app.utils import now_amsterdam_naive
 
 logger = getLogger(__name__)
 
+DEFAULT_FILTER_PRESET_IDS = {
+    FilterPresetScope.SHOWTIMES: UUID("00000000-0000-0000-0000-000000000001"),
+    FilterPresetScope.MOVIES: UUID("00000000-0000-0000-0000-000000000002"),
+}
+
+
+def _build_default_filter_preset(scope: FilterPresetScope) -> FilterPresetPublic:
+    now = now_amsterdam_naive()
+    return FilterPresetPublic.model_validate(
+        {
+            "id": DEFAULT_FILTER_PRESET_IDS[scope],
+            "name": "Default",
+            "scope": scope,
+            "is_default": True,
+            "is_favorite": False,
+            "filters": {
+                "selected_showtime_filter": "all",
+                "showtime_audience": "including-friends",
+                "watchlist_only": False,
+                "days": None,
+                "time_ranges": None,
+            },
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+
 
 def update_me(
     *,
@@ -114,7 +141,14 @@ def list_filter_presets(
         user_id=user_id,
         scope=scope,
     )
-    return [_to_filter_preset_public(preset) for preset in presets]
+    public_presets = [_to_filter_preset_public(preset) for preset in presets]
+    has_named_default = any(
+        preset.is_default and preset.name.strip().lower() == "default"
+        for preset in public_presets
+    )
+    if not has_named_default:
+        public_presets.insert(0, _build_default_filter_preset(scope))
+    return public_presets
 
 
 def save_filter_preset(

@@ -41,6 +41,12 @@ type ShowtimeActionModalProps = {
   onClose: () => void;
 };
 
+const DETAIL_PANEL_HEIGHT = 360;
+const MODAL_OPEN_DURATION_MS = 200;
+const DETAIL_PANEL_OPEN_DURATION_MS = 440;
+const DETAIL_PANEL_CLOSE_DURATION_MS = 240;
+
+
 export default function ShowtimeActionModal({
   visible,
   showtime,
@@ -54,8 +60,11 @@ export default function ShowtimeActionModal({
   const styles = createStyles(colors);
   const queryClient = useQueryClient();
   const modalProgress = useRef(new Animated.Value(0)).current;
+  const detailPanelProgress = useRef(new Animated.Value(0)).current;
 
   const [activeDetailPanel, setActiveDetailPanel] = useState<DetailPanel>("none");
+  const [renderedDetailPanel, setRenderedDetailPanel] = useState<DetailPanel>("none");
+  const activeDetailPanelRef = useRef<DetailPanel>("none");
   const [pingSearchQuery, setPingSearchQuery] = useState("");
   const [visibilitySearchQuery, setVisibilitySearchQuery] = useState("");
   const [visibleFriendIdsDraft, setVisibleFriendIdsDraft] = useState<Set<string>>(new Set());
@@ -135,9 +144,11 @@ export default function ShowtimeActionModal({
   });
 
   useEffect(() => {
-    if (!visible || !showtime) {
+    if (!visible || selectedShowtimeId === null) {
       modalProgress.setValue(0);
+      detailPanelProgress.setValue(0);
       setActiveDetailPanel("none");
+      setRenderedDetailPanel("none");
       setPingSearchQuery("");
       setVisibilitySearchQuery("");
       setVisibleFriendIdsDraft(new Set());
@@ -150,11 +161,11 @@ export default function ShowtimeActionModal({
     modalProgress.setValue(0);
     Animated.timing(modalProgress, {
       toValue: 1,
-      duration: 220,
-      easing: Easing.out(Easing.cubic),
+      duration: MODAL_OPEN_DURATION_MS,
+      easing: Easing.out(Easing.ease),
       useNativeDriver: true,
     }).start();
-  }, [modalProgress, showtime, visible]);
+  }, [modalProgress, selectedShowtimeId, visible]);
 
   useEffect(() => {
     if (!showtimeVisibility) {
@@ -162,6 +173,10 @@ export default function ShowtimeActionModal({
     }
     setVisibleFriendIdsDraft(new Set(showtimeVisibility.visible_friend_ids));
   }, [showtimeVisibility]);
+
+  useEffect(() => {
+    activeDetailPanelRef.current = activeDetailPanel;
+  }, [activeDetailPanel]);
 
   const handleOpenTicketLink = async () => {
     const ticketLink = showtime?.ticket_link;
@@ -176,7 +191,44 @@ export default function ShowtimeActionModal({
   };
 
   const handleToggleDetailPanel = (panel: Exclude<DetailPanel, "none">) => {
-    setActiveDetailPanel((previous) => (previous === panel ? "none" : panel));
+    // Toggle off: animate closed, then unmount panel content.
+    if (activeDetailPanel === panel) {
+      setActiveDetailPanel("none");
+      detailPanelProgress.stopAnimation();
+      Animated.timing(detailPanelProgress, {
+        toValue: 0,
+        duration: DETAIL_PANEL_CLOSE_DURATION_MS,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: false,
+      }).start(({ finished }) => {
+        // Ignore stale callbacks when the user reopened a panel quickly.
+        if (finished && activeDetailPanelRef.current === "none") {
+          setRenderedDetailPanel("none");
+        }
+      });
+      return;
+    }
+
+    // First open from collapsed state.
+    if (activeDetailPanel === "none") {
+      setRenderedDetailPanel(panel);
+      setActiveDetailPanel(panel);
+      detailPanelProgress.stopAnimation();
+      detailPanelProgress.setValue(0);
+      Animated.timing(detailPanelProgress, {
+        toValue: 1,
+        duration: DETAIL_PANEL_OPEN_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+      return;
+    }
+
+    // Switching ping <-> visibility while open: keep the panel fully expanded.
+    setRenderedDetailPanel(panel);
+    setActiveDetailPanel(panel);
+    detailPanelProgress.stopAnimation();
+    detailPanelProgress.setValue(1);
   };
 
   const handlePingFriend = (friendId: string) => {
@@ -211,15 +263,36 @@ export default function ShowtimeActionModal({
     setVisibleFriendIdsDraft(new Set());
   };
 
-  const handleSaveVisibility = () => {
-    if (!showtime || isUpdatingShowtimeVisibility) {
-      return;
+  const hasVisibilityChanges = useMemo(() => {
+    if (!showtimeVisibility) {
+      return false;
     }
 
-    updateShowtimeVisibility({
-      showtimeId: showtime.id,
-      visibleFriendIds: Array.from(visibleFriendIdsDraft),
-    });
+    const savedVisibleFriendIds = new Set(showtimeVisibility.visible_friend_ids);
+    if (savedVisibleFriendIds.size !== visibleFriendIdsDraft.size) {
+      return true;
+    }
+
+    for (const friendId of visibleFriendIdsDraft) {
+      if (!savedVisibleFriendIds.has(friendId)) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [showtimeVisibility, visibleFriendIdsDraft]);
+
+  const handleCloseModal = () => {
+    if (!isUpdatingStatus && showtime && hasVisibilityChanges && !isUpdatingShowtimeVisibility) {
+      updateShowtimeVisibility({
+        showtimeId: showtime.id,
+        visibleFriendIds: Array.from(visibleFriendIdsDraft),
+      });
+    }
+
+    if (!isUpdatingStatus) {
+      onClose();
+    }
   };
 
   const friendsGoingIds = useMemo(() => {
@@ -261,7 +334,6 @@ export default function ShowtimeActionModal({
         return {
           id: friend.id,
           label,
-          initial: label.charAt(0).toUpperCase(),
           availability,
         };
       })
@@ -298,7 +370,6 @@ export default function ShowtimeActionModal({
     (count, friend) => count + (visibleFriendIdsDraft.has(friend.id) ? 1 : 0),
     0
   );
-  const allVisibilitySelected = totalFriendCount > 0 && selectedVisibilityCount === totalFriendCount;
 
   const resolvedMovieTitle = useMemo(() => {
     const fromProp = movieTitle?.trim();
@@ -341,16 +412,28 @@ export default function ShowtimeActionModal({
     ],
   };
 
+  const detailPanelAnimatedStyle = {
+    height: detailPanelProgress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, DETAIL_PANEL_HEIGHT],
+    }),
+    opacity: detailPanelProgress,
+    transform: [
+      {
+        translateY: detailPanelProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [8, 0],
+        }),
+      },
+    ],
+  };
+
   return (
     <Modal
       transparent
       visible={visible}
       animationType="none"
-      onRequestClose={() => {
-        if (!isUpdatingStatus) {
-          onClose();
-        }
-      }}
+      onRequestClose={handleCloseModal}
     >
       <Animated.View style={[styles.statusModalBackdrop, statusModalBackdropAnimatedStyle]}>
         <BlurView
@@ -362,11 +445,7 @@ export default function ShowtimeActionModal({
         <View style={styles.statusModalTint} />
         <Pressable
           style={styles.statusModalDismissArea}
-          onPress={() => {
-            if (!isUpdatingStatus) {
-              onClose();
-            }
-          }}
+          onPress={handleCloseModal}
         />
 
         <Animated.View style={[styles.statusModalCard, statusModalCardAnimatedStyle]}>
@@ -421,144 +500,133 @@ export default function ShowtimeActionModal({
             </TouchableOpacity>
           </View>
 
-          {activeDetailPanel === "ping" ? (
-            <View style={styles.detailPanel}>
-              <ThemedText style={styles.detailPanelTitle}>Ping friends</ThemedText>
-              <View style={styles.detailSearchRow}>
-                <MaterialIcons name="search" size={15} color={colors.textSecondary} />
-                <TextInput
-                  value={pingSearchQuery}
-                  onChangeText={setPingSearchQuery}
-                  placeholder="Search friends"
-                  placeholderTextColor={colors.textSecondary}
-                  style={styles.detailSearchInput}
-                />
-              </View>
-              {filteredFriendsForPing.length === 0 ? (
-                <ThemedText style={styles.detailEmptyText}>No friends found.</ThemedText>
-              ) : (
-                <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} nestedScrollEnabled>
-                  {filteredFriendsForPing.map((friend) => {
-                    const canPing =
-                      friend.availability === "eligible" && !isPingingFriend && !isFetchingPingedFriends;
-                    const statusLabel =
-                      friend.availability === "going"
-                        ? "Going"
-                        : friend.availability === "interested"
-                          ? "Interested"
-                          : friend.availability === "pinged"
-                            ? "Pinged"
-                            : "Ready";
+          {renderedDetailPanel === "ping" ? (
+            <Animated.View style={[styles.detailPanelAnimatedContainer, detailPanelAnimatedStyle]}>
+              <View style={styles.detailPanel}>
+                <ThemedText style={styles.detailPanelTitle}>Ping friends</ThemedText>
+                <View style={styles.detailSearchRow}>
+                  <MaterialIcons name="search" size={15} color={colors.textSecondary} />
+                  <TextInput
+                    value={pingSearchQuery}
+                    onChangeText={setPingSearchQuery}
+                    placeholder="Search friends"
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.detailSearchInput}
+                  />
+                </View>
+                <View style={styles.detailListContainer}>
+                  {filteredFriendsForPing.length === 0 ? (
+                    <View style={styles.detailListStateContainer}>
+                      <ThemedText style={styles.detailEmptyText}>No friends found.</ThemedText>
+                    </View>
+                  ) : (
+                    <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} nestedScrollEnabled>
+                      {filteredFriendsForPing.map((friend) => {
+                        const canPing =
+                          friend.availability === "eligible" && !isPingingFriend && !isFetchingPingedFriends;
+                        const pingButtonLabel =
+                          friend.availability === "eligible"
+                            ? "Ping"
+                            : friend.availability === "pinged"
+                              ? "Pinged"
+                              : friend.availability === "going"
+                                ? "Going"
+                                : "Interested";
 
-                    return (
-                      <View key={friend.id} style={styles.pingRow}>
-                        <View style={styles.pingFriendIdentity}>
-                          <View style={styles.pingFriendAvatar}>
-                            <ThemedText style={styles.pingFriendAvatarText}>{friend.initial || "F"}</ThemedText>
+                        return (
+                          <View key={friend.id} style={styles.pingRow}>
+                            <View style={styles.pingFriendIdentity}>
+                              <ThemedText style={styles.pingFriendName}>{friend.label}</ThemedText>
+                            </View>
+                            <TouchableOpacity
+                              style={[styles.pingButton, !canPing && styles.pingButtonDisabled]}
+                              disabled={!canPing}
+                              onPress={() => handlePingFriend(friend.id)}
+                              activeOpacity={0.8}
+                            >
+                              <ThemedText style={[styles.pingButtonText, !canPing && styles.pingButtonTextDisabled]}>
+                                {pingButtonLabel}
+                              </ThemedText>
+                            </TouchableOpacity>
                           </View>
-                          <View style={styles.pingFriendMeta}>
-                            <ThemedText style={styles.pingFriendName}>{friend.label}</ThemedText>
-                            <ThemedText style={styles.pingFriendStatus}>{statusLabel}</ThemedText>
-                          </View>
-                        </View>
-                        <TouchableOpacity
-                          style={[styles.pingButton, !canPing && styles.pingButtonDisabled]}
-                          disabled={!canPing}
-                          onPress={() => handlePingFriend(friend.id)}
-                          activeOpacity={0.8}
-                        >
-                          <ThemedText style={[styles.pingButtonText, !canPing && styles.pingButtonTextDisabled]}>
-                            {friend.availability === "eligible" ? "Ping" : statusLabel}
-                          </ThemedText>
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </ScrollView>
-              )}
-            </View>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
+              </View>
+            </Animated.View>
           ) : null}
 
-          {activeDetailPanel === "visibility" ? (
-            <View style={styles.detailPanel}>
-              <View style={styles.visibilityHeaderRow}>
-                <ThemedText style={styles.detailPanelTitle}>Visibility</ThemedText>
-                <ThemedText style={styles.visibilitySummary}>
-                  {selectedVisibilityCount}/{totalFriendCount} selected
-                </ThemedText>
-              </View>
-              <View style={styles.visibilityActionsRow}>
-                <TouchableOpacity
-                  style={styles.visibilityActionButton}
-                  onPress={handleSelectAllVisibility}
-                  activeOpacity={0.8}
-                >
-                  <ThemedText style={styles.visibilityActionText}>Select all</ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.visibilityActionButton}
-                  onPress={handleDeselectAllVisibility}
-                  activeOpacity={0.8}
-                >
-                  <ThemedText style={styles.visibilityActionText}>Deselect all</ThemedText>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.detailSearchRow}>
-                <MaterialIcons name="search" size={15} color={colors.textSecondary} />
-                <TextInput
-                  value={visibilitySearchQuery}
-                  onChangeText={setVisibilitySearchQuery}
-                  placeholder="Search friends"
-                  placeholderTextColor={colors.textSecondary}
-                  style={styles.detailSearchInput}
-                />
-              </View>
-              {isFetchingShowtimeVisibility && !showtimeVisibility ? (
-                <View style={styles.visibilityLoadingRow}>
-                  <ActivityIndicator size="small" color={colors.tint} />
+          {renderedDetailPanel === "visibility" ? (
+            <Animated.View style={[styles.detailPanelAnimatedContainer, detailPanelAnimatedStyle]}>
+              <View style={styles.detailPanel}>
+                <View style={styles.visibilityHeaderRow}>
+                  <ThemedText style={styles.detailPanelTitle}>Control who can see your status</ThemedText>
+                  <ThemedText style={styles.visibilitySummary}>
+                    {selectedVisibilityCount}/{totalFriendCount} selected
+                  </ThemedText>
                 </View>
-              ) : friendsForVisibility.length === 0 ? (
-                <ThemedText style={styles.detailEmptyText}>No friends found.</ThemedText>
-              ) : (
-                <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} nestedScrollEnabled>
-                  {friendsForVisibility.map((friend) => {
-                    const isSelected = visibleFriendIdsDraft.has(friend.id);
-                    return (
-                      <TouchableOpacity
-                        key={friend.id}
-                        style={styles.visibilityRow}
-                        onPress={() => handleToggleVisibleFriend(friend.id)}
-                        activeOpacity={0.8}
-                      >
-                        <ThemedText style={styles.visibilityFriendName}>{friend.label}</ThemedText>
-                        <MaterialIcons
-                          name={isSelected ? "check-box" : "check-box-outline-blank"}
-                          size={20}
-                          color={isSelected ? colors.tint : colors.textSecondary}
-                        />
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              )}
-
-              <TouchableOpacity
-                style={[
-                  styles.visibilitySaveButton,
-                  !allVisibilitySelected &&
-                    selectedVisibilityCount === 0 &&
-                    totalFriendCount > 0 &&
-                    styles.visibilitySaveButtonWarning,
-                ]}
-                disabled={isUpdatingShowtimeVisibility}
-                onPress={handleSaveVisibility}
-                activeOpacity={0.8}
-              >
-                <ThemedText style={styles.visibilitySaveButtonText}>
-                  {isUpdatingShowtimeVisibility ? "Saving..." : "Save visibility"}
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
+                <View style={styles.visibilityActionsRow}>
+                  <TouchableOpacity
+                    style={styles.visibilityActionButton}
+                    onPress={handleSelectAllVisibility}
+                    activeOpacity={0.8}
+                  >
+                    <ThemedText style={styles.visibilityActionText}>Select all</ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.visibilityActionButton}
+                    onPress={handleDeselectAllVisibility}
+                    activeOpacity={0.8}
+                  >
+                    <ThemedText style={styles.visibilityActionText}>Deselect all</ThemedText>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.detailSearchRow}>
+                  <MaterialIcons name="search" size={15} color={colors.textSecondary} />
+                  <TextInput
+                    value={visibilitySearchQuery}
+                    onChangeText={setVisibilitySearchQuery}
+                    placeholder="Search friends"
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.detailSearchInput}
+                  />
+                </View>
+                <View style={styles.detailListContainer}>
+                  {isFetchingShowtimeVisibility && !showtimeVisibility ? (
+                    <View style={styles.detailListStateContainer}>
+                      <ActivityIndicator size="small" color={colors.tint} />
+                    </View>
+                  ) : friendsForVisibility.length === 0 ? (
+                    <View style={styles.detailListStateContainer}>
+                      <ThemedText style={styles.detailEmptyText}>No friends found.</ThemedText>
+                    </View>
+                  ) : (
+                    <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} nestedScrollEnabled>
+                      {friendsForVisibility.map((friend) => {
+                        const isSelected = visibleFriendIdsDraft.has(friend.id);
+                        return (
+                          <TouchableOpacity
+                            key={friend.id}
+                            style={styles.visibilityRow}
+                            onPress={() => handleToggleVisibleFriend(friend.id)}
+                            activeOpacity={0.8}
+                          >
+                            <ThemedText style={styles.visibilityFriendName}>{friend.label}</ThemedText>
+                            <MaterialIcons
+                              name={isSelected ? "check-box" : "check-box-outline-blank"}
+                              size={20}
+                              color={isSelected ? colors.tint : colors.textSecondary}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
+              </View>
+            </Animated.View>
           ) : null}
 
           <View style={styles.actionRow}>
@@ -580,7 +648,8 @@ export default function ShowtimeActionModal({
 
             <TouchableOpacity
               style={[styles.actionButton, activeDetailPanel === "ping" && styles.actionButtonActive]}
-              onPress={() => handleToggleDetailPanel("ping")}
+              onPressIn={() => handleToggleDetailPanel("ping")}
+              delayPressIn={0}
               activeOpacity={0.8}
             >
               <MaterialIcons
@@ -603,7 +672,8 @@ export default function ShowtimeActionModal({
                 styles.actionButton,
                 activeDetailPanel === "visibility" && styles.actionButtonActive,
               ]}
-              onPress={() => handleToggleDetailPanel("visibility")}
+              onPressIn={() => handleToggleDetailPanel("visibility")}
+              delayPressIn={0}
               activeOpacity={0.8}
             >
               <MaterialIcons
@@ -625,7 +695,7 @@ export default function ShowtimeActionModal({
           <TouchableOpacity
             style={styles.statusCancelButton}
             disabled={isUpdatingStatus}
-            onPress={onClose}
+            onPress={handleCloseModal}
             activeOpacity={0.8}
           >
             <ThemedText style={styles.statusCancelText}>{isUpdatingStatus ? "Updating..." : "Cancel"}</ThemedText>
@@ -750,7 +820,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     actionButtonTextDisabled: {
       color: colors.textSecondary,
     },
+    detailPanelAnimatedContainer: {
+      overflow: "hidden",
+    },
     detailPanel: {
+      height: "100%",
       borderWidth: 1,
       borderColor: colors.cardBorder,
       borderRadius: 10,
@@ -780,8 +854,17 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.text,
       paddingVertical: 0,
     },
+    detailListContainer: {
+      flex: 1,
+      minHeight: 0,
+    },
+    detailListStateContainer: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     detailScroll: {
-      maxHeight: 220,
+      flex: 1,
     },
     detailScrollContent: {
       gap: 8,
@@ -794,54 +877,29 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      gap: 10,
+      gap: 8,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.cardBackground,
-      paddingHorizontal: 8,
-      paddingVertical: 7,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
     },
     pingFriendIdentity: {
       flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    pingFriendAvatar: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.pillBackground,
-      alignItems: "center",
       justifyContent: "center",
     },
-    pingFriendAvatarText: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    pingFriendMeta: {
-      flex: 1,
-      gap: 2,
-    },
     pingFriendName: {
-      flex: 1,
       fontSize: 13,
+      lineHeight: 18,
       color: colors.text,
-    },
-    pingFriendStatus: {
-      fontSize: 11,
-      color: colors.textSecondary,
     },
     pingButton: {
       borderRadius: 8,
       borderWidth: 1,
       borderColor: colors.tint,
-      paddingVertical: 5,
-      paddingHorizontal: 11,
+      paddingVertical: 2,
+      paddingHorizontal: 8,
       backgroundColor: colors.cardBackground,
     },
     pingButtonDisabled: {
@@ -849,7 +907,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.pillBackground,
     },
     pingButtonText: {
-      fontSize: 12,
+      fontSize: 11,
+      lineHeight: 14,
       fontWeight: "700",
       color: colors.tint,
     },
@@ -883,10 +942,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "600",
       color: colors.textSecondary,
     },
-    visibilityLoadingRow: {
-      alignItems: "center",
-      paddingVertical: 10,
-    },
     visibilityRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -903,24 +958,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flex: 1,
       fontSize: 13,
       color: colors.text,
-    },
-    visibilitySaveButton: {
-      borderRadius: 9,
-      borderWidth: 1,
-      borderColor: colors.tint,
-      backgroundColor: colors.cardBackground,
-      alignItems: "center",
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      marginTop: 2,
-    },
-    visibilitySaveButtonWarning: {
-      borderColor: colors.red.secondary,
-    },
-    visibilitySaveButtonText: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: colors.tint,
     },
     statusCancelButton: {
       alignItems: "center",

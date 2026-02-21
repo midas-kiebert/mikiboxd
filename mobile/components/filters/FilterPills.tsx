@@ -69,11 +69,9 @@ export default function FilterPills<TId extends string = string>({
                     isActive && item.activeBackgroundColor
                       ? { backgroundColor: item.activeBackgroundColor }
                       : null,
-                    isActive && item.activeBorderColor
-                      ? { borderWidth: 1, borderColor: item.activeBorderColor }
-                      : null,
                   ]}
                   onPress={() => onSelect(item.id)}
+                  activeOpacity={1}
                 >
                   <View style={styles.pillContent}>
                     <ThemedText
@@ -91,6 +89,7 @@ export default function FilterPills<TId extends string = string>({
                 <TouchableOpacity
                   style={styles.compoundRight}
                   onPress={compoundRightToggle.onPress}
+                  activeOpacity={1}
                 >
                   <ThemedText
                     numberOfLines={1}
@@ -116,6 +115,7 @@ export default function FilterPills<TId extends string = string>({
                   : null,
               ]}
               onPress={() => onSelect(item.id)}
+              activeOpacity={1}
             >
               <View style={styles.pillContent}>
                 <ThemedText
@@ -153,41 +153,40 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     list: {
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingVertical: 10,
       gap: 8,
     },
     pill: {
       position: "relative",
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      borderRadius: 18,
       backgroundColor: colors.pillBackground,
       marginRight: 2,
     },
     compoundPill: {
       flexDirection: "row",
       alignItems: "center",
-      borderRadius: 20,
+      borderRadius: 18,
       backgroundColor: colors.pillBackground,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
+      borderWidth: 0,
       padding: 1,
-      marginRight: 2,
       gap: 2,
+      marginRight: 2,
     },
     compoundLeft: {
-      borderRadius: 18,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
+      borderRadius: 16,
+      paddingHorizontal: 11,
+      paddingVertical: 6,
     },
     compoundRight: {
-      borderRadius: 18,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
+      borderRadius: 16,
+      paddingHorizontal: 11,
+      paddingVertical: 6,
     },
     compoundRightText: {
-      fontSize: 14,
-      fontWeight: "600",
+      fontSize: 13,
+      fontWeight: "500",
       color: colors.pillText,
     },
     pillContent: {
@@ -199,8 +198,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.pillActiveBackground,
     },
     pillText: {
-      fontSize: 14,
-      fontWeight: "600",
+      fontSize: 13,
+      fontWeight: "500",
       color: colors.pillText,
     },
     pillTextActive: {

@@ -29,7 +29,6 @@ import { useFetchShowtimePings } from "shared/hooks/useFetchShowtimePings";
 
 import CinemaPill from "@/components/badges/CinemaPill";
 import FilterPills from "@/components/filters/FilterPills";
-import FriendBadges from "@/components/badges/FriendBadges";
 import TopBar from "@/components/layout/TopBar";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -234,10 +233,6 @@ export default function PingsScreen() {
           going_status: going,
         },
       }),
-    onSuccess: () => {
-      setSelectedShowtime(null);
-      setSelectedShowtimeMovieTitle(null);
-    },
     onError: (error) => {
       console.error("Error updating showtime selection:", error);
     },
@@ -252,6 +247,7 @@ export default function PingsScreen() {
   // Submit the selected going/interested/not-going status.
   const handleShowtimeStatusUpdate = (going: GoingStatus) => {
     if (!selectedShowtime || isUpdatingShowtimeSelection) return;
+    setSelectedShowtime((previous) => (previous ? { ...previous, going } : previous));
     updateShowtimeSelection({ showtimeId: selectedShowtime.id, going });
   };
 
@@ -354,8 +350,6 @@ export default function PingsScreen() {
           );
           const showtime = showtimeById.get(item.showtimeId);
           const cinema = showtime?.cinema;
-          const friendsGoing = showtime?.friends_going ?? [];
-          const friendsInterested = showtime?.friends_interested ?? [];
           const senderNames = item.senders
             .map((sender) => sender.display_name?.trim() || "Friend")
             .filter((value, index, all) => all.indexOf(value) === index);
@@ -398,12 +392,6 @@ export default function PingsScreen() {
                     )}
                     {item.hasUnseen ? <View style={styles.unseenDot} /> : null}
                   </View>
-                  <FriendBadges
-                    friendsGoing={friendsGoing}
-                    friendsInterested={friendsInterested}
-                    variant="compact"
-                    style={styles.friendRow}
-                  />
                   <ThemedText style={styles.metaText}>{senderSummary}</ThemedText>
                   <ThemedText style={styles.metaTimestamp}>Latest ping: {latestPingTimestamp}</ThemedText>
                   <TouchableOpacity
@@ -533,9 +521,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 9,
       lineHeight: 12,
       color: colors.textSecondary,
-    },
-    friendRow: {
-      marginTop: 3,
     },
     metaText: {
       fontSize: 12,

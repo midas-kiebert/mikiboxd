@@ -162,6 +162,10 @@ export type ShowtimePingPublic = {
 
 export type ShowtimePingSort = "ping_created_at" | "showtime_datetime"
 
+export type ShowtimeSelectionUpdate = {
+  going_status: GoingStatus
+}
+
 export type ShowtimeVisibilityPublic = {
   showtime_id: number
   movie_id: number
@@ -171,10 +175,6 @@ export type ShowtimeVisibilityPublic = {
 
 export type ShowtimeVisibilityUpdate = {
   visible_friend_ids: Array<string>
-}
-
-export type ShowtimeSelectionUpdate = {
-  going_status: GoingStatus
 }
 
 export type TimeOfDay = "MORNING" | "AFTERNOON" | "EVENING" | "NIGHT"
@@ -429,7 +429,7 @@ export type MeGetMyShowtimesResponse = Array<ShowtimeLoggedIn>
 export type MeGetMyShowtimePingsData = {
   limit?: number
   offset?: number
-  sortBy?: ShowtimePingSort | null
+  sortBy?: ShowtimePingSort
 }
 
 export type MeGetMyShowtimePingsResponse = Array<ShowtimePingPublic>

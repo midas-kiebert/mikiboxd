@@ -1,13 +1,16 @@
 import json
 import re
 import sys
+import unicodedata
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from html import escape
 from typing import Any
 
+from rapidfuzz import fuzz
 from sqlalchemy import func
-from sqlmodel import col, select
+from sqlmodel import Session, col, delete, select
 
 from app.api.deps import get_db_context
 from app.models.cinema import Cinema
@@ -34,10 +37,15 @@ from app.scraping.scrape import (
 from app.scraping.tmdb import consume_tmdb_lookup_events, reset_tmdb_runtime_state
 from app.services import scrape_sync as scrape_sync_service
 from app.services.scrape_sync import DeletedShowtimeInfo
-from app.utils import now_amsterdam_naive, send_email
+from app.utils import clean_title, now_amsterdam_naive, send_email
 
 RECAP_EMAIL_TO = "scraper.mikino@midaskiebert.nl"
 STAGE_PATTERN = re.compile(r"(^|\s)stage=([^|]+)")
+TITLE_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
+CINEVILLE_STREAM_PREFIX = "cineville:"
+CINEMA_SCRAPER_STREAM_PREFIX = "cinema_scraper:"
+SINGLE_TOKEN_SIMILARITY_THRESHOLD = 92.0
+TITLE_SIMILARITY_THRESHOLD = 85.0
 
 
 @dataclass(frozen=True)
@@ -75,6 +83,152 @@ class Letterboxd403Diagnostics:
     session_refresh_http_errors: int
     unique_cf_rays: int
     sample_cf_rays: list[str]
+
+
+@dataclass
+class _ShowtimeSourceFlags:
+    showtime_id: int
+    movie_title: str
+    cinema_id: int
+    datetime: datetime
+    has_cineville_source: bool = False
+    has_cinema_scraper_source: bool = False
+
+
+def _normalize_title_for_conflict_match(title: str) -> str:
+    cleaned = clean_title(title)
+    folded = unicodedata.normalize("NFKD", cleaned)
+    ascii_only = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    normalized = TITLE_NORMALIZE_PATTERN.sub(" ", ascii_only.lower())
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _titles_conflict_match(left_title: str, right_title: str) -> bool:
+    left = _normalize_title_for_conflict_match(left_title)
+    right = _normalize_title_for_conflict_match(right_title)
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+
+    left_tokens = set(left.split())
+    right_tokens = set(right.split())
+    if not left_tokens or not right_tokens:
+        return False
+
+    if len(left_tokens) > 1 and len(right_tokens) > 1:
+        if left_tokens.issubset(right_tokens) or right_tokens.issubset(left_tokens):
+            return True
+        similarity = max(
+            float(fuzz.token_set_ratio(left, right)),
+            float(fuzz.ratio(left, right)),
+        )
+        return similarity >= TITLE_SIMILARITY_THRESHOLD
+
+    similarity = max(
+        float(fuzz.token_sort_ratio(left, right)),
+        float(fuzz.ratio(left, right)),
+    )
+    return similarity >= SINGLE_TOKEN_SIMILARITY_THRESHOLD
+
+
+def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowtimeInfo]:
+    stmt = (
+        select(
+            ShowtimeSourcePresence,
+            Showtime,
+            Movie,
+        )
+        .select_from(ShowtimeSourcePresence)
+        .join(
+            Showtime,
+            col(Showtime.id) == col(ShowtimeSourcePresence.showtime_id),
+        )
+        .join(
+            Movie,
+            col(Movie.id) == col(Showtime.movie_id),
+        )
+        .where(
+            col(ShowtimeSourcePresence.active).is_(True),
+            Showtime.datetime >= now_amsterdam_naive(),
+        )
+    )
+    rows = list(session.exec(stmt).all())
+    if not rows:
+        return []
+
+    showtimes: dict[int, _ShowtimeSourceFlags] = {}
+    showtimes_by_slot: defaultdict[tuple[int, datetime], list[int]] = defaultdict(list)
+
+    for presence, showtime, movie in rows:
+        source_stream = presence.source_stream
+        if not source_stream.startswith(
+            (CINEVILLE_STREAM_PREFIX, CINEMA_SCRAPER_STREAM_PREFIX)
+        ):
+            continue
+        showtime_id = showtime.id
+        existing = showtimes.get(showtime_id)
+        if existing is None:
+            existing = _ShowtimeSourceFlags(
+                showtime_id=int(showtime_id),
+                movie_title=str(movie.title),
+                cinema_id=int(showtime.cinema_id),
+                datetime=showtime.datetime,
+            )
+            showtimes[showtime_id] = existing
+            showtimes_by_slot[(existing.cinema_id, existing.datetime)].append(
+                showtime_id
+            )
+
+        if source_stream.startswith(CINEVILLE_STREAM_PREFIX):
+            existing.has_cineville_source = True
+        if source_stream.startswith(CINEMA_SCRAPER_STREAM_PREFIX):
+            existing.has_cinema_scraper_source = True
+
+    ids_to_delete: set[int] = set()
+    for slot_showtime_ids in showtimes_by_slot.values():
+        cinema_scraper_showtimes = [
+            showtimes[showtime_id]
+            for showtime_id in slot_showtime_ids
+            if showtimes[showtime_id].has_cinema_scraper_source
+        ]
+        if not cinema_scraper_showtimes:
+            continue
+
+        for showtime_id in slot_showtime_ids:
+            candidate = showtimes[showtime_id]
+            if not candidate.has_cineville_source:
+                continue
+            if candidate.has_cinema_scraper_source:
+                continue
+
+            if any(
+                _titles_conflict_match(candidate.movie_title, other.movie_title)
+                for other in cinema_scraper_showtimes
+            ):
+                ids_to_delete.add(candidate.showtime_id)
+
+    if not ids_to_delete:
+        return []
+
+    deleted_showtimes = list(
+        session.exec(select(Showtime).where(col(Showtime.id).in_(ids_to_delete))).all()
+    )
+    deleted_infos = [
+        DeletedShowtimeInfo(
+            showtime_id=showtime.id,
+            movie_id=showtime.movie_id,
+            movie_title=showtime.movie.title,
+            cinema_id=showtime.cinema_id,
+            cinema_name=showtime.cinema.name,
+            datetime=showtime.datetime,
+            ticket_link=showtime.ticket_link,
+        )
+        for showtime in deleted_showtimes
+    ]
+    session.execute(delete(Showtime).where(col(Showtime.id).in_(ids_to_delete)))
+    session.commit()
+    return deleted_infos
 
 
 def _combine_summaries(
@@ -1053,6 +1207,22 @@ def run() -> None:
         cinema_summary = run_cinema_scrapers()
         _combine_summaries(current=summary, new=cinema_summary)
         logger.info("Ran all cinema scrapers.")
+        logger.info("Starting Cineville conflict cleanup...")
+        try:
+            with get_db_context() as session:
+                conflict_deleted = _delete_cineville_title_conflicts(session=session)
+            summary.deleted_showtimes.extend(conflict_deleted)
+            logger.info(
+                "Cineville conflict cleanup finished. Deleted %s showtime(s).",
+                len(conflict_deleted),
+            )
+        except Exception as cleanup_error:
+            summary.errors.append(
+                "stage=cineville_conflict_cleanup | "
+                f"error_type={type(cleanup_error).__name__} | "
+                f"error={cleanup_error}"
+            )
+            logger.error("Failed during Cineville conflict cleanup", exc_info=True)
         logger.info("Starting Letterboxd slug/poster backfill...")
         letterboxd_backfill_summary = backfill_missing_letterboxd_data()
         logger.info(

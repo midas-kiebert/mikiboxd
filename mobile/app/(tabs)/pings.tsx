@@ -1,26 +1,32 @@
 /**
  * Expo Router screen/module for (tabs) / pings. It controls navigation and screen-level state for this route.
  */
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Pressable,
   RefreshControl,
   StyleSheet,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useIsFocused } from "@react-navigation/native";
-import { MeService } from "shared";
+import { MeService, MoviesService, type ShowtimeInMovieLoggedIn } from "shared";
 import { useFetchShowtimePings } from "shared/hooks/useFetchShowtimePings";
 
+import CinemaPill from "@/components/badges/CinemaPill";
+import FriendBadges from "@/components/badges/FriendBadges";
 import TopBar from "@/components/layout/TopBar";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+
+const POSTER_HEIGHT = 112;
 
 export default function PingsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -36,6 +42,47 @@ export default function PingsScreen() {
     isFetching,
     refetch,
   } = useFetchShowtimePings({ refetchIntervalMs: 15000 });
+  const [dismissedPingIds, setDismissedPingIds] = useState<Set<number>>(new Set());
+
+  const movieIds = useMemo(
+    () => Array.from(new Set(pings.map((ping) => ping.movie_id))),
+    [pings]
+  );
+
+  const movieDetailsQueries = useQueries({
+    queries: movieIds.map((movieId) => ({
+      queryKey: ["movie", movieId, "pingsShowtimeDetails"],
+      queryFn: () =>
+        MoviesService.readMovie({
+          id: movieId,
+          showtimeLimit: 200,
+        }),
+      enabled: movieId > 0,
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
+      staleTime: 30 * 1000,
+      gcTime: 5 * 60 * 1000,
+    })),
+  });
+
+  const showtimeById = useMemo(() => {
+    const map = new Map<number, ShowtimeInMovieLoggedIn>();
+    for (const query of movieDetailsQueries) {
+      const movie = query.data;
+      if (!movie) continue;
+      for (const showtime of movie.showtimes) {
+        if (!map.has(showtime.id)) {
+          map.set(showtime.id, showtime);
+        }
+      }
+    }
+    return map;
+  }, [movieDetailsQueries]);
+
+  const visiblePings = useMemo(
+    () => pings.filter((ping) => !dismissedPingIds.has(ping.id)),
+    [dismissedPingIds, pings]
+  );
 
   const markSeenMutation = useMutation({
     mutationFn: () => MeService.markMyShowtimePingsSeen(),
@@ -56,11 +103,19 @@ export default function PingsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused]);
 
+  const dismissPing = (pingId: number) => {
+    setDismissedPingIds((previous) => {
+      const next = new Set(previous);
+      next.add(pingId);
+      return next;
+    });
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <TopBar title="Pings" />
       <FlatList
-        data={pings}
+        data={visiblePings}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={isFetching} onRefresh={() => void refetch()} />}
@@ -79,22 +134,67 @@ export default function PingsScreen() {
           )
         }
         renderItem={({ item }) => {
-          const showtimeLabel = DateTime.fromISO(item.datetime).toFormat("ccc, LLL d, HH:mm");
+          const date = DateTime.fromISO(item.datetime);
+          const weekday = date.toFormat("ccc");
+          const day = date.toFormat("d");
+          const month = date.toFormat("LLL");
+          const time = date.toFormat("HH:mm");
+          const showtime = showtimeById.get(item.showtime_id);
+          const cinema = showtime?.cinema;
+          const friendsGoing = showtime?.friends_going ?? [];
+          const friendsInterested = showtime?.friends_interested ?? [];
+          const senderName = item.sender.display_name?.trim() || "Friend";
           return (
             <Pressable
-              style={[styles.card, !item.seen_at && styles.unseenCard]}
+              style={styles.cardWrapper}
               onPress={() => router.push(`/movie/${item.movie_id}`)}
             >
-              <View style={styles.cardHeader}>
-                <ThemedText style={styles.movieTitle}>{item.movie_title}</ThemedText>
-                {!item.seen_at ? <View style={styles.unseenDot} /> : null}
+              <View style={[styles.card, !item.seen_at && styles.unseenCard]}>
+                <View style={styles.dateColumn}>
+                  <ThemedText style={styles.weekday}>{weekday}</ThemedText>
+                  <ThemedText style={styles.day}>{day}</ThemedText>
+                  <ThemedText style={styles.month}>{month}</ThemedText>
+                  <ThemedText style={styles.time}>{time}</ThemedText>
+                </View>
+                <Image
+                  source={{ uri: item.movie_poster_link ?? undefined }}
+                  style={styles.poster}
+                />
+                <View style={styles.info}>
+                  <View style={styles.titleRow}>
+                    <ThemedText style={styles.movieTitle} numberOfLines={1} ellipsizeMode="tail">
+                      {item.movie_title}
+                    </ThemedText>
+                    {cinema ? (
+                      <CinemaPill cinema={cinema} variant="compact" />
+                    ) : (
+                      <View style={styles.fallbackCinemaBadge}>
+                        <ThemedText style={styles.fallbackCinemaText} numberOfLines={1}>
+                          {item.cinema_name}
+                        </ThemedText>
+                      </View>
+                    )}
+                    {!item.seen_at ? <View style={styles.unseenDot} /> : null}
+                  </View>
+                  <FriendBadges
+                    friendsGoing={friendsGoing}
+                    friendsInterested={friendsInterested}
+                    variant="compact"
+                    style={styles.friendRow}
+                  />
+                  <ThemedText style={styles.metaText}>Pinged by {senderName}</ThemedText>
+                  <TouchableOpacity
+                    style={styles.dismissButton}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      dismissPing(item.id);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <ThemedText style={styles.dismissButtonText}>Dismiss</ThemedText>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <ThemedText style={styles.metaText}>
-                {showtimeLabel} • {item.cinema_name}
-              </ThemedText>
-              <ThemedText style={styles.metaText}>
-                Pinged by {item.sender.display_name ?? "Friend"}
-              </ThemedText>
             </Pressable>
           );
         }}
@@ -111,32 +211,83 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     content: {
       padding: 16,
-      gap: 12,
+      gap: 16,
       paddingBottom: 24,
     },
+    cardWrapper: {
+      marginBottom: 0,
+    },
     card: {
+      flexDirection: "row",
+      overflow: "hidden",
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.cardBackground,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      gap: 4,
+      minHeight: POSTER_HEIGHT,
     },
     unseenCard: {
       borderColor: colors.tint,
     },
-    cardHeader: {
+    dateColumn: {
+      width: 56,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.pillBackground,
+      borderRightWidth: 1,
+      borderRightColor: colors.cardBorder,
+      paddingVertical: 8,
+      gap: 2,
+    },
+    weekday: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.textSecondary,
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+    },
+    day: {
+      fontSize: 24,
+      fontWeight: "800",
+      color: colors.text,
+      lineHeight: 26,
+    },
+    month: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.textSecondary,
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+    },
+    time: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    poster: {
+      width: 72,
+      height: POSTER_HEIGHT,
+      backgroundColor: colors.posterPlaceholder,
+    },
+    info: {
+      flex: 1,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      gap: 6,
+    },
+    titleRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
+      columnGap: 6,
+      rowGap: 4,
+      flexWrap: "wrap",
     },
     movieTitle: {
       fontSize: 15,
       fontWeight: "700",
       color: colors.text,
-      flex: 1,
+      flexShrink: 0,
+      maxWidth: "100%",
     },
     unseenDot: {
       width: 8,
@@ -144,8 +295,40 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 4,
       backgroundColor: colors.notificationBadge,
     },
+    fallbackCinemaBadge: {
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      borderRadius: 2,
+      backgroundColor: colors.pillBackground,
+      height: 12,
+      justifyContent: "center",
+      paddingHorizontal: 5,
+      maxWidth: "65%",
+    },
+    fallbackCinemaText: {
+      fontSize: 9,
+      lineHeight: 12,
+      color: colors.textSecondary,
+    },
+    friendRow: {
+      marginTop: 3,
+    },
     metaText: {
       fontSize: 12,
+      color: colors.textSecondary,
+    },
+    dismissButton: {
+      alignSelf: "flex-start",
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      borderRadius: 8,
+      backgroundColor: colors.pillBackground,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+    },
+    dismissButtonText: {
+      fontSize: 11,
+      fontWeight: "700",
       color: colors.textSecondary,
     },
     centerContainer: {

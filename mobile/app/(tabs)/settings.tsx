@@ -12,7 +12,12 @@ import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import TopBar from '@/components/layout/TopBar';
 import useAuth from 'shared/hooks/useAuth';
-import { MeService, type UpdatePassword, type UserUpdate } from 'shared';
+import {
+  MeService,
+  type NotificationChannel,
+  type UpdatePassword,
+  type UserUpdate,
+} from 'shared';
 import { emailPattern } from 'shared/utils';
 import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications';
 
@@ -33,6 +38,68 @@ type NotificationPreferenceKey =
   | 'notify_on_friend_requests'
   | 'notify_on_showtime_ping'
   | 'notify_on_interest_reminder';
+
+type NotificationChannelPreferenceKey =
+  | 'notify_channel_friend_showtime_match'
+  | 'notify_channel_friend_requests'
+  | 'notify_channel_showtime_ping'
+  | 'notify_channel_interest_reminder';
+
+type NotificationPreferencesState = Record<NotificationPreferenceKey, boolean>;
+type NotificationChannelsState = Record<
+  NotificationChannelPreferenceKey,
+  NotificationChannel
+>;
+
+type NotificationPreferenceSource =
+  | Partial<Record<NotificationPreferenceKey, boolean>>
+  | null
+  | undefined;
+
+type NotificationChannelSource =
+  | Partial<Record<NotificationChannelPreferenceKey, NotificationChannel | null>>
+  | null
+  | undefined;
+
+const notificationPreferenceToChannelKey: Record<
+  NotificationPreferenceKey,
+  NotificationChannelPreferenceKey
+> = {
+  notify_on_friend_showtime_match: 'notify_channel_friend_showtime_match',
+  notify_on_friend_requests: 'notify_channel_friend_requests',
+  notify_on_showtime_ping: 'notify_channel_showtime_ping',
+  notify_on_interest_reminder: 'notify_channel_interest_reminder',
+};
+
+const buildNotificationPreferencesState = (
+  source: NotificationPreferenceSource
+): NotificationPreferencesState => ({
+  notify_on_friend_showtime_match: !!source?.notify_on_friend_showtime_match,
+  notify_on_friend_requests: !!source?.notify_on_friend_requests,
+  notify_on_showtime_ping: !!source?.notify_on_showtime_ping,
+  notify_on_interest_reminder: !!source?.notify_on_interest_reminder,
+});
+
+const normalizeNotificationChannel = (
+  value: NotificationChannel | null | undefined
+): NotificationChannel => (value === 'email' ? 'email' : 'push');
+
+const buildNotificationChannelsState = (
+  source: NotificationChannelSource
+): NotificationChannelsState => ({
+  notify_channel_friend_showtime_match: normalizeNotificationChannel(
+    source?.notify_channel_friend_showtime_match
+  ),
+  notify_channel_friend_requests: normalizeNotificationChannel(
+    source?.notify_channel_friend_requests
+  ),
+  notify_channel_showtime_ping: normalizeNotificationChannel(
+    source?.notify_channel_showtime_ping
+  ),
+  notify_channel_interest_reminder: normalizeNotificationChannel(
+    source?.notify_channel_interest_reminder
+  ),
+});
 
 export default function SettingsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -60,9 +127,18 @@ export default function SettingsScreen() {
   // Current OS permission status for notifications.
   const [notificationPermissionStatus, setNotificationPermissionStatus] =
     useState<Notifications.PermissionStatus | null>(null);
+  // Local notification toggle state so switches respond instantly.
+  const [notificationPreferences, setNotificationPreferences] =
+    useState<NotificationPreferencesState>(() => buildNotificationPreferencesState(user));
+  // Local notification channel state per preference (push/email).
+  const [notificationChannels, setNotificationChannels] =
+    useState<NotificationChannelsState>(() => buildNotificationChannelsState(user));
   // Identifies which notification toggle is currently updating.
   const [pendingNotificationToggle, setPendingNotificationToggle] =
     useState<NotificationPreferenceKey | null>(null);
+  // Identifies which notification channel is currently updating.
+  const [pendingNotificationChannel, setPendingNotificationChannel] =
+    useState<NotificationChannelPreferenceKey | null>(null);
   // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -74,6 +150,11 @@ export default function SettingsScreen() {
       email: user.email ?? '',
       letterboxd_username: user.letterboxd_username ?? '',
     });
+  }, [user]);
+
+  useEffect(() => {
+    setNotificationPreferences(buildNotificationPreferencesState(user));
+    setNotificationChannels(buildNotificationChannelsState(user));
   }, [user]);
 
   // Read the current OS-level notification permission status for friendly UI feedback.
@@ -215,9 +296,16 @@ export default function SettingsScreen() {
     enabled: boolean
   ) => {
     if (!user) return;
+    const channelKey = notificationPreferenceToChannelKey[key];
+    const channel = notificationChannels[channelKey];
+    const previousValue = notificationPreferences[key];
+    setNotificationPreferences((previous) => ({
+      ...previous,
+      [key]: enabled,
+    }));
     try {
       setPendingNotificationToggle(key);
-      if (enabled) {
+      if (enabled && channel === 'push') {
         const token = await registerPushTokenForCurrentDevice();
         const permissions = await Notifications.getPermissionsAsync();
         setNotificationPermissionStatus(permissions.status);
@@ -230,53 +318,127 @@ export default function SettingsScreen() {
               { text: 'Open settings', onPress: () => Linking.openSettings() },
             ]
           );
+          setNotificationPreferences((previous) => ({
+            ...previous,
+            [key]: previousValue,
+          }));
           return;
         }
       }
 
-      await notificationPreferenceMutation.mutateAsync({
+      const updatedUser = await notificationPreferenceMutation.mutateAsync({
         [key]: enabled,
       });
+      setNotificationPreferences(buildNotificationPreferencesState(updatedUser));
+      setNotificationChannels(buildNotificationChannelsState(updatedUser));
     } catch (error) {
       console.error('Error toggling notification preference:', error);
+      setNotificationPreferences((previous) => ({
+        ...previous,
+        [key]: previousValue,
+      }));
       Alert.alert('Error', 'Could not update notification preferences.');
     } finally {
       setPendingNotificationToggle(null);
     }
   };
 
+  const handleNotificationChannelChange = async (
+    preferenceKey: NotificationPreferenceKey,
+    channel: NotificationChannel
+  ) => {
+    if (!user) return;
+    const channelKey = notificationPreferenceToChannelKey[preferenceKey];
+    const previousChannel = notificationChannels[channelKey];
+    if (previousChannel === channel) return;
+
+    setNotificationChannels((previous) => ({
+      ...previous,
+      [channelKey]: channel,
+    }));
+
+    try {
+      setPendingNotificationChannel(channelKey);
+      if (channel === 'push' && notificationPreferences[preferenceKey]) {
+        const token = await registerPushTokenForCurrentDevice();
+        const permissions = await Notifications.getPermissionsAsync();
+        setNotificationPermissionStatus(permissions.status);
+        if (!token) {
+          Alert.alert(
+            'Enable notifications',
+            'To receive push notifications, allow them in your system settings.',
+            [
+              { text: 'Not now', style: 'cancel' },
+              { text: 'Open settings', onPress: () => Linking.openSettings() },
+            ]
+          );
+          setNotificationChannels((previous) => ({
+            ...previous,
+            [channelKey]: previousChannel,
+          }));
+          return;
+        }
+      }
+
+      const updatedUser = await notificationPreferenceMutation.mutateAsync({
+        [channelKey]: channel,
+      });
+      setNotificationPreferences(buildNotificationPreferencesState(updatedUser));
+      setNotificationChannels(buildNotificationChannelsState(updatedUser));
+    } catch (error) {
+      console.error('Error changing notification channel:', error);
+      setNotificationChannels((previous) => ({
+        ...previous,
+        [channelKey]: previousChannel,
+      }));
+      Alert.alert('Error', 'Could not update notification delivery channel.');
+    } finally {
+      setPendingNotificationChannel(null);
+    }
+  };
+
   const isProfileSaving = profileMutation.isPending;
   const isPasswordSaving = passwordMutation.isPending;
   const isUpdatingNotifications = notificationPreferenceMutation.isPending;
-  const notificationToggles: Array<{
+  const notificationToggles: {
     key: NotificationPreferenceKey;
+    channelKey: NotificationChannelPreferenceKey;
     label: string;
     description: string;
     value: boolean;
-  }> = [
+    channel: NotificationChannel;
+  }[] = [
     {
       key: 'notify_on_friend_showtime_match',
+      channelKey: 'notify_channel_friend_showtime_match',
       label: 'Friend showtime updates',
       description: 'When friends change Going/Interested status on your shared showtimes.',
-      value: !!user?.notify_on_friend_showtime_match,
+      value: notificationPreferences.notify_on_friend_showtime_match,
+      channel: notificationChannels.notify_channel_friend_showtime_match,
     },
     {
       key: 'notify_on_showtime_ping',
+      channelKey: 'notify_channel_showtime_ping',
       label: 'Showtime pings',
       description: 'When a friend pings you to join a specific showtime.',
-      value: !!user?.notify_on_showtime_ping,
+      value: notificationPreferences.notify_on_showtime_ping,
+      channel: notificationChannels.notify_channel_showtime_ping,
     },
     {
       key: 'notify_on_interest_reminder',
+      channelKey: 'notify_channel_interest_reminder',
       label: 'Interested reminders',
       description: 'Reminder before showtimes you marked as Interested.',
-      value: !!user?.notify_on_interest_reminder,
+      value: notificationPreferences.notify_on_interest_reminder,
+      channel: notificationChannels.notify_channel_interest_reminder,
     },
     {
       key: 'notify_on_friend_requests',
+      channelKey: 'notify_channel_friend_requests',
       label: 'Friend requests',
       description: 'When you receive a friend request or someone accepts yours.',
-      value: !!user?.notify_on_friend_requests,
+      value: notificationPreferences.notify_on_friend_requests,
+      channel: notificationChannels.notify_channel_friend_requests,
     },
   ];
 
@@ -391,19 +553,74 @@ export default function SettingsScreen() {
             ) : null}
             {notificationToggles.map((toggle) => (
               <View key={toggle.key} style={styles.notificationToggleRow}>
-                <View style={styles.notificationToggleTextContainer}>
-                  <ThemedText style={styles.notificationToggleTitle}>{toggle.label}</ThemedText>
-                  <ThemedText style={styles.notificationToggleDescription}>
-                    {toggle.description}
-                  </ThemedText>
+                <View style={styles.notificationToggleHeader}>
+                  <View style={styles.notificationToggleTextContainer}>
+                    <ThemedText style={styles.notificationToggleTitle}>{toggle.label}</ThemedText>
+                    <ThemedText style={styles.notificationToggleDescription}>
+                      {toggle.description}
+                    </ThemedText>
+                  </View>
+                  <Switch
+                    value={toggle.value}
+                    onValueChange={(value) => void handleNotificationToggle(toggle.key, value)}
+                    disabled={
+                      !user || isUpdatingNotifications || pendingNotificationToggle === toggle.key
+                    }
+                    trackColor={{ false: colors.divider, true: colors.tint }}
+                    thumbColor="#ffffff"
+                  />
                 </View>
-                <Switch
-                  value={toggle.value}
-                  onValueChange={(value) => void handleNotificationToggle(toggle.key, value)}
-                  disabled={!user || isUpdatingNotifications || pendingNotificationToggle === toggle.key}
-                  trackColor={{ false: colors.divider, true: colors.tint }}
-                  thumbColor="#ffffff"
-                />
+                <View style={styles.notificationChannelRow}>
+                  <ThemedText style={styles.notificationChannelLabel}>Delivery</ThemedText>
+                  <View style={styles.notificationChannelPill}>
+                    <TouchableOpacity
+                      style={[
+                        styles.notificationChannelOption,
+                        styles.notificationChannelOptionLeft,
+                        toggle.channel === 'push' && styles.notificationChannelOptionActive,
+                      ]}
+                      onPress={() => void handleNotificationChannelChange(toggle.key, 'push')}
+                      disabled={
+                        !user ||
+                        isUpdatingNotifications ||
+                        pendingNotificationChannel === toggle.channelKey
+                      }
+                      activeOpacity={0.8}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.notificationChannelOptionText,
+                          toggle.channel === 'push' && styles.notificationChannelOptionTextActive,
+                        ]}
+                      >
+                        Push
+                      </ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.notificationChannelOption,
+                        styles.notificationChannelOptionRight,
+                        toggle.channel === 'email' && styles.notificationChannelOptionActive,
+                      ]}
+                      onPress={() => void handleNotificationChannelChange(toggle.key, 'email')}
+                      disabled={
+                        !user ||
+                        isUpdatingNotifications ||
+                        pendingNotificationChannel === toggle.channelKey
+                      }
+                      activeOpacity={0.8}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.notificationChannelOptionText,
+                          toggle.channel === 'email' && styles.notificationChannelOptionTextActive,
+                        ]}
+                      >
+                        Email
+                      </ThemedText>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
             ))}
             {notificationPermissionStatus === 'denied' ? (
@@ -538,16 +755,18 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.textSecondary,
     },
     notificationToggleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 12,
+      gap: 10,
       borderWidth: 1,
       borderColor: colors.cardBorder,
       borderRadius: 10,
       paddingHorizontal: 10,
       paddingVertical: 9,
       backgroundColor: colors.background,
+    },
+    notificationToggleHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
     },
     notificationToggleTextContainer: {
       flex: 1,
@@ -561,5 +780,49 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     notificationToggleDescription: {
       fontSize: 11,
       color: colors.textSecondary,
+    },
+    notificationChannelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    notificationChannelLabel: {
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
+    notificationChannelPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      borderRadius: 999,
+      backgroundColor: colors.pillBackground,
+      padding: 2,
+    },
+    notificationChannelOption: {
+      minWidth: 72,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 999,
+    },
+    notificationChannelOptionLeft: {
+      marginRight: 2,
+    },
+    notificationChannelOptionRight: {
+      marginLeft: 2,
+    },
+    notificationChannelOptionActive: {
+      backgroundColor: colors.tint,
+    },
+    notificationChannelOptionText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textSecondary,
+    },
+    notificationChannelOptionTextActive: {
+      color: '#ffffff',
     },
   });

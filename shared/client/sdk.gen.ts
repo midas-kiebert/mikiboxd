@@ -70,6 +70,8 @@ import type {
   MoviesReadMovieResponse,
   ShowtimesUpdateShowtimeSelectionData,
   ShowtimesUpdateShowtimeSelectionResponse,
+  ShowtimesPingFriendForShowtimeData,
+  ShowtimesPingFriendForShowtimeResponse,
   ShowtimesGetMainPageShowtimesData,
   ShowtimesGetMainPageShowtimesResponse,
   UsersSearchUsersData,
@@ -928,6 +930,30 @@ export class ShowtimesService {
       },
       body: data.requestBody,
       mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Ping Friend For Showtime
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @param data.friendId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static pingFriendForShowtime(
+    data: ShowtimesPingFriendForShowtimeData,
+  ): CancelablePromise<ShowtimesPingFriendForShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/showtimes/{showtime_id}/ping/{friend_id}",
+      path: {
+        showtime_id: data.showtimeId,
+        friend_id: data.friendId,
+      },
       errors: {
         422: "Validation Error",
       },

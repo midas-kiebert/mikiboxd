@@ -16,6 +16,11 @@ from app.models.scrape_run import ScrapeRun, ScrapeRunStatus
 from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
 from app.scraping.letterboxd.load_letterboxd_data import (
+    LETTERBOXD_CF_BLOCK_SECONDS,
+    LETTERBOXD_HTTP_403_RETRY_ATTEMPTS,
+    LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD,
+    LETTERBOXD_HTTP_CONCURRENCY,
+    LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS,
     backfill_missing_letterboxd_data,
     consume_letterboxd_failure_events,
     reset_letterboxd_request_budget,
@@ -58,6 +63,18 @@ class PresenceHealthSnapshot:
     inactive_presence_count: int
     pending_delete_count: int
     pending_delete_by_stream: list[tuple[str, int]]
+
+
+@dataclass(frozen=True)
+class Letterboxd403Diagnostics:
+    observed_403_events: int
+    unique_tmdb_ids: int
+    probable_automated_block_events: int
+    cooldown_events: int
+    session_refresh_errors: int
+    session_refresh_http_errors: int
+    unique_cf_rays: int
+    sample_cf_rays: list[str]
 
 
 def _combine_summaries(
@@ -332,6 +349,108 @@ def _letterboxd_failure_breakdown(
     return counts
 
 
+def _letterboxd_403_diagnostics(
+    letterboxd_failures: list[dict[str, Any]],
+) -> Letterboxd403Diagnostics:
+    observed_403_events = 0
+    unique_tmdb_ids: set[int] = set()
+    probable_automated_block_events = 0
+    cooldown_events = 0
+    session_refresh_errors = 0
+    session_refresh_http_errors = 0
+    cf_rays: set[str] = set()
+
+    for failure in letterboxd_failures:
+        status_code = failure.get("status_code")
+        event_type = str(failure.get("event_type") or "").strip()
+        reason = str(failure.get("reason") or "").strip()
+
+        if status_code == 403 or event_type.startswith("http_403"):
+            observed_403_events += 1
+            tmdb_id_raw = failure.get("tmdb_id")
+            if isinstance(tmdb_id_raw, int):
+                unique_tmdb_ids.add(tmdb_id_raw)
+            elif isinstance(tmdb_id_raw, str) and tmdb_id_raw.isdigit():
+                unique_tmdb_ids.add(int(tmdb_id_raw))
+
+        if "probable_automated_block" in reason or event_type in {
+            "cloudflare_challenge",
+            "http_403_block",
+            "http_403_streak_block",
+        }:
+            probable_automated_block_events += 1
+
+        if event_type in {
+            "cooldown_skip",
+            "cloudflare_challenge",
+            "rate_limited",
+            "http_403_block",
+            "http_403_streak_block",
+        }:
+            cooldown_events += 1
+
+        if event_type == "session_refresh_error":
+            session_refresh_errors += 1
+        if event_type == "session_refresh_http_error":
+            session_refresh_http_errors += 1
+
+        response_meta_raw = failure.get("response_meta")
+        if isinstance(response_meta_raw, dict):
+            cf_ray_raw = response_meta_raw.get("cf_ray")
+            if cf_ray_raw is not None:
+                cf_ray = str(cf_ray_raw).strip()
+                if cf_ray:
+                    cf_rays.add(cf_ray)
+
+    sample_cf_rays = sorted(cf_rays)[:8]
+    return Letterboxd403Diagnostics(
+        observed_403_events=observed_403_events,
+        unique_tmdb_ids=len(unique_tmdb_ids),
+        probable_automated_block_events=probable_automated_block_events,
+        cooldown_events=cooldown_events,
+        session_refresh_errors=session_refresh_errors,
+        session_refresh_http_errors=session_refresh_http_errors,
+        unique_cf_rays=len(cf_rays),
+        sample_cf_rays=sample_cf_rays,
+    )
+
+
+def _render_letterboxd_failure_item(failure: dict[str, Any]) -> str:
+    parts: list[str] = []
+    parts.append(str(failure.get("timestamp", "unknown_time")))
+    parts.append(f"event={failure.get('event_type', 'unknown_failure')}")
+    if failure.get("tmdb_id") is not None:
+        parts.append(f"tmdb_id={failure.get('tmdb_id')}")
+    if failure.get("status_code") is not None:
+        parts.append(f"status={failure.get('status_code')}")
+    if failure.get("reason") is not None:
+        parts.append(f"reason={failure.get('reason')}")
+    if failure.get("url") is not None:
+        parts.append(f"url={failure.get('url')}")
+
+    response_meta_raw = failure.get("response_meta")
+    if isinstance(response_meta_raw, dict):
+        cf_ray = response_meta_raw.get("cf_ray")
+        if cf_ray:
+            parts.append(f"cf_ray={cf_ray}")
+        server = response_meta_raw.get("server")
+        if server:
+            parts.append(f"server={server}")
+        consecutive_403_count = response_meta_raw.get("consecutive_403_count")
+        if consecutive_403_count is not None:
+            parts.append(f"consecutive_403={consecutive_403_count}")
+        attempt = response_meta_raw.get("attempt")
+        attempts_total = response_meta_raw.get("attempts_total")
+        if attempt is not None and attempts_total is not None:
+            parts.append(f"attempt={attempt}/{attempts_total}")
+
+    block_remaining_seconds = failure.get("block_remaining_seconds")
+    if block_remaining_seconds is not None:
+        parts.append(f"cooldown_remaining={block_remaining_seconds}s")
+
+    return "<li>" + escape(" | ".join(parts)) + "</li>"
+
+
 def _load_scrape_run_status_counts(
     *,
     started_at,
@@ -385,6 +504,7 @@ def _render_recap_html(
     tmdb_miss_titles: list[tuple[str, int]],
     error_stage_counts: dict[str, int],
     letterboxd_failure_counts: dict[str, int],
+    letterboxd_403_diagnostics: Letterboxd403Diagnostics,
 ) -> str:
     deleted_items = (
         "".join(
@@ -514,39 +634,7 @@ def _render_recap_html(
     )
     letterboxd_failure_items = (
         "".join(
-            "<li>"
-            + escape(
-                " | ".join(
-                    str(part)
-                    for part in [
-                        failure.get("timestamp", "unknown_time"),
-                        f"event={failure.get('event_type', 'unknown_failure')}",
-                        (
-                            f"tmdb_id={failure.get('tmdb_id')}"
-                            if failure.get("tmdb_id") is not None
-                            else None
-                        ),
-                        (
-                            f"status={failure.get('status_code')}"
-                            if failure.get("status_code") is not None
-                            else None
-                        ),
-                        (
-                            f"reason={failure.get('reason')}"
-                            if failure.get("reason") is not None
-                            else None
-                        ),
-                        (
-                            f"url={failure.get('url')}"
-                            if failure.get("url") is not None
-                            else None
-                        ),
-                    ]
-                    if part is not None
-                )
-            )
-            + "</li>"
-            for failure in letterboxd_failures
+            _render_letterboxd_failure_item(failure) for failure in letterboxd_failures
         )
         or "<li>None</li>"
     )
@@ -560,6 +648,19 @@ def _render_recap_html(
         )
         or "<li>None</li>"
     )
+    letterboxd_403_cf_ray_items = (
+        "".join(
+            f"<li><code>{escape(cf_ray)}</code></li>"
+            for cf_ray in letterboxd_403_diagnostics.sample_cf_rays
+        )
+        or "<li>None</li>"
+    )
+    letterboxd_403_interpretation = "No 403 responses observed."
+    if letterboxd_403_diagnostics.observed_403_events > 0:
+        if letterboxd_403_diagnostics.cooldown_events > 0:
+            letterboxd_403_interpretation = "Automated-block protections were triggered and cooldown mode was engaged."
+        else:
+            letterboxd_403_interpretation = "403 responses were observed without cooldown trigger; this usually indicates a short-lived edge/IP reputation block."
 
     return f"""
     <h2>Scrape Recap</h2>
@@ -593,6 +694,29 @@ def _render_recap_html(
     <ul>{cinema_scraper_status_items}</ul>
     <h3>Letterboxd Failure Breakdown</h3>
     <ul>{letterboxd_failure_breakdown_items}</ul>
+    <h3>Letterboxd 403 Diagnostics</h3>
+    <ul>
+      <li>Observed HTTP 403 events: <b>{letterboxd_403_diagnostics.observed_403_events}</b></li>
+      <li>Unique TMDB IDs impacted by 403: <b>{letterboxd_403_diagnostics.unique_tmdb_ids}</b></li>
+      <li>Probable automated-block signals: <b>{letterboxd_403_diagnostics.probable_automated_block_events}</b></li>
+      <li>Cooldown/block events: <b>{letterboxd_403_diagnostics.cooldown_events}</b></li>
+      <li>Session refresh failures: <b>{letterboxd_403_diagnostics.session_refresh_errors}</b></li>
+      <li>Session refresh non-200 responses: <b>{letterboxd_403_diagnostics.session_refresh_http_errors}</b></li>
+      <li>Unique Cloudflare Ray IDs observed: <b>{letterboxd_403_diagnostics.unique_cf_rays}</b></li>
+      <li>Interpretation: {escape(letterboxd_403_interpretation)}</li>
+    </ul>
+    <h3>Letterboxd CF-Ray Samples</h3>
+    <ul>{letterboxd_403_cf_ray_items}</ul>
+    <h3>Letterboxd Mitigation Settings</h3>
+    <ul>
+      <li>HTTP concurrency: <b>{LETTERBOXD_HTTP_CONCURRENCY}</b></li>
+      <li>Minimum request interval: <b>{LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS:.2f}s</b></li>
+      <li>HTTP 403 retry attempts: <b>{LETTERBOXD_HTTP_403_RETRY_ATTEMPTS}</b></li>
+      <li>HTTP 403 streak threshold for cooldown: <b>{LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD}</b></li>
+      <li>Cooldown window after detected block: <b>{LETTERBOXD_CF_BLOCK_SECONDS:.0f}s</b></li>
+      <li>Automatic session refresh-on-403: <b>enabled</b></li>
+      <li>Persistent cookie jar across Letterboxd requests: <b>enabled</b></li>
+    </ul>
     <h3>Sync Safety Guardrail</h3>
     <ul>
       <li>Deletion threshold: <b>{scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE}</b> consecutive misses.</li>
@@ -626,7 +750,7 @@ def _render_recap_html(
     <ul>{missing_cinema_insert_failure_items}</ul>
     <h3>Errors</h3>
     <ul>{error_items}</ul>
-    <p>Attachments include TMDB lookups, Letterboxd failures, and full run details.</p>
+    <p>Attachments include TMDB lookups, Letterboxd failures, Letterboxd 403 diagnostics, and full run details.</p>
     """
 
 
@@ -679,6 +803,7 @@ def _send_recap_email(
         )
     cinema_name_by_id = _load_cinema_name_by_id()
     letterboxd_failure_counts = _letterboxd_failure_breakdown(letterboxd_failures)
+    letterboxd_403_diagnostics = _letterboxd_403_diagnostics(letterboxd_failures)
     slowest_run_details = sorted(
         [
             detail
@@ -722,6 +847,7 @@ def _send_recap_email(
         tmdb_miss_titles=tmdb_miss_titles,
         error_stage_counts=error_stage_counts,
         letterboxd_failure_counts=letterboxd_failure_counts,
+        letterboxd_403_diagnostics=letterboxd_403_diagnostics,
     )
 
     tmdb_lookup_attachment_data = json.dumps(
@@ -796,6 +922,43 @@ def _send_recap_email(
     letterboxd_failures_attachment_name = (
         f"letterboxd_failures_{started_at:%Y%m%d_%H%M%S}.json"
     )
+    letterboxd_403_diagnostics_attachment_data = json.dumps(
+        {
+            "observed_403_events": letterboxd_403_diagnostics.observed_403_events,
+            "unique_tmdb_ids": letterboxd_403_diagnostics.unique_tmdb_ids,
+            "probable_automated_block_events": (
+                letterboxd_403_diagnostics.probable_automated_block_events
+            ),
+            "cooldown_events": letterboxd_403_diagnostics.cooldown_events,
+            "session_refresh_errors": (
+                letterboxd_403_diagnostics.session_refresh_errors
+            ),
+            "session_refresh_http_errors": (
+                letterboxd_403_diagnostics.session_refresh_http_errors
+            ),
+            "unique_cf_rays": letterboxd_403_diagnostics.unique_cf_rays,
+            "sample_cf_rays": letterboxd_403_diagnostics.sample_cf_rays,
+            "mitigation_settings": {
+                "http_concurrency": LETTERBOXD_HTTP_CONCURRENCY,
+                "min_request_interval_seconds": (
+                    LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS
+                ),
+                "http_403_retry_attempts": LETTERBOXD_HTTP_403_RETRY_ATTEMPTS,
+                "http_403_streak_block_threshold": (
+                    LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD
+                ),
+                "cooldown_seconds": LETTERBOXD_CF_BLOCK_SECONDS,
+                "session_refresh_on_403": True,
+                "persistent_cookie_jar": True,
+            },
+        },
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8")
+    letterboxd_403_diagnostics_attachment_name = (
+        f"letterboxd_403_diagnostics_{started_at:%Y%m%d_%H%M%S}.json"
+    )
 
     presence_health_attachment_data = json.dumps(
         {
@@ -851,6 +1014,11 @@ def _send_recap_email(
             {
                 "filename": letterboxd_failures_attachment_name,
                 "data": letterboxd_failures_attachment_data,
+                "mime_type": "application/json",
+            },
+            {
+                "filename": letterboxd_403_diagnostics_attachment_name,
+                "data": letterboxd_403_diagnostics_attachment_data,
                 "mime_type": "application/json",
             },
             {

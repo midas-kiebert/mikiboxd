@@ -1,7 +1,10 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 
 from app.api.deps import CurrentUser, SessionDep
 from app.inputs.movie import Filters, get_filters
+from app.models.auth_schemas import Message
 from app.schemas.showtime import ShowtimeLoggedIn, ShowtimeSelectionUpdate
 from app.services import showtimes as showtimes_service
 
@@ -23,6 +26,22 @@ def update_showtime_selection(
         user_id=current_user.id,
         going_status=payload.going_status,
         filters=filters,
+    )
+
+
+@router.post("/{showtime_id}/ping/{friend_id}", response_model=Message)
+def ping_friend_for_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    friend_id: UUID,
+    current_user: CurrentUser,
+) -> Message:
+    return showtimes_service.ping_friend_for_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+        friend_id=friend_id,
     )
 
 

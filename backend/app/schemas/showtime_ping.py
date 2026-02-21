@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime as DateTime
 
 from sqlmodel import SQLModel
 
@@ -16,8 +16,8 @@ class ShowtimePingPublic(SQLModel):
     movie_title: str
     movie_poster_link: str | None
     cinema_name: str
-    datetime: datetime
+    datetime: DateTime
     ticket_link: str | None
     sender: UserPublic
-    created_at: datetime
-    seen_at: datetime | None
+    created_at: DateTime
+    seen_at: DateTime | None

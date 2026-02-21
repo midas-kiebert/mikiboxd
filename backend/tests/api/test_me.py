@@ -27,6 +27,10 @@ def test_get_me_superuser(
     assert isinstance(current_user["notify_on_friend_requests"], bool)
     assert isinstance(current_user["notify_on_showtime_ping"], bool)
     assert isinstance(current_user["notify_on_interest_reminder"], bool)
+    assert current_user["notify_channel_friend_showtime_match"] in {"push", "email"}
+    assert current_user["notify_channel_friend_requests"] in {"push", "email"}
+    assert current_user["notify_channel_showtime_ping"] in {"push", "email"}
+    assert current_user["notify_channel_interest_reminder"] in {"push", "email"}
     assert "letterboxd_username" in current_user
     assert "last_watchlist_sync" not in current_user
 
@@ -44,6 +48,10 @@ def test_get_me_normal_user(
     assert isinstance(current_user["notify_on_friend_requests"], bool)
     assert isinstance(current_user["notify_on_showtime_ping"], bool)
     assert isinstance(current_user["notify_on_interest_reminder"], bool)
+    assert current_user["notify_channel_friend_showtime_match"] in {"push", "email"}
+    assert current_user["notify_channel_friend_requests"] in {"push", "email"}
+    assert current_user["notify_channel_showtime_ping"] in {"push", "email"}
+    assert current_user["notify_channel_interest_reminder"] in {"push", "email"}
     assert "letterboxd_username" in current_user
     assert "last_watchlist_sync" not in current_user
 
@@ -59,6 +67,10 @@ def test_update_me_notification_preference(
             "notify_on_friend_requests": False,
             "notify_on_showtime_ping": False,
             "notify_on_interest_reminder": False,
+            "notify_channel_friend_showtime_match": "email",
+            "notify_channel_friend_requests": "email",
+            "notify_channel_showtime_ping": "email",
+            "notify_channel_interest_reminder": "email",
         },
     )
     assert 200 <= update_response.status_code < 300
@@ -66,6 +78,10 @@ def test_update_me_notification_preference(
     assert update_response.json()["notify_on_friend_requests"] is False
     assert update_response.json()["notify_on_showtime_ping"] is False
     assert update_response.json()["notify_on_interest_reminder"] is False
+    assert update_response.json()["notify_channel_friend_showtime_match"] == "email"
+    assert update_response.json()["notify_channel_friend_requests"] == "email"
+    assert update_response.json()["notify_channel_showtime_ping"] == "email"
+    assert update_response.json()["notify_channel_interest_reminder"] == "email"
 
     me_response = client.get(
         f"{settings.API_V1_STR}/me",
@@ -76,6 +92,10 @@ def test_update_me_notification_preference(
     assert me_response.json()["notify_on_friend_requests"] is False
     assert me_response.json()["notify_on_showtime_ping"] is False
     assert me_response.json()["notify_on_interest_reminder"] is False
+    assert me_response.json()["notify_channel_friend_showtime_match"] == "email"
+    assert me_response.json()["notify_channel_friend_requests"] == "email"
+    assert me_response.json()["notify_channel_showtime_ping"] == "email"
+    assert me_response.json()["notify_channel_interest_reminder"] == "email"
 
 
 def test_update_me_rejects_duplicate_display_name(

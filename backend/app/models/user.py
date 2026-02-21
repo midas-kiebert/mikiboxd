@@ -21,12 +21,15 @@ class UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
-    notify_on_friend_showtime_match: bool = Field(default=False)
+    notify_on_friend_showtime_match: bool = Field(default=True)
+    notify_on_friend_requests: bool = Field(default=True)
+    notify_on_showtime_ping: bool = Field(default=True)
+    notify_on_interest_reminder: bool = Field(default=True)
     display_name: str | None = Field(default=None, max_length=255)
     letterboxd_username: str | None = Field(
         default=None,
         max_length=255,
-        sa_column_kwargs={"unique": True, "index": True},
+        sa_column_kwargs={"index": True},
         foreign_key="letterboxd.letterboxd_username",
     )
 
@@ -48,6 +51,9 @@ class UserUpdate(SQLModel):
     email: EmailStr | None = Field(default=None, max_length=255)
     letterboxd_username: str | None = Field(default=None, max_length=255)
     notify_on_friend_showtime_match: bool | None = Field(default=None)
+    notify_on_friend_requests: bool | None = Field(default=None)
+    notify_on_showtime_ping: bool | None = Field(default=None)
+    notify_on_interest_reminder: bool | None = Field(default=None)
     password: str | None = Field(default=None, min_length=1, max_length=255)
 
 

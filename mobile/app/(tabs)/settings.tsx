@@ -1,8 +1,8 @@
 /**
  * Expo Router screen/module for (tabs) / settings. It controls navigation and screen-level state for this route.
  */
-import { Alert, Linking, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { Alert, Linking, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -27,6 +27,12 @@ type PasswordState = {
   new_password: string;
   confirm_password: string;
 };
+
+type NotificationPreferenceKey =
+  | 'notify_on_friend_showtime_match'
+  | 'notify_on_friend_requests'
+  | 'notify_on_showtime_ping'
+  | 'notify_on_interest_reminder';
 
 export default function SettingsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -54,8 +60,9 @@ export default function SettingsScreen() {
   // Current OS permission status for notifications.
   const [notificationPermissionStatus, setNotificationPermissionStatus] =
     useState<Notifications.PermissionStatus | null>(null);
-  // True while enabling notifications (permissions/token + backend preference update).
-  const [isEnablingNotifications, setIsEnablingNotifications] = useState(false);
+  // Identifies which notification toggle is currently updating.
+  const [pendingNotificationToggle, setPendingNotificationToggle] =
+    useState<NotificationPreferenceKey | null>(null);
   // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -120,11 +127,9 @@ export default function SettingsScreen() {
 
   // Notification preference updates are persisted to the backend.
   const notificationPreferenceMutation = useMutation({
-    mutationFn: (enabled: boolean) =>
+    mutationFn: (data: UserUpdate) =>
       MeService.updateUserMe({
-        requestBody: {
-          notify_on_friend_showtime_match: enabled,
-        },
+        requestBody: data,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
@@ -205,51 +210,75 @@ export default function SettingsScreen() {
     );
   };
 
-  // Enable friend overlap notifications (OS permission + push token + backend preference).
-  const handleEnableNotifications = async () => {
+  const handleNotificationToggle = async (
+    key: NotificationPreferenceKey,
+    enabled: boolean
+  ) => {
     if (!user) return;
     try {
-      setIsEnablingNotifications(true);
-      const token = await registerPushTokenForCurrentDevice();
-      const permissions = await Notifications.getPermissionsAsync();
-      setNotificationPermissionStatus(permissions.status);
-      if (!token) {
-        Alert.alert(
-          'Enable notifications',
-          'To receive notifications, allow them in your system settings.',
-          [
-            { text: 'Not now', style: 'cancel' },
-            { text: 'Open settings', onPress: () => Linking.openSettings() },
-          ]
-        );
-        return;
+      setPendingNotificationToggle(key);
+      if (enabled) {
+        const token = await registerPushTokenForCurrentDevice();
+        const permissions = await Notifications.getPermissionsAsync();
+        setNotificationPermissionStatus(permissions.status);
+        if (!token) {
+          Alert.alert(
+            'Enable notifications',
+            'To receive notifications, allow them in your system settings.',
+            [
+              { text: 'Not now', style: 'cancel' },
+              { text: 'Open settings', onPress: () => Linking.openSettings() },
+            ]
+          );
+          return;
+        }
       }
-      await notificationPreferenceMutation.mutateAsync(true);
-      Alert.alert('Notifications enabled', 'You’ll get friend overlap updates.');
-    } catch (error) {
-      console.error('Error enabling notifications:', error);
-      Alert.alert('Error', 'Could not enable notifications.');
-    } finally {
-      setIsEnablingNotifications(false);
-    }
-  };
 
-  // Disable friend overlap notifications (backend preference only).
-  const handleDisableNotifications = async () => {
-    if (!user) return;
-    try {
-      await notificationPreferenceMutation.mutateAsync(false);
-      Alert.alert('Notifications disabled', 'You can re-enable them at any time.');
+      await notificationPreferenceMutation.mutateAsync({
+        [key]: enabled,
+      });
     } catch (error) {
-      console.error('Error disabling notifications:', error);
-      // Error alert handled by mutation onError.
+      console.error('Error toggling notification preference:', error);
+      Alert.alert('Error', 'Could not update notification preferences.');
+    } finally {
+      setPendingNotificationToggle(null);
     }
   };
 
   const isProfileSaving = profileMutation.isPending;
   const isPasswordSaving = passwordMutation.isPending;
-  const isNotificationPreferenceEnabled = !!user?.notify_on_friend_showtime_match;
-  const isUpdatingNotifications = isEnablingNotifications || notificationPreferenceMutation.isPending;
+  const isUpdatingNotifications = notificationPreferenceMutation.isPending;
+  const notificationToggles: Array<{
+    key: NotificationPreferenceKey;
+    label: string;
+    description: string;
+    value: boolean;
+  }> = [
+    {
+      key: 'notify_on_friend_showtime_match',
+      label: 'Friend showtime updates',
+      description: 'When friends change Going/Interested status on your shared showtimes.',
+      value: !!user?.notify_on_friend_showtime_match,
+    },
+    {
+      key: 'notify_on_showtime_ping',
+      label: 'Showtime pings',
+      description: 'When a friend pings you to join a specific showtime.',
+      value: !!user?.notify_on_showtime_ping,
+    },
+    {
+      key: 'notify_on_interest_reminder',
+      label: 'Interested reminders',
+      description: 'Reminder before showtimes you marked as Interested.',
+      value: !!user?.notify_on_interest_reminder,
+    },
+    {
+      key: 'notify_on_friend_requests',
+      label: 'Friend requests',
+      description: 'When you receive a friend request or someone accepts yours.',
+      value: !!user?.notify_on_friend_requests,
+    },
+  ];
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -353,33 +382,30 @@ export default function SettingsScreen() {
           <ThemedText style={styles.sectionTitle}>Notifications</ThemedText>
           <View style={styles.card}>
             <ThemedText style={styles.helperText}>
-              Get notified when a friend marks themselves as going or interested in a showtime you
-              also selected.
-            </ThemedText>
-            <ThemedText style={styles.helperText}>
-              Friend overlap notifications: {isNotificationPreferenceEnabled ? 'Enabled' : 'Disabled'}.
+              Choose which notification types you want to receive.
             </ThemedText>
             {notificationPermissionStatus ? (
               <ThemedText style={styles.helperText}>
                 System permission: {notificationPermissionStatus === 'granted' ? 'Allowed' : 'Not allowed'}.
               </ThemedText>
             ) : null}
-            <TouchableOpacity
-              style={[
-                isNotificationPreferenceEnabled ? styles.secondaryButton : styles.primaryButton,
-                isUpdatingNotifications && styles.buttonDisabled,
-              ]}
-              onPress={isNotificationPreferenceEnabled ? handleDisableNotifications : handleEnableNotifications}
-              disabled={!user || isUpdatingNotifications}
-            >
-              <ThemedText style={isNotificationPreferenceEnabled ? styles.secondaryButtonText : styles.primaryButtonText}>
-                {isUpdatingNotifications
-                  ? 'Updating...'
-                  : isNotificationPreferenceEnabled
-                    ? 'Disable notifications'
-                    : 'Enable notifications'}
-              </ThemedText>
-            </TouchableOpacity>
+            {notificationToggles.map((toggle) => (
+              <View key={toggle.key} style={styles.notificationToggleRow}>
+                <View style={styles.notificationToggleTextContainer}>
+                  <ThemedText style={styles.notificationToggleTitle}>{toggle.label}</ThemedText>
+                  <ThemedText style={styles.notificationToggleDescription}>
+                    {toggle.description}
+                  </ThemedText>
+                </View>
+                <Switch
+                  value={toggle.value}
+                  onValueChange={(value) => void handleNotificationToggle(toggle.key, value)}
+                  disabled={!user || isUpdatingNotifications || pendingNotificationToggle === toggle.key}
+                  trackColor={{ false: colors.divider, true: colors.tint }}
+                  thumbColor="#ffffff"
+                />
+              </View>
+            ))}
             {notificationPermissionStatus === 'denied' ? (
               <TouchableOpacity
                 style={styles.secondaryButton}
@@ -509,6 +535,31 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     },
     helperText: {
       fontSize: 12,
+      color: colors.textSecondary,
+    },
+    notificationToggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 9,
+      backgroundColor: colors.background,
+    },
+    notificationToggleTextContainer: {
+      flex: 1,
+      gap: 2,
+    },
+    notificationToggleTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    notificationToggleDescription: {
+      fontSize: 11,
       color: colors.textSecondary,
     },
   });

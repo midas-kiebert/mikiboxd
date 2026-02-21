@@ -45,6 +45,20 @@ def ping_friend_for_showtime(
     )
 
 
+@router.get("/{showtime_id}/pinged-friends", response_model=list[UUID])
+def get_pinged_friend_ids_for_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> list[UUID]:
+    return showtimes_service.get_pinged_friend_ids_for_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+    )
+
+
 @router.get("/")
 def get_main_page_showtimes(
     *,

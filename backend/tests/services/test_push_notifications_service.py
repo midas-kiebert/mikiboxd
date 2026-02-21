@@ -68,10 +68,7 @@ def test_notify_friends_only_for_opted_in_recipients(
     assert sent_payload[0]["to"] == token.token
     assert sent_payload[0]["title"] == "Alex is going"
     assert sent_payload[0]["body"] == showtime.movie.title
-    assert (
-        sent_payload[0]["richContent"]["image"]
-        == push_notifications._notification_card_image_url()
-    )
+    assert "richContent" not in sent_payload[0]
     handle_results.assert_called_once()
 
 
@@ -213,11 +210,12 @@ def test_notify_user_on_friend_request(
     receiver_id = uuid4()
 
     sender = mocker.MagicMock(display_name="Alex")
+    receiver = mocker.MagicMock(notify_on_friend_requests=True)
     token = mocker.MagicMock(token="ExponentPushToken[abc]")
 
     mocker.patch(
         "app.services.push_notifications.user_crud.get_user_by_id",
-        return_value=sender,
+        side_effect=[sender, receiver],
     )
     get_tokens = mocker.patch(
         "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
@@ -247,10 +245,7 @@ def test_notify_user_on_friend_request(
     assert sent_payload[0]["body"] == "Alex sent you a friend request"
     assert sent_payload[0]["data"]["type"] == "friend_request_received"
     assert sent_payload[0]["data"]["senderId"] == str(sender_id)
-    assert (
-        sent_payload[0]["richContent"]["image"]
-        == push_notifications._notification_card_image_url()
-    )
+    assert "richContent" not in sent_payload[0]
     handle_results.assert_called_once()
 
 
@@ -262,11 +257,12 @@ def test_notify_user_on_friend_request_accepted(
     requester_id = uuid4()
 
     accepter = mocker.MagicMock(display_name="Alex")
+    requester = mocker.MagicMock(notify_on_friend_requests=True)
     token = mocker.MagicMock(token="ExponentPushToken[abc]")
 
     mocker.patch(
         "app.services.push_notifications.user_crud.get_user_by_id",
-        return_value=accepter,
+        side_effect=[accepter, requester],
     )
     get_tokens = mocker.patch(
         "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
@@ -296,10 +292,7 @@ def test_notify_user_on_friend_request_accepted(
     assert sent_payload[0]["body"] == "Alex accepted your friend request"
     assert sent_payload[0]["data"]["type"] == "friend_request_accepted"
     assert sent_payload[0]["data"]["accepterId"] == str(accepter_id)
-    assert (
-        sent_payload[0]["richContent"]["image"]
-        == push_notifications._notification_card_image_url()
-    )
+    assert "richContent" not in sent_payload[0]
     handle_results.assert_called_once()
 
 
@@ -316,11 +309,12 @@ def test_notify_user_on_showtime_ping(
     showtime.movie = mocker.MagicMock(title="Memories of Murder")
 
     sender = mocker.MagicMock(display_name="Alex")
+    receiver = mocker.MagicMock(notify_on_showtime_ping=True)
     token = mocker.MagicMock(token="ExponentPushToken[abc]")
 
     mocker.patch(
         "app.services.push_notifications.user_crud.get_user_by_id",
-        return_value=sender,
+        side_effect=[sender, receiver],
     )
     mocker.patch(
         "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
@@ -373,6 +367,10 @@ def test_send_interested_showtime_reminders_marks_selection_as_sent(
     mocker.patch(
         "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
         return_value=[mocker.MagicMock(token="ExponentPushToken[abc]", user_id=user_id)],
+    )
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_users_by_ids",
+        return_value=[mocker.MagicMock(id=user_id, notify_on_interest_reminder=True)],
     )
     send_messages = mocker.patch(
         "app.services.push_notifications._send_expo_messages",

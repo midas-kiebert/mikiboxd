@@ -29,6 +29,14 @@ class EmailAlreadyExists(AppError):
         super().__init__(detail)
 
 
+class DisplayNameAlreadyExists(AppError):
+    status_code = status.HTTP_409_CONFLICT
+
+    def __init__(self, display_name: str):
+        detail = f"User with display name {display_name} already exists."
+        super().__init__(detail)
+
+
 class OneOrMoreUsersNotFound(AppError):
     status_code = status.HTTP_404_NOT_FOUND
 

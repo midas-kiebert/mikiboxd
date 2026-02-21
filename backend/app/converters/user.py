@@ -34,6 +34,9 @@ def to_me(user: User) -> UserMe:
         email=user.email,
         is_superuser=user.is_superuser,
         notify_on_friend_showtime_match=user.notify_on_friend_showtime_match,
+        notify_on_friend_requests=user.notify_on_friend_requests,
+        notify_on_showtime_ping=user.notify_on_showtime_ping,
+        notify_on_interest_reminder=user.notify_on_interest_reminder,
         letterboxd_username=user.letterboxd_username,
     )
 

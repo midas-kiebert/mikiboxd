@@ -20,6 +20,10 @@ from app.models.watchlist_selection import WatchlistSelection
 DAY_BUCKET_CUTOFF = time(4, 0)
 
 
+def normalize_letterboxd_username(letterboxd_username: str) -> str:
+    return letterboxd_username.strip().lower()
+
+
 def time_range_clause(
     datetime_column,
     start: time | None,
@@ -67,6 +71,13 @@ def get_user_by_id(*, session: Session, user_id: UUID) -> User | None:
     return session.get(User, user_id)
 
 
+def get_users_by_ids(*, session: Session, user_ids: list[UUID]) -> list[User]:
+    if not user_ids:
+        return []
+    stmt = select(User).where(col(User.id).in_(user_ids))
+    return list(session.exec(stmt).all())
+
+
 def get_letterboxd_username(
     *,
     session: Session,
@@ -98,6 +109,17 @@ def get_user_by_email(*, session: Session, email: str) -> User | None:
         User | None: The user object if found, otherwise None.
     """
     statement = select(User).where(User.email == email)
+    session_user = session.exec(statement).one_or_none()
+    return session_user
+
+
+def get_user_by_display_name(*, session: Session, display_name: str) -> User | None:
+    normalized_display_name = display_name.strip()
+    if not normalized_display_name:
+        return None
+    statement = select(User).where(
+        func.lower(col(User.display_name)) == normalized_display_name.lower()
+    )
     session_user = session.exec(statement).one_or_none()
     return session_user
 
@@ -144,8 +166,10 @@ def create_letterboxd(
         IntegrityError: If a Letterboxd entry with the same username already exists.
     """
 
+    normalized_letterboxd_username = normalize_letterboxd_username(letterboxd_username)
+
     letterboxd = Letterboxd(
-        letterboxd_username=letterboxd_username,
+        letterboxd_username=normalized_letterboxd_username,
         last_watchlist_sync=last_watchlist_sync,
     )
     session.add(letterboxd)
@@ -173,15 +197,20 @@ def update_user(
     if "letterboxd_username" in user_data:
         letterboxd_username = user_data["letterboxd_username"]
         if letterboxd_username:
-            print("Getting letterboxd for user: ", letterboxd_username)
-            letterboxd = session.get(Letterboxd, letterboxd_username)
-            print(letterboxd)
+            normalized_letterboxd_username = normalize_letterboxd_username(
+                letterboxd_username
+            )
+            letterboxd = session.get(Letterboxd, normalized_letterboxd_username)
             if not letterboxd:
                 letterboxd = create_letterboxd(
                     session=session,
-                    letterboxd_username=letterboxd_username,
+                    letterboxd_username=normalized_letterboxd_username,
                 )
             db_user.letterboxd = letterboxd
+            user_data["letterboxd_username"] = normalized_letterboxd_username
+        else:
+            user_data["letterboxd_username"] = None
+            db_user.letterboxd = None
     extra_data = {}
     if "password" in user_data:
         password = user_data["password"]

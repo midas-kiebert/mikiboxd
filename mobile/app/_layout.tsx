@@ -11,8 +11,11 @@ import { storage, setStorage } from 'shared/storage';
 import * as SecureStore from 'expo-secure-store';
 import { useSegments, useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import * as SystemUI from 'expo-system-ui';
+import { View } from 'react-native';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors } from '@/constants/theme';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import axios, { AxiosRequestTransformer } from 'axios'
@@ -116,6 +119,8 @@ function RootLayourContent() {
   const segments = useSegments();
   // Router instance used for in-app navigation actions.
   const router = useRouter();
+  const colorScheme = useColorScheme();
+  const palette = Colors[colorScheme ?? 'light'];
   // Tracks whether auth state is still being resolved.
   const [isChecking, setIsChecking] = useState(true)
   // Tracks whether a valid access token exists.
@@ -170,17 +175,41 @@ function RootLayourContent() {
 
   if (isChecking) {
     // Avoid flashing protected screens before auth status is known.
-    return null; // or a loading spinner
+    return <View style={{ flex: 1, backgroundColor: palette.background }} />;
   }
   return (
     <>
-      <Stack>
+      <Stack
+        screenOptions={{
+          contentStyle: { backgroundColor: palette.background },
+        }}
+      >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="friend-showtimes/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="cinema-showtimes/[id]" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="movie/[id]"
+          options={{
+            headerShown: false,
+            animation: 'none',
+            contentStyle: { backgroundColor: palette.background },
+          }}
+        />
+        <Stack.Screen
+          name="friend-showtimes/[id]"
+          options={{
+            headerShown: false,
+            contentStyle: { backgroundColor: palette.background },
+          }}
+        />
+        <Stack.Screen
+          name="cinema-showtimes/[id]"
+          options={{
+            headerShown: false,
+            contentStyle: { backgroundColor: palette.background },
+          }}
+        />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </>
   )
 }
@@ -196,11 +225,28 @@ export default function RootLayout() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   // Theme mode selects the matching React Navigation theme object.
   const colorScheme = useColorScheme();
+  const palette = Colors[colorScheme ?? 'light'];
+  const baseTheme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
+  const theme = {
+    ...baseTheme,
+    colors: {
+      ...baseTheme.colors,
+      background: palette.background,
+      card: palette.background,
+      border: palette.divider,
+      text: palette.text,
+      primary: palette.tint,
+    },
+  };
+
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(palette.background);
+  }, [palette.background]);
 
   // Render/output using the state and derived values prepared above.
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <ThemeProvider value={theme}>
         <RootLayourContent />
       </ThemeProvider>
     </QueryClientProvider>

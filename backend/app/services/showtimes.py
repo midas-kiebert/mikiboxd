@@ -8,13 +8,18 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.core.enums import GoingStatus
 from app.crud import cinema_preset as cinema_presets_crud
+from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtimes_crud
 from app.crud import user as user_crud
 from app.exceptions.base import AppError
 from app.exceptions.showtime_exceptions import (
     ShowtimeNotFoundError,
+    ShowtimePingAlreadySelectedError,
+    ShowtimePingNonFriendError,
+    ShowtimePingSelfError,
 )
 from app.inputs.movie import Filters
+from app.models.auth_schemas import Message
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.services import push_notifications
@@ -97,18 +102,57 @@ def update_showtime_selection(
         showtime=showtime, session=session, user_id=user_id, filters=filters
     )
 
-    if going_status != previous_status and going_status in (
-        GoingStatus.GOING,
-        GoingStatus.INTERESTED,
-    ):
+    if going_status != previous_status:
         push_notifications.notify_friends_on_showtime_selection(
             session=session,
             actor_id=user_id,
             showtime=showtime,
+            previous_status=previous_status,
             going_status=going_status,
         )
 
     return showtime_logged_in
+
+
+def ping_friend_for_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    actor_id: UUID,
+    friend_id: UUID,
+) -> Message:
+    if actor_id == friend_id:
+        raise ShowtimePingSelfError()
+
+    showtime = showtimes_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
+    if showtime is None:
+        raise ShowtimeNotFoundError(showtime_id)
+
+    is_friend = friendship_crud.are_users_friends(
+        session=session,
+        user_id=actor_id,
+        friend_id=friend_id,
+    )
+    if not is_friend:
+        raise ShowtimePingNonFriendError()
+
+    friend_status = user_crud.get_showtime_going_status(
+        session=session,
+        showtime_id=showtime_id,
+        user_id=friend_id,
+    )
+    if friend_status in (GoingStatus.GOING, GoingStatus.INTERESTED):
+        raise ShowtimePingAlreadySelectedError()
+
+    push_notifications.notify_user_on_showtime_ping(
+        session=session,
+        sender_id=actor_id,
+        receiver_id=friend_id,
+        showtime=showtime,
+    )
+    return Message(message="Friend pinged successfully")
 
 
 def insert_showtime_if_not_exists(

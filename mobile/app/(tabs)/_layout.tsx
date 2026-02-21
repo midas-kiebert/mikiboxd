@@ -105,6 +105,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: palette.tint,
         headerShown: false,
         tabBarButton: HapticTab,
+        sceneStyle: { backgroundColor: palette.background },
       }}>
       <Tabs.Screen
         name="settings"

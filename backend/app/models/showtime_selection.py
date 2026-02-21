@@ -1,9 +1,11 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import Enum as SAEnum
 from sqlmodel import Column, Field, SQLModel
 
 from app.core.enums import GoingStatus
+from app.utils import now_amsterdam_naive
 
 __all__ = [
     "ShowtimeSelection",
@@ -21,3 +23,6 @@ class ShowtimeSelection(SQLModel, table=True):
         default=GoingStatus.GOING,
         sa_column=Column(SAEnum(GoingStatus, native_enum=False), nullable=False),
     )
+    created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
+    updated_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
+    interested_reminder_sent_at: datetime | None = Field(default=None, nullable=True)

@@ -1,6 +1,18 @@
 /**
  * Custom mobile hook for Use color scheme.
  */
-// Re-export React Native's hook so imports stay consistent across app/web hook files.
-// Keeping this wrapper allows platform-specific implementations without changing call sites.
-export { useColorScheme } from 'react-native';
+import { Appearance, useColorScheme as useRNColorScheme } from 'react-native';
+
+type Scheme = 'light' | 'dark';
+
+let lastKnownScheme: Scheme = Appearance.getColorScheme() ?? 'light';
+
+// Keep theme selection stable when React Native briefly reports `null` during transitions.
+export function useColorScheme(): Scheme {
+  const scheme = useRNColorScheme();
+  if (scheme === 'light' || scheme === 'dark') {
+    lastKnownScheme = scheme;
+    return scheme;
+  }
+  return lastKnownScheme;
+}

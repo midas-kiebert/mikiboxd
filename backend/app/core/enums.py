@@ -20,3 +20,9 @@ class TimeOfDay(str, Enum):
 class FilterPresetScope(str, Enum):
     SHOWTIMES = "SHOWTIMES"
     MOVIES = "MOVIES"
+
+
+@unique
+class NotificationChannel(str, Enum):
+    PUSH = "push"
+    EMAIL = "email"

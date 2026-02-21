@@ -160,8 +160,21 @@ export type ShowtimePingPublic = {
   seen_at: string | null
 }
 
+export type ShowtimePingSort = "ping_created_at" | "showtime_datetime"
+
 export type ShowtimeSelectionUpdate = {
   going_status: GoingStatus
+}
+
+export type ShowtimeVisibilityPublic = {
+  showtime_id: number
+  movie_id: number
+  visible_friend_ids: Array<string>
+  all_friends_selected: boolean
+}
+
+export type ShowtimeVisibilityUpdate = {
+  visible_friend_ids: Array<string>
 }
 
 export type TimeOfDay = "MORNING" | "AFTERNOON" | "EVENING" | "NIGHT"
@@ -416,6 +429,7 @@ export type MeGetMyShowtimesResponse = Array<ShowtimeLoggedIn>
 export type MeGetMyShowtimePingsData = {
   limit?: number
   offset?: number
+  sortBy?: ShowtimePingSort
 }
 
 export type MeGetMyShowtimePingsResponse = Array<ShowtimePingPublic>
@@ -423,6 +437,12 @@ export type MeGetMyShowtimePingsResponse = Array<ShowtimePingPublic>
 export type MeGetMyUnseenShowtimePingCountResponse = number
 
 export type MeMarkMyShowtimePingsSeenResponse = Message
+
+export type MeDeleteMyShowtimePingData = {
+  pingId: number
+}
+
+export type MeDeleteMyShowtimePingResponse = Message
 
 export type MeSyncWatchlistResponse = Message
 
@@ -568,6 +588,19 @@ export type ShowtimesGetPingedFriendIdsForShowtimeData = {
 }
 
 export type ShowtimesGetPingedFriendIdsForShowtimeResponse = Array<string>
+
+export type ShowtimesGetShowtimeVisibilityData = {
+  showtimeId: number
+}
+
+export type ShowtimesGetShowtimeVisibilityResponse = ShowtimeVisibilityPublic
+
+export type ShowtimesUpdateShowtimeVisibilityData = {
+  requestBody: ShowtimeVisibilityUpdate
+  showtimeId: number
+}
+
+export type ShowtimesUpdateShowtimeVisibilityResponse = ShowtimeVisibilityPublic
 
 export type ShowtimesGetMainPageShowtimesData = {
   days?: Array<string> | null

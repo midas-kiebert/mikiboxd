@@ -57,6 +57,8 @@ import type {
   MeGetMyShowtimePingsResponse,
   MeGetMyUnseenShowtimePingCountResponse,
   MeMarkMyShowtimePingsSeenResponse,
+  MeDeleteMyShowtimePingData,
+  MeDeleteMyShowtimePingResponse,
   MeSyncWatchlistResponse,
   MeGetFriendsResponse,
   MeGetSentFriendRequestsResponse,
@@ -78,6 +80,10 @@ import type {
   ShowtimesPingFriendForShowtimeResponse,
   ShowtimesGetPingedFriendIdsForShowtimeData,
   ShowtimesGetPingedFriendIdsForShowtimeResponse,
+  ShowtimesGetShowtimeVisibilityData,
+  ShowtimesGetShowtimeVisibilityResponse,
+  ShowtimesUpdateShowtimeVisibilityData,
+  ShowtimesUpdateShowtimeVisibilityResponse,
   ShowtimesGetMainPageShowtimesData,
   ShowtimesGetMainPageShowtimesResponse,
   UsersSearchUsersData,
@@ -670,6 +676,7 @@ export class MeService {
    * @param data The data for the request.
    * @param data.limit
    * @param data.offset
+   * @param data.sortBy
    * @returns ShowtimePingPublic Successful Response
    * @throws ApiError
    */
@@ -682,6 +689,7 @@ export class MeService {
       query: {
         limit: data.limit,
         offset: data.offset,
+        sort_by: data.sortBy,
       },
       errors: {
         422: "Validation Error",
@@ -710,6 +718,28 @@ export class MeService {
     return __request(OpenAPI, {
       method: "POST",
       url: "/api/v1/me/pings/mark-seen",
+    })
+  }
+
+  /**
+   * Delete My Showtime Ping
+   * @param data The data for the request.
+   * @param data.pingId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static deleteMyShowtimePing(
+    data: MeDeleteMyShowtimePingData,
+  ): CancelablePromise<MeDeleteMyShowtimePingResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/pings/{ping_id}",
+      path: {
+        ping_id: data.pingId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
     })
   }
 
@@ -1030,6 +1060,53 @@ export class ShowtimesService {
       path: {
         showtime_id: data.showtimeId,
       },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Showtime Visibility
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns ShowtimeVisibilityPublic Successful Response
+   * @throws ApiError
+   */
+  public static getShowtimeVisibility(
+    data: ShowtimesGetShowtimeVisibilityData,
+  ): CancelablePromise<ShowtimesGetShowtimeVisibilityResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/{showtime_id}/visibility",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update Showtime Visibility
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @param data.requestBody
+   * @returns ShowtimeVisibilityPublic Successful Response
+   * @throws ApiError
+   */
+  public static updateShowtimeVisibility(
+    data: ShowtimesUpdateShowtimeVisibilityData,
+  ): CancelablePromise<ShowtimesUpdateShowtimeVisibilityResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/showtimes/{showtime_id}/visibility",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },

@@ -26,3 +26,9 @@ class FilterPresetScope(str, Enum):
 class NotificationChannel(str, Enum):
     PUSH = "push"
     EMAIL = "email"
+
+
+@unique
+class ShowtimePingSort(str, Enum):
+    PING_CREATED_AT = "ping_created_at"
+    SHOWTIME_DATETIME = "showtime_datetime"

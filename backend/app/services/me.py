@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.converters import user as user_converters
-from app.core.enums import FilterPresetScope
+from app.core.enums import FilterPresetScope, ShowtimePingSort
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import filter_preset as filter_presets_crud
 from app.crud import push_token as push_tokens_crud
@@ -459,12 +459,15 @@ def get_received_showtime_pings(
     *,
     session: Session,
     user_id: UUID,
+    sort_by: ShowtimePingSort,
     limit: int,
     offset: int,
 ) -> list[ShowtimePingPublic]:
+    _prune_past_showtime_pings(session=session, user_id=user_id)
     pings = showtime_ping_crud.get_received_showtime_pings(
         session=session,
         receiver_id=user_id,
+        sort_by=sort_by,
         limit=limit,
         offset=offset,
     )
@@ -518,6 +521,7 @@ def get_unseen_showtime_ping_count(
     session: Session,
     user_id: UUID,
 ) -> int:
+    _prune_past_showtime_pings(session=session, user_id=user_id)
     return showtime_ping_crud.get_unseen_showtime_ping_count(
         session=session,
         receiver_id=user_id,
@@ -529,9 +533,40 @@ def mark_showtime_pings_seen(
     session: Session,
     user_id: UUID,
 ) -> None:
+    _prune_past_showtime_pings(session=session, user_id=user_id)
     showtime_ping_crud.mark_received_showtime_pings_seen(
         session=session,
         receiver_id=user_id,
         seen_at=now_amsterdam_naive(),
     )
     session.commit()
+
+
+def delete_received_showtime_ping(
+    *,
+    session: Session,
+    user_id: UUID,
+    ping_id: int,
+) -> bool:
+    deleted = showtime_ping_crud.delete_received_showtime_ping(
+        session=session,
+        ping_id=ping_id,
+        receiver_id=user_id,
+    )
+    if deleted:
+        session.commit()
+    return deleted
+
+
+def _prune_past_showtime_pings(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> None:
+    deleted_count = showtime_ping_crud.delete_received_past_showtime_pings(
+        session=session,
+        receiver_id=user_id,
+        now=now_amsterdam_naive(),
+    )
+    if deleted_count > 0:
+        session.commit()

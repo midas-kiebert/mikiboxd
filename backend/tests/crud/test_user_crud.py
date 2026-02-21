@@ -496,6 +496,7 @@ def test_get_selected_showtimes(
     selected_showtimes = user_crud.get_selected_showtimes(
         session=db_transaction,
         user_id=user.id,
+        viewer_id=user.id,
         limit=10,
         offset=0,
         filters=Filters(snapshot_time=snapshot_time),
@@ -533,6 +534,7 @@ def test_get_selected_showtimes_filters_by_selected_statuses(
     selected_showtimes = user_crud.get_selected_showtimes(
         session=db_transaction,
         user_id=user.id,
+        viewer_id=user.id,
         limit=10,
         offset=0,
         filters=Filters(

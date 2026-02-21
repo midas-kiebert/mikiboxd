@@ -19,7 +19,8 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications';
 
-const NOTIFICATION_PERMISSION_ONBOARDING_KEY = 'mobile.notifications.permission_prompted_v2';
+const NOTIFICATION_PERMISSION_PROMPTED_KEY = 'mobile.notifications.permission_prompted_v3';
+const NOTIFICATION_PREFS_INITIALIZED_KEY = 'mobile.notifications.preferences_initialized_v1';
 const WATCHLIST_LAST_SYNC_KEY = 'mobile.watchlist.last_sync_at';
 const WATCHLIST_SYNC_COOLDOWN_MS = 30 * 60 * 1000;
 const NOTIFICATION_PROMPT_DELAY_MS = 700;
@@ -91,26 +92,25 @@ export default function TabLayout() {
     };
   }, [queryClient, user]);
 
-  // Ask for notification permission immediately when the authenticated tabs mount.
+  // Ask for notification permission right after login (when user context is available).
   useEffect(() => {
+    if (!user) return;
+
     const maybePromptForNotificationPermission = async () => {
+      const storageKey = `${NOTIFICATION_PERMISSION_PROMPTED_KEY}:${user.id}`;
       try {
-        const accessToken = await storage.getItem('access_token');
-        if (!accessToken) return;
-
-        const permissions = await Notifications.getPermissionsAsync();
-
-        let finalPermissionStatus = permissions.status;
-        if (permissions.status === 'undetermined') {
-          const requestedPermissions = await Notifications.requestPermissionsAsync();
-          finalPermissionStatus = requestedPermissions.status;
-        }
-
-        if (finalPermissionStatus !== 'granted') {
+        const alreadyPrompted = await storage.getItem(storageKey);
+        const existingPermissions = await Notifications.getPermissionsAsync();
+        if (alreadyPrompted === '1' && existingPermissions.status !== 'granted') {
           return;
         }
 
         await registerPushTokenForCurrentDevice();
+
+        const finalPermissions = await Notifications.getPermissionsAsync();
+        if (finalPermissions.status !== 'undetermined') {
+          await storage.setItem(storageKey, '1');
+        }
       } catch (error) {
         console.error('Error running notification permission onboarding:', error);
       }
@@ -124,14 +124,14 @@ export default function TabLayout() {
     return () => {
       clearTimeout(timeout);
     };
-  }, []);
+  }, [user]);
 
   // Initialize default notification toggles once per user after profile data is loaded.
   useEffect(() => {
     if (!user) return;
 
     const maybeInitializeNotificationPreferences = async () => {
-      const storageKey = `${NOTIFICATION_PERMISSION_ONBOARDING_KEY}:${user.id}`;
+      const storageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}:${user.id}`;
       try {
         const alreadyInitialized = await storage.getItem(storageKey);
         if (alreadyInitialized === '1') return;

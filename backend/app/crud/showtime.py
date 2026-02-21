@@ -1,4 +1,4 @@
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
 from uuid import UUID
 
 from sqlalchemy import func
@@ -13,6 +13,7 @@ from app.models.showtime import Showtime, ShowtimeCreate
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
 from app.models.watchlist_selection import WatchlistSelection
+from app.utils import now_amsterdam_naive
 
 DAY_BUCKET_CUTOFF = time(4, 0)
 
@@ -207,6 +208,38 @@ def get_friends_with_showtime_selection(
     return list(session.exec(stmt).all())
 
 
+def get_interested_reminder_candidates(
+    *,
+    session: Session,
+    now: datetime,
+    reminder_horizon: timedelta = timedelta(hours=24),
+    minimum_notice: timedelta = timedelta(hours=2),
+    minimum_delay_after_selection: timedelta = timedelta(hours=2),
+    limit: int = 1000,
+) -> list[tuple[ShowtimeSelection, Showtime]]:
+    """
+    Return interested selections eligible for a reminder notification.
+    """
+    earliest_showtime = now + minimum_notice
+    latest_showtime = now + reminder_horizon
+    latest_selection_update = now - minimum_delay_after_selection
+
+    stmt = (
+        select(ShowtimeSelection, Showtime)
+        .join(Showtime, col(ShowtimeSelection.showtime_id) == col(Showtime.id))
+        .where(
+            ShowtimeSelection.going_status == GoingStatus.INTERESTED,
+            col(ShowtimeSelection.interested_reminder_sent_at).is_(None),
+            col(ShowtimeSelection.updated_at) <= latest_selection_update,
+            col(Showtime.datetime) >= earliest_showtime,
+            col(Showtime.datetime) <= latest_showtime,
+        )
+        .order_by(col(Showtime.datetime).asc())
+        .limit(limit)
+    )
+    return list(session.exec(stmt).all())
+
+
 def get_main_page_showtimes(
     *,
     session: Session,
@@ -282,6 +315,7 @@ def add_showtime_selection(
     user_id: UUID,
     going_status: GoingStatus,
 ) -> Showtime:
+    now = now_amsterdam_naive()
     showtime = session.exec(select(Showtime).where(Showtime.id == showtime_id)).one()
 
     showtime_selection = session.get(
@@ -289,15 +323,20 @@ def add_showtime_selection(
         (user_id, showtime_id),
     )
     if showtime_selection is not None:
-        showtime_selection.going_status = going_status
-        session.add(showtime_selection)
-        session.flush()
+        if showtime_selection.going_status != going_status:
+            showtime_selection.going_status = going_status
+            showtime_selection.updated_at = now
+            showtime_selection.interested_reminder_sent_at = None
+            session.add(showtime_selection)
+            session.flush()
         return showtime
 
     db_obj = ShowtimeSelection(
         user_id=user_id,
         showtime_id=showtime_id,
         going_status=going_status,
+        created_at=now,
+        updated_at=now,
     )
     session.add(db_obj)
     session.flush()  # So that the ID is set, and check for integrity errors

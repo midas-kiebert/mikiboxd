@@ -52,3 +52,30 @@ class ShowtimeSelectionNotFoundError(AppError):
         self.user_id = user_id
         detail = f"Showtime selection with ID {showtime_id} for user with ID {user_id} not found."
         super().__init__(detail)
+
+
+class ShowtimePingNonFriendError(AppError):
+    status_code = status.HTTP_403_FORBIDDEN
+    openapi_description = "Returned when pinging a user who is not your friend."
+    openapi_example = {"detail": "You can only ping your friends."}
+
+    def __init__(self):
+        super().__init__("You can only ping your friends.")
+
+
+class ShowtimePingAlreadySelectedError(AppError):
+    status_code = status.HTTP_409_CONFLICT
+    openapi_description = "Returned when pinging a friend who already marked the showtime as going/interested."
+    openapi_example = {"detail": "This friend already selected this showtime."}
+
+    def __init__(self):
+        super().__init__("This friend already selected this showtime.")
+
+
+class ShowtimePingSelfError(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+    openapi_description = "Returned when trying to ping yourself."
+    openapi_example = {"detail": "You cannot ping yourself."}
+
+    def __init__(self):
+        super().__init__("You cannot ping yourself.")

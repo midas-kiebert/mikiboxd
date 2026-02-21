@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Optional
 from pydantic import EmailStr
 from sqlmodel import Field, Relationship, SQLModel
 
+from app.core.enums import NotificationChannel
+
 if TYPE_CHECKING:
     from app.models.letterboxd import Letterboxd
 
@@ -25,6 +27,18 @@ class UserBase(SQLModel):
     notify_on_friend_requests: bool = Field(default=True)
     notify_on_showtime_ping: bool = Field(default=True)
     notify_on_interest_reminder: bool = Field(default=True)
+    notify_channel_friend_showtime_match: NotificationChannel = Field(
+        default=NotificationChannel.PUSH
+    )
+    notify_channel_friend_requests: NotificationChannel = Field(
+        default=NotificationChannel.PUSH
+    )
+    notify_channel_showtime_ping: NotificationChannel = Field(
+        default=NotificationChannel.PUSH
+    )
+    notify_channel_interest_reminder: NotificationChannel = Field(
+        default=NotificationChannel.PUSH
+    )
     display_name: str | None = Field(default=None, max_length=255)
     letterboxd_username: str | None = Field(
         default=None,
@@ -54,6 +68,12 @@ class UserUpdate(SQLModel):
     notify_on_friend_requests: bool | None = Field(default=None)
     notify_on_showtime_ping: bool | None = Field(default=None)
     notify_on_interest_reminder: bool | None = Field(default=None)
+    notify_channel_friend_showtime_match: NotificationChannel | None = Field(
+        default=None
+    )
+    notify_channel_friend_requests: NotificationChannel | None = Field(default=None)
+    notify_channel_showtime_ping: NotificationChannel | None = Field(default=None)
+    notify_channel_interest_reminder: NotificationChannel | None = Field(default=None)
     password: str | None = Field(default=None, min_length=1, max_length=255)
 
 

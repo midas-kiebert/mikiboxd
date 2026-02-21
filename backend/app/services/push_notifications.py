@@ -7,7 +7,6 @@ from uuid import UUID
 import httpx
 from sqlmodel import Session
 
-from app.core.config import settings
 from app.core.enums import GoingStatus
 from app.crud import push_token as push_token_crud
 from app.crud import showtime as showtime_crud
@@ -18,10 +17,6 @@ from app.utils import now_amsterdam_naive
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 ANDROID_PUSH_CHANNEL_ID = "heads-up"
-NOTIFICATION_CARD_IMAGE_PATH = "/assets/images/notification-card-image.png"
-DEFAULT_NOTIFICATION_CARD_IMAGE_URL = (
-    "https://mikino.nl/assets/images/notification-card-image.png"
-)
 REMINDER_HORIZON = timedelta(hours=24)
 REMINDER_MINIMUM_NOTICE = timedelta(hours=2)
 REMINDER_MINIMUM_DELAY_AFTER_SELECTION = timedelta(hours=2)
@@ -34,13 +29,6 @@ def _token_hint(token: str) -> str:
     if len(token) <= 16:
         return token
     return f"{token[:12]}...{token[-4:]}"
-
-
-def _notification_card_image_url() -> str:
-    frontend_host = settings.FRONTEND_HOST.rstrip("/")
-    if frontend_host.startswith("https://"):
-        return f"{frontend_host}{NOTIFICATION_CARD_IMAGE_PATH}"
-    return DEFAULT_NOTIFICATION_CARD_IMAGE_URL
 
 
 def _build_showtime_status_payload(
@@ -154,15 +142,12 @@ def notify_friends_on_showtime_selection(
         return
 
     title, body, data = payload
-    rich_content = {"image": _notification_card_image_url()}
-
     messages = [
         {
             "to": token.token,
             "title": title,
             "body": body,
             "data": data,
-            "richContent": rich_content,
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
@@ -192,6 +177,9 @@ def notify_user_on_friend_request(
     sender = user_crud.get_user_by_id(session=session, user_id=sender_id)
     if sender is None:
         return
+    receiver = user_crud.get_user_by_id(session=session, user_id=receiver_id)
+    if receiver is None or not receiver.notify_on_friend_requests:
+        return
 
     push_tokens = push_token_crud.get_push_tokens_for_users(
         session=session,
@@ -201,7 +189,6 @@ def notify_user_on_friend_request(
         return
 
     sender_name = sender.display_name or "Someone"
-    rich_content = {"image": _notification_card_image_url()}
     messages = [
         {
             "to": token.token,
@@ -211,7 +198,6 @@ def notify_user_on_friend_request(
                 "type": "friend_request_received",
                 "senderId": str(sender_id),
             },
-            "richContent": rich_content,
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
@@ -241,6 +227,9 @@ def notify_user_on_friend_request_accepted(
     accepter = user_crud.get_user_by_id(session=session, user_id=accepter_id)
     if accepter is None:
         return
+    requester = user_crud.get_user_by_id(session=session, user_id=requester_id)
+    if requester is None or not requester.notify_on_friend_requests:
+        return
 
     push_tokens = push_token_crud.get_push_tokens_for_users(
         session=session,
@@ -250,7 +239,6 @@ def notify_user_on_friend_request_accepted(
         return
 
     accepter_name = accepter.display_name or "Someone"
-    rich_content = {"image": _notification_card_image_url()}
     messages = [
         {
             "to": token.token,
@@ -260,7 +248,6 @@ def notify_user_on_friend_request_accepted(
                 "type": "friend_request_accepted",
                 "accepterId": str(accepter_id),
             },
-            "richContent": rich_content,
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
@@ -291,6 +278,9 @@ def notify_user_on_showtime_ping(
     sender = user_crud.get_user_by_id(session=session, user_id=sender_id)
     if sender is None:
         return
+    receiver = user_crud.get_user_by_id(session=session, user_id=receiver_id)
+    if receiver is None or not receiver.notify_on_showtime_ping:
+        return
 
     push_tokens = push_token_crud.get_push_tokens_for_users(
         session=session,
@@ -301,7 +291,6 @@ def notify_user_on_showtime_ping(
 
     sender_name = sender.display_name or "A friend"
     formatted_datetime = showtime.datetime.strftime("%a, %b %d at %H:%M")
-    rich_content = {"image": _notification_card_image_url()}
     messages = [
         {
             "to": token.token,
@@ -313,7 +302,6 @@ def notify_user_on_showtime_ping(
                 "showtimeId": showtime.id,
                 "movieId": showtime.movie_id,
             },
-            "richContent": rich_content,
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
@@ -356,6 +344,23 @@ def send_interested_showtime_reminders(
     for selection, showtime in candidates:
         candidates_by_user[selection.user_id].append((selection, showtime))
 
+    recipient_users = user_crud.get_users_by_ids(
+        session=session,
+        user_ids=list(candidates_by_user.keys()),
+    )
+    opted_in_user_ids = {
+        user.id for user in recipient_users if user.notify_on_interest_reminder
+    }
+    if not opted_in_user_ids:
+        return 0
+    candidates_by_user = {
+        user_id: user_candidates
+        for user_id, user_candidates in candidates_by_user.items()
+        if user_id in opted_in_user_ids
+    }
+    if not candidates_by_user:
+        return 0
+
     push_tokens = push_token_crud.get_push_tokens_for_users(
         session=session,
         user_ids=list(candidates_by_user.keys()),
@@ -370,7 +375,6 @@ def send_interested_showtime_reminders(
     messages: list[dict] = []
     message_tokens: list[str] = []
     reminded_selections: list[ShowtimeSelection] = []
-    rich_content = {"image": _notification_card_image_url()}
     for user_id, user_candidates in candidates_by_user.items():
         user_tokens = token_by_user.get(user_id)
         if not user_tokens:
@@ -389,7 +393,6 @@ def send_interested_showtime_reminders(
                             "movieId": showtime.movie_id,
                             "status": selection.going_status.value,
                         },
-                        "richContent": rich_content,
                         "priority": "high",
                         "sound": "default",
                         "channelId": ANDROID_PUSH_CHANNEL_ID,

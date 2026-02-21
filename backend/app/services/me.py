@@ -10,14 +10,18 @@ from app.core.enums import FilterPresetScope
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import filter_preset as filter_presets_crud
 from app.crud import push_token as push_tokens_crud
+from app.crud import showtime as showtimes_crud
+from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
-from app.exceptions.user_exceptions import EmailAlreadyExists
+from app.exceptions.user_exceptions import DisplayNameAlreadyExists, EmailAlreadyExists
 from app.models.cinema_preset import CinemaPreset
 from app.models.filter_preset import FilterPreset
+from app.models.showtime import Showtime
 from app.models.user import User, UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
+from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe
 from app.utils import now_amsterdam_naive
 
@@ -30,16 +34,32 @@ def update_me(
     user_in: UserUpdate,
     current_user: User,
 ) -> UserMe:
+    user_data = user_in.model_dump(exclude_unset=True)
+    if "display_name" in user_data:
+        display_name = user_data["display_name"]
+        if display_name is not None:
+            normalized_display_name = display_name.strip()
+            user_data["display_name"] = normalized_display_name
+            if normalized_display_name:
+                existing_user = users_crud.get_user_by_display_name(
+                    session=session,
+                    display_name=normalized_display_name,
+                )
+                if existing_user and existing_user.id != current_user.id:
+                    raise DisplayNameAlreadyExists(normalized_display_name)
+    validated_user_update = UserUpdate.model_validate(user_data)
+
     try:
         users_crud.update_user(
             session=session,
             db_user=current_user,
-            user_in=user_in,
+            user_in=validated_user_update,
         )
     except IntegrityError as e:
         if isinstance(e.orig, UniqueViolation):
-            assert user_in.email is not None
-            raise EmailAlreadyExists(user_in.email) from e
+            raise EmailAlreadyExists(
+                validated_user_update.email or current_user.email
+            ) from e
         else:
             raise AppError from e
     except Exception as e:
@@ -432,4 +452,86 @@ def set_favorite_cinema_ids(
             is_favorite=True,
             now=now,
         )
+    session.commit()
+
+
+def get_received_showtime_pings(
+    *,
+    session: Session,
+    user_id: UUID,
+    limit: int,
+    offset: int,
+) -> list[ShowtimePingPublic]:
+    pings = showtime_ping_crud.get_received_showtime_pings(
+        session=session,
+        receiver_id=user_id,
+        limit=limit,
+        offset=offset,
+    )
+
+    sender_cache: dict[UUID, User | None] = {}
+    showtime_cache: dict[int, Showtime | None] = {}
+    result: list[ShowtimePingPublic] = []
+
+    for ping in pings:
+        sender = sender_cache.get(ping.sender_id)
+        if sender is None:
+            sender = users_crud.get_user_by_id(session=session, user_id=ping.sender_id)
+            sender_cache[ping.sender_id] = sender
+        if sender is None:
+            continue
+
+        showtime = showtime_cache.get(ping.showtime_id)
+        if showtime is None:
+            showtime = showtimes_crud.get_showtime_by_id(
+                session=session,
+                showtime_id=ping.showtime_id,
+            )
+            showtime_cache[ping.showtime_id] = showtime
+        if showtime is None:
+            continue
+
+        if ping.id is None:
+            continue
+
+        result.append(
+            ShowtimePingPublic(
+                id=ping.id,
+                showtime_id=ping.showtime_id,
+                movie_id=showtime.movie_id,
+                movie_title=showtime.movie.title,
+                movie_poster_link=showtime.movie.poster_link,
+                cinema_name=showtime.cinema.name,
+                datetime=showtime.datetime,
+                ticket_link=showtime.ticket_link,
+                sender=user_converters.to_public(sender),
+                created_at=ping.created_at,
+                seen_at=ping.seen_at,
+            )
+        )
+
+    return result
+
+
+def get_unseen_showtime_ping_count(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> int:
+    return showtime_ping_crud.get_unseen_showtime_ping_count(
+        session=session,
+        receiver_id=user_id,
+    )
+
+
+def mark_showtime_pings_seen(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> None:
+    showtime_ping_crud.mark_received_showtime_pings_seen(
+        session=session,
+        receiver_id=user_id,
+        seen_at=now_amsterdam_naive(),
+    )
     session.commit()

@@ -15,6 +15,7 @@ type useFetchShowtimesProps = {
     limit?: number;
     snapshotTime?: string;
     filters?: ShowtimesFilters;
+    enabled?: boolean;
 };
 
 export function useFetchMyShowtimes(
@@ -22,6 +23,7 @@ export function useFetchMyShowtimes(
         limit,
         snapshotTime,
         filters = {},
+        enabled = true,
     } : useFetchShowtimesProps = {}
 ): UseInfiniteQueryResult<InfiniteData<MeGetMyShowtimesResponse>, Error>{
     const result = useInfiniteQuery<
@@ -32,6 +34,7 @@ export function useFetchMyShowtimes(
         number
     >({
         queryKey: ["showtimes", "me", filters],
+        enabled,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,

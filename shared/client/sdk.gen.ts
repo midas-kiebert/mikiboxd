@@ -53,6 +53,10 @@ import type {
   MeUpdatePasswordMeResponse,
   MeGetMyShowtimesData,
   MeGetMyShowtimesResponse,
+  MeGetMyShowtimePingsData,
+  MeGetMyShowtimePingsResponse,
+  MeGetMyUnseenShowtimePingCountResponse,
+  MeMarkMyShowtimePingsSeenResponse,
   MeSyncWatchlistResponse,
   MeGetFriendsResponse,
   MeGetSentFriendRequestsResponse,
@@ -72,6 +76,8 @@ import type {
   ShowtimesUpdateShowtimeSelectionResponse,
   ShowtimesPingFriendForShowtimeData,
   ShowtimesPingFriendForShowtimeResponse,
+  ShowtimesGetPingedFriendIdsForShowtimeData,
+  ShowtimesGetPingedFriendIdsForShowtimeResponse,
   ShowtimesGetMainPageShowtimesData,
   ShowtimesGetMainPageShowtimesResponse,
   UsersSearchUsersData,
@@ -660,6 +666,54 @@ export class MeService {
   }
 
   /**
+   * Get My Showtime Pings
+   * @param data The data for the request.
+   * @param data.limit
+   * @param data.offset
+   * @returns ShowtimePingPublic Successful Response
+   * @throws ApiError
+   */
+  public static getMyShowtimePings(
+    data: MeGetMyShowtimePingsData = {},
+  ): CancelablePromise<MeGetMyShowtimePingsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/pings",
+      query: {
+        limit: data.limit,
+        offset: data.offset,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get My Unseen Showtime Ping Count
+   * @returns number Successful Response
+   * @throws ApiError
+   */
+  public static getMyUnseenShowtimePingCount(): CancelablePromise<MeGetMyUnseenShowtimePingCountResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/pings/unseen-count",
+    })
+  }
+
+  /**
+   * Mark My Showtime Pings Seen
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static markMyShowtimePingsSeen(): CancelablePromise<MeMarkMyShowtimePingsSeenResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/pings/mark-seen",
+    })
+  }
+
+  /**
    * Sync Watchlist
    * @returns Message Successful Response
    * @throws ApiError
@@ -953,6 +1007,28 @@ export class ShowtimesService {
       path: {
         showtime_id: data.showtimeId,
         friend_id: data.friendId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Pinged Friend Ids For Showtime
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns string Successful Response
+   * @throws ApiError
+   */
+  public static getPingedFriendIdsForShowtime(
+    data: ShowtimesGetPingedFriendIdsForShowtimeData,
+  ): CancelablePromise<ShowtimesGetPingedFriendIdsForShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/{showtime_id}/pinged-friends",
+      path: {
+        showtime_id: data.showtimeId,
       },
       errors: {
         422: "Validation Error",

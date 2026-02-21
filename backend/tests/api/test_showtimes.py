@@ -100,3 +100,74 @@ def test_ping_friend_for_showtime_rejects_when_already_selected(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "This friend already selected this showtime."
+
+
+def test_ping_friend_for_showtime_rejects_duplicate_ping(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    friend = user_factory()
+    showtime = showtime_factory()
+    friend_id = friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    db_transaction.commit()
+
+    first_response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping/{friend_id}",
+        headers=normal_user_token_headers,
+    )
+    assert first_response.status_code == 200
+
+    second_response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping/{friend_id}",
+        headers=normal_user_token_headers,
+    )
+    assert second_response.status_code == 409
+    assert (
+        second_response.json()["detail"]
+        == "You already pinged this friend for this showtime."
+    )
+
+
+def test_get_pinged_friend_ids_for_showtime(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    friend = user_factory()
+    showtime = showtime_factory()
+    friend_id = friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    db_transaction.commit()
+
+    ping_response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping/{friend_id}",
+        headers=normal_user_token_headers,
+    )
+    assert ping_response.status_code == 200
+
+    list_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/pinged-friends",
+        headers=normal_user_token_headers,
+    )
+    assert list_response.status_code == 200
+    assert list_response.json() == [str(friend_id)]

@@ -6,6 +6,7 @@ import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
 import { useIsFocused } from '@react-navigation/native';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
+import { useFetchMyShowtimes } from 'shared/hooks/useFetchMyShowtimes';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
@@ -30,10 +31,14 @@ import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 
+type AudienceFilter = 'including-friends' | 'only-you';
+type MainShowtimesFilterId = SharedTabFilterId;
+
 export default function MainShowtimesScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const [searchQuery, setSearchQuery] = useState('');
+  const [audienceFilter, setAudienceFilter] = useState<AudienceFilter>('including-friends');
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
   // Controls visibility of the cinema-filter modal.
@@ -68,6 +73,10 @@ export default function MainShowtimesScreen() {
     () => resolveDaySelectionsForApi(selectedDays),
     [dayAnchorKey, selectedDays]
   );
+  const shouldShowAudienceToggle = selectedShowtimeFilter !== 'all';
+  const effectiveAudienceFilter: AudienceFilter = shouldShowAudienceToggle
+    ? audienceFilter
+    : 'including-friends';
 
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
@@ -102,7 +111,7 @@ export default function MainShowtimesScreen() {
   );
 
   // Build shared filter pills used by both Movies and Showtimes tabs.
-  const pillFilters = useMemo(
+  const sharedPillFilters = useMemo(
     () =>
       buildSharedTabPillFilters({
         colors,
@@ -124,7 +133,7 @@ export default function MainShowtimesScreen() {
   );
 
   // Compute shared active filter ids used by both Movies and Showtimes tabs.
-  const activeFilterIds = useMemo<SharedTabFilterId[]>(
+  const sharedActiveFilterIds = useMemo<SharedTabFilterId[]>(
     () =>
       buildSharedTabActiveFilterIds({
         selectedShowtimeFilter,
@@ -137,6 +146,20 @@ export default function MainShowtimesScreen() {
   );
 
   // Data hooks keep this module synced with backend data and shared cache state.
+  const mainShowtimesQuery = useFetchMainPageShowtimes({
+    limit: 20,
+    snapshotTime,
+    filters: showtimesFilters,
+    enabled: isFocused && effectiveAudienceFilter === 'including-friends',
+  });
+  const myShowtimesQuery = useFetchMyShowtimes({
+    limit: 20,
+    snapshotTime,
+    filters: showtimesFilters,
+    enabled: isFocused && effectiveAudienceFilter === 'only-you',
+  });
+  const activeShowtimesQuery =
+    effectiveAudienceFilter === 'only-you' ? myShowtimesQuery : mainShowtimesQuery;
   const {
     data,
     isLoading,
@@ -144,12 +167,7 @@ export default function MainShowtimesScreen() {
     isFetching,
     hasNextPage,
     fetchNextPage,
-  } = useFetchMainPageShowtimes({
-    limit: 20,
-    snapshotTime,
-    filters: showtimesFilters,
-    enabled: isFocused,
-  });
+  } = activeShowtimesQuery;
 
   // Flatten/derive list data for rendering efficiency.
   const showtimes = useMemo(() => data?.pages.flat() ?? [], [data]);
@@ -157,7 +175,12 @@ export default function MainShowtimesScreen() {
   // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
     setRefreshing(true);
-    await resetInfiniteQuery(queryClient, ['showtimes', 'main', showtimesFilters]);
+    await resetInfiniteQuery(
+      queryClient,
+      effectiveAudienceFilter === 'only-you'
+        ? ['showtimes', 'me', showtimesFilters]
+        : ['showtimes', 'main', showtimesFilters]
+    );
     setSnapshotTime(DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
     setRefreshing(false);
   };
@@ -170,7 +193,7 @@ export default function MainShowtimesScreen() {
   };
 
   // Handle filter pill presses and update filter state.
-  const handleToggleFilter = (filterId: SharedTabFilterId) => {
+  const handleToggleFilter = (filterId: MainShowtimesFilterId) => {
     if (filterId === 'showtime-filter') {
       setSelectedShowtimeFilter(cycleSharedTabShowtimeFilter(selectedShowtimeFilter));
       return;
@@ -204,6 +227,13 @@ export default function MainShowtimesScreen() {
     setSelectedTimeRanges(filters.time_ranges ?? []);
   };
 
+  const pillFilters = useMemo(() => sharedPillFilters, [sharedPillFilters]);
+
+  const activeFilterIds = useMemo<MainShowtimesFilterId[]>(
+    () => [...sharedActiveFilterIds],
+    [sharedActiveFilterIds]
+  );
+
   // Render/output using the state and derived values prepared above.
   return (
     <>
@@ -221,7 +251,19 @@ export default function MainShowtimesScreen() {
         filters={pillFilters}
         activeFilterIds={activeFilterIds}
         onToggleFilter={handleToggleFilter}
-        emptyText="No showtimes found"
+        audienceToggle={
+          shouldShowAudienceToggle
+            ? {
+                value: effectiveAudienceFilter,
+                onChange: setAudienceFilter,
+              }
+            : undefined
+        }
+        emptyText={
+          effectiveAudienceFilter === 'only-you'
+            ? 'No showtimes in your agenda'
+            : 'No showtimes found'
+        }
       />
       <CinemaFilterModal
         visible={cinemaModalVisible}

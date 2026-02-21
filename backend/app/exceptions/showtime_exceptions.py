@@ -72,6 +72,17 @@ class ShowtimePingAlreadySelectedError(AppError):
         super().__init__("This friend already selected this showtime.")
 
 
+class ShowtimePingAlreadySentError(AppError):
+    status_code = status.HTTP_409_CONFLICT
+    openapi_description = (
+        "Returned when pinging the same friend twice for the same showtime."
+    )
+    openapi_example = {"detail": "You already pinged this friend for this showtime."}
+
+    def __init__(self):
+        super().__init__("You already pinged this friend for this showtime.")
+
+
 class ShowtimePingSelfError(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
     openapi_description = "Returned when trying to ping yourself."

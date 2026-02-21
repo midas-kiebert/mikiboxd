@@ -70,7 +70,6 @@ export default function MoviePage() {
   // Stores the showtime currently selected for status/ticket actions.
   const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeInMovieLoggedIn | null>(null);
   const [pingListOpen, setPingListOpen] = useState(false);
-  const [pingedFriendIds, setPingedFriendIds] = useState<string[]>([]);
   const modalProgress = useRef(new Animated.Value(0)).current;
   // Controls visibility of the cinema-filter modal.
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
@@ -99,15 +98,27 @@ export default function MoviePage() {
   const { selections: sessionCinemaIds } = useSessionCinemaSelections();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
   const { data: friends } = useFetchFriends({ enabled: !!selectedShowtime });
+  const selectedShowtimeId = selectedShowtime?.id ?? null;
+  const { data: pingedFriendIds = [], isFetching: isFetchingPingedFriends } = useQuery<
+    string[],
+    Error
+  >({
+    queryKey: ["showtimes", "pingedFriends", selectedShowtimeId],
+    enabled: selectedShowtimeId !== null,
+    queryFn: () =>
+      ShowtimesService.getPingedFriendIdsForShowtime({
+        showtimeId: selectedShowtimeId as number,
+      }),
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
+  });
   useEffect(() => {
     if (!selectedShowtime) {
       modalProgress.setValue(0);
       setPingListOpen(false);
-      setPingedFriendIds([]);
       return;
     }
     setPingListOpen(false);
-    setPingedFriendIds([]);
     modalProgress.setValue(0);
     Animated.timing(modalProgress, {
       toValue: 1,
@@ -265,13 +276,24 @@ export default function MoviePage() {
         friendId,
       }),
     onSuccess: (_message, variables) => {
-      setPingedFriendIds((previous) =>
-        previous.includes(variables.friendId) ? previous : [...previous, variables.friendId]
+      queryClient.setQueryData<string[]>(
+        ["showtimes", "pingedFriends", variables.showtimeId],
+        (previous) =>
+          previous?.includes(variables.friendId)
+            ? previous
+            : [...(previous ?? []), variables.friendId]
       );
     },
     onError: (error) => {
       console.error("Error pinging friend for showtime:", error);
-      Alert.alert("Error", "Could not send ping.");
+      const detail =
+        typeof error === "object" &&
+        error !== null &&
+        "body" in error &&
+        typeof (error as { body?: { detail?: unknown } }).body?.detail === "string"
+          ? (error as { body?: { detail?: string } }).body?.detail
+          : undefined;
+      Alert.alert("Error", detail ?? "Could not send ping.");
     },
   });
 
@@ -639,7 +661,10 @@ export default function MoviePage() {
                     nestedScrollEnabled
                   >
                     {friendsForPing.map((friend) => {
-                      const canPing = friend.availability === "eligible" && !isPingingFriend;
+                      const canPing =
+                        friend.availability === "eligible" &&
+                        !isPingingFriend &&
+                        !isFetchingPingedFriends;
                       const statusLabel =
                         friend.availability === "going"
                           ? "Going"

@@ -7,6 +7,7 @@ from sqlmodel import Session, Time, case, cast, col, delete, or_, select
 
 from app.core.enums import GoingStatus
 from app.core.security import get_password_hash, verify_password
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.inputs.movie import Filters
 from app.models.cinema_selection import CinemaSelection
 from app.models.friendship import FriendRequest, Friendship
@@ -295,6 +296,7 @@ def get_selected_showtimes(
     *,
     session: Session,
     user_id: UUID,
+    viewer_id: UUID | None,
     limit: int,
     offset: int,
     filters: Filters,
@@ -320,6 +322,15 @@ def get_selected_showtimes(
             Showtime.datetime >= filters.snapshot_time,
         )
     )
+
+    if viewer_id is not None and viewer_id != user_id:
+        stmt = stmt.where(
+            showtime_visibility_crud.is_movie_visible_to_viewer(
+                owner_id_value=user_id,
+                movie_id_value=col(Showtime.movie_id),
+                viewer_id_value=viewer_id,
+            )
+        )
 
     if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
         stmt = stmt.where(

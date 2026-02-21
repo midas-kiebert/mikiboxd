@@ -171,3 +171,153 @@ def test_get_pinged_friend_ids_for_showtime(
     )
     assert list_response.status_code == 200
     assert list_response.json() == [str(friend_id)]
+
+
+def test_showtime_visibility_get_and_update(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    first_friend = user_factory()
+    second_friend = user_factory()
+    showtime = showtime_factory()
+    first_friend_id = first_friend.id
+    second_friend_id = second_friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=first_friend_id,
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=second_friend_id,
+    )
+    db_transaction.commit()
+
+    initial_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+    )
+    assert initial_response.status_code == 200
+    initial_body = initial_response.json()
+    assert initial_body["showtime_id"] == showtime_id
+    assert initial_body["movie_id"] == showtime.movie_id
+    assert initial_body["all_friends_selected"] is True
+    assert sorted(initial_body["visible_friend_ids"]) == sorted(
+        [str(first_friend_id), str(second_friend_id)]
+    )
+
+    update_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"visible_friend_ids": [str(first_friend_id)]},
+    )
+    assert update_response.status_code == 200
+    update_body = update_response.json()
+    assert update_body["all_friends_selected"] is False
+    assert update_body["visible_friend_ids"] == [str(first_friend_id)]
+
+    updated_get_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+    )
+    assert updated_get_response.status_code == 200
+    assert updated_get_response.json()["visible_friend_ids"] == [str(first_friend_id)]
+
+
+def test_showtime_visibility_filters_friend_status_in_showtime_payload(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    visible_friend = user_factory()
+    hidden_friend = user_factory()
+    showtime = showtime_factory()
+    visible_friend_id = visible_friend.id
+    hidden_friend_id = hidden_friend.id
+    visible_friend_email = visible_friend.email
+    hidden_friend_email = hidden_friend.email
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=visible_friend_id,
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=hidden_friend_id,
+    )
+
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=visible_friend_id,
+        going_status=GoingStatus.GOING,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=hidden_friend_id,
+        going_status=GoingStatus.GOING,
+    )
+    db_transaction.commit()
+
+    visibility_update_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"visible_friend_ids": [str(visible_friend_id)]},
+    )
+    assert visibility_update_response.status_code == 200
+
+    visible_friend_login = client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": visible_friend_email, "password": "password"},
+    )
+    assert visible_friend_login.status_code == 200
+    visible_friend_headers = {
+        "Authorization": f"Bearer {visible_friend_login.json()['access_token']}"
+    }
+    visible_friend_view = client.get(
+        f"{settings.API_V1_STR}/users/{current_user_id}/showtimes",
+        headers=visible_friend_headers,
+        params={"limit": 50, "offset": 0},
+    )
+    assert visible_friend_view.status_code == 200
+    assert any(
+        showtime_item["id"] == showtime_id for showtime_item in visible_friend_view.json()
+    )
+
+    hidden_friend_login = client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": hidden_friend_email, "password": "password"},
+    )
+    assert hidden_friend_login.status_code == 200
+    hidden_friend_headers = {
+        "Authorization": f"Bearer {hidden_friend_login.json()['access_token']}"
+    }
+    hidden_friend_view = client.get(
+        f"{settings.API_V1_STR}/users/{current_user_id}/showtimes",
+        headers=hidden_friend_headers,
+        params={"limit": 50, "offset": 0},
+    )
+    assert hidden_friend_view.status_code == 200
+    assert not any(
+        showtime_item["id"] == showtime_id for showtime_item in hidden_friend_view.json()
+    )

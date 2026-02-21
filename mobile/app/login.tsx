@@ -16,6 +16,7 @@ import { useForm, Controller } from 'react-hook-form'
 import useAuth from 'shared/hooks/useAuth'
 import type { Body_login_login_access_token as AccessToken } from 'shared'
 import { useThemeColors } from '@/hooks/use-theme-color'
+import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications'
 
 export default function LoginScreen() {
     // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -25,7 +26,7 @@ export default function LoginScreen() {
     const styles = createStyles(colors)
     // useAuth centralizes token storage and error mapping for auth screens.
     const { loginMutation, error, resetError } = useAuth(
-        () => router.replace('/(tabs)'), // onLoginSuccess - navigate to home
+        undefined,
         () => router.replace('/login') // onLogout
     )
 
@@ -52,6 +53,12 @@ export default function LoginScreen() {
             // `mutateAsync` throws on failure so the catch block can handle unknown errors.
             console.log("About to call login mutation")
             await loginMutation.mutateAsync(data)
+            try {
+                await registerPushTokenForCurrentDevice()
+            } catch (notificationError) {
+                console.error('Error initializing push notifications after login:', notificationError)
+            }
+            router.replace('/(tabs)')
             console.log("loginMutation successful")
         } catch (error) {
             console.log("UNKNOWN ERROR", error)
@@ -152,7 +159,7 @@ export default function LoginScreen() {
 
                 <TouchableOpacity onPress={() => router.push('/signup')}>
                     <Text style={styles.linkText}>
-                        Don't have an account? <Text style={styles.link}>Sign Up</Text>
+                        Don&apos;t have an account? <Text style={styles.link}>Sign Up</Text>
                     </Text>
                 </TouchableOpacity>
             </View>

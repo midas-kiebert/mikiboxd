@@ -120,6 +120,7 @@ def to_with_showtimes_public(
         for showtime in user_crud.get_selected_showtimes(
             session=session,
             user_id=user.id,
+            viewer_id=user.id,
             limit=limit,
             offset=offset,
             filters=filters,

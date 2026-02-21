@@ -145,7 +145,7 @@ const CinemaRowChip = memo(function CinemaRowChip({
   return (
     <TouchableOpacity
       style={[styles.cinemaRow, selected && styles.cinemaRowSelected]}
-      onPressIn={() => onToggle(cinema.id)}
+      onPress={() => onToggle(cinema.id)}
       activeOpacity={0.8}
     >
       <View style={styles.cinemaInfo}>
@@ -519,7 +519,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
               disabled={deletePresetMutation.isPending}
             >
               <ThemedText style={[styles.actionButtonText, styles.deleteButtonText]}>
-                {deletePresetMutation.isPending ? "Deleting..." : "Delete"}
+                Delete
               </ThemedText>
             </TouchableOpacity>
           </View>
@@ -553,31 +553,6 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
           <ThemedText style={styles.title}>Cinemas</ThemedText>
           <TouchableOpacity onPress={handleClose} style={styles.closeButton} activeOpacity={0.8}>
             <ThemedText style={styles.closeButtonText}>Close</ThemedText>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.pageSwitcher}>
-          <TouchableOpacity
-            style={[styles.pageButton, page === "selection" && styles.pageButtonActive]}
-            onPress={() => setPage("selection")}
-            activeOpacity={0.8}
-          >
-            <ThemedText
-              style={[styles.pageButtonText, page === "selection" && styles.pageButtonTextActive]}
-            >
-              Selection
-            </ThemedText>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.pageButton, page === "presets" && styles.pageButtonActive]}
-            onPress={() => setPage("presets")}
-            activeOpacity={0.8}
-          >
-            <ThemedText
-              style={[styles.pageButtonText, page === "presets" && styles.pageButtonTextActive]}
-            >
-              Presets
-            </ThemedText>
           </TouchableOpacity>
         </View>
 

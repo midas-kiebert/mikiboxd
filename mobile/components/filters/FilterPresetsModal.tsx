@@ -28,6 +28,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 
 export type PageFilterPresetState = {
   selected_showtime_filter?: "all" | "interested" | "going" | null;
+  showtime_audience?: "including-friends" | "only-you" | null;
   watchlist_only?: boolean;
   days?: string[] | null;
   time_ranges?: string[] | null;
@@ -64,6 +65,10 @@ const normalizeFilters = (filters: PageFilterPresetState): PageFilterPresetState
     filters.selected_showtime_filter === "going"
       ? filters.selected_showtime_filter
       : null,
+  showtime_audience:
+    filters.showtime_audience === "only-you" || filters.showtime_audience === "including-friends"
+      ? filters.showtime_audience
+      : "including-friends",
   watchlist_only: Boolean(filters.watchlist_only),
   days: canonicalizeDaySelections(filters.days),
   time_ranges: getSortedUniqueStrings(filters.time_ranges),
@@ -84,6 +89,10 @@ const getShowtimeFilterLabel = (
 
 const getWatchlistFilterLabel = (watchlistOnly: boolean | undefined) =>
   watchlistOnly ? "Only watchlist titles" : "Include all titles";
+
+const getShowtimeAudienceLabel = (
+  showtimeAudience: PageFilterPresetState["showtime_audience"]
+) => (showtimeAudience === "only-you" ? "Only you" : "Including friends");
 
 const getDaysFilterLabel = (days?: string[] | null) => {
   const labels = getDaySelectionLabels(days);
@@ -113,6 +122,11 @@ const getPresetDetails = (
       key: "status",
       label: "Status",
       value: getShowtimeFilterLabel(filters.selected_showtime_filter),
+    });
+    details.push({
+      key: "audience",
+      label: "Audience",
+      value: getShowtimeAudienceLabel(filters.showtime_audience),
     });
   }
   details.push(
@@ -305,12 +319,12 @@ export default function FilterPresetsModal({
             {!item.is_default ? (
               <TouchableOpacity
                 style={[styles.actionButton, styles.deleteButton]}
-                onPress={() => handleDeletePreset(item)}
-                activeOpacity={0.8}
-                disabled={deletePresetMutation.isPending}
+              onPress={() => handleDeletePreset(item)}
+              activeOpacity={0.8}
+              disabled={deletePresetMutation.isPending}
               >
                 <ThemedText style={[styles.actionText, styles.deleteButtonText]}>
-                  {deletePresetMutation.isPending ? "Deleting..." : "Delete"}
+                  Delete
                 </ThemedText>
               </TouchableOpacity>
             ) : null}

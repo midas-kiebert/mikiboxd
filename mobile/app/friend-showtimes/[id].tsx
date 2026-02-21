@@ -7,17 +7,18 @@ import { DateTime } from 'luxon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { UsersService, type GoingStatus } from 'shared';
 import { useFetchUserShowtimes } from 'shared/hooks/useFetchUserShowtimes';
-import { useSessionCinemaSelections } from 'shared/hooks/useSessionCinemaSelections';
-import { useSessionTimeRangeSelections } from 'shared/hooks/useSessionTimeRangeSelections';
 
 import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
+import DayFilterModal from '@/components/filters/DayFilterModal';
 import TimeFilterModal from '@/components/filters/TimeFilterModal';
+import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
 // Filter pill definitions rendered in the top filter row.
 const BASE_FILTERS = [
   { id: 'going', label: 'Going Only' },
   { id: 'watchlist-only', label: 'Watchlist Only' },
+  { id: 'days', label: 'Days' },
   { id: 'times', label: 'Times' },
 ] as const;
 
@@ -41,17 +42,22 @@ export default function FriendShowtimesScreen() {
   const [activeFilterIds, setActiveFilterIds] = useState<FriendAgendaFilterId[]>([]);
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
+  // Controls visibility of the day-filter modal.
+  const [dayModalVisible, setDayModalVisible] = useState(false);
   // Controls visibility of the time-filter modal.
   const [timeModalVisible, setTimeModalVisible] = useState(false);
+  const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const [selectedTimeRanges, setSelectedTimeRanges] = useState<string[]>([]);
   // Snapshot timestamp used to keep paginated API responses consistent.
   const [snapshotTime, setSnapshotTime] = useState(() =>
     DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")
   );
-
-  const { selections: sessionCinemaIds } = useSessionCinemaSelections();
-  const { selections: sessionTimeRanges, setSelections: setSessionTimeRanges } =
-    useSessionTimeRangeSelections();
-  const selectedTimeRanges = sessionTimeRanges ?? [];
+  const dayAnchorKey =
+    DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
+  const resolvedApiDays = useMemo(
+    () => resolveDaySelectionsForApi(selectedDays),
+    [dayAnchorKey, selectedDays]
+  );
 
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
@@ -77,12 +83,12 @@ export default function FriendShowtimesScreen() {
 
     return {
       query: searchQuery || undefined,
-      selectedCinemaIds: sessionCinemaIds,
+      days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       selectedStatuses,
       watchlistOnly: watchlistOnly ? true : undefined,
     };
-  }, [activeFilterIds, searchQuery, selectedTimeRanges, sessionCinemaIds]);
+  }, [activeFilterIds, resolvedApiDays, searchQuery, selectedTimeRanges]);
 
   // Data hooks keep this module synced with backend data and shared cache state.
   const {
@@ -121,6 +127,10 @@ export default function FriendShowtimesScreen() {
 
   // Handle filter pill presses and update active filter state.
   const handleToggleFilter = (filterId: FriendAgendaFilterId) => {
+    if (filterId === 'days') {
+      setDayModalVisible(true);
+      return;
+    }
     if (filterId === 'times') {
       setTimeModalVisible(true);
       return;
@@ -134,20 +144,25 @@ export default function FriendShowtimesScreen() {
   const pillFilters = useMemo(
     () =>
       BASE_FILTERS.map((filter) =>
-        filter.id === 'times' && selectedTimeRanges.length > 0
-          ? { ...filter, label: `Times (${selectedTimeRanges.length})` }
-          : filter
+        filter.id === 'days' && selectedDays.length > 0
+          ? { ...filter, label: `Days (${selectedDays.length})` }
+          : filter.id === 'times' && selectedTimeRanges.length > 0
+            ? { ...filter, label: `Times (${selectedTimeRanges.length})` }
+            : filter
       ),
-    [selectedTimeRanges.length]
+    [selectedDays.length, selectedTimeRanges.length]
   );
 
   const highlightedFilterIds = useMemo(() => {
     const active = [...activeFilterIds];
+    if (selectedDays.length > 0) {
+      active.push('days');
+    }
     if (selectedTimeRanges.length > 0) {
       active.push('times');
     }
     return active;
-  }, [activeFilterIds, selectedTimeRanges.length]);
+  }, [activeFilterIds, selectedDays.length, selectedTimeRanges.length]);
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -170,11 +185,17 @@ export default function FriendShowtimesScreen() {
         onToggleFilter={handleToggleFilter}
         emptyText="No showtimes in this agenda"
       />
+      <DayFilterModal
+        visible={dayModalVisible}
+        onClose={() => setDayModalVisible(false)}
+        selectedDays={selectedDays}
+        onChange={setSelectedDays}
+      />
       <TimeFilterModal
         visible={timeModalVisible}
         onClose={() => setTimeModalVisible(false)}
         selectedTimeRanges={selectedTimeRanges}
-        onChange={setSessionTimeRanges}
+        onChange={setSelectedTimeRanges}
       />
     </>
   );

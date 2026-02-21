@@ -57,10 +57,13 @@ export type FilterPresetCreate = {
 
 export type FilterPresetFilters = {
   selected_showtime_filter?: "all" | "interested" | "going" | null
+  showtime_audience?: "including-friends" | "only-you"
   watchlist_only?: boolean
   days?: Array<string> | null
   time_ranges?: Array<string> | null
 }
+
+export type showtime_audience = "including-friends" | "only-you"
 
 export type FilterPresetPublic = {
   id: string

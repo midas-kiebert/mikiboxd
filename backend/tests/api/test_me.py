@@ -370,6 +370,7 @@ def test_filter_presets_are_scoped_and_include_all_pill_filters(
         "scope": "SHOWTIMES",
         "filters": {
             "selected_showtime_filter": "interested",
+            "showtime_audience": "only-you",
             "watchlist_only": True,
             "days": ["2026-02-21", "2026-02-22"],
             "time_ranges": ["18:00-21:59", "22:00-"],
@@ -406,14 +407,23 @@ def test_filter_presets_are_scoped_and_include_all_pill_filters(
     )
     assert showtimes_list.status_code == 200
     showtimes_presets = showtimes_list.json()
-    assert len(showtimes_presets) == 1
-    assert showtimes_presets[0]["name"] == "After Work"
-    assert showtimes_presets[0]["scope"] == "SHOWTIMES"
-    assert showtimes_presets[0]["filters"]["selected_showtime_filter"] == "interested"
-    assert showtimes_presets[0]["filters"]["watchlist_only"] is True
-    assert showtimes_presets[0]["filters"]["days"] == ["2026-02-21", "2026-02-22"]
-    assert showtimes_presets[0]["filters"]["time_ranges"] == ["18:00-21:59", "22:00-"]
-    assert showtimes_presets[0]["is_favorite"] is False
+    showtimes_default = next(preset for preset in showtimes_presets if preset["is_default"] is True)
+    assert showtimes_default["name"] == "Default"
+    assert showtimes_default["scope"] == "SHOWTIMES"
+    assert showtimes_default["filters"]["selected_showtime_filter"] == "all"
+    assert showtimes_default["filters"]["showtime_audience"] == "including-friends"
+    assert showtimes_default["filters"]["watchlist_only"] is False
+    assert showtimes_default["filters"]["days"] is None
+    assert showtimes_default["filters"]["time_ranges"] is None
+
+    showtimes_saved = next(preset for preset in showtimes_presets if preset["name"] == "After Work")
+    assert showtimes_saved["scope"] == "SHOWTIMES"
+    assert showtimes_saved["filters"]["selected_showtime_filter"] == "interested"
+    assert showtimes_saved["filters"]["showtime_audience"] == "only-you"
+    assert showtimes_saved["filters"]["watchlist_only"] is True
+    assert showtimes_saved["filters"]["days"] == ["2026-02-21", "2026-02-22"]
+    assert showtimes_saved["filters"]["time_ranges"] == ["18:00-21:59", "22:00-"]
+    assert showtimes_saved["is_favorite"] is False
 
     movies_list = client.get(
         f"{settings.API_V1_STR}/me/filter-presets",
@@ -422,14 +432,23 @@ def test_filter_presets_are_scoped_and_include_all_pill_filters(
     )
     assert movies_list.status_code == 200
     movies_presets = movies_list.json()
-    assert len(movies_presets) == 1
-    assert movies_presets[0]["name"] == "Weekend Movies"
-    assert movies_presets[0]["scope"] == "MOVIES"
-    assert movies_presets[0]["filters"]["watchlist_only"] is False
-    assert movies_presets[0]["filters"]["days"] == ["2026-02-23"]
-    assert movies_presets[0]["filters"]["time_ranges"] == ["10:00-14:00"]
-    assert movies_presets[0]["filters"]["selected_showtime_filter"] is None
-    assert movies_presets[0]["is_favorite"] is False
+    movies_default = next(preset for preset in movies_presets if preset["is_default"] is True)
+    assert movies_default["name"] == "Default"
+    assert movies_default["scope"] == "MOVIES"
+    assert movies_default["filters"]["selected_showtime_filter"] == "all"
+    assert movies_default["filters"]["showtime_audience"] == "including-friends"
+    assert movies_default["filters"]["watchlist_only"] is False
+    assert movies_default["filters"]["days"] is None
+    assert movies_default["filters"]["time_ranges"] is None
+
+    movies_saved = next(preset for preset in movies_presets if preset["name"] == "Weekend Movies")
+    assert movies_saved["scope"] == "MOVIES"
+    assert movies_saved["filters"]["watchlist_only"] is False
+    assert movies_saved["filters"]["days"] == ["2026-02-23"]
+    assert movies_saved["filters"]["time_ranges"] == ["10:00-14:00"]
+    assert movies_saved["filters"]["selected_showtime_filter"] is None
+    assert movies_saved["filters"]["showtime_audience"] == "including-friends"
+    assert movies_saved["is_favorite"] is False
 
 
 def test_filter_preset_accepts_relative_and_weekday_days(
@@ -470,8 +489,9 @@ def test_filter_preset_accepts_relative_and_weekday_days(
     )
     assert list_response.status_code == 200
     presets = list_response.json()
-    assert len(presets) == 1
-    assert presets[0]["filters"]["days"] == expected_days
+    saved = next(preset for preset in presets if preset["name"] == "Flexible Days")
+    assert saved["filters"]["days"] == expected_days
+    assert saved["filters"]["showtime_audience"] == "including-friends"
 
 
 def test_filter_preset_upsert_and_delete(
@@ -515,6 +535,7 @@ def test_filter_preset_upsert_and_delete(
     second_body = second_save.json()
     assert second_body["id"] == first_id
     assert second_body["filters"]["selected_showtime_filter"] == "all"
+    assert second_body["filters"]["showtime_audience"] == "including-friends"
     assert second_body["filters"]["watchlist_only"] is True
     assert second_body["filters"]["days"] == ["2026-02-26", "2026-02-27"]
     assert second_body["filters"]["time_ranges"] == ["-04:00", "20:00-"]
@@ -526,8 +547,9 @@ def test_filter_preset_upsert_and_delete(
     )
     assert list_response.status_code == 200
     body = list_response.json()
-    assert len(body) == 1
-    assert body[0]["id"] == first_id
+    non_default = [preset for preset in body if not preset["is_default"]]
+    assert len(non_default) == 1
+    assert non_default[0]["id"] == first_id
 
     delete_response = client.delete(
         f"{settings.API_V1_STR}/me/filter-presets/{first_id}",
@@ -541,7 +563,10 @@ def test_filter_preset_upsert_and_delete(
         params={"scope": "SHOWTIMES"},
     )
     assert list_after_delete.status_code == 200
-    assert list_after_delete.json() == []
+    after_delete = list_after_delete.json()
+    assert len(after_delete) == 1
+    assert after_delete[0]["is_default"] is True
+    assert after_delete[0]["name"] == "Default"
 
 
 def test_filter_preset_can_be_marked_as_favorite(
@@ -606,6 +631,7 @@ def test_filter_preset_can_be_marked_as_favorite(
     )
     assert list_response.status_code == 200
     by_id = {preset["id"]: preset for preset in list_response.json()}
+    assert any(preset["is_default"] is True for preset in list_response.json())
     assert by_id[first_id]["is_favorite"] is False
     assert by_id[second_id]["is_favorite"] is True
 

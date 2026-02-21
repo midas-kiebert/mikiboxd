@@ -87,9 +87,6 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
           going_status: going,
         },
       }),
-    onSuccess: () => {
-      setSelectedShowtime(null);
-    },
     onError: (error) => {
       console.error("Error updating showtime selection:", error);
     },
@@ -103,6 +100,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   // Submit the selected going/interested/not-going status.
   const handleShowtimeStatusUpdate = (going: GoingStatus) => {
     if (!selectedShowtime || isUpdatingShowtimeSelection) return;
+    setSelectedShowtime((previous) => (previous ? { ...previous, going } : previous));
     updateShowtimeSelection({ showtimeId: selectedShowtime.id, going });
   };
 

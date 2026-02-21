@@ -118,6 +118,8 @@ export type NewPassword = {
   new_password: string
 }
 
+export type NotificationChannel = "push" | "email"
+
 export type PushTokenRegister = {
   token: string
   platform?: "ios" | "android" | "web" | null
@@ -201,6 +203,10 @@ export type UserMe = {
   notify_on_friend_requests: boolean
   notify_on_showtime_ping: boolean
   notify_on_interest_reminder: boolean
+  notify_channel_friend_showtime_match: NotificationChannel
+  notify_channel_friend_requests: NotificationChannel
+  notify_channel_showtime_ping: NotificationChannel
+  notify_channel_interest_reminder: NotificationChannel
   letterboxd_username: string | null
 }
 
@@ -224,6 +230,10 @@ export type UserUpdate = {
   notify_on_friend_requests?: boolean | null
   notify_on_showtime_ping?: boolean | null
   notify_on_interest_reminder?: boolean | null
+  notify_channel_friend_showtime_match?: NotificationChannel | null
+  notify_channel_friend_requests?: NotificationChannel | null
+  notify_channel_showtime_ping?: NotificationChannel | null
+  notify_channel_interest_reminder?: NotificationChannel | null
   password?: string | null
 }
 

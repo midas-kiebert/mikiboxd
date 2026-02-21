@@ -1,19 +1,21 @@
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timedelta
+from html import escape
 from logging import getLogger
 from uuid import UUID
 
 import httpx
 from sqlmodel import Session
 
-from app.core.enums import GoingStatus
+from app.core.config import settings
+from app.core.enums import GoingStatus, NotificationChannel
 from app.crud import push_token as push_token_crud
 from app.crud import showtime as showtime_crud
 from app.crud import user as user_crud
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
-from app.utils import now_amsterdam_naive
+from app.utils import EmailDeliveryError, now_amsterdam_naive, send_email
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 ANDROID_PUSH_CHANNEL_ID = "heads-up"
@@ -29,6 +31,27 @@ def _token_hint(token: str) -> str:
     if len(token) <= 16:
         return token
     return f"{token[:12]}...{token[-4:]}"
+
+
+def _send_email_notification(*, email_to: str, subject: str, body: str) -> bool:
+    if not settings.emails_enabled:
+        logger.info(
+            "Email notifications are disabled; skipping delivery to %s",
+            email_to,
+        )
+        return False
+
+    html_content = f"<p>{escape(body)}</p>"
+    try:
+        send_email(
+            email_to=email_to,
+            subject=subject,
+            html_content=html_content,
+        )
+        return True
+    except (AssertionError, EmailDeliveryError, Exception):
+        logger.exception("Failed sending email notification to %s", email_to)
+        return False
 
 
 def _build_showtime_status_payload(
@@ -126,46 +149,63 @@ def notify_friends_on_showtime_selection(
     if not recipients:
         return
 
-    recipient_ids = [
-        user.id
+    opted_in_recipients = [
+        user
         for user in recipients
         if user.id != actor_id and user.notify_on_friend_showtime_match
     ]
-    if not recipient_ids:
-        return
-
-    push_tokens = push_token_crud.get_push_tokens_for_users(
-        session=session,
-        user_ids=recipient_ids,
-    )
-    if not push_tokens:
+    if not opted_in_recipients:
         return
 
     title, body, data = payload
-    messages = [
-        {
-            "to": token.token,
-            "title": title,
-            "body": body,
-            "data": data,
-            "priority": "high",
-            "sound": "default",
-            "channelId": ANDROID_PUSH_CHANNEL_ID,
-        }
-        for token in push_tokens
+    push_recipient_ids = [
+        user.id
+        for user in opted_in_recipients
+        if user.notify_channel_friend_showtime_match != NotificationChannel.EMAIL
+    ]
+    email_recipients = [
+        user
+        for user in opted_in_recipients
+        if user.notify_channel_friend_showtime_match == NotificationChannel.EMAIL
     ]
 
-    try:
-        results = _send_expo_messages(messages)
-    except Exception:
-        logger.exception("Failed sending showtime status notifications")
-        return
+    if push_recipient_ids:
+        push_tokens = push_token_crud.get_push_tokens_for_users(
+            session=session,
+            user_ids=push_recipient_ids,
+        )
 
-    _handle_expo_results(
-        session=session,
-        tokens=[token.token for token in push_tokens],
-        results=results,
-    )
+        if push_tokens:
+            messages = [
+                {
+                    "to": token.token,
+                    "title": title,
+                    "body": body,
+                    "data": data,
+                    "priority": "high",
+                    "sound": "default",
+                    "channelId": ANDROID_PUSH_CHANNEL_ID,
+                }
+                for token in push_tokens
+            ]
+
+            try:
+                results = _send_expo_messages(messages)
+            except Exception:
+                logger.exception("Failed sending showtime status notifications")
+            else:
+                _handle_expo_results(
+                    session=session,
+                    tokens=[token.token for token in push_tokens],
+                    results=results,
+                )
+
+    for recipient in email_recipients:
+        _send_email_notification(
+            email_to=recipient.email,
+            subject=title,
+            body=body,
+        )
 
 
 def notify_user_on_friend_request(
@@ -181,6 +221,17 @@ def notify_user_on_friend_request(
     if receiver is None or not receiver.notify_on_friend_requests:
         return
 
+    sender_name = sender.display_name or "Someone"
+    subject = "New friend request"
+    body = f"{sender_name} sent you a friend request"
+    if receiver.notify_channel_friend_requests == NotificationChannel.EMAIL:
+        _send_email_notification(
+            email_to=receiver.email,
+            subject=subject,
+            body=body,
+        )
+        return
+
     push_tokens = push_token_crud.get_push_tokens_for_users(
         session=session,
         user_ids=[receiver_id],
@@ -188,12 +239,11 @@ def notify_user_on_friend_request(
     if not push_tokens:
         return
 
-    sender_name = sender.display_name or "Someone"
     messages = [
         {
             "to": token.token,
-            "title": "New friend request",
-            "body": f"{sender_name} sent you a friend request",
+            "title": subject,
+            "body": body,
             "data": {
                 "type": "friend_request_received",
                 "senderId": str(sender_id),
@@ -231,6 +281,17 @@ def notify_user_on_friend_request_accepted(
     if requester is None or not requester.notify_on_friend_requests:
         return
 
+    accepter_name = accepter.display_name or "Someone"
+    subject = "Friend request accepted"
+    body = f"{accepter_name} accepted your friend request"
+    if requester.notify_channel_friend_requests == NotificationChannel.EMAIL:
+        _send_email_notification(
+            email_to=requester.email,
+            subject=subject,
+            body=body,
+        )
+        return
+
     push_tokens = push_token_crud.get_push_tokens_for_users(
         session=session,
         user_ids=[requester_id],
@@ -238,12 +299,11 @@ def notify_user_on_friend_request_accepted(
     if not push_tokens:
         return
 
-    accepter_name = accepter.display_name or "Someone"
     messages = [
         {
             "to": token.token,
-            "title": "Friend request accepted",
-            "body": f"{accepter_name} accepted your friend request",
+            "title": subject,
+            "body": body,
             "data": {
                 "type": "friend_request_accepted",
                 "accepterId": str(accepter_id),
@@ -282,6 +342,18 @@ def notify_user_on_showtime_ping(
     if receiver is None or not receiver.notify_on_showtime_ping:
         return
 
+    sender_name = sender.display_name or "A friend"
+    formatted_datetime = showtime.datetime.strftime("%a, %b %d at %H:%M")
+    subject = f"{sender_name} pinged you"
+    body = f"{showtime.movie.title} • {formatted_datetime}"
+    if receiver.notify_channel_showtime_ping == NotificationChannel.EMAIL:
+        _send_email_notification(
+            email_to=receiver.email,
+            subject=subject,
+            body=body,
+        )
+        return
+
     push_tokens = push_token_crud.get_push_tokens_for_users(
         session=session,
         user_ids=[receiver_id],
@@ -289,13 +361,11 @@ def notify_user_on_showtime_ping(
     if not push_tokens:
         return
 
-    sender_name = sender.display_name or "A friend"
-    formatted_datetime = showtime.datetime.strftime("%a, %b %d at %H:%M")
     messages = [
         {
             "to": token.token,
-            "title": f"{sender_name} pinged you",
-            "body": f"{showtime.movie.title} • {formatted_datetime}",
+            "title": subject,
+            "body": body,
             "data": {
                 "type": "showtime_ping",
                 "senderId": str(sender_id),
@@ -361,32 +431,56 @@ def send_interested_showtime_reminders(
     if not candidates_by_user:
         return 0
 
-    push_tokens = push_token_crud.get_push_tokens_for_users(
-        session=session,
-        user_ids=list(candidates_by_user.keys()),
-    )
-    if not push_tokens:
-        return 0
+    recipients_by_id = {user.id: user for user in recipient_users}
 
+    push_user_ids: list[UUID] = []
+    for user_id in candidates_by_user.keys():
+        recipient = recipients_by_id.get(user_id)
+        if recipient is None:
+            continue
+        if recipient.notify_channel_interest_reminder == NotificationChannel.EMAIL:
+            continue
+        push_user_ids.append(user_id)
     token_by_user: dict[UUID, list[str]] = defaultdict(list)
-    for push_token in push_tokens:
-        token_by_user[push_token.user_id].append(push_token.token)
+    if push_user_ids:
+        push_tokens = push_token_crud.get_push_tokens_for_users(
+            session=session,
+            user_ids=push_user_ids,
+        )
+        for push_token in push_tokens:
+            token_by_user[push_token.user_id].append(push_token.token)
 
-    messages: list[dict] = []
-    message_tokens: list[str] = []
+    push_messages: list[dict] = []
+    push_message_tokens: list[str] = []
     reminded_selections: list[ShowtimeSelection] = []
     for user_id, user_candidates in candidates_by_user.items():
-        user_tokens = token_by_user.get(user_id)
-        if not user_tokens:
+        recipient = recipients_by_id.get(user_id)
+        if recipient is None:
             continue
         for selection, showtime in user_candidates:
             formatted_datetime = showtime.datetime.strftime("%a, %b %d at %H:%M")
+            subject = "Reminder: showtime soon"
+            body = f"{showtime.movie.title} • {formatted_datetime}"
+            if recipient.notify_channel_interest_reminder == NotificationChannel.EMAIL:
+                sent = _send_email_notification(
+                    email_to=recipient.email,
+                    subject=subject,
+                    body=body,
+                )
+                if sent:
+                    reminded_selections.append(selection)
+                continue
+
+            user_tokens = token_by_user.get(user_id)
+            if not user_tokens:
+                continue
+
             for token in user_tokens:
-                messages.append(
+                push_messages.append(
                     {
                         "to": token,
-                        "title": "Reminder: showtime soon",
-                        "body": f"{showtime.movie.title} • {formatted_datetime}",
+                        "title": subject,
+                        "body": body,
                         "data": {
                             "type": "showtime_interest_reminder",
                             "showtimeId": showtime.id,
@@ -398,23 +492,24 @@ def send_interested_showtime_reminders(
                         "channelId": ANDROID_PUSH_CHANNEL_ID,
                     }
                 )
-                message_tokens.append(token)
+                push_message_tokens.append(token)
             reminded_selections.append(selection)
 
-    if not messages:
-        return 0
+    if push_messages:
+        try:
+            results = _send_expo_messages(push_messages)
+        except Exception:
+            logger.exception("Failed sending interested showtime reminders")
+            return 0
 
-    try:
-        results = _send_expo_messages(messages)
-    except Exception:
-        logger.exception("Failed sending interested showtime reminders")
-        return 0
+        _handle_expo_results(
+            session=session,
+            tokens=push_message_tokens,
+            results=results,
+        )
 
-    _handle_expo_results(
-        session=session,
-        tokens=message_tokens,
-        results=results,
-    )
+    if not reminded_selections:
+        return 0
 
     for selection in reminded_selections:
         selection.interested_reminder_sent_at = reference_time

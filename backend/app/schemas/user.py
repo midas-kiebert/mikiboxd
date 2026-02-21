@@ -4,6 +4,8 @@ from uuid import UUID
 from pydantic import EmailStr
 from sqlmodel import SQLModel
 
+from app.core.enums import NotificationChannel
+
 if TYPE_CHECKING:
     from .showtime import ShowtimeLoggedIn
 
@@ -28,6 +30,10 @@ class UserMe(UserPublic):
     notify_on_friend_requests: bool
     notify_on_showtime_ping: bool
     notify_on_interest_reminder: bool
+    notify_channel_friend_showtime_match: NotificationChannel
+    notify_channel_friend_requests: NotificationChannel
+    notify_channel_showtime_ping: NotificationChannel
+    notify_channel_interest_reminder: NotificationChannel
     letterboxd_username: str | None
 
 

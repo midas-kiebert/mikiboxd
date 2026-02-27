@@ -7,6 +7,7 @@ import {
   Alert,
   FlatList,
   Image,
+  Platform,
   RefreshControl,
   StyleSheet,
   TouchableOpacity,
@@ -22,17 +23,25 @@ import {
   MoviesService,
   ShowtimesService,
   type GoingStatus,
+  type CinemaPublic,
   type ShowtimeInMovieLoggedIn,
   type ShowtimePingPublic,
 } from "shared";
+import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchShowtimePings } from "shared/hooks/useFetchShowtimePings";
 
+import FriendBadges from "@/components/badges/FriendBadges";
 import CinemaPill from "@/components/badges/CinemaPill";
 import FilterPills from "@/components/filters/FilterPills";
 import TopBar from "@/components/layout/TopBar";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import ShowtimeActionModal from "@/components/showtimes/ShowtimeActionModal";
+import {
+  GLOBAL_LONG_PRESS_DELAY_MS,
+  triggerLongPressHaptic,
+} from "@/utils/long-press";
 type PingSortMode = "ping-date" | "showtime-date";
 type PingSortFilterId = "sort-mode";
 
@@ -43,7 +52,6 @@ type GroupedPingCard = {
   moviePosterLink: string | null;
   cinemaName: string;
   datetime: string;
-  ticketLink: string | null;
   pingIds: number[];
   senders: ShowtimePingPublic["sender"][];
   latestPingCreatedAt: string;
@@ -53,6 +61,7 @@ type GroupedPingCard = {
 };
 
 const POSTER_HEIGHT = 112;
+const normalizeCinemaName = (name: string) => name.trim().toLowerCase();
 
 export default function PingsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -63,6 +72,7 @@ export default function PingsScreen() {
   const isFocused = useIsFocused();
   const [sortMode, setSortMode] = useState<PingSortMode>("ping-date");
   const [hiddenPingIds, setHiddenPingIds] = useState<Set<number>>(new Set());
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeInMovieLoggedIn | null>(null);
   const [selectedShowtimeMovieTitle, setSelectedShowtimeMovieTitle] = useState<string | null>(null);
   const suppressNextPressShowtimeIdRef = useRef<number | null>(null);
@@ -71,7 +81,6 @@ export default function PingsScreen() {
   const {
     data: pings = [],
     isLoading,
-    isFetching,
     refetch,
   } = useFetchShowtimePings({ refetchIntervalMs: 15000, sortBy: backendSortBy });
   const activePings = useMemo(
@@ -83,6 +92,14 @@ export default function PingsScreen() {
     () => Array.from(new Set(activePings.map((ping) => ping.movie_id))),
     [activePings]
   );
+  const { data: cinemas = [] } = useFetchCinemas();
+  const cinemaByName = useMemo(() => {
+    const map = new Map<string, CinemaPublic>();
+    for (const cinema of cinemas) {
+      map.set(normalizeCinemaName(cinema.name), cinema);
+    }
+    return map;
+  }, [cinemas]);
 
   const movieDetailsQueries = useQueries({
     queries: movieIds.map((movieId) => ({
@@ -90,7 +107,7 @@ export default function PingsScreen() {
       queryFn: () =>
         MoviesService.readMovie({
           id: movieId,
-          showtimeLimit: 200,
+          showtimeLimit: 1000,
         }),
       enabled: movieId > 0,
       refetchOnMount: false,
@@ -130,7 +147,6 @@ export default function PingsScreen() {
           moviePosterLink: ping.movie_poster_link,
           cinemaName: ping.cinema_name,
           datetime: ping.datetime,
-          ticketLink: ping.ticket_link,
           pingIds: [ping.id],
           senders: [ping.sender],
           latestPingCreatedAt: ping.created_at,
@@ -156,8 +172,17 @@ export default function PingsScreen() {
       }
     }
 
-    return Array.from(grouped.values());
-  }, [activePings]);
+    const cards = Array.from(grouped.values());
+    if (sortMode === "showtime-date") {
+      cards.sort((left, right) => {
+        if (left.showtimeDatetimeMs !== right.showtimeDatetimeMs) {
+          return left.showtimeDatetimeMs - right.showtimeDatetimeMs;
+        }
+        return right.latestPingCreatedAtMs - left.latestPingCreatedAtMs;
+      });
+    }
+    return cards;
+  }, [activePings, sortMode]);
 
   const markSeenMutation = useMutation({
     mutationFn: () => MeService.markMyShowtimePingsSeen(),
@@ -270,6 +295,7 @@ export default function PingsScreen() {
       Alert.alert("Please wait", "Showtime details are still loading.");
       return;
     }
+    triggerLongPressHaptic();
     suppressNextPressShowtimeIdRef.current = card.showtimeId;
     setSelectedShowtime(showtime);
     setSelectedShowtimeMovieTitle(card.movieTitle);
@@ -285,11 +311,18 @@ export default function PingsScreen() {
     });
   };
 
+  const handleRefresh = () => {
+    setIsManualRefreshing(true);
+    void refetch().finally(() => {
+      setIsManualRefreshing(false);
+    });
+  };
+
   const sortFilters = useMemo(
     () => [
       {
         id: "sort-mode" as const,
-        label: sortMode === "ping-date" ? "Sort: Ping Date" : "Sort: Showtime Date",
+        label: sortMode === "ping-date" ? "Sort By Ping Date" : "Sort By Showtime Date",
       },
     ],
     [sortMode]
@@ -324,7 +357,9 @@ export default function PingsScreen() {
         data={groupedPingCards}
         keyExtractor={(item) => item.showtimeId.toString()}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={isFetching} onRefresh={() => void refetch()} />}
+        refreshControl={
+          <RefreshControl refreshing={isManualRefreshing} onRefresh={handleRefresh} />
+        }
         ListEmptyComponent={
           isLoading ? (
             <View style={styles.centerContainer}>
@@ -349,7 +384,26 @@ export default function PingsScreen() {
             "ccc, LLL d • HH:mm"
           );
           const showtime = showtimeById.get(item.showtimeId);
-          const cinema = showtime?.cinema;
+          const cinema =
+            showtime?.cinema ?? cinemaByName.get(normalizeCinemaName(item.cinemaName));
+          const cardStatusStyle =
+            showtime?.going === "GOING"
+              ? styles.cardGoing
+              : showtime?.going === "INTERESTED"
+                ? styles.cardInterested
+                : undefined;
+          const cardGlowStyle =
+            showtime?.going === "GOING"
+              ? styles.cardGlowGoing
+              : showtime?.going === "INTERESTED"
+                ? styles.cardGlowInterested
+                : undefined;
+          const dateColumnStatusStyle =
+            showtime?.going === "GOING"
+              ? styles.dateColumnGoing
+              : showtime?.going === "INTERESTED"
+                ? styles.dateColumnInterested
+                : undefined;
           const senderNames = item.senders
             .map((sender) => sender.display_name?.trim() || "Friend")
             .filter((value, index, all) => all.indexOf(value) === index);
@@ -359,55 +413,90 @@ export default function PingsScreen() {
               : senderNames.length === 2
                 ? `Pinged by ${senderNames[0]} and ${senderNames[1]}`
                 : `Pinged by ${senderNames[0]} and ${senderNames.length - 1} others`;
+          const statusLabel =
+            showtime?.going === "GOING"
+              ? "You're going"
+              : showtime?.going === "INTERESTED"
+                ? "You're interested"
+                : "No response yet";
 
           return (
-            <TouchableOpacity
-              style={styles.cardWrapper}
-              onPress={() => handleOpenPingMovie(item)}
-              onLongPress={() => handleOpenPingActions(item)}
-              onPressOut={() => handlePingCardPressOut(item.showtimeId)}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.card, item.hasUnseen && styles.unseenCard]}>
-                <View style={styles.dateColumn}>
-                  <ThemedText style={styles.weekday}>{weekday}</ThemedText>
-                  <ThemedText style={styles.day}>{day}</ThemedText>
-                  <ThemedText style={styles.month}>{month}</ThemedText>
-                  <ThemedText style={styles.time}>{time}</ThemedText>
-                </View>
-                <Image source={{ uri: item.moviePosterLink ?? undefined }} style={styles.poster} />
-                <View style={styles.info}>
-                  <View style={styles.titleRow}>
-                    <ThemedText style={styles.movieTitle} numberOfLines={1} ellipsizeMode="tail">
-                      {item.movieTitle}
-                    </ThemedText>
-                    {cinema ? (
-                      <CinemaPill cinema={cinema} variant="compact" />
-                    ) : (
-                      <View style={styles.fallbackCinemaBadge}>
-                        <ThemedText style={styles.fallbackCinemaText} numberOfLines={1}>
-                          {item.cinemaName}
+            <View style={styles.cardWrapper}>
+              <TouchableOpacity
+                onPress={() => handleOpenPingMovie(item)}
+                onLongPress={() => handleOpenPingActions(item)}
+                delayLongPress={GLOBAL_LONG_PRESS_DELAY_MS}
+                onPressOut={() => handlePingCardPressOut(item.showtimeId)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.cardGlow, cardGlowStyle]}>
+                  <View style={[styles.card, cardStatusStyle, item.hasUnseen && styles.unseenCard]}>
+                    <View style={[styles.dateColumn, dateColumnStatusStyle]}>
+                      <ThemedText style={styles.weekday}>{weekday}</ThemedText>
+                      <ThemedText style={styles.day}>{day}</ThemedText>
+                      <ThemedText style={styles.month}>{month}</ThemedText>
+                      <ThemedText style={styles.time}>{time}</ThemedText>
+                    </View>
+                    <Image source={{ uri: item.moviePosterLink ?? undefined }} style={styles.poster} />
+                    <View style={styles.info}>
+                      <View style={styles.titleRow}>
+                        <ThemedText style={styles.movieTitle} numberOfLines={2} ellipsizeMode="tail">
+                          {item.movieTitle}
                         </ThemedText>
+                        {cinema ? (
+                          <CinemaPill cinema={cinema} variant="compact" />
+                        ) : (
+                          <View style={styles.fallbackCinemaBadge}>
+                            <ThemedText style={styles.fallbackCinemaText} numberOfLines={1}>
+                              {item.cinemaName}
+                            </ThemedText>
+                          </View>
+                        )}
+                        {item.hasUnseen ? <View style={styles.unseenDot} /> : null}
                       </View>
-                    )}
-                    {item.hasUnseen ? <View style={styles.unseenDot} /> : null}
+                      <ThemedText
+                        style={[
+                          styles.statusText,
+                          showtime?.going === "GOING"
+                            ? styles.statusTextGoing
+                            : showtime?.going === "INTERESTED"
+                              ? styles.statusTextInterested
+                              : undefined,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {statusLabel}
+                      </ThemedText>
+                      <FriendBadges
+                        friendsGoing={showtime?.friends_going ?? []}
+                        friendsInterested={showtime?.friends_interested ?? []}
+                        variant="compact"
+                        maxVisible={2}
+                        style={styles.friendRow}
+                      />
+                    </View>
                   </View>
-                  <ThemedText style={styles.metaText}>{senderSummary}</ThemedText>
-                  <ThemedText style={styles.metaTimestamp}>Latest ping: {latestPingTimestamp}</ThemedText>
-                  <TouchableOpacity
-                    style={styles.dismissButton}
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      dismissPingGroup(item.pingIds);
-                    }}
-                    disabled={deletePingsMutation.isPending}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText style={styles.dismissButtonText}>Dismiss</ThemedText>
-                  </TouchableOpacity>
                 </View>
+              </TouchableOpacity>
+              <View style={styles.metaRow}>
+                <View style={styles.metaTextGroup}>
+                  <ThemedText style={styles.metaText} numberOfLines={1}>
+                    {senderSummary}
+                  </ThemedText>
+                  <ThemedText style={styles.metaTimestamp} numberOfLines={1}>
+                    Latest ping: {latestPingTimestamp}
+                  </ThemedText>
+                </View>
+                <TouchableOpacity
+                  style={styles.dismissButton}
+                  onPress={() => dismissPingGroup(item.pingIds)}
+                  disabled={deletePingsMutation.isPending}
+                  activeOpacity={0.8}
+                >
+                  <ThemedText style={styles.dismissButtonText}>Dismiss</ThemedText>
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
+            </View>
           );
         }}
       />
@@ -415,20 +504,26 @@ export default function PingsScreen() {
   );
 }
 
-const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
-  StyleSheet.create({
+const createStyles = (colors: typeof import("@/constants/theme").Colors.light) => {
+  const glowStyles = createShowtimeStatusGlowStyles(colors);
+  return StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
     },
     content: {
       padding: 16,
-      gap: 16,
       paddingBottom: 24,
     },
     cardWrapper: {
-      marginBottom: 0,
+      marginBottom: 16,
     },
+    cardGlow: {
+      borderRadius: 12,
+      backgroundColor: colors.cardBackground,
+    },
+    cardGlowGoing: glowStyles.going,
+    cardGlowInterested: glowStyles.interested,
     card: {
       flexDirection: "row",
       overflow: "hidden",
@@ -436,7 +531,15 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.cardBackground,
-      minHeight: POSTER_HEIGHT,
+      height: POSTER_HEIGHT,
+    },
+    cardGoing: {
+      borderColor: colors.green.secondary,
+      backgroundColor: colors.green.primary,
+    },
+    cardInterested: {
+      borderColor: colors.orange.secondary,
+      backgroundColor: colors.orange.primary,
     },
     unseenCard: {
       borderColor: colors.tint,
@@ -450,6 +553,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRightColor: colors.cardBorder,
       paddingVertical: 8,
       gap: 2,
+    },
+    dateColumnGoing: {
+      backgroundColor: colors.green.primary,
+      borderRightColor: colors.green.secondary,
+    },
+    dateColumnInterested: {
+      backgroundColor: colors.orange.primary,
+      borderRightColor: colors.orange.secondary,
     },
     weekday: {
       fontSize: 12,
@@ -478,28 +589,29 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     poster: {
       width: 72,
-      height: POSTER_HEIGHT,
+      height: "100%",
       backgroundColor: colors.posterPlaceholder,
     },
     info: {
       flex: 1,
       paddingHorizontal: 10,
-      paddingVertical: 6,
+      paddingVertical: 8,
       gap: 4,
+      overflow: "hidden",
     },
     titleRow: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-start",
       columnGap: 6,
-      rowGap: 4,
-      flexWrap: "wrap",
+      flexWrap: "nowrap",
     },
     movieTitle: {
-      fontSize: 15,
+      fontSize: Platform.OS === "ios" ? 14 : 15,
+      lineHeight: Platform.OS === "ios" ? 16 : 17,
       fontWeight: "700",
       color: colors.text,
-      flexShrink: 0,
-      maxWidth: "100%",
+      flex: 1,
+      minWidth: 0,
     },
     unseenDot: {
       width: 8,
@@ -509,18 +621,45 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     fallbackCinemaBadge: {
       borderWidth: 1,
-      borderColor: colors.cardBorder,
-      borderRadius: 2,
-      backgroundColor: colors.pillBackground,
-      height: 12,
+      borderColor: colors.blue.secondary,
+      borderRadius: 3,
+      backgroundColor: colors.blue.primary,
+      minHeight: 14,
       justifyContent: "center",
+      alignItems: "center",
       paddingHorizontal: 5,
       maxWidth: "65%",
     },
     fallbackCinemaText: {
       fontSize: 9,
-      lineHeight: 12,
+      lineHeight: 10,
+      color: colors.blue.secondary,
+      includeFontPadding: false,
+    },
+    friendRow: {
+      marginTop: 2,
+    },
+    statusText: {
+      fontSize: 11,
       color: colors.textSecondary,
+    },
+    statusTextGoing: {
+      color: colors.green.secondary,
+      fontWeight: "700",
+    },
+    statusTextInterested: {
+      color: colors.orange.secondary,
+      fontWeight: "700",
+    },
+    metaRow: {
+      marginTop: 6,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    metaTextGroup: {
+      flex: 1,
+      minWidth: 0,
     },
     metaText: {
       fontSize: 12,
@@ -531,14 +670,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
     },
     dismissButton: {
-      alignSelf: "flex-start",
       borderWidth: 1,
       borderColor: colors.cardBorder,
       borderRadius: 8,
       backgroundColor: colors.pillBackground,
       paddingHorizontal: 10,
       paddingVertical: 5,
-      marginTop: 2,
     },
     dismissButtonText: {
       fontSize: 11,
@@ -779,3 +916,4 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
     },
   });
+};

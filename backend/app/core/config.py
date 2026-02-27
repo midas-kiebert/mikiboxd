@@ -87,8 +87,10 @@ class Settings(BaseSettings):
     SMTP_HOST: str | None = None
     SMTP_USER: str | None = None
     SMTP_PASSWORD: str | None = None
+    SMTP_TIMEOUT_SECONDS: float = 20.0
     EMAILS_FROM_EMAIL: EmailStr | None = None
     EMAILS_FROM_NAME: EmailStr | None = None
+    SCRAPE_RECAP_EMAIL_TIMEOUT_SECONDS: float = 120.0
 
     @model_validator(mode="after")
     def _set_default_emails_from(self) -> Self:

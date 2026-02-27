@@ -1,0 +1,41 @@
+{
+  "context": {
+    "source": "actor_filmography",
+    "person_name": "Leonardo DiCaprio",
+    "person_id": 6193
+  },
+  "raw_movie_result": {
+    "adult": false,
+    "backdrop_path": "/gre7gyocZSuwd7M51CGlqsJqBmB.jpg",
+    "genre_ids": [
+      53,
+      80,
+      28
+    ],
+    "id": 1054867,
+    "original_language": "en",
+    "original_title": "One Battle After Another",
+    "overview": "Washed-up revolutionary Bob exists in a state of stoned paranoia, surviving off-grid with his spirited, self-reliant daughter, Willa. When his evil nemesis resurfaces after 16 years and she goes missing, the former radical scrambles to find her, father and daughter both battling the consequences of his past.",
+    "popularity": 42.9049,
+    "poster_path": "/lbBWwxBht4JFP5PsuJ5onpMqugW.jpg",
+    "release_date": "2025-09-23",
+    "title": "One Battle After Another",
+    "video": false,
+    "vote_average": 7.411,
+    "vote_count": 2901,
+    "character": "Bob",
+    "credit_id": "644255edb3f6f505269de56b",
+    "order": 0
+  },
+  "parsed_pre_enrichment_candidate": {
+    "id": 1054867,
+    "title": "One Battle After Another",
+    "original_title": "One Battle After Another",
+    "release_year": 2025,
+    "original_language": "en",
+    "popularity": 42.9049,
+    "source_buckets": [
+      "acted"
+    ]
+  }
+}

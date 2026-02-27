@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  Platform,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -426,7 +427,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     header: {
       paddingHorizontal: 16,
-      paddingVertical: 14,
+      paddingTop: Platform.OS === "ios" ? 22 : 14,
+      paddingBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor: colors.divider,
       flexDirection: "row",

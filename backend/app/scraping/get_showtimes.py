@@ -11,8 +11,10 @@ from app.scraping.logger import logger
 class ShowtimeResponse(BaseModel):
     id: str
     startDate: str
+    endDate: str | None
     ticketUrl: str | None
     venueName: str
+    subtitles: list[str] | None
 
 
 class Venue(BaseModel):
@@ -23,11 +25,18 @@ class EventEmbedded(BaseModel):
     venue: Venue
 
 
+class EventAttributes(BaseModel):
+    subtitles: list[str] | None = None
+
+
 class Event(BaseModel):
     id: str
     startDate: str
+    endDate: str | None
     ticketingUrl: str | None
     embedded: EventEmbedded = Field(alias="_embedded")
+    attributes: EventAttributes | None = None
+    subtitles: list[str] | None = None
 
     class Config:
         populate_by_name = True
@@ -50,6 +59,43 @@ def truncate_ticket_link(ticketUrl: str | None) -> str | None:
     ticketUrl = ticketUrl.split("?utm_source")[0]
     ticketUrl = ticketUrl.split("&utm_source")[0]
     return ticketUrl
+
+
+def _extract_subtitles(event: Event) -> list[str] | None:
+    # Subtitles moved under `attributes.subtitles`; keep top-level fallback.
+    if event.subtitles is not None:
+        return event.subtitles
+    if event.attributes is None:
+        return None
+    return event.attributes.subtitles
+
+
+def _parse_showtimes_response(
+    *,
+    response_json,
+    productionId: str,
+) -> list[ShowtimeResponse]:
+    try:
+        parsed_response = Response.model_validate(response_json)
+    except Exception as e:
+        logger.warning(
+            f"Error parsing showtimes response for production ID {productionId}. Error: {e}"
+        )
+        return []
+
+    return [
+        ShowtimeResponse.model_validate(
+            {
+                "id": event.id,
+                "startDate": event.startDate,
+                "endDate": event.endDate,
+                "venueName": event.embedded.venue.name,
+                "ticketUrl": truncate_ticket_link(event.ticketingUrl),
+                "subtitles": _extract_subtitles(event),
+            }
+        )
+        for event in parsed_response.embedded.events
+    ]
 
 
 async def get_showtimes_json_async(
@@ -85,25 +131,10 @@ async def get_showtimes_json_async(
         if close_session:
             await session.close()
 
-    try:
-        parsed_response = Response.model_validate(response_json)
-    except Exception as e:
-        logger.warning(
-            f"Error parsing showtimes response for production ID {productionId}. Error: {e}"
-        )
-        return []
-
-    return [
-        ShowtimeResponse.model_validate(
-            {
-                "id": event.id,
-                "startDate": event.startDate,
-                "venueName": event.embedded.venue.name,
-                "ticketUrl": truncate_ticket_link(event.ticketingUrl),
-            }
-        )
-        for event in parsed_response.embedded.events
-    ]
+    return _parse_showtimes_response(
+        response_json=response_json,
+        productionId=productionId,
+    )
 
 
 def get_showtimes_json(productionId: str) -> list[ShowtimeResponse]:
@@ -134,22 +165,13 @@ def get_showtimes_json(productionId: str) -> list[ShowtimeResponse]:
         )
         return []
 
-    try:
-        response = Response.model_validate(res.json())
-    except Exception as e:
-        logger.warning(
-            f"Error parsing showtimes response for production ID {productionId}. Error: {e}"
-        )
-        return []
+    return _parse_showtimes_response(
+        response_json=res.json(),
+        productionId=productionId,
+    )
 
-    return [
-        ShowtimeResponse.model_validate(
-            {
-                "id": event.id,
-                "startDate": event.startDate,
-                "venueName": event.embedded.venue.name,
-                "ticketUrl": truncate_ticket_link(event.ticketingUrl),
-            }
-        )
-        for event in response.embedded.events
-    ]
+
+if __name__ == "__main__":
+    pid = "f112c04f-52a6-4018-8edd-7b4888693672"
+    showtimes_json = get_showtimes_json(pid)
+    print(showtimes_json)

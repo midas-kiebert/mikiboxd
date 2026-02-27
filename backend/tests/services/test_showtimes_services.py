@@ -260,6 +260,7 @@ def test_insert_showtime_if_not_exists(
 ):
     mock_close_in_time = mocker.patch("app.crud.showtime.get_showtime_close_in_time")
     mock_close_in_time.return_value = None
+    mocker.patch("app.crud.movie.get_movie_by_id", return_value=None)
     mock_crud = mocker.patch("app.crud.showtime.create_showtime")
     mock_session = mocker.MagicMock()
     showtime_create = mocker.MagicMock()
@@ -281,6 +282,7 @@ def test_insert_showtime_if_not_exists_already_exists(
 ):
     mock_close_in_time = mocker.patch("app.crud.showtime.get_showtime_close_in_time")
     mock_close_in_time.return_value = None
+    mocker.patch("app.crud.movie.get_movie_by_id", return_value=None)
     mock_crud = mocker.patch("app.crud.showtime.create_showtime")
     mock_crud.side_effect = IntegrityError(
         statement="Integrity error",

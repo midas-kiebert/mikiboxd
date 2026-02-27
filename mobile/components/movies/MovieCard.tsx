@@ -3,6 +3,7 @@
  */
 import {
   Image,
+  Platform,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -14,6 +15,7 @@ import type { MovieSummaryLoggedIn } from "shared";
 import { ThemedText } from "@/components/themed-text";
 import FriendBadges from "@/components/badges/FriendBadges";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
+import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 type MovieCardProps = {
@@ -63,7 +65,7 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
       <TouchableOpacity style={[styles.movieCard, cardStatusStyle]} onPress={() => onPress?.(movie)}>
         <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
         <View style={styles.movieInfo}>
-          <ThemedText style={styles.movieTitle} numberOfLines={1} ellipsizeMode="tail">
+          <ThemedText style={styles.movieTitle} numberOfLines={2} ellipsizeMode="tail">
             {movie.title}
           </ThemedText>
           <View style={styles.showtimesSection}>
@@ -89,6 +91,7 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
               friendsGoing={friendsGoing}
               friendsInterested={friendsInterested}
               variant="compact"
+              maxVisible={3}
               style={styles.friendBadges}
             />
           </View>
@@ -98,27 +101,16 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
   );
 }
 
-const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
-  StyleSheet.create({
+const createStyles = (colors: typeof import("@/constants/theme").Colors.light) => {
+  const glowStyles = createShowtimeStatusGlowStyles(colors);
+  return StyleSheet.create({
     movieCardGlow: {
       marginBottom: 16,
       borderRadius: 12,
       backgroundColor: colors.cardBackground,
     },
-    movieCardGlowGoing: {
-      shadowColor: colors.green.secondary,
-      shadowOpacity: 0.6,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 8,
-    },
-    movieCardGlowInterested: {
-      shadowColor: colors.orange.secondary,
-      shadowOpacity: 0.6,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 8,
-    },
+    movieCardGlowGoing: glowStyles.going,
+    movieCardGlowInterested: glowStyles.interested,
     movieCard: {
       flexDirection: "row",
       backgroundColor: colors.cardBackground,
@@ -145,11 +137,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flex: 1,
       paddingHorizontal: 10,
       paddingVertical: 8,
-      height: "100%",
+      justifyContent: "flex-start",
     },
     movieTitle: {
-      fontSize: 16,
-      fontWeight: "bold",
+      fontSize: Platform.OS === "ios" ? 14 : 15,
+      lineHeight: Platform.OS === "ios" ? 16 : 17,
+      fontWeight: "700",
       color: colors.text,
       marginBottom: 2,
     },
@@ -173,3 +166,4 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       marginBottom: -5,
     },
   });
+};

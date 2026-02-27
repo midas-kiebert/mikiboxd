@@ -40,6 +40,14 @@ def _as_int(value: Any) -> int | None:
 
 
 def _load_cases() -> list[dict[str, Any]]:
+    if not _CASES_PATH.exists():
+        if _RUN_LIVE_TMDB_RESOLUTION_CASES:
+            raise FileNotFoundError(
+                "RUN_LIVE_TMDB_RESOLUTION_CASES is enabled but "
+                f"fixture file was not found: {_CASES_PATH}"
+            )
+        return []
+
     payload = json.loads(_CASES_PATH.read_text(encoding="utf-8"))
     cases_raw = payload.get("cases")
     if not isinstance(cases_raw, list):

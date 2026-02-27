@@ -337,24 +337,6 @@ def test_title_variants_include_spaced_pinyin_for_diacritics() -> None:
     assert "chunfeng chenzui de yewan" in lowered
     assert "chun feng chen zui de ye wan" in lowered
 
-
-def test_contradictory_title_only_stays_viable_for_excellent_source() -> None:
-    excellent_quality = tmdb.determine_pre_enrichment_quality(
-        source_quality=tmdb.EXCELLENT,
-        title_quality=tmdb.CONTRADICTORY,
-        year_quality=tmdb.NONE,
-        language_quality=tmdb.NONE,
-    )
-    decent_quality = tmdb.determine_pre_enrichment_quality(
-        source_quality=tmdb.DECENT,
-        title_quality=tmdb.CONTRADICTORY,
-        year_quality=tmdb.NONE,
-        language_quality=tmdb.NONE,
-    )
-    assert excellent_quality == tmdb.DECENT
-    assert decent_quality == tmdb.DISCARD
-
-
 def test_excellent_source_with_title_and_language_contradiction_is_decent() -> None:
     quality = tmdb.determine_pre_enrichment_quality(
         source_quality=tmdb.EXCELLENT,

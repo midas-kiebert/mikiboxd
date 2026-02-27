@@ -25,6 +25,8 @@ class MovieBase(SQLModel):
     letterboxd_slug: str | None = None
     directors: list[str] | None = Field(sa_column=Column(ARRAY(String)), default=None)
     release_year: int | None = None
+    duration: int | None = None
+    languages: list[str] | None = Field(sa_column=Column(ARRAY(String)), default=None)
 
 
 # Properties to receive on movie creation
@@ -37,6 +39,8 @@ class MovieUpdate(SQLModel):
     title: str | None = None
     poster_link: str | None = None
     letterboxd_slug: str | None = None
+    duration: int | None = None
+    languages: list[str] | None = None
     tmdb_last_enriched_at: datetime | None = None
 
 

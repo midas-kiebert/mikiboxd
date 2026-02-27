@@ -10,3 +10,5 @@ test.py
 google-services.json
 mobile/google-services.json
 logs.txt
+**/tmp*
+**/tmdb_resolution_cases.json

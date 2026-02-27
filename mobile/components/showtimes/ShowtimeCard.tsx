@@ -5,13 +5,17 @@ import { Image, Platform, StyleSheet, TouchableOpacity, View } from "react-nativ
 import { useRef } from "react";
 import { DateTime } from "luxon";
 import { useRouter } from "expo-router";
-import * as Haptics from "expo-haptics";
 import type { ShowtimeLoggedIn } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import CinemaPill from "@/components/badges/CinemaPill";
 import FriendBadges from "@/components/badges/FriendBadges";
+import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import {
+  GLOBAL_LONG_PRESS_DELAY_MS,
+  triggerLongPressHaptic,
+} from "@/utils/long-press";
 
 type ShowtimeCardProps = {
   showtime: ShowtimeLoggedIn;
@@ -68,11 +72,7 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const handleLongPress = () => {
     if (!onLongPress) return;
     suppressNextPressRef.current = true;
-    if (Platform.OS === "android") {
-      Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Long_Press);
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    }
+    triggerLongPressHaptic();
     onLongPress(showtime);
   };
 
@@ -91,6 +91,7 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
         style={[styles.card, cardStatusStyle]}
         onPress={handlePress}
         onLongPress={onLongPress ? handleLongPress : undefined}
+        delayLongPress={GLOBAL_LONG_PRESS_DELAY_MS}
         onPressOut={onLongPress ? handlePressOut : undefined}
         activeOpacity={0.8}
       >
@@ -106,7 +107,7 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
         />
         <View style={styles.info}>
           <View style={styles.titleRow}>
-            <ThemedText style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+            <ThemedText style={styles.title} numberOfLines={2} ellipsizeMode="tail">
               {showtime.movie.title}
             </ThemedText>
             <CinemaPill cinema={showtime.cinema} variant="compact" />
@@ -115,6 +116,7 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
             friendsGoing={showtime.friends_going}
             friendsInterested={showtime.friends_interested}
             variant="compact"
+            maxVisible={2}
             style={styles.friendRow}
           />
         </View>
@@ -123,27 +125,16 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   );
 }
 
-const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
-  StyleSheet.create({
+const createStyles = (colors: typeof import("@/constants/theme").Colors.light) => {
+  const glowStyles = createShowtimeStatusGlowStyles(colors);
+  return StyleSheet.create({
     cardGlow: {
       marginBottom: 16,
       borderRadius: 12,
       backgroundColor: colors.cardBackground,
     },
-    cardGlowGoing: {
-      shadowColor: colors.green.secondary,
-      shadowOpacity: 0.6,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 8,
-    },
-    cardGlowInterested: {
-      shadowColor: colors.orange.secondary,
-      shadowOpacity: 0.6,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 8,
-    },
+    cardGlowGoing: glowStyles.going,
+    cardGlowInterested: glowStyles.interested,
     card: {
       flexDirection: "row",
       backgroundColor: colors.cardBackground,
@@ -151,7 +142,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       overflow: "hidden",
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      minHeight: POSTER_HEIGHT,
+      height: POSTER_HEIGHT,
     },
     cardGoing: {
       borderColor: colors.green.secondary,
@@ -206,30 +197,32 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     poster: {
       width: 72,
-      height: POSTER_HEIGHT,
+      height: "100%",
       backgroundColor: colors.posterPlaceholder,
     },
     info: {
       flex: 1,
       paddingHorizontal: 10,
-      paddingVertical: 6,
-      gap: 6,
+      paddingVertical: 8,
+      gap: 4,
+      overflow: "hidden",
     },
     titleRow: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-start",
       columnGap: 6,
-      rowGap: 4,
-      flexWrap: "wrap",
+      flexWrap: "nowrap",
     },
     title: {
-      fontSize: 15,
+      fontSize: Platform.OS === "ios" ? 14 : 15,
+      lineHeight: Platform.OS === "ios" ? 16 : 17,
       fontWeight: "700",
       color: colors.text,
-      flexShrink: 0,
-      maxWidth: "100%",
+      flex: 1,
+      minWidth: 0,
     },
     friendRow: {
-      marginTop: 3,
+      marginTop: 2,
     },
   });
+};

@@ -1,0 +1,41 @@
+{
+  "context": {
+    "source": "director_filmography",
+    "person_name": "Christopher Nolan",
+    "person_id": 525
+  },
+  "raw_movie_result": {
+    "adult": false,
+    "backdrop_path": "/2ssWTSVklAEc98frZUQhgtGHx7s.jpg",
+    "genre_ids": [
+      12,
+      18,
+      878
+    ],
+    "id": 157336,
+    "original_language": "en",
+    "original_title": "Interstellar",
+    "overview": "The adventures of a group of explorers who make use of a newly discovered wormhole to surpass the limitations on human space travel and conquer the vast distances involved in an interstellar voyage.",
+    "popularity": 44.594,
+    "poster_path": "/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
+    "release_date": "2014-11-05",
+    "title": "Interstellar",
+    "video": false,
+    "vote_average": 8.5,
+    "vote_count": 38962,
+    "credit_id": "5e83abfad236e60017fd99ed",
+    "department": "Directing",
+    "job": "Director"
+  },
+  "parsed_pre_enrichment_candidate": {
+    "id": 157336,
+    "title": "Interstellar",
+    "original_title": "Interstellar",
+    "release_year": 2014,
+    "original_language": "en",
+    "popularity": 44.594,
+    "source_buckets": [
+      "directed"
+    ]
+  }
+}

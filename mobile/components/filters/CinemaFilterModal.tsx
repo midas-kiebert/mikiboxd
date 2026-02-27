@@ -1,12 +1,14 @@
 /**
  * Mobile filter UI component: Cinema Filter Modal.
  */
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   type ListRenderItem,
   Modal,
+  PanResponder,
+  Platform,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -27,6 +29,12 @@ import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import { ThemedText } from "@/components/themed-text";
+import {
+  loadCinemaPresetOrder,
+  sanitizeCinemaPresetOrderIds,
+  saveCinemaPresetOrder,
+  sortCinemaPresetsByOrder,
+} from "@/components/filters/cinema-preset-order";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 type CinemaFilterModalProps = {
@@ -67,6 +75,7 @@ type CinemaColorPalette = {
 type CinemaModalPage = "selection" | "presets";
 
 const GROUPING_MINIMUM = 3;
+const PRESET_DRAG_STEP_PX = 52;
 
 function groupCinemas(cinemas: CinemaPublic[]) {
   const groupedByCity = new Map<number, CityGroup>();
@@ -193,6 +202,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
   const [page, setPage] = useState<CinemaModalPage>("selection");
   const [presetName, setPresetName] = useState("");
   const [presetError, setPresetError] = useState<string | null>(null);
+  const [presetOrderIds, setPresetOrderIds] = useState<readonly string[]>([]);
 
   // Data hooks keep this module synced with backend data and shared cache state.
   const { data: cinemas } = useFetchCinemas();
@@ -225,6 +235,18 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     enabled: visible,
     queryFn: () => MeService.getCinemaPresets(),
   });
+
+  useEffect(() => {
+    if (!visible) return;
+    let isMounted = true;
+    loadCinemaPresetOrder().then((orderedIds) => {
+      if (!isMounted) return;
+      setPresetOrderIds(orderedIds);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [visible]);
 
   const savePresetMutation = useMutation({
     mutationFn: (requestBody: CinemaPresetCreate) => MeService.saveCinemaPreset({ requestBody }),
@@ -271,6 +293,24 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     () => serializeCinemaIds(localSelectedCinemaSet),
     [localSelectedCinemaSet]
   );
+  const orderedPresets = useMemo(
+    () => sortCinemaPresetsByOrder(presets, presetOrderIds),
+    [presetOrderIds, presets]
+  );
+  const presetsForRender = useMemo(
+    () => (orderedPresets.length > 0 || presets.length === 0 ? orderedPresets : presets),
+    [orderedPresets, presets]
+  );
+
+  useEffect(() => {
+    if (presetOrderIds.length === 0 || presets.length === 0) return;
+    const presetIdSet = new Set(presets.map((preset) => preset.id));
+    const trimmedOrder = presetOrderIds.filter((presetId) => presetIdSet.has(presetId));
+    if (trimmedOrder.length === presetOrderIds.length) return;
+    const normalizedOrder = sanitizeCinemaPresetOrderIds(trimmedOrder);
+    setPresetOrderIds(normalizedOrder);
+    saveCinemaPresetOrder(normalizedOrder).catch(() => undefined);
+  }, [presetOrderIds, presets]);
 
   const cinemaList = useMemo(() => cinemas ?? [], [cinemas]);
 
@@ -399,6 +439,33 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     [setFavoritePresetMutation]
   );
 
+  const persistPresetOrder = useCallback((orderedIds: readonly string[]) => {
+    const normalizedOrder = sanitizeCinemaPresetOrderIds(orderedIds);
+    setPresetOrderIds(normalizedOrder);
+    saveCinemaPresetOrder(normalizedOrder).catch(() => undefined);
+  }, []);
+
+  const handleReorderPresets = useCallback(
+    (reorderedPresets: readonly CinemaPresetPublic[]) => {
+      persistPresetOrder(reorderedPresets.map((preset) => preset.id));
+    },
+    [persistPresetOrder]
+  );
+
+  const handleMovePreset = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex || toIndex >= presetsForRender.length) {
+        return;
+      }
+      const reorderedPresets = [...presetsForRender];
+      const [movedPreset] = reorderedPresets.splice(fromIndex, 1);
+      if (!movedPreset) return;
+      reorderedPresets.splice(toIndex, 0, movedPreset);
+      handleReorderPresets(reorderedPresets);
+    },
+    [handleReorderPresets, presetsForRender]
+  );
+
   const renderCinemaSection: ListRenderItem<CinemaSection> = useCallback(
     ({ item }) => {
       const citySelected =
@@ -454,84 +521,141 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
   );
 
   const renderPreset: ListRenderItem<CinemaPresetPublic> = useCallback(
-    ({ item }) => {
+    ({ item, index }) => {
       const isCurrent = serializeCinemaIds(item.cinema_ids) === currentSelectionSignature;
+      const favoriteDisabled = item.is_favorite || setFavoritePresetMutation.isPending;
+      const deleteDisabled = deletePresetMutation.isPending;
+      const itemIndex = index ?? -1;
+      const canMoveUp = itemIndex > 0;
+      const canMoveDown = itemIndex >= 0 && itemIndex < presetsForRender.length - 1;
 
       return (
-        <View style={styles.presetCard}>
+        <TouchableOpacity
+          style={[styles.presetCard, isCurrent && styles.presetCardCurrent]}
+          onPress={() => handleApplyPreset(item)}
+          activeOpacity={0.88}
+        >
           <View style={styles.presetHeader}>
             <View style={styles.presetTitleWrap}>
-              <ThemedText style={styles.presetName}>{item.name}</ThemedText>
+              <View style={styles.presetNameRow}>
+                {item.is_favorite ? (
+                  <MaterialIcons
+                    name="star"
+                    size={14}
+                    color={colors.yellow.secondary}
+                    style={styles.favoriteStar}
+                  />
+                ) : null}
+                <ThemedText style={styles.presetName}>{item.name}</ThemedText>
+              </View>
               <ThemedText style={styles.presetMeta}>
                 {item.cinema_ids.length} cinema{item.cinema_ids.length === 1 ? "" : "s"}
               </ThemedText>
             </View>
-            <View style={styles.presetBadges}>
-              {item.is_favorite ? (
-                <View style={[styles.presetBadge, styles.favoriteBadge]}>
-                  <ThemedText style={[styles.presetBadgeText, styles.favoriteBadgeText]}>
-                    Favorite
-                  </ThemedText>
-                </View>
-              ) : null}
+
+            <View style={styles.presetHeaderActions}>
               {isCurrent ? (
-                <View style={[styles.presetBadge, styles.currentBadge]}>
-                  <ThemedText style={[styles.presetBadgeText, styles.currentBadgeText]}>Current</ThemedText>
+                <View style={styles.currentIndicator}>
+                  <ThemedText style={styles.currentIndicatorText}>Current</ThemedText>
                 </View>
               ) : null}
+
+              <TouchableOpacity
+                style={[
+                  styles.iconActionButton,
+                  item.is_favorite && styles.iconActionButtonFavorite,
+                  favoriteDisabled && !item.is_favorite && styles.iconActionButtonDisabled,
+                ]}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  handleSetFavoritePreset(item);
+                }}
+                activeOpacity={0.8}
+                disabled={favoriteDisabled}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <MaterialIcons
+                  name={item.is_favorite ? "star" : "star-border"}
+                  size={16}
+                  color={item.is_favorite ? colors.yellow.secondary : colors.textSecondary}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.iconActionButton, deleteDisabled && styles.iconActionButtonDisabled]}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  handleDeletePreset(item);
+                }}
+                activeOpacity={0.8}
+                disabled={deleteDisabled}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <MaterialIcons name="delete-outline" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+
+              <View style={styles.reorderControls}>
+                <TouchableOpacity
+                  style={[styles.iconActionButton, !canMoveUp && styles.iconActionButtonDisabled]}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    if (canMoveUp) handleMovePreset(itemIndex, itemIndex - 1);
+                  }}
+                  activeOpacity={0.8}
+                  disabled={!canMoveUp}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <MaterialIcons name="keyboard-arrow-up" size={17} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.iconActionButton, !canMoveDown && styles.iconActionButtonDisabled]}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    if (canMoveDown) handleMovePreset(itemIndex, itemIndex + 1);
+                  }}
+                  activeOpacity={0.8}
+                  disabled={!canMoveDown}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <MaterialIcons name="keyboard-arrow-down" size={17} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <View style={styles.dragHandleButton}>
+                  <MaterialIcons name="drag-indicator" size={16} color={colors.textSecondary} />
+                </View>
+              </View>
             </View>
           </View>
 
-          <View style={styles.presetActions}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.applyButton]}
-              onPress={() => handleApplyPreset(item)}
-              activeOpacity={0.8}
-            >
-              <ThemedText style={[styles.actionButtonText, styles.applyButtonText]}>Apply</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
+          <View style={[styles.applyBadge, isCurrent ? styles.applyBadgeCurrent : styles.applyBadgeDefault]}>
+            <MaterialIcons
+              name={isCurrent ? "check-circle" : "play-arrow"}
+              size={15}
+              color={isCurrent ? colors.green.secondary : colors.pillActiveText}
+            />
+            <ThemedText
               style={[
-                styles.actionButton,
-                item.is_favorite ? styles.favoriteActionButtonActive : styles.favoriteActionButton,
+                styles.applyBadgeText,
+                isCurrent ? styles.applyBadgeTextCurrent : styles.applyBadgeTextDefault,
               ]}
-              onPress={() => handleSetFavoritePreset(item)}
-              activeOpacity={0.8}
-              disabled={item.is_favorite || setFavoritePresetMutation.isPending}
             >
-              <ThemedText
-                style={[
-                  styles.actionButtonText,
-                  item.is_favorite ? styles.favoriteActionButtonTextActive : styles.favoriteActionButtonText,
-                ]}
-              >
-                {item.is_favorite
-                  ? "Favorited"
-                  : setFavoritePresetMutation.isPending
-                    ? "Saving..."
-                    : "Favorite"}
-              </ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.deleteButton]}
-              onPress={() => handleDeletePreset(item)}
-              activeOpacity={0.8}
-              disabled={deletePresetMutation.isPending}
-            >
-              <ThemedText style={[styles.actionButtonText, styles.deleteButtonText]}>
-                Delete
-              </ThemedText>
-            </TouchableOpacity>
+              {isCurrent ? "Applied" : "Apply preset"}
+            </ThemedText>
           </View>
-        </View>
+        </TouchableOpacity>
       );
     },
     [
+      colors.green.secondary,
+      colors.pillActiveText,
+      colors.textSecondary,
+      colors.yellow.secondary,
       currentSelectionSignature,
       deletePresetMutation.isPending,
       handleApplyPreset,
       handleDeletePreset,
+      handleMovePreset,
       handleSetFavoritePreset,
+      presetsForRender.length,
       setFavoritePresetMutation.isPending,
       styles,
     ]
@@ -575,7 +699,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
               removeClippedSubviews
               showsVerticalScrollIndicator={false}
               ListHeaderComponent={
-                <View style={styles.sectionCard}>
+                <View style={[styles.sectionCard, styles.allCinemasSection]}>
                   <View style={styles.sectionHeader}>
                     <View>
                       <ThemedText style={styles.sectionTitle}>All cinemas</ThemedText>
@@ -637,12 +761,19 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
               </View>
             ) : (
               <FlatList
-                data={presets}
+                data={presetsForRender}
                 keyExtractor={(item) => item.id}
                 renderItem={renderPreset}
                 style={styles.mainContent}
                 contentContainerStyle={styles.content}
                 ItemSeparatorComponent={() => <View style={styles.sectionSeparator} />}
+                ListHeaderComponent={
+                  presetsForRender.length > 1 ? (
+                    <ThemedText style={styles.reorderHintText}>
+                      Use arrows to reorder presets.
+                    </ThemedText>
+                  ) : null
+                }
                 ListEmptyComponent={
                   <View style={styles.emptyPresets}>
                     <ThemedText style={styles.emptyPresetsText}>
@@ -734,7 +865,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     header: {
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingTop: Platform.OS === "ios" ? 20 : 12,
+      paddingBottom: 12,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
@@ -803,6 +935,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.cardBackground,
       padding: 12,
     },
+    allCinemasSection: {
+      marginBottom: 10,
+    },
     sectionMeta: {
       fontSize: 12,
       color: colors.textSecondary,
@@ -848,8 +983,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     cinemaList: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 8,
-      marginTop: 8,
+      gap: 6,
+      marginTop: 6,
     },
     cinemaRow: {
       flexDirection: "row",
@@ -857,10 +992,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       justifyContent: "flex-start",
       alignSelf: "flex-start",
       maxWidth: "100%",
-      columnGap: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      borderRadius: 12,
+      columnGap: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
@@ -870,25 +1005,25 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     cinemaInfo: {
       flexShrink: 1,
-      gap: 2,
+      gap: 1,
     },
     cinemaNameRow: {
       flexDirection: "row",
       alignItems: "center",
     },
     cinemaName: {
-      fontSize: 14,
+      fontSize: 12,
       fontWeight: "600",
     },
     cinemaCity: {
-      fontSize: 12,
+      fontSize: 10,
       color: colors.textSecondary,
     },
     checkbox: {
-      width: 16,
-      height: 16,
-      borderRadius: 8,
-      borderWidth: 1.5,
+      width: 13,
+      height: 13,
+      borderRadius: 6.5,
+      borderWidth: 1.2,
       borderColor: colors.divider,
       backgroundColor: "transparent",
       alignItems: "center",
@@ -945,97 +1080,129 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       padding: 12,
       gap: 10,
     },
+    presetCardCurrent: {
+      borderColor: colors.green.secondary,
+      backgroundColor: colors.green.primary,
+    },
+    presetCardDragging: {
+      borderColor: colors.tint,
+      shadowColor: "#000",
+      shadowOpacity: 0.16,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 6,
+    },
     presetHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: 8,
     },
     presetTitleWrap: {
       flex: 1,
       gap: 3,
     },
+    presetNameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      minWidth: 0,
+    },
+    favoriteStar: {
+      marginTop: 0.5,
+    },
     presetName: {
       fontSize: 14,
       fontWeight: "700",
       color: colors.text,
+      flex: 1,
     },
     presetMeta: {
       fontSize: 12,
       color: colors.textSecondary,
     },
-    presetBadges: {
+    presetHeaderActions: {
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
     },
-    presetBadge: {
+    currentIndicator: {
       borderRadius: 10,
       paddingHorizontal: 8,
       paddingVertical: 3,
-      backgroundColor: colors.pillBackground,
-    },
-    presetBadgeText: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: colors.textSecondary,
-    },
-    favoriteBadge: {
-      backgroundColor: colors.yellow.primary,
-    },
-    favoriteBadgeText: {
-      color: colors.yellow.secondary,
-    },
-    currentBadge: {
-      backgroundColor: colors.tint,
-    },
-    currentBadgeText: {
-      color: colors.pillActiveText,
-    },
-    presetActions: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    actionButton: {
-      borderRadius: 10,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
       borderWidth: 1,
+      borderColor: colors.green.secondary,
+      backgroundColor: colors.green.primary,
+    },
+    currentIndicatorText: {
+      fontSize: 10,
+      fontWeight: "700",
+      color: colors.green.secondary,
+    },
+    iconActionButton: {
+      width: 28,
+      height: 28,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      backgroundColor: colors.pillBackground,
       alignItems: "center",
       justifyContent: "center",
     },
-    actionButtonText: {
-      fontSize: 12,
-      fontWeight: "700",
+    iconActionButtonFavorite: {
+      borderColor: colors.yellow.secondary,
+      backgroundColor: colors.yellow.primary,
     },
-    applyButton: {
+    iconActionButtonDisabled: {
+      opacity: 0.5,
+    },
+    reorderControls: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    dragHandleButton: {
+      width: 30,
+      height: 30,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      backgroundColor: colors.cardBackground,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    applyBadge: {
+      alignSelf: "flex-start",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderRadius: 10,
+      borderWidth: 1,
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+    },
+    applyBadgeDefault: {
       backgroundColor: colors.tint,
       borderColor: colors.tint,
     },
-    applyButtonText: {
+    applyBadgeCurrent: {
+      backgroundColor: colors.green.primary,
+      borderColor: colors.green.secondary,
+    },
+    applyBadgeText: {
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    applyBadgeTextDefault: {
       color: colors.pillActiveText,
     },
-    favoriteActionButton: {
-      backgroundColor: colors.cardBackground,
-      borderColor: colors.divider,
+    applyBadgeTextCurrent: {
+      color: colors.green.secondary,
     },
-    favoriteActionButtonText: {
+    reorderHintText: {
+      fontSize: 12,
       color: colors.textSecondary,
-    },
-    favoriteActionButtonActive: {
-      backgroundColor: colors.yellow.primary,
-      borderColor: colors.yellow.secondary,
-    },
-    favoriteActionButtonTextActive: {
-      color: colors.yellow.secondary,
-    },
-    deleteButton: {
-      backgroundColor: colors.cardBackground,
-      borderColor: colors.divider,
-    },
-    deleteButtonText: {
-      color: colors.textSecondary,
+      marginBottom: 10,
     },
     emptyPresets: {
       paddingVertical: 40,

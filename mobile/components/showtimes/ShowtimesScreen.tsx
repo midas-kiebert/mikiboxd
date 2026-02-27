@@ -11,7 +11,9 @@ import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import TopBar from "@/components/layout/TopBar";
 import SearchBar from "@/components/inputs/SearchBar";
-import FilterPills from "@/components/filters/FilterPills";
+import FilterPills, {
+  type FilterPillLongPressPosition,
+} from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
 import ShowtimeActionModal from "@/components/showtimes/ShowtimeActionModal";
 
@@ -48,6 +50,10 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   filters: ReadonlyArray<FilterOption<TFilterId>>;
   activeFilterIds: ReadonlyArray<TFilterId>;
   onToggleFilter: (id: TFilterId) => void;
+  onLongPressFilter?: (
+    id: TFilterId,
+    position: FilterPillLongPressPosition
+  ) => boolean | void;
   audienceToggle?: AudienceToggleOption;
   emptyText?: string;
 };
@@ -69,6 +75,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   filters,
   activeFilterIds,
   onToggleFilter,
+  onLongPressFilter,
   audienceToggle,
   emptyText = "No showtimes found",
 }: ShowtimesScreenProps<TFilterId>) {
@@ -157,6 +164,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         filters={filters}
         selectedId=""
         onSelect={onToggleFilter}
+        onLongPressSelect={onLongPressFilter}
         activeIds={activeFilterIds}
         compoundRightToggle={
           audienceToggle

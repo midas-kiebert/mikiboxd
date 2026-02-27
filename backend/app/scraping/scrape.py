@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import time
 import traceback
 from collections import defaultdict
 from collections.abc import Callable
@@ -23,7 +24,8 @@ from app.scraping.cinemas.amsterdam.lab111 import LAB111Scraper
 from app.scraping.cinemas.amsterdam.themovies import TheMoviesScraper
 from app.scraping.cinemas.amsterdam.uitkijk import UitkijkScraper
 from app.scraping.logger import logger
-from app.scraping.tmdb import find_tmdb_id_async, get_tmdb_movie_details_async
+from app.scraping.tmdb_lookup import find_tmdb_id_async
+from app.scraping.tmdb_movie_details import get_tmdb_movie_details_async
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
@@ -80,7 +82,9 @@ class ScrapeExecutionSummary:
 class PreparedCinevilleShowtime:
     id: str
     start_date: str
+    end_date: str | None
     ticket_url: str | None
+    subtitles: list[str] | None
     venue_name: str
 
 
@@ -92,6 +96,12 @@ class PreparedCinevilleMovie:
 
 
 CinevilleWorkerResult = tuple[PreparedCinevilleMovie | None, list[str]]
+
+
+def _runtime_minutes_or_none(value: Any) -> int | None:
+    if isinstance(value, int) and value > 0:
+        return value
+    return None
 
 
 def _format_error_context(
@@ -141,6 +151,11 @@ def _persist_cineville_results_batch(
     set[str],
     list[str],
 ]:
+    started = time.monotonic()
+    logger.info(
+        "Starting Cineville batch persistence for %s prepared movie(s).",
+        len(prepared_movies),
+    )
     observed_by_stream: dict[str, list[scrape_sync_service.ObservedPresence]] = (
         defaultdict(list)
     )
@@ -156,8 +171,12 @@ def _persist_cineville_results_batch(
             if cinema.cineville
         }
         inserted_movie_ids: set[int] = set()
+        processed_movies = 0
+        processed_showtimes = 0
+        showtime_errors = 0
 
         for prepared_movie in prepared_movies:
+            processed_movies += 1
             movie = prepared_movie.movie
             if movie.id not in inserted_movie_ids:
                 movies_service.upsert_movie(
@@ -169,11 +188,15 @@ def _persist_cineville_results_batch(
                 logger.info(f"Inserted movie: {movie.title} (TMDB ID: {movie.id})")
 
             for showtime_data in prepared_movie.showtimes:
+                processed_showtimes += 1
                 source_stream: str | None = None
                 start_date = None
+                end_date = None
                 venue_name = showtime_data.venue_name
                 try:
                     start_date = to_amsterdam_time(showtime_data.start_date)
+                    if showtime_data.end_date is not None:
+                        end_date = to_amsterdam_time(showtime_data.end_date)
 
                     cinema_id = cinema_id_by_name.get(venue_name)
                     if cinema_id is None:
@@ -192,7 +215,9 @@ def _persist_cineville_results_batch(
 
                     showtime = ShowtimeCreate(
                         datetime=start_date,
+                        end_datetime=end_date,
                         ticket_link=showtime_data.ticket_url,
+                        subtitles=showtime_data.subtitles,
                         movie_id=movie.id,
                         cinema_id=cinema_id,
                     )
@@ -233,10 +258,35 @@ def _persist_cineville_results_batch(
                     stream_errors[source_stream or "cineville:unknown"].append(
                         error_context
                     )
+                    showtime_errors += 1
                     logger.error(
                         f"Failed to insert showtime for movie: {movie.title} at {venue_name} on {start_date}. Error: {e}"
                     )
+            if processed_movies % 50 == 0 or processed_movies == len(prepared_movies):
+                logger.info(
+                    "Cineville persistence progress: movies=%s/%s showtimes=%s errors=%s elapsed=%.1fs",
+                    processed_movies,
+                    len(prepared_movies),
+                    processed_showtimes,
+                    showtime_errors,
+                    time.monotonic() - started,
+                )
+        showtime_count = sum(
+            len(prepared_movie.showtimes) for prepared_movie in prepared_movies
+        )
+        commit_started = time.monotonic()
+        logger.info(
+            "Committing Cineville batch (movies=%s, showtimes=%s, streams=%s).",
+            len(inserted_movie_ids),
+            showtime_count,
+            len(observed_by_stream),
+        )
         session.commit()
+        logger.info(
+            "Cineville batch commit completed in %.2fs (total elapsed %.2fs).",
+            time.monotonic() - commit_started,
+            time.monotonic() - started,
+        )
     return (
         observed_by_stream,
         stream_errors,
@@ -293,16 +343,30 @@ async def _process_cineville_movie_async(
     production_id = str(getattr(movie_data, "id", "<unknown>"))
     try:
         title_query = clean_title(movie_data.title)
-        actors = movie_data.cast
-        actor = actors[0] if actors else None
+        actors = movie_data.cast or []
+        actor_names_for_lookup = ", ".join(actors[:5]) if actors else None
         directors = movie_data.directors or []
+        release_year = (
+            movie_data.releaseYear if isinstance(movie_data.releaseYear, int) else None
+        )
+        duration_minutes = (
+            movie_data.duration if isinstance(movie_data.duration, int) else None
+        )
+        spoken_languages = (
+            movie_data.spokenLanguages
+            if isinstance(movie_data.spokenLanguages, list)
+            else None
+        )
 
         try:
             tmdb_id = await find_tmdb_id_async(
                 session=session,
                 title_query=title_query,
-                actor_name=actor,
+                actor_name=actor_names_for_lookup,
                 director_names=directors,
+                year=release_year,
+                duration_minutes=duration_minutes,
+                spoken_languages=spoken_languages,
             )
         except Exception as e:
             return (
@@ -346,6 +410,11 @@ async def _process_cineville_movie_async(
                 ],
             )
 
+        tmdb_runtime_minutes = _runtime_minutes_or_none(
+            tmdb_details.runtime_minutes if tmdb_details is not None else None
+        )
+        cineville_runtime_minutes = _runtime_minutes_or_none(duration_minutes)
+
         tmdb_title = (
             tmdb_details.title if tmdb_details is not None else movie_data.title
         )
@@ -360,6 +429,12 @@ async def _process_cineville_movie_async(
             release_year=(
                 tmdb_details.release_year if tmdb_details is not None else None
             ),
+            # Prefer TMDB runtime when available; otherwise keep Cineville runtime so
+            # missing endDate showtimes can still fall back to start + runtime + 15m.
+            duration=tmdb_runtime_minutes or cineville_runtime_minutes,
+            languages=(
+                tmdb_details.spoken_languages if tmdb_details is not None else None
+            ),
             original_title=(
                 tmdb_details.original_title if tmdb_details is not None else None
             ),
@@ -371,7 +446,9 @@ async def _process_cineville_movie_async(
             PreparedCinevilleShowtime(
                 id=showtime.id,
                 start_date=showtime.startDate,
+                end_date=showtime.endDate,
                 ticket_url=showtime.ticketUrl,
+                subtitles=showtime.subtitles,
                 venue_name=showtime.venueName,
             )
             for showtime in showtimes_data

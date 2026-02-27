@@ -24,7 +24,10 @@ import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelecti
 import { ThemedText } from "@/components/themed-text";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import ShowtimeActionModal from "@/components/showtimes/ShowtimeActionModal";
-import FilterPills from "@/components/filters/FilterPills";
+import CinemaPresetQuickPopover from "@/components/filters/CinemaPresetQuickPopover";
+import FilterPills, {
+  type FilterPillLongPressPosition,
+} from "@/components/filters/FilterPills";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
 import DayFilterModal from "@/components/filters/DayFilterModal";
 import TimeFilterModal from "@/components/filters/TimeFilterModal";
@@ -32,6 +35,7 @@ import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-util
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selection";
+import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 
 const SHOWTIMES_PAGE_SIZE = 20;
 // Filter pill definitions rendered in the top filter row.
@@ -60,6 +64,9 @@ export default function MoviePage() {
   const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeInMovieLoggedIn | null>(null);
   // Controls visibility of the cinema-filter modal.
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
+  const [cinemaPresetPopoverVisible, setCinemaPresetPopoverVisible] = useState(false);
+  const [cinemaPresetPopoverAnchor, setCinemaPresetPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
   // Controls visibility of the time-filter modal.
@@ -275,6 +282,16 @@ export default function MoviePage() {
     }
   };
 
+  const handleLongPressFilter = (
+    filterId: string,
+    position: FilterPillLongPressPosition
+  ) => {
+    if (filterId !== "cinemas") return false;
+    setCinemaPresetPopoverAnchor(position);
+    setCinemaPresetPopoverVisible(true);
+    return true;
+  };
+
   // Build the filter payload from current UI selections.
   const pillFilters = useMemo(() => {
     return BASE_FILTERS.map((filter) => {
@@ -411,7 +428,7 @@ export default function MoviePage() {
                         : undefined,
                   ]}
                 >
-                  <ShowtimeRow showtime={item} showFriends />
+                  <ShowtimeRow showtime={item} showFriends alignCinemaRight />
                 </View>
               </TouchableOpacity>
             )}
@@ -447,6 +464,7 @@ export default function MoviePage() {
                     filters={pillFilters}
                     selectedId=""
                     onSelect={handleSelectFilter}
+                    onLongPressSelect={handleLongPressFilter}
                     activeIds={activeFilterIds}
                   />
                 </View>
@@ -475,6 +493,12 @@ export default function MoviePage() {
             visible={cinemaModalVisible}
             onClose={() => setCinemaModalVisible(false)}
           />
+          <CinemaPresetQuickPopover
+            visible={cinemaPresetPopoverVisible}
+            anchor={cinemaPresetPopoverAnchor}
+            onClose={() => setCinemaPresetPopoverVisible(false)}
+            maxPresets={6}
+          />
           <DayFilterModal
             visible={dayModalVisible}
             onClose={() => setDayModalVisible(false)}
@@ -493,8 +517,9 @@ export default function MoviePage() {
   );
 }
 
-const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
-  StyleSheet.create({
+const createStyles = (colors: typeof import("@/constants/theme").Colors.light) => {
+  const glowStyles = createShowtimeStatusGlowStyles(colors);
+  return StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
@@ -575,20 +600,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 10,
       backgroundColor: colors.cardBackground,
     },
-    showtimeCardGlowGoing: {
-      shadowColor: colors.green.secondary,
-      shadowOpacity: 0.6,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 8,
-    },
-    showtimeCardGlowInterested: {
-      shadowColor: colors.orange.secondary,
-      shadowOpacity: 0.6,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 8,
-    },
+    showtimeCardGlowGoing: glowStyles.going,
+    showtimeCardGlowInterested: glowStyles.interested,
     showtimeCardGoing: {
       borderColor: colors.green.secondary,
       backgroundColor: colors.green.primary,
@@ -816,3 +829,4 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
     },
   });
+};

@@ -17,6 +17,7 @@ def test_superuser_can_upsert_tmdb_cache_override(
         "actor_name": "John Doe",
         "year": 2024,
         "tmdb_id": 12345,
+        "confidence": 92.5,
     }
     response = client.post(
         f"{settings.API_V1_STR}/utils/tmdb-cache/override/",
@@ -26,6 +27,7 @@ def test_superuser_can_upsert_tmdb_cache_override(
     assert response.status_code == 200
     payload = response.json()
     assert payload["tmdb_id"] == 12345
+    assert payload["confidence"] == 92.5
 
     stmt = select(TmdbLookupCache).where(
         TmdbLookupCache.lookup_hash == payload["lookup_hash"],
@@ -34,14 +36,16 @@ def test_superuser_can_upsert_tmdb_cache_override(
     cached = db_transaction.exec(stmt).first()
     assert cached is not None
     assert cached.tmdb_id == 12345
+    assert cached.confidence == 92.5
 
     second_response = client.post(
         f"{settings.API_V1_STR}/utils/tmdb-cache/override/",
         headers=superuser_token_headers,
-        json={**request_body, "tmdb_id": 67890},
+        json={**request_body, "tmdb_id": 67890, "confidence": 77.0},
     )
     assert second_response.status_code == 200
 
     refreshed = db_transaction.exec(stmt).first()
     assert refreshed is not None
     assert refreshed.tmdb_id == 67890
+    assert refreshed.confidence == 77.0

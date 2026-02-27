@@ -4,6 +4,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -14,7 +15,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { TIME_FILTER_PRESETS, getPresetForRange } from "@/components/filters/time-filter-presets";
-import { useRef } from "react";
 
 type TimeFilterModalProps = {
   visible: boolean;
@@ -23,30 +23,35 @@ type TimeFilterModalProps = {
   onChange: (timeRanges: string[]) => void;
 };
 
-const WHEEL_ITEM_HEIGHT = 36;
-const WHEEL_VISIBLE_ITEMS = 5;
-const WHEEL_CONTAINER_HEIGHT = WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS;
-const WHEEL_SIDE_PADDING = ((WHEEL_VISIBLE_ITEMS - 1) / 2) * WHEEL_ITEM_HEIGHT;
-const HOUR_VALUES = Array.from({ length: 24 }, (_, value) =>
-  String(value).padStart(2, "0")
-);
-const MINUTE_VALUES = Array.from({ length: 60 }, (_, value) =>
-  String(value).padStart(2, "0")
-);
+const RANGE_BASE_MINUTES = 7 * 60;
+const RANGE_STEP_MINUTES = 15;
+const RANGE_END_MINUTES = 24 * 60 + 2 * 60;
+const RANGE_SLOT_COUNT = (RANGE_END_MINUTES - RANGE_BASE_MINUTES) / RANGE_STEP_MINUTES;
+const RANGE_MAX_SLOT = RANGE_SLOT_COUNT;
+const DEFAULT_END_SLOT = (24 * 60 - RANGE_BASE_MINUTES) / RANGE_STEP_MINUTES;
+const DEFAULT_END_OFFSET_SLOTS = (4 * 60) / RANGE_STEP_MINUTES;
+const DEFAULT_END_FALLBACK_SLOT = ((24 * 60 + 1 * 60 + 45) - RANGE_BASE_MINUTES) / RANGE_STEP_MINUTES;
+const EMPTY_SLIDER_START_CUTOFF_SLOT = (21 * 60 - RANGE_BASE_MINUTES) / RANGE_STEP_MINUTES;
+const BOUNDARY_SNAP_DISTANCE_SLOTS = 16;
 
 const selectionsMatch = (left: string[], right: string[]) => {
   if (left.length !== right.length) return false;
   return left.every((value) => right.includes(value));
 };
 
-function normalizeTime(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  const match = /^(\d{1,2}):([0-5]\d)$/.exec(trimmed);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
-  return `${String(hour).padStart(2, "0")}:${match[2]}`;
+const clampSlot = (value: number) => Math.max(0, Math.min(value, RANGE_MAX_SLOT));
+
+function slotToRangeTime(slot: number): string {
+  const boundedSlot = clampSlot(slot);
+  const minutesSinceMidnight =
+    (RANGE_BASE_MINUTES + boundedSlot * RANGE_STEP_MINUTES) % (24 * 60);
+  const hour = Math.floor(minutesSinceMidnight / 60);
+  const minute = minutesSinceMidnight % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function slotToDisplayTime(slot: number): string {
+  return slotToRangeTime(slot);
 }
 
 function formatCustomRangeLabel(range: string) {
@@ -60,85 +65,6 @@ function formatCustomRangeLabel(range: string) {
 }
 
 type TimeModalStyles = ReturnType<typeof createStyles>;
-
-type TimeWheelProps = {
-  values: ReadonlyArray<string>;
-  selectedIndex: number;
-  onChangeIndex: (nextIndex: number) => void;
-  styles: TimeModalStyles;
-};
-
-const clampIndex = (value: number, max: number) =>
-  Math.max(0, Math.min(value, max));
-
-const TimeWheel = memo(function TimeWheel({
-  values,
-  selectedIndex,
-  onChangeIndex,
-  styles,
-}: TimeWheelProps) {
-  const scrollRef = useRef<ScrollView>(null);
-
-  const scrollToIndex = useCallback((index: number) => {
-    scrollRef.current?.scrollTo({
-      y: index * WHEEL_ITEM_HEIGHT,
-      animated: false,
-    });
-  }, []);
-
-  useEffect(() => {
-    scrollToIndex(selectedIndex);
-  }, [scrollToIndex, selectedIndex]);
-
-  const handleScrollEnd = useCallback(
-    (offsetY: number) => {
-      const rawIndex = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
-      const nextIndex = clampIndex(rawIndex, values.length - 1);
-      onChangeIndex(nextIndex);
-      scrollRef.current?.scrollTo({
-        y: nextIndex * WHEEL_ITEM_HEIGHT,
-        animated: true,
-      });
-    },
-    [onChangeIndex, values.length]
-  );
-
-  return (
-    <View style={styles.wheelContainer}>
-      <ScrollView
-        ref={scrollRef}
-        showsVerticalScrollIndicator={false}
-        snapToInterval={WHEEL_ITEM_HEIGHT}
-        decelerationRate="fast"
-        contentContainerStyle={styles.wheelContent}
-        onLayout={() => scrollToIndex(selectedIndex)}
-        onScrollEndDrag={(event) =>
-          handleScrollEnd(event.nativeEvent.contentOffset.y)
-        }
-        onMomentumScrollEnd={({ nativeEvent }) => {
-          handleScrollEnd(nativeEvent.contentOffset.y);
-        }}
-      >
-        {values.map((item, index) => {
-          const selected = index === selectedIndex;
-          return (
-            <View key={`${item}-${index}`} style={styles.wheelItem}>
-              <ThemedText
-                style={[
-                  styles.wheelItemText,
-                  selected && styles.wheelItemTextSelected,
-                ]}
-              >
-                {item}
-              </ThemedText>
-            </View>
-          );
-        })}
-      </ScrollView>
-      <View style={styles.wheelSelectionOverlay} pointerEvents="none" />
-    </View>
-  );
-});
 
 type PresetChipProps = {
   label: string;
@@ -192,23 +118,19 @@ export default function TimeFilterModal({
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [localSelectedTimeRanges, setLocalSelectedTimeRanges] = useState<string[]>(selectedTimeRanges);
-  const [hasStartTime, setHasStartTime] = useState(false);
-  const [hasEndTime, setHasEndTime] = useState(false);
-  const [startHourIndex, setStartHourIndex] = useState(9);
-  const [startMinuteIndex, setStartMinuteIndex] = useState(0);
-  const [endHourIndex, setEndHourIndex] = useState(12);
-  const [endMinuteIndex, setEndMinuteIndex] = useState(0);
+  const [startSlot, setStartSlot] = useState<number | null>(null);
+  const [endSlot, setEndSlot] = useState<number | null>(null);
+  const [activeBoundary, setActiveBoundary] = useState<"start" | "end" | null>(null);
+  const [sliderWidth, setSliderWidth] = useState(0);
   const [inputError, setInputError] = useState<string | null>(null);
+  const endIsOpenByPosition = endSlot === RANGE_MAX_SLOT;
 
   useEffect(() => {
     if (!visible) return;
     setLocalSelectedTimeRanges(selectedTimeRanges);
-    setHasStartTime(false);
-    setHasEndTime(false);
-    setStartHourIndex(9);
-    setStartMinuteIndex(0);
-    setEndHourIndex(12);
-    setEndMinuteIndex(0);
+    setStartSlot(null);
+    setEndSlot(null);
+    setActiveBoundary(null);
     setInputError(null);
   }, [visible, selectedTimeRanges]);
 
@@ -225,21 +147,158 @@ export default function TimeFilterModal({
     setLocalSelectedTimeRanges((current) => current.filter((value) => value !== range));
   }, []);
 
+  const slotFromLocation = useCallback(
+    (locationX: number) => {
+      if (sliderWidth <= 0) return 0;
+      const ratio = Math.max(0, Math.min(locationX / sliderWidth, 1));
+      return clampSlot(Math.round(ratio * RANGE_SLOT_COUNT));
+    },
+    [sliderWidth]
+  );
+
+  const setBoundarySlot = useCallback(
+    (boundary: "start" | "end", nextSlot: number) => {
+      if (boundary === "start") {
+        const clampedStart =
+          endSlot !== null && endSlot !== RANGE_MAX_SLOT
+            ? Math.min(nextSlot, endSlot)
+            : nextSlot;
+        setStartSlot(clampedStart);
+        return;
+      }
+      const clampedEnd = startSlot !== null ? Math.max(nextSlot, startSlot) : nextSlot;
+      setEndSlot(clampedEnd);
+    },
+    [endSlot, startSlot]
+  );
+
+  const pickBoundary = useCallback(
+    (nextSlot: number): "start" | "end" => {
+      const hasStartHandle = startSlot !== null;
+      const hasEndHandle = endSlot !== null;
+
+      if (hasStartHandle && !hasEndHandle) {
+        const start = startSlot ?? 0;
+        return nextSlot - start >= BOUNDARY_SNAP_DISTANCE_SLOTS ? "end" : "start";
+      }
+      if (!hasStartHandle && hasEndHandle) {
+        const end = endSlot ?? 0;
+        return end - nextSlot >= BOUNDARY_SNAP_DISTANCE_SLOTS ? "start" : "end";
+      }
+      if (!hasStartHandle && !hasEndHandle) {
+        return nextSlot < EMPTY_SLIDER_START_CUTOFF_SLOT ? "start" : "end";
+      }
+
+      if (startSlot === endSlot) {
+        if (nextSlot > (endSlot ?? 0)) return "end";
+        if (nextSlot < (startSlot ?? 0)) return "start";
+        return "end";
+      }
+
+      const start = startSlot ?? 0;
+      const end = endSlot ?? 0;
+      return Math.abs(nextSlot - start) <= Math.abs(nextSlot - end)
+        ? "start"
+        : "end";
+    },
+    [endSlot, startSlot]
+  );
+
+  const handleSliderStart = useCallback(
+    (locationX: number) => {
+      const nextSlot = slotFromLocation(locationX);
+      const boundary = pickBoundary(nextSlot);
+      setActiveBoundary(boundary);
+      setBoundarySlot(boundary, nextSlot);
+      if (inputError) setInputError(null);
+    },
+    [inputError, pickBoundary, setBoundarySlot, slotFromLocation]
+  );
+
+  const handleSliderMove = useCallback(
+    (locationX: number) => {
+      if (!activeBoundary) return;
+      const nextSlot = slotFromLocation(locationX);
+      setBoundarySlot(activeBoundary, nextSlot);
+    },
+    [activeBoundary, setBoundarySlot, slotFromLocation]
+  );
+
+  const handleSliderEnd = useCallback(() => {
+    setActiveBoundary(null);
+  }, []);
+
+  const handleToggleStartBoundary = useCallback(() => {
+    setStartSlot((current) => {
+      if (current !== null) return null;
+      if (endSlot !== null) return clampSlot(endSlot - 8);
+      return 12;
+    });
+    if (inputError) setInputError(null);
+  }, [endSlot, inputError]);
+
+  const handleToggleEndBoundary = useCallback(() => {
+    setEndSlot((current) => {
+      if (current !== null) return null;
+      if (startSlot !== null) {
+        const preferredSlot = startSlot + DEFAULT_END_OFFSET_SLOTS;
+        if (preferredSlot <= RANGE_MAX_SLOT) return preferredSlot;
+        const fallbackSlot = clampSlot(DEFAULT_END_FALLBACK_SLOT);
+        if (fallbackSlot > startSlot) return fallbackSlot;
+        return RANGE_MAX_SLOT;
+      }
+      return clampSlot(DEFAULT_END_SLOT);
+    });
+    if (inputError) setInputError(null);
+  }, [inputError, startSlot]);
+
+  const selectedSegments = useMemo(() => {
+    const startIsOpen = startSlot === null;
+    const endIsOpen = endSlot === null || endSlot === RANGE_MAX_SLOT;
+
+    if (startIsOpen && endIsOpen) return [];
+
+    if (!startIsOpen && endIsOpen) {
+      return [
+        {
+          left: (startSlot / RANGE_SLOT_COUNT) * 100,
+          width: ((RANGE_SLOT_COUNT - startSlot) / RANGE_SLOT_COUNT) * 100,
+        },
+      ];
+    }
+
+    if (startIsOpen && endSlot !== null) {
+      return [
+        {
+          left: 0,
+          width: (endSlot / RANGE_SLOT_COUNT) * 100,
+        },
+      ];
+    }
+
+    if (startSlot === null || endSlot === null || startSlot >= endSlot) return [];
+
+    return [
+      {
+        left: (startSlot / RANGE_SLOT_COUNT) * 100,
+        width: ((endSlot - startSlot) / RANGE_SLOT_COUNT) * 100,
+      },
+    ];
+  }, [endSlot, startSlot]);
+
   const handleAddCustomRange = useCallback(() => {
-    if (!hasStartTime && !hasEndTime) {
+    const effectiveEndSlot = endSlot === RANGE_MAX_SLOT ? null : endSlot;
+
+    if (startSlot === null && effectiveEndSlot === null) {
       setInputError("Set at least a start or end time.");
       return;
     }
 
-    const start = hasStartTime
-      ? normalizeTime(`${HOUR_VALUES[startHourIndex]}:${MINUTE_VALUES[startMinuteIndex]}`)
-      : "";
-    const end = hasEndTime
-      ? normalizeTime(`${HOUR_VALUES[endHourIndex]}:${MINUTE_VALUES[endMinuteIndex]}`)
-      : "";
+    const start = startSlot !== null ? slotToRangeTime(startSlot) : "";
+    const end = effectiveEndSlot !== null ? slotToRangeTime(effectiveEndSlot) : "";
 
-    if (start === null || end === null) {
-      setInputError("Use HH:MM format, for example 09:30.");
+    if (startSlot !== null && effectiveEndSlot !== null && effectiveEndSlot < startSlot) {
+      setInputError("End must be after start.");
       return;
     }
 
@@ -253,14 +312,11 @@ export default function TimeFilterModal({
       if (current.includes(range)) return current;
       return [...current, range];
     });
-    setHasStartTime(false);
-    setHasEndTime(false);
-    setStartHourIndex(9);
-    setStartMinuteIndex(0);
-    setEndHourIndex(12);
-    setEndMinuteIndex(0);
+    setStartSlot(null);
+    setEndSlot(null);
+    setActiveBoundary(null);
     setInputError(null);
-  }, [endHourIndex, endMinuteIndex, hasEndTime, hasStartTime, startHourIndex, startMinuteIndex]);
+  }, [endSlot, startSlot]);
 
   const handleClear = useCallback(() => {
     setLocalSelectedTimeRanges([]);
@@ -310,82 +366,92 @@ export default function TimeFilterModal({
 
           <View style={styles.section}>
             <ThemedText style={styles.sectionTitle}>Custom Range</ThemedText>
-            <ThemedText style={styles.sectionHint}>
-              Use the wheels like an alarm clock. Start or end can stay open, and crossing midnight is supported.
-            </ThemedText>
             <View style={styles.customInputColumn}>
-              <View style={styles.customField}>
-                <View style={styles.customFieldHeader}>
-                  <ThemedText style={styles.customFieldTitle}>Start</ThemedText>
-                  <TouchableOpacity
-                    style={styles.boundaryToggle}
-                    onPress={() => {
-                      setHasStartTime((current) => !current);
-                      if (inputError) setInputError(null);
-                    }}
-                    activeOpacity={0.8}
+              <View style={styles.boundaryRow}>
+                <TouchableOpacity
+                  style={[styles.boundaryPill, startSlot !== null && styles.boundaryPillActive]}
+                  onPress={handleToggleStartBoundary}
+                  activeOpacity={0.8}
+                >
+                  <ThemedText style={styles.boundaryPillLabel}>Start</ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.boundaryPillValue,
+                      startSlot === null && styles.boundaryPillValueMuted,
+                    ]}
                   >
-                    <ThemedText style={styles.boundaryToggleText}>
-                      {hasStartTime ? "Set" : "Open"}
-                    </ThemedText>
-                  </TouchableOpacity>
-                </View>
-                {hasStartTime ? (
-                  <View style={styles.timeWheelRow}>
-                    <TimeWheel
-                      values={HOUR_VALUES}
-                      selectedIndex={startHourIndex}
-                      onChangeIndex={setStartHourIndex}
-                      styles={styles}
-                    />
-                    <ThemedText style={styles.wheelColon}>:</ThemedText>
-                    <TimeWheel
-                      values={MINUTE_VALUES}
-                      selectedIndex={startMinuteIndex}
-                      onChangeIndex={setStartMinuteIndex}
-                      styles={styles}
-                    />
-                  </View>
-                ) : (
-                  <ThemedText style={styles.openBoundaryText}>Open start</ThemedText>
-                )}
+                    {startSlot === null ? "Open" : slotToDisplayTime(startSlot)}
+                  </ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.boundaryPill,
+                    endSlot !== null && !endIsOpenByPosition && styles.boundaryPillActive,
+                  ]}
+                  onPress={handleToggleEndBoundary}
+                  activeOpacity={0.8}
+                >
+                  <ThemedText style={styles.boundaryPillLabel}>End</ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.boundaryPillValue,
+                      (endSlot === null || endIsOpenByPosition) && styles.boundaryPillValueMuted,
+                    ]}
+                  >
+                    {endSlot === null || endIsOpenByPosition ? "Open" : slotToDisplayTime(endSlot)}
+                  </ThemedText>
+                </TouchableOpacity>
               </View>
 
-              <View style={styles.customField}>
-                <View style={styles.customFieldHeader}>
-                  <ThemedText style={styles.customFieldTitle}>End</ThemedText>
-                  <TouchableOpacity
-                    style={styles.boundaryToggle}
-                    onPress={() => {
-                      setHasEndTime((current) => !current);
-                      if (inputError) setInputError(null);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText style={styles.boundaryToggleText}>
-                      {hasEndTime ? "Set" : "Open"}
-                    </ThemedText>
-                  </TouchableOpacity>
-                </View>
-                {hasEndTime ? (
-                  <View style={styles.timeWheelRow}>
-                    <TimeWheel
-                      values={HOUR_VALUES}
-                      selectedIndex={endHourIndex}
-                      onChangeIndex={setEndHourIndex}
-                      styles={styles}
-                    />
-                    <ThemedText style={styles.wheelColon}>:</ThemedText>
-                    <TimeWheel
-                      values={MINUTE_VALUES}
-                      selectedIndex={endMinuteIndex}
-                      onChangeIndex={setEndMinuteIndex}
-                      styles={styles}
-                    />
-                  </View>
-                ) : (
-                  <ThemedText style={styles.openBoundaryText}>Open end</ThemedText>
-                )}
+              <View
+                style={styles.sliderHitArea}
+                onLayout={({ nativeEvent }) => {
+                  setSliderWidth(nativeEvent.layout.width);
+                }}
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => true}
+                onResponderGrant={(event) => {
+                  handleSliderStart(event.nativeEvent.locationX);
+                }}
+                onResponderMove={(event) => {
+                  handleSliderMove(event.nativeEvent.locationX);
+                }}
+                onResponderRelease={handleSliderEnd}
+                onResponderTerminate={handleSliderEnd}
+              >
+                <View style={styles.sliderTrack} pointerEvents="none" />
+                {selectedSegments.map((segment, index) => (
+                  <View
+                    key={`segment-${index}`}
+                    style={[
+                      styles.sliderSelectionSegment,
+                      { left: `${segment.left}%`, width: `${segment.width}%` },
+                    ]}
+                    pointerEvents="none"
+                  />
+                ))}
+                {startSlot !== null ? (
+                  <View
+                    style={[
+                      styles.sliderHandle,
+                      styles.sliderHandleStart,
+                      { left: `${(startSlot / RANGE_SLOT_COUNT) * 100}%` },
+                      activeBoundary === "start" && styles.sliderHandleActive,
+                    ]}
+                    pointerEvents="none"
+                  />
+                ) : null}
+                {endSlot !== null && !endIsOpenByPosition ? (
+                  <View
+                    style={[
+                      styles.sliderHandle,
+                      styles.sliderHandleEnd,
+                      { left: `${(endSlot / RANGE_SLOT_COUNT) * 100}%` },
+                      activeBoundary === "end" && styles.sliderHandleActive,
+                    ]}
+                    pointerEvents="none"
+                  />
+                ) : null}
               </View>
 
               <View style={styles.customAddButtonRow}>
@@ -464,7 +530,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     header: {
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingTop: Platform.OS === "ios" ? 20 : 12,
+      paddingBottom: 12,
       gap: 2,
       borderBottomWidth: 1,
       borderBottomColor: colors.divider,
@@ -500,10 +567,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "700",
       color: colors.text,
     },
-    sectionHint: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
     presetGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -529,96 +592,83 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     presetChipTextSelected: {
       color: colors.pillActiveText,
     },
-    customInputRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
     customInputColumn: {
       gap: 12,
     },
-    customField: {
+    boundaryRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    boundaryPill: {
+      flex: 1,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.divider,
       backgroundColor: colors.background,
-      padding: 10,
-      gap: 8,
-    },
-    customFieldHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    customFieldTitle: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    boundaryToggle: {
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.divider,
-      backgroundColor: colors.cardBackground,
       paddingHorizontal: 10,
-      paddingVertical: 5,
+      paddingVertical: 8,
+      gap: 2,
     },
-    boundaryToggleText: {
+    boundaryPillActive: {
+      borderColor: colors.tint,
+      backgroundColor: colors.searchBackground,
+    },
+    boundaryPillLabel: {
       fontSize: 11,
       fontWeight: "700",
       color: colors.textSecondary,
     },
-    openBoundaryText: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    timeWheelRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-    },
-    wheelContainer: {
-      width: 72,
-      height: WHEEL_CONTAINER_HEIGHT,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.divider,
-      backgroundColor: colors.searchBackground,
-      overflow: "hidden",
-    },
-    wheelContent: {
-      paddingVertical: WHEEL_SIDE_PADDING,
-    },
-    wheelItem: {
-      height: WHEEL_ITEM_HEIGHT,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    wheelItemText: {
-      fontSize: 16,
-      fontWeight: "500",
-      color: colors.textSecondary,
-    },
-    wheelItemTextSelected: {
+    boundaryPillValue: {
+      fontSize: 13,
       fontWeight: "700",
       color: colors.text,
     },
-    wheelSelectionOverlay: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      top: (WHEEL_CONTAINER_HEIGHT - WHEEL_ITEM_HEIGHT) / 2,
-      height: WHEEL_ITEM_HEIGHT,
-      borderTopWidth: 1,
-      borderBottomWidth: 1,
-      borderColor: colors.divider,
-      backgroundColor: "rgba(255,255,255,0.04)",
-    },
-    wheelColon: {
-      fontSize: 20,
-      fontWeight: "700",
+    boundaryPillValueMuted: {
       color: colors.textSecondary,
+    },
+    sliderHitArea: {
+      height: 44,
+      justifyContent: "center",
+      position: "relative",
+    },
+    sliderTrack: {
+      height: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      backgroundColor: colors.searchBackground,
+    },
+    sliderSelectionSegment: {
+      position: "absolute",
+      top: 18,
+      height: 8,
+      borderRadius: 999,
+      backgroundColor: colors.tint,
+      opacity: 0.28,
+    },
+    sliderHandle: {
+      position: "absolute",
+      top: 12,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      marginLeft: -10,
+      borderWidth: 2,
+      shadowColor: colors.tint,
+      shadowOpacity: 0.18,
+      shadowRadius: 3,
+      shadowOffset: { width: 0, height: 1 },
+    },
+    sliderHandleStart: {
+      backgroundColor: colors.tint,
+      borderColor: colors.background,
+    },
+    sliderHandleEnd: {
+      backgroundColor: colors.background,
+      borderColor: colors.tint,
+    },
+    sliderHandleActive: {
+      transform: [{ scale: 1.1 }],
     },
     customAddButtonRow: {
       flexDirection: "row",

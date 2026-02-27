@@ -1,8 +1,9 @@
 import datetime as dt
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UniqueConstraint
-from sqlmodel import Field, Relationship, SQLModel
+from sqlalchemy import String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlmodel import Column, Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from .cinema import Cinema
@@ -18,7 +19,9 @@ __all__ = [
 # Shared properties
 class ShowtimeBase(SQLModel):
     datetime: dt.datetime = Field(index=True)
+    end_datetime: dt.datetime | None = None
     ticket_link: str | None = None
+    subtitles: list[str] | None = Field(sa_column=Column(ARRAY(String)), default=None)
 
 
 # Properties to receive on showtime creation

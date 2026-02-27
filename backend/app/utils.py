@@ -51,7 +51,10 @@ def send_email(
     )
     for attachment in attachments or []:
         message.attach(**attachment)
-    smtp_options = {"host": settings.SMTP_HOST, "port": settings.SMTP_PORT}
+    smtp_options: dict[str, Any] = {
+        "host": settings.SMTP_HOST,
+        "port": settings.SMTP_PORT,
+    }
     if settings.SMTP_TLS:
         smtp_options["tls"] = True
     elif settings.SMTP_SSL:
@@ -60,6 +63,8 @@ def send_email(
         smtp_options["user"] = settings.SMTP_USER
     if settings.SMTP_PASSWORD:
         smtp_options["password"] = settings.SMTP_PASSWORD
+    if settings.SMTP_TIMEOUT_SECONDS > 0:
+        smtp_options["timeout"] = settings.SMTP_TIMEOUT_SECONDS
     response = message.send(to=email_to, smtp=smtp_options)
     logger.info(f"send email result: {response}")
 
@@ -159,6 +164,7 @@ def to_amsterdam_time(dt: str) -> datetime:
 def clean_title(title: str) -> str:
     title = title.lower()
     title = re.sub(r"\(.*\)", "", title)  # Remove everything in parentheses
-    title = re.sub(r"\b-.*$", "", title)  # Remove everything starting from "-"
+    # Only trim trailing subtitle-like suffixes when dash acts as a separator.
+    title = re.sub(r"\s+[-–—]\s+.*$", "", title)
     title = re.sub(r"\s+", " ", title).strip()  # Normalize whitespace
     return title

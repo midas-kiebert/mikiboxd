@@ -25,7 +25,13 @@ export async function registerPushTokenForCurrentDevice(): Promise<string | null
 
   // Ask the user only when permission is not already granted.
   if (finalStatus !== "granted") {
-    const requested = await Notifications.requestPermissionsAsync();
+    const requested = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    });
     finalStatus = requested.status;
   }
 

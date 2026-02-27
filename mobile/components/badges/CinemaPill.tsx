@@ -60,12 +60,28 @@ export default function CinemaPill({ cinema, variant = "default" }: CinemaPillPr
         };
 
   // Backend provides a color key string; map it to the theme palette safely.
+  const paletteByKey: Record<CinemaColorKey, CinemaColorPalette> = {
+    pink: colors.pink,
+    purple: colors.purple,
+    green: colors.green,
+    orange: colors.orange,
+    yellow: colors.yellow,
+    blue: colors.blue,
+    teal: colors.teal,
+    red: colors.red,
+    cyan: colors.cyan,
+  };
   const cinemaColorKey = cinema.badge_bg_color as CinemaColorKey;
-  const cinemaPalette = (colors as Record<CinemaColorKey, CinemaColorPalette>)[
-    cinemaColorKey
-  ];
-  const cinemaBackground = cinemaPalette?.primary ?? colors.pillBackground;
-  const cinemaText = cinemaPalette?.secondary ?? colors.textSecondary;
+  const fallbackPalettes = Object.values(paletteByKey);
+  const fallbackPalette =
+    fallbackPalettes[
+      Math.abs(
+        cinema.name.split("").reduce((hash, char) => hash * 31 + char.charCodeAt(0), 0)
+      ) % fallbackPalettes.length
+    ];
+  const cinemaPalette = paletteByKey[cinemaColorKey] ?? fallbackPalette;
+  const cinemaBackground = cinemaPalette.primary;
+  const cinemaText = cinemaPalette.secondary;
 
   const handlePress = (event: GestureResponderEvent) => {
     event.stopPropagation();
@@ -103,28 +119,30 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderWidth: 1,
       borderRadius: 3,
       justifyContent: "center",
+      alignItems: "center",
       maxWidth: "65%",
       paddingHorizontal: 6,
     },
     text: {
       includeFontPadding: false,
-      textAlignVertical: "center",
     },
     compactContainer: {
-      borderRadius: 2,
-      height: 12,
+      borderRadius: 3,
+      minHeight: 14,
+      paddingVertical: 1,
       paddingHorizontal: 5,
     },
     compactText: {
       fontSize: 9,
-      lineHeight: 12,
+      lineHeight: 10,
     },
     defaultContainer: {
-      height: 16,
+      minHeight: 18,
+      paddingVertical: 1,
       paddingHorizontal: 6,
     },
     defaultText: {
       fontSize: 11,
-      lineHeight: 14,
+      lineHeight: 12,
     },
   });

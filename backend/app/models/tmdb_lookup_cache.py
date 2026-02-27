@@ -20,5 +20,6 @@ class TmdbLookupCache(SQLModel, table=True):
     lookup_hash: str = Field(index=True)
     lookup_payload: str
     tmdb_id: int | None = None
+    confidence: float | None = None
     created_at: dt.datetime = Field(index=True)
     updated_at: dt.datetime = Field(index=True)

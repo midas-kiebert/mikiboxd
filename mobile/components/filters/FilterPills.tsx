@@ -1,10 +1,15 @@
 /**
  * Mobile filter UI component: Filter Pills.
  */
+import { useRef } from "react";
 import { FlatList, StyleSheet, TouchableOpacity, View } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import {
+  GLOBAL_LONG_PRESS_DELAY_MS,
+  triggerLongPressHaptic,
+} from "@/utils/long-press";
 
 type FilterOption<TId extends string = string> = {
   id: TId;
@@ -21,11 +26,17 @@ type CompoundRightToggle = {
   onPress: () => void;
 };
 
+export type FilterPillLongPressPosition = {
+  pageX: number;
+  pageY: number;
+};
+
 type FilterPillsProps<TId extends string = string> = {
   filters: ReadonlyArray<FilterOption<TId>>;
   // For "single select" mode you pass a real id; for "multi active" mode most screens pass "".
   selectedId: TId | "";
   onSelect: (id: TId) => void;
+  onLongPressSelect?: (id: TId, position: FilterPillLongPressPosition) => boolean | void;
   activeIds?: ReadonlyArray<TId>;
   compoundRightToggle?: CompoundRightToggle;
 };
@@ -34,12 +45,50 @@ export default function FilterPills<TId extends string = string>({
   filters,
   selectedId,
   onSelect,
+  onLongPressSelect,
   activeIds,
   compoundRightToggle,
 }: FilterPillsProps<TId>) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  const suppressNextPressIdRef = useRef<TId | null>(null);
+  const pillSizeByIdRef = useRef<Map<TId, { width: number; height: number }>>(new Map());
+
+  const handlePress = (id: TId) => {
+    if (suppressNextPressIdRef.current === id) {
+      suppressNextPressIdRef.current = null;
+      return;
+    }
+    onSelect(id);
+  };
+
+  const handleLongPress = (
+    id: TId,
+    pageX: number,
+    pageY: number,
+    locationX: number,
+    locationY: number
+  ) => {
+    if (!onLongPressSelect) return;
+    const size = pillSizeByIdRef.current.get(id);
+    const anchorPageX = size ? pageX - locationX + size.width / 2 : pageX;
+    const anchorPageY = size ? pageY - locationY + size.height : pageY;
+    const wasHandled = onLongPressSelect(id, { pageX: anchorPageX, pageY: anchorPageY }) === true;
+    if (wasHandled) {
+      triggerLongPressHaptic();
+      suppressNextPressIdRef.current = id;
+    }
+  };
+
+  const handlePressOut = (id: TId) => {
+    if (suppressNextPressIdRef.current !== id) return;
+    setTimeout(() => {
+      if (suppressNextPressIdRef.current === id) {
+        suppressNextPressIdRef.current = null;
+      }
+    }, 0);
+  };
 
   // Nothing to render when the screen has no available filters/tabs.
   if (filters.length === 0) return null;
@@ -70,7 +119,22 @@ export default function FilterPills<TId extends string = string>({
                       ? { backgroundColor: item.activeBackgroundColor }
                       : null,
                   ]}
-                  onPress={() => onSelect(item.id)}
+                  onPress={() => handlePress(item.id)}
+                  onLongPress={({ nativeEvent }) =>
+                    handleLongPress(
+                      item.id,
+                      nativeEvent.pageX,
+                      nativeEvent.pageY,
+                      nativeEvent.locationX,
+                      nativeEvent.locationY
+                    )
+                  }
+                  delayLongPress={GLOBAL_LONG_PRESS_DELAY_MS}
+                  onPressOut={() => handlePressOut(item.id)}
+                  onLayout={(event) => {
+                    const { width, height } = event.nativeEvent.layout;
+                    pillSizeByIdRef.current.set(item.id, { width, height });
+                  }}
                   activeOpacity={1}
                 >
                   <View style={styles.pillContent}>
@@ -114,7 +178,22 @@ export default function FilterPills<TId extends string = string>({
                   ? { borderWidth: 1, borderColor: item.activeBorderColor }
                   : null,
               ]}
-              onPress={() => onSelect(item.id)}
+              onPress={() => handlePress(item.id)}
+              onLongPress={({ nativeEvent }) =>
+                handleLongPress(
+                  item.id,
+                  nativeEvent.pageX,
+                  nativeEvent.pageY,
+                  nativeEvent.locationX,
+                  nativeEvent.locationY
+                )
+              }
+              delayLongPress={GLOBAL_LONG_PRESS_DELAY_MS}
+              onPressOut={() => handlePressOut(item.id)}
+              onLayout={(event) => {
+                const { width, height } = event.nativeEvent.layout;
+                pillSizeByIdRef.current.set(item.id, { width, height });
+              }}
               activeOpacity={1}
             >
               <View style={styles.pillContent}>

@@ -11,10 +11,12 @@ import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { useFetchFavoriteFilterPreset } from 'shared/hooks/useFetchFavoriteFilterPreset';
 
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
+import CinemaPresetQuickPopover from '@/components/filters/CinemaPresetQuickPopover';
 import DayFilterModal from '@/components/filters/DayFilterModal';
 import FilterPresetsModal, {
   type PageFilterPresetState,
 } from '@/components/filters/FilterPresetsModal';
+import { type FilterPillLongPressPosition } from '@/components/filters/FilterPills';
 import TimeFilterModal from '@/components/filters/TimeFilterModal';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import {
@@ -52,6 +54,9 @@ export default function MainShowtimesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   // Controls visibility of the cinema-filter modal.
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
+  const [cinemaPresetPopoverVisible, setCinemaPresetPopoverVisible] = useState(false);
+  const [cinemaPresetPopoverAnchor, setCinemaPresetPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
   // Controls visibility of the time-filter modal.
@@ -296,6 +301,16 @@ export default function MainShowtimesScreen() {
     setSelectedTimeRanges(filters.time_ranges ?? []);
   };
 
+  const handleLongPressFilter = (
+    filterId: MainShowtimesFilterId,
+    position: FilterPillLongPressPosition
+  ) => {
+    if (filterId !== 'cinemas') return false;
+    setCinemaPresetPopoverAnchor(position);
+    setCinemaPresetPopoverVisible(true);
+    return true;
+  };
+
   const pillFilters = useMemo(() => sharedPillFilters, [sharedPillFilters]);
 
   const activeFilterIds = useMemo<MainShowtimesFilterId[]>(
@@ -320,6 +335,7 @@ export default function MainShowtimesScreen() {
         filters={pillFilters}
         activeFilterIds={activeFilterIds}
         onToggleFilter={handleToggleFilter}
+        onLongPressFilter={handleLongPressFilter}
         audienceToggle={
           shouldShowAudienceToggle
             ? {
@@ -336,6 +352,12 @@ export default function MainShowtimesScreen() {
             ? 'No showtimes in your agenda'
             : 'No showtimes found'
         }
+      />
+      <CinemaPresetQuickPopover
+        visible={cinemaPresetPopoverVisible}
+        anchor={cinemaPresetPopoverAnchor}
+        onClose={() => setCinemaPresetPopoverVisible(false)}
+        maxPresets={6}
       />
       <CinemaFilterModal
         visible={cinemaModalVisible}

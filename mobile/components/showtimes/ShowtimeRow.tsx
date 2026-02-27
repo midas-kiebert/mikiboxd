@@ -21,15 +21,17 @@ type ShowtimeRowProps = {
   showtime: ShowtimeBase;
   variant?: "compact" | "default";
   showFriends?: boolean;
+  alignCinemaRight?: boolean;
 };
 
 const formatShowtime = (datetime: string) =>
-  DateTime.fromISO(datetime).toFormat("ccc, LLL d, HH:mm");
+  DateTime.fromISO(datetime).toFormat("ccc d LLL • HH:mm");
 
 export default function ShowtimeRow({
   showtime,
   variant = "default",
   showFriends = false,
+  alignCinemaRight = false,
 }: ShowtimeRowProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
@@ -39,10 +41,14 @@ export default function ShowtimeRow({
 
   // Render/output using the state and derived values prepared above.
   return (
-    <View style={[styles.container, isCompact ? styles.compactContainer : styles.defaultContainer]}>
-      <View style={styles.header}>
+      <View style={[styles.container, isCompact ? styles.compactContainer : styles.defaultContainer]}>
+      <View style={[styles.header, alignCinemaRight && styles.headerRightAligned]}>
         <ThemedText
-          style={[styles.time, isCompact ? styles.timeCompact : styles.timeDefault]}
+          style={[
+            styles.time,
+            isCompact ? styles.timeCompact : styles.timeDefault,
+            alignCinemaRight && styles.timeRightAligned,
+          ]}
           numberOfLines={1}
         >
           {formatShowtime(showtime.datetime)}
@@ -77,9 +83,16 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "center",
       gap: 6,
     },
+    headerRightAligned: {
+      justifyContent: "space-between",
+    },
     time: {
       color: colors.text,
       flexShrink: 1,
+    },
+    timeRightAligned: {
+      flex: 1,
+      minWidth: 0,
     },
     timeCompact: {
       fontSize: 11,

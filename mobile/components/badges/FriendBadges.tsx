@@ -20,6 +20,7 @@ type FriendBadgesProps = {
   friendsGoing?: UserPublic[];
   friendsInterested?: UserPublic[];
   variant?: "compact" | "default";
+  maxVisible?: number;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -102,6 +103,7 @@ export default function FriendBadges({
   friendsGoing = [],
   friendsInterested = [],
   variant = "default",
+  maxVisible,
   style,
 }: FriendBadgesProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
@@ -120,13 +122,25 @@ export default function FriendBadges({
       accentColor: colors.friendInterested.secondary,
     })),
   ];
+  const visibleItems = typeof maxVisible === "number" ? items.slice(0, Math.max(maxVisible, 0)) : items;
+  const hiddenCount = Math.max(items.length - visibleItems.length, 0);
+  const overflowSizeStyles =
+    variant === "compact"
+      ? {
+          badge: styles.compactBadge,
+          badgeText: styles.compactBadgeText,
+        }
+      : {
+          badge: styles.defaultBadge,
+          badgeText: styles.defaultBadgeText,
+        };
 
   if (items.length === 0) return null;
 
   // Render/output using the state and derived values prepared above.
   return (
     <View style={[styles.row, variant === "compact" ? styles.rowCompact : styles.rowDefault, style]}>
-      {items.map(({ friend, backgroundColor, accentColor }) => (
+      {visibleItems.map(({ friend, backgroundColor, accentColor }) => (
         <FriendBadge
           key={friend.id}
           friendId={friend.id}
@@ -137,6 +151,23 @@ export default function FriendBadges({
           variant={variant}
         />
       ))}
+      {hiddenCount > 0 ? (
+        <View
+          style={[
+            styles.badge,
+            overflowSizeStyles.badge,
+            styles.overflowBadge,
+            { borderColor: colors.cardBorder },
+          ]}
+        >
+          <ThemedText
+            style={[styles.badgeText, overflowSizeStyles.badgeText, styles.overflowBadgeText]}
+            numberOfLines={1}
+          >
+            +{hiddenCount}
+          </ThemedText>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -153,6 +184,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     rowCompact: {
       gap: 4,
       rowGap: 1,
+      flexWrap: "nowrap",
+      overflow: "hidden",
     },
     rowDefault: {
       gap: 6,
@@ -166,7 +199,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flexDirection: "row",
       columnGap: 4,
       paddingHorizontal: 6,
-      maxWidth: 140,
+      maxWidth: 160,
+      minWidth: 0,
+      overflow: "hidden",
     },
     statusDot: {
       borderRadius: 999,
@@ -174,12 +209,15 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     badgeText: {
       fontWeight: "600",
-      textAlignVertical: "center",
+      includeFontPadding: false,
+      flexShrink: 1,
+      minWidth: 0,
     },
     compactBadge: {
-      height: 12,
+      minHeight: 14,
       paddingHorizontal: 4,
-      maxWidth: 90,
+      paddingVertical: 1,
+      maxWidth: 100,
     },
     compactStatusDot: {
       width: 4,
@@ -187,12 +225,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     compactBadgeText: {
       fontSize: 9,
-      lineHeight: 12,
+      lineHeight: 10,
       fontWeight: "500",
     },
     defaultBadge: {
-      height: 16,
+      minHeight: 18,
       paddingHorizontal: 6,
+      paddingVertical: 1,
     },
     defaultStatusDot: {
       width: 6,
@@ -200,6 +239,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     defaultBadgeText: {
       fontSize: 11,
-      lineHeight: 14,
+      lineHeight: 12,
+    },
+    overflowBadge: {
+      backgroundColor: colors.pillBackground,
+      justifyContent: "center",
+    },
+    overflowBadgeText: {
+      color: colors.textSecondary,
     },
   });

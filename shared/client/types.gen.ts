@@ -96,6 +96,8 @@ export type MovieLoggedIn = {
   letterboxd_slug?: string | null
   directors?: Array<string> | null
   release_year?: number | null
+  duration?: number | null
+  languages?: Array<string> | null
   showtimes: Array<ShowtimeInMovieLoggedIn>
 }
 
@@ -107,6 +109,8 @@ export type MovieSummaryLoggedIn = {
   letterboxd_slug?: string | null
   directors?: Array<string> | null
   release_year?: number | null
+  duration?: number | null
+  languages?: Array<string> | null
   showtimes: Array<ShowtimeInMovieLoggedIn>
   cinemas: Array<CinemaPublic>
   last_showtime_datetime: string | null
@@ -130,7 +134,9 @@ export type PushTokenRegister = {
 
 export type ShowtimeInMovieLoggedIn = {
   datetime: string
+  end_datetime?: string | null
   ticket_link?: string | null
+  subtitles?: Array<string> | null
   id: number
   cinema: CinemaPublic
   friends_going: Array<UserPublic>
@@ -140,7 +146,9 @@ export type ShowtimeInMovieLoggedIn = {
 
 export type ShowtimeLoggedIn = {
   datetime: string
+  end_datetime?: string | null
   ticket_link?: string | null
+  subtitles?: Array<string> | null
   id: number
   movie: MovieSummaryLoggedIn
   cinema: CinemaPublic
@@ -187,13 +195,17 @@ export type TmdbCacheOverrideRequest = {
   director_names?: Array<string>
   actor_name?: string | null
   year?: number | null
+  duration_minutes?: number | null
+  spoken_languages?: Array<string> | null
   tmdb_id?: number | null
+  confidence?: number | null
 }
 
 export type TmdbCacheOverrideResponse = {
   lookup_hash: string
   lookup_payload: string
   tmdb_id: number | null
+  confidence: number | null
 }
 
 export type Token = {

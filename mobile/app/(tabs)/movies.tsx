@@ -19,7 +19,10 @@ import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
-import FilterPills from '@/components/filters/FilterPills';
+import CinemaPresetQuickPopover from '@/components/filters/CinemaPresetQuickPopover';
+import FilterPills, {
+  type FilterPillLongPressPosition,
+} from '@/components/filters/FilterPills';
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import DayFilterModal from '@/components/filters/DayFilterModal';
 import FilterPresetsModal, {
@@ -52,6 +55,9 @@ export default function MovieScreen() {
   const [refreshing, setRefreshing] = useState(false);
   // Controls visibility of the cinema-filter modal.
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
+  const [cinemaPresetPopoverVisible, setCinemaPresetPopoverVisible] = useState(false);
+  const [cinemaPresetPopoverAnchor, setCinemaPresetPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
   // Controls visibility of the time-filter modal.
@@ -242,6 +248,16 @@ export default function MovieScreen() {
     setSelectedTimeRanges(filters.time_ranges ?? []);
   };
 
+  const handleLongPressFilter = (
+    filterId: SharedTabFilterId,
+    position: FilterPillLongPressPosition
+  ) => {
+    if (filterId !== 'cinemas') return false;
+    setCinemaPresetPopoverAnchor(position);
+    setCinemaPresetPopoverVisible(true);
+    return true;
+  };
+
   const pillFilters = useMemo(
     () => {
       const filters = buildSharedTabPillFilters({
@@ -296,7 +312,14 @@ export default function MovieScreen() {
         filters={pillFilters}
         selectedId=""
         onSelect={handleSelectFilter}
+        onLongPressSelect={handleLongPressFilter}
         activeIds={activeFilterIds}
+      />
+      <CinemaPresetQuickPopover
+        visible={cinemaPresetPopoverVisible}
+        anchor={cinemaPresetPopoverAnchor}
+        onClose={() => setCinemaPresetPopoverVisible(false)}
+        maxPresets={6}
       />
       <CinemaFilterModal
         visible={cinemaModalVisible}

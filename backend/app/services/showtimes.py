@@ -9,6 +9,7 @@ from app.converters import showtime as showtime_converters
 from app.core.enums import GoingStatus
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import friendship as friendship_crud
+from app.crud import movie as movies_crud
 from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
@@ -28,6 +29,39 @@ from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_visibility import ShowtimeVisibilityPublic
 from app.services import push_notifications
 from app.utils import now_amsterdam_naive
+
+
+def _apply_upsert_update(
+    *,
+    existing_showtime: Showtime,
+    showtime_create: ShowtimeCreate,
+) -> None:
+    existing_showtime.movie_id = showtime_create.movie_id
+    existing_showtime.datetime = showtime_create.datetime
+    existing_showtime.ticket_link = showtime_create.ticket_link
+    if showtime_create.end_datetime is not None:
+        existing_showtime.end_datetime = showtime_create.end_datetime
+    if showtime_create.subtitles is not None:
+        existing_showtime.subtitles = showtime_create.subtitles
+
+
+def _apply_end_datetime_fallback(
+    *,
+    session: Session,
+    showtime_create: ShowtimeCreate,
+    existing_showtime: Showtime | None = None,
+) -> None:
+    if showtime_create.end_datetime is not None:
+        return
+    if existing_showtime is not None and existing_showtime.end_datetime is not None:
+        return
+
+    movie = movies_crud.get_movie_by_id(session=session, id=showtime_create.movie_id)
+    if movie is None or movie.duration is None or movie.duration <= 0:
+        return
+    showtime_create.end_datetime = showtime_create.datetime + timedelta(
+        minutes=movie.duration + 15
+    )
 
 
 def get_showtime_by_id(
@@ -311,11 +345,18 @@ def insert_showtime_if_not_exists(
         showtime_create=showtime_create,
         delta=timedelta(hours=1),
     )
+    _apply_end_datetime_fallback(
+        session=session,
+        showtime_create=showtime_create,
+        existing_showtime=existing_showtime,
+    )
 
     if commit:
         if existing_showtime is not None:
             try:
                 existing_showtime.datetime = showtime_create.datetime
+                if showtime_create.end_datetime is not None:
+                    existing_showtime.end_datetime = showtime_create.end_datetime
                 session.commit()
                 return True
             except IntegrityError as e:
@@ -349,6 +390,8 @@ def insert_showtime_if_not_exists(
         with session.begin_nested():
             if existing_showtime is not None:
                 existing_showtime.datetime = showtime_create.datetime
+                if showtime_create.end_datetime is not None:
+                    existing_showtime.end_datetime = showtime_create.end_datetime
             else:
                 showtimes_crud.create_showtime(
                     session=session,
@@ -377,24 +420,40 @@ def upsert_showtime(
     If the only close match differs by movie_id (for example after a TMDB cache
     correction), reassign that existing showtime to the new movie_id.
     """
-    existing_showtime = showtimes_crud.get_showtime_close_in_time(
+    # Prefer exact unique match so metadata fallbacks (for example end_datetime)
+    # can be applied on unchanged showtimes instead of hitting unique-violation
+    # recovery paths that return the row without updates.
+    existing_showtime = showtimes_crud.get_showtime_by_unique_fields(
         session=session,
-        showtime_create=showtime_create,
-        delta=timedelta(hours=1),
+        movie_id=showtime_create.movie_id,
+        cinema_id=showtime_create.cinema_id,
+        datetime=showtime_create.datetime,
     )
+    if existing_showtime is None:
+        existing_showtime = showtimes_crud.get_showtime_close_in_time(
+            session=session,
+            showtime_create=showtime_create,
+            delta=timedelta(hours=1),
+        )
     if existing_showtime is None:
         existing_showtime = showtimes_crud.get_showtime_reassignment_candidate(
             session=session,
             showtime_create=showtime_create,
             delta=timedelta(hours=1),
         )
+    _apply_end_datetime_fallback(
+        session=session,
+        showtime_create=showtime_create,
+        existing_showtime=existing_showtime,
+    )
 
     if commit:
         if existing_showtime is not None:
             try:
-                existing_showtime.movie_id = showtime_create.movie_id
-                existing_showtime.datetime = showtime_create.datetime
-                existing_showtime.ticket_link = showtime_create.ticket_link
+                _apply_upsert_update(
+                    existing_showtime=existing_showtime,
+                    showtime_create=showtime_create,
+                )
                 session.commit()
                 session.refresh(existing_showtime)
                 return existing_showtime
@@ -441,9 +500,10 @@ def upsert_showtime(
     try:
         with session.begin_nested():
             if existing_showtime is not None:
-                existing_showtime.movie_id = showtime_create.movie_id
-                existing_showtime.datetime = showtime_create.datetime
-                existing_showtime.ticket_link = showtime_create.ticket_link
+                _apply_upsert_update(
+                    existing_showtime=existing_showtime,
+                    showtime_create=showtime_create,
+                )
                 session.flush()
                 return existing_showtime
 

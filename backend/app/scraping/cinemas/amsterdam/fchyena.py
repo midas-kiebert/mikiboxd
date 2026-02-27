@@ -12,7 +12,8 @@ from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
-from app.scraping.tmdb import find_tmdb_id, get_tmdb_movie_details
+from app.scraping.tmdb_lookup import find_tmdb_id
+from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
@@ -23,7 +24,8 @@ CINEMA = "FC Hyena"
 def clean_title(title: str) -> str:
     title = title.lower()
     title = re.sub(r"\(.*\)", "", title)  # Remove everything in parentheses
-    title = re.sub(r"\b-.*$", "", title)  # Remove everything starting from "-"
+    # Only trim trailing subtitle-like suffixes when dash acts as a separator.
+    title = re.sub(r"\s+[-–—]\s+.*$", "", title)
     title = re.sub(r"\s+", " ", title).strip()  # Normalize whitespace
     return title
 
@@ -97,6 +99,12 @@ class FCHyenaScraper(BaseCinemaScraper):
             directors=tmdb_directors if tmdb_directors else None,
             release_year=(
                 tmdb_details.release_year if tmdb_details is not None else None
+            ),
+            duration=(
+                tmdb_details.runtime_minutes if tmdb_details is not None else None
+            ),
+            languages=(
+                tmdb_details.spoken_languages if tmdb_details is not None else None
             ),
             original_title=(
                 tmdb_details.original_title if tmdb_details is not None else None

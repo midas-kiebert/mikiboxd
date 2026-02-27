@@ -14,6 +14,9 @@ class Film(BaseModel):
     title: str
     cast: list[str] | None
     directors: list[str] | None
+    duration: int | None = None
+    releaseYear: int | None = None
+    spokenLanguages: list[str] | None = None
 
 
 class FilmResponse(BaseModel):
@@ -50,6 +53,9 @@ def _movies_payload() -> dict:
     title
     cast
     directors
+    duration
+    releaseYear
+    spokenLanguages
     }
     fragment pageInfo on ListResponse {
     __typename
@@ -132,3 +138,4 @@ def get_movies_json() -> list[Film]:
 
 if __name__ == "__main__":
     movies = get_movies_json()
+    print(movies[0])

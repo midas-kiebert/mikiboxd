@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   Modal,
+  Platform,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -104,6 +105,7 @@ type DayShortcutChipProps = {
   label: string;
   selected: boolean;
   onPress: () => void;
+  compact?: boolean;
   styles: DayModalStyles;
 };
 
@@ -111,15 +113,26 @@ const DayShortcutChip = memo(function DayShortcutChip({
   label,
   selected,
   onPress,
+  compact = false,
   styles,
 }: DayShortcutChipProps) {
   return (
     <TouchableOpacity
-      style={[styles.shortcutChip, selected && styles.shortcutChipSelected]}
+      style={[
+        styles.shortcutChip,
+        compact && styles.weekdayShortcutChip,
+        selected && styles.shortcutChipSelected,
+      ]}
       onPress={onPress}
       activeOpacity={0.8}
     >
-      <ThemedText style={[styles.shortcutChipText, selected && styles.shortcutChipTextSelected]}>
+      <ThemedText
+        style={[
+          styles.shortcutChipText,
+          compact && styles.weekdayShortcutChipText,
+          selected && styles.shortcutChipTextSelected,
+        ]}
+      >
         {label}
       </ThemedText>
     </TouchableOpacity>
@@ -347,13 +360,14 @@ export default function DayFilterModal({
               </View>
               <View style={styles.shortcutSection}>
                 <ThemedText style={styles.shortcutSectionTitle}>Days of Week</ThemedText>
-                <View style={styles.shortcutChipWrap}>
+                <View style={styles.weekdayShortcutChipWrap}>
                   {WEEKDAY_DAY_OPTIONS.map((option) => (
                     <DayShortcutChip
                       key={option.token}
                       label={option.shortLabel}
                       selected={localSelectedDaySet.has(option.token)}
                       onPress={() => handleToggleDay(option.token)}
+                      compact
                       styles={styles}
                     />
                   ))}
@@ -415,7 +429,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     header: {
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingTop: Platform.OS === "ios" ? 20 : 12,
+      paddingBottom: 12,
       gap: 2,
       borderBottomWidth: 1,
       borderBottomColor: colors.divider,
@@ -466,6 +481,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flexWrap: "wrap",
       gap: 8,
     },
+    weekdayShortcutChipWrap: {
+      flexDirection: "row",
+      flexWrap: "nowrap",
+      gap: 4,
+    },
     shortcutChip: {
       borderRadius: 12,
       borderWidth: 1,
@@ -473,6 +493,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.background,
       paddingHorizontal: 10,
       paddingVertical: 6,
+    },
+    weekdayShortcutChip: {
+      flex: 1,
+      minWidth: 0,
+      paddingHorizontal: 6,
+      paddingVertical: 5,
+      borderRadius: 10,
     },
     shortcutChipSelected: {
       borderColor: colors.tint,
@@ -482,6 +509,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 12,
       fontWeight: "700",
       color: colors.text,
+    },
+    weekdayShortcutChipText: {
+      fontSize: Platform.OS === "ios" ? 10 : 11,
+      textAlign: "center",
     },
     shortcutChipTextSelected: {
       color: colors.pillActiveText,

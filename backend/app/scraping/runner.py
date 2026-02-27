@@ -1,11 +1,13 @@
 import json
 import re
 import sys
+import threading
 import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from html import escape
+from pathlib import Path
 from typing import Any
 
 from rapidfuzz import fuzz
@@ -13,6 +15,7 @@ from sqlalchemy import func
 from sqlmodel import Session, col, delete, select
 
 from app.api.deps import get_db_context
+from app.core.config import settings
 from app.models.cinema import Cinema
 from app.models.movie import Movie
 from app.models.scrape_run import ScrapeRun, ScrapeRunStatus
@@ -34,7 +37,10 @@ from app.scraping.scrape import (
     run_cinema_scrapers,
     scrape_cineville,
 )
-from app.scraping.tmdb import consume_tmdb_lookup_events, reset_tmdb_runtime_state
+from app.scraping.tmdb_runtime import (
+    consume_tmdb_lookup_events,
+    reset_tmdb_runtime_state,
+)
 from app.services import scrape_sync as scrape_sync_service
 from app.services.scrape_sync import DeletedShowtimeInfo
 from app.utils import clean_title, now_amsterdam_naive, send_email
@@ -46,6 +52,10 @@ CINEVILLE_STREAM_PREFIX = "cineville:"
 CINEMA_SCRAPER_STREAM_PREFIX = "cinema_scraper:"
 SINGLE_TOKEN_SIMILARITY_THRESHOLD = 92.0
 TITLE_SIMILARITY_THRESHOLD = 85.0
+TMDB_LOW_CONFIDENCE_THRESHOLD = 80.0
+TMDB_RECAP_ATTACHMENT_MAX_ITEMS = 300
+TMDB_RESOLUTION_AUDIT_DIR_NAME = "tmp_tmdb_resolution_audit"
+TMDB_MARKDOWN_CANDIDATE_LIMIT = 5
 
 
 @dataclass(frozen=True)
@@ -458,6 +468,39 @@ def _tmdb_miss_title_counts(tmdb_misses: list[dict[str, Any]]) -> list[tuple[str
     return ranked
 
 
+def _tmdb_low_confidence_lookups(
+    tmdb_lookups: list[dict[str, Any]],
+    *,
+    threshold: float,
+) -> list[dict[str, Any]]:
+    low_confidence: list[dict[str, Any]] = []
+    for lookup in tmdb_lookups:
+        if lookup.get("tmdb_id") is None:
+            continue
+        confidence_raw = lookup.get("confidence")
+        if isinstance(confidence_raw, int | float):
+            confidence = float(confidence_raw)
+        elif isinstance(confidence_raw, str):
+            try:
+                confidence = float(confidence_raw)
+            except ValueError:
+                continue
+        else:
+            continue
+        if confidence >= threshold:
+            continue
+        enriched_lookup = dict(lookup)
+        enriched_lookup["confidence"] = confidence
+        low_confidence.append(enriched_lookup)
+    return sorted(
+        low_confidence,
+        key=lambda item: (
+            float(item.get("confidence", 0.0)),
+            str(item.get("timestamp", "")),
+        ),
+    )
+
+
 def _error_stage_counts(errors: list[str]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for error in errors:
@@ -605,6 +648,617 @@ def _render_letterboxd_failure_item(failure: dict[str, Any]) -> str:
     return "<li>" + escape(" | ".join(parts)) + "</li>"
 
 
+def _render_low_confidence_tmdb_item(item: dict[str, Any]) -> str:
+    payload_raw = item.get("payload")
+    payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
+    decision_raw = item.get("decision")
+    decision: dict[str, Any] = decision_raw if isinstance(decision_raw, dict) else {}
+    tmdb_id_raw = item.get("tmdb_id")
+    tmdb_link = None
+    if isinstance(tmdb_id_raw, int) or (
+        isinstance(tmdb_id_raw, str) and tmdb_id_raw.isdigit()
+    ):
+        tmdb_link = f"https://www.themoviedb.org/movie/{tmdb_id_raw}"
+
+    reason = str(decision.get("reason", "selected_best_candidate"))
+    reason_text = {
+        "selected_best_candidate": "best candidate selected",
+        "ambiguous_good_options": "selected despite close alternatives",
+    }.get(reason, reason.replace("_", " "))
+    best_raw = decision.get("best")
+    best: dict[str, Any] = best_raw if isinstance(best_raw, dict) else {}
+    best_title = str(best.get("title", "")).strip()
+    best_year = best.get("release_year")
+    best_summary = ""
+    if best_title:
+        best_summary = f" | best={escape(best_title)}"
+        if isinstance(best_year, int):
+            best_summary += f" ({best_year})"
+
+    directors_raw = payload.get("director_names")
+    directors = directors_raw if isinstance(directors_raw, list) else []
+    actors_raw = payload.get("actor_names")
+    actors = actors_raw if isinstance(actors_raw, list) else []
+    year_raw = payload.get("year")
+    duration_raw = payload.get("duration_minutes")
+    langs_raw = payload.get("spoken_languages")
+    langs = langs_raw if isinstance(langs_raw, list) else []
+
+    line = (
+        f"{escape(str(item.get('timestamp', 'unknown_time')))} | "
+        f"title={escape(str(payload.get('title_query', '<unknown>')))} | "
+        f"tmdb_id={escape(str(tmdb_id_raw))} | "
+        f"confidence=<b>{float(item.get('confidence', 0.0)):.1f}</b> | "
+        f"reason={escape(reason_text)}"
+        f"{best_summary} | "
+        f"cache={escape(str(item.get('cache_source', 'unknown')))}"
+    )
+    if tmdb_link is not None:
+        line += f' | <a href="{escape(tmdb_link, quote=True)}">tmdb page</a>'
+    query_info = (
+        "query="
+        f"{escape(str(payload.get('title_query', '<unknown>')))} | "
+        f"directors={escape(', '.join(str(name) for name in directors) or '-')} | "
+        f"actors={escape(', '.join(str(name) for name in actors[:5]) or '-')} | "
+        f"year={escape(str(year_raw if year_raw is not None else '-'))} | "
+        f"duration={escape(str(duration_raw if duration_raw is not None else '-'))} | "
+        f"languages={escape(', '.join(str(code) for code in langs) or '-')}"
+    )
+    return "<li>" + line + f"<br/>{query_info}</li>"
+
+
+def _render_tmdb_miss_item(item: dict[str, Any]) -> str:
+    payload_raw = item.get("payload")
+    payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
+    decision_raw = item.get("decision")
+    decision: dict[str, Any] = decision_raw if isinstance(decision_raw, dict) else {}
+    reason = str(decision.get("reason", "unknown"))
+    reason_text = {
+        "no_candidates": "no TMDB candidates",
+        "no_scored_candidates": "no usable candidates after scoring",
+        "insufficient_evidence": "insufficient evidence",
+        "ambiguous_good_options": "ambiguous between good options",
+        "invalid_best_candidate": "invalid best candidate",
+    }.get(reason, reason.replace("_", " "))
+
+    directors_raw = payload.get("director_names")
+    directors = directors_raw if isinstance(directors_raw, list) else []
+    actors_raw = payload.get("actor_names")
+    actors = actors_raw if isinstance(actors_raw, list) else []
+    year_raw = payload.get("year")
+    duration_raw = payload.get("duration_minutes")
+    langs_raw = payload.get("spoken_languages")
+    langs = langs_raw if isinstance(langs_raw, list) else []
+
+    line = (
+        f"{escape(str(item.get('timestamp', 'unknown_time')))} | "
+        f"title={escape(str(payload.get('title_query', '<unknown>')))} | "
+        f"reason={escape(reason_text)} | "
+        f"cache={escape(str(item.get('cache_source', 'unknown')))}"
+    )
+    query_info = (
+        "query="
+        f"{escape(str(payload.get('title_query', '<unknown>')))} | "
+        f"directors={escape(', '.join(str(name) for name in directors) or '-')} | "
+        f"actors={escape(', '.join(str(name) for name in actors[:5]) or '-')} | "
+        f"year={escape(str(year_raw if year_raw is not None else '-'))} | "
+        f"duration={escape(str(duration_raw if duration_raw is not None else '-'))} | "
+        f"languages={escape(', '.join(str(code) for code in langs) or '-')}"
+    )
+    return "<li>" + line + f"<br/>{query_info}</li>"
+
+
+def _compact_json_bytes(payload: Any) -> bytes:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _tmdb_resolution_audit_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / TMDB_RESOLUTION_AUDIT_DIR_NAME
+
+
+def _tmdb_fixture_source_of_truth_path() -> Path:
+    return (
+        Path(__file__).resolve().parents[2]
+        / "tests"
+        / "fixtures"
+        / "tmdb_resolution_cases.json"
+    )
+
+
+def _safe_int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_float_or_none(value: Any) -> float | None:
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _lookup_payload_key(lookup: dict[str, Any]) -> str | None:
+    payload_raw = lookup.get("payload")
+    payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
+    title_query_raw = payload.get("title_query")
+    title_query = str(title_query_raw).strip() if title_query_raw is not None else ""
+    if not title_query:
+        return None
+    key_payload = {
+        "title_query": title_query,
+        "director_names": _string_list(payload.get("director_names")),
+        "actor_names": _string_list(payload.get("actor_names")),
+        "year": _safe_int_or_none(payload.get("year")),
+        "duration_minutes": _safe_int_or_none(payload.get("duration_minutes")),
+        "spoken_languages": _string_list(payload.get("spoken_languages")),
+    }
+    return json.dumps(
+        key_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    )
+
+
+def _lookup_diagnostic_richness(lookup: dict[str, Any]) -> tuple[int, int]:
+    decision_raw = lookup.get("decision")
+    decision: dict[str, Any] = decision_raw if isinstance(decision_raw, dict) else {}
+    trace_raw = decision.get("trace")
+    trace: dict[str, Any] = trace_raw if isinstance(trace_raw, dict) else {}
+    candidates_raw = trace.get("candidates")
+    candidates = candidates_raw if isinstance(candidates_raw, list) else []
+    confidence_value = _safe_float_or_none(lookup.get("confidence"))
+    if confidence_value is None:
+        confidence_bucket = -1
+    else:
+        confidence_bucket = int(confidence_value)
+
+    score = 0
+    if candidates:
+        score += 3
+    if decision.get("winner_quality") is not None:
+        score += 2
+    if lookup.get("cache_source") == "network":
+        score += 1
+    return score, confidence_bucket
+
+
+def _dedupe_tmdb_lookups_for_reporting(
+    tmdb_lookups: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    by_key: dict[str, dict[str, Any]] = {}
+    for lookup in tmdb_lookups:
+        key = _lookup_payload_key(lookup)
+        if key is None:
+            continue
+        existing = by_key.get(key)
+        if existing is None:
+            by_key[key] = lookup
+            continue
+        if _lookup_diagnostic_richness(lookup) > _lookup_diagnostic_richness(existing):
+            by_key[key] = lookup
+    return list(by_key.values())
+
+
+def _lookup_is_perfect_match(lookup: dict[str, Any]) -> bool:
+    decision_raw = lookup.get("decision")
+    decision: dict[str, Any] = decision_raw if isinstance(decision_raw, dict) else {}
+    winner_quality_raw = decision.get("winner_quality")
+    if isinstance(winner_quality_raw, str) and winner_quality_raw.upper() == "PERFECT":
+        return True
+    confidence_value = _safe_float_or_none(lookup.get("confidence"))
+    if confidence_value is None:
+        return False
+    return confidence_value >= 99.0
+
+
+def _lookup_worst_to_best_rank(lookup: dict[str, Any]) -> int:
+    if _safe_int_or_none(lookup.get("tmdb_id")) is None:
+        return 0
+
+    decision_raw = lookup.get("decision")
+    decision: dict[str, Any] = decision_raw if isinstance(decision_raw, dict) else {}
+    winner_quality_raw = decision.get("winner_quality")
+    winner_quality = (
+        str(winner_quality_raw).upper() if winner_quality_raw is not None else ""
+    )
+    winner_quality_ranks = {
+        "POOR": 1,
+        "DECENT": 2,
+        "GOOD": 3,
+        "EXCELLENT": 4,
+        "PERFECT": 5,
+    }
+    if winner_quality in winner_quality_ranks:
+        return winner_quality_ranks[winner_quality]
+
+    confidence = _safe_float_or_none(lookup.get("confidence"))
+    if confidence is None:
+        return 3
+    if confidence < 55.0:
+        return 1
+    if confidence < 70.0:
+        return 2
+    if confidence < 90.0:
+        return 3
+    if confidence < 99.0:
+        return 4
+    return 5
+
+
+def _sorted_tmdb_lookups_for_markdown(
+    tmdb_lookups: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    deduped = _dedupe_tmdb_lookups_for_reporting(tmdb_lookups)
+    filtered = [lookup for lookup in deduped if not _lookup_is_perfect_match(lookup)]
+
+    def sort_key(lookup: dict[str, Any]) -> tuple[int, float, str]:
+        rank = _lookup_worst_to_best_rank(lookup)
+        confidence = _safe_float_or_none(lookup.get("confidence"))
+        if confidence is None:
+            confidence = -1.0
+        payload_raw = lookup.get("payload")
+        payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
+        title_query_raw = payload.get("title_query")
+        title_query = (
+            str(title_query_raw).lower() if title_query_raw is not None else ""
+        )
+        return rank, confidence, title_query
+
+    return sorted(filtered, key=sort_key)
+
+
+def _build_tmdb_fixture_json(
+    *,
+    started_at: datetime,
+    tmdb_lookups: list[dict[str, Any]],
+) -> dict[str, Any]:
+    deduped = _dedupe_tmdb_lookups_for_reporting(tmdb_lookups)
+    cases: list[dict[str, Any]] = []
+    for index, lookup in enumerate(deduped, start=1):
+        payload_raw = lookup.get("payload")
+        payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
+        title_query_raw = payload.get("title_query")
+        title_query = (
+            str(title_query_raw).strip() if title_query_raw is not None else ""
+        )
+        if not title_query:
+            continue
+
+        actor_names = _string_list(payload.get("actor_names"))
+        actor_name = actor_names[0] if actor_names else None
+        input_payload = {
+            "title_query": title_query,
+            "director_names": _string_list(payload.get("director_names")),
+            "actor_name": actor_name,
+            "year": _safe_int_or_none(payload.get("year")),
+            "duration_minutes": _safe_int_or_none(payload.get("duration_minutes")),
+            "spoken_languages": _string_list(payload.get("spoken_languages")),
+        }
+        case_slug = TITLE_NORMALIZE_PATTERN.sub("_", title_query.lower()).strip("_")
+        case_name = f"{index:04d}_{case_slug or 'untitled'}"
+        cases.append(
+            {
+                "name": case_name,
+                "input": input_payload,
+                "expected": {
+                    "tmdb_id": _safe_int_or_none(lookup.get("tmdb_id")),
+                },
+            }
+        )
+
+    return {
+        "description": (
+            "Fixture cases generated from scraper TMDB resolution events. "
+            "Set RUN_LIVE_TMDB_RESOLUTION_CASES=1 to execute live TMDB assertions."
+        ),
+        "generated_at": started_at.isoformat(),
+        "total_cases": len(cases),
+        "cases": cases,
+    }
+
+
+def _render_candidate_trace_lines(candidate: dict[str, Any]) -> list[str]:
+    movie_id = candidate.get("id")
+    title = str(candidate.get("title", "<unknown>"))
+    buckets_raw = candidate.get("source_buckets")
+    buckets = buckets_raw if isinstance(buckets_raw, list) else []
+    pre_raw = candidate.get("pre")
+    pre: dict[str, Any] = pre_raw if isinstance(pre_raw, dict) else {}
+    post_raw = candidate.get("post")
+    post: dict[str, Any] = post_raw if isinstance(post_raw, dict) else {}
+    enrichment_raw = candidate.get("enrichment")
+    enrichment: dict[str, Any] = (
+        enrichment_raw if isinstance(enrichment_raw, dict) else {}
+    )
+    details_raw = candidate.get("details")
+    details: dict[str, Any] = details_raw if isinstance(details_raw, dict) else {}
+
+    lines = [
+        f"- id={movie_id} | title={title} | buckets={', '.join(str(b) for b in buckets) or '-'}",
+        "  pre: "
+        f"source={pre.get('source_quality')} | "
+        f"title={pre.get('title_quality')} | "
+        f"year={pre.get('year_quality')} | "
+        f"language={pre.get('language_quality')} | "
+        f"overall={pre.get('overall_quality')}",
+        "  post: "
+        f"overall={post.get('overall_quality')} | "
+        f"rank={post.get('rank')}",
+    ]
+    if enrichment:
+        lines.append(
+            "  enrichment: "
+            f"runtime={enrichment.get('runtime_quality')} | "
+            f"language={enrichment.get('language_quality')} | "
+            f"director={enrichment.get('director_quality')} | "
+            f"actor={enrichment.get('actor_quality')} | "
+            f"contradiction={enrichment.get('has_contradiction')} | "
+            f"strong_support_count={enrichment.get('strong_support_count')} | "
+            f"has_viable_higher_option={enrichment.get('has_viable_higher_option')}"
+        )
+    if details:
+        lines.append(
+            "  details: "
+            f"runtime={details.get('runtime_minutes')} | "
+            f"is_short={details.get('is_short')} | "
+            f"is_documentary={details.get('is_documentary')} | "
+            f"genre_ids={details.get('genre_ids')} | "
+            f"original_language={details.get('original_language')} | "
+            f"spoken_languages={details.get('spoken_languages')}"
+        )
+    return lines
+
+
+def _build_tmdb_resolution_audit_markdown(
+    *,
+    started_at: datetime,
+    tmdb_lookups: list[dict[str, Any]],
+) -> str:
+    markdown_lookups = _sorted_tmdb_lookups_for_markdown(tmdb_lookups)
+    lines: list[str] = [
+        "# TMDB Resolution Audit",
+        "",
+        f"Started at: {started_at.isoformat()}",
+        f"Total lookups: {len(tmdb_lookups)}",
+        f"Included in markdown (non-perfect, deduped): {len(markdown_lookups)}",
+        "Order: worst to best (not found first).",
+        f"Candidate options shown per lookup: top {TMDB_MARKDOWN_CANDIDATE_LIMIT}.",
+        "",
+    ]
+
+    for index, lookup in enumerate(markdown_lookups, start=1):
+        payload_raw = lookup.get("payload")
+        payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
+        decision_raw = lookup.get("decision")
+        decision: dict[str, Any] = (
+            decision_raw if isinstance(decision_raw, dict) else {}
+        )
+        trace_raw = decision.get("trace")
+        trace: dict[str, Any] = trace_raw if isinstance(trace_raw, dict) else {}
+        candidates_raw = trace.get("candidates")
+        candidates = candidates_raw if isinstance(candidates_raw, list) else []
+
+        lines.extend(
+            [
+                f"## {index}. {payload.get('title_query', '<unknown title>')}",
+                f"- timestamp: {lookup.get('timestamp')}",
+                f"- tmdb_id: {lookup.get('tmdb_id')}",
+                f"- confidence: {lookup.get('confidence')}",
+                f"- cache: {lookup.get('cache_source')} (hit={lookup.get('cache_hit')})",
+                f"- status: {decision.get('status')}",
+                f"- reason: {decision.get('reason')}",
+                f"- winner_id: {decision.get('winner_id')}",
+                f"- winner_quality: {decision.get('winner_quality')}",
+                f"- enrichment_requested: {trace.get('enrichment_requested')}",
+                f"- enrichment_candidate_ids: {trace.get('enrichment_candidate_ids')}",
+                "- query:",
+                f"  - title_query: {payload.get('title_query')}",
+                f"  - director_names: {payload.get('director_names')}",
+                f"  - actor_names: {payload.get('actor_names')}",
+                f"  - year: {payload.get('year')}",
+                f"  - duration_minutes: {payload.get('duration_minutes')}",
+                f"  - spoken_languages: {payload.get('spoken_languages')}",
+                "- candidates:",
+            ]
+        )
+        if not candidates:
+            lines.append("  - none")
+        else:
+            displayed_candidates = candidates[:TMDB_MARKDOWN_CANDIDATE_LIMIT]
+            for candidate_raw in displayed_candidates:
+                candidate = candidate_raw if isinstance(candidate_raw, dict) else {}
+                lines.extend(_render_candidate_trace_lines(candidate))
+            omitted = len(candidates) - len(displayed_candidates)
+            if omitted > 0:
+                lines.append(f"  - ... {omitted} additional candidate(s) omitted")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _write_tmdb_resolution_audit_files(
+    *,
+    started_at: datetime,
+    tmdb_lookups: list[dict[str, Any]],
+) -> list[Path]:
+    output_dir = _tmdb_resolution_audit_dir()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    suffix = started_at.strftime("%Y%m%d_%H%M%S")
+
+    json_path = output_dir / f"tmdb_resolution_audit_{suffix}.json"
+    markdown_path = output_dir / f"tmdb_resolution_audit_{suffix}.md"
+
+    json_payload = _build_tmdb_fixture_json(
+        started_at=started_at,
+        tmdb_lookups=tmdb_lookups,
+    )
+    json_path.write_text(
+        json.dumps(json_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    markdown_path.write_text(
+        _build_tmdb_resolution_audit_markdown(
+            started_at=started_at,
+            tmdb_lookups=tmdb_lookups,
+        ),
+        encoding="utf-8",
+    )
+    return [json_path, markdown_path]
+
+
+def _tmdb_fixture_cases(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        raw_cases = payload.get("cases")
+    elif isinstance(payload, list):
+        raw_cases = payload
+    else:
+        return []
+    if not isinstance(raw_cases, list):
+        return []
+    return [case for case in raw_cases if isinstance(case, dict)]
+
+
+def _dedupe_exact_tmdb_fixture_cases(
+    cases: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for case in cases:
+        key = json.dumps(
+            case,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(case)
+    return deduped
+
+
+def _merge_generated_tmdb_fixture_into_source_of_truth(
+    *,
+    generated_json_path: Path,
+    source_of_truth_path: Path,
+) -> tuple[int, int, int]:
+    generated_payload_raw: Any = {}
+    try:
+        generated_payload_raw = json.loads(
+            generated_json_path.read_text(encoding="utf-8")
+        )
+    except Exception:
+        logger.error(
+            "Failed to parse generated TMDB fixture JSON: %s",
+            generated_json_path,
+            exc_info=True,
+        )
+        raise
+    generated_cases = _tmdb_fixture_cases(generated_payload_raw)
+
+    existing_payload_raw: Any = {}
+    if source_of_truth_path.exists():
+        try:
+            existing_payload_raw = json.loads(
+                source_of_truth_path.read_text(encoding="utf-8")
+            )
+        except Exception:
+            logger.error(
+                "Failed to parse TMDB fixture source of truth: %s",
+                source_of_truth_path,
+                exc_info=True,
+            )
+            raise
+    existing_cases = _tmdb_fixture_cases(existing_payload_raw)
+
+    merged_cases = _dedupe_exact_tmdb_fixture_cases([*existing_cases, *generated_cases])
+    merged_payload = (
+        dict(existing_payload_raw) if isinstance(existing_payload_raw, dict) else {}
+    )
+    generated_payload = (
+        generated_payload_raw if isinstance(generated_payload_raw, dict) else {}
+    )
+    merged_payload["description"] = generated_payload.get(
+        "description",
+        merged_payload.get(
+            "description",
+            "Fixture cases generated from scraper TMDB resolution events.",
+        ),
+    )
+    merged_payload["generated_at"] = generated_payload.get(
+        "generated_at",
+        now_amsterdam_naive().isoformat(),
+    )
+    merged_payload["total_cases"] = len(merged_cases)
+    merged_payload["cases"] = merged_cases
+
+    source_of_truth_path.parent.mkdir(parents=True, exist_ok=True)
+    source_of_truth_path.write_text(
+        json.dumps(merged_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return len(existing_cases), len(generated_cases), len(merged_cases)
+
+
+def _cleanup_tmdb_resolution_audit_files() -> list[Path]:
+    output_dir = _tmdb_resolution_audit_dir()
+    if not output_dir.exists():
+        return []
+    deleted_paths: list[Path] = []
+    for pattern in ("tmdb_resolution_audit_*.json", "tmdb_resolution_audit_*.md"):
+        for file_path in output_dir.glob(pattern):
+            if not file_path.is_file():
+                continue
+            file_path.unlink(missing_ok=True)
+            deleted_paths.append(file_path)
+    return deleted_paths
+
+
+def _compact_tmdb_lookup_for_attachment(lookup: dict[str, Any]) -> dict[str, Any]:
+    payload_raw = lookup.get("payload")
+    payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
+    decision_raw = lookup.get("decision")
+    decision: dict[str, Any] = decision_raw if isinstance(decision_raw, dict) else {}
+    best_raw = decision.get("best")
+    best: dict[str, Any] = best_raw if isinstance(best_raw, dict) else {}
+    return {
+        "timestamp": lookup.get("timestamp"),
+        "tmdb_id": lookup.get("tmdb_id"),
+        "confidence": lookup.get("confidence"),
+        "cache_source": lookup.get("cache_source"),
+        "title_query": payload.get("title_query"),
+        "director_names": payload.get("director_names"),
+        "actor_names": payload.get("actor_names"),
+        "year": payload.get("year"),
+        "duration_minutes": payload.get("duration_minutes"),
+        "spoken_languages": payload.get("spoken_languages"),
+        "decision_status": decision.get("status"),
+        "decision_reason": decision.get("reason"),
+        "good_option_count": decision.get("good_option_count"),
+        "best_margin": decision.get("best_margin"),
+        "second_good_margin": decision.get("second_good_margin"),
+        "best_tmdb_id": best.get("tmdb_id"),
+        "best_title": best.get("title"),
+        "best_release_year": best.get("release_year"),
+    }
+
+
 def _load_scrape_run_status_counts(
     *,
     started_at,
@@ -656,6 +1310,8 @@ def _render_recap_html(
     slowest_run_details: list[ScrapeRunDetail],
     presence_health: PresenceHealthSnapshot,
     tmdb_miss_titles: list[tuple[str, int]],
+    low_confidence_lookups: list[dict[str, Any]],
+    low_confidence_threshold: float,
     error_stage_counts: dict[str, int],
     letterboxd_failure_counts: dict[str, int],
     letterboxd_403_diagnostics: Letterboxd403Diagnostics,
@@ -674,16 +1330,20 @@ def _render_recap_html(
     )
 
     tmdb_miss_items = (
-        "".join(
-            f"<li><code>{escape(json.dumps(item['payload'], ensure_ascii=False, sort_keys=True))}</code></li>"
-            for item in tmdb_misses
-        )
+        "".join(_render_tmdb_miss_item(item) for item in tmdb_misses[:200])
         or "<li>None</li>"
     )
     tmdb_miss_title_items = (
         "".join(
             f"<li>{escape(title)}: <b>{count}</b></li>"
             for title, count in tmdb_miss_titles[:25]
+        )
+        or "<li>None</li>"
+    )
+    low_confidence_items = (
+        "".join(
+            _render_low_confidence_tmdb_item(item)
+            for item in low_confidence_lookups[:50]
         )
         or "<li>None</li>"
     )
@@ -833,6 +1493,7 @@ def _render_recap_html(
     <p>Total TMDB lookups sent: <b>{len(tmdb_lookups)}</b></p>
     <p>TMDB cache hit rate: <b>{tmdb_hit_rate:.1f}%</b></p>
     <p>TMDB ID not found count: <b>{len(tmdb_misses)}</b></p>
+    <p>Low-confidence TMDB matches (&lt; {low_confidence_threshold:.1f}): <b>{len(low_confidence_lookups)}</b></p>
     <p>Future showtimes deleted (no longer found): <b>{len(deleted_showtimes)}</b></p>
     <p>Error count: <b>{len(errors)}</b></p>
     <p>Letterboxd failure count: <b>{len(letterboxd_failures)}</b></p>
@@ -884,6 +1545,8 @@ def _render_recap_html(
     <ul>{slowest_stream_items}</ul>
     <h3>TMDB Miss Titles (Top)</h3>
     <ul>{tmdb_miss_title_items}</ul>
+    <h3>Low-Confidence TMDB Matches</h3>
+    <ul>{low_confidence_items}</ul>
     <h3>Error Stages</h3>
     <ul>{error_stage_items}</ul>
     <h3>New Movies In Future Showtimes</h3>
@@ -937,6 +1600,10 @@ def _send_recap_email(
     )
     tmdb_cache_counts = _tmdb_cache_breakdown(tmdb_lookups)
     tmdb_miss_titles = _tmdb_miss_title_counts(tmdb_misses)
+    low_confidence_lookups = _tmdb_low_confidence_lookups(
+        tmdb_lookups,
+        threshold=TMDB_LOW_CONFIDENCE_THRESHOLD,
+    )
     scrape_status_counts = _load_scrape_run_status_counts(
         started_at=started_at,
         finished_at=finished_at,
@@ -999,20 +1666,38 @@ def _send_recap_email(
         slowest_run_details=slowest_run_details,
         presence_health=presence_health,
         tmdb_miss_titles=tmdb_miss_titles,
+        low_confidence_lookups=low_confidence_lookups,
+        low_confidence_threshold=TMDB_LOW_CONFIDENCE_THRESHOLD,
         error_stage_counts=error_stage_counts,
         letterboxd_failure_counts=letterboxd_failure_counts,
         letterboxd_403_diagnostics=letterboxd_403_diagnostics,
     )
 
-    tmdb_lookup_attachment_data = json.dumps(
-        tmdb_lookups,
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-    ).encode("utf-8")
+    tmdb_low_confidence_compact = [
+        _compact_tmdb_lookup_for_attachment(lookup)
+        for lookup in low_confidence_lookups[:TMDB_RECAP_ATTACHMENT_MAX_ITEMS]
+    ]
+    tmdb_misses_compact = [
+        _compact_tmdb_lookup_for_attachment(lookup)
+        for lookup in tmdb_misses[:TMDB_RECAP_ATTACHMENT_MAX_ITEMS]
+    ]
+    tmdb_lookup_attachment_data = _compact_json_bytes(
+        {
+            "meta": {
+                "total_lookups": len(tmdb_lookups),
+                "cache_breakdown": tmdb_cache_counts,
+                "miss_count": len(tmdb_misses),
+                "low_confidence_threshold": TMDB_LOW_CONFIDENCE_THRESHOLD,
+                "low_confidence_count": len(low_confidence_lookups),
+                "max_items_per_section": TMDB_RECAP_ATTACHMENT_MAX_ITEMS,
+            },
+            "low_confidence": tmdb_low_confidence_compact,
+            "misses": tmdb_misses_compact,
+        }
+    )
     tmdb_lookup_attachment_name = f"tmdb_lookups_{started_at:%Y%m%d_%H%M%S}.json"
 
-    scrape_runs_attachment_data = json.dumps(
+    scrape_runs_attachment_data = _compact_json_bytes(
         [
             {
                 "source_stream": detail.source_stream,
@@ -1032,13 +1717,10 @@ def _send_recap_email(
                 "error": detail.error,
             }
             for detail in scrape_run_details
-        ],
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-    ).encode("utf-8")
+        ]
+    )
     scrape_runs_attachment_name = f"scrape_runs_{started_at:%Y%m%d_%H%M%S}.json"
-    cinema_scraper_runs_attachment_data = json.dumps(
+    cinema_scraper_runs_attachment_data = _compact_json_bytes(
         [
             {
                 "source_stream": detail.source_stream,
@@ -1058,25 +1740,19 @@ def _send_recap_email(
                 "error": detail.error,
             }
             for detail in cinema_scraper_details
-        ],
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-    ).encode("utf-8")
+        ]
+    )
     cinema_scraper_runs_attachment_name = (
         f"cinema_scraper_runs_{started_at:%Y%m%d_%H%M%S}.json"
     )
 
-    letterboxd_failures_attachment_data = json.dumps(
+    letterboxd_failures_attachment_data = _compact_json_bytes(
         letterboxd_failures,
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-    ).encode("utf-8")
+    )
     letterboxd_failures_attachment_name = (
         f"letterboxd_failures_{started_at:%Y%m%d_%H%M%S}.json"
     )
-    letterboxd_403_diagnostics_attachment_data = json.dumps(
+    letterboxd_403_diagnostics_attachment_data = _compact_json_bytes(
         {
             "observed_403_events": letterboxd_403_diagnostics.observed_403_events,
             "unique_tmdb_ids": letterboxd_403_diagnostics.unique_tmdb_ids,
@@ -1105,16 +1781,13 @@ def _send_recap_email(
                 "session_refresh_on_403": True,
                 "persistent_cookie_jar": True,
             },
-        },
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-    ).encode("utf-8")
+        }
+    )
     letterboxd_403_diagnostics_attachment_name = (
         f"letterboxd_403_diagnostics_{started_at:%Y%m%d_%H%M%S}.json"
     )
 
-    presence_health_attachment_data = json.dumps(
+    presence_health_attachment_data = _compact_json_bytes(
         {
             "missing_streak_to_deactivate": (
                 scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE
@@ -1126,18 +1799,12 @@ def _send_recap_email(
                 {"source_stream": source_stream, "count": count}
                 for source_stream, count in presence_health.pending_delete_by_stream
             ],
-        },
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-    ).encode("utf-8")
+        }
+    )
     presence_health_attachment_name = f"presence_health_{started_at:%Y%m%d_%H%M%S}.json"
-    missing_cinema_insert_failures_attachment_data = json.dumps(
+    missing_cinema_insert_failures_attachment_data = _compact_json_bytes(
         missing_cinema_insert_failures,
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-    ).encode("utf-8")
+    )
     missing_cinema_insert_failures_attachment_name = (
         f"missing_cinema_insert_failures_{started_at:%Y%m%d_%H%M%S}.json"
     )
@@ -1189,6 +1856,48 @@ def _send_recap_email(
     )
 
 
+def _send_recap_email_with_timeout(
+    *,
+    started_at: datetime,
+    finished_at: datetime,
+    summary: ScrapeExecutionSummary,
+    tmdb_lookups: list[dict[str, Any]],
+    letterboxd_failures: list[dict[str, Any]],
+    before_snapshot: FutureSnapshot,
+    after_snapshot: FutureSnapshot,
+) -> None:
+    timeout_seconds = max(1.0, float(settings.SCRAPE_RECAP_EMAIL_TIMEOUT_SECONDS))
+    done = threading.Event()
+    error_holder: dict[str, Exception] = {}
+
+    def _worker() -> None:
+        try:
+            _send_recap_email(
+                started_at=started_at,
+                finished_at=finished_at,
+                summary=summary,
+                tmdb_lookups=tmdb_lookups,
+                letterboxd_failures=letterboxd_failures,
+                before_snapshot=before_snapshot,
+                after_snapshot=after_snapshot,
+            )
+        except Exception as exc:  # pragma: no cover - reported via error_holder
+            error_holder["error"] = exc
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=_worker, name="scrape-recap-email", daemon=True)
+    thread.start()
+    if not done.wait(timeout_seconds):
+        logger.error(
+            "Timed out sending scrape recap email after %.1fs; continuing shutdown.",
+            timeout_seconds,
+        )
+        return
+    if "error" in error_holder:
+        raise error_holder["error"]
+
+
 def run() -> None:
     started_at = now_amsterdam_naive()
     reset_tmdb_runtime_state()
@@ -1198,6 +1907,7 @@ def run() -> None:
     tmdb_lookups: list[dict] = []
     letterboxd_failures: list[dict[str, Any]] = []
     fatal_error: Exception | None = None
+    interrupted = False
     try:
         logger.info("Starting cineville scraper...")
         cineville_summary = scrape_cineville()
@@ -1236,24 +1946,67 @@ def run() -> None:
         fatal_error = e
         summary.errors.append(str(e))
         logger.error("Error running cinema scraper", exc_info=True)
+    except KeyboardInterrupt:
+        interrupted = True
+        logger.warning("KeyboardInterrupt received; skipping recap email and exiting.")
     finally:
-        finished_at = now_amsterdam_naive()
-        after_snapshot = _load_future_snapshot(snapshot_time=started_at)
-        tmdb_lookups = consume_tmdb_lookup_events()
-        letterboxd_failures = consume_letterboxd_failure_events()
-        try:
-            _send_recap_email(
-                started_at=started_at,
-                finished_at=finished_at,
-                summary=summary,
-                tmdb_lookups=tmdb_lookups,
-                letterboxd_failures=letterboxd_failures,
-                before_snapshot=before_snapshot,
-                after_snapshot=after_snapshot,
-            )
-            logger.info("Sent scrape recap email.")
-        except Exception:
-            logger.error("Failed to send scrape recap email.", exc_info=True)
+        if not interrupted:
+            finished_at = now_amsterdam_naive()
+            after_snapshot = _load_future_snapshot(snapshot_time=started_at)
+            tmdb_lookups = consume_tmdb_lookup_events()
+            letterboxd_failures = consume_letterboxd_failure_events()
+            try:
+                written_paths = _write_tmdb_resolution_audit_files(
+                    started_at=started_at,
+                    tmdb_lookups=tmdb_lookups,
+                )
+                logger.info(
+                    "Wrote TMDB resolution audit files: %s",
+                    ", ".join(str(path) for path in written_paths),
+                )
+                generated_json_path = next(
+                    (path for path in written_paths if path.suffix.lower() == ".json"),
+                    None,
+                )
+                if generated_json_path is not None:
+                    fixture_path = _tmdb_fixture_source_of_truth_path()
+                    existing_count, generated_count, merged_count = (
+                        _merge_generated_tmdb_fixture_into_source_of_truth(
+                            generated_json_path=generated_json_path,
+                            source_of_truth_path=fixture_path,
+                        )
+                    )
+                    logger.info(
+                        "Merged TMDB fixture cases into %s (existing=%s, generated=%s, merged=%s).",
+                        fixture_path,
+                        existing_count,
+                        generated_count,
+                        merged_count,
+                    )
+                deleted_paths = _cleanup_tmdb_resolution_audit_files()
+                if deleted_paths:
+                    logger.info(
+                        "Deleted TMDB resolution audit artifacts: %s",
+                        ", ".join(str(path) for path in deleted_paths),
+                    )
+            except Exception:
+                logger.error(
+                    "Failed to write/merge/cleanup TMDB resolution audit files.",
+                    exc_info=True,
+                )
+            try:
+                _send_recap_email_with_timeout(
+                    started_at=started_at,
+                    finished_at=finished_at,
+                    summary=summary,
+                    tmdb_lookups=tmdb_lookups,
+                    letterboxd_failures=letterboxd_failures,
+                    before_snapshot=before_snapshot,
+                    after_snapshot=after_snapshot,
+                )
+                logger.info("Sent scrape recap email.")
+            except Exception:
+                logger.error("Failed to send scrape recap email.", exc_info=True)
 
     if fatal_error is not None:
         sys.exit(1)

@@ -49,7 +49,7 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   onSearchChange: (value: string) => void;
   filters: ReadonlyArray<FilterOption<TFilterId>>;
   activeFilterIds: ReadonlyArray<TFilterId>;
-  onToggleFilter: (id: TFilterId) => void;
+  onToggleFilter: (id: TFilterId, position?: FilterPillLongPressPosition) => void;
   onLongPressFilter?: (
     id: TFilterId,
     position: FilterPillLongPressPosition

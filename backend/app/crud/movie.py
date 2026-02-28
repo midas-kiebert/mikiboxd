@@ -145,6 +145,10 @@ def upsert_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
             movie_data.pop("letterboxd_slug", None)
         else:
             movie_data["letterboxd_slug"] = normalized_slug
+    # Scraper payloads can temporarily miss TMDB runtime; keep existing runtime
+    # so showtime end-time fallback (start + duration + 15m) still works.
+    if movie_data.get("duration") is None and db_obj.duration is not None:
+        movie_data.pop("duration", None)
     db_obj.sqlmodel_update(movie_data)
     return db_obj
 

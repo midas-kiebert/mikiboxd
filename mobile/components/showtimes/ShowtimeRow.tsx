@@ -9,9 +9,11 @@ import { ThemedText } from "@/components/themed-text";
 import CinemaPill from "@/components/badges/CinemaPill";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 
 type ShowtimeBase = {
   datetime: string;
+  end_datetime?: string | null;
   cinema: CinemaPublic;
   friends_going?: UserPublic[];
   friends_interested?: UserPublic[];
@@ -24,8 +26,16 @@ type ShowtimeRowProps = {
   alignCinemaRight?: boolean;
 };
 
-const formatShowtime = (datetime: string) =>
-  DateTime.fromISO(datetime).toFormat("ccc d LLL • HH:mm");
+const formatShowtime = (
+  datetime: string,
+  endDatetime: string | null | undefined,
+  variant: ShowtimeRowProps["variant"]
+) => {
+  const dateFormat = variant === "compact" ? "ccc d" : "ccc d LLL";
+  const dateLabel = DateTime.fromISO(datetime).toFormat(dateFormat);
+  const timeLabel = formatShowtimeTimeRange(datetime, endDatetime);
+  return `${dateLabel} • ${timeLabel}`;
+};
 
 export default function ShowtimeRow({
   showtime,
@@ -51,7 +61,7 @@ export default function ShowtimeRow({
           ]}
           numberOfLines={1}
         >
-          {formatShowtime(showtime.datetime)}
+          {formatShowtime(showtime.datetime, showtime.end_datetime, variant)}
         </ThemedText>
         <CinemaPill cinema={showtime.cinema} variant={isCompact ? "compact" : "default"} />
       </View>

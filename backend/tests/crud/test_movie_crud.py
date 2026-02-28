@@ -148,6 +148,29 @@ def test_update_movie_success(
     assert updated_movie is movie
 
 
+def test_upsert_movie_preserves_existing_duration_when_payload_duration_is_missing(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+):
+    existing_movie = movie_factory(duration=121)
+    movie_create = MovieCreate(
+        id=existing_movie.id,
+        title=existing_movie.title,
+        poster_link=existing_movie.poster_link,
+        letterboxd_slug=existing_movie.letterboxd_slug,
+        duration=None,
+    )
+
+    updated_movie = movie_crud.upsert_movie(
+        session=db_transaction,
+        movie_create=movie_create,
+    )
+
+    assert updated_movie.id == existing_movie.id
+    assert updated_movie.duration == 121
+
+
 # def test_get_cinemas_for_movie(
 #     *,
 #     db_transaction: Session,

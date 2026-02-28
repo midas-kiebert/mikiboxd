@@ -36,7 +36,9 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const weekday = date.toFormat("ccc");
   const day = date.toFormat("d");
   const month = date.toFormat("LLL");
-  const time = date.toFormat("HH:mm");
+  const startTime = date.toFormat("HH:mm");
+  const endDate = showtime.end_datetime ? DateTime.fromISO(showtime.end_datetime) : null;
+  const endTime = endDate?.isValid ? endDate.toFormat("HH:mm") : null;
   const cardStatusStyle =
     showtime.going === "GOING"
       ? styles.cardGoing
@@ -99,7 +101,10 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
           <ThemedText style={styles.weekday}>{weekday}</ThemedText>
           <ThemedText style={styles.day}>{day}</ThemedText>
           <ThemedText style={styles.month}>{month}</ThemedText>
-          <ThemedText style={styles.time}>{time}</ThemedText>
+          <ThemedText style={styles.time}>
+            <ThemedText style={styles.timeStart}>{startTime}</ThemedText>
+            {endTime ? <ThemedText style={styles.timeEnd}>{`~${endTime}`}</ThemedText> : null}
+          </ThemedText>
         </View>
         <Image
           source={{ uri: showtime.movie.poster_link ?? undefined }}
@@ -153,7 +158,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.orange.primary,
     },
     dateColumn: {
-      width: 56,
+      width: 74,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.pillBackground,
@@ -171,29 +176,42 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRightColor: colors.orange.secondary,
     },
     weekday: {
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: "700",
       color: colors.textSecondary,
       textTransform: "uppercase",
       letterSpacing: 0.6,
     },
     day: {
-      fontSize: 24,
+      fontSize: 26,
       fontWeight: "800",
       color: colors.text,
-      lineHeight: 26,
+      lineHeight: 28,
     },
     month: {
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: "700",
       color: colors.textSecondary,
       textTransform: "uppercase",
       letterSpacing: 0.6,
     },
     time: {
-      fontSize: 12,
+      fontSize: 10,
+      lineHeight: 12,
       fontWeight: "700",
       color: colors.text,
+    },
+    timeStart: {
+      fontSize: 11,
+      lineHeight: 13,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    timeEnd: {
+      fontSize: 8,
+      lineHeight: 10,
+      fontWeight: "700",
+      color: colors.textSecondary,
     },
     poster: {
       width: 72,

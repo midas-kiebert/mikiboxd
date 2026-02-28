@@ -61,6 +61,7 @@ class TmdbMovieDetails:
     cast_names: list[str] | None = None
     enriched_at: datetime | None = None
     genre_ids: list[int] | None = None
+    alternative_titles: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,7 @@ class EnrichmentQuality:
     language_quality: Quality
     director_quality: Quality
     actor_quality: Quality
+    title_quality: Quality = NONE
 
     def has_contradiction(self) -> bool:
         return (
@@ -155,6 +157,7 @@ def _details_snapshot(details: TmdbMovieDetails | None) -> dict[str, Any] | None
         "directors": details.directors,
         "cast_names": details.cast_names or [],
         "genre_ids": genre_ids,
+        "alternative_titles": details.alternative_titles or [],
         "is_short": is_short,
         "is_documentary": is_documentary,
     }
@@ -226,29 +229,25 @@ def _title_similarity_score(
     return max(ratio_score, token_set_score)
 
 
-def evaluate_title_quality(
+def _title_quality_from_candidate_titles(
     *,
     title_variants: Sequence[str],
-    movie: PreEnrichmentTmdbMovieCandidate,
+    candidate_titles: Sequence[str],
 ) -> Quality:
-    normalized_titles = [
-        _normalize_title_for_match(movie.title),
-        _normalize_title_for_match(movie.original_title or ""),
-    ]
-
     best_fuzz = 0.0
     for variant in title_variants:
         normalized_variant = _normalize_title_for_match(variant)
         if not normalized_variant:
             continue
-        for candidate_title in normalized_titles:
-            if not candidate_title:
+        for candidate_title in candidate_titles:
+            normalized_candidate_title = _normalize_title_for_match(candidate_title)
+            if not normalized_candidate_title:
                 continue
             best_fuzz = max(
                 best_fuzz,
                 _title_similarity_score(
                     normalized_query=normalized_variant,
-                    normalized_candidate=candidate_title,
+                    normalized_candidate=normalized_candidate_title,
                 ),
             )
 
@@ -261,6 +260,20 @@ def evaluate_title_quality(
     if best_fuzz >= 55.0:
         return NONE
     return CONTRADICTORY
+
+
+def evaluate_title_quality(
+    *,
+    title_variants: Sequence[str],
+    movie: PreEnrichmentTmdbMovieCandidate,
+) -> Quality:
+    candidate_titles = [movie.title]
+    if movie.original_title:
+        candidate_titles.append(movie.original_title)
+    return _title_quality_from_candidate_titles(
+        title_variants=title_variants,
+        candidate_titles=candidate_titles,
+    )
 
 
 def evaluate_year_quality(
@@ -412,6 +425,17 @@ def select_enrichment_candidates(
     for candidate in candidates:
         if candidate.quality >= GOOD:
             selected.append(candidate.movie.id)
+    # Also enrich director/actor-backed candidates with strong year/language
+    # signals, even when title mismatch kept them low pre-enrichment.
+    for candidate in candidates:
+        if candidate.movie.id in selected:
+            continue
+        if candidate.source_quality < DECENT:
+            continue
+        if candidate.year_quality >= GOOD or candidate.language_quality >= GOOD:
+            selected.append(candidate.movie.id)
+            if len(selected) >= limit:
+                return selected[:limit]
     # Fill remaining slots from the current ranking so medium candidates can overtake.
     if len(selected) < limit:
         for candidate in candidates:
@@ -509,9 +533,47 @@ def evaluate_enrichment_language_quality(
     return CONTRADICTORY
 
 
+def details_title_variants(details: TmdbMovieDetails | None) -> list[str]:
+    if details is None:
+        return []
+    variants: list[str] = []
+    seen: set[str] = set()
+    for raw_title in [
+        details.title,
+        details.original_title,
+        *(details.alternative_titles or []),
+    ]:
+        if not isinstance(raw_title, str):
+            continue
+        title = raw_title.strip()
+        if not title:
+            continue
+        key = title.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        variants.append(title)
+    return variants
+
+
+def evaluate_enrichment_title_quality(
+    *,
+    query_title_variants: Sequence[str],
+    details: TmdbMovieDetails | None,
+) -> Quality:
+    candidate_titles = details_title_variants(details)
+    if not query_title_variants or not candidate_titles:
+        return NONE
+    return _title_quality_from_candidate_titles(
+        title_variants=query_title_variants,
+        candidate_titles=candidate_titles,
+    )
+
+
 def build_enrichment_quality(
     *,
     details: TmdbMovieDetails | None,
+    query_title_variants: Sequence[str],
     query_duration_minutes: int | None,
     query_languages: set[str],
     query_director_names: Sequence[str],
@@ -534,15 +596,34 @@ def build_enrichment_quality(
             query_names=query_actor_names,
             candidate_names=details.cast_names if details else None,
         ),
+        title_quality=evaluate_enrichment_title_quality(
+            query_title_variants=query_title_variants,
+            details=details,
+        ),
     )
 
 
 def determine_post_enrichment_quality(
     *,
+    source_quality: Quality,
+    title_quality: Quality,
+    year_quality: Quality,
     pre_quality: Quality,
     enrichment: EnrichmentQuality,
     has_viable_higher_option: bool,
 ) -> Quality:
+    if (
+        source_quality == POOR
+        and title_quality >= GOOD
+        and year_quality <= NONE
+        and enrichment.language_quality >= GOOD
+        and enrichment.runtime_quality < DECENT
+        and enrichment.director_quality < GOOD
+        and enrichment.actor_quality < GOOD
+    ):
+        # Search-only + title/language-only evidence is not enough to trust.
+        return DISCARD
+
     if pre_quality in {PERFECT, EXCELLENT}:
         if enrichment.has_contradiction():
             return GOOD
@@ -572,8 +653,50 @@ def determine_post_enrichment_quality(
         return DISCARD
 
     if pre_quality == POOR:
+        year_and_runtime_match = (
+            year_quality >= GOOD and enrichment.runtime_quality >= GOOD
+        )
         if enrichment.has_contradiction():
+            only_language_contradiction = (
+                enrichment.language_quality == CONTRADICTORY
+                and enrichment.runtime_quality > CONTRADICTORY
+                and enrichment.director_quality > CONTRADICTORY
+                and enrichment.actor_quality > CONTRADICTORY
+            )
+            if (
+                only_language_contradiction
+                and year_and_runtime_match
+                and enrichment.title_quality >= GOOD
+                and (
+                    enrichment.director_quality >= GOOD
+                    or enrichment.actor_quality >= GOOD
+                )
+            ):
+                # A strong title alias (for example localized TMDB title) plus
+                # strong people/runtime evidence can outweigh language mismatch.
+                return DECENT
             return DISCARD
+        if (
+            year_and_runtime_match
+            and title_quality <= NONE
+            and (
+                source_quality >= DECENT
+                or enrichment.director_quality >= GOOD
+                or enrichment.actor_quality >= GOOD
+            )
+        ):
+            return DECENT
+        if (
+            enrichment.title_quality >= GOOD
+            and (
+                enrichment.director_quality >= GOOD or enrichment.actor_quality >= GOOD
+            )
+            and (
+                enrichment.runtime_quality >= DECENT
+                or enrichment.language_quality >= DECENT
+            )
+        ):
+            return GOOD
         if (
             enrichment.director_quality >= GOOD or enrichment.actor_quality >= GOOD
         ) and (
@@ -597,6 +720,7 @@ def determine_post_enrichment_quality(
 def apply_enrichment_to_candidates(
     *,
     pre_candidates: Sequence[CandidateQuality],
+    title_variants: Sequence[str],
     details_by_id: dict[int, TmdbMovieDetails | None],
     query_duration_minutes: int | None,
     spoken_languages: Sequence[str],
@@ -610,6 +734,7 @@ def apply_enrichment_to_candidates(
     for candidate in pre_candidates:
         enrichment = build_enrichment_quality(
             details=details_by_id.get(candidate.movie.id),
+            query_title_variants=title_variants,
             query_duration_minutes=query_duration_minutes,
             query_languages=query_languages,
             query_director_names=director_names,
@@ -627,6 +752,9 @@ def apply_enrichment_to_candidates(
             if other.movie.id != candidate.movie.id
         )
         new_quality = determine_post_enrichment_quality(
+            source_quality=candidate.source_quality,
+            title_quality=candidate.title_quality,
+            year_quality=candidate.year_quality,
             pre_quality=candidate.quality,
             enrichment=enrichment_by_id[candidate.movie.id],
             has_viable_higher_option=has_viable_higher_option,
@@ -1009,6 +1137,7 @@ def run_pre_enrichment_phase(
 
 def finalize_resolution(
     *,
+    title_variants: Sequence[str],
     pre_candidates: Sequence[CandidateQuality],
     director_names: Sequence[str],
     actor_names: Sequence[str],
@@ -1063,6 +1192,7 @@ def finalize_resolution(
     enriched_candidates, enrichment_by_id, contradiction_by_id = (
         apply_enrichment_to_candidates(
             pre_candidates=pre_ranked,
+            title_variants=title_variants,
             details_by_id=details_by_id,
             query_duration_minutes=duration_minutes,
             spoken_languages=spoken_languages,
@@ -1103,6 +1233,7 @@ def finalize_resolution(
                 "language_quality": enrichment.language_quality.name,
                 "director_quality": enrichment.director_quality.name,
                 "actor_quality": enrichment.actor_quality.name,
+                "title_quality": enrichment.title_quality.name,
                 "has_contradiction": enrichment.has_contradiction(),
                 "strong_support_count": enrichment.strong_support_count(),
                 "has_viable_higher_option": has_viable_higher_option,
@@ -1165,6 +1296,7 @@ def resolve_tmdb(
 
     if fetch_runtime_details is None:
         return finalize_resolution(
+            title_variants=title_variants,
             pre_candidates=pre_candidates,
             director_names=director_names,
             actor_names=actor_names,
@@ -1180,6 +1312,7 @@ def resolve_tmdb(
     )
     if not enrichment_ids:
         return finalize_resolution(
+            title_variants=title_variants,
             pre_candidates=pre_candidates,
             director_names=director_names,
             actor_names=actor_names,
@@ -1191,6 +1324,7 @@ def resolve_tmdb(
 
     details_by_id = fetch_runtime_details(enrichment_ids)
     return finalize_resolution(
+        title_variants=title_variants,
         pre_candidates=pre_candidates,
         director_names=director_names,
         actor_names=actor_names,
@@ -1238,6 +1372,7 @@ async def resolve_tmdb_lookup_with_optional_enrichment_async(
 
     if fetch_runtime_details is None:
         return finalize_resolution(
+            title_variants=title_variants,
             pre_candidates=pre_candidates,
             director_names=director_names,
             actor_names=actor_names,
@@ -1253,6 +1388,7 @@ async def resolve_tmdb_lookup_with_optional_enrichment_async(
     )
     if not enrichment_ids:
         return finalize_resolution(
+            title_variants=title_variants,
             pre_candidates=pre_candidates,
             director_names=director_names,
             actor_names=actor_names,
@@ -1264,6 +1400,7 @@ async def resolve_tmdb_lookup_with_optional_enrichment_async(
 
     details_by_id = await fetch_runtime_details(enrichment_ids)
     return finalize_resolution(
+        title_variants=title_variants,
         pre_candidates=pre_candidates,
         director_names=director_names,
         actor_names=actor_names,

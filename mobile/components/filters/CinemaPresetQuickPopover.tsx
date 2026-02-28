@@ -1,5 +1,5 @@
 /**
- * Floating quick-picker for cinema presets, shown from long-press on the cinemas filter pill.
+ * Floating quick-picker for cinema presets, shown from the cinemas filter pill.
  */
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -25,6 +25,7 @@ type CinemaPresetQuickPopoverProps = {
   visible: boolean;
   anchor: FilterPillLongPressPosition | null;
   onClose: () => void;
+  onOpenModal: () => void;
   maxPresets?: number;
 };
 
@@ -44,6 +45,7 @@ export default function CinemaPresetQuickPopover({
   visible,
   anchor,
   onClose,
+  onOpenModal,
   maxPresets = 6,
 }: CinemaPresetQuickPopoverProps) {
   const colors = useThemeColors();
@@ -93,6 +95,7 @@ export default function CinemaPresetQuickPopover({
     56 +
     Math.max(1, visiblePresets.length) * 52 +
     (hiddenPresetCount > 0 ? 24 : 0) +
+    50 +
     8;
   const minTop = 8 + ARROW_SIZE / 2;
   const maxTop = Math.max(minTop, screenHeight - estimatedCardHeight - CARD_BOTTOM_MARGIN);
@@ -113,6 +116,11 @@ export default function CinemaPresetQuickPopover({
   const handleApplyPreset = (preset: CinemaPresetPublic) => {
     setSelections(sortCinemaIds(preset.cinema_ids));
     onClose();
+  };
+
+  const handleOpenModal = () => {
+    onClose();
+    onOpenModal();
   };
 
   return (
@@ -177,6 +185,15 @@ export default function CinemaPresetQuickPopover({
               Showing {visiblePresets.length} of {presets.length} presets
             </ThemedText>
           ) : null}
+          <TouchableOpacity
+            style={styles.openModalRow}
+            onPress={handleOpenModal}
+            activeOpacity={0.8}
+          >
+            <ThemedText numberOfLines={1} style={styles.openModalText}>
+              Open full cinemas filter
+            </ThemedText>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -287,5 +304,22 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
       paddingHorizontal: 4,
       marginTop: -2,
+    },
+    openModalRow: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.tint,
+      backgroundColor: colors.searchBackground,
+      paddingVertical: 9,
+      paddingHorizontal: 10,
+      minHeight: 42,
+      justifyContent: "center",
+      marginTop: 2,
+    },
+    openModalText: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.tint,
+      textAlign: "center",
     },
   });

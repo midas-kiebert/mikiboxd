@@ -12,7 +12,10 @@ import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 
 import ShowtimesScreen from "@/components/showtimes/ShowtimesScreen";
 import DayFilterModal from "@/components/filters/DayFilterModal";
+import DayQuickPopover from "@/components/filters/DayQuickPopover";
+import { type FilterPillLongPressPosition } from "@/components/filters/FilterPills";
 import TimeFilterModal from "@/components/filters/TimeFilterModal";
+import TimeQuickPopover from "@/components/filters/TimeQuickPopover";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
 import {
   buildSharedTabActiveFilterIds,
@@ -64,8 +67,14 @@ export default function CinemaShowtimesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
+  const [dayQuickPopoverVisible, setDayQuickPopoverVisible] = useState(false);
+  const [dayQuickPopoverAnchor, setDayQuickPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
   // Controls visibility of the time-filter modal.
   const [timeModalVisible, setTimeModalVisible] = useState(false);
+  const [timeQuickPopoverVisible, setTimeQuickPopoverVisible] = useState(false);
+  const [timeQuickPopoverAnchor, setTimeQuickPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
   // Snapshot timestamp used to keep paginated API responses consistent.
   const [snapshotTime, setSnapshotTime] = useState(() =>
     DateTime.now().setZone("Europe/Amsterdam").toFormat("yyyy-MM-dd'T'HH:mm:ss")
@@ -240,18 +249,23 @@ export default function CinemaShowtimesScreen() {
   };
 
   // Handle filter pill presses and update filter state.
-  const handleToggleFilter = (filterId: CinemaShowtimesFilterId) => {
+  const handleToggleFilter = (
+    filterId: CinemaShowtimesFilterId,
+    position?: FilterPillLongPressPosition
+  ) => {
     if (filterId === "showtime-filter") {
       startFilterTransitionLoading();
       setSelectedShowtimeFilter(cycleSharedTabShowtimeFilter(selectedShowtimeFilter));
       return;
     }
     if (filterId === "days") {
-      setDayModalVisible(true);
+      setDayQuickPopoverAnchor(position ?? null);
+      setDayQuickPopoverVisible(true);
       return;
     }
     if (filterId === "times") {
-      setTimeModalVisible(true);
+      setTimeQuickPopoverAnchor(position ?? null);
+      setTimeQuickPopoverVisible(true);
       return;
     }
     if (filterId === "watchlist-only") {
@@ -259,6 +273,21 @@ export default function CinemaShowtimesScreen() {
       setWatchlistOnly(!watchlistOnly);
       return;
     }
+  };
+
+  const handleLongPressFilter = (
+    filterId: CinemaShowtimesFilterId,
+    _position: FilterPillLongPressPosition
+  ) => {
+    if (filterId === "days") {
+      setDayModalVisible(true);
+      return true;
+    }
+    if (filterId === "times") {
+      setTimeModalVisible(true);
+      return true;
+    }
+    return false;
   };
 
   // Render/output using the state and derived values prepared above.
@@ -281,6 +310,7 @@ export default function CinemaShowtimesScreen() {
         filters={pillFilters}
         activeFilterIds={activeFilterIds}
         onToggleFilter={handleToggleFilter}
+        onLongPressFilter={handleLongPressFilter}
         audienceToggle={
           shouldShowAudienceToggle
             ? {
@@ -293,6 +323,22 @@ export default function CinemaShowtimesScreen() {
             : undefined
         }
         emptyText="No showtimes for this cinema"
+      />
+      <DayQuickPopover
+        visible={dayQuickPopoverVisible}
+        anchor={dayQuickPopoverAnchor}
+        onClose={() => setDayQuickPopoverVisible(false)}
+        selectedDays={selectedDays}
+        onChange={setSelectedDays}
+        onOpenModal={() => setDayModalVisible(true)}
+      />
+      <TimeQuickPopover
+        visible={timeQuickPopoverVisible}
+        anchor={timeQuickPopoverAnchor}
+        onClose={() => setTimeQuickPopoverVisible(false)}
+        selectedTimeRanges={selectedTimeRanges}
+        onChange={setSelectedTimeRanges}
+        onOpenModal={() => setTimeModalVisible(true)}
       />
       <DayFilterModal
         visible={dayModalVisible}

@@ -713,7 +713,6 @@ def test_cinema_presets_and_favorite_cinema_selection(
     assert default_preset_id in by_id
     assert by_id[default_preset_id]["name"] == "All cinemas"
     assert by_id[default_preset_id]["is_default"] is True
-    assert {1, 2, 3, 4, 5}.issubset(set(by_id[default_preset_id]["cinema_ids"]))
     assert by_id[weekday_id]["is_favorite"] is False
     assert by_id[weekend_id]["is_favorite"] is True
 

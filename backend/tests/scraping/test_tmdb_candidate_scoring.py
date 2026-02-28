@@ -452,3 +452,61 @@ def test_ambiguous_tie_prefers_stronger_title_quality() -> None:
     assert result.tmdb_id == 696
     assert result.decision is not None
     assert result.decision.get("reason") == "ambiguous_top_quality_disambiguated"
+
+
+def test_enrichment_title_quality_uses_alternative_titles() -> None:
+    details = tmdb.TmdbMovieDetails(
+        title="Hoppers",
+        original_title=None,
+        release_year=2026,
+        directors=["Daniel Chong"],
+        poster_url=None,
+        original_language="en",
+        spoken_languages=["en"],
+        runtime_minutes=105,
+        cast_names=["Piper Curda"],
+        genre_ids=[16],
+        alternative_titles=["Jumpers"],
+    )
+
+    quality = tmdb.evaluate_enrichment_title_quality(
+        query_title_variants=["jumpers"],
+        details=details,
+    )
+    assert quality == tmdb.EXCELLENT
+
+
+def test_poor_source_title_language_only_is_discarded_post_enrichment() -> None:
+    quality = tmdb.determine_post_enrichment_quality(
+        source_quality=tmdb.POOR,
+        title_quality=tmdb.GOOD,
+        year_quality=tmdb.NONE,
+        pre_quality=tmdb.DECENT,
+        enrichment=tmdb.EnrichmentQuality(
+            runtime_quality=tmdb.NONE,
+            language_quality=tmdb.GOOD,
+            director_quality=tmdb.NONE,
+            actor_quality=tmdb.NONE,
+            title_quality=tmdb.GOOD,
+        ),
+        has_viable_higher_option=False,
+    )
+    assert quality == tmdb.DISCARD
+
+
+def test_title_mismatch_with_people_runtime_year_can_be_decent() -> None:
+    quality = tmdb.determine_post_enrichment_quality(
+        source_quality=tmdb.DECENT,
+        title_quality=tmdb.NONE,
+        year_quality=tmdb.GOOD,
+        pre_quality=tmdb.POOR,
+        enrichment=tmdb.EnrichmentQuality(
+            runtime_quality=tmdb.GOOD,
+            language_quality=tmdb.NONE,
+            director_quality=tmdb.EXCELLENT,
+            actor_quality=tmdb.NONE,
+            title_quality=tmdb.NONE,
+        ),
+        has_viable_higher_option=True,
+    )
+    assert quality == tmdb.DECENT

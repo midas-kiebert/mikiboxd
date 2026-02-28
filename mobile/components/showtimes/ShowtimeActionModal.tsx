@@ -28,6 +28,7 @@ import { useFetchFriends } from "shared/hooks/useFetchFriends";
 import { ThemedText } from "@/components/themed-text";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 
 type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
 type DetailPanel = "none" | "ping" | "visibility";
@@ -455,7 +456,9 @@ export default function ShowtimeActionModal({
           ) : null}
           {showtime ? (
             <ThemedText style={styles.statusModalSubtitle}>
-              {DateTime.fromISO(showtime.datetime).toFormat("ccc, LLL d, HH:mm")} • {showtime.cinema.name}
+              {DateTime.fromISO(showtime.datetime).toFormat("ccc, LLL d")},{" "}
+              {formatShowtimeTimeRange(showtime.datetime, showtime.end_datetime)} •{" "}
+              {showtime.cinema.name}
             </ThemedText>
           ) : null}
 

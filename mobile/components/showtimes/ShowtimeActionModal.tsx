@@ -29,9 +29,10 @@ import { ThemedText } from "@/components/themed-text";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
+import { formatSeatLabel } from "@/utils/seat-label";
 
 type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
-type DetailPanel = "none" | "ping" | "visibility" | "seat";
+type DetailPanel = "none" | "ping" | "visibility";
 
 type ShowtimeActionModalProps = {
   visible: boolean;
@@ -73,6 +74,7 @@ export default function ShowtimeActionModal({
   const [visibilitySearchQuery, setVisibilitySearchQuery] = useState("");
   const [seatRowDraft, setSeatRowDraft] = useState("");
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
+  const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
   const [visibleFriendIdsDraft, setVisibleFriendIdsDraft] = useState<Set<string>>(new Set());
 
   const selectedShowtimeId = showtime?.id ?? null;
@@ -159,6 +161,7 @@ export default function ShowtimeActionModal({
       setVisibilitySearchQuery("");
       setSeatRowDraft("");
       setSeatNumberDraft("");
+      setIsSeatDialogVisible(false);
       setVisibleFriendIdsDraft(new Set());
       return;
     }
@@ -166,6 +169,7 @@ export default function ShowtimeActionModal({
     setActiveDetailPanel("none");
     setPingSearchQuery("");
     setVisibilitySearchQuery("");
+    setIsSeatDialogVisible(false);
     modalProgress.setValue(0);
     Animated.timing(modalProgress, {
       toValue: 1,
@@ -304,11 +308,18 @@ export default function ShowtimeActionModal({
   const normalizedSeatNumberDraft = seatNumberDraft.trim() || null;
   const normalizedCurrentSeatRow = showtime?.seat_row?.trim() || null;
   const normalizedCurrentSeatNumber = showtime?.seat_number?.trim() || null;
+  const seatLabel = formatSeatLabel(normalizedCurrentSeatRow, normalizedCurrentSeatNumber);
+  const isSeatConfigured = Boolean(seatLabel);
   const hasSeatChanges =
     normalizedSeatRowDraft !== normalizedCurrentSeatRow ||
     normalizedSeatNumberDraft !== normalizedCurrentSeatNumber;
 
   const handleCloseModal = () => {
+    if (isSeatDialogVisible) {
+      setIsSeatDialogVisible(false);
+      return;
+    }
+
     if (!isUpdatingStatus && showtime && hasVisibilityChanges && !isUpdatingShowtimeVisibility) {
       updateShowtimeVisibility({
         showtimeId: showtime.id,
@@ -321,6 +332,20 @@ export default function ShowtimeActionModal({
     }
   };
 
+  const handleOpenSeatDialog = () => {
+    if (!showtime || isUpdatingStatus || showtime.going !== "GOING") {
+      return;
+    }
+    setSeatRowDraft(showtime.seat_row ?? "");
+    setSeatNumberDraft(showtime.seat_number ?? "");
+    setIsSeatDialogVisible(true);
+  };
+
+  const handleCloseSeatDialog = () => {
+    if (isUpdatingStatus) return;
+    setIsSeatDialogVisible(false);
+  };
+
   const handleSaveSeat = () => {
     if (!showtime || isUpdatingStatus || showtime.going !== "GOING") {
       return;
@@ -329,6 +354,7 @@ export default function ShowtimeActionModal({
       seatRow: normalizedSeatRowDraft,
       seatNumber: normalizedSeatNumberDraft,
     });
+    setIsSeatDialogVisible(false);
   };
 
   const friendsGoingIds = useMemo(() => {
@@ -430,13 +456,11 @@ export default function ShowtimeActionModal({
   const hasTicketLink = Boolean(showtime?.ticket_link);
 
   useEffect(() => {
-    if (isGoingSelected || activeDetailPanel !== "seat") {
+    if (isGoingSelected || !isSeatDialogVisible) {
       return;
     }
-    setActiveDetailPanel("none");
-    setRenderedDetailPanel("none");
-    detailPanelProgress.setValue(0);
-  }, [activeDetailPanel, detailPanelProgress, isGoingSelected]);
+    setIsSeatDialogVisible(false);
+  }, [isGoingSelected, isSeatDialogVisible]);
 
   const statusModalBackdropAnimatedStyle = {
     opacity: modalProgress.interpolate({
@@ -676,53 +700,6 @@ export default function ShowtimeActionModal({
             </Animated.View>
           ) : null}
 
-          {renderedDetailPanel === "seat" ? (
-            <Animated.View style={[styles.detailPanelAnimatedContainer, detailPanelAnimatedStyle]}>
-              <View style={styles.detailPanel}>
-                <ThemedText style={styles.detailPanelTitle}>Seat info (optional)</ThemedText>
-                <View style={styles.seatEditorRow}>
-                  <View style={styles.seatEditorField}>
-                    <ThemedText style={styles.seatFieldLabel}>Row</ThemedText>
-                    <TextInput
-                      value={seatRowDraft}
-                      onChangeText={setSeatRowDraft}
-                      placeholder="Row"
-                      placeholderTextColor={colors.textSecondary}
-                      style={styles.seatInput}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      maxLength={32}
-                    />
-                  </View>
-                  <View style={styles.seatEditorField}>
-                    <ThemedText style={styles.seatFieldLabel}>Seat</ThemedText>
-                    <TextInput
-                      value={seatNumberDraft}
-                      onChangeText={setSeatNumberDraft}
-                      placeholder="Seat"
-                      placeholderTextColor={colors.textSecondary}
-                      style={styles.seatInput}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      maxLength={32}
-                    />
-                  </View>
-                </View>
-                <ThemedText style={styles.seatHelperText}>
-                  This will show to visible friends next to your badge, like (6-3) or (C5).
-                </ThemedText>
-                <TouchableOpacity
-                  style={[styles.seatSaveButton, !hasSeatChanges && styles.seatSaveButtonDisabled]}
-                  onPress={handleSaveSeat}
-                  disabled={!hasSeatChanges || isUpdatingStatus}
-                  activeOpacity={0.8}
-                >
-                  <ThemedText style={styles.seatSaveButtonText}>Save Seat Info</ThemedText>
-                </TouchableOpacity>
-              </View>
-            </Animated.View>
-          ) : null}
-
           <View style={styles.actionRow}>
             <TouchableOpacity
               style={[styles.actionButton, !hasTicketLink && styles.actionButtonDisabled]}
@@ -742,23 +719,34 @@ export default function ShowtimeActionModal({
 
             {isGoingSelected ? (
               <TouchableOpacity
-                style={[styles.actionButton, activeDetailPanel === "seat" && styles.actionButtonActive]}
-                onPressIn={() => handleToggleDetailPanel("seat")}
-                delayPressIn={0}
+                style={[
+                  styles.actionButton,
+                  isSeatDialogVisible && styles.actionButtonActive,
+                  isSeatConfigured && styles.actionButtonSeatSet,
+                ]}
+                onPress={handleOpenSeatDialog}
                 activeOpacity={0.8}
               >
                 <MaterialIcons
                   name="event-seat"
                   size={16}
-                  color={activeDetailPanel === "seat" ? colors.tint : colors.textSecondary}
+                  color={
+                    isSeatConfigured
+                      ? colors.green.secondary
+                      : isSeatDialogVisible
+                        ? colors.tint
+                        : colors.textSecondary
+                  }
                 />
                 <ThemedText
                   style={[
                     styles.actionButtonText,
-                    activeDetailPanel === "seat" && styles.actionButtonTextActive,
+                    isSeatDialogVisible && styles.actionButtonTextActive,
+                    isSeatConfigured && styles.actionButtonTextSeatSet,
                   ]}
+                  numberOfLines={1}
                 >
-                  Seat
+                  {seatLabel ? `Seat ${seatLabel}` : "Seat"}
                 </ThemedText>
               </TouchableOpacity>
             ) : null}
@@ -818,6 +806,78 @@ export default function ShowtimeActionModal({
             <ThemedText style={styles.statusCancelText}>{isUpdatingStatus ? "Updating..." : "Cancel"}</ThemedText>
           </TouchableOpacity>
         </Animated.View>
+
+        <Modal
+          transparent
+          visible={isSeatDialogVisible}
+          animationType="fade"
+          onRequestClose={handleCloseSeatDialog}
+        >
+          <View style={styles.seatDialogBackdrop}>
+            <TouchableOpacity
+              style={styles.seatDialogBackdropPressable}
+              activeOpacity={1}
+              onPress={handleCloseSeatDialog}
+            />
+            <View style={styles.seatDialogCard}>
+              <View style={styles.seatDialogHeader}>
+                <ThemedText style={styles.seatDialogTitle}>Seat info</ThemedText>
+              </View>
+              <View style={styles.seatEditorRow}>
+                <View style={styles.seatEditorField}>
+                  <TextInput
+                    value={seatRowDraft}
+                    onChangeText={setSeatRowDraft}
+                    placeholder="Row"
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.seatInput}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    maxLength={32}
+                  />
+                </View>
+                <View style={styles.seatEditorField}>
+                  <TextInput
+                    value={seatNumberDraft}
+                    onChangeText={setSeatNumberDraft}
+                    placeholder="Seat"
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.seatInput}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    maxLength={32}
+                  />
+                </View>
+              </View>
+              <View style={styles.seatDialogActions}>
+                <TouchableOpacity
+                  style={[styles.seatDialogButton, styles.seatDialogButtonSecondary]}
+                  onPress={handleCloseSeatDialog}
+                  activeOpacity={0.8}
+                  disabled={isUpdatingStatus}
+                >
+                  <ThemedText style={[styles.seatDialogButtonText, styles.seatDialogButtonTextSecondary]}>
+                    Cancel
+                  </ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.seatDialogButton,
+                    styles.seatDialogButtonPrimary,
+                    !hasSeatChanges && styles.seatDialogButtonDisabled,
+                  ]}
+                  onPress={handleSaveSeat}
+                  activeOpacity={0.8}
+                  disabled={!hasSeatChanges || isUpdatingStatus}
+                >
+                  <ThemedText style={[styles.seatDialogButtonText, styles.seatDialogButtonTextPrimary]}>
+                    Save
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </Animated.View>
     </Modal>
   );
@@ -922,6 +982,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderColor: colors.tint,
       backgroundColor: colors.cardBackground,
     },
+    actionButtonSeatSet: {
+      borderColor: colors.green.secondary,
+      backgroundColor: colors.green.primary,
+    },
     actionButtonDisabled: {
       borderColor: colors.divider,
       backgroundColor: colors.pillBackground,
@@ -933,6 +997,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     actionButtonTextActive: {
       color: colors.tint,
+    },
+    actionButtonTextSeatSet: {
+      color: colors.green.secondary,
     },
     actionButtonTextDisabled: {
       color: colors.textSecondary,
@@ -1103,23 +1170,85 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 11,
       color: colors.textSecondary,
     },
-    seatSaveButton: {
-      borderRadius: 9,
-      borderWidth: 1,
-      borderColor: colors.tint,
-      backgroundColor: colors.cardBackground,
-      alignItems: "center",
-      paddingVertical: 8,
-      paddingHorizontal: 10,
-    },
-    seatSaveButtonDisabled: {
+    seatDialogButtonDisabled: {
       borderColor: colors.divider,
       backgroundColor: colors.pillBackground,
     },
-    seatSaveButtonText: {
+    seatDialogBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0, 0, 0, 0.28)",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 20,
+    },
+    seatDialogBackdropPressable: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    seatDialogCard: {
+      width: "100%",
+      maxWidth: 360,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingHorizontal: 14,
+      paddingTop: 14,
+      paddingBottom: 12,
+      gap: 10,
+      shadowColor: "#000",
+      shadowOpacity: 0.2,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 9,
+    },
+    seatDialogHeader: {
+      gap: 2,
+    },
+    seatDialogTitle: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    seatDialogSubtitle: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      lineHeight: 17,
+    },
+    seatDialogCurrentSeat: {
       fontSize: 12,
       fontWeight: "700",
-      color: colors.tint,
+      color: colors.text,
+    },
+    seatDialogActions: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    seatDialogButton: {
+      flex: 1,
+      minHeight: 38,
+      borderRadius: 10,
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 12,
+    },
+    seatDialogButtonPrimary: {
+      backgroundColor: colors.tint,
+      borderColor: colors.tint,
+    },
+    seatDialogButtonSecondary: {
+      backgroundColor: colors.cardBackground,
+      borderColor: colors.divider,
+    },
+    seatDialogButtonText: {
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    seatDialogButtonTextPrimary: {
+      color: colors.pillActiveText,
+    },
+    seatDialogButtonTextSecondary: {
+      color: colors.textSecondary,
     },
     statusCancelButton: {
       alignItems: "center",

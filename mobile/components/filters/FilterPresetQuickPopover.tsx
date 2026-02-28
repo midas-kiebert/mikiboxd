@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -154,12 +154,19 @@ export default function FilterPresetQuickPopover({
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const modalRootRef = useRef<View | null>(null);
+  const [modalRootTop, setModalRootTop] = useState(0);
   const queryClient = useQueryClient();
   const [presetName, setPresetName] = useState("");
   const [presetError, setPresetError] = useState<string | null>(null);
   const [isSavePresetDialogVisible, setIsSavePresetDialogVisible] = useState(false);
   const [saveAsFavorite, setSaveAsFavorite] = useState(false);
   const [presetOrderIds, setPresetOrderIds] = useState<readonly string[]>([]);
+  const updateModalRootTop = useCallback(() => {
+    modalRootRef.current?.measureInWindow((_x, y) => {
+      setModalRootTop(y);
+    });
+  }, []);
 
   useEffect(() => {
     if (visible) return;
@@ -264,7 +271,7 @@ export default function FilterPresetQuickPopover({
     8;
   const minTop = 8;
   const maxTop = Math.max(minTop, screenHeight - estimatedCardHeight - CARD_BOTTOM_MARGIN);
-  const anchorY = anchor?.pageY ?? screenHeight;
+  const anchorY = (anchor?.pageY ?? screenHeight) - modalRootTop;
   const desiredTop =
     anchorY - CARD_ANCHOR_GAP - ARROW_SIZE / 2 - estimatedCardHeight;
   const cardTop = Math.max(minTop, Math.min(desiredTop, maxTop));
@@ -347,8 +354,15 @@ export default function FilterPresetQuickPopover({
   };
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={handleClose}>
-      <View style={styles.modalRoot}>
+    <Modal
+      transparent
+      statusBarTranslucent
+      visible={visible}
+      animationType="fade"
+      onShow={updateModalRootTop}
+      onRequestClose={handleClose}
+    >
+      <View ref={modalRootRef} style={styles.modalRoot} onLayout={updateModalRootTop}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleClose} />
         <View style={[styles.card, { top: cardTop, left: cardLeft, width: CARD_WIDTH }]}>
           <View

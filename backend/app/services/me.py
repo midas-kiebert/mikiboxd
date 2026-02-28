@@ -36,7 +36,7 @@ DEFAULT_FILTER_PRESET_IDS = {
     FilterPresetScope.MOVIES: UUID("00000000-0000-0000-0000-000000000002"),
 }
 DEFAULT_CINEMA_PRESET_ID = UUID("00000000-0000-0000-0000-000000000003")
-DEFAULT_CINEMA_PRESET_NAME = "All cinemas"
+DEFAULT_CINEMA_PRESET_NAME = "All Cinemas"
 
 
 def _build_default_filter_preset(scope: FilterPresetScope) -> FilterPresetPublic:

@@ -16,12 +16,19 @@ from app.schemas.user import (
 from app.utils import now_amsterdam_naive
 
 
-def to_public(user: User) -> UserPublic:
+def to_public(
+    user: User,
+    *,
+    seat_row: str | None = None,
+    seat_number: str | None = None,
+) -> UserPublic:
     User.model_validate(user)
     return UserPublic(
         id=user.id,
         is_active=user.is_active,
         display_name=user.display_name,
+        seat_row=seat_row,
+        seat_number=seat_number,
     )
 
 

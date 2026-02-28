@@ -1,9 +1,12 @@
-import { type CinemaPresetPublic } from "shared";
+import { type FilterPresetPublic, type FilterPresetScope } from "shared";
 import { storage } from "shared/storage";
 
-const CINEMA_PRESET_ORDER_STORAGE_KEY = "cinema_preset_order_v1";
+const FILTER_PRESET_ORDER_STORAGE_KEY_PREFIX = "filter_preset_order_v1";
 
-const compareByDefaultOrder = (left: CinemaPresetPublic, right: CinemaPresetPublic) => {
+const getStorageKey = (scope: FilterPresetScope) =>
+  `${FILTER_PRESET_ORDER_STORAGE_KEY_PREFIX}_${scope.toLowerCase()}`;
+
+const compareByDefaultOrder = (left: FilterPresetPublic, right: FilterPresetPublic) => {
   if (left.is_favorite !== right.is_favorite) return left.is_favorite ? -1 : 1;
   const nameDelta = left.name.localeCompare(right.name, undefined, {
     sensitivity: "base",
@@ -13,8 +16,8 @@ const compareByDefaultOrder = (left: CinemaPresetPublic, right: CinemaPresetPubl
   return left.id.localeCompare(right.id);
 };
 
-export const sortCinemaPresetsByOrder = (
-  presets: readonly CinemaPresetPublic[],
+export const sortFilterPresetsByOrder = (
+  presets: readonly FilterPresetPublic[],
   orderedIds: readonly string[]
 ) => {
   const indexById = new Map(orderedIds.map((id, index) => [id, index]));
@@ -32,22 +35,27 @@ export const sortCinemaPresetsByOrder = (
   });
 };
 
-export const sanitizeCinemaPresetOrderIds = (orderedIds: readonly string[]) =>
+export const sanitizeFilterPresetOrderIds = (orderedIds: readonly string[]) =>
   Array.from(new Set(orderedIds));
 
-export const loadCinemaPresetOrder = async () => {
+export const loadFilterPresetOrder = async (scope: FilterPresetScope) => {
   try {
-    const raw = await storage.getItem(CINEMA_PRESET_ORDER_STORAGE_KEY);
+    const raw = await storage.getItem(getStorageKey(scope));
     if (!raw) return [] as string[];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [] as string[];
-    return sanitizeCinemaPresetOrderIds(parsed.filter((value): value is string => typeof value === "string"));
+    return sanitizeFilterPresetOrderIds(
+      parsed.filter((value): value is string => typeof value === "string")
+    );
   } catch {
     return [] as string[];
   }
 };
 
-export const saveCinemaPresetOrder = async (orderedIds: readonly string[]) => {
-  const normalized = sanitizeCinemaPresetOrderIds(orderedIds);
-  await storage.setItem(CINEMA_PRESET_ORDER_STORAGE_KEY, JSON.stringify(normalized));
+export const saveFilterPresetOrder = async (
+  scope: FilterPresetScope,
+  orderedIds: readonly string[]
+) => {
+  const normalized = sanitizeFilterPresetOrderIds(orderedIds);
+  await storage.setItem(getStorageKey(scope), JSON.stringify(normalized));
 };

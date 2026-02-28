@@ -7,7 +7,7 @@ import { AppState, StyleSheet, Text, View } from 'react-native';
 
 import { useQueryClient } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
-import { MeService } from 'shared';
+import { ApiError, MeService } from 'shared';
 import { useFetchReceivedRequests } from 'shared/hooks/useFetchReceivedRequests';
 import { useFetchUnseenShowtimePingCount } from 'shared/hooks/useFetchUnseenShowtimePingCount';
 import useAuth from 'shared/hooks/useAuth';
@@ -21,8 +21,6 @@ import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications';
 
 const NOTIFICATION_PERMISSION_PROMPTED_KEY = 'mobile.notifications.permission_prompted_v3';
 const NOTIFICATION_PREFS_INITIALIZED_KEY = 'mobile.notifications.preferences_initialized_v1';
-const WATCHLIST_LAST_SYNC_KEY = 'mobile.watchlist.last_sync_at';
-const WATCHLIST_SYNC_COOLDOWN_MS = 30 * 60 * 1000;
 const NOTIFICATION_PROMPT_DELAY_MS = 700;
 
 export default function TabLayout() {
@@ -50,24 +48,14 @@ export default function TabLayout() {
 
   // Keep server watchlist state in sync when entering or returning to the app.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.letterboxd_username) return;
 
     const maybeSyncWatchlist = async () => {
       if (isSyncingWatchlistRef.current) return;
 
       try {
-        const storageKey = `${WATCHLIST_LAST_SYNC_KEY}:${user.id}`;
-        const lastSyncRaw = await storage.getItem(storageKey);
-        const lastSyncMs = Number(lastSyncRaw ?? '0');
-        const now = Date.now();
-
-        if (Number.isFinite(lastSyncMs) && now - lastSyncMs < WATCHLIST_SYNC_COOLDOWN_MS) {
-          return;
-        }
-
         isSyncingWatchlistRef.current = true;
         await MeService.syncWatchlist();
-        await storage.setItem(storageKey, String(now));
 
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['movies'] }),
@@ -75,6 +63,9 @@ export default function TabLayout() {
           queryClient.invalidateQueries({ queryKey: ['showtimes'] }),
         ]);
       } catch (error) {
+        if (error instanceof ApiError && error.status === 429) {
+          return;
+        }
         console.error('Error syncing watchlist:', error);
       } finally {
         isSyncingWatchlistRef.current = false;

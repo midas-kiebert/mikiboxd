@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import {
   Modal,
+  Platform,
+  StatusBar,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -21,8 +23,7 @@ type SelectionQuickPopoverProps = {
   visible: boolean;
   anchor: FilterPillLongPressPosition | null;
   onClose: () => void;
-  title: string;
-  options: ReadonlyArray<QuickSelectionPopoverOption>;
+  options: readonly QuickSelectionPopoverOption[];
   selectedOptionId?: string | null;
   onSelectOption: (optionId: string) => void;
   footerActionLabel?: string;
@@ -36,12 +37,12 @@ const CARD_BOTTOM_MARGIN = 12;
 const ARROW_SIZE = 14;
 const ARROW_SIDE_GUTTER = 18;
 const CARD_ANCHOR_GAP = 2;
+const ANDROID_STATUSBAR_OFFSET = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
 
 export default function SelectionQuickPopover({
   visible,
   anchor,
   onClose,
-  title,
   options,
   selectedOptionId = null,
   onSelectOption,
@@ -55,13 +56,12 @@ export default function SelectionQuickPopover({
 
   const estimatedCardHeight =
     ARROW_SIZE / 2 +
-    48 +
     Math.max(1, options.length) * 52 +
     (footerActionLabel && onPressFooterAction ? 50 : 0) +
     8;
   const minTop = 8 + ARROW_SIZE / 2;
   const maxTop = Math.max(minTop, screenHeight - estimatedCardHeight - CARD_BOTTOM_MARGIN);
-  const anchorY = anchor?.pageY ?? 0;
+  const anchorY = (anchor?.pageY ?? 0) - ANDROID_STATUSBAR_OFFSET;
   const desiredTop = anchorY + CARD_ANCHOR_GAP + ARROW_SIZE / 2;
   const cardTop = Math.max(minTop, Math.min(desiredTop, maxTop));
   const rawLeft = (anchor?.pageX ?? screenWidth / 2) - cardWidth / 2;
@@ -101,7 +101,6 @@ export default function SelectionQuickPopover({
               },
             ]}
           />
-          <ThemedText style={styles.title}>{title}</ThemedText>
           <View style={styles.list}>
             {options.map((option) => {
               const isSelected = option.id === selectedOptionId;
@@ -113,10 +112,7 @@ export default function SelectionQuickPopover({
                   activeOpacity={0.8}
                 >
                   <View style={styles.optionTextWrap}>
-                    <ThemedText
-                      numberOfLines={1}
-                      style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}
-                    >
+                    <ThemedText numberOfLines={1} style={styles.optionLabel}>
                       {option.label}
                     </ThemedText>
                     {option.meta ? (
@@ -161,14 +157,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.background,
-      paddingVertical: 10,
+      paddingVertical: 8,
       paddingHorizontal: 10,
       shadowColor: "#000",
       shadowOpacity: 0.22,
       shadowRadius: 14,
       shadowOffset: { width: 0, height: 8 },
       elevation: 10,
-      gap: 8,
+      gap: 6,
     },
     arrow: {
       position: "absolute",
@@ -184,12 +180,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       shadowOffset: { width: 0, height: 1 },
       elevation: 2,
     },
-    title: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: colors.text,
-      paddingHorizontal: 4,
-    },
     list: {
       gap: 6,
     },
@@ -204,8 +194,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       justifyContent: "center",
     },
     optionRowSelected: {
-      borderColor: colors.tint,
-      backgroundColor: colors.searchBackground,
+      borderColor: colors.green.secondary,
+      backgroundColor: colors.green.primary,
     },
     optionTextWrap: {
       minWidth: 0,
@@ -215,9 +205,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 13,
       fontWeight: "700",
       color: colors.text,
-    },
-    optionLabelSelected: {
-      color: colors.tint,
     },
     optionMeta: {
       fontSize: 11,

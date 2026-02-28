@@ -33,6 +33,7 @@ export type CinemaPublic = {
   cineville: boolean
   badge_bg_color: string
   url: string
+  seating?: string
   id: number
   city: CityPublic
   test?: number

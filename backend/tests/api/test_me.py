@@ -713,7 +713,7 @@ def test_cinema_presets_and_favorite_cinema_selection(
     assert list_response.status_code == 200
     by_id = {preset["id"]: preset for preset in list_response.json()}
     assert default_preset_id in by_id
-    assert by_id[default_preset_id]["name"] == "All cinemas"
+    assert by_id[default_preset_id]["name"] == "All Cinemas"
     assert by_id[default_preset_id]["is_default"] is True
     assert by_id[weekday_id]["is_favorite"] is False
     assert by_id[weekend_id]["is_favorite"] is True

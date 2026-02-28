@@ -1,4 +1,7 @@
-import type { FilterPresetScope, GoingStatus } from "shared";
+import type { CinemaPresetPublic, FilterPresetScope, GoingStatus } from "shared";
+
+import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
+import { formatTimePillLabel } from "@/components/filters/time-range-utils";
 
 export type SharedTabFilterId =
   | "showtime-filter"
@@ -14,20 +17,26 @@ export const SHARED_TAB_FILTER_PRESET_SCOPE: FilterPresetScope = "SHOWTIMES";
 
 const SHARED_TAB_FILTERS: ReadonlyArray<{ id: SharedTabFilterId; label: string }> = [
   { id: "showtime-filter", label: "Any Status" },
-  { id: "watchlist-only", label: "Watchlist Only" },
+  { id: "watchlist-only", label: "All Movies" },
   { id: "cinemas", label: "Cinemas" },
-  { id: "days", label: "Days" },
-  { id: "times", label: "Times" },
+  { id: "days", label: "Any Day" },
+  { id: "times", label: "any time" },
   { id: "presets", label: "Presets" },
 ] as const;
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
+type CinemaPresetSummary = Pick<CinemaPresetPublic, "name" | "cinema_ids">;
+const EMPTY_CINEMA_IDS: readonly number[] = [];
 
 type BuildPillFiltersInput = {
   colors: ThemeColors;
   selectedShowtimeFilter: SharedTabShowtimeFilter;
-  selectedDaysCount: number;
-  selectedTimeRangesCount: number;
+  watchlistOnly: boolean;
+  selectedDays: readonly string[];
+  selectedTimeRanges: readonly string[];
+  sessionCinemaIds?: readonly number[] | null;
+  preferredCinemaIds?: readonly number[] | null;
+  cinemaPresets?: readonly CinemaPresetSummary[];
 };
 
 type BuildActiveFiltersInput = {
@@ -61,13 +70,30 @@ export const getSelectedStatusesFromShowtimeFilter = (
   return ["GOING", "INTERESTED"];
 };
 
+const sortCinemaIds = (cinemaIds: Iterable<number>) =>
+  Array.from(new Set(cinemaIds)).sort((a, b) => a - b);
+
+const serializeCinemaIds = (cinemaIds: Iterable<number>) => JSON.stringify(sortCinemaIds(cinemaIds));
+
 export const buildSharedTabPillFilters = ({
   colors,
   selectedShowtimeFilter,
-  selectedDaysCount,
-  selectedTimeRangesCount,
-}: BuildPillFiltersInput) =>
-  SHARED_TAB_FILTERS.map((filter) => {
+  watchlistOnly,
+  selectedDays,
+  selectedTimeRanges,
+  sessionCinemaIds,
+  preferredCinemaIds,
+  cinemaPresets,
+}: BuildPillFiltersInput) => {
+  const selectedCinemaIds = sessionCinemaIds ?? preferredCinemaIds ?? EMPTY_CINEMA_IDS;
+  const selectedCinemaCount = sortCinemaIds(selectedCinemaIds).length;
+  const selectedCinemaSignature = serializeCinemaIds(selectedCinemaIds);
+  const matchingCinemaPreset = cinemaPresets?.find(
+    (preset) => serializeCinemaIds(preset.cinema_ids) === selectedCinemaSignature
+  );
+  const cinemasLabel = matchingCinemaPreset?.name?.trim() || `Cinemas (${selectedCinemaCount})`;
+
+  return SHARED_TAB_FILTERS.map((filter) => {
     if (filter.id === "showtime-filter") {
       const label =
         selectedShowtimeFilter === "all"
@@ -98,14 +124,21 @@ export const buildSharedTabPillFilters = ({
               : undefined,
       };
     }
-    if (filter.id === "days" && selectedDaysCount > 0) {
-      return { ...filter, label: `Days (${selectedDaysCount})` };
+    if (filter.id === "watchlist-only") {
+      return { ...filter, label: watchlistOnly ? "Watchlist Only" : "All Movies" };
     }
-    if (filter.id === "times" && selectedTimeRangesCount > 0) {
-      return { ...filter, label: `Times (${selectedTimeRangesCount})` };
+    if (filter.id === "cinemas") {
+      return { ...filter, label: cinemasLabel };
+    }
+    if (filter.id === "days") {
+      return { ...filter, label: formatDayPillLabel(selectedDays) };
+    }
+    if (filter.id === "times") {
+      return { ...filter, label: formatTimePillLabel(selectedTimeRanges) };
     }
     return filter;
   });
+};
 
 export const buildSharedTabActiveFilterIds = ({
   selectedShowtimeFilter,

@@ -167,6 +167,7 @@ export type ShowtimePingPublic = {
   cinema_name: string
   datetime: string
   ticket_link: string | null
+  showtime: ShowtimeLoggedIn
   sender: UserPublic
   created_at: string
   seen_at: string | null

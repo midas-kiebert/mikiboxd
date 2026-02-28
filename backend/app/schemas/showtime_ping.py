@@ -2,6 +2,7 @@ from datetime import datetime as DateTime
 
 from sqlmodel import SQLModel
 
+from .showtime import ShowtimeLoggedIn
 from .user import UserPublic
 
 __all__ = [
@@ -18,6 +19,7 @@ class ShowtimePingPublic(SQLModel):
     cinema_name: str
     datetime: DateTime
     ticket_link: str | None
+    showtime: ShowtimeLoggedIn
     sender: UserPublic
     created_at: DateTime
     seen_at: DateTime | None

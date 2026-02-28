@@ -74,7 +74,6 @@ export default function DayQuickPopover({
       visible={visible}
       anchor={anchor}
       onClose={onClose}
-      title="Days"
       options={DAY_QUICK_POPOVER_OPTIONS}
       selectedOptionId={selectedOptionId}
       onSelectOption={handleSelectOption}

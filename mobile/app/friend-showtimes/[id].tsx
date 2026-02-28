@@ -7,25 +7,29 @@ import { DateTime } from 'luxon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { UsersService, type GoingStatus } from 'shared';
 import { useFetchUserShowtimes } from 'shared/hooks/useFetchUserShowtimes';
+import { useSessionShowtimeFilter } from 'shared/hooks/useSessionShowtimeFilter';
 
 import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
 import DayFilterModal from '@/components/filters/DayFilterModal';
 import DayQuickPopover from '@/components/filters/DayQuickPopover';
 import { type FilterPillLongPressPosition } from '@/components/filters/FilterPills';
-import TimeFilterModal from '@/components/filters/TimeFilterModal';
 import TimeQuickPopover from '@/components/filters/TimeQuickPopover';
-import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
+import { formatDayPillLabel, resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
+import { formatTimePillLabel } from '@/components/filters/time-range-utils';
+import { useSharedDayTimeFilters } from '@/hooks/useSharedDayTimeFilters';
+import { useThemeColors } from '@/hooks/use-theme-color';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
 // Filter pill definitions rendered in the top filter row.
 const BASE_FILTERS = [
-  { id: 'going', label: 'Going Only' },
+  { id: 'showtime-filter', label: 'Interested' },
   { id: 'watchlist-only', label: 'Watchlist Only' },
-  { id: 'days', label: 'Days' },
-  { id: 'times', label: 'Times' },
+  { id: 'days', label: 'Any Day' },
+  { id: 'times', label: 'any time' },
 ] as const;
 
 type FriendAgendaFilterId = (typeof BASE_FILTERS)[number]['id'];
+type FriendShowtimeFilter = 'interested' | 'going';
 
 const getRouteParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
@@ -38,9 +42,14 @@ const getFriendTitle = (displayName: string | null | undefined) => {
 
 export default function FriendShowtimesScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
+  const colors = useThemeColors();
+  const { selection: sharedShowtimeFilter } = useSessionShowtimeFilter();
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const userId = useMemo(() => getRouteParam(id), [id]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedShowtimeFilter, setSelectedShowtimeFilter] = useState<FriendShowtimeFilter>(() =>
+    sharedShowtimeFilter === 'going' ? 'going' : 'interested'
+  );
   // Tracks which filter pills are toggled on (multi-select).
   const [activeFilterIds, setActiveFilterIds] = useState<FriendAgendaFilterId[]>([]);
   // Controls pull-to-refresh spinner visibility.
@@ -50,13 +59,11 @@ export default function FriendShowtimesScreen() {
   const [dayQuickPopoverVisible, setDayQuickPopoverVisible] = useState(false);
   const [dayQuickPopoverAnchor, setDayQuickPopoverAnchor] =
     useState<FilterPillLongPressPosition | null>(null);
-  // Controls visibility of the time-filter modal.
-  const [timeModalVisible, setTimeModalVisible] = useState(false);
   const [timeQuickPopoverVisible, setTimeQuickPopoverVisible] = useState(false);
   const [timeQuickPopoverAnchor, setTimeQuickPopoverAnchor] =
     useState<FilterPillLongPressPosition | null>(null);
-  const [selectedDays, setSelectedDays] = useState<string[]>([]);
-  const [selectedTimeRanges, setSelectedTimeRanges] = useState<string[]>([]);
+  const { selectedDays, setSelectedDays, selectedTimeRanges, setSelectedTimeRanges } =
+    useSharedDayTimeFilters();
   // Snapshot timestamp used to keep paginated API responses consistent.
   const [snapshotTime, setSnapshotTime] = useState(() =>
     DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")
@@ -85,9 +92,8 @@ export default function FriendShowtimesScreen() {
 
   // Build the filter payload from current UI selections.
   const showtimesFilters = useMemo(() => {
-    const selectedStatuses: GoingStatus[] | undefined = activeFilterIds.includes('going')
-      ? ['GOING']
-      : undefined;
+    const selectedStatuses: GoingStatus[] =
+      selectedShowtimeFilter === 'going' ? ['GOING'] : ['GOING', 'INTERESTED'];
     const watchlistOnly = activeFilterIds.includes('watchlist-only');
 
     return {
@@ -97,7 +103,7 @@ export default function FriendShowtimesScreen() {
       selectedStatuses,
       watchlistOnly: watchlistOnly ? true : undefined,
     };
-  }, [activeFilterIds, resolvedApiDays, searchQuery, selectedTimeRanges]);
+  }, [activeFilterIds, resolvedApiDays, searchQuery, selectedShowtimeFilter, selectedTimeRanges]);
 
   // Data hooks keep this module synced with backend data and shared cache state.
   const {
@@ -139,6 +145,10 @@ export default function FriendShowtimesScreen() {
     filterId: FriendAgendaFilterId,
     position?: FilterPillLongPressPosition
   ) => {
+    if (filterId === 'showtime-filter') {
+      setSelectedShowtimeFilter((current) => (current === 'going' ? 'interested' : 'going'));
+      return;
+    }
     if (filterId === 'days') {
       setDayQuickPopoverAnchor(position ?? null);
       setDayQuickPopoverVisible(true);
@@ -157,14 +167,15 @@ export default function FriendShowtimesScreen() {
 
   const handleLongPressFilter = (
     filterId: FriendAgendaFilterId,
-    _position: FilterPillLongPressPosition
+    position: FilterPillLongPressPosition
   ) => {
     if (filterId === 'days') {
       setDayModalVisible(true);
       return true;
     }
     if (filterId === 'times') {
-      setTimeModalVisible(true);
+      setTimeQuickPopoverAnchor(position ?? null);
+      setTimeQuickPopoverVisible(true);
       return true;
     }
     return false;
@@ -173,17 +184,32 @@ export default function FriendShowtimesScreen() {
   const pillFilters = useMemo(
     () =>
       BASE_FILTERS.map((filter) =>
-        filter.id === 'days' && selectedDays.length > 0
-          ? { ...filter, label: `Days (${selectedDays.length})` }
-          : filter.id === 'times' && selectedTimeRanges.length > 0
-            ? { ...filter, label: `Times (${selectedTimeRanges.length})` }
+        filter.id === 'showtime-filter'
+          ? {
+              ...filter,
+              label: selectedShowtimeFilter === 'going' ? 'Going' : 'Interested',
+              activeBackgroundColor:
+                selectedShowtimeFilter === 'going' ? colors.green.primary : colors.orange.primary,
+              activeTextColor:
+                selectedShowtimeFilter === 'going'
+                  ? colors.green.secondary
+                  : colors.orange.secondary,
+              activeBorderColor:
+                selectedShowtimeFilter === 'going'
+                  ? colors.green.secondary
+                  : colors.orange.secondary,
+            }
+          : filter.id === 'days'
+          ? { ...filter, label: formatDayPillLabel(selectedDays) }
+          : filter.id === 'times'
+            ? { ...filter, label: formatTimePillLabel(selectedTimeRanges) }
             : filter
       ),
-    [selectedDays.length, selectedTimeRanges.length]
+    [colors, selectedDays, selectedShowtimeFilter, selectedTimeRanges]
   );
 
   const highlightedFilterIds = useMemo(() => {
-    const active = [...activeFilterIds];
+    const active: FriendAgendaFilterId[] = ['showtime-filter', ...activeFilterIds];
     if (selectedDays.length > 0) {
       active.push('days');
     }
@@ -229,19 +255,12 @@ export default function FriendShowtimesScreen() {
         onClose={() => setTimeQuickPopoverVisible(false)}
         selectedTimeRanges={selectedTimeRanges}
         onChange={setSelectedTimeRanges}
-        onOpenModal={() => setTimeModalVisible(true)}
       />
       <DayFilterModal
         visible={dayModalVisible}
         onClose={() => setDayModalVisible(false)}
         selectedDays={selectedDays}
         onChange={setSelectedDays}
-      />
-      <TimeFilterModal
-        visible={timeModalVisible}
-        onClose={() => setTimeModalVisible(false)}
-        selectedTimeRanges={selectedTimeRanges}
-        onChange={setSelectedTimeRanges}
       />
     </>
   );

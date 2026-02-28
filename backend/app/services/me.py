@@ -5,6 +5,7 @@ from psycopg.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
+from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
 from app.core.enums import FilterPresetScope, ShowtimePingSort
 from app.crud import cinema as cinemas_crud
@@ -16,6 +17,7 @@ from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
 from app.exceptions.user_exceptions import DisplayNameAlreadyExists, EmailAlreadyExists
+from app.inputs.movie import Filters
 from app.models.cinema_preset import CinemaPreset
 from app.models.filter_preset import FilterPreset
 from app.models.showtime import Showtime
@@ -540,7 +542,9 @@ def get_received_showtime_pings(
 
     sender_cache: dict[UUID, User | None] = {}
     showtime_cache: dict[int, Showtime | None] = {}
+    showtime_public_cache = {}
     result: list[ShowtimePingPublic] = []
+    filters = Filters(snapshot_time=now_amsterdam_naive())
 
     for ping in pings:
         sender = sender_cache.get(ping.sender_id)
@@ -560,6 +564,16 @@ def get_received_showtime_pings(
         if showtime is None:
             continue
 
+        showtime_public = showtime_public_cache.get(showtime.id)
+        if showtime_public is None:
+            showtime_public = showtime_converters.to_logged_in(
+                showtime=showtime,
+                session=session,
+                user_id=user_id,
+                filters=filters,
+            )
+            showtime_public_cache[showtime.id] = showtime_public
+
         if ping.id is None:
             continue
 
@@ -573,6 +587,7 @@ def get_received_showtime_pings(
                 cinema_name=showtime.cinema.name,
                 datetime=showtime.datetime,
                 ticket_link=showtime.ticket_link,
+                showtime=showtime_public,
                 sender=user_converters.to_public(sender),
                 created_at=ping.created_at,
                 seen_at=ping.seen_at,

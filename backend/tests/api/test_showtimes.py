@@ -231,6 +231,56 @@ def test_showtime_visibility_get_and_update(
     assert updated_get_response.json()["visible_friend_ids"] == [str(first_friend_id)]
 
 
+def test_showtime_visibility_is_scoped_per_showtime(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    first_friend = user_factory()
+    second_friend = user_factory()
+    showtime = showtime_factory()
+    second_showtime = showtime_factory(movie=showtime.movie)
+    first_friend_id = first_friend.id
+    second_friend_id = second_friend.id
+    showtime_id = showtime.id
+    second_showtime_id = second_showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=first_friend_id,
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=second_friend_id,
+    )
+    db_transaction.commit()
+
+    update_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"visible_friend_ids": [str(first_friend_id)]},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["all_friends_selected"] is False
+    assert update_response.json()["visible_friend_ids"] == [str(first_friend_id)]
+
+    unaffected_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{second_showtime_id}/visibility",
+        headers=normal_user_token_headers,
+    )
+    assert unaffected_response.status_code == 200
+    unaffected_body = unaffected_response.json()
+    assert unaffected_body["all_friends_selected"] is True
+    assert sorted(unaffected_body["visible_friend_ids"]) == sorted(
+        [str(first_friend_id), str(second_friend_id)]
+    )
+
+
 def test_showtime_visibility_filters_friend_status_in_showtime_payload(
     client: TestClient,
     normal_user_token_headers: dict[str, str],

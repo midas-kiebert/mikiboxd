@@ -58,7 +58,9 @@ def time_range_clause(
 
     # When a range has an explicit end, the showtime's end must also fit that window.
     if end is not None:
-        end_time_col = cast(func.coalesce(end_datetime_column, start_datetime_column), Time)
+        end_time_col = cast(
+            func.coalesce(end_datetime_column, start_datetime_column), Time
+        )
         end_clause = _single_time_col_clause(end_time_col)
         return start_clause & end_clause
 

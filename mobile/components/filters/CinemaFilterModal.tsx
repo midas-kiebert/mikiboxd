@@ -1,13 +1,13 @@
 /**
  * Mobile filter UI component: Cinema Filter Modal.
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   type ListRenderItem,
   Modal,
-  PanResponder,
   Platform,
   StyleSheet,
   TextInput,
@@ -75,8 +75,6 @@ type CinemaColorPalette = {
 type CinemaModalPage = "selection" | "presets";
 
 const GROUPING_MINIMUM = 3;
-const PRESET_DRAG_STEP_PX = 52;
-
 function groupCinemas(cinemas: CinemaPublic[]) {
   const groupedByCity = new Map<number, CityGroup>();
 
@@ -421,12 +419,28 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
 
   const handleApplyPreset = useCallback((preset: CinemaPresetPublic) => {
     setLocalSelectedCinemaSet(new Set(preset.cinema_ids));
-    setPage("selection");
   }, []);
 
   const handleDeletePreset = useCallback(
     (preset: CinemaPresetPublic) => {
-      deletePresetMutation.mutate(preset.id);
+      Alert.alert(
+        "Delete preset?",
+        `Are you sure you want to delete "${preset.name}"?`,
+        [
+          {
+            text: "Cancel",
+            style: "cancel",
+          },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => {
+              deletePresetMutation.mutate(preset.id);
+            },
+          },
+        ],
+        { cancelable: true }
+      );
     },
     [deletePresetMutation]
   );
@@ -523,11 +537,13 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
   const renderPreset: ListRenderItem<CinemaPresetPublic> = useCallback(
     ({ item, index }) => {
       const isCurrent = serializeCinemaIds(item.cinema_ids) === currentSelectionSignature;
-      const favoriteDisabled = item.is_favorite || setFavoritePresetMutation.isPending;
-      const deleteDisabled = deletePresetMutation.isPending;
+      const isDefaultPreset = item.is_default;
+      const favoriteDisabled = isDefaultPreset || item.is_favorite || setFavoritePresetMutation.isPending;
+      const deleteDisabled = isDefaultPreset || deletePresetMutation.isPending;
       const itemIndex = index ?? -1;
-      const canMoveUp = itemIndex > 0;
-      const canMoveDown = itemIndex >= 0 && itemIndex < presetsForRender.length - 1;
+      const canMoveUp = !isDefaultPreset && itemIndex > 0;
+      const canMoveDown =
+        !isDefaultPreset && itemIndex >= 0 && itemIndex < presetsForRender.length - 1;
 
       return (
         <TouchableOpacity
@@ -538,14 +554,6 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
           <View style={styles.presetHeader}>
             <View style={styles.presetTitleWrap}>
               <View style={styles.presetNameRow}>
-                {item.is_favorite ? (
-                  <MaterialIcons
-                    name="star"
-                    size={14}
-                    color={colors.yellow.secondary}
-                    style={styles.favoriteStar}
-                  />
-                ) : null}
                 <ThemedText style={styles.presetName}>{item.name}</ThemedText>
               </View>
               <ThemedText style={styles.presetMeta}>
@@ -554,99 +562,78 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
             </View>
 
             <View style={styles.presetHeaderActions}>
-              {isCurrent ? (
-                <View style={styles.currentIndicator}>
-                  <ThemedText style={styles.currentIndicatorText}>Current</ThemedText>
-                </View>
+              {!isDefaultPreset ? (
+                <TouchableOpacity
+                  style={[
+                    styles.iconActionButton,
+                    item.is_favorite && styles.iconActionButtonFavorite,
+                    favoriteDisabled && !item.is_favorite && styles.iconActionButtonDisabled,
+                  ]}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    handleSetFavoritePreset(item);
+                  }}
+                  activeOpacity={0.8}
+                  disabled={favoriteDisabled}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <MaterialIcons
+                    name={item.is_favorite ? "star" : "star-border"}
+                    size={16}
+                    color={item.is_favorite ? colors.yellow.secondary : colors.textSecondary}
+                  />
+                </TouchableOpacity>
               ) : null}
 
-              <TouchableOpacity
-                style={[
-                  styles.iconActionButton,
-                  item.is_favorite && styles.iconActionButtonFavorite,
-                  favoriteDisabled && !item.is_favorite && styles.iconActionButtonDisabled,
-                ]}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  handleSetFavoritePreset(item);
-                }}
-                activeOpacity={0.8}
-                disabled={favoriteDisabled}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              >
-                <MaterialIcons
-                  name={item.is_favorite ? "star" : "star-border"}
-                  size={16}
-                  color={item.is_favorite ? colors.yellow.secondary : colors.textSecondary}
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.iconActionButton, deleteDisabled && styles.iconActionButtonDisabled]}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  handleDeletePreset(item);
-                }}
-                activeOpacity={0.8}
-                disabled={deleteDisabled}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              >
-                <MaterialIcons name="delete-outline" size={16} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <View style={styles.reorderControls}>
+              {!isDefaultPreset ? (
                 <TouchableOpacity
-                  style={[styles.iconActionButton, !canMoveUp && styles.iconActionButtonDisabled]}
+                  style={[styles.iconActionButton, deleteDisabled && styles.iconActionButtonDisabled]}
                   onPress={(event) => {
                     event.stopPropagation();
-                    if (canMoveUp) handleMovePreset(itemIndex, itemIndex - 1);
+                    handleDeletePreset(item);
                   }}
                   activeOpacity={0.8}
-                  disabled={!canMoveUp}
+                  disabled={deleteDisabled}
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 >
-                  <MaterialIcons name="keyboard-arrow-up" size={17} color={colors.textSecondary} />
+                  <MaterialIcons name="delete-outline" size={16} color={colors.textSecondary} />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.iconActionButton, !canMoveDown && styles.iconActionButtonDisabled]}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    if (canMoveDown) handleMovePreset(itemIndex, itemIndex + 1);
-                  }}
-                  activeOpacity={0.8}
-                  disabled={!canMoveDown}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <MaterialIcons name="keyboard-arrow-down" size={17} color={colors.textSecondary} />
-                </TouchableOpacity>
-                <View style={styles.dragHandleButton}>
-                  <MaterialIcons name="drag-indicator" size={16} color={colors.textSecondary} />
+              ) : null}
+
+              {!isDefaultPreset ? (
+                <View style={styles.reorderControls}>
+                  <TouchableOpacity
+                    style={[styles.iconActionButton, !canMoveUp && styles.iconActionButtonDisabled]}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      if (canMoveUp) handleMovePreset(itemIndex, itemIndex - 1);
+                    }}
+                    activeOpacity={0.8}
+                    disabled={!canMoveUp}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <MaterialIcons name="keyboard-arrow-up" size={17} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.iconActionButton, !canMoveDown && styles.iconActionButtonDisabled]}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      if (canMoveDown) handleMovePreset(itemIndex, itemIndex + 1);
+                    }}
+                    activeOpacity={0.8}
+                    disabled={!canMoveDown}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <MaterialIcons name="keyboard-arrow-down" size={17} color={colors.textSecondary} />
+                  </TouchableOpacity>
                 </View>
-              </View>
+              ) : null}
             </View>
-          </View>
-
-          <View style={[styles.applyBadge, isCurrent ? styles.applyBadgeCurrent : styles.applyBadgeDefault]}>
-            <MaterialIcons
-              name={isCurrent ? "check-circle" : "play-arrow"}
-              size={15}
-              color={isCurrent ? colors.green.secondary : colors.pillActiveText}
-            />
-            <ThemedText
-              style={[
-                styles.applyBadgeText,
-                isCurrent ? styles.applyBadgeTextCurrent : styles.applyBadgeTextDefault,
-              ]}
-            >
-              {isCurrent ? "Applied" : "Apply preset"}
-            </ThemedText>
           </View>
         </TouchableOpacity>
       );
     },
     [
-      colors.green.secondary,
-      colors.pillActiveText,
       colors.textSecondary,
       colors.yellow.secondary,
       currentSelectionSignature,
@@ -1108,9 +1095,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 5,
       minWidth: 0,
     },
-    favoriteStar: {
-      marginTop: 0.5,
-    },
     presetName: {
       fontSize: 14,
       fontWeight: "700",
@@ -1125,19 +1109,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-    },
-    currentIndicator: {
-      borderRadius: 10,
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderWidth: 1,
-      borderColor: colors.green.secondary,
-      backgroundColor: colors.green.primary,
-    },
-    currentIndicatorText: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: colors.green.secondary,
     },
     iconActionButton: {
       width: 28,
@@ -1160,44 +1131,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-    },
-    dragHandleButton: {
-      width: 30,
-      height: 30,
-      borderRadius: 9,
-      borderWidth: 1,
-      borderColor: colors.divider,
-      backgroundColor: colors.cardBackground,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    applyBadge: {
-      alignSelf: "flex-start",
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      borderRadius: 10,
-      borderWidth: 1,
-      paddingHorizontal: 9,
-      paddingVertical: 5,
-    },
-    applyBadgeDefault: {
-      backgroundColor: colors.tint,
-      borderColor: colors.tint,
-    },
-    applyBadgeCurrent: {
-      backgroundColor: colors.green.primary,
-      borderColor: colors.green.secondary,
-    },
-    applyBadgeText: {
-      fontSize: 11,
-      fontWeight: "700",
-    },
-    applyBadgeTextDefault: {
-      color: colors.pillActiveText,
-    },
-    applyBadgeTextCurrent: {
-      color: colors.green.secondary,
     },
     reorderHintText: {
       fontSize: 12,

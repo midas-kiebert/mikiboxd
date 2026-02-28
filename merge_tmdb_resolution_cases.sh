@@ -13,6 +13,7 @@ OUTPUT_PATH="${3:-${ROOT_DIR}/backend/tests/fixtures/tmdb_resolution_cases.json}
 
 python3 - "$FILE_A" "$FILE_B" "$OUTPUT_PATH" <<'PY'
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,17 +54,65 @@ def _extract_cases(payload: Any, *, source_path: Path) -> list[dict[str, Any]]:
     return cases
 
 
-def _dedupe_exact(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _normalize_case_for_dedupe(case: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "input": case.get("input"),
+        "expected": case.get("expected"),
+    }
+
+
+def _dedupe_by_input_expected(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     deduped: list[dict[str, Any]] = []
     seen: set[str] = set()
     for case in cases:
-        # Exact-object dedupe only; contradictions are preserved as distinct cases.
-        key = json.dumps(case, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        # Deduplicate by semantic match criteria, not case name/metadata.
+        key = json.dumps(
+            _normalize_case_for_dedupe(case),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
         if key in seen:
             continue
         seen.add(key)
         deduped.append(case)
     return deduped
+
+
+_NAME_RE = re.compile(r"^\d+_(.+)$")
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _case_slug(case: dict[str, Any], index: int) -> str:
+    name_raw = case.get("name")
+    if isinstance(name_raw, str):
+        match = _NAME_RE.match(name_raw.strip())
+        if match:
+            suffix = match.group(1).strip().lower()
+            if suffix:
+                return suffix
+
+    input_raw = case.get("input")
+    if isinstance(input_raw, dict):
+        title_raw = input_raw.get("title_query")
+        if isinstance(title_raw, str):
+            title = title_raw.strip().lower()
+            if title:
+                slug = _SLUG_RE.sub("_", title).strip("_")
+                if slug:
+                    return slug
+
+    return f"case_{index:04d}"
+
+
+def _renumber_case_names(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    renamed: list[dict[str, Any]] = []
+    for index, case in enumerate(cases, start=1):
+        renamed_case = dict(case)
+        slug = _case_slug(case, index)
+        renamed_case["name"] = f"{index:04d}_{slug}"
+        renamed.append(renamed_case)
+    return renamed
 
 
 def main() -> int:
@@ -76,7 +125,8 @@ def main() -> int:
     cases_a = _extract_cases(payload_a, source_path=file_a)
     cases_b = _extract_cases(payload_b, source_path=file_b)
 
-    merged_cases = _dedupe_exact([*cases_a, *cases_b])
+    merged_cases = _dedupe_by_input_expected([*cases_a, *cases_b])
+    merged_cases = _renumber_case_names(merged_cases)
 
     if isinstance(payload_a, dict):
         output_payload: dict[str, Any] = dict(payload_a)

@@ -13,11 +13,13 @@ import { useFetchFavoriteFilterPreset } from 'shared/hooks/useFetchFavoriteFilte
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import CinemaPresetQuickPopover from '@/components/filters/CinemaPresetQuickPopover';
 import DayFilterModal from '@/components/filters/DayFilterModal';
+import DayQuickPopover from '@/components/filters/DayQuickPopover';
 import FilterPresetsModal, {
   type PageFilterPresetState,
 } from '@/components/filters/FilterPresetsModal';
 import { type FilterPillLongPressPosition } from '@/components/filters/FilterPills';
 import TimeFilterModal from '@/components/filters/TimeFilterModal';
+import TimeQuickPopover from '@/components/filters/TimeQuickPopover';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import {
   SHARED_TAB_FILTER_PRESET_SCOPE,
@@ -56,6 +58,12 @@ export default function MainShowtimesScreen() {
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [cinemaPresetPopoverVisible, setCinemaPresetPopoverVisible] = useState(false);
   const [cinemaPresetPopoverAnchor, setCinemaPresetPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
+  const [dayQuickPopoverVisible, setDayQuickPopoverVisible] = useState(false);
+  const [dayQuickPopoverAnchor, setDayQuickPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
+  const [timeQuickPopoverVisible, setTimeQuickPopoverVisible] = useState(false);
+  const [timeQuickPopoverAnchor, setTimeQuickPopoverAnchor] =
     useState<FilterPillLongPressPosition | null>(null);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
@@ -264,22 +272,28 @@ export default function MainShowtimesScreen() {
   };
 
   // Handle filter pill presses and update filter state.
-  const handleToggleFilter = (filterId: MainShowtimesFilterId) => {
+  const handleToggleFilter = (
+    filterId: MainShowtimesFilterId,
+    position?: FilterPillLongPressPosition
+  ) => {
     if (filterId === 'showtime-filter') {
       startFilterTransitionLoading();
       setSelectedShowtimeFilter(cycleSharedTabShowtimeFilter(selectedShowtimeFilter));
       return;
     }
     if (filterId === 'cinemas') {
-      setCinemaModalVisible(true);
+      setCinemaPresetPopoverAnchor(position ?? null);
+      setCinemaPresetPopoverVisible(true);
       return;
     }
     if (filterId === 'days') {
-      setDayModalVisible(true);
+      setDayQuickPopoverAnchor(position ?? null);
+      setDayQuickPopoverVisible(true);
       return;
     }
     if (filterId === 'times') {
-      setTimeModalVisible(true);
+      setTimeQuickPopoverAnchor(position ?? null);
+      setTimeQuickPopoverVisible(true);
       return;
     }
     if (filterId === 'presets') {
@@ -303,12 +317,21 @@ export default function MainShowtimesScreen() {
 
   const handleLongPressFilter = (
     filterId: MainShowtimesFilterId,
-    position: FilterPillLongPressPosition
+    _position: FilterPillLongPressPosition
   ) => {
-    if (filterId !== 'cinemas') return false;
-    setCinemaPresetPopoverAnchor(position);
-    setCinemaPresetPopoverVisible(true);
-    return true;
+    if (filterId === 'cinemas') {
+      setCinemaModalVisible(true);
+      return true;
+    }
+    if (filterId === 'days') {
+      setDayModalVisible(true);
+      return true;
+    }
+    if (filterId === 'times') {
+      setTimeModalVisible(true);
+      return true;
+    }
+    return false;
   };
 
   const pillFilters = useMemo(() => sharedPillFilters, [sharedPillFilters]);
@@ -357,7 +380,24 @@ export default function MainShowtimesScreen() {
         visible={cinemaPresetPopoverVisible}
         anchor={cinemaPresetPopoverAnchor}
         onClose={() => setCinemaPresetPopoverVisible(false)}
+        onOpenModal={() => setCinemaModalVisible(true)}
         maxPresets={6}
+      />
+      <DayQuickPopover
+        visible={dayQuickPopoverVisible}
+        anchor={dayQuickPopoverAnchor}
+        onClose={() => setDayQuickPopoverVisible(false)}
+        selectedDays={selectedDays}
+        onChange={setSelectedDays}
+        onOpenModal={() => setDayModalVisible(true)}
+      />
+      <TimeQuickPopover
+        visible={timeQuickPopoverVisible}
+        anchor={timeQuickPopoverAnchor}
+        onClose={() => setTimeQuickPopoverVisible(false)}
+        selectedTimeRanges={selectedTimeRanges}
+        onChange={setSelectedTimeRanges}
+        onOpenModal={() => setTimeModalVisible(true)}
       />
       <CinemaFilterModal
         visible={cinemaModalVisible}

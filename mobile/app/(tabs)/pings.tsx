@@ -42,6 +42,7 @@ import {
   GLOBAL_LONG_PRESS_DELAY_MS,
   triggerLongPressHaptic,
 } from "@/utils/long-press";
+import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 type PingSortMode = "ping-date" | "showtime-date";
 type PingSortFilterId = "sort-mode";
 
@@ -379,11 +380,11 @@ export default function PingsScreen() {
           const weekday = date.toFormat("ccc");
           const day = date.toFormat("d");
           const month = date.toFormat("LLL");
-          const time = date.toFormat("HH:mm");
           const latestPingTimestamp = DateTime.fromISO(item.latestPingCreatedAt).toFormat(
             "ccc, LLL d • HH:mm"
           );
           const showtime = showtimeById.get(item.showtimeId);
+          const time = formatShowtimeTimeRange(item.datetime, showtime?.end_datetime);
           const cinema =
             showtime?.cinema ?? cinemaByName.get(normalizeCinemaName(item.cinemaName));
           const cardStatusStyle =
@@ -545,7 +546,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderColor: colors.tint,
     },
     dateColumn: {
-      width: 56,
+      width: 74,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.pillBackground,
@@ -583,7 +584,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       letterSpacing: 0.6,
     },
     time: {
-      fontSize: 12,
+      fontSize: 10,
+      lineHeight: 12,
       fontWeight: "700",
       color: colors.text,
     },

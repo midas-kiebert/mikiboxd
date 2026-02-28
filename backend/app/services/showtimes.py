@@ -255,10 +255,10 @@ def get_showtime_visibility(
     friends = user_crud.get_friends(session=session, user_id=actor_id)
     all_friend_ids = sorted((friend.id for friend in friends), key=str)
     explicit_visible_friend_ids = (
-        showtime_visibility_crud.get_visible_friend_ids_for_movie(
+        showtime_visibility_crud.get_visible_friend_ids_for_showtime(
             session=session,
             owner_id=actor_id,
-            movie_id=showtime.movie_id,
+            showtime_id=showtime_id,
         )
     )
 
@@ -305,10 +305,10 @@ def update_showtime_visibility(
     if invalid_friend_ids:
         raise ValueError("Visibility list contains users who are not your friends.")
 
-    showtime_visibility_crud.set_visible_friend_ids_for_movie(
+    showtime_visibility_crud.set_visible_friend_ids_for_showtime(
         session=session,
         owner_id=actor_id,
-        movie_id=showtime.movie_id,
+        showtime_id=showtime_id,
         visible_friend_ids=normalized_visible_friend_ids,
         all_friend_ids=all_friend_ids,
         now=now_amsterdam_naive(),

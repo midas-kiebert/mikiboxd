@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
+  Platform,
+  StatusBar,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -36,6 +38,7 @@ const ARROW_SIZE = 14;
 const ARROW_SIDE_GUTTER = 18;
 const CARD_ANCHOR_GAP = 2;
 const EMPTY_CINEMA_IDS: readonly number[] = [];
+const ANDROID_STATUSBAR_OFFSET = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
 
 const sortCinemaIds = (cinemaIds: Iterable<number>) =>
   Array.from(new Set(cinemaIds)).sort((a, b) => a - b);
@@ -92,14 +95,14 @@ export default function CinemaPresetQuickPopover({
 
   const estimatedCardHeight =
     ARROW_SIZE / 2 +
-    56 +
+    20 +
     Math.max(1, visiblePresets.length) * 52 +
     (hiddenPresetCount > 0 ? 24 : 0) +
     50 +
     8;
   const minTop = 8 + ARROW_SIZE / 2;
   const maxTop = Math.max(minTop, screenHeight - estimatedCardHeight - CARD_BOTTOM_MARGIN);
-  const anchorY = anchor?.pageY ?? 0;
+  const anchorY = (anchor?.pageY ?? 0) - ANDROID_STATUSBAR_OFFSET;
   const desiredTop = anchorY + CARD_ANCHOR_GAP + ARROW_SIZE / 2;
   const cardTop = Math.max(minTop, Math.min(desiredTop, maxTop));
   const rawLeft = (anchor?.pageX ?? screenWidth / 2) - CARD_WIDTH / 2;
@@ -138,7 +141,6 @@ export default function CinemaPresetQuickPopover({
               },
             ]}
           />
-          <ThemedText style={styles.title}>Cinema presets</ThemedText>
           {isLoading ? (
             <View style={styles.loadingRow}>
               <ActivityIndicator size="small" color={colors.tint} />
@@ -215,14 +217,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.background,
-      paddingVertical: 10,
+      paddingVertical: 8,
       paddingHorizontal: 10,
       shadowColor: "#000",
       shadowOpacity: 0.22,
       shadowRadius: 14,
       shadowOffset: { width: 0, height: 8 },
       elevation: 10,
-      gap: 8,
+      gap: 6,
     },
     arrow: {
       position: "absolute",
@@ -237,12 +239,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       shadowRadius: 3,
       shadowOffset: { width: 0, height: 1 },
       elevation: 2,
-    },
-    title: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: colors.text,
-      paddingHorizontal: 4,
     },
     loadingRow: {
       flexDirection: "row",

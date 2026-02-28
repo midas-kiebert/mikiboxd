@@ -28,10 +28,9 @@ type ShowtimeRowProps = {
 
 const formatShowtime = (
   datetime: string,
-  endDatetime: string | null | undefined,
-  variant: ShowtimeRowProps["variant"]
+  endDatetime: string | null | undefined
 ) => {
-  const dateFormat = variant === "compact" ? "ccc d" : "ccc d LLL";
+  const dateFormat = "ccc d LLL";
   const dateLabel = DateTime.fromISO(datetime).toFormat(dateFormat);
   const timeLabel = formatShowtimeTimeRange(datetime, endDatetime);
   return `${dateLabel} • ${timeLabel}`;
@@ -61,7 +60,7 @@ export default function ShowtimeRow({
           ]}
           numberOfLines={1}
         >
-          {formatShowtime(showtime.datetime, showtime.end_datetime, variant)}
+          {formatShowtime(showtime.datetime, showtime.end_datetime)}
         </ThemedText>
         <CinemaPill cinema={showtime.cinema} variant={isCompact ? "compact" : "default"} />
       </View>

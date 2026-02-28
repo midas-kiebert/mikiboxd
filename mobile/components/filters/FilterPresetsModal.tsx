@@ -19,6 +19,7 @@ import {
   type FilterPresetCreate,
   type FilterPresetPublic,
   type FilterPresetScope,
+  type FilterPresetFilters,
 } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
@@ -79,8 +80,17 @@ const normalizeFilters = (filters: PageFilterPresetState): PageFilterPresetState
 
 const serializeFilters = (filters: PageFilterPresetState) => JSON.stringify(normalizeFilters(filters));
 
-const toPresetBodyFilters = (filters: PageFilterPresetState): PageFilterPresetState =>
-  normalizeFilters(filters);
+const toPresetBodyFilters = (filters: PageFilterPresetState): FilterPresetFilters => {
+  const normalized = normalizeFilters(filters);
+  return {
+    selected_showtime_filter: normalized.selected_showtime_filter ?? null,
+    showtime_audience:
+      normalized.showtime_audience === "only-you" ? "only-you" : "including-friends",
+    watchlist_only: Boolean(normalized.watchlist_only),
+    days: normalized.days ?? null,
+    time_ranges: normalized.time_ranges ?? null,
+  };
+};
 
 const getShowtimeFilterLabel = (
   selectedShowtimeFilter: PageFilterPresetState["selected_showtime_filter"]

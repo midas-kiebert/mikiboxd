@@ -20,6 +20,8 @@ __all__ = [
 
 class ShowtimeSelectionUpdate(BaseModel):
     going_status: GoingStatus
+    seat_row: str | None = None
+    seat_number: str | None = None
 
 
 class ShowtimeLoggedIn(ShowtimeBase):
@@ -29,6 +31,8 @@ class ShowtimeLoggedIn(ShowtimeBase):
     friends_going: Sequence["UserPublic"]
     friends_interested: Sequence["UserPublic"]
     going: GoingStatus
+    seat_row: str | None = None
+    seat_number: str | None = None
 
 
 # For responses inside of a Movie model
@@ -38,3 +42,5 @@ class ShowtimeInMovieLoggedIn(ShowtimeBase):
     friends_going: Sequence["UserPublic"]
     friends_interested: Sequence["UserPublic"]
     going: GoingStatus
+    seat_row: str | None = None
+    seat_number: str | None = None

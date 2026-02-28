@@ -114,3 +114,20 @@ def set_visible_friend_ids_for_showtime(
             )
         )
     session.flush()
+
+
+def is_showtime_visible_to_viewer_for_ids(
+    *,
+    session: Session,
+    owner_id: UUID,
+    showtime_id: int,
+    viewer_id: UUID,
+) -> bool:
+    stmt = select(
+        is_showtime_visible_to_viewer(
+            owner_id_value=owner_id,
+            showtime_id_value=showtime_id,
+            viewer_id_value=viewer_id,
+        )
+    )
+    return bool(session.exec(stmt).one())

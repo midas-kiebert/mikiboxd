@@ -31,14 +31,17 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 
 type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
-type DetailPanel = "none" | "ping" | "visibility";
+type DetailPanel = "none" | "ping" | "visibility" | "seat";
 
 type ShowtimeActionModalProps = {
   visible: boolean;
   showtime: ShowtimeInMovieLoggedIn | ShowtimeLoggedIn | null;
   movieTitle?: string | null;
   isUpdatingStatus: boolean;
-  onUpdateStatus: (going: GoingStatus) => void;
+  onUpdateStatus: (
+    going: GoingStatus,
+    seat?: { seatRow: string | null; seatNumber: string | null }
+  ) => void;
   onClose: () => void;
 };
 
@@ -68,6 +71,8 @@ export default function ShowtimeActionModal({
   const activeDetailPanelRef = useRef<DetailPanel>("none");
   const [pingSearchQuery, setPingSearchQuery] = useState("");
   const [visibilitySearchQuery, setVisibilitySearchQuery] = useState("");
+  const [seatRowDraft, setSeatRowDraft] = useState("");
+  const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [visibleFriendIdsDraft, setVisibleFriendIdsDraft] = useState<Set<string>>(new Set());
 
   const selectedShowtimeId = showtime?.id ?? null;
@@ -152,6 +157,8 @@ export default function ShowtimeActionModal({
       setRenderedDetailPanel("none");
       setPingSearchQuery("");
       setVisibilitySearchQuery("");
+      setSeatRowDraft("");
+      setSeatNumberDraft("");
       setVisibleFriendIdsDraft(new Set());
       return;
     }
@@ -167,6 +174,16 @@ export default function ShowtimeActionModal({
       useNativeDriver: true,
     }).start();
   }, [modalProgress, selectedShowtimeId, visible]);
+
+  useEffect(() => {
+    if (!visible || !showtime) {
+      setSeatRowDraft("");
+      setSeatNumberDraft("");
+      return;
+    }
+    setSeatRowDraft(showtime.seat_row ?? "");
+    setSeatNumberDraft(showtime.seat_number ?? "");
+  }, [showtime, visible]);
 
   useEffect(() => {
     if (!showtimeVisibility) {
@@ -283,6 +300,14 @@ export default function ShowtimeActionModal({
     return false;
   }, [showtimeVisibility, visibleFriendIdsDraft]);
 
+  const normalizedSeatRowDraft = seatRowDraft.trim() || null;
+  const normalizedSeatNumberDraft = seatNumberDraft.trim() || null;
+  const normalizedCurrentSeatRow = showtime?.seat_row?.trim() || null;
+  const normalizedCurrentSeatNumber = showtime?.seat_number?.trim() || null;
+  const hasSeatChanges =
+    normalizedSeatRowDraft !== normalizedCurrentSeatRow ||
+    normalizedSeatNumberDraft !== normalizedCurrentSeatNumber;
+
   const handleCloseModal = () => {
     if (!isUpdatingStatus && showtime && hasVisibilityChanges && !isUpdatingShowtimeVisibility) {
       updateShowtimeVisibility({
@@ -294,6 +319,16 @@ export default function ShowtimeActionModal({
     if (!isUpdatingStatus) {
       onClose();
     }
+  };
+
+  const handleSaveSeat = () => {
+    if (!showtime || isUpdatingStatus || showtime.going !== "GOING") {
+      return;
+    }
+    onUpdateStatus("GOING", {
+      seatRow: normalizedSeatRowDraft,
+      seatNumber: normalizedSeatNumberDraft,
+    });
   };
 
   const friendsGoingIds = useMemo(() => {
@@ -393,6 +428,15 @@ export default function ShowtimeActionModal({
   const isInterestedSelected = showtime?.going === "INTERESTED";
   const isNotGoingSelected = showtime?.going === "NOT_GOING";
   const hasTicketLink = Boolean(showtime?.ticket_link);
+
+  useEffect(() => {
+    if (isGoingSelected || activeDetailPanel !== "seat") {
+      return;
+    }
+    setActiveDetailPanel("none");
+    setRenderedDetailPanel("none");
+    detailPanelProgress.setValue(0);
+  }, [activeDetailPanel, detailPanelProgress, isGoingSelected]);
 
   const statusModalBackdropAnimatedStyle = {
     opacity: modalProgress.interpolate({
@@ -632,6 +676,53 @@ export default function ShowtimeActionModal({
             </Animated.View>
           ) : null}
 
+          {renderedDetailPanel === "seat" ? (
+            <Animated.View style={[styles.detailPanelAnimatedContainer, detailPanelAnimatedStyle]}>
+              <View style={styles.detailPanel}>
+                <ThemedText style={styles.detailPanelTitle}>Seat info (optional)</ThemedText>
+                <View style={styles.seatEditorRow}>
+                  <View style={styles.seatEditorField}>
+                    <ThemedText style={styles.seatFieldLabel}>Row</ThemedText>
+                    <TextInput
+                      value={seatRowDraft}
+                      onChangeText={setSeatRowDraft}
+                      placeholder="Row"
+                      placeholderTextColor={colors.textSecondary}
+                      style={styles.seatInput}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      maxLength={32}
+                    />
+                  </View>
+                  <View style={styles.seatEditorField}>
+                    <ThemedText style={styles.seatFieldLabel}>Seat</ThemedText>
+                    <TextInput
+                      value={seatNumberDraft}
+                      onChangeText={setSeatNumberDraft}
+                      placeholder="Seat"
+                      placeholderTextColor={colors.textSecondary}
+                      style={styles.seatInput}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      maxLength={32}
+                    />
+                  </View>
+                </View>
+                <ThemedText style={styles.seatHelperText}>
+                  This will show to visible friends next to your badge, like (6-3) or (C5).
+                </ThemedText>
+                <TouchableOpacity
+                  style={[styles.seatSaveButton, !hasSeatChanges && styles.seatSaveButtonDisabled]}
+                  onPress={handleSaveSeat}
+                  disabled={!hasSeatChanges || isUpdatingStatus}
+                  activeOpacity={0.8}
+                >
+                  <ThemedText style={styles.seatSaveButtonText}>Save Seat Info</ThemedText>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          ) : null}
+
           <View style={styles.actionRow}>
             <TouchableOpacity
               style={[styles.actionButton, !hasTicketLink && styles.actionButtonDisabled]}
@@ -648,6 +739,29 @@ export default function ShowtimeActionModal({
                 Ticket
               </ThemedText>
             </TouchableOpacity>
+
+            {isGoingSelected ? (
+              <TouchableOpacity
+                style={[styles.actionButton, activeDetailPanel === "seat" && styles.actionButtonActive]}
+                onPressIn={() => handleToggleDetailPanel("seat")}
+                delayPressIn={0}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name="event-seat"
+                  size={16}
+                  color={activeDetailPanel === "seat" ? colors.tint : colors.textSecondary}
+                />
+                <ThemedText
+                  style={[
+                    styles.actionButtonText,
+                    activeDetailPanel === "seat" && styles.actionButtonTextActive,
+                  ]}
+                >
+                  Seat
+                </ThemedText>
+              </TouchableOpacity>
+            ) : null}
 
             <TouchableOpacity
               style={[styles.actionButton, activeDetailPanel === "ping" && styles.actionButtonActive]}
@@ -961,6 +1075,51 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flex: 1,
       fontSize: 13,
       color: colors.text,
+    },
+    seatEditorRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    seatEditorField: {
+      flex: 1,
+      gap: 4,
+    },
+    seatFieldLabel: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontWeight: "600",
+    },
+    seatInput: {
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingHorizontal: 9,
+      paddingVertical: 8,
+      fontSize: 14,
+      color: colors.text,
+    },
+    seatHelperText: {
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
+    seatSaveButton: {
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: colors.tint,
+      backgroundColor: colors.cardBackground,
+      alignItems: "center",
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+    },
+    seatSaveButtonDisabled: {
+      borderColor: colors.divider,
+      backgroundColor: colors.pillBackground,
+    },
+    seatSaveButtonText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.tint,
     },
     statusCancelButton: {
       alignItems: "center",

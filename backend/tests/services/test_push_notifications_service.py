@@ -158,6 +158,49 @@ def test_notify_friends_skips_when_no_opted_in_recipients(
     send_messages.assert_not_called()
 
 
+def test_notify_friends_skips_when_recipient_is_hidden_by_visibility(
+    mocker: MockerFixture,
+) -> None:
+    session = mocker.MagicMock()
+    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    actor = mocker.MagicMock(display_name="Alex")
+    recipient = mocker.MagicMock(
+        id=uuid4(),
+        notify_on_friend_showtime_match=True,
+        notify_channel_friend_showtime_match=NotificationChannel.PUSH,
+    )
+
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        return_value=actor,
+    )
+    mocker.patch(
+        "app.services.push_notifications.showtime_crud.get_friends_with_showtime_selection",
+        return_value=[recipient],
+    )
+    mocker.patch(
+        "app.services.push_notifications.showtime_visibility_crud.is_showtime_visible_to_viewer_for_ids",
+        return_value=False,
+    )
+    get_tokens = mocker.patch(
+        "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
+    )
+    send_messages = mocker.patch("app.services.push_notifications._send_expo_messages")
+    send_email = mocker.patch("app.services.push_notifications._send_email_notification")
+
+    push_notifications.notify_friends_on_showtime_selection(
+        session=session,
+        actor_id=uuid4(),
+        showtime=showtime,
+        previous_status=GoingStatus.NOT_GOING,
+        going_status=GoingStatus.GOING,
+    )
+
+    get_tokens.assert_not_called()
+    send_messages.assert_not_called()
+    send_email.assert_not_called()
+
+
 def test_notify_friends_sends_no_longer_selected_status(
     mocker: MockerFixture,
 ) -> None:

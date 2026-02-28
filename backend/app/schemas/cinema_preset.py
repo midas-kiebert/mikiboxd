@@ -24,6 +24,7 @@ class CinemaPresetCreate(SQLModel):
 class CinemaPresetPublic(SQLModel):
     id: UUID
     name: str
+    is_default: bool
     cinema_ids: list[int]
     is_favorite: bool
     created_at: datetime

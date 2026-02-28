@@ -654,6 +654,7 @@ def test_filter_preset_can_be_marked_as_favorite(
 def test_cinema_presets_and_favorite_cinema_selection(
     client: TestClient, normal_user_token_headers: dict[str, str]
 ) -> None:
+    default_preset_id = "00000000-0000-0000-0000-000000000003"
     weekday_payload = {
         "name": "Weekday Run",
         "cinema_ids": [1, 2, 3],
@@ -709,6 +710,9 @@ def test_cinema_presets_and_favorite_cinema_selection(
     )
     assert list_response.status_code == 200
     by_id = {preset["id"]: preset for preset in list_response.json()}
+    assert default_preset_id in by_id
+    assert by_id[default_preset_id]["name"] == "All cinemas"
+    assert by_id[default_preset_id]["is_default"] is True
     assert by_id[weekday_id]["is_favorite"] is False
     assert by_id[weekend_id]["is_favorite"] is True
 
@@ -731,6 +735,12 @@ def test_cinema_presets_and_favorite_cinema_selection(
         headers=normal_user_token_headers,
     )
     assert delete_response.status_code == 200
+
+    delete_default_response = client.delete(
+        f"{settings.API_V1_STR}/me/cinema-presets/{default_preset_id}",
+        headers=normal_user_token_headers,
+    )
+    assert delete_default_response.status_code == 404
 
 
 def test_legacy_preferred_cinemas_still_work_on_me_cinemas(

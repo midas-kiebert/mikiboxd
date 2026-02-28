@@ -305,6 +305,47 @@ def _parse_tmdb_movie_details(
     if original_title and original_title.casefold() == title.casefold():
         original_title = None
 
+    main_title_keys = {title.casefold()}
+    if original_title:
+        main_title_keys.add(original_title.casefold())
+
+    alternative_titles: list[str] = []
+    seen_alternative_title_keys: set[str] = set()
+
+    def _add_alternative_title(value: Any) -> None:
+        if not isinstance(value, str):
+            return
+        normalized = value.strip()
+        if not normalized:
+            return
+        key = normalized.casefold()
+        if key in main_title_keys or key in seen_alternative_title_keys:
+            return
+        seen_alternative_title_keys.add(key)
+        alternative_titles.append(normalized)
+
+    raw_alternative_titles = payload.get("alternative_titles")
+    if isinstance(raw_alternative_titles, dict):
+        raw_titles = raw_alternative_titles.get("titles")
+        if isinstance(raw_titles, list):
+            for entry in raw_titles:
+                if isinstance(entry, dict):
+                    _add_alternative_title(entry.get("title"))
+                elif isinstance(entry, str):
+                    _add_alternative_title(entry)
+
+    raw_translations = payload.get("translations")
+    if isinstance(raw_translations, dict):
+        translations = raw_translations.get("translations")
+        if isinstance(translations, list):
+            for translation in translations:
+                if not isinstance(translation, dict):
+                    continue
+                data = translation.get("data")
+                if not isinstance(data, dict):
+                    continue
+                _add_alternative_title(data.get("title"))
+
     release_date = payload.get("release_date")
     release_year: int | None = None
     if (
@@ -438,6 +479,7 @@ def _parse_tmdb_movie_details(
         cast_names=cast_names or None,
         enriched_at=enriched_at,
         genre_ids=genre_ids or None,
+        alternative_titles=alternative_titles or None,
     )
 
 
@@ -449,7 +491,7 @@ def fetch_tmdb_movie_details_sync(tmdb_id: int) -> TmdbMovieDetails | None:
             url,
             params={
                 "api_key": TMDB_API_KEY,
-                "append_to_response": "credits",
+                "append_to_response": "credits,alternative_titles,translations",
             },
         )
         response.raise_for_status()
@@ -478,7 +520,7 @@ async def fetch_tmdb_movie_details_async(
         url=url,
         params={
             "api_key": TMDB_API_KEY,
-            "append_to_response": "credits",
+            "append_to_response": "credits,alternative_titles,translations",
         },
     )
     if payload is None:

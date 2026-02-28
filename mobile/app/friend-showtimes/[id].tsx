@@ -10,7 +10,10 @@ import { useFetchUserShowtimes } from 'shared/hooks/useFetchUserShowtimes';
 
 import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
 import DayFilterModal from '@/components/filters/DayFilterModal';
+import DayQuickPopover from '@/components/filters/DayQuickPopover';
+import { type FilterPillLongPressPosition } from '@/components/filters/FilterPills';
 import TimeFilterModal from '@/components/filters/TimeFilterModal';
+import TimeQuickPopover from '@/components/filters/TimeQuickPopover';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
@@ -44,8 +47,14 @@ export default function FriendShowtimesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
+  const [dayQuickPopoverVisible, setDayQuickPopoverVisible] = useState(false);
+  const [dayQuickPopoverAnchor, setDayQuickPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
   // Controls visibility of the time-filter modal.
   const [timeModalVisible, setTimeModalVisible] = useState(false);
+  const [timeQuickPopoverVisible, setTimeQuickPopoverVisible] = useState(false);
+  const [timeQuickPopoverAnchor, setTimeQuickPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [selectedTimeRanges, setSelectedTimeRanges] = useState<string[]>([]);
   // Snapshot timestamp used to keep paginated API responses consistent.
@@ -126,19 +135,39 @@ export default function FriendShowtimesScreen() {
   };
 
   // Handle filter pill presses and update active filter state.
-  const handleToggleFilter = (filterId: FriendAgendaFilterId) => {
+  const handleToggleFilter = (
+    filterId: FriendAgendaFilterId,
+    position?: FilterPillLongPressPosition
+  ) => {
     if (filterId === 'days') {
-      setDayModalVisible(true);
+      setDayQuickPopoverAnchor(position ?? null);
+      setDayQuickPopoverVisible(true);
       return;
     }
     if (filterId === 'times') {
-      setTimeModalVisible(true);
+      setTimeQuickPopoverAnchor(position ?? null);
+      setTimeQuickPopoverVisible(true);
       return;
     }
     setActiveFilterIds((prev) => {
       const isActive = prev.includes(filterId);
       return isActive ? prev.filter((idValue) => idValue !== filterId) : [...prev, filterId];
     });
+  };
+
+  const handleLongPressFilter = (
+    filterId: FriendAgendaFilterId,
+    _position: FilterPillLongPressPosition
+  ) => {
+    if (filterId === 'days') {
+      setDayModalVisible(true);
+      return true;
+    }
+    if (filterId === 'times') {
+      setTimeModalVisible(true);
+      return true;
+    }
+    return false;
   };
 
   const pillFilters = useMemo(
@@ -183,7 +212,24 @@ export default function FriendShowtimesScreen() {
         filters={pillFilters}
         activeFilterIds={highlightedFilterIds}
         onToggleFilter={handleToggleFilter}
+        onLongPressFilter={handleLongPressFilter}
         emptyText="No showtimes in this agenda"
+      />
+      <DayQuickPopover
+        visible={dayQuickPopoverVisible}
+        anchor={dayQuickPopoverAnchor}
+        onClose={() => setDayQuickPopoverVisible(false)}
+        selectedDays={selectedDays}
+        onChange={setSelectedDays}
+        onOpenModal={() => setDayModalVisible(true)}
+      />
+      <TimeQuickPopover
+        visible={timeQuickPopoverVisible}
+        anchor={timeQuickPopoverAnchor}
+        onClose={() => setTimeQuickPopoverVisible(false)}
+        selectedTimeRanges={selectedTimeRanges}
+        onChange={setSelectedTimeRanges}
+        onOpenModal={() => setTimeModalVisible(true)}
       />
       <DayFilterModal
         visible={dayModalVisible}

@@ -35,7 +35,7 @@ type FilterPillsProps<TId extends string = string> = {
   filters: ReadonlyArray<FilterOption<TId>>;
   // For "single select" mode you pass a real id; for "multi active" mode most screens pass "".
   selectedId: TId | "";
-  onSelect: (id: TId) => void;
+  onSelect: (id: TId, position?: FilterPillLongPressPosition) => void;
   onLongPressSelect?: (id: TId, position: FilterPillLongPressPosition) => boolean | void;
   activeIds?: ReadonlyArray<TId>;
   compoundRightToggle?: CompoundRightToggle;
@@ -55,12 +55,25 @@ export default function FilterPills<TId extends string = string>({
   const suppressNextPressIdRef = useRef<TId | null>(null);
   const pillSizeByIdRef = useRef<Map<TId, { width: number; height: number }>>(new Map());
 
-  const handlePress = (id: TId) => {
+  const getAnchorPosition = (
+    id: TId,
+    pageX: number,
+    pageY: number,
+    locationX: number,
+    locationY: number
+  ): FilterPillLongPressPosition => {
+    const size = pillSizeByIdRef.current.get(id);
+    const anchorPageX = size ? pageX - locationX + size.width / 2 : pageX;
+    const anchorPageY = size ? pageY - locationY + size.height : pageY;
+    return { pageX: anchorPageX, pageY: anchorPageY };
+  };
+
+  const handlePress = (id: TId, position?: FilterPillLongPressPosition) => {
     if (suppressNextPressIdRef.current === id) {
       suppressNextPressIdRef.current = null;
       return;
     }
-    onSelect(id);
+    onSelect(id, position);
   };
 
   const handleLongPress = (
@@ -71,10 +84,8 @@ export default function FilterPills<TId extends string = string>({
     locationY: number
   ) => {
     if (!onLongPressSelect) return;
-    const size = pillSizeByIdRef.current.get(id);
-    const anchorPageX = size ? pageX - locationX + size.width / 2 : pageX;
-    const anchorPageY = size ? pageY - locationY + size.height : pageY;
-    const wasHandled = onLongPressSelect(id, { pageX: anchorPageX, pageY: anchorPageY }) === true;
+    const wasHandled =
+      onLongPressSelect(id, getAnchorPosition(id, pageX, pageY, locationX, locationY)) === true;
     if (wasHandled) {
       triggerLongPressHaptic();
       suppressNextPressIdRef.current = id;
@@ -119,7 +130,18 @@ export default function FilterPills<TId extends string = string>({
                       ? { backgroundColor: item.activeBackgroundColor }
                       : null,
                   ]}
-                  onPress={() => handlePress(item.id)}
+                  onPress={({ nativeEvent }) =>
+                    handlePress(
+                      item.id,
+                      getAnchorPosition(
+                        item.id,
+                        nativeEvent.pageX,
+                        nativeEvent.pageY,
+                        nativeEvent.locationX,
+                        nativeEvent.locationY
+                      )
+                    )
+                  }
                   onLongPress={({ nativeEvent }) =>
                     handleLongPress(
                       item.id,
@@ -178,7 +200,18 @@ export default function FilterPills<TId extends string = string>({
                   ? { borderWidth: 1, borderColor: item.activeBorderColor }
                   : null,
               ]}
-              onPress={() => handlePress(item.id)}
+              onPress={({ nativeEvent }) =>
+                handlePress(
+                  item.id,
+                  getAnchorPosition(
+                    item.id,
+                    nativeEvent.pageX,
+                    nativeEvent.pageY,
+                    nativeEvent.locationX,
+                    nativeEvent.locationY
+                  )
+                )
+              }
               onLongPress={({ nativeEvent }) =>
                 handleLongPress(
                   item.id,

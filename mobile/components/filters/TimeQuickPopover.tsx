@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   Platform,
-  StatusBar,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -29,7 +28,7 @@ const CARD_HORIZONTAL_MARGIN = 12;
 const CARD_BOTTOM_MARGIN = 12;
 const ARROW_SIZE = 14;
 const ARROW_SIDE_GUTTER = 18;
-const CARD_ANCHOR_GAP = 2;
+const CARD_ANCHOR_GAP = 0;
 const CARD_VERTICAL_PADDING = 8;
 // Single control for the time-popover vertical size.
 const TIME_POPOVER_HEIGHT = 40;
@@ -40,7 +39,6 @@ const HANDLE_TOP = TRACK_TOP - Math.round((HANDLE_SIZE - TRACK_HEIGHT) / 2);
 const LABEL_OFFSET_FROM_TRACK = Platform.OS === "ios" ? 26 : 24;
 const LABEL_TOP = TRACK_TOP - LABEL_OFFSET_FROM_TRACK;
 const ESTIMATED_CARD_BODY_HEIGHT = TIME_POPOVER_HEIGHT + CARD_VERTICAL_PADDING * 2;
-const ANDROID_STATUSBAR_OFFSET = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
 
 const RANGE_BASE_MINUTES = 9 * 60 + 30;
 const RANGE_STEP_MINUTES = 15;
@@ -135,6 +133,8 @@ export default function TimeQuickPopover({
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const modalRootRef = useRef<View | null>(null);
+  const [modalRootTop, setModalRootTop] = useState(0);
   const [activeBoundary, setActiveBoundary] = useState<ActiveBoundary>(null);
   const [startSlot, setStartSlot] = useState(0);
   const [endSlot, setEndSlot] = useState(RANGE_MAX_SLOT);
@@ -143,6 +143,12 @@ export default function TimeQuickPopover({
   const sliderRailRef = useRef<View | null>(null);
   const sliderRailWidthRef = useRef(0);
   const sliderRailLeftRef = useRef(0);
+
+  const updateModalRootTop = useCallback(() => {
+    modalRootRef.current?.measureInWindow((_x, y) => {
+      setModalRootTop(y);
+    });
+  }, []);
 
   const normalizedSelectedTimeRanges = useMemo(
     () => normalizeSingleTimeRangeSelection(selectedTimeRanges),
@@ -171,7 +177,7 @@ export default function TimeQuickPopover({
   const estimatedCardHeight = ARROW_SIZE / 2 + ESTIMATED_CARD_BODY_HEIGHT;
   const minTop = 8 + ARROW_SIZE / 2;
   const maxTop = Math.max(minTop, screenHeight - estimatedCardHeight - CARD_BOTTOM_MARGIN);
-  const anchorY = (anchor?.pageY ?? 0) - ANDROID_STATUSBAR_OFFSET;
+  const anchorY = (anchor?.pageY ?? 0) - modalRootTop;
   const desiredTop = anchorY + CARD_ANCHOR_GAP + ARROW_SIZE / 2;
   const cardTop = Math.max(minTop, Math.min(desiredTop, maxTop));
   const rawLeft = (anchor?.pageX ?? screenWidth / 2) - CARD_WIDTH / 2;
@@ -277,8 +283,15 @@ export default function TimeQuickPopover({
   }, [commitSelection]);
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalRoot}>
+    <Modal
+      transparent
+      statusBarTranslucent
+      visible={visible}
+      animationType="fade"
+      onShow={updateModalRootTop}
+      onRequestClose={onClose}
+    >
+      <View ref={modalRootRef} style={styles.modalRoot} onLayout={updateModalRootTop}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <View style={[styles.card, { top: cardTop, left: cardLeft, width: CARD_WIDTH }]}>
           <View

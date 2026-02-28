@@ -1,12 +1,10 @@
 /**
  * Floating quick-picker for cinema presets, shown from the cinemas filter pill.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
-  Platform,
-  StatusBar,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -36,9 +34,8 @@ const CARD_HORIZONTAL_MARGIN = 12;
 const CARD_BOTTOM_MARGIN = 12;
 const ARROW_SIZE = 14;
 const ARROW_SIDE_GUTTER = 18;
-const CARD_ANCHOR_GAP = 2;
+const CARD_ANCHOR_GAP = 0;
 const EMPTY_CINEMA_IDS: readonly number[] = [];
-const ANDROID_STATUSBAR_OFFSET = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
 
 const sortCinemaIds = (cinemaIds: Iterable<number>) =>
   Array.from(new Set(cinemaIds)).sort((a, b) => a - b);
@@ -54,6 +51,14 @@ export default function CinemaPresetQuickPopover({
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const modalRootRef = useRef<View | null>(null);
+  const [modalRootTop, setModalRootTop] = useState(0);
+
+  const updateModalRootTop = useCallback(() => {
+    modalRootRef.current?.measureInWindow((_x, y) => {
+      setModalRootTop(y);
+    });
+  }, []);
 
   const { selections: sessionCinemaIds, setSelections } = useSessionCinemaSelections();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
@@ -102,7 +107,7 @@ export default function CinemaPresetQuickPopover({
     8;
   const minTop = 8 + ARROW_SIZE / 2;
   const maxTop = Math.max(minTop, screenHeight - estimatedCardHeight - CARD_BOTTOM_MARGIN);
-  const anchorY = (anchor?.pageY ?? 0) - ANDROID_STATUSBAR_OFFSET;
+  const anchorY = (anchor?.pageY ?? 0) - modalRootTop;
   const desiredTop = anchorY + CARD_ANCHOR_GAP + ARROW_SIZE / 2;
   const cardTop = Math.max(minTop, Math.min(desiredTop, maxTop));
   const rawLeft = (anchor?.pageX ?? screenWidth / 2) - CARD_WIDTH / 2;
@@ -127,8 +132,15 @@ export default function CinemaPresetQuickPopover({
   };
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalRoot}>
+    <Modal
+      transparent
+      statusBarTranslucent
+      visible={visible}
+      animationType="fade"
+      onShow={updateModalRootTop}
+      onRequestClose={onClose}
+    >
+      <View ref={modalRootRef} style={styles.modalRoot} onLayout={updateModalRootTop}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <View style={[styles.card, { top: cardTop, left: cardLeft, width: CARD_WIDTH }]}>
           <View

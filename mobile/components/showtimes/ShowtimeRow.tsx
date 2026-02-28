@@ -10,10 +10,13 @@ import CinemaPill from "@/components/badges/CinemaPill";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
+import { formatSeatLabel } from "@/utils/seat-label";
 
 type ShowtimeBase = {
   datetime: string;
   end_datetime?: string | null;
+  seat_row?: string | null;
+  seat_number?: string | null;
   cinema: CinemaPublic;
   friends_going?: UserPublic[];
   friends_interested?: UserPublic[];
@@ -47,10 +50,11 @@ export default function ShowtimeRow({
   const styles = createStyles(colors);
   // Compact mode is used in dense cards; default mode is used in full showtime lists.
   const isCompact = variant === "compact";
+  const seatLabel = formatSeatLabel(showtime.seat_row, showtime.seat_number);
 
   // Render/output using the state and derived values prepared above.
   return (
-      <View style={[styles.container, isCompact ? styles.compactContainer : styles.defaultContainer]}>
+    <View style={[styles.container, isCompact ? styles.compactContainer : styles.defaultContainer]}>
       <View style={[styles.header, alignCinemaRight && styles.headerRightAligned]}>
         <ThemedText
           style={[
@@ -64,6 +68,11 @@ export default function ShowtimeRow({
         </ThemedText>
         <CinemaPill cinema={showtime.cinema} variant={isCompact ? "compact" : "default"} />
       </View>
+      {seatLabel ? (
+        <ThemedText style={[styles.seatText, isCompact ? styles.seatTextCompact : styles.seatTextDefault]}>
+          Seat: {seatLabel}
+        </ThemedText>
+      ) : null}
       {showFriends ? (
         <FriendBadges
           friendsGoing={showtime.friends_going}
@@ -110,6 +119,18 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     timeDefault: {
       fontSize: 13,
       lineHeight: 16,
+    },
+    seatText: {
+      color: colors.textSecondary,
+      fontWeight: "600",
+    },
+    seatTextCompact: {
+      fontSize: 9,
+      lineHeight: 11,
+    },
+    seatTextDefault: {
+      fontSize: 11,
+      lineHeight: 14,
     },
     friendRow: {
       marginTop: 3,

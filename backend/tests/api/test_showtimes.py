@@ -469,6 +469,80 @@ def test_update_showtime_selection_seat_roundtrip_and_clear(
     assert interested_response.json()["seat_number"] is None
 
 
+def test_update_showtime_selection_rejects_invalid_unknown_seat_values(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory(cinema__seating="unknown")
+    showtime_id = showtime.id
+
+    response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "GOING", "seat_row": "AA", "seat_number": "12"},
+    )
+
+    assert response.status_code == 400
+    assert "Invalid row value" in response.json()["detail"]
+
+
+def test_update_showtime_selection_rejects_invalid_row_number_seat_number_format(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory(cinema__seating="row-number-seat-number")
+    showtime_id = showtime.id
+
+    response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "GOING", "seat_row": "B", "seat_number": "8"},
+    )
+
+    assert response.status_code == 400
+    assert "row-number-seat-number" in response.json()["detail"]
+
+
+def test_update_showtime_selection_rejects_seat_input_for_free_seating(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory(cinema__seating="free")
+    showtime_id = showtime.id
+
+    response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "GOING", "seat_row": "A", "seat_number": "5"},
+    )
+
+    assert response.status_code == 400
+    assert "free seating" in response.json()["detail"]
+
+
+def test_update_showtime_selection_accepts_blank_seat_pair_as_no_selection(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory(cinema__seating="row-letter-seat-number")
+    showtime_id = showtime.id
+
+    response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "GOING", "seat_row": "   ", "seat_number": ""},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["going"] == "GOING"
+    assert response.json()["seat_row"] is None
+    assert response.json()["seat_number"] is None
+
+
 def test_main_page_showtimes_includes_friend_seat_in_badge_payload(
     client: TestClient,
     normal_user_token_headers: dict[str, str],

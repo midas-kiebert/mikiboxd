@@ -6,6 +6,11 @@ from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
+from app.core.cinema_seating import (
+    CinemaSeatingPreset,
+    normalize_cinema_seating_preset,
+    validate_seat_for_preset,
+)
 from app.core.enums import GoingStatus
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import friendship as friendship_crud
@@ -21,6 +26,7 @@ from app.exceptions.showtime_exceptions import (
     ShowtimePingAlreadySentError,
     ShowtimePingNonFriendError,
     ShowtimePingSelfError,
+    ShowtimeSeatValidationError,
 )
 from app.inputs.movie import Filters
 from app.models.auth_schemas import Message
@@ -129,13 +135,43 @@ def update_showtime_selection(
         except NoResultFound as e:
             session.rollback()
             raise ShowtimeNotFoundError(showtime_id) from e
+        except AppError:
+            session.rollback()
+            raise
         except Exception as e:
             session.rollback()
             raise AppError from e
     else:
         try:
+            showtime_for_validation = showtimes_crud.get_showtime_by_id(
+                session=session,
+                showtime_id=showtime_id,
+            )
+            if showtime_for_validation is None:
+                raise ShowtimeNotFoundError(showtime_id)
+
+            seating_preset = normalize_cinema_seating_preset(
+                showtime_for_validation.cinema.seating
+            )
             normalized_seat_row = _normalize_seat_value(seat_row)
             normalized_seat_number = _normalize_seat_value(seat_number)
+
+            if going_status == GoingStatus.GOING:
+                if update_seat:
+                    try:
+                        validate_seat_for_preset(
+                            seating_preset=seating_preset,
+                            seat_row=normalized_seat_row,
+                            seat_number=normalized_seat_number,
+                        )
+                    except ValueError as e:
+                        raise ShowtimeSeatValidationError(str(e))
+                elif seating_preset == CinemaSeatingPreset.FREE.value:
+                    # Clear any stale seat data if cinema seating is configured as free.
+                    update_seat = True
+                    normalized_seat_row = None
+                    normalized_seat_number = None
+
             showtime = showtimes_crud.add_showtime_selection(
                 session=session,
                 showtime_id=showtime_id,
@@ -149,6 +185,9 @@ def update_showtime_selection(
         except NoResultFound as e:
             session.rollback()
             raise ShowtimeNotFoundError(showtime_id) from e
+        except AppError:
+            session.rollback()
+            raise
         except Exception as e:
             session.rollback()
             raise AppError from e

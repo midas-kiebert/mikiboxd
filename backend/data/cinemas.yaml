@@ -1,44 +1,59 @@
+# Optional `seating` presets per cinema:
+# - unknown (default if omitted)
+# - free
+# - row-number-seat-number
+# - row-letter-seat-number
+# - row-number-seat-letter
+# - row-letter-seat-letter
+
 - name: Eye
   city: Amsterdam
   cineville: true
   badge_bg_color: "cyan"
   url: "https://www.eyefilm.nl"
+  seating: "free"
 
 - name: LAB111
   city: Amsterdam
   cineville: true
   badge_bg_color: "pink"
   url: "https://www.lab111.nl"
+  seating: "free"
 
 - name: Kriterion
   city: Amsterdam
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.kriterion.nl"
+  seating: "free"
 
 - name: Filmhallen
   city: Amsterdam
   cineville: true
   badge_bg_color: "green"
   url: "https://www.filmhallen.nl"
+  seating: "row-number-seat-number"
 
 - name: The Movies
   city: Amsterdam
   cineville: true
   badge_bg_color: "orange"
   url: "https://www.themovies.nl"
+  seating: "row-number-seat-number"
 
 - name: FC Hyena
   city: Amsterdam
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.fchyena.nl"
+  seating: "free"
 
 - name: "De Uitkijk"
   city: Amsterdam
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.uitkijk.nl"
+  seating: "free"
 
 - name: Filmkoepel
   city: Haarlem
@@ -88,6 +103,7 @@
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.kinorotterdam.nl"
+  seating: "row-number-seat-number"
 
 - name: Aan de Slinger
   city: Houten
@@ -220,6 +236,7 @@
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.filmhuiscavia.nl"
+  seating: "free"
 
 - name: Filmhuis Den Haag
   city: Den Haag
@@ -394,6 +411,7 @@
   cineville: true
   badge_bg_color: "red"
   url: "https://www.rialtofilm.nl"
+  seating: "free"
 
 - name: Rialto VU
   city: Amsterdam
@@ -418,6 +436,7 @@
   cineville: true
   badge_bg_color: "cyan"
   url: "https://www.studio-k.nu"
+  seating: "free"
 
 - name: Theater Dakota
   city: Den Haag

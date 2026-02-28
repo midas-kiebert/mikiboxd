@@ -16,6 +16,7 @@ import {
   GLOBAL_LONG_PRESS_DELAY_MS,
   triggerLongPressHaptic,
 } from "@/utils/long-press";
+import { formatSeatLabel } from "@/utils/seat-label";
 
 type ShowtimeCardProps = {
   showtime: ShowtimeLoggedIn;
@@ -57,6 +58,7 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
       : showtime.going === "INTERESTED"
         ? styles.dateColumnInterested
         : undefined;
+  const seatLabel = formatSeatLabel(showtime.seat_row, showtime.seat_number);
 
   // Handle press behavior for this module.
   const handlePress = () => {
@@ -117,6 +119,7 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
             </ThemedText>
             <CinemaPill cinema={showtime.cinema} variant="compact" />
           </View>
+          {seatLabel ? <ThemedText style={styles.seatText}>Seat: {seatLabel}</ThemedText> : null}
           <FriendBadges
             friendsGoing={showtime.friends_going}
             friendsInterested={showtime.friends_interested}
@@ -238,6 +241,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.text,
       flex: 1,
       minWidth: 0,
+    },
+    seatText: {
+      fontSize: 10,
+      lineHeight: 12,
+      fontWeight: "600",
+      color: colors.textSecondary,
+      marginTop: -1,
     },
     friendRow: {
       marginTop: 2,

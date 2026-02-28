@@ -17,8 +17,8 @@ class ShowtimeVisibilitySetting(SQLModel, table=True):
         primary_key=True,
         ondelete="CASCADE",
     )
-    movie_id: int = Field(
-        foreign_key="movie.id",
+    showtime_id: int = Field(
+        foreign_key="showtime.id",
         primary_key=True,
         ondelete="CASCADE",
     )
@@ -32,8 +32,8 @@ class ShowtimeVisibilityFriend(SQLModel, table=True):
         primary_key=True,
         ondelete="CASCADE",
     )
-    movie_id: int = Field(
-        foreign_key="movie.id",
+    showtime_id: int = Field(
+        foreign_key="showtime.id",
         primary_key=True,
         ondelete="CASCADE",
     )

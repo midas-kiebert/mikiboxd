@@ -20,32 +20,45 @@ DAY_BUCKET_CUTOFF = time(4, 0)
 
 
 def time_range_clause(
-    datetime_column,
+    start_datetime_column,
+    end_datetime_column,
     start: time | None,
     end: time | None,
 ) -> ColumnElement[bool]:
-    time_col = cast(datetime_column, Time)
+    def _single_time_col_clause(time_col) -> ColumnElement[bool]:
+        if start is None and end is None:
+            return time_col.is_not(None)
+        if start is None:
+            return time_col <= end
+        if end is None:
+            # Open-ended "start-" ranges are bounded by the day-bucket cutoff (04:00).
+            if start <= DAY_BUCKET_CUTOFF:
+                return time_col.between(start, DAY_BUCKET_CUTOFF)
+            return or_(
+                time_col >= start,
+                time_col <= DAY_BUCKET_CUTOFF,
+            )
+        if start <= end:
+            return time_col.between(start, end)
 
-    if start is None and end is None:
-        return time_col.is_not(None)
-    if start is None:
-        return time_col <= end
-    if end is None:
-        # Open-ended "start-" ranges are bounded by the day-bucket cutoff (04:00).
-        if start <= DAY_BUCKET_CUTOFF:
-            return time_col.between(start, DAY_BUCKET_CUTOFF)
+        # crosses midnight
         return or_(
             time_col >= start,
-            time_col <= DAY_BUCKET_CUTOFF,
+            time_col <= end,
         )
-    if start <= end:
-        return time_col.between(start, end)
 
-    # crosses midnight
-    return or_(
-        time_col >= start,
-        time_col <= end,
-    )
+    start_time_col = cast(start_datetime_column, Time)
+    start_clause = _single_time_col_clause(start_time_col)
+
+    # When a range has an explicit end, the showtime's end must also fit that window.
+    if end is not None:
+        end_time_col = cast(
+            func.coalesce(end_datetime_column, start_datetime_column), Time
+        )
+        end_clause = _single_time_col_clause(end_time_col)
+        return start_clause & end_clause
+
+    return start_clause
 
 
 def day_bucket_date_clause(datetime_column):
@@ -183,9 +196,9 @@ def get_friends_for_showtime(
             Friendship.user_id == user_id,
             ShowtimeSelection.showtime_id == showtime_id,
             ShowtimeSelection.going_status == going_status,
-            showtime_visibility_crud.is_movie_visible_to_viewer(
+            showtime_visibility_crud.is_showtime_visible_to_viewer(
                 owner_id_value=col(User.id),
-                movie_id_value=col(Showtime.movie_id),
+                showtime_id_value=col(Showtime.id),
                 viewer_id_value=user_id,
             ),
         )
@@ -211,9 +224,9 @@ def get_friends_with_showtime_selection(
             col(User.id).in_(friends_subq),
             ShowtimeSelection.showtime_id == showtime_id,
             col(ShowtimeSelection.going_status).in_(statuses),
-            showtime_visibility_crud.is_movie_visible_to_viewer(
+            showtime_visibility_crud.is_showtime_visible_to_viewer(
                 owner_id_value=friend_id,
-                movie_id_value=col(Showtime.movie_id),
+                showtime_id_value=col(Showtime.id),
                 viewer_id_value=col(User.id),
             ),
         )
@@ -276,7 +289,12 @@ def get_main_page_showtimes(
         stmt = stmt.where(
             or_(
                 *[
-                    time_range_clause(col(Showtime.datetime), tr.start, tr.end)
+                    time_range_clause(
+                        col(Showtime.datetime),
+                        col(Showtime.end_datetime),
+                        tr.start,
+                        tr.end,
+                    )
                     for tr in filters.time_ranges
                 ]
             )
@@ -311,9 +329,9 @@ def get_main_page_showtimes(
                     ShowtimeSelection.user_id == user_id,
                     (
                         col(ShowtimeSelection.user_id).in_(friends_subq)
-                        & showtime_visibility_crud.is_movie_visible_to_viewer(
+                        & showtime_visibility_crud.is_showtime_visible_to_viewer(
                             owner_id_value=col(ShowtimeSelection.user_id),
-                            movie_id_value=col(Showtime.movie_id),
+                            showtime_id_value=col(Showtime.id),
                             viewer_id_value=user_id,
                         )
                     ),

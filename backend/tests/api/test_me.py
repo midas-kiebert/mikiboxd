@@ -171,6 +171,8 @@ def test_showtime_pings_endpoints(
     assert len(pings) == 1
     assert pings[0]["showtime_id"] == showtime.id
     assert pings[0]["movie_id"] == showtime.movie_id
+    assert pings[0]["showtime"]["id"] == showtime.id
+    assert pings[0]["showtime"]["movie"]["id"] == showtime.movie_id
     assert pings[0]["sender"]["id"] == str(sender.id)
     assert pings[0]["seen_at"] is None
 

@@ -31,10 +31,11 @@ import FilterPills, {
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
 import DayFilterModal from "@/components/filters/DayFilterModal";
 import DayQuickPopover from "@/components/filters/DayQuickPopover";
-import TimeFilterModal from "@/components/filters/TimeFilterModal";
 import TimeQuickPopover from "@/components/filters/TimeQuickPopover";
-import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
+import { formatDayPillLabel, resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
+import { formatTimePillLabel } from "@/components/filters/time-range-utils";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useSharedDayTimeFilters } from "@/hooks/useSharedDayTimeFilters";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selection";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
@@ -44,8 +45,8 @@ const SHOWTIMES_PAGE_SIZE = 20;
 const BASE_FILTERS = [
   { id: "showtime-filter", label: "Any Status" },
   { id: "cinemas", label: "Cinemas" },
-  { id: "days", label: "Days" },
-  { id: "times", label: "Times" },
+  { id: "days", label: "Any Day" },
+  { id: "times", label: "any time" },
 ];
 
 type ShowtimeFilter = "all" | "going" | "interested";
@@ -77,12 +78,8 @@ export default function MoviePage() {
     useState<FilterPillLongPressPosition | null>(null);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
-  // Controls visibility of the time-filter modal.
-  const [timeModalVisible, setTimeModalVisible] = useState(false);
-  // Tracks selected day values used by date filtering.
-  const [selectedDays, setSelectedDays] = useState<string[]>([]);
-  // Tracks selected time ranges used by time filtering.
-  const [selectedTimeRanges, setSelectedTimeRanges] = useState<string[]>([]);
+  const { selectedDays, setSelectedDays, selectedTimeRanges, setSelectedTimeRanges } =
+    useSharedDayTimeFilters();
   const dayAnchorKey =
     DateTime.now().setZone("Europe/Amsterdam").startOf("day").toISODate() ?? "";
   const resolvedApiDays = useMemo(
@@ -298,7 +295,7 @@ export default function MoviePage() {
 
   const handleLongPressFilter = (
     filterId: string,
-    _position: FilterPillLongPressPosition
+    position: FilterPillLongPressPosition
   ) => {
     if (filterId === "cinemas") {
       setCinemaModalVisible(true);
@@ -309,7 +306,8 @@ export default function MoviePage() {
       return true;
     }
     if (filterId === "times") {
-      setTimeModalVisible(true);
+      setTimeQuickPopoverAnchor(position ?? null);
+      setTimeQuickPopoverVisible(true);
       return true;
     }
     return false;
@@ -348,15 +346,15 @@ export default function MoviePage() {
                 : undefined,
         };
       }
-      if (filter.id === "days" && selectedDays.length > 0) {
-        return { ...filter, label: `Days (${selectedDays.length})` };
+      if (filter.id === "days") {
+        return { ...filter, label: formatDayPillLabel(selectedDays) };
       }
-      if (filter.id === "times" && selectedTimeRanges.length > 0) {
-        return { ...filter, label: `Times (${selectedTimeRanges.length})` };
+      if (filter.id === "times") {
+        return { ...filter, label: formatTimePillLabel(selectedTimeRanges) };
       }
       return filter;
     });
-  }, [colors, selectedDays.length, selectedFilter, selectedTimeRanges.length]);
+  }, [colors, selectedDays, selectedFilter, selectedTimeRanges]);
 
   const isCinemaFilterActive = useMemo(
     () =>
@@ -537,19 +535,12 @@ export default function MoviePage() {
             onClose={() => setTimeQuickPopoverVisible(false)}
             selectedTimeRanges={selectedTimeRanges}
             onChange={setSelectedTimeRanges}
-            onOpenModal={() => setTimeModalVisible(true)}
           />
           <DayFilterModal
             visible={dayModalVisible}
             onClose={() => setDayModalVisible(false)}
             selectedDays={selectedDays}
             onChange={setSelectedDays}
-          />
-          <TimeFilterModal
-            visible={timeModalVisible}
-            onClose={() => setTimeModalVisible(false)}
-            selectedTimeRanges={selectedTimeRanges}
-            onChange={setSelectedTimeRanges}
           />
         </>
       )}

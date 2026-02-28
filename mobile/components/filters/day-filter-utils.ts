@@ -168,3 +168,25 @@ export function getDaySelectionLabels(values?: string[] | null): string[] {
   if (!selections || selections.length === 0) return [];
   return selections.map((selectionValue) => getDaySelectionLabel(selectionValue));
 }
+
+export function formatDayPillLabel(values?: readonly string[] | null): string {
+  const selections = canonicalizeDaySelections(values ? [...values] : null);
+  if (!selections || selections.length === 0) return "Any Day";
+  if (selections.length > 1) return `Days (${selections.length})`;
+
+  const [selection] = selections;
+  if (!selection) return "Any Day";
+
+  const relativeOption = getRelativeDayOption(selection);
+  if (relativeOption) return relativeOption.label;
+
+  const weekdayOption = getWeekdayDayOption(selection);
+  if (weekdayOption) return weekdayOption.label;
+
+  if (isIsoDaySelection(selection)) {
+    const date = DateTime.fromISO(selection, { zone: AMSTERDAM_ZONE });
+    if (date.isValid) return date.toFormat("EEE, d LLL");
+  }
+
+  return selection;
+}

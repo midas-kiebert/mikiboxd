@@ -408,3 +408,42 @@ def test_get_main_page_showtimes_open_ended_start_range_includes_until_4am(
     assert showtime_night in showtimes
     assert showtime_after_midnight in showtimes
     assert showtime_after_cutoff not in showtimes
+
+
+def test_get_main_page_showtimes_bounded_range_checks_showtime_end_time(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    base_day = now_amsterdam_naive().replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+    showtime_inside_range = showtime_factory(
+        datetime=base_day.replace(hour=10, minute=30),
+        end_datetime=base_day.replace(hour=12, minute=20),
+    )
+    showtime_spilling_past_end = showtime_factory(
+        datetime=base_day.replace(hour=11, minute=15),
+        end_datetime=base_day.replace(hour=13, minute=30),
+    )
+    showtime_without_end_datetime = showtime_factory(
+        datetime=base_day.replace(hour=12, minute=45),
+        end_datetime=None,
+    )
+
+    showtimes = showtime_crud.get_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=base_day - timedelta(days=1),
+            time_ranges=[TimeRange(start=time(10, 0), end=time(13, 0))],
+        ),
+    )
+
+    assert showtime_inside_range in showtimes
+    assert showtime_spilling_past_end not in showtimes
+    # Backward-compatible fallback: when end time is unknown, treat start as end.
+    assert showtime_without_end_datetime in showtimes

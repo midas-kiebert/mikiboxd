@@ -151,7 +151,12 @@ export default function MoviePage() {
   };
 
   // Update all relevant query caches so the status chip updates instantly across screens.
-  const updateShowtimeInCaches = (showtimeId: number, going: GoingStatus) => {
+  const updateShowtimeInCaches = (
+    showtimeId: number,
+    going: GoingStatus,
+    seatRow: string | null,
+    seatNumber: string | null
+  ) => {
     queryClient.setQueriesData(
       { queryKey: ["movie", movieId, "showtimes"] },
       (oldData: unknown) => {
@@ -163,7 +168,9 @@ export default function MoviePage() {
           ...data,
           pages: data.pages.map((page) =>
             page.map((showtime) =>
-              showtime.id === showtimeId ? { ...showtime, going } : showtime
+              showtime.id === showtimeId
+                ? { ...showtime, going, seat_row: seatRow, seat_number: seatNumber }
+                : showtime
             )
           ),
         };
@@ -178,21 +185,45 @@ export default function MoviePage() {
       return {
         ...data,
         showtimes: data.showtimes.map((showtime) =>
-          showtime.id === showtimeId ? { ...showtime, going } : showtime
+          showtime.id === showtimeId
+            ? { ...showtime, going, seat_row: seatRow, seat_number: seatNumber }
+            : showtime
         ),
       };
     });
   };
 
   const { mutate: updateShowtimeSelection, isPending: isUpdatingShowtimeSelection } = useMutation({
-    mutationFn: ({ showtimeId, going }: { showtimeId: number; going: GoingStatus }) =>
-      ShowtimesService.updateShowtimeSelection({
+    mutationFn: ({
+      showtimeId,
+      going,
+      seatRow,
+      seatNumber,
+    }: {
+      showtimeId: number;
+      going: GoingStatus;
+      seatRow?: string | null;
+      seatNumber?: string | null;
+    }) => {
+      const requestBody: {
+        going_status: GoingStatus;
+        seat_row?: string | null;
+        seat_number?: string | null;
+      } = {
+        going_status: going,
+      };
+      if (seatRow !== undefined) {
+        requestBody.seat_row = seatRow;
+      }
+      if (seatNumber !== undefined) {
+        requestBody.seat_number = seatNumber;
+      }
+      return ShowtimesService.updateShowtimeSelection({
         showtimeId,
-        requestBody: {
-          going_status: going,
-        },
-      }),
-    onMutate: async ({ showtimeId, going }) => {
+        requestBody,
+      });
+    },
+    onMutate: async ({ showtimeId, going, seatRow, seatNumber }) => {
       // Pause active requests so optimistic updates are not immediately overwritten.
       await Promise.all([
         queryClient.cancelQueries({ queryKey: ["movie", movieId, "showtimes"] }),
@@ -206,9 +237,27 @@ export default function MoviePage() {
         queryKey: ["movie", movieId],
       });
       const previousSelectedShowtime = selectedShowtime;
+      const nextSeatRow =
+        going === "GOING"
+          ? (seatRow ?? previousSelectedShowtime?.seat_row ?? null)
+          : null;
+      const nextSeatNumber =
+        going === "GOING"
+          ? (seatNumber ?? previousSelectedShowtime?.seat_number ?? null)
+          : null;
 
       // Optimistic update for immediate UI feedback.
-      updateShowtimeInCaches(showtimeId, going);
+      updateShowtimeInCaches(showtimeId, going, nextSeatRow, nextSeatNumber);
+      setSelectedShowtime((previous) =>
+        previous
+          ? {
+              ...previous,
+              going,
+              seat_row: nextSeatRow,
+              seat_number: nextSeatNumber,
+            }
+          : previous
+      );
 
       return {
         previousMovieShowtimeQueries,
@@ -227,7 +276,22 @@ export default function MoviePage() {
     },
     onSuccess: (updatedShowtime) => {
       // Ensure optimistic state matches backend-confirmed value.
-      updateShowtimeInCaches(updatedShowtime.id, updatedShowtime.going);
+      updateShowtimeInCaches(
+        updatedShowtime.id,
+        updatedShowtime.going,
+        updatedShowtime.seat_row ?? null,
+        updatedShowtime.seat_number ?? null
+      );
+      setSelectedShowtime((previous) =>
+        previous && previous.id === updatedShowtime.id
+          ? {
+              ...previous,
+              going: updatedShowtime.going,
+              seat_row: updatedShowtime.seat_row ?? null,
+              seat_number: updatedShowtime.seat_number ?? null,
+            }
+          : previous
+      );
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["movie", movieId, "showtimes"] });
@@ -238,10 +302,17 @@ export default function MoviePage() {
   });
 
   // Submit the selected going/interested/not-going status.
-  const handleShowtimeStatusUpdate = (going: GoingStatus) => {
+  const handleShowtimeStatusUpdate = (
+    going: GoingStatus,
+    seat?: { seatRow: string | null; seatNumber: string | null }
+  ) => {
     if (!selectedShowtime || isUpdatingShowtimeSelection) return;
-    setSelectedShowtime((previous) => (previous ? { ...previous, going } : previous));
-    updateShowtimeSelection({ showtimeId: selectedShowtime.id, going });
+    updateShowtimeSelection({
+      showtimeId: selectedShowtime.id,
+      going,
+      seatRow: seat?.seatRow,
+      seatNumber: seat?.seatNumber,
+    });
   };
 
   const letterboxdSlug = movie?.letterboxd_slug?.trim() ?? "";

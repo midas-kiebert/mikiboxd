@@ -64,6 +64,13 @@ def _apply_end_datetime_fallback(
     )
 
 
+def _normalize_seat_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized if normalized else None
+
+
 def get_showtime_by_id(
     *,
     session: Session,
@@ -101,6 +108,9 @@ def update_showtime_selection(
     showtime_id: int,
     user_id: UUID,
     going_status: GoingStatus,
+    seat_row: str | None = None,
+    seat_number: str | None = None,
+    update_seat: bool = False,
     filters: Filters,
 ) -> ShowtimeLoggedIn:
     previous_status = user_crud.get_showtime_going_status(
@@ -124,11 +134,16 @@ def update_showtime_selection(
             raise AppError from e
     else:
         try:
+            normalized_seat_row = _normalize_seat_value(seat_row)
+            normalized_seat_number = _normalize_seat_value(seat_number)
             showtime = showtimes_crud.add_showtime_selection(
                 session=session,
                 showtime_id=showtime_id,
                 user_id=user_id,
                 going_status=going_status,
+                seat_row=normalized_seat_row,
+                seat_number=normalized_seat_number,
+                update_seat=update_seat,
             )
             session.commit()
         except NoResultFound as e:
@@ -183,7 +198,16 @@ def ping_friend_for_showtime(
         user_id=friend_id,
     )
     if friend_status in (GoingStatus.GOING, GoingStatus.INTERESTED):
-        raise ShowtimePingAlreadySelectedError()
+        friend_status_is_visible = (
+            showtime_visibility_crud.is_showtime_visible_to_viewer_for_ids(
+                session=session,
+                owner_id=friend_id,
+                showtime_id=showtime_id,
+                viewer_id=actor_id,
+            )
+        )
+        if friend_status_is_visible:
+            raise ShowtimePingAlreadySelectedError()
 
     existing_ping = showtime_ping_crud.get_showtime_ping(
         session=session,

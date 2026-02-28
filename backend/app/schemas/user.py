@@ -21,6 +21,8 @@ class UserPublic(SQLModel):
     id: UUID
     is_active: bool
     display_name: str | None
+    seat_row: str | None = None
+    seat_number: str | None = None
 
 
 class UserMe(UserPublic):

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import datetime, time, timedelta
 from uuid import UUID
 
@@ -352,6 +353,9 @@ def add_showtime_selection(
     showtime_id: int,
     user_id: UUID,
     going_status: GoingStatus,
+    seat_row: str | None = None,
+    seat_number: str | None = None,
+    update_seat: bool = False,
 ) -> Showtime:
     now = now_amsterdam_naive()
     showtime = session.exec(select(Showtime).where(Showtime.id == showtime_id)).one()
@@ -360,11 +364,35 @@ def add_showtime_selection(
         ShowtimeSelection,
         (user_id, showtime_id),
     )
+
+    next_seat_row = seat_row if going_status == GoingStatus.GOING else None
+    next_seat_number = seat_number if going_status == GoingStatus.GOING else None
+
     if showtime_selection is not None:
+        has_changes = False
+
         if showtime_selection.going_status != going_status:
             showtime_selection.going_status = going_status
-            showtime_selection.updated_at = now
             showtime_selection.interested_reminder_sent_at = None
+            has_changes = True
+
+        if going_status != GoingStatus.GOING:
+            if showtime_selection.seat_row is not None:
+                showtime_selection.seat_row = None
+                has_changes = True
+            if showtime_selection.seat_number is not None:
+                showtime_selection.seat_number = None
+                has_changes = True
+        elif update_seat:
+            if showtime_selection.seat_row != next_seat_row:
+                showtime_selection.seat_row = next_seat_row
+                has_changes = True
+            if showtime_selection.seat_number != next_seat_number:
+                showtime_selection.seat_number = next_seat_number
+                has_changes = True
+
+        if has_changes:
+            showtime_selection.updated_at = now
             session.add(showtime_selection)
             session.flush()
         return showtime
@@ -373,12 +401,40 @@ def add_showtime_selection(
         user_id=user_id,
         showtime_id=showtime_id,
         going_status=going_status,
+        seat_row=next_seat_row if update_seat else None,
+        seat_number=next_seat_number if update_seat else None,
         created_at=now,
         updated_at=now,
     )
     session.add(db_obj)
     session.flush()  # So that the ID is set, and check for integrity errors
     return showtime
+
+
+def get_showtime_selection(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID,
+) -> ShowtimeSelection | None:
+    return session.get(ShowtimeSelection, (user_id, showtime_id))
+
+
+def get_showtime_selections_for_users(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_ids: Sequence[UUID],
+) -> dict[UUID, ShowtimeSelection]:
+    if len(user_ids) == 0:
+        return {}
+
+    stmt = select(ShowtimeSelection).where(
+        ShowtimeSelection.showtime_id == showtime_id,
+        col(ShowtimeSelection.user_id).in_(user_ids),
+    )
+    selections = list(session.exec(stmt).all())
+    return {selection.user_id: selection for selection in selections}
 
 
 def remove_showtime_selection(

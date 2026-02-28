@@ -143,6 +143,8 @@ export type ShowtimeInMovieLoggedIn = {
   friends_going: Array<UserPublic>
   friends_interested: Array<UserPublic>
   going: GoingStatus
+  seat_row?: string | null
+  seat_number?: string | null
 }
 
 export type ShowtimeLoggedIn = {
@@ -156,6 +158,8 @@ export type ShowtimeLoggedIn = {
   friends_going: Array<UserPublic>
   friends_interested: Array<UserPublic>
   going: GoingStatus
+  seat_row?: string | null
+  seat_number?: string | null
 }
 
 export type ShowtimePingPublic = {
@@ -177,6 +181,8 @@ export type ShowtimePingSort = "ping_created_at" | "showtime_datetime"
 
 export type ShowtimeSelectionUpdate = {
   going_status: GoingStatus
+  seat_row?: string | null
+  seat_number?: string | null
 }
 
 export type ShowtimeVisibilityPublic = {
@@ -227,6 +233,8 @@ export type UserMe = {
   id: string
   is_active: boolean
   display_name: string | null
+  seat_row?: string | null
+  seat_number?: string | null
   email: string
   is_superuser: boolean
   notify_on_friend_showtime_match: boolean
@@ -244,6 +252,8 @@ export type UserPublic = {
   id: string
   is_active: boolean
   display_name: string | null
+  seat_row?: string | null
+  seat_number?: string | null
 }
 
 export type UserRegister = {
@@ -271,6 +281,8 @@ export type UserWithFriendStatus = {
   id: string
   is_active: boolean
   display_name: string | null
+  seat_row?: string | null
+  seat_number?: string | null
   is_friend: boolean
   sent_request: boolean
   received_request: boolean

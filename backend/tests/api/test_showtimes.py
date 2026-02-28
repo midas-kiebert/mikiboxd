@@ -5,7 +5,9 @@ from app.core.config import settings
 from app.core.enums import GoingStatus
 from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtime_crud
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.models.user import User
+from app.utils import now_amsterdam_naive
 
 
 def _normal_user_id(db_transaction: Session):
@@ -100,6 +102,53 @@ def test_ping_friend_for_showtime_rejects_when_already_selected(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "This friend already selected this showtime."
+
+
+def test_ping_friend_for_showtime_allows_ping_when_selection_is_hidden(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+    mocker,
+) -> None:
+    friend = user_factory()
+    showtime = showtime_factory()
+    friend_id = friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=friend_id,
+        going_status=GoingStatus.INTERESTED,
+    )
+    showtime_visibility_crud.set_visible_friend_ids_for_showtime(
+        session=db_transaction,
+        owner_id=friend_id,
+        showtime_id=showtime_id,
+        visible_friend_ids=[],
+        all_friend_ids={current_user_id},
+        now=now_amsterdam_naive(),
+    )
+    db_transaction.commit()
+
+    notify_ping = mocker.patch("app.services.push_notifications.notify_user_on_showtime_ping")
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping/{friend_id}",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"message": "Friend pinged successfully"}
+    notify_ping.assert_called_once()
 
 
 def test_ping_friend_for_showtime_rejects_duplicate_ping(
@@ -371,3 +420,97 @@ def test_showtime_visibility_filters_friend_status_in_showtime_payload(
     assert not any(
         showtime_item["id"] == showtime_id for showtime_item in hidden_friend_view.json()
     )
+
+
+def test_update_showtime_selection_seat_roundtrip_and_clear(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+
+    set_seat_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "GOING", "seat_row": " 6 ", "seat_number": "3 "},
+    )
+    assert set_seat_response.status_code == 200
+    assert set_seat_response.json()["going"] == "GOING"
+    assert set_seat_response.json()["seat_row"] == "6"
+    assert set_seat_response.json()["seat_number"] == "3"
+
+    preserve_seat_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "GOING"},
+    )
+    assert preserve_seat_response.status_code == 200
+    assert preserve_seat_response.json()["seat_row"] == "6"
+    assert preserve_seat_response.json()["seat_number"] == "3"
+
+    clear_seat_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "GOING", "seat_row": None, "seat_number": None},
+    )
+    assert clear_seat_response.status_code == 200
+    assert clear_seat_response.json()["seat_row"] is None
+    assert clear_seat_response.json()["seat_number"] is None
+
+    interested_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "INTERESTED", "seat_row": "B", "seat_number": "7"},
+    )
+    assert interested_response.status_code == 200
+    assert interested_response.json()["going"] == "INTERESTED"
+    assert interested_response.json()["seat_row"] is None
+    assert interested_response.json()["seat_number"] is None
+
+
+def test_main_page_showtimes_includes_friend_seat_in_badge_payload(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    friend = user_factory()
+    showtime = showtime_factory()
+    friend_id = friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=friend_id,
+        going_status=GoingStatus.GOING,
+        seat_row="C",
+        seat_number="5",
+        update_seat=True,
+    )
+    db_transaction.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes",
+        headers=normal_user_token_headers,
+        params={"limit": 50, "offset": 0},
+    )
+    assert response.status_code == 200
+
+    showtime_item = next(
+        item for item in response.json() if item["id"] == showtime_id
+    )
+    friend_item = next(
+        item for item in showtime_item["friends_going"] if item["id"] == str(friend_id)
+    )
+
+    assert friend_item["seat_row"] == "C"
+    assert friend_item["seat_number"] == "5"

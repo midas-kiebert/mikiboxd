@@ -26,7 +26,8 @@ type FriendBadgesProps = {
 
 type FriendBadgeProps = {
   friendId: string;
-  label: string;
+  name: string;
+  seatLabel?: string | null;
   backgroundColor: string;
   accentColor: string;
   styles: ReturnType<typeof createStyles>;
@@ -36,12 +37,13 @@ type FriendBadgeProps = {
 type VariantStyles = {
   badge: ViewStyle;
   badgeText: TextStyle;
+  badgeSeatText: TextStyle;
   statusDot: ViewStyle;
 };
 
 const FRIEND_BADGE_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
-const getFriendLabel = (user: UserPublic) => {
+const getFriendName = (user: UserPublic) => {
   // Prefer display name when it exists.
   const displayName = user.display_name?.trim();
   if (displayName) return displayName;
@@ -49,9 +51,35 @@ const getFriendLabel = (user: UserPublic) => {
   return "Friend";
 };
 
+const getSeatLabel = (user: UserPublic): string | null => {
+  const seatRow = user.seat_row?.trim();
+  const seatNumber = user.seat_number?.trim();
+  if (!seatRow && !seatNumber) {
+    return null;
+  }
+  if (!seatRow) {
+    return seatNumber ?? null;
+  }
+  if (!seatNumber) {
+    return seatRow;
+  }
+
+  const isNumericRow = /^\d+$/.test(seatRow);
+  const isNumericSeat = /^\d+$/.test(seatNumber);
+  const isLetterRow = /^[A-Za-z]+$/.test(seatRow);
+  if (isNumericRow && isNumericSeat) {
+    return `${seatRow}-${seatNumber}`;
+  }
+  if (isLetterRow && isNumericSeat) {
+    return `${seatRow}${seatNumber}`;
+  }
+  return `${seatRow}-${seatNumber}`;
+};
+
 const FriendBadge = ({
   friendId,
-  label,
+  name,
+  seatLabel,
   backgroundColor,
   accentColor,
   styles,
@@ -63,11 +91,13 @@ const FriendBadge = ({
       ? {
           badge: styles.compactBadge,
           badgeText: styles.compactBadgeText,
+          badgeSeatText: styles.compactBadgeSeatText,
           statusDot: styles.compactStatusDot,
         }
       : {
           badge: styles.defaultBadge,
           badgeText: styles.defaultBadgeText,
+          badgeSeatText: styles.defaultBadgeSeatText,
           statusDot: styles.defaultStatusDot,
         };
 
@@ -93,7 +123,13 @@ const FriendBadge = ({
         numberOfLines={1}
         ellipsizeMode="tail"
       >
-        {label}
+        {name}
+        {seatLabel ? (
+          <ThemedText style={[styles.badgeSeatText, sizeStyles.badgeSeatText, { color: accentColor }]}>
+            {" "}
+            ({seatLabel})
+          </ThemedText>
+        ) : null}
       </ThemedText>
     </TouchableOpacity>
   );
@@ -144,7 +180,8 @@ export default function FriendBadges({
         <FriendBadge
           key={friend.id}
           friendId={friend.id}
-          label={getFriendLabel(friend)}
+          name={getFriendName(friend)}
+          seatLabel={getSeatLabel(friend)}
           backgroundColor={backgroundColor}
           accentColor={accentColor}
           styles={styles}
@@ -228,6 +265,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       lineHeight: 10,
       fontWeight: "500",
     },
+    badgeSeatText: {
+      fontWeight: "500",
+      opacity: 0.9,
+    },
+    compactBadgeSeatText: {
+      fontSize: 8,
+      lineHeight: 9,
+    },
     defaultBadge: {
       minHeight: 18,
       paddingHorizontal: 6,
@@ -240,6 +285,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     defaultBadgeText: {
       fontSize: 11,
       lineHeight: 12,
+    },
+    defaultBadgeSeatText: {
+      fontSize: 9,
+      lineHeight: 10,
     },
     overflowBadge: {
       backgroundColor: colors.pillBackground,

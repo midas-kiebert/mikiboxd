@@ -186,13 +186,40 @@ export default function PingsScreen() {
   }, [isFocused]);
 
   const { mutate: updateShowtimeSelection, isPending: isUpdatingShowtimeSelection } = useMutation({
-    mutationFn: ({ showtimeId, going }: { showtimeId: number; going: GoingStatus }) =>
-      ShowtimesService.updateShowtimeSelection({
+    mutationFn: ({
+      showtimeId,
+      going,
+      seatRow,
+      seatNumber,
+    }: {
+      showtimeId: number;
+      going: GoingStatus;
+      seatRow?: string | null;
+      seatNumber?: string | null;
+    }) => {
+      const requestBody: {
+        going_status: GoingStatus;
+        seat_row?: string | null;
+        seat_number?: string | null;
+      } = {
+        going_status: going,
+      };
+      if (seatRow !== undefined) {
+        requestBody.seat_row = seatRow;
+      }
+      if (seatNumber !== undefined) {
+        requestBody.seat_number = seatNumber;
+      }
+      return ShowtimesService.updateShowtimeSelection({
         showtimeId,
-        requestBody: {
-          going_status: going,
-        },
-      }),
+        requestBody,
+      });
+    },
+    onSuccess: (updatedShowtime) => {
+      setSelectedShowtime((previous) =>
+        previous && previous.id === updatedShowtime.id ? updatedShowtime : previous
+      );
+    },
     onError: (error) => {
       console.error("Error updating showtime selection:", error);
     },
@@ -205,10 +232,35 @@ export default function PingsScreen() {
   });
 
   // Submit the selected going/interested/not-going status.
-  const handleShowtimeStatusUpdate = (going: GoingStatus) => {
+  const handleShowtimeStatusUpdate = (
+    going: GoingStatus,
+    seat?: { seatRow: string | null; seatNumber: string | null }
+  ) => {
     if (!selectedShowtime || isUpdatingShowtimeSelection) return;
-    setSelectedShowtime((previous) => (previous ? { ...previous, going } : previous));
-    updateShowtimeSelection({ showtimeId: selectedShowtime.id, going });
+    const nextSeatRow =
+      going === "GOING"
+        ? (seat?.seatRow ?? selectedShowtime.seat_row ?? null)
+        : null;
+    const nextSeatNumber =
+      going === "GOING"
+        ? (seat?.seatNumber ?? selectedShowtime.seat_number ?? null)
+        : null;
+    setSelectedShowtime((previous) =>
+      previous
+        ? {
+            ...previous,
+            going,
+            seat_row: nextSeatRow,
+            seat_number: nextSeatNumber,
+          }
+        : previous
+    );
+    updateShowtimeSelection({
+      showtimeId: selectedShowtime.id,
+      going,
+      seatRow: seat?.seatRow,
+      seatNumber: seat?.seatNumber,
+    });
   };
 
   const dismissPingGroup = (pingIds: number[]) => {

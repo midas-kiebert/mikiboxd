@@ -23,6 +23,8 @@ class ShowtimeSelection(SQLModel, table=True):
         default=GoingStatus.GOING,
         sa_column=Column(SAEnum(GoingStatus, native_enum=False), nullable=False),
     )
+    seat_row: str | None = Field(default=None, max_length=32, nullable=True)
+    seat_number: str | None = Field(default=None, max_length=32, nullable=True)
     created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
     updated_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
     interested_reminder_sent_at: datetime | None = Field(default=None, nullable=True)

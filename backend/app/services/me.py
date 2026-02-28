@@ -24,6 +24,7 @@ from app.models.showtime import Showtime
 from app.models.user import User, UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
+from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe
 from app.utils import now_amsterdam_naive
@@ -542,7 +543,7 @@ def get_received_showtime_pings(
 
     sender_cache: dict[UUID, User | None] = {}
     showtime_cache: dict[int, Showtime | None] = {}
-    showtime_public_cache = {}
+    showtime_public_cache: dict[int, ShowtimeLoggedIn] = {}
     result: list[ShowtimePingPublic] = []
     filters = Filters(snapshot_time=now_amsterdam_naive())
 

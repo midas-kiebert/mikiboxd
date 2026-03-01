@@ -1,5 +1,4 @@
 from datetime import timedelta
-from logging import getLogger
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
@@ -38,8 +37,6 @@ from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_visibility import ShowtimeVisibilityPublic
 from app.services import push_notifications
 from app.utils import now_amsterdam_naive
-
-logger = getLogger(__name__)
 
 
 def _apply_upsert_update(
@@ -124,24 +121,10 @@ def update_showtime_selection(
     update_seat: bool = False,
     filters: Filters,
 ) -> ShowtimeLoggedIn:
-    logger.info(
-        "Showtime status update requested: user_id=%s showtime_id=%s target_status=%s update_seat=%s",
-        user_id,
-        showtime_id,
-        going_status.value,
-        update_seat,
-    )
     previous_status = user_crud.get_showtime_going_status(
         session=session,
         showtime_id=showtime_id,
         user_id=user_id,
-    )
-    logger.debug(
-        "Resolved previous status for showtime update: user_id=%s showtime_id=%s previous_status=%s target_status=%s",
-        user_id,
-        showtime_id,
-        previous_status.value,
-        going_status.value,
     )
     if going_status == GoingStatus.NOT_GOING:
         try:
@@ -164,13 +147,6 @@ def update_showtime_selection(
         except Exception as e:
             session.rollback()
             raise AppError from e
-        logger.info(
-            "Showtime selection removed: user_id=%s showtime_id=%s previous_status=%s new_status=%s",
-            user_id,
-            showtime_id,
-            previous_status.value,
-            GoingStatus.NOT_GOING.value,
-        )
     else:
         try:
             showtime_for_validation = showtimes_crud.get_showtime_by_id(
@@ -221,39 +197,17 @@ def update_showtime_selection(
         except Exception as e:
             session.rollback()
             raise AppError from e
-        logger.info(
-            "Showtime selection upserted: user_id=%s showtime_id=%s previous_status=%s new_status=%s update_seat=%s",
-            user_id,
-            showtime_id,
-            previous_status.value,
-            going_status.value,
-            update_seat,
-        )
     showtime_logged_in = showtime_converters.to_logged_in(
         showtime=showtime, session=session, user_id=user_id, filters=filters
     )
 
     if going_status != previous_status:
-        logger.info(
-            "Dispatching friend status notifications: actor_id=%s showtime_id=%s previous_status=%s new_status=%s",
-            user_id,
-            showtime_id,
-            previous_status.value,
-            going_status.value,
-        )
         push_notifications.notify_friends_on_showtime_selection(
             session=session,
             actor_id=user_id,
             showtime=showtime,
             previous_status=previous_status,
             going_status=going_status,
-        )
-    else:
-        logger.info(
-            "Skipping friend status notifications: actor_id=%s showtime_id=%s reason=no_status_change status=%s",
-            user_id,
-            showtime_id,
-            going_status.value,
         )
 
     return showtime_logged_in

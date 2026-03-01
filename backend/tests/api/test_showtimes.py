@@ -234,10 +234,12 @@ def test_receive_ping_from_link_allows_non_friend_sender(
 ) -> None:
     sender = user_factory(display_name="Ping Link Sender")
     showtime = showtime_factory()
+    sender_id = sender.id
+    showtime_id = showtime.id
     current_user_id = _normal_user_id(db_transaction)
 
     response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime.id}/ping-link/{sender.id}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
         headers=normal_user_token_headers,
     )
 
@@ -246,8 +248,8 @@ def test_receive_ping_from_link_allows_non_friend_sender(
 
     stored_ping = db_transaction.exec(
         select(ShowtimePing).where(
-            ShowtimePing.showtime_id == showtime.id,
-            ShowtimePing.sender_id == sender.id,
+            ShowtimePing.showtime_id == showtime_id,
+            ShowtimePing.sender_id == sender_id,
             ShowtimePing.receiver_id == current_user_id,
         )
     ).one_or_none()
@@ -262,10 +264,11 @@ def test_receive_ping_from_link_accepts_display_name_identifier(
 ) -> None:
     sender = user_factory(display_name="Sender Via Name")
     showtime = showtime_factory()
+    showtime_id = showtime.id
     encoded_sender = quote(sender.display_name or "", safe="")
 
     response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime.id}/ping-link/{encoded_sender}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{encoded_sender}",
         headers=normal_user_token_headers,
     )
 
@@ -282,16 +285,18 @@ def test_receive_ping_from_link_is_idempotent(
 ) -> None:
     sender = user_factory(display_name="Idempotent Sender")
     showtime = showtime_factory()
+    sender_id = sender.id
+    showtime_id = showtime.id
     current_user_id = _normal_user_id(db_transaction)
 
     first_response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime.id}/ping-link/{sender.id}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
         headers=normal_user_token_headers,
     )
     assert first_response.status_code == 200
 
     second_response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime.id}/ping-link/{sender.id}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
         headers=normal_user_token_headers,
     )
     assert second_response.status_code == 200
@@ -299,8 +304,8 @@ def test_receive_ping_from_link_is_idempotent(
 
     ping_rows = db_transaction.exec(
         select(ShowtimePing).where(
-            ShowtimePing.showtime_id == showtime.id,
-            ShowtimePing.sender_id == sender.id,
+            ShowtimePing.showtime_id == showtime_id,
+            ShowtimePing.sender_id == sender_id,
             ShowtimePing.receiver_id == current_user_id,
         )
     ).all()
@@ -313,8 +318,9 @@ def test_receive_ping_from_link_rejects_unknown_sender(
     showtime_factory,
 ) -> None:
     showtime = showtime_factory()
+    showtime_id = showtime.id
     response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime.id}/ping-link/{quote('missing sender', safe='')}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{quote('missing sender', safe='')}",
         headers=normal_user_token_headers,
     )
 

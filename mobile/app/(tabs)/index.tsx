@@ -33,7 +33,7 @@ import {
 } from '@/components/filters/shared-tab-filters';
 import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
 import { isCinemaSelectionDifferentFromPreferred } from '@/utils/cinema-selection';
-import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
+import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 
@@ -69,9 +69,7 @@ export default function MainShowtimesScreen() {
   // Controls visibility of the filter-presets modal.
   const [presetModalVisible, setPresetModalVisible] = useState(false);
   // Snapshot timestamp used to keep paginated API responses consistent.
-  const [snapshotTime, setSnapshotTime] = useState(() =>
-    DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")
-  );
+  const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
   const {
     selectedShowtimeFilter,
@@ -245,14 +243,18 @@ export default function MainShowtimesScreen() {
   // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
     setRefreshing(true);
-    await resetInfiniteQuery(
-      queryClient,
-      effectiveAudienceFilter === 'only-you'
-        ? ['showtimes', 'me', showtimesFilters]
-        : ['showtimes', 'main', showtimesFilters]
-    );
-    setSnapshotTime(DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
-    setRefreshing(false);
+    try {
+      await refreshInfiniteQueryWithFreshSnapshot({
+        queryClient,
+        queryKey:
+          effectiveAudienceFilter === 'only-you'
+            ? ['showtimes', 'me', showtimesFilters]
+            : ['showtimes', 'main', showtimesFilters],
+        setSnapshotTime,
+      });
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Request the next page when the list nears the end.

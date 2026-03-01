@@ -15,8 +15,10 @@ import { useRouter } from 'expo-router'
 import { useForm, Controller } from 'react-hook-form'
 import useAuth from 'shared/hooks/useAuth'
 import type { Body_login_login_access_token as AccessToken } from 'shared'
+import { storage } from 'shared/storage'
 import { useThemeColors } from '@/hooks/use-theme-color'
 import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications'
+import { PENDING_FRIEND_INVITE_RECEIVER_ID_KEY } from '@/constants/friend-invite'
 
 export default function LoginScreen() {
     // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -57,6 +59,12 @@ export default function LoginScreen() {
                 await registerPushTokenForCurrentDevice()
             } catch (notificationError) {
                 console.error('Error initializing push notifications after login:', notificationError)
+            }
+            const pendingFriendReceiverId = await storage.getItem(PENDING_FRIEND_INVITE_RECEIVER_ID_KEY)
+            if (pendingFriendReceiverId) {
+                await storage.removeItem(PENDING_FRIEND_INVITE_RECEIVER_ID_KEY)
+                router.replace(`/add-friend/${encodeURIComponent(pendingFriendReceiverId)}`)
+                return
             }
             router.replace('/(tabs)')
             console.log("loginMutation successful")

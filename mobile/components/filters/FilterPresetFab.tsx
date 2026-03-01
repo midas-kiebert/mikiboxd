@@ -1,6 +1,5 @@
-import { useRef } from 'react';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { type GestureResponderEvent, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { type FilterPillLongPressPosition } from '@/components/filters/FilterPills';
@@ -37,29 +36,27 @@ export default function FilterPresetFab({
 }: FilterPresetFabProps) {
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const fabRef = useRef<View | null>(null);
 
-  const handlePress = () => {
-    const fallbackAnchor = {
-      pageX: screenWidth - FAB_RIGHT_OFFSET - FAB_SIZE / 2,
-      pageY: screenHeight - insets.bottom - FAB_BOTTOM_OFFSET - FAB_SIZE,
-    };
-    if (!fabRef.current) {
-      onOpen(fallbackAnchor);
-      return;
-    }
-    fabRef.current.measureInWindow((x: number, y: number, width: number) => {
-      onOpen({
-        pageX: x + width / 2,
-        pageY: y,
+  const handlePress = ({ nativeEvent }: GestureResponderEvent) => {
+    // Keep FAB anchor semantics identical to filter pills:
+    // top edge = pageY - locationY, center X = left + FAB_SIZE / 2.
+    const pageX = nativeEvent.pageX - nativeEvent.locationX + FAB_SIZE / 2;
+    const pageY = nativeEvent.pageY - nativeEvent.locationY;
+    if (__DEV__) {
+      console.log("[FilterPresetFab] anchor", {
+        nativePageX: nativeEvent.pageX,
+        nativePageY: nativeEvent.pageY,
+        nativeLocationX: nativeEvent.locationX,
+        nativeLocationY: nativeEvent.locationY,
+        anchorPageX: pageX,
+        anchorPageY: pageY,
       });
-    });
+    }
+    onOpen({ pageX, pageY });
   };
 
   return (
     <TouchableOpacity
-      ref={fabRef}
       style={{
         position: 'absolute',
         right: FAB_RIGHT_OFFSET,
@@ -80,7 +77,13 @@ export default function FilterPresetFab({
       delayLongPress={230}
       activeOpacity={0.74}
     >
-      <MaterialIcons name='bookmark' size={24} color={colors.pillActiveText} />
+      <View pointerEvents='none'>
+        <MaterialIcons
+          name='bookmark'
+          size={24}
+          color={colors.pillActiveText}
+        />
+      </View>
     </TouchableOpacity>
   );
 }

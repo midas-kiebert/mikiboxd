@@ -33,6 +33,10 @@ import {
   saveFilterPresetOrder,
   sortFilterPresetsByOrder,
 } from "@/components/filters/filter-preset-order";
+import {
+  formatRuntimePillLabel,
+  normalizeSingleRuntimeRangeSelection,
+} from "@/components/filters/runtime-range-utils";
 import { getPresetForRange } from "@/components/filters/time-filter-presets";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
@@ -42,6 +46,7 @@ export type PageFilterPresetState = {
   watchlist_only?: boolean;
   days?: string[] | null;
   time_ranges?: string[] | null;
+  runtime_ranges?: string[] | null;
 };
 
 type FilterPresetsModalProps = {
@@ -76,6 +81,9 @@ const normalizeFilters = (filters: PageFilterPresetState): PageFilterPresetState
   watchlist_only: Boolean(filters.watchlist_only),
   days: canonicalizeDaySelections(filters.days),
   time_ranges: getSortedUniqueStrings(filters.time_ranges),
+  runtime_ranges: getSortedUniqueStrings(
+    normalizeSingleRuntimeRangeSelection(filters.runtime_ranges ?? [])
+  ),
 });
 
 const serializeFilters = (filters: PageFilterPresetState) => JSON.stringify(normalizeFilters(filters));
@@ -89,6 +97,7 @@ const toPresetBodyFilters = (filters: PageFilterPresetState): FilterPresetFilter
     watchlist_only: Boolean(normalized.watchlist_only),
     days: normalized.days ?? null,
     time_ranges: normalized.time_ranges ?? null,
+    runtime_ranges: normalized.runtime_ranges ?? null,
   };
 };
 
@@ -125,6 +134,14 @@ const getTimeRangesFilterLabel = (timeRanges?: string[] | null) => {
     .join(", ");
 };
 
+const getRuntimeRangesFilterLabel = (runtimeRanges?: string[] | null) => {
+  const normalizedRanges = getSortedUniqueStrings(
+    normalizeSingleRuntimeRangeSelection(runtimeRanges ?? [])
+  );
+  if (!normalizedRanges || normalizedRanges.length === 0) return "Any runtime";
+  return formatRuntimePillLabel(normalizedRanges);
+};
+
 const getPresetSummary = (scope: FilterPresetScope, filters: PageFilterPresetState) => {
   const normalized = normalizeFilters(filters);
   const parts: string[] = [];
@@ -145,6 +162,9 @@ const getPresetSummary = (scope: FilterPresetScope, filters: PageFilterPresetSta
 
   const times = getTimeRangesFilterLabel(normalized.time_ranges);
   if (times !== "Any time") parts.push(times);
+
+  const runtimes = getRuntimeRangesFilterLabel(normalized.runtime_ranges);
+  if (runtimes.toLowerCase() !== "any runtime") parts.push(runtimes);
 
   return parts.length > 0 ? parts.join(" • ") : "No restrictions";
 };

@@ -7,8 +7,12 @@ import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelecti
 import { useSessionDaySelections } from "shared/hooks/useSessionDaySelections";
 import { useSessionShowtimeFilter } from "shared/hooks/useSessionShowtimeFilter";
 import { useSessionTimeRangeSelections } from "shared/hooks/useSessionTimeRangeSelections";
+import { useSessionRuntimeRangeSelections } from "shared/hooks/useSessionRuntimeRangeSelections";
 import { useSessionWatchlistOnly } from "shared/hooks/useSessionWatchlistOnly";
 
+import {
+  normalizeSingleRuntimeRangeSelection,
+} from "@/components/filters/runtime-range-utils";
 import {
   SHARED_TAB_FILTER_PRESET_SCOPE,
   toSharedTabShowtimeFilter,
@@ -18,11 +22,16 @@ import { normalizeSingleTimeRangeSelection } from "@/components/filters/time-ran
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
+const EMPTY_RUNTIME_RANGES: string[] = [];
 const SESSION_CINEMA_SELECTIONS_KEY = ["session", "cinema_selections"] as const;
 const SESSION_DAY_SELECTIONS_KEY = ["session", "day_selections"] as const;
 const SESSION_SHOWTIME_FILTER_KEY = ["session", "showtime_filter"] as const;
 const SESSION_SHOWTIME_AUDIENCE_KEY = ["session", "showtime_audience"] as const;
 const SESSION_TIME_RANGE_SELECTIONS_KEY = ["session", "time_range_selections"] as const;
+const SESSION_RUNTIME_RANGE_SELECTIONS_KEY = [
+  "session",
+  "runtime_range_selections",
+] as const;
 const SESSION_WATCHLIST_ONLY_KEY = ["session", "watchlist_only"] as const;
 
 type SharedShowtimeAudience = "including-friends" | "only-you";
@@ -42,6 +51,8 @@ export function useSharedTabFilters() {
     useSessionDaySelections();
   const { selections: sessionTimeRanges, setSelections: setSessionTimeRanges } =
     useSessionTimeRangeSelections();
+  const { selections: sessionRuntimeRanges, setSelections: setSessionRuntimeRanges } =
+    useSessionRuntimeRangeSelections();
   const { selection: sessionShowtimeFilter, setSelection: setSessionShowtimeFilter } =
     useSessionShowtimeFilter();
   const { selection: sessionShowtimeAudience, setSelection: setSessionShowtimeAudience } =
@@ -68,6 +79,9 @@ export function useSharedTabFilters() {
   const [appliedWatchlistOnly, setAppliedWatchlistOnlyState] = useState<boolean>(initialWatchlistOnly);
   const selectedDays = sessionDays ?? EMPTY_DAYS;
   const selectedTimeRanges = normalizeSingleTimeRangeSelection(sessionTimeRanges ?? EMPTY_TIME_RANGES);
+  const selectedRuntimeRanges = normalizeSingleRuntimeRangeSelection(
+    sessionRuntimeRanges ?? EMPTY_RUNTIME_RANGES
+  );
 
   const setSelectedShowtimeFilter = useCallback(
     (next: SharedTabShowtimeFilter) => {
@@ -121,6 +135,13 @@ export function useSharedTabFilters() {
       setSessionTimeRanges(normalizeSingleTimeRangeSelection(next));
     },
     [setSessionTimeRanges]
+  );
+
+  const setSelectedRuntimeRanges = useCallback(
+    (next: string[]) => {
+      setSessionRuntimeRanges(normalizeSingleRuntimeRangeSelection(next));
+    },
+    [setSessionRuntimeRanges]
   );
 
   useEffect(() => {
@@ -201,6 +222,13 @@ export function useSharedTabFilters() {
       if (rawSessionTimeRanges === undefined) {
         setSelectedTimeRanges(favoritePreset.filters.time_ranges ?? []);
       }
+
+      const rawSessionRuntimeRanges = queryClient.getQueryData<string[]>(
+        SESSION_RUNTIME_RANGE_SELECTIONS_KEY
+      );
+      if (rawSessionRuntimeRanges === undefined) {
+        setSelectedRuntimeRanges(favoritePreset.filters.runtime_ranges ?? []);
+      }
     }
 
     initializedFromFavoritesRef.current = true;
@@ -215,6 +243,7 @@ export function useSharedTabFilters() {
     setSelectedShowtimeFilter,
     setSelectedShowtimeAudience,
     setSelectedTimeRanges,
+    setSelectedRuntimeRanges,
     setWatchlistOnly,
   ]);
 
@@ -234,5 +263,7 @@ export function useSharedTabFilters() {
     setSelectedDays: setSessionDays,
     selectedTimeRanges,
     setSelectedTimeRanges,
+    selectedRuntimeRanges,
+    setSelectedRuntimeRanges,
   };
 }

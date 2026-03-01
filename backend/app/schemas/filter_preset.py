@@ -35,6 +35,7 @@ class FilterPresetFilters(SQLModel):
     watchlist_only: bool = False
     days: list[str] | None = None
     time_ranges: list[str] | None = None
+    runtime_ranges: list[str] | None = None
 
     @field_validator("days")
     @classmethod

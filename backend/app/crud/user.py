@@ -373,7 +373,12 @@ def get_selected_showtimes(
             )
         )
 
-    if filters.query or filters.watchlist_only:
+    if (
+        filters.query
+        or filters.watchlist_only
+        or filters.runtime_min is not None
+        or filters.runtime_max is not None
+    ):
         stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
 
     if filters.query:
@@ -381,6 +386,12 @@ def get_selected_showtimes(
         stmt = stmt.where(
             col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
         )
+
+    if filters.runtime_min is not None:
+        stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
+
+    if filters.runtime_max is not None:
+        stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
 
     if filters.watchlist_only:
         if letterboxd_username is None:

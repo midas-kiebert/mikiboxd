@@ -547,6 +547,49 @@ def test_get_selected_showtimes_filters_by_selected_statuses(
     assert showtime_interested not in selected_showtimes
 
 
+def test_get_selected_showtimes_filters_by_runtime(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    showtime_factory: Callable[..., Showtime],
+    movie_factory,
+):
+    snapshot_time = now_amsterdam_naive() - timedelta(minutes=1)
+    user = user_factory()
+    movie_short = movie_factory(duration=80)
+    movie_match = movie_factory(duration=105)
+    movie_long = movie_factory(duration=150)
+
+    showtime_short = showtime_factory(movie=movie_short)
+    showtime_match = showtime_factory(movie=movie_match)
+    showtime_long = showtime_factory(movie=movie_long)
+
+    for showtime in (showtime_short, showtime_match, showtime_long):
+        showtime_crud.add_showtime_selection(
+            session=db_transaction,
+            showtime_id=showtime.id,
+            user_id=user.id,
+            going_status=GoingStatus.GOING,
+        )
+
+    selected_showtimes = user_crud.get_selected_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        viewer_id=user.id,
+        limit=10,
+        offset=0,
+        filters=Filters(
+            snapshot_time=snapshot_time,
+            runtime_min=90,
+            runtime_max=120,
+        ),
+    )
+
+    assert showtime_short not in selected_showtimes
+    assert showtime_match in selected_showtimes
+    assert showtime_long not in selected_showtimes
+
+
 # def test_is_user_going_to_movie(
 #     *,
 #     db_transaction: Session,

@@ -1,5 +1,8 @@
 from datetime import datetime, time
 
+import pytest
+from fastapi import HTTPException
+
 from app.core.enums import TimeOfDay
 from app.inputs.movie import get_filters
 
@@ -66,3 +69,25 @@ def test_get_filters_maps_night_to_cross_midnight_range():
     assert [(tr.start, tr.end) for tr in filters.time_ranges] == [
         (time(22, 0), time(5, 59, 59)),
     ]
+
+
+def test_get_filters_accepts_runtime_bounds():
+    filters = get_filters(
+        snapshot_time=datetime(2025, 1, 1, 12, 0, 0),
+        runtime_min=50,
+        runtime_max=120,
+    )
+
+    assert filters.runtime_min == 50
+    assert filters.runtime_max == 120
+
+
+def test_get_filters_rejects_inverted_runtime_bounds():
+    with pytest.raises(HTTPException) as exc_info:
+        get_filters(
+            snapshot_time=datetime(2025, 1, 1, 12, 0, 0),
+            runtime_min=121,
+            runtime_max=120,
+        )
+
+    assert exc_info.value.status_code == 422

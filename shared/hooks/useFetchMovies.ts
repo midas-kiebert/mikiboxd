@@ -9,6 +9,8 @@ export type MovieFilters = {
     days?: string[];
     selectedCinemaIds?: number[];
     timeRanges?: string[];
+    runtimeMin?: number;
+    runtimeMax?: number;
     selectedStatuses?: GoingStatus[];
 };
 

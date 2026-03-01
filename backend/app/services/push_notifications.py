@@ -125,10 +125,29 @@ def notify_friends_on_showtime_selection(
     going_status: GoingStatus,
 ) -> None:
     if previous_status == going_status:
+        logger.info(
+            "Skipping showtime status delivery: actor_id=%s showtime_id=%s reason=no_status_change status=%s",
+            actor_id,
+            showtime.id,
+            going_status.value,
+        )
         return
 
+    logger.info(
+        "Starting showtime status delivery: actor_id=%s showtime_id=%s movie_id=%s previous_status=%s new_status=%s",
+        actor_id,
+        showtime.id,
+        showtime.movie_id,
+        previous_status.value,
+        going_status.value,
+    )
     actor = user_crud.get_user_by_id(session=session, user_id=actor_id)
     if actor is None:
+        logger.warning(
+            "Skipping showtime status delivery: actor_id=%s showtime_id=%s reason=actor_not_found",
+            actor_id,
+            showtime.id,
+        )
         return
 
     actor_name = actor.display_name or "A friend"
@@ -140,6 +159,13 @@ def notify_friends_on_showtime_selection(
         new_status=going_status,
     )
     if payload is None:
+        logger.info(
+            "Skipping showtime status delivery: actor_id=%s showtime_id=%s reason=no_payload previous_status=%s new_status=%s",
+            actor_id,
+            showtime.id,
+            previous_status.value,
+            going_status.value,
+        )
         return
 
     recipients = showtime_crud.get_friends_with_showtime_selection(
@@ -149,13 +175,38 @@ def notify_friends_on_showtime_selection(
         statuses=list(ACTIVE_SHOWTIME_STATUSES),
     )
     if not recipients:
+        logger.info(
+            "Skipping showtime status delivery: actor_id=%s showtime_id=%s reason=no_recipients_with_active_status",
+            actor_id,
+            showtime.id,
+        )
         return
 
+    logger.info(
+        "Resolved candidate recipients for showtime status delivery: actor_id=%s showtime_id=%s recipients_total=%s",
+        actor_id,
+        showtime.id,
+        len(recipients),
+    )
     opted_in_recipients = [
         user
         for user in recipients
         if user.id != actor_id and user.notify_on_friend_showtime_match
     ]
+    if not opted_in_recipients:
+        logger.info(
+            "Skipping showtime status delivery: actor_id=%s showtime_id=%s reason=no_opted_in_recipients",
+            actor_id,
+            showtime.id,
+        )
+        return
+
+    logger.info(
+        "Filtered opted-in recipients for showtime status delivery: actor_id=%s showtime_id=%s opted_in_recipients=%s",
+        actor_id,
+        showtime.id,
+        len(opted_in_recipients),
+    )
     visible_recipients = [
         user
         for user in opted_in_recipients
@@ -167,8 +218,19 @@ def notify_friends_on_showtime_selection(
         )
     ]
     if not visible_recipients:
+        logger.info(
+            "Skipping showtime status delivery: actor_id=%s showtime_id=%s reason=no_visible_recipients",
+            actor_id,
+            showtime.id,
+        )
         return
 
+    logger.info(
+        "Filtered visible recipients for showtime status delivery: actor_id=%s showtime_id=%s visible_recipients=%s",
+        actor_id,
+        showtime.id,
+        len(visible_recipients),
+    )
     title, body, data = payload
     push_recipient_ids = [
         user.id
@@ -181,6 +243,15 @@ def notify_friends_on_showtime_selection(
         if user.notify_channel_friend_showtime_match == NotificationChannel.EMAIL
     ]
 
+    logger.info(
+        "Prepared channel split for showtime status delivery: actor_id=%s showtime_id=%s push_recipients=%s email_recipients=%s payload_type=%s",
+        actor_id,
+        showtime.id,
+        len(push_recipient_ids),
+        len(email_recipients),
+        data.get("type"),
+    )
+
     if push_recipient_ids:
         push_tokens = push_token_crud.get_push_tokens_for_users(
             session=session,
@@ -188,6 +259,13 @@ def notify_friends_on_showtime_selection(
         )
 
         if push_tokens:
+            logger.info(
+                "Sending showtime status push notifications: actor_id=%s showtime_id=%s recipient_users=%s push_tokens=%s",
+                actor_id,
+                showtime.id,
+                len(push_recipient_ids),
+                len(push_tokens),
+            )
             messages = [
                 {
                     "to": token.token,
@@ -206,18 +284,50 @@ def notify_friends_on_showtime_selection(
             except Exception:
                 logger.exception("Failed sending showtime status notifications")
             else:
+                logger.info(
+                    "Showtime status push send completed: actor_id=%s showtime_id=%s push_tokens=%s expo_results=%s",
+                    actor_id,
+                    showtime.id,
+                    len(push_tokens),
+                    len(results),
+                )
                 _handle_expo_results(
                     session=session,
                     tokens=[token.token for token in push_tokens],
                     results=results,
                 )
+        else:
+            logger.info(
+                "No push tokens available for showtime status delivery: actor_id=%s showtime_id=%s recipient_users=%s",
+                actor_id,
+                showtime.id,
+                len(push_recipient_ids),
+            )
 
+    email_sent_count = 0
     for recipient in email_recipients:
-        _send_email_notification(
+        sent = _send_email_notification(
             email_to=recipient.email,
             subject=title,
             body=body,
         )
+        if sent:
+            email_sent_count += 1
+
+    if email_recipients:
+        logger.info(
+            "Showtime status email send completed: actor_id=%s showtime_id=%s email_recipients=%s email_sent=%s",
+            actor_id,
+            showtime.id,
+            len(email_recipients),
+            email_sent_count,
+        )
+
+    logger.info(
+        "Completed showtime status delivery: actor_id=%s showtime_id=%s",
+        actor_id,
+        showtime.id,
+    )
 
 
 def notify_user_on_friend_request(
@@ -532,11 +642,18 @@ def send_interested_showtime_reminders(
 
 
 def _send_expo_messages(messages: list[dict]) -> list[dict]:
+    logger.info("Sending Expo messages: count=%s", len(messages))
     with httpx.Client(timeout=10) as client:
         response = client.post(EXPO_PUSH_URL, json=messages)
         response.raise_for_status()
         payload = response.json()
-    return payload.get("data", [])
+    results = payload.get("data", [])
+    logger.info(
+        "Received Expo response: message_count=%s result_count=%s",
+        len(messages),
+        len(results),
+    )
+    return results
 
 
 def _handle_expo_results(
@@ -546,9 +663,13 @@ def _handle_expo_results(
     results: Iterable[dict],
 ) -> None:
     invalid_tokens = []
+    ok_count = 0
+    error_count = 0
     for token, result in zip(tokens, results, strict=False):
         if result.get("status") != "error":
+            ok_count += 1
             continue
+        error_count += 1
         error = result.get("details", {}).get("error")
         message = result.get("message")
 
@@ -572,3 +693,10 @@ def _handle_expo_results(
 
     if invalid_tokens:
         session.commit()
+    logger.info(
+        "Processed Expo delivery results: tokens=%s ok=%s errors=%s invalid_tokens_removed=%s",
+        len(tokens),
+        ok_count,
+        error_count,
+        len(invalid_tokens),
+    )

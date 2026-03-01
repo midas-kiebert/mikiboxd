@@ -19,6 +19,7 @@ import { storage } from 'shared/storage'
 import { useThemeColors } from '@/hooks/use-theme-color'
 import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications'
 import { PENDING_FRIEND_INVITE_RECEIVER_ID_KEY } from '@/constants/friend-invite'
+import { PENDING_SHOWTIME_PING_LINK_KEY } from '@/constants/ping-link'
 
 export default function LoginScreen() {
     // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -65,6 +66,29 @@ export default function LoginScreen() {
                 await storage.removeItem(PENDING_FRIEND_INVITE_RECEIVER_ID_KEY)
                 router.replace(`/add-friend/${encodeURIComponent(pendingFriendReceiverId)}`)
                 return
+            }
+            const pendingShowtimePingLink = await storage.getItem(PENDING_SHOWTIME_PING_LINK_KEY)
+            if (pendingShowtimePingLink) {
+                await storage.removeItem(PENDING_SHOWTIME_PING_LINK_KEY)
+                try {
+                    const parsed = JSON.parse(pendingShowtimePingLink) as {
+                        showtimeId?: unknown
+                        sender?: unknown
+                    }
+                    if (
+                        typeof parsed?.showtimeId === 'string' &&
+                        parsed.showtimeId.length > 0 &&
+                        typeof parsed?.sender === 'string' &&
+                        parsed.sender.length > 0
+                    ) {
+                        router.replace(
+                            (`/ping/${encodeURIComponent(parsed.showtimeId)}/${encodeURIComponent(parsed.sender)}` as never)
+                        )
+                        return
+                    }
+                } catch {
+                    // Ignore malformed stored payload and continue to default route.
+                }
             }
             router.replace('/(tabs)')
             console.log("loginMutation successful")

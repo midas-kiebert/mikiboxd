@@ -1,5 +1,5 @@
-export const RUNTIME_MIN_MINUTES = 20;
-export const RUNTIME_MAX_MINUTES = 240;
+export const RUNTIME_MIN_MINUTES = 5;
+export const RUNTIME_MAX_MINUTES = 200;
 export const RUNTIME_STEP_MINUTES = 5;
 
 export const normalizeSingleRuntimeRangeSelection = (runtimeRanges: readonly string[]) =>
@@ -55,10 +55,10 @@ export const formatRuntimePillLabel = (runtimeRanges: readonly string[]) => {
     return `${start}-${end} min`;
   }
   if (start) {
-    return `>${start} min`;
+    return `≥${start} min`;
   }
   if (end) {
-    return `<${end} min`;
+    return `≤${end} min`;
   }
   return "Any Runtime";
 };

@@ -543,15 +543,13 @@ def test_update_showtime_selection_accepts_blank_seat_pair_as_no_selection(
     assert response.json()["seat_number"] is None
 
 
-def test_update_showtime_selection_rejects_partial_seat_values(
+def test_update_showtime_selection_rejects_row_only_seat_value(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
-    db_transaction: Session,
     showtime_factory,
 ) -> None:
     showtime = showtime_factory(cinema__seating="unknown")
     showtime_id = showtime.id
-    db_transaction.commit()
 
     row_only_response = client.put(
         f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
@@ -560,6 +558,15 @@ def test_update_showtime_selection_rejects_partial_seat_values(
     )
     assert row_only_response.status_code == 400
     assert "both be set or both be empty" in row_only_response.json()["detail"]
+
+
+def test_update_showtime_selection_rejects_seat_only_seat_value(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory(cinema__seating="unknown")
+    showtime_id = showtime.id
 
     seat_only_response = client.put(
         f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",

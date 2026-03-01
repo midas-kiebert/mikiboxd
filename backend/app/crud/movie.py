@@ -293,6 +293,13 @@ def get_cinemas_for_movie(
                 ]
             )
         )
+
+    if filters.runtime_min is not None or filters.runtime_max is not None:
+        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
+        if filters.runtime_min is not None:
+            stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
+        if filters.runtime_max is not None:
+            stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
     result = session.execute(stmt)
     cinemas: list[Cinema] = list(result.scalars().all())
     return cinemas
@@ -380,11 +387,25 @@ def get_showtimes_for_movie(
             )
         )
 
+    if (
+        filters.query
+        or filters.watchlist_only
+        or filters.runtime_min is not None
+        or filters.runtime_max is not None
+    ):
+        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
+
     if filters.query:
         pattern = f"%{filters.query}%"
-        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id)).where(
+        stmt = stmt.where(
             col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
         )
+
+    if filters.runtime_min is not None:
+        stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
+
+    if filters.runtime_max is not None:
+        stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
 
     if filters.watchlist_only and letterboxd_username is not None:
         stmt = stmt.join(
@@ -497,6 +518,13 @@ def get_movies(
         stmt = stmt.where(
             col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
         )
+
+    if filters.runtime_min is not None:
+        stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
+
+    if filters.runtime_max is not None:
+        stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
+
     if filters.watchlist_only:
         stmt = stmt.join(
             WatchlistSelection, col(WatchlistSelection.movie_id) == Movie.id

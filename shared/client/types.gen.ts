@@ -63,6 +63,7 @@ export type FilterPresetFilters = {
   watchlist_only?: boolean
   days?: Array<string> | null
   time_ranges?: Array<string> | null
+  runtime_ranges?: Array<string> | null
 }
 
 export type showtime_audience = "including-friends" | "only-you"
@@ -435,6 +436,14 @@ export type MeGetMyShowtimesData = {
   offset?: number
   query?: string | null
   /**
+   * Maximum movie runtime in minutes
+   */
+  runtimeMax?: number | null
+  /**
+   * Minimum movie runtime in minutes
+   */
+  runtimeMin?: number | null
+  /**
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
@@ -502,6 +511,14 @@ export type MoviesReadMoviesData = {
   offset?: number
   query?: string | null
   /**
+   * Maximum movie runtime in minutes
+   */
+  runtimeMax?: number | null
+  /**
+   * Minimum movie runtime in minutes
+   */
+  runtimeMin?: number | null
+  /**
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
@@ -531,6 +548,14 @@ export type MoviesReadMovieShowtimesData = {
   offset?: number
   query?: string | null
   /**
+   * Maximum movie runtime in minutes
+   */
+  runtimeMax?: number | null
+  /**
+   * Minimum movie runtime in minutes
+   */
+  runtimeMin?: number | null
+  /**
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
@@ -556,6 +581,14 @@ export type MoviesReadMovieData = {
   days?: Array<string> | null
   id: number
   query?: string | null
+  /**
+   * Maximum movie runtime in minutes
+   */
+  runtimeMax?: number | null
+  /**
+   * Minimum movie runtime in minutes
+   */
+  runtimeMin?: number | null
   /**
    * Filter showtimes to only these cinema IDs
    */
@@ -583,6 +616,14 @@ export type ShowtimesUpdateShowtimeSelectionData = {
   days?: Array<string> | null
   query?: string | null
   requestBody: ShowtimeSelectionUpdate
+  /**
+   * Maximum movie runtime in minutes
+   */
+  runtimeMax?: number | null
+  /**
+   * Minimum movie runtime in minutes
+   */
+  runtimeMin?: number | null
   /**
    * Filter showtimes to only these cinema IDs
    */
@@ -638,6 +679,14 @@ export type ShowtimesGetMainPageShowtimesData = {
   offset?: number
   query?: string | null
   /**
+   * Maximum movie runtime in minutes
+   */
+  runtimeMax?: number | null
+  /**
+   * Minimum movie runtime in minutes
+   */
+  runtimeMin?: number | null
+  /**
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
@@ -684,6 +733,14 @@ export type UsersGetUserSelectedShowtimesData = {
   limit?: number
   offset?: number
   query?: string | null
+  /**
+   * Maximum movie runtime in minutes
+   */
+  runtimeMax?: number | null
+  /**
+   * Minimum movie runtime in minutes
+   */
+  runtimeMin?: number | null
   /**
    * Filter showtimes to only these cinema IDs
    */

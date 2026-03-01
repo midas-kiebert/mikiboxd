@@ -31,6 +31,10 @@ import {
   sortFilterPresetsByOrder,
 } from "@/components/filters/filter-preset-order";
 import {
+  formatRuntimePillLabel,
+  normalizeSingleRuntimeRangeSelection,
+} from "@/components/filters/runtime-range-utils";
+import {
   formatTimePillLabel,
   normalizeSingleTimeRangeSelection,
 } from "@/components/filters/time-range-utils";
@@ -79,6 +83,7 @@ const normalizeFilters = (
     watchlist_only: Boolean(filters.watchlist_only),
     days: canonicalizeDaySelections(filters.days),
     time_ranges: normalizeSingleTimeRangeSelection(filters.time_ranges ?? []),
+    runtime_ranges: normalizeSingleRuntimeRangeSelection(filters.runtime_ranges ?? []),
   };
 };
 
@@ -96,6 +101,7 @@ const toPresetBodyFilters = (
     watchlist_only: Boolean(normalized.watchlist_only),
     days: normalized.days ?? null,
     time_ranges: normalized.time_ranges ?? null,
+    runtime_ranges: normalized.runtime_ranges ?? null,
   };
 };
 
@@ -135,6 +141,9 @@ const buildCurrentFiltersSummary = (
 
   const timeLabel = formatTimePillLabel(normalized.time_ranges ?? []);
   if (timeLabel.toLowerCase() !== "any time") parts.push(timeLabel);
+
+  const runtimeLabel = formatRuntimePillLabel(normalized.runtime_ranges ?? []);
+  if (runtimeLabel.toLowerCase() !== "any runtime") parts.push(runtimeLabel);
 
   if (parts.length === 0) return "No restrictions";
   return parts.join(" • ");

@@ -20,6 +20,7 @@ from app.utils import EmailDeliveryError, now_amsterdam_naive, send_email
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 ANDROID_PUSH_CHANNEL_ID = "heads-up"
+SHOWTIME_PING_NOTIFICATION_CATEGORY_ID = "showtime-ping"
 REMINDER_HORIZON = timedelta(hours=24)
 REMINDER_MINIMUM_NOTICE = timedelta(hours=2)
 REMINDER_MINIMUM_DELAY_AFTER_SELECTION = timedelta(hours=2)
@@ -386,6 +387,7 @@ def notify_user_on_showtime_ping(
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
+            "categoryId": SHOWTIME_PING_NOTIFICATION_CATEGORY_ID,
         }
         for token in push_tokens
     ]

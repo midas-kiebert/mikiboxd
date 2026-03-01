@@ -20,8 +20,10 @@ import FilterPresetsModal, {
   type PageFilterPresetState,
 } from '@/components/filters/FilterPresetsModal';
 import { type FilterPillLongPressPosition } from '@/components/filters/FilterPills';
+import RuntimeQuickPopover from '@/components/filters/RuntimeQuickPopover';
 import TimeQuickPopover from '@/components/filters/TimeQuickPopover';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
+import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 import {
   SHARED_TAB_FILTER_PRESET_SCOPE,
   buildSharedTabActiveFilterIds,
@@ -61,6 +63,9 @@ export default function MainShowtimesScreen() {
   const [timeQuickPopoverVisible, setTimeQuickPopoverVisible] = useState(false);
   const [timeQuickPopoverAnchor, setTimeQuickPopoverAnchor] =
     useState<FilterPillLongPressPosition | null>(null);
+  const [runtimeQuickPopoverVisible, setRuntimeQuickPopoverVisible] = useState(false);
+  const [runtimeQuickPopoverAnchor, setRuntimeQuickPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
   const [presetQuickPopoverVisible, setPresetQuickPopoverVisible] = useState(false);
   const [presetQuickPopoverAnchor, setPresetQuickPopoverAnchor] =
     useState<FilterPillLongPressPosition | null>(null);
@@ -86,6 +91,8 @@ export default function MainShowtimesScreen() {
     setSelectedDays,
     selectedTimeRanges,
     setSelectedTimeRanges,
+    selectedRuntimeRanges,
+    setSelectedRuntimeRanges,
   } = useSharedTabFilters();
   const isFocused = useIsFocused();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
@@ -103,6 +110,10 @@ export default function MainShowtimesScreen() {
   const effectiveAudienceFilter: AudienceFilter = shouldShowAudienceToggle
     ? appliedShowtimeAudience
     : 'including-friends';
+  const runtimeBounds = useMemo(
+    () => getRuntimeBoundsFromSelections(selectedRuntimeRanges),
+    [selectedRuntimeRanges]
+  );
 
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
@@ -114,6 +125,8 @@ export default function MainShowtimesScreen() {
       selectedCinemaIds: sessionCinemaIds,
       days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
+      runtimeMin: runtimeBounds.runtimeMin,
+      runtimeMax: runtimeBounds.runtimeMax,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
       watchlistOnly: appliedWatchlistOnly ? true : undefined,
     };
@@ -122,6 +135,8 @@ export default function MainShowtimesScreen() {
     appliedShowtimeFilter,
     resolvedApiDays,
     selectedTimeRanges,
+    runtimeBounds.runtimeMin,
+    runtimeBounds.runtimeMax,
     sessionCinemaIds,
     appliedWatchlistOnly,
   ]);
@@ -133,12 +148,14 @@ export default function MainShowtimesScreen() {
       watchlist_only: watchlistOnly,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
+      runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
     }),
     [
       selectedShowtimeAudience,
       selectedShowtimeFilter,
       selectedDays,
       selectedTimeRanges,
+      selectedRuntimeRanges,
       shouldShowAudienceToggle,
       watchlistOnly,
     ]
@@ -153,6 +170,7 @@ export default function MainShowtimesScreen() {
         watchlistOnly,
         selectedDays,
         selectedTimeRanges,
+        selectedRuntimeRanges,
         sessionCinemaIds,
         preferredCinemaIds,
         cinemaPresets,
@@ -164,6 +182,7 @@ export default function MainShowtimesScreen() {
       selectedDays,
       selectedShowtimeFilter,
       selectedTimeRanges,
+      selectedRuntimeRanges,
       sessionCinemaIds,
       watchlistOnly,
     ]
@@ -187,9 +206,17 @@ export default function MainShowtimesScreen() {
         watchlistOnly,
         selectedDaysCount: selectedDays.length,
         selectedTimeRangesCount: selectedTimeRanges.length,
+        selectedRuntimeRangesCount: selectedRuntimeRanges.length,
         isCinemaFilterActive,
       }),
-    [selectedShowtimeFilter, watchlistOnly, selectedDays.length, selectedTimeRanges.length, isCinemaFilterActive]
+    [
+      selectedShowtimeFilter,
+      watchlistOnly,
+      selectedDays.length,
+      selectedTimeRanges.length,
+      selectedRuntimeRanges.length,
+      isCinemaFilterActive,
+    ]
   );
 
   // Data hooks keep this module synced with backend data and shared cache state.
@@ -289,6 +316,11 @@ export default function MainShowtimesScreen() {
       setTimeQuickPopoverVisible(true);
       return;
     }
+    if (filterId === 'runtime') {
+      setRuntimeQuickPopoverAnchor(position ?? null);
+      setRuntimeQuickPopoverVisible(true);
+      return;
+    }
     if (filterId === 'presets') {
       setPresetModalVisible(true);
       return;
@@ -306,6 +338,7 @@ export default function MainShowtimesScreen() {
     setWatchlistOnly(Boolean(filters.watchlist_only));
     setSelectedDays(filters.days ?? []);
     setSelectedTimeRanges(filters.time_ranges ?? []);
+    setSelectedRuntimeRanges(filters.runtime_ranges ?? []);
   };
 
   const handleLongPressFilter = (
@@ -323,6 +356,11 @@ export default function MainShowtimesScreen() {
     if (filterId === 'times') {
       setTimeQuickPopoverAnchor(position ?? null);
       setTimeQuickPopoverVisible(true);
+      return true;
+    }
+    if (filterId === 'runtime') {
+      setRuntimeQuickPopoverAnchor(position ?? null);
+      setRuntimeQuickPopoverVisible(true);
       return true;
     }
     return false;
@@ -394,6 +432,13 @@ export default function MainShowtimesScreen() {
         onClose={() => setTimeQuickPopoverVisible(false)}
         selectedTimeRanges={selectedTimeRanges}
         onChange={setSelectedTimeRanges}
+      />
+      <RuntimeQuickPopover
+        visible={runtimeQuickPopoverVisible}
+        anchor={runtimeQuickPopoverAnchor}
+        onClose={() => setRuntimeQuickPopoverVisible(false)}
+        selectedRuntimeRanges={selectedRuntimeRanges}
+        onChange={setSelectedRuntimeRanges}
       />
       <CinemaFilterModal
         visible={cinemaModalVisible}

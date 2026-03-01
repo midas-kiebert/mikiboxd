@@ -10,7 +10,6 @@ import CinemaPill from "@/components/badges/CinemaPill";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
-import { formatSeatLabel } from "@/utils/seat-label";
 
 type ShowtimeBase = {
   datetime: string;
@@ -27,15 +26,18 @@ type ShowtimeRowProps = {
   variant?: "compact" | "default";
   showFriends?: boolean;
   alignCinemaRight?: boolean;
+  showDate?: boolean;
 };
 
 const formatShowtime = (
   datetime: string,
-  endDatetime: string | null | undefined
+  endDatetime: string | null | undefined,
+  showDate: boolean
 ) => {
+  const timeLabel = formatShowtimeTimeRange(datetime, endDatetime);
+  if (!showDate) return timeLabel;
   const dateFormat = "ccc d LLL";
   const dateLabel = DateTime.fromISO(datetime).toFormat(dateFormat);
-  const timeLabel = formatShowtimeTimeRange(datetime, endDatetime);
   return `${dateLabel} • ${timeLabel}`;
 };
 
@@ -44,13 +46,13 @@ export default function ShowtimeRow({
   variant = "default",
   showFriends = false,
   alignCinemaRight = false,
+  showDate = true,
 }: ShowtimeRowProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
   // Compact mode is used in dense cards; default mode is used in full showtime lists.
   const isCompact = variant === "compact";
-  const seatLabel = formatSeatLabel(showtime.seat_row, showtime.seat_number);
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -64,15 +66,10 @@ export default function ShowtimeRow({
           ]}
           numberOfLines={1}
         >
-          {formatShowtime(showtime.datetime, showtime.end_datetime)}
+          {formatShowtime(showtime.datetime, showtime.end_datetime, showDate)}
         </ThemedText>
         <CinemaPill cinema={showtime.cinema} variant={isCompact ? "compact" : "default"} />
       </View>
-      {seatLabel ? (
-        <ThemedText style={[styles.seatText, isCompact ? styles.seatTextCompact : styles.seatTextDefault]}>
-          Seat: {seatLabel}
-        </ThemedText>
-      ) : null}
       {showFriends ? (
         <FriendBadges
           friendsGoing={showtime.friends_going}
@@ -119,18 +116,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     timeDefault: {
       fontSize: 13,
       lineHeight: 16,
-    },
-    seatText: {
-      color: colors.textSecondary,
-      fontWeight: "600",
-    },
-    seatTextCompact: {
-      fontSize: 9,
-      lineHeight: 11,
-    },
-    seatTextDefault: {
-      fontSize: 11,
-      lineHeight: 14,
     },
     friendRow: {
       marginTop: 3,

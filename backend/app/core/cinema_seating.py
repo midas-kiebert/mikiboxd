@@ -73,6 +73,11 @@ def validate_seat_for_preset(
     if seat_row is None and seat_number is None:
         return
 
+    if (seat_row is None) != (seat_number is None):
+        raise ValueError(
+            "Seat row and seat number must either both be set or both be empty."
+        )
+
     normalized_preset = normalize_cinema_seating_preset(seating_preset)
 
     if normalized_preset == CinemaSeatingPreset.FREE.value and (

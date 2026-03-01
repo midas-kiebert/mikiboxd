@@ -51,6 +51,67 @@ const MODAL_OPEN_DURATION_MS = 200;
 const DETAIL_PANEL_OPEN_DURATION_MS = 440;
 const DETAIL_PANEL_CLOSE_DURATION_MS = 240;
 
+type SeatFieldKind = "unknown" | "digits" | "letter";
+
+type SeatInputConfig = {
+  rowKind: SeatFieldKind;
+  seatKind: SeatFieldKind;
+};
+
+const SEAT_UNKNOWN_PATTERN = /^(?:\d{1,2}|[A-Za-z])$/;
+const SEAT_DIGITS_PATTERN = /^\d{1,2}$/;
+const SEAT_LETTER_PATTERN = /^[A-Za-z]$/;
+
+const getSeatInputConfig = (seating: string): SeatInputConfig => {
+  switch (seating) {
+    case "row-number-seat-number":
+      return {
+        rowKind: "digits",
+        seatKind: "digits",
+      };
+    case "row-letter-seat-number":
+      return {
+        rowKind: "letter",
+        seatKind: "digits",
+      };
+    case "row-number-seat-letter":
+      return {
+        rowKind: "digits",
+        seatKind: "letter",
+      };
+    case "row-letter-seat-letter":
+      return {
+        rowKind: "letter",
+        seatKind: "letter",
+      };
+    default:
+      return {
+        rowKind: "unknown",
+        seatKind: "unknown",
+      };
+  }
+};
+
+const getSeatFieldMaxLength = (kind: SeatFieldKind) => (kind === "letter" ? 1 : 2);
+
+const validateSeatFieldValue = (
+  value: string | null,
+  kind: SeatFieldKind,
+  label: "Row" | "Seat"
+) => {
+  if (value === null) return null;
+  if (kind === "digits" && !SEAT_DIGITS_PATTERN.test(value)) {
+    return `${label} must be 1-2 digits.`;
+  }
+  if (kind === "letter" && !SEAT_LETTER_PATTERN.test(value)) {
+    return `${label} must be one letter.`;
+  }
+  if (kind === "unknown" && !SEAT_UNKNOWN_PATTERN.test(value)) {
+    return `${label} must be one letter or 1-2 digits.`;
+  }
+  return null;
+};
+
 
 export default function ShowtimeActionModal({
   visible,
@@ -308,11 +369,31 @@ export default function ShowtimeActionModal({
   const normalizedSeatNumberDraft = seatNumberDraft.trim() || null;
   const normalizedCurrentSeatRow = showtime?.seat_row?.trim() || null;
   const normalizedCurrentSeatNumber = showtime?.seat_number?.trim() || null;
+  const cinemaSeating = showtime?.cinema?.seating?.trim().toLowerCase() ?? "";
+  const seatInputConfig = useMemo(() => getSeatInputConfig(cinemaSeating), [cinemaSeating]);
+  const seatRowValidationError = useMemo(
+    () => validateSeatFieldValue(normalizedSeatRowDraft, seatInputConfig.rowKind, "Row"),
+    [normalizedSeatRowDraft, seatInputConfig.rowKind]
+  );
+  const seatNumberValidationError = useMemo(
+    () => validateSeatFieldValue(normalizedSeatNumberDraft, seatInputConfig.seatKind, "Seat"),
+    [normalizedSeatNumberDraft, seatInputConfig.seatKind]
+  );
+  const seatPairValidationError = useMemo(() => {
+    if ((normalizedSeatRowDraft === null) !== (normalizedSeatNumberDraft === null)) {
+      return "Set both row and seat.";
+    }
+    return null;
+  }, [normalizedSeatNumberDraft, normalizedSeatRowDraft]);
+  const seatValidationError =
+    seatPairValidationError ?? seatRowValidationError ?? seatNumberValidationError;
+  const isFreeSeating = cinemaSeating === "free";
   const seatLabel = formatSeatLabel(normalizedCurrentSeatRow, normalizedCurrentSeatNumber);
   const isSeatConfigured = Boolean(seatLabel);
   const hasSeatChanges =
     normalizedSeatRowDraft !== normalizedCurrentSeatRow ||
     normalizedSeatNumberDraft !== normalizedCurrentSeatNumber;
+  const canSaveSeat = hasSeatChanges && !isUpdatingStatus && seatValidationError === null;
 
   const handleCloseModal = () => {
     if (isSeatDialogVisible) {
@@ -333,7 +414,7 @@ export default function ShowtimeActionModal({
   };
 
   const handleOpenSeatDialog = () => {
-    if (!showtime || isUpdatingStatus || showtime.going !== "GOING") {
+    if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) {
       return;
     }
     setSeatRowDraft(showtime.seat_row ?? "");
@@ -347,7 +428,11 @@ export default function ShowtimeActionModal({
   };
 
   const handleSaveSeat = () => {
-    if (!showtime || isUpdatingStatus || showtime.going !== "GOING") {
+    if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) {
+      return;
+    }
+    if (seatValidationError) {
+      Alert.alert("Invalid seat", seatValidationError);
       return;
     }
     onUpdateStatus("GOING", {
@@ -453,14 +538,15 @@ export default function ShowtimeActionModal({
   const isGoingSelected = showtime?.going === "GOING";
   const isInterestedSelected = showtime?.going === "INTERESTED";
   const isNotGoingSelected = showtime?.going === "NOT_GOING";
+  const shouldShowSeatButton = isGoingSelected && !isFreeSeating;
   const hasTicketLink = Boolean(showtime?.ticket_link);
 
   useEffect(() => {
-    if (isGoingSelected || !isSeatDialogVisible) {
+    if (shouldShowSeatButton || !isSeatDialogVisible) {
       return;
     }
     setIsSeatDialogVisible(false);
-  }, [isGoingSelected, isSeatDialogVisible]);
+  }, [isSeatDialogVisible, shouldShowSeatButton]);
 
   const statusModalBackdropAnimatedStyle = {
     opacity: modalProgress.interpolate({
@@ -717,7 +803,7 @@ export default function ShowtimeActionModal({
               </ThemedText>
             </TouchableOpacity>
 
-            {isGoingSelected ? (
+            {shouldShowSeatButton ? (
               <TouchableOpacity
                 style={[
                   styles.actionButton,
@@ -809,7 +895,7 @@ export default function ShowtimeActionModal({
 
         <Modal
           transparent
-          visible={isSeatDialogVisible}
+          visible={isSeatDialogVisible && !isFreeSeating}
           animationType="fade"
           onRequestClose={handleCloseSeatDialog}
         >
@@ -828,47 +914,42 @@ export default function ShowtimeActionModal({
                   <TextInput
                     value={seatRowDraft}
                     onChangeText={setSeatRowDraft}
-                    placeholder="Row"
+                    placeholder={"Row"}
                     placeholderTextColor={colors.textSecondary}
-                    style={styles.seatInput}
+                    style={[styles.seatInput, seatRowValidationError && styles.seatInputInvalid]}
                     autoCapitalize="characters"
                     autoCorrect={false}
-                    maxLength={32}
+                    keyboardType={seatInputConfig.rowKind === "digits" ? "number-pad" : "default"}
+                    maxLength={getSeatFieldMaxLength(seatInputConfig.rowKind)}
                   />
                 </View>
                 <View style={styles.seatEditorField}>
                   <TextInput
                     value={seatNumberDraft}
                     onChangeText={setSeatNumberDraft}
-                    placeholder="Seat"
+                    placeholder={"Seat"}
                     placeholderTextColor={colors.textSecondary}
-                    style={styles.seatInput}
+                    style={[styles.seatInput, seatNumberValidationError && styles.seatInputInvalid]}
                     autoCapitalize="characters"
                     autoCorrect={false}
-                    maxLength={32}
+                    keyboardType={seatInputConfig.seatKind === "digits" ? "number-pad" : "default"}
+                    maxLength={getSeatFieldMaxLength(seatInputConfig.seatKind)}
                   />
                 </View>
               </View>
+              {seatValidationError ? (
+                <ThemedText style={styles.seatValidationErrorText}>{seatValidationError}</ThemedText>
+              ) : null}
               <View style={styles.seatDialogActions}>
-                <TouchableOpacity
-                  style={[styles.seatDialogButton, styles.seatDialogButtonSecondary]}
-                  onPress={handleCloseSeatDialog}
-                  activeOpacity={0.8}
-                  disabled={isUpdatingStatus}
-                >
-                  <ThemedText style={[styles.seatDialogButtonText, styles.seatDialogButtonTextSecondary]}>
-                    Cancel
-                  </ThemedText>
-                </TouchableOpacity>
                 <TouchableOpacity
                   style={[
                     styles.seatDialogButton,
                     styles.seatDialogButtonPrimary,
-                    !hasSeatChanges && styles.seatDialogButtonDisabled,
+                    !canSaveSeat && styles.seatDialogButtonDisabled,
                   ]}
                   onPress={handleSaveSeat}
                   activeOpacity={0.8}
-                  disabled={!hasSeatChanges || isUpdatingStatus}
+                  disabled={!canSaveSeat}
                 >
                   <ThemedText style={[styles.seatDialogButtonText, styles.seatDialogButtonTextPrimary]}>
                     Save
@@ -1166,9 +1247,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 14,
       color: colors.text,
     },
-    seatHelperText: {
+    seatInputInvalid: {
+      borderColor: colors.red.secondary,
+    },
+    seatValidationErrorText: {
       fontSize: 11,
-      color: colors.textSecondary,
+      color: colors.red.secondary,
+      marginTop: -2,
     },
     seatDialogButtonDisabled: {
       borderColor: colors.divider,

@@ -1,10 +1,10 @@
 /**
  * Expo Router screen/module for movie / [id]. It controls navigation and screen-level state for this route.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
+  SectionList,
   Image,
   StyleSheet,
   TouchableOpacity,
@@ -50,12 +50,18 @@ const BASE_FILTERS = [
 ];
 
 type ShowtimeFilter = "all" | "going" | "interested";
+type MovieShowtimeSection = {
+  key: string;
+  title: string;
+  data: ShowtimeInMovieLoggedIn[];
+};
 
 export default function MoviePage() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
+  const isFetchingMoreRef = useRef(false);
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
   // Safe-area inset values used to avoid notches/home indicators.
@@ -143,11 +149,38 @@ export default function MoviePage() {
 
   // Flatten/derive list data for rendering efficiency.
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
+  const showtimeSections = useMemo<MovieShowtimeSection[]>(() => {
+    const sectionMap = new Map<string, MovieShowtimeSection>();
+    const sectionOrder: string[] = [];
+
+    for (const showtime of showtimes) {
+      const showtimeDate = DateTime.fromISO(showtime.datetime).setZone("Europe/Amsterdam");
+      const dateKey = showtimeDate.isValid
+        ? (showtimeDate.toISODate() ?? showtime.datetime)
+        : showtime.datetime;
+      const existingSection = sectionMap.get(dateKey);
+      if (existingSection) {
+        existingSection.data.push(showtime);
+        continue;
+      }
+
+      sectionMap.set(dateKey, {
+        key: `date-${dateKey}`,
+        title: showtimeDate.isValid ? showtimeDate.toFormat("cccc, d LLLL") : showtime.datetime,
+        data: [showtime],
+      });
+      sectionOrder.push(dateKey);
+    }
+
+    return sectionOrder.map((key) => sectionMap.get(key)!).filter(Boolean);
+  }, [showtimes]);
   // Request the next page when the list nears the end.
   const handleEndReached = () => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
+    if (!hasNextPage || isFetchingNextPage || isFetchingMoreRef.current) return;
+    isFetchingMoreRef.current = true;
+    void fetchNextPage().finally(() => {
+      isFetchingMoreRef.current = false;
+    });
   };
 
   // Update all relevant query caches so the status chip updates instantly across screens.
@@ -494,35 +527,41 @@ export default function MoviePage() {
         </View>
       ) : (
         <>
-          <FlatList
-            data={showtimes}
+          <SectionList
+            sections={showtimeSections}
             keyExtractor={(item) => item.id.toString()}
+            stickySectionHeadersEnabled
             renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.showtimeCardGlow,
-                  item.going === "GOING"
-                    ? styles.showtimeCardGlowGoing
-                    : item.going === "INTERESTED"
-                      ? styles.showtimeCardGlowInterested
-                      : undefined,
-                ]}
-                onPress={() => setSelectedShowtime(item)}
-                activeOpacity={0.85}
-              >
-                <View
+                <TouchableOpacity
                   style={[
-                    styles.showtimeCard,
+                    styles.showtimeCardGlow,
                     item.going === "GOING"
-                      ? styles.showtimeCardGoing
+                      ? styles.showtimeCardGlowGoing
                       : item.going === "INTERESTED"
-                        ? styles.showtimeCardInterested
+                        ? styles.showtimeCardGlowInterested
                         : undefined,
                   ]}
+                  onPress={() => setSelectedShowtime(item)}
+                  activeOpacity={0.85}
                 >
-                  <ShowtimeRow showtime={item} showFriends alignCinemaRight />
-                </View>
-              </TouchableOpacity>
+                  <View
+                    style={[
+                      styles.showtimeCard,
+                      item.going === "GOING"
+                        ? styles.showtimeCardGoing
+                        : item.going === "INTERESTED"
+                          ? styles.showtimeCardInterested
+                        : undefined,
+                    ]}
+                  >
+                    <ShowtimeRow showtime={item} showFriends alignCinemaRight showDate={false} />
+                  </View>
+                </TouchableOpacity>
+            )}
+            renderSectionHeader={({ section }) => (
+              <View style={styles.dateGroupHeader}>
+                <ThemedText style={styles.dateGroupHeaderText}>{section.title}</ThemedText>
+              </View>
             )}
             contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) }]}
             onEndReached={handleEndReached}
@@ -693,6 +732,18 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 16,
       fontWeight: "700",
       color: colors.text,
+    },
+    dateGroupHeader: {
+      marginTop: -6,
+      paddingTop: 6,
+      paddingBottom: 4,
+      paddingHorizontal: 2,
+      backgroundColor: colors.background,
+    },
+    dateGroupHeaderText: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.textSecondary,
     },
     noShowtimes: {
       fontSize: 13,

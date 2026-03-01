@@ -52,8 +52,7 @@ const CARD_WIDTH = 280;
 const CARD_HORIZONTAL_MARGIN = 12;
 const CARD_BOTTOM_MARGIN = 12;
 const ARROW_SIZE = 14;
-const ARROW_SIDE_GUTTER = 18;
-const CARD_ANCHOR_GAP = -2;
+const CARD_ANCHOR_GAP = 2;
 const SUMMARY_CARD_HEIGHT = 58;
 const QUICK_ACTION_HEIGHT = 40;
 const OPEN_MODAL_ROW_HEIGHT = 42;
@@ -272,22 +271,54 @@ export default function FilterPresetQuickPopover({
   const minTop = 8;
   const maxTop = Math.max(minTop, screenHeight - estimatedCardHeight - CARD_BOTTOM_MARGIN);
   const anchorY = (anchor?.pageY ?? screenHeight) - modalRootTop;
-  const desiredTop =
-    anchorY - CARD_ANCHOR_GAP - ARROW_SIZE / 2 - estimatedCardHeight;
+  const desiredTop = anchorY - CARD_ANCHOR_GAP - estimatedCardHeight;
   const cardTop = Math.max(minTop, Math.min(desiredTop, maxTop));
   const rawLeft = (anchor?.pageX ?? screenWidth / 2) - CARD_WIDTH / 2;
   const cardLeft = Math.max(
     CARD_HORIZONTAL_MARGIN,
     Math.min(rawLeft, screenWidth - CARD_WIDTH - CARD_HORIZONTAL_MARGIN)
   );
-  const arrowCenterX = Math.max(
-    ARROW_SIDE_GUTTER,
-    Math.min(
-      (anchor?.pageX ?? screenWidth / 2) - cardLeft,
-      CARD_WIDTH - ARROW_SIDE_GUTTER
-    )
-  );
-  const arrowLeft = arrowCenterX - ARROW_SIZE / 2;
+  const arrowLeftRaw = (anchor?.pageX ?? screenWidth / 2) - cardLeft - ARROW_SIZE / 2;
+  const arrowLeft = Math.max(0, Math.min(arrowLeftRaw, CARD_WIDTH - ARROW_SIZE));
+  const arrowCenterX = cardLeft + arrowLeft + ARROW_SIZE / 2;
+  const cardBottom = cardTop + estimatedCardHeight;
+  const arrowTipY = cardBottom + ARROW_SIZE / 2;
+
+  useEffect(() => {
+    if (!__DEV__ || !visible) return;
+    console.log("[FilterPresetQuickPopover] layout", {
+      anchorPageX: anchor?.pageX ?? null,
+      anchorPageY: anchor?.pageY ?? null,
+      modalRootTop,
+      anchorY,
+      screenWidth,
+      screenHeight,
+      cardTop,
+      cardLeft,
+      estimatedCardHeight,
+      cardBottom,
+      arrowLeftRaw,
+      arrowLeft,
+      arrowCenterX,
+      arrowTipY,
+    });
+  }, [
+    anchor?.pageX,
+    anchor?.pageY,
+    anchorY,
+    arrowCenterX,
+    arrowLeft,
+    arrowLeftRaw,
+    arrowTipY,
+    cardBottom,
+    cardLeft,
+    cardTop,
+    estimatedCardHeight,
+    modalRootTop,
+    screenHeight,
+    screenWidth,
+    visible,
+  ]);
 
   const handleApplyPreset = (preset: FilterPresetPublic) => {
     onApply(normalizeFilters(preset.filters));

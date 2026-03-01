@@ -338,13 +338,17 @@ export default function ShowtimeActionModal({
     }
 
     const pingUrl = buildShowtimePingUrl(showtime.id, currentUser.id);
-    const senderLabel = currentUser.display_name?.trim() || "me";
     const movieLabel =
-      resolvedMovieTitle || ("movie" in showtime && showtime.movie?.title ? showtime.movie.title : "this showtime");
-
+      resolvedMovieTitle ||
+      ("movie" in showtime && showtime.movie?.title ? showtime.movie.title : "this showtime");
+    const startsAt = DateTime.fromISO(showtime.datetime);
+    const dateTimeLabel = startsAt.isValid
+      ? startsAt.toFormat("ccc, LLL d 'at' HH:mm")
+      : "this showtime";
+    const cinemaLabel = showtime.cinema?.name?.trim() || "the cinema";
     try {
       await Share.share({
-        message: `${senderLabel} pinged you for ${movieLabel}: ${pingUrl}`,
+        message: `Come see ${movieLabel} at ${dateTimeLabel} in ${cinemaLabel}`,
         url: pingUrl,
       });
     } catch (error) {
@@ -698,17 +702,9 @@ export default function ShowtimeActionModal({
                   >
                     <MaterialIcons
                       name="share"
-                      size={14}
+                      size={20}
                       color={!showtime || !currentUser?.id ? colors.textSecondary : colors.tint}
                     />
-                    <ThemedText
-                      style={[
-                        styles.detailHeaderActionText,
-                        (!showtime || !currentUser?.id) && styles.detailHeaderActionTextDisabled,
-                      ]}
-                    >
-                      Share Link
-                    </ThemedText>
                   </TouchableOpacity>
                 </View>
                 <View style={styles.detailSearchRow}>

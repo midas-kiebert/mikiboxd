@@ -135,6 +135,10 @@ def update_showtime_selection(
         except NoResultFound as e:
             session.rollback()
             raise ShowtimeNotFoundError(showtime_id) from e
+        except ShowtimeSeatValidationError:
+            # Seat validation errors happen before any write and should not roll back
+            # unrelated caller-scoped transaction state.
+            raise
         except AppError:
             session.rollback()
             raise

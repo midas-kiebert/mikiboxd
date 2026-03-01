@@ -18,7 +18,7 @@ import { formatDayPillLabel, resolveDaySelectionsForApi } from '@/components/fil
 import { formatTimePillLabel } from '@/components/filters/time-range-utils';
 import { useSharedDayTimeFilters } from '@/hooks/useSharedDayTimeFilters';
 import { useThemeColors } from '@/hooks/use-theme-color';
-import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
+import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 
 // Filter pill definitions rendered in the top filter row.
 const BASE_FILTERS = [
@@ -65,9 +65,7 @@ export default function FriendShowtimesScreen() {
   const { selectedDays, setSelectedDays, selectedTimeRanges, setSelectedTimeRanges } =
     useSharedDayTimeFilters();
   // Snapshot timestamp used to keep paginated API responses consistent.
-  const [snapshotTime, setSnapshotTime] = useState(() =>
-    DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")
-  );
+  const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
   const resolvedApiDays = useMemo(
@@ -128,9 +126,15 @@ export default function FriendShowtimesScreen() {
   const handleRefresh = async () => {
     if (!userId) return;
     setRefreshing(true);
-    await resetInfiniteQuery(queryClient, ['showtimes', 'user', userId, showtimesFilters]);
-    setSnapshotTime(DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
-    setRefreshing(false);
+    try {
+      await refreshInfiniteQueryWithFreshSnapshot({
+        queryClient,
+        queryKey: ['showtimes', 'user', userId, showtimesFilters],
+        setSnapshotTime,
+      });
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Request the next page when the list nears the end.

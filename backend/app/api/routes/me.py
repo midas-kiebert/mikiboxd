@@ -204,8 +204,10 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Message:
         raise HTTPException(
             status_code=403, detail="Super users are not allowed to delete themselves"
         )
-    session.delete(current_user)
-    session.commit()
+    me_service.delete_me(
+        session=session,
+        current_user=current_user,
+    )
     return Message(message="User deleted successfully")
 
 

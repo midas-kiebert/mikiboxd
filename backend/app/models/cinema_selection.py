@@ -8,5 +8,5 @@ __all__ = [
 
 
 class CinemaSelection(SQLModel, table=True):
-    user_id: UUID = Field(foreign_key="user.id", primary_key=True)
+    user_id: UUID = Field(foreign_key="user.id", ondelete="CASCADE", primary_key=True)
     cinema_id: int = Field(foreign_key="cinema.id", primary_key=True)

@@ -174,6 +174,55 @@ def test_get_friends_for_showtime(
     assert len(friends) == 1
 
 
+def test_get_friends_with_showtime_selection_includes_going_and_interested(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    actor = user_factory()
+    friend_going = user_factory()
+    friend_interested = user_factory()
+    non_friend = user_factory()
+    showtime = showtime_factory()
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=actor.id, friend_id=friend_going.id
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=actor.id, friend_id=friend_interested.id
+    )
+
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        user_id=friend_going.id,
+        showtime_id=showtime.id,
+        going_status=GoingStatus.GOING,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        user_id=friend_interested.id,
+        showtime_id=showtime.id,
+        going_status=GoingStatus.INTERESTED,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        user_id=non_friend.id,
+        showtime_id=showtime.id,
+        going_status=GoingStatus.GOING,
+    )
+
+    recipients = showtime_crud.get_friends_with_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime.id,
+        friend_id=actor.id,
+        statuses=[GoingStatus.GOING, GoingStatus.INTERESTED],
+    )
+
+    recipient_ids = {recipient.id for recipient in recipients}
+    assert recipient_ids == {friend_going.id, friend_interested.id}
+
+
 def test_get_main_page_showtimes_filters_by_selected_statuses(
     *,
     db_transaction: Session,

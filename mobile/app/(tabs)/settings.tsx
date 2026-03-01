@@ -412,7 +412,7 @@ export default function SettingsScreen() {
       key: 'notify_on_friend_showtime_match',
       channelKey: 'notify_channel_friend_showtime_match',
       label: 'Friend Status Updates',
-      description: 'When friends change their status on showtimes you are interested in.',
+      description: 'When friends change their status on showtimes you are going to or interested in.',
       value: notificationPreferences.notify_on_friend_showtime_match,
       channel: notificationChannels.notify_channel_friend_showtime_match,
     },

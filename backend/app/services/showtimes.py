@@ -2,7 +2,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy.exc import IntegrityError, NoResultFound
+from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
@@ -26,6 +26,8 @@ from app.exceptions.showtime_exceptions import (
     ShowtimePingAlreadySentError,
     ShowtimePingNonFriendError,
     ShowtimePingSelfError,
+    ShowtimePingSenderAmbiguousError,
+    ShowtimePingSenderNotFoundError,
     ShowtimeSeatValidationError,
 )
 from app.inputs.movie import Filters
@@ -218,7 +220,75 @@ def ping_friend_for_showtime(
     actor_id: UUID,
     friend_id: UUID,
 ) -> Message:
-    if actor_id == friend_id:
+    showtime = _create_showtime_ping(
+        session=session,
+        showtime_id=showtime_id,
+        sender_id=actor_id,
+        receiver_id=friend_id,
+        require_friendship=True,
+    )
+
+    push_notifications.notify_user_on_showtime_ping(
+        session=session,
+        sender_id=actor_id,
+        receiver_id=friend_id,
+        showtime=showtime,
+    )
+    return Message(message="Friend pinged successfully")
+
+
+def receive_ping_from_link(
+    *,
+    session: Session,
+    showtime_id: int,
+    receiver_id: UUID,
+    sender_identifier: str,
+) -> Message:
+    normalized_identifier = sender_identifier.strip()
+    if not normalized_identifier:
+        raise ShowtimePingSenderNotFoundError()
+
+    sender_id: UUID
+    try:
+        sender_id = UUID(normalized_identifier)
+        sender = user_crud.get_user_by_id(session=session, user_id=sender_id)
+        if sender is None:
+            raise ShowtimePingSenderNotFoundError()
+    except ValueError:
+        try:
+            sender = user_crud.get_user_by_display_name(
+                session=session,
+                display_name=normalized_identifier,
+            )
+        except MultipleResultsFound as error:
+            raise ShowtimePingSenderAmbiguousError() from error
+        if sender is None:
+            raise ShowtimePingSenderNotFoundError()
+        sender_id = sender.id
+
+    try:
+        _create_showtime_ping(
+            session=session,
+            showtime_id=showtime_id,
+            sender_id=sender_id,
+            receiver_id=receiver_id,
+            require_friendship=False,
+        )
+    except ShowtimePingAlreadySentError:
+        # Opening the same shared link more than once should remain a no-op success.
+        pass
+    return Message(message="Ping received successfully")
+
+
+def _create_showtime_ping(
+    *,
+    session: Session,
+    showtime_id: int,
+    sender_id: UUID,
+    receiver_id: UUID,
+    require_friendship: bool,
+) -> Showtime:
+    if sender_id == receiver_id:
         raise ShowtimePingSelfError()
 
     showtime = showtimes_crud.get_showtime_by_id(
@@ -227,26 +297,27 @@ def ping_friend_for_showtime(
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
 
-    is_friend = friendship_crud.are_users_friends(
-        session=session,
-        user_id=actor_id,
-        friend_id=friend_id,
-    )
-    if not is_friend:
-        raise ShowtimePingNonFriendError()
+    if require_friendship:
+        is_friend = friendship_crud.are_users_friends(
+            session=session,
+            user_id=sender_id,
+            friend_id=receiver_id,
+        )
+        if not is_friend:
+            raise ShowtimePingNonFriendError()
 
     friend_status = user_crud.get_showtime_going_status(
         session=session,
         showtime_id=showtime_id,
-        user_id=friend_id,
+        user_id=receiver_id,
     )
     if friend_status in (GoingStatus.GOING, GoingStatus.INTERESTED):
         friend_status_is_visible = (
             showtime_visibility_crud.is_showtime_visible_to_viewer_for_ids(
                 session=session,
-                owner_id=friend_id,
+                owner_id=receiver_id,
                 showtime_id=showtime_id,
-                viewer_id=actor_id,
+                viewer_id=sender_id,
             )
         )
         if friend_status_is_visible:
@@ -255,8 +326,8 @@ def ping_friend_for_showtime(
     existing_ping = showtime_ping_crud.get_showtime_ping(
         session=session,
         showtime_id=showtime_id,
-        sender_id=actor_id,
-        receiver_id=friend_id,
+        sender_id=sender_id,
+        receiver_id=receiver_id,
     )
     if existing_ping is not None:
         raise ShowtimePingAlreadySentError()
@@ -265,8 +336,8 @@ def ping_friend_for_showtime(
         showtime_ping_crud.create_showtime_ping(
             session=session,
             showtime_id=showtime_id,
-            sender_id=actor_id,
-            receiver_id=friend_id,
+            sender_id=sender_id,
+            receiver_id=receiver_id,
             created_at=now_amsterdam_naive(),
         )
         session.commit()
@@ -279,13 +350,7 @@ def ping_friend_for_showtime(
         session.rollback()
         raise AppError from e
 
-    push_notifications.notify_user_on_showtime_ping(
-        session=session,
-        sender_id=actor_id,
-        receiver_id=friend_id,
-        showtime=showtime,
-    )
-    return Message(message="Friend pinged successfully")
+    return showtime
 
 
 def get_pinged_friend_ids_for_showtime(

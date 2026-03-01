@@ -7,6 +7,7 @@ import {
   Linking,
   Modal,
   Pressable,
+  Share,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -30,6 +31,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 import { formatSeatLabel } from "@/utils/seat-label";
+import { buildShowtimePingUrl } from "@/constants/ping-link";
 
 type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
 type DetailPanel = "none" | "ping" | "visibility";
@@ -125,6 +127,10 @@ export default function ShowtimeActionModal({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const queryClient = useQueryClient();
+  const currentUser = queryClient.getQueryData<{
+    id?: string;
+    display_name?: string | null;
+  }>(["currentUser"]);
   const modalProgress = useRef(new Animated.Value(0)).current;
   const detailPanelProgress = useRef(new Animated.Value(0)).current;
 
@@ -323,6 +329,28 @@ export default function ShowtimeActionModal({
       showtimeId: showtime.id,
       friendId,
     });
+  };
+
+  const handleSharePingLink = async () => {
+    if (!showtime || !currentUser?.id) {
+      Alert.alert("Error", "Could not build ping link.");
+      return;
+    }
+
+    const pingUrl = buildShowtimePingUrl(showtime.id, currentUser.id);
+    const senderLabel = currentUser.display_name?.trim() || "me";
+    const movieLabel =
+      resolvedMovieTitle || ("movie" in showtime && showtime.movie?.title ? showtime.movie.title : "this showtime");
+
+    try {
+      await Share.share({
+        message: `${senderLabel} pinged you for ${movieLabel}: ${pingUrl}`,
+        url: pingUrl,
+      });
+    } catch (error) {
+      console.error("Error sharing showtime ping link:", error);
+      Alert.alert("Error", "Could not share ping link.");
+    }
   };
 
   const handleToggleVisibleFriend = (friendId: string) => {
@@ -660,7 +688,29 @@ export default function ShowtimeActionModal({
           {renderedDetailPanel === "ping" ? (
             <Animated.View style={[styles.detailPanelAnimatedContainer, detailPanelAnimatedStyle]}>
               <View style={styles.detailPanel}>
-                <ThemedText style={styles.detailPanelTitle}>Ping friends</ThemedText>
+                <View style={styles.detailPanelHeaderRow}>
+                  <ThemedText style={styles.detailPanelTitle}>Ping friends</ThemedText>
+                  <TouchableOpacity
+                    style={styles.detailHeaderAction}
+                    activeOpacity={0.8}
+                    onPress={() => void handleSharePingLink()}
+                    disabled={!showtime || !currentUser?.id}
+                  >
+                    <MaterialIcons
+                      name="share"
+                      size={14}
+                      color={!showtime || !currentUser?.id ? colors.textSecondary : colors.tint}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.detailHeaderActionText,
+                        (!showtime || !currentUser?.id) && styles.detailHeaderActionTextDisabled,
+                      ]}
+                    >
+                      Share Link
+                    </ThemedText>
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.detailSearchRow}>
                   <MaterialIcons name="search" size={15} color={colors.textSecondary} />
                   <TextInput
@@ -1100,6 +1150,27 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     detailPanelTitle: {
       fontSize: 12,
       fontWeight: "700",
+      color: colors.textSecondary,
+    },
+    detailPanelHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    detailHeaderAction: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 4,
+      paddingVertical: 2,
+    },
+    detailHeaderActionText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.tint,
+    },
+    detailHeaderActionTextDisabled: {
       color: colors.textSecondary,
     },
     detailSearchRow: {

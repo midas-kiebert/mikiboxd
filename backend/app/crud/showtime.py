@@ -216,23 +216,35 @@ def get_friends_with_showtime_selection(
     friend_id: UUID,
     statuses: list[GoingStatus],
 ) -> list[User]:
-    friends_subq = select(Friendship.user_id).where(Friendship.friend_id == friend_id)
-    stmt = (
-        select(User)
-        .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == User.id)
-        .join(Showtime, col(Showtime.id) == col(ShowtimeSelection.showtime_id))
-        .where(
-            col(User.id).in_(friends_subq),
-            ShowtimeSelection.showtime_id == showtime_id,
-            col(ShowtimeSelection.going_status).in_(statuses),
-            showtime_visibility_crud.is_showtime_visible_to_viewer(
-                owner_id_value=friend_id,
-                showtime_id_value=col(Showtime.id),
-                viewer_id_value=col(User.id),
-            ),
+    if len(statuses) == 0:
+        return []
+
+    # Resolve statuses separately and merge recipients. This preserves the original
+    # "actor visibility to recipient" semantics while avoiding one broad IN query.
+    unique_statuses = list(dict.fromkeys(statuses))
+    recipients_by_id: dict[UUID, User] = {}
+    for status in unique_statuses:
+        stmt = (
+            select(User)
+            .join(Friendship, col(Friendship.user_id) == User.id)
+            .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == User.id)
+            .join(Showtime, col(Showtime.id) == col(ShowtimeSelection.showtime_id))
+            .where(
+                Friendship.friend_id == friend_id,
+                ShowtimeSelection.showtime_id == showtime_id,
+                ShowtimeSelection.going_status == status,
+                showtime_visibility_crud.is_showtime_visible_to_viewer(
+                    owner_id_value=friend_id,
+                    showtime_id_value=col(Showtime.id),
+                    viewer_id_value=col(User.id),
+                ),
+            )
         )
-    )
-    return list(session.exec(stmt).all())
+        recipients = list(session.exec(stmt).all())
+        for recipient in recipients:
+            recipients_by_id[recipient.id] = recipient
+
+    return list(recipients_by_id.values())
 
 
 def get_interested_reminder_candidates(

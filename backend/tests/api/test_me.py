@@ -5,7 +5,10 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.models.cinema_selection import CinemaSelection
+from app.models.friendship import FriendRequest, Friendship
+from app.models.push_token import PushToken
 from app.models.showtime_ping import ShowtimePing
+from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
 from app.utils import now_amsterdam_naive
 
@@ -56,6 +59,149 @@ def test_get_me_normal_user(
     assert current_user["notify_channel_interest_reminder"] in {"push", "email"}
     assert "letterboxd_username" in current_user
     assert "last_watchlist_sync" not in current_user
+
+
+def test_delete_me_removes_user_and_related_rows(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    current_user_id = _normal_user_id(db_transaction)
+    other_user = user_factory()
+    showtime = showtime_factory()
+
+    db_transaction.add(
+        ShowtimeSelection(
+            user_id=current_user_id,
+            showtime_id=showtime.id,
+        )
+    )
+    db_transaction.add(
+        CinemaSelection(
+            user_id=current_user_id,
+            cinema_id=showtime.cinema_id,
+        )
+    )
+    db_transaction.add(
+        Friendship(
+            user_id=current_user_id,
+            friend_id=other_user.id,
+        )
+    )
+    db_transaction.add(
+        Friendship(
+            user_id=other_user.id,
+            friend_id=current_user_id,
+        )
+    )
+    db_transaction.add(
+        FriendRequest(
+            sender_id=current_user_id,
+            receiver_id=other_user.id,
+        )
+    )
+    db_transaction.add(
+        FriendRequest(
+            sender_id=other_user.id,
+            receiver_id=current_user_id,
+        )
+    )
+    db_transaction.add(
+        PushToken(
+            token=f"delete-me-token-{current_user_id}",
+            user_id=current_user_id,
+            platform="ios",
+        )
+    )
+    db_transaction.add(
+        ShowtimePing(
+            showtime_id=showtime.id,
+            sender_id=current_user_id,
+            receiver_id=other_user.id,
+            created_at=now_amsterdam_naive(),
+        )
+    )
+    db_transaction.add(
+        ShowtimePing(
+            showtime_id=showtime.id,
+            sender_id=other_user.id,
+            receiver_id=current_user_id,
+            created_at=now_amsterdam_naive(),
+        )
+    )
+    db_transaction.commit()
+
+    delete_response = client.delete(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+    )
+    assert delete_response.status_code == 200
+    assert delete_response.json()["message"] == "User deleted successfully"
+
+    deleted_user = db_transaction.exec(
+        select(User).where(User.id == current_user_id)
+    ).one_or_none()
+    assert deleted_user is None
+    assert (
+        db_transaction.exec(
+            select(ShowtimeSelection).where(ShowtimeSelection.user_id == current_user_id)
+        ).one_or_none()
+        is None
+    )
+    assert (
+        db_transaction.exec(
+            select(CinemaSelection).where(CinemaSelection.user_id == current_user_id)
+        ).one_or_none()
+        is None
+    )
+    assert (
+        db_transaction.exec(select(PushToken).where(PushToken.user_id == current_user_id)).one_or_none()
+        is None
+    )
+    assert (
+        db_transaction.exec(
+            select(Friendship).where(
+                (Friendship.user_id == current_user_id)
+                | (Friendship.friend_id == current_user_id)
+            )
+        ).one_or_none()
+        is None
+    )
+    assert (
+        db_transaction.exec(
+            select(FriendRequest).where(
+                (FriendRequest.sender_id == current_user_id)
+                | (FriendRequest.receiver_id == current_user_id)
+            )
+        ).one_or_none()
+        is None
+    )
+    assert (
+        db_transaction.exec(
+            select(ShowtimePing).where(
+                (ShowtimePing.sender_id == current_user_id)
+                | (ShowtimePing.receiver_id == current_user_id)
+            )
+        ).one_or_none()
+        is None
+    )
+
+
+def test_delete_me_rejects_superuser(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+) -> None:
+    delete_response = client.delete(
+        f"{settings.API_V1_STR}/me/",
+        headers=superuser_token_headers,
+    )
+    assert delete_response.status_code == 403
+    assert (
+        delete_response.json()["detail"]
+        == "Super users are not allowed to delete themselves"
+    )
 
 
 def test_update_me_notification_preference(

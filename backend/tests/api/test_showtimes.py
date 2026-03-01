@@ -543,6 +543,31 @@ def test_update_showtime_selection_accepts_blank_seat_pair_as_no_selection(
     assert response.json()["seat_number"] is None
 
 
+def test_update_showtime_selection_rejects_partial_seat_values(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory(cinema__seating="unknown")
+    showtime_id = showtime.id
+
+    row_only_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "GOING", "seat_row": "A", "seat_number": None},
+    )
+    assert row_only_response.status_code == 400
+    assert "both be set or both be empty" in row_only_response.json()["detail"]
+
+    seat_only_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "GOING", "seat_row": None, "seat_number": "5"},
+    )
+    assert seat_only_response.status_code == 400
+    assert "both be set or both be empty" in seat_only_response.json()["detail"]
+
+
 def test_main_page_showtimes_includes_friend_seat_in_badge_payload(
     client: TestClient,
     normal_user_token_headers: dict[str, str],

@@ -13,7 +13,7 @@ __all__ = [
 
 
 class ShowtimeSelection(SQLModel, table=True):
-    user_id: UUID = Field(foreign_key="user.id", primary_key=True)
+    user_id: UUID = Field(foreign_key="user.id", ondelete="CASCADE", primary_key=True)
     showtime_id: int = Field(
         foreign_key="showtime.id",
         ondelete="CASCADE",

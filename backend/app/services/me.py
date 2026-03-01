@@ -102,6 +102,15 @@ def update_me(
     return user_public
 
 
+def delete_me(
+    *,
+    session: Session,
+    current_user: User,
+) -> None:
+    session.delete(current_user)
+    session.commit()
+
+
 def register_push_token(
     *,
     session: Session,

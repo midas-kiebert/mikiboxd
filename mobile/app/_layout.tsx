@@ -2,14 +2,13 @@
  * Expo Router root layout. It wires global providers, auth-based redirects, and app-wide API config.
  */
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { OpenAPI } from 'shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage, setStorage } from 'shared/storage';
 import * as SecureStore from 'expo-secure-store';
-import { useSegments, useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import * as SystemUI from 'expo-system-ui';
 import { View } from 'react-native';
@@ -17,6 +16,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
+import { PENDING_FRIEND_INVITE_RECEIVER_ID_KEY } from '@/constants/friend-invite';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import axios, { AxiosRequestTransformer } from 'axios'
@@ -64,7 +64,7 @@ axios.defaults.transformRequest = [
           params[key] = value
         }
       } else {
-        const reactNativeParts = (data as FormData & { _parts?: Array<[string, unknown]> })._parts
+        const reactNativeParts = (data as FormData & { _parts?: [string, unknown][] })._parts
         if (Array.isArray(reactNativeParts)) {
           for (const [key, value] of reactNativeParts) {
             params[key] = value
@@ -139,7 +139,7 @@ function RootLayourContent() {
         lastTokenRef.current = token
       }
       setIsAuthenticated(!!token)
-    } catch (error) {
+    } catch {
       setIsAuthenticated(false)
     } finally {
       if (shouldBlock) setIsChecking(false)
@@ -161,18 +161,24 @@ function RootLayourContent() {
     if (isChecking) return
 
     // Only these route groups require an authenticated session.
-    const authRoutes = new Set(['(tabs)', 'movie', 'friend-showtimes', 'cinema-showtimes'])
+    const authRoutes = new Set(['(tabs)', 'movie', 'friend-showtimes', 'cinema-showtimes', 'add-friend'])
     const inAuthGroup = authRoutes.has(segments[0])
 
     if (!isAuthenticated && inAuthGroup) {
       // User is not authenticated but trying to access protected routes
       console.log('Redirecting to login because user is not authenticated')
+      if (segments[0] === 'add-friend') {
+        const receiverIdSegment = segments[1]
+        if (typeof receiverIdSegment === 'string' && receiverIdSegment.length > 0) {
+          void storage.setItem(PENDING_FRIEND_INVITE_RECEIVER_ID_KEY, receiverIdSegment)
+        }
+      }
       router.replace('/login')
     } else if (isAuthenticated && !inAuthGroup) {
       console.log('Redirecting to home because user is authenticated')
       router.replace('/(tabs)')
     }
-  }, [isAuthenticated, segments, isChecking])
+  }, [isAuthenticated, router, segments, isChecking])
 
   if (isChecking) {
     // Avoid flashing protected screens before auth status is known.
@@ -203,6 +209,13 @@ function RootLayourContent() {
         />
         <Stack.Screen
           name="cinema-showtimes/[id]"
+          options={{
+            headerShown: false,
+            contentStyle: { backgroundColor: palette.background },
+          }}
+        />
+        <Stack.Screen
+          name="add-friend/[receiverId]"
           options={{
             headerShown: false,
             contentStyle: { backgroundColor: palette.background },

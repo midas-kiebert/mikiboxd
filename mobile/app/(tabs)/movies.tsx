@@ -47,7 +47,7 @@ import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import MovieCard from '@/components/movies/MovieCard';
 import { isCinemaSelectionDifferentFromPreferred } from '@/utils/cinema-selection';
-import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
+import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 
 type AudienceFilter = 'including-friends' | 'only-you';
 const toAudienceFilter = (
@@ -106,10 +106,8 @@ export default function MovieScreen() {
   const effectiveAudienceFilter: AudienceFilter = shouldShowAudienceToggle
     ? appliedShowtimeAudience
     : 'including-friends';
-  // Snapshot time is part of the query key so pull-to-refresh can force a full refresh.
-  const [snapshotTime, setSnapshotTime] = useState(() =>
-    DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss")
-  );
+  // Snapshot timestamp used to keep paginated API responses consistent.
+  const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
   const { data: cinemaPresets = [] } = useQuery({
@@ -189,10 +187,16 @@ export default function MovieScreen() {
   // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
     setRefreshing(true);
-    // Reset cached pages for the current filters, then bump snapshot to request fresh data.
-    await resetInfiniteQuery(queryClient, ['movies', movieFilters]);
-    setSnapshotTime(DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
-    setRefreshing(false);
+    try {
+      // Reset cached pages for the current filters, then bump snapshot to request fresh data.
+      await refreshInfiniteQueryWithFreshSnapshot({
+        queryClient,
+        queryKey: ['movies', movieFilters],
+        setSnapshotTime,
+      });
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Render infinite-scroll loading feedback at the bottom of the list.

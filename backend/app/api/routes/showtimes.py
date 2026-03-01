@@ -56,6 +56,22 @@ def ping_friend_for_showtime(
     )
 
 
+@router.post("/{showtime_id}/ping-link/{sender_identifier}", response_model=Message)
+def receive_ping_from_link(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    sender_identifier: str,
+    current_user: CurrentUser,
+) -> Message:
+    return showtimes_service.receive_ping_from_link(
+        session=session,
+        showtime_id=showtime_id,
+        receiver_id=current_user.id,
+        sender_identifier=sender_identifier,
+    )
+
+
 @router.get("/{showtime_id}/pinged-friends", response_model=list[UUID])
 def get_pinged_friend_ids_for_showtime(
     *,

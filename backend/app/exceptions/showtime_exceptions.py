@@ -92,6 +92,26 @@ class ShowtimePingSelfError(AppError):
         super().__init__("You cannot ping yourself.")
 
 
+class ShowtimePingSenderNotFoundError(AppError):
+    status_code = status.HTTP_404_NOT_FOUND
+    openapi_description = "Returned when a ping link sender cannot be resolved."
+    openapi_example = {"detail": "Sender for this ping link was not found."}
+
+    def __init__(self):
+        super().__init__("Sender for this ping link was not found.")
+
+
+class ShowtimePingSenderAmbiguousError(AppError):
+    status_code = status.HTTP_409_CONFLICT
+    openapi_description = (
+        "Returned when a ping link sender identifier matches multiple users."
+    )
+    openapi_example = {"detail": "Ping link sender is ambiguous. Use a user ID link."}
+
+    def __init__(self):
+        super().__init__("Ping link sender is ambiguous. Use a user ID link.")
+
+
 class ShowtimeSeatValidationError(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
     openapi_description = "Returned when the provided seat info is invalid."

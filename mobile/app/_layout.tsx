@@ -17,6 +17,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { PENDING_FRIEND_INVITE_RECEIVER_ID_KEY } from '@/constants/friend-invite';
+import { PENDING_SHOWTIME_PING_LINK_KEY } from '@/constants/ping-link';
 import {
   canRouteFromNotificationAction,
   configureNotificationCategories,
@@ -168,17 +169,34 @@ function RootLayourContent() {
   useEffect(() => {
     if (isChecking) return
 
+    const segmentPath = segments as unknown as string[]
+    const rootSegment = segmentPath[0]
     // Only these route groups require an authenticated session.
-    const authRoutes = new Set(['(tabs)', 'movie', 'friend-showtimes', 'cinema-showtimes', 'add-friend'])
-    const inAuthGroup = authRoutes.has(segments[0])
+    const authRoutes = new Set(['(tabs)', 'movie', 'friend-showtimes', 'cinema-showtimes', 'add-friend', 'ping'])
+    const inAuthGroup = rootSegment ? authRoutes.has(rootSegment) : false
 
     if (!isAuthenticated && inAuthGroup) {
       // User is not authenticated but trying to access protected routes
       console.log('Redirecting to login because user is not authenticated')
-      if (segments[0] === 'add-friend') {
-        const receiverIdSegment = segments[1]
+      if (rootSegment === 'add-friend') {
+        const receiverIdSegment = segmentPath[1]
         if (typeof receiverIdSegment === 'string' && receiverIdSegment.length > 0) {
           void storage.setItem(PENDING_FRIEND_INVITE_RECEIVER_ID_KEY, receiverIdSegment)
+        }
+      }
+      if (rootSegment === 'ping') {
+        const showtimeIdSegment = segmentPath[1]
+        const senderSegment = segmentPath[2]
+        if (
+          typeof showtimeIdSegment === 'string' &&
+          showtimeIdSegment.length > 0 &&
+          typeof senderSegment === 'string' &&
+          senderSegment.length > 0
+        ) {
+          void storage.setItem(
+            PENDING_SHOWTIME_PING_LINK_KEY,
+            JSON.stringify({ showtimeId: showtimeIdSegment, sender: senderSegment })
+          )
         }
       }
       router.replace('/login')
@@ -281,6 +299,13 @@ function RootLayourContent() {
         />
         <Stack.Screen
           name="add-friend/[receiverId]"
+          options={{
+            headerShown: false,
+            contentStyle: { backgroundColor: palette.background },
+          }}
+        />
+        <Stack.Screen
+          name="ping/[showtimeId]/[sender]"
           options={{
             headerShown: false,
             contentStyle: { backgroundColor: palette.background },

@@ -8,6 +8,43 @@ from app.services import push_notifications
 from app.utils import now_amsterdam_naive
 
 
+def test_notify_friends_looks_up_both_going_and_interested_recipients(
+    mocker: MockerFixture,
+) -> None:
+    session = mocker.MagicMock()
+    actor_id = uuid4()
+    showtime = mocker.MagicMock()
+    showtime.id = 123
+    showtime.movie_id = 456
+    showtime.movie = mocker.MagicMock(title="In the Mood for Love")
+
+    actor = mocker.MagicMock(display_name="Alex")
+
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        return_value=actor,
+    )
+    get_recipients = mocker.patch(
+        "app.services.push_notifications.showtime_crud.get_friends_with_showtime_selection",
+        return_value=[],
+    )
+
+    push_notifications.notify_friends_on_showtime_selection(
+        session=session,
+        actor_id=actor_id,
+        showtime=showtime,
+        previous_status=GoingStatus.GOING,
+        going_status=GoingStatus.NOT_GOING,
+    )
+
+    get_recipients.assert_called_once_with(
+        session=session,
+        showtime_id=showtime.id,
+        friend_id=actor_id,
+        statuses=[GoingStatus.GOING, GoingStatus.INTERESTED],
+    )
+
+
 def test_notify_friends_only_for_opted_in_recipients(
     mocker: MockerFixture,
 ) -> None:

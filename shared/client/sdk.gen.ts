@@ -78,6 +78,8 @@ import type {
   ShowtimesUpdateShowtimeSelectionResponse,
   ShowtimesPingFriendForShowtimeData,
   ShowtimesPingFriendForShowtimeResponse,
+  ShowtimesReceivePingFromLinkData,
+  ShowtimesReceivePingFromLinkResponse,
   ShowtimesGetPingedFriendIdsForShowtimeData,
   ShowtimesGetPingedFriendIdsForShowtimeResponse,
   ShowtimesGetShowtimeVisibilityData,
@@ -1057,6 +1059,30 @@ export class ShowtimesService {
       path: {
         showtime_id: data.showtimeId,
         friend_id: data.friendId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Receive Ping From Link
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @param data.senderIdentifier
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static receivePingFromLink(
+    data: ShowtimesReceivePingFromLinkData,
+  ): CancelablePromise<ShowtimesReceivePingFromLinkResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/showtimes/{showtime_id}/ping-link/{sender_identifier}",
+      path: {
+        showtime_id: data.showtimeId,
+        sender_identifier: data.senderIdentifier,
       },
       errors: {
         422: "Validation Error",

@@ -654,6 +654,13 @@ export type ShowtimesPingFriendForShowtimeData = {
 
 export type ShowtimesPingFriendForShowtimeResponse = Message
 
+export type ShowtimesReceivePingFromLinkData = {
+  senderIdentifier: string
+  showtimeId: number
+}
+
+export type ShowtimesReceivePingFromLinkResponse = Message
+
 export type ShowtimesGetPingedFriendIdsForShowtimeData = {
   showtimeId: number
 }

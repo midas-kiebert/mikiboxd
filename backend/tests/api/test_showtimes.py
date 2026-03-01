@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -6,6 +8,7 @@ from app.core.enums import GoingStatus
 from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
+from app.models.showtime_ping import ShowtimePing
 from app.models.user import User
 from app.utils import now_amsterdam_naive
 
@@ -220,6 +223,109 @@ def test_get_pinged_friend_ids_for_showtime(
     )
     assert list_response.status_code == 200
     assert list_response.json() == [str(friend_id)]
+
+
+def test_receive_ping_from_link_allows_non_friend_sender(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    sender = user_factory(display_name="Ping Link Sender")
+    showtime = showtime_factory()
+    sender_id = sender.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"message": "Ping received successfully"}
+
+    stored_ping = db_transaction.exec(
+        select(ShowtimePing).where(
+            ShowtimePing.showtime_id == showtime_id,
+            ShowtimePing.sender_id == sender_id,
+            ShowtimePing.receiver_id == current_user_id,
+        )
+    ).one_or_none()
+    assert stored_ping is not None
+
+
+def test_receive_ping_from_link_accepts_display_name_identifier(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    user_factory,
+    showtime_factory,
+) -> None:
+    sender = user_factory(display_name="Sender Via Name")
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    encoded_sender = quote(sender.display_name or "", safe="")
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{encoded_sender}",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"message": "Ping received successfully"}
+
+
+def test_receive_ping_from_link_is_idempotent(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    sender = user_factory(display_name="Idempotent Sender")
+    showtime = showtime_factory()
+    sender_id = sender.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    first_response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        headers=normal_user_token_headers,
+    )
+    assert first_response.status_code == 200
+
+    second_response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        headers=normal_user_token_headers,
+    )
+    assert second_response.status_code == 200
+    assert second_response.json() == {"message": "Ping received successfully"}
+
+    ping_rows = db_transaction.exec(
+        select(ShowtimePing).where(
+            ShowtimePing.showtime_id == showtime_id,
+            ShowtimePing.sender_id == sender_id,
+            ShowtimePing.receiver_id == current_user_id,
+        )
+    ).all()
+    assert len(ping_rows) == 1
+
+
+def test_receive_ping_from_link_rejects_unknown_sender(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{quote('missing sender', safe='')}",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Sender for this ping link was not found."
 
 
 def test_showtime_visibility_get_and_update(

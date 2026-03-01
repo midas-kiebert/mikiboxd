@@ -14,8 +14,10 @@ import ShowtimesScreen from "@/components/showtimes/ShowtimesScreen";
 import DayFilterModal from "@/components/filters/DayFilterModal";
 import DayQuickPopover from "@/components/filters/DayQuickPopover";
 import { type FilterPillLongPressPosition } from "@/components/filters/FilterPills";
+import RuntimeQuickPopover from "@/components/filters/RuntimeQuickPopover";
 import TimeQuickPopover from "@/components/filters/TimeQuickPopover";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
+import { getRuntimeBoundsFromSelections } from "@/components/filters/runtime-range-utils";
 import {
   buildSharedTabActiveFilterIds,
   buildSharedTabPillFilters,
@@ -32,6 +34,7 @@ const CINEMA_FILTER_IDS: ReadonlyArray<SharedTabFilterId> = [
   "watchlist-only",
   "days",
   "times",
+  "runtime",
 ];
 const CINEMA_FILTER_ID_SET = new Set<SharedTabFilterId>(CINEMA_FILTER_IDS);
 type CinemaShowtimesFilterId = (typeof CINEMA_FILTER_IDS)[number];
@@ -39,6 +42,7 @@ type AudienceFilter = "including-friends" | "only-you";
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
+const EMPTY_RUNTIME_RANGES: string[] = [];
 
 const getRouteParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
@@ -72,6 +76,9 @@ export default function CinemaShowtimesScreen() {
   const [timeQuickPopoverVisible, setTimeQuickPopoverVisible] = useState(false);
   const [timeQuickPopoverAnchor, setTimeQuickPopoverAnchor] =
     useState<FilterPillLongPressPosition | null>(null);
+  const [runtimeQuickPopoverVisible, setRuntimeQuickPopoverVisible] = useState(false);
+  const [runtimeQuickPopoverAnchor, setRuntimeQuickPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
   // Snapshot timestamp used to keep paginated API responses consistent.
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
@@ -86,10 +93,13 @@ export default function CinemaShowtimesScreen() {
     setSelectedDays,
     selectedTimeRanges: sharedSelectedTimeRanges,
     setSelectedTimeRanges,
+    selectedRuntimeRanges: sharedSelectedRuntimeRanges,
+    setSelectedRuntimeRanges,
   } = useSharedTabFilters();
   const isFocused = useIsFocused();
   const selectedDays = sharedSelectedDays ?? EMPTY_DAYS;
   const selectedTimeRanges = sharedSelectedTimeRanges ?? EMPTY_TIME_RANGES;
+  const selectedRuntimeRanges = sharedSelectedRuntimeRanges ?? EMPTY_RUNTIME_RANGES;
   const dayAnchorKey =
     DateTime.now().setZone("Europe/Amsterdam").startOf("day").toISODate() ?? "";
   const resolvedApiDays = useMemo(
@@ -100,6 +110,10 @@ export default function CinemaShowtimesScreen() {
   const effectiveAudienceFilter: AudienceFilter = shouldShowAudienceToggle
     ? appliedAudienceFilter
     : "including-friends";
+  const runtimeBounds = useMemo(
+    () => getRuntimeBoundsFromSelections(selectedRuntimeRanges),
+    [selectedRuntimeRanges]
+  );
   const { data: cinemas } = useFetchCinemas();
 
   // React Query client used for cache updates and invalidation.
@@ -120,6 +134,8 @@ export default function CinemaShowtimesScreen() {
       selectedCinemaIds: [cinemaId],
       days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
+      runtimeMin: runtimeBounds.runtimeMin,
+      runtimeMax: runtimeBounds.runtimeMax,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
       watchlistOnly: appliedWatchlistOnly ? true : undefined,
     };
@@ -129,6 +145,8 @@ export default function CinemaShowtimesScreen() {
     resolvedApiDays,
     appliedShowtimeFilter,
     selectedTimeRanges,
+    runtimeBounds.runtimeMin,
+    runtimeBounds.runtimeMax,
     appliedWatchlistOnly,
   ]);
 
@@ -140,8 +158,16 @@ export default function CinemaShowtimesScreen() {
       watchlistOnly,
       selectedDays,
       selectedTimeRanges,
+      selectedRuntimeRanges,
     }).filter((filter) => CINEMA_FILTER_ID_SET.has(filter.id));
-  }, [colors, selectedDays, selectedShowtimeFilter, selectedTimeRanges, watchlistOnly]);
+  }, [
+    colors,
+    selectedDays,
+    selectedShowtimeFilter,
+    selectedTimeRanges,
+    selectedRuntimeRanges,
+    watchlistOnly,
+  ]);
 
   // Compute which filter pills should render as active.
   const activeFilterIds = useMemo<CinemaShowtimesFilterId[]>(
@@ -151,9 +177,16 @@ export default function CinemaShowtimesScreen() {
         watchlistOnly,
         selectedDaysCount: selectedDays.length,
         selectedTimeRangesCount: selectedTimeRanges.length,
+        selectedRuntimeRangesCount: selectedRuntimeRanges.length,
         isCinemaFilterActive: false,
       }).filter((id): id is CinemaShowtimesFilterId => CINEMA_FILTER_ID_SET.has(id)),
-    [selectedShowtimeFilter, selectedDays.length, selectedTimeRanges.length, watchlistOnly]
+    [
+      selectedShowtimeFilter,
+      selectedDays.length,
+      selectedTimeRanges.length,
+      selectedRuntimeRanges.length,
+      watchlistOnly,
+    ]
   );
 
   // Data hooks keep this module synced with backend data and shared cache state.
@@ -268,6 +301,11 @@ export default function CinemaShowtimesScreen() {
       setTimeQuickPopoverVisible(true);
       return;
     }
+    if (filterId === "runtime") {
+      setRuntimeQuickPopoverAnchor(position ?? null);
+      setRuntimeQuickPopoverVisible(true);
+      return;
+    }
     if (filterId === "watchlist-only") {
       startFilterTransitionLoading();
       setWatchlistOnly(!watchlistOnly);
@@ -286,6 +324,11 @@ export default function CinemaShowtimesScreen() {
     if (filterId === "times") {
       setTimeQuickPopoverAnchor(position ?? null);
       setTimeQuickPopoverVisible(true);
+      return true;
+    }
+    if (filterId === "runtime") {
+      setRuntimeQuickPopoverAnchor(position ?? null);
+      setRuntimeQuickPopoverVisible(true);
       return true;
     }
     return false;
@@ -339,6 +382,13 @@ export default function CinemaShowtimesScreen() {
         onClose={() => setTimeQuickPopoverVisible(false)}
         selectedTimeRanges={selectedTimeRanges}
         onChange={setSelectedTimeRanges}
+      />
+      <RuntimeQuickPopover
+        visible={runtimeQuickPopoverVisible}
+        anchor={runtimeQuickPopoverAnchor}
+        onClose={() => setRuntimeQuickPopoverVisible(false)}
+        selectedRuntimeRanges={selectedRuntimeRanges}
+        onChange={setSelectedRuntimeRanges}
       />
       <DayFilterModal
         visible={dayModalVisible}

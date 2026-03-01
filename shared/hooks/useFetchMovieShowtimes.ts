@@ -8,6 +8,8 @@ type ShowtimesFilters = {
     days?: string[];
     selectedCinemaIds?: number[];
     timeRanges?: string[];
+    runtimeMin?: number;
+    runtimeMax?: number;
     watchlistOnly?: boolean;
     selectedStatuses?: GoingStatus[];
 };

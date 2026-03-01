@@ -3,7 +3,7 @@
 from datetime import date, datetime, time
 from typing import Annotated
 
-from fastapi import Query
+from fastapi import HTTPException, Query
 from pydantic import BaseModel
 
 from app.core.enums import GoingStatus, TimeOfDay
@@ -22,6 +22,8 @@ class Filters(BaseModel):
     selected_cinema_ids: list[int] | None = None
     days: list[date] | None = None
     time_ranges: list[TimeRange] | None = None
+    runtime_min: int | None = None
+    runtime_max: int | None = None
     selected_statuses: list[GoingStatus] | None = None
 
 
@@ -74,9 +76,37 @@ def get_filters(
             description="Filter by selection statuses (GOING/INTERESTED)",
         ),
     ] = None,
+    runtime_min: Annotated[
+        int | None,
+        Query(
+            ge=20,
+            le=240,
+            alias="runtime_min",
+            description="Minimum movie runtime in minutes",
+        ),
+    ] = None,
+    runtime_max: Annotated[
+        int | None,
+        Query(
+            ge=20,
+            le=240,
+            alias="runtime_max",
+            description="Maximum movie runtime in minutes",
+        ),
+    ] = None,
 ) -> Filters:
     if snapshot_time is None:
         snapshot_time = now_amsterdam_naive()
+
+    if (
+        runtime_min is not None
+        and runtime_max is not None
+        and runtime_min > runtime_max
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="runtime_min must be less than or equal to runtime_max",
+        )
 
     time_ranges: list[TimeRange] = []
     if time_ranges_raw is not None:
@@ -91,5 +121,7 @@ def get_filters(
         selected_cinema_ids=selected_cinema_ids,
         days=days,
         time_ranges=time_ranges or None,
+        runtime_min=runtime_min,
+        runtime_max=runtime_max,
         selected_statuses=selected_statuses,
     )

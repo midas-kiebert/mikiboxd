@@ -351,7 +351,9 @@ def test_get_main_page_showtimes_day_filter_uses_four_hour_day_bucket(
 ):
     user = user_factory()
 
-    day = now_amsterdam_naive().replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    day = now_amsterdam_naive().replace(
+        hour=12, minute=0, second=0, microsecond=0
+    ) + timedelta(days=1)
     same_day_evening = day.replace(hour=23, minute=0)
     next_day_early = (day + timedelta(days=1)).replace(hour=2, minute=0)
     same_day_early = day.replace(hour=2, minute=0)
@@ -360,7 +362,9 @@ def test_get_main_page_showtimes_day_filter_uses_four_hour_day_bucket(
     showtime_should_match_evening = showtime_factory(datetime=same_day_evening)
     showtime_should_match_next_day_early = showtime_factory(datetime=next_day_early)
     showtime_should_not_match_same_day_early = showtime_factory(datetime=same_day_early)
-    showtime_should_not_match_next_day_morning = showtime_factory(datetime=next_day_morning)
+    showtime_should_not_match_next_day_morning = showtime_factory(
+        datetime=next_day_morning
+    )
 
     showtimes = showtime_crud.get_main_page_showtimes(
         session=db_transaction,
@@ -386,12 +390,20 @@ def test_get_main_page_showtimes_open_ended_start_range_includes_until_4am(
     user_factory: Callable[..., User],
 ):
     user = user_factory()
-    base_day = now_amsterdam_naive().replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    base_day = now_amsterdam_naive().replace(
+        hour=12, minute=0, second=0, microsecond=0
+    ) + timedelta(days=1)
 
-    showtime_early_evening = showtime_factory(datetime=base_day.replace(hour=21, minute=30))
+    showtime_early_evening = showtime_factory(
+        datetime=base_day.replace(hour=21, minute=30)
+    )
     showtime_night = showtime_factory(datetime=base_day.replace(hour=22, minute=30))
-    showtime_after_midnight = showtime_factory(datetime=(base_day + timedelta(days=1)).replace(hour=2, minute=30))
-    showtime_after_cutoff = showtime_factory(datetime=(base_day + timedelta(days=1)).replace(hour=5, minute=0))
+    showtime_after_midnight = showtime_factory(
+        datetime=(base_day + timedelta(days=1)).replace(hour=2, minute=30)
+    )
+    showtime_after_cutoff = showtime_factory(
+        datetime=(base_day + timedelta(days=1)).replace(hour=5, minute=0)
+    )
 
     showtimes = showtime_crud.get_main_page_showtimes(
         session=db_transaction,
@@ -417,7 +429,9 @@ def test_get_main_page_showtimes_bounded_range_checks_showtime_end_time(
     user_factory: Callable[..., User],
 ):
     user = user_factory()
-    base_day = now_amsterdam_naive().replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    base_day = now_amsterdam_naive().replace(
+        hour=12, minute=0, second=0, microsecond=0
+    ) + timedelta(days=1)
 
     showtime_inside_range = showtime_factory(
         datetime=base_day.replace(hour=10, minute=30),
@@ -447,3 +461,36 @@ def test_get_main_page_showtimes_bounded_range_checks_showtime_end_time(
     assert showtime_spilling_past_end not in showtimes
     # Backward-compatible fallback: when end time is unknown, treat start as end.
     assert showtime_without_end_datetime in showtimes
+
+
+def test_get_main_page_showtimes_filters_by_movie_runtime(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    movie_factory: Callable[..., Movie],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    movie_short = movie_factory(duration=80)
+    movie_match = movie_factory(duration=105)
+    movie_long = movie_factory(duration=150)
+
+    showtime_short = showtime_factory(movie=movie_short)
+    showtime_match = showtime_factory(movie=movie_match)
+    showtime_long = showtime_factory(movie=movie_long)
+
+    showtimes = showtime_crud.get_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            runtime_min=90,
+            runtime_max=120,
+        ),
+    )
+
+    assert showtime_short not in showtimes
+    assert showtime_match in showtimes
+    assert showtime_long not in showtimes

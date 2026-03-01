@@ -54,6 +54,7 @@ def _build_default_filter_preset(scope: FilterPresetScope) -> FilterPresetPublic
                 "watchlist_only": False,
                 "days": None,
                 "time_ranges": None,
+                "runtime_ranges": None,
             },
             "created_at": now,
             "updated_at": now,

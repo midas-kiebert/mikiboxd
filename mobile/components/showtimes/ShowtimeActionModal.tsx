@@ -348,7 +348,7 @@ export default function ShowtimeActionModal({
     const cinemaLabel = showtime.cinema?.name?.trim() || "the cinema";
     try {
       await Share.share({
-        message: `Come see ${movieLabel} at ${dateTimeLabel} in ${cinemaLabel}`,
+        message: `Come see ${movieLabel} at ${dateTimeLabel} in ${cinemaLabel}: ${pingUrl}`,
         url: pingUrl,
       });
     } catch (error) {
@@ -549,6 +549,18 @@ export default function ShowtimeActionModal({
     (count, friend) => count + (visibleFriendIdsDraft.has(friend.id) ? 1 : 0),
     0
   );
+  const hiddenVisibilityCount = Math.max(0, totalFriendCount - selectedVisibilityCount);
+  const canEvaluateVisibilityAudience =
+    totalFriendCount > 0 && (!isFetchingShowtimeVisibility || Boolean(showtimeVisibility));
+  const visibilityButtonTone: "default" | "shown" | "hidden" = !canEvaluateVisibilityAudience
+    ? "default"
+    : selectedVisibilityCount > 0
+      ? "shown"
+      : "hidden";
+  const visibilityButtonSummaryLabel =
+    totalFriendCount > 0
+      ? `${selectedVisibilityCount} shown • ${hiddenVisibilityCount} hidden`
+      : "No friends";
 
   const resolvedMovieTitle = useMemo(() => {
     const fromProp = movieTitle?.trim();
@@ -908,6 +920,8 @@ export default function ShowtimeActionModal({
               style={[
                 styles.actionButton,
                 activeDetailPanel === "visibility" && styles.actionButtonActive,
+                visibilityButtonTone === "shown" && styles.actionButtonVisibilityShown,
+                visibilityButtonTone === "hidden" && styles.actionButtonVisibilityHidden,
               ]}
               onPressIn={() => handleToggleDetailPanel("visibility")}
               delayPressIn={0}
@@ -916,15 +930,35 @@ export default function ShowtimeActionModal({
               <MaterialIcons
                 name="visibility"
                 size={16}
-                color={activeDetailPanel === "visibility" ? colors.tint : colors.textSecondary}
+                color={
+                  visibilityButtonTone === "shown"
+                    ? colors.green.secondary
+                    : visibilityButtonTone === "hidden"
+                      ? colors.red.secondary
+                      : activeDetailPanel === "visibility"
+                        ? colors.tint
+                        : colors.textSecondary
+                }
               />
               <ThemedText
                 style={[
                   styles.actionButtonText,
                   activeDetailPanel === "visibility" && styles.actionButtonTextActive,
+                  visibilityButtonTone === "shown" && styles.actionButtonTextVisibilityShown,
+                  visibilityButtonTone === "hidden" && styles.actionButtonTextVisibilityHidden,
                 ]}
               >
                 Visibility
+              </ThemedText>
+              <ThemedText
+                style={[
+                  styles.actionButtonSubText,
+                  visibilityButtonTone === "shown" && styles.actionButtonSubTextVisibilityShown,
+                  visibilityButtonTone === "hidden" && styles.actionButtonSubTextVisibilityHidden,
+                ]}
+                numberOfLines={1}
+              >
+                {visibilityButtonSummaryLabel}
               </ThemedText>
             </TouchableOpacity>
           </View>
@@ -1113,6 +1147,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderColor: colors.green.secondary,
       backgroundColor: colors.green.primary,
     },
+    actionButtonVisibilityShown: {
+      borderColor: colors.green.secondary,
+      backgroundColor: colors.green.primary,
+    },
+    actionButtonVisibilityHidden: {
+      borderColor: colors.red.secondary,
+      backgroundColor: colors.red.primary,
+    },
     actionButtonDisabled: {
       borderColor: colors.divider,
       backgroundColor: colors.pillBackground,
@@ -1127,6 +1169,24 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     actionButtonTextSeatSet: {
       color: colors.green.secondary,
+    },
+    actionButtonTextVisibilityShown: {
+      color: colors.green.secondary,
+    },
+    actionButtonTextVisibilityHidden: {
+      color: colors.red.secondary,
+    },
+    actionButtonSubText: {
+      fontSize: 9,
+      fontWeight: "600",
+      color: colors.textSecondary,
+      lineHeight: 11,
+    },
+    actionButtonSubTextVisibilityShown: {
+      color: colors.green.secondary,
+    },
+    actionButtonSubTextVisibilityHidden: {
+      color: colors.red.secondary,
     },
     actionButtonTextDisabled: {
       color: colors.textSecondary,

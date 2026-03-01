@@ -546,10 +546,12 @@ def test_update_showtime_selection_accepts_blank_seat_pair_as_no_selection(
 def test_update_showtime_selection_rejects_partial_seat_values(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
     showtime_factory,
 ) -> None:
     showtime = showtime_factory(cinema__seating="unknown")
     showtime_id = showtime.id
+    db_transaction.commit()
 
     row_only_response = client.put(
         f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",

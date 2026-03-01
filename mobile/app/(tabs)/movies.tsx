@@ -32,8 +32,10 @@ import FilterPresetFab from '@/components/filters/FilterPresetFab';
 import FilterPresetsModal, {
   type PageFilterPresetState,
 } from '@/components/filters/FilterPresetsModal';
+import RuntimeQuickPopover from '@/components/filters/RuntimeQuickPopover';
 import TimeQuickPopover from '@/components/filters/TimeQuickPopover';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
+import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 import {
   SHARED_TAB_FILTER_PRESET_SCOPE,
   buildSharedTabActiveFilterIds,
@@ -72,6 +74,9 @@ export default function MovieScreen() {
   const [timeQuickPopoverVisible, setTimeQuickPopoverVisible] = useState(false);
   const [timeQuickPopoverAnchor, setTimeQuickPopoverAnchor] =
     useState<FilterPillLongPressPosition | null>(null);
+  const [runtimeQuickPopoverVisible, setRuntimeQuickPopoverVisible] = useState(false);
+  const [runtimeQuickPopoverAnchor, setRuntimeQuickPopoverAnchor] =
+    useState<FilterPillLongPressPosition | null>(null);
   const [presetQuickPopoverVisible, setPresetQuickPopoverVisible] = useState(false);
   const [presetQuickPopoverAnchor, setPresetQuickPopoverAnchor] =
     useState<FilterPillLongPressPosition | null>(null);
@@ -94,6 +99,8 @@ export default function MovieScreen() {
     setSelectedDays,
     selectedTimeRanges,
     setSelectedTimeRanges,
+    selectedRuntimeRanges,
+    setSelectedRuntimeRanges,
   } = useSharedTabFilters();
   const isFocused = useIsFocused();
   const dayAnchorKey =
@@ -106,6 +113,10 @@ export default function MovieScreen() {
   const effectiveAudienceFilter: AudienceFilter = shouldShowAudienceToggle
     ? appliedShowtimeAudience
     : 'including-friends';
+  const runtimeBounds = useMemo(
+    () => getRuntimeBoundsFromSelections(selectedRuntimeRanges),
+    [selectedRuntimeRanges]
+  );
   // Snapshot timestamp used to keep paginated API responses consistent.
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
@@ -129,6 +140,8 @@ export default function MovieScreen() {
       watchlistOnly: appliedWatchlistOnly ? true : undefined,
       days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
+      runtimeMin: runtimeBounds.runtimeMin,
+      runtimeMax: runtimeBounds.runtimeMax,
       selectedCinemaIds: sessionCinemaIds,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
     }),
@@ -137,6 +150,8 @@ export default function MovieScreen() {
       appliedWatchlistOnly,
       resolvedApiDays,
       selectedTimeRanges,
+      runtimeBounds.runtimeMin,
+      runtimeBounds.runtimeMax,
       sessionCinemaIds,
       appliedShowtimeFilter,
     ]
@@ -149,6 +164,7 @@ export default function MovieScreen() {
       watchlist_only: watchlistOnly,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
+      runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
     }),
     [
       selectedShowtimeFilter,
@@ -157,6 +173,7 @@ export default function MovieScreen() {
       watchlistOnly,
       selectedDays,
       selectedTimeRanges,
+      selectedRuntimeRanges,
     ]
   );
 
@@ -262,6 +279,11 @@ export default function MovieScreen() {
       setTimeQuickPopoverVisible(true);
       return;
     }
+    if (filterId === 'runtime') {
+      setRuntimeQuickPopoverAnchor(position ?? null);
+      setRuntimeQuickPopoverVisible(true);
+      return;
+    }
     if (filterId === 'presets') {
       setPresetModalVisible(true);
       return;
@@ -274,6 +296,7 @@ export default function MovieScreen() {
     setWatchlistOnly(Boolean(filters.watchlist_only));
     setSelectedDays(filters.days ?? []);
     setSelectedTimeRanges(filters.time_ranges ?? []);
+    setSelectedRuntimeRanges(filters.runtime_ranges ?? []);
   };
 
   const handleLongPressFilter = (
@@ -293,6 +316,11 @@ export default function MovieScreen() {
       setTimeQuickPopoverVisible(true);
       return true;
     }
+    if (filterId === 'runtime') {
+      setRuntimeQuickPopoverAnchor(position ?? null);
+      setRuntimeQuickPopoverVisible(true);
+      return true;
+    }
     return false;
   };
 
@@ -304,6 +332,7 @@ export default function MovieScreen() {
         watchlistOnly,
         selectedDays,
         selectedTimeRanges,
+        selectedRuntimeRanges,
         sessionCinemaIds,
         preferredCinemaIds,
         cinemaPresets,
@@ -317,6 +346,7 @@ export default function MovieScreen() {
       selectedDays,
       selectedShowtimeFilter,
       selectedTimeRanges,
+      selectedRuntimeRanges,
       sessionCinemaIds,
       watchlistOnly,
     ]
@@ -340,6 +370,7 @@ export default function MovieScreen() {
         watchlistOnly,
         selectedDaysCount: selectedDays.length,
         selectedTimeRangesCount: selectedTimeRanges.length,
+        selectedRuntimeRangesCount: selectedRuntimeRanges.length,
         isCinemaFilterActive,
       }),
     [
@@ -347,6 +378,7 @@ export default function MovieScreen() {
       watchlistOnly,
       selectedDays.length,
       selectedTimeRanges.length,
+      selectedRuntimeRanges.length,
       isCinemaFilterActive,
     ]
   );
@@ -396,6 +428,13 @@ export default function MovieScreen() {
         onClose={() => setTimeQuickPopoverVisible(false)}
         selectedTimeRanges={selectedTimeRanges}
         onChange={setSelectedTimeRanges}
+      />
+      <RuntimeQuickPopover
+        visible={runtimeQuickPopoverVisible}
+        anchor={runtimeQuickPopoverAnchor}
+        onClose={() => setRuntimeQuickPopoverVisible(false)}
+        selectedRuntimeRanges={selectedRuntimeRanges}
+        onChange={setSelectedRuntimeRanges}
       />
       <CinemaFilterModal
         visible={cinemaModalVisible}

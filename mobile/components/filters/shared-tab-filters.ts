@@ -1,6 +1,7 @@
 import type { CinemaPresetPublic, FilterPresetScope, GoingStatus } from "shared";
 
 import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
+import { formatRuntimePillLabel } from "@/components/filters/runtime-range-utils";
 import { formatTimePillLabel } from "@/components/filters/time-range-utils";
 
 export type SharedTabFilterId =
@@ -9,6 +10,7 @@ export type SharedTabFilterId =
   | "cinemas"
   | "days"
   | "times"
+  | "runtime"
   | "presets";
 
 export type SharedTabShowtimeFilter = "all" | "interested" | "going";
@@ -21,6 +23,7 @@ const SHARED_TAB_FILTERS: ReadonlyArray<{ id: SharedTabFilterId; label: string }
   { id: "cinemas", label: "Cinemas" },
   { id: "days", label: "Any Day" },
   { id: "times", label: "any time" },
+  { id: "runtime", label: "Any Runtime" },
   { id: "presets", label: "Presets" },
 ] as const;
 
@@ -34,6 +37,7 @@ type BuildPillFiltersInput = {
   watchlistOnly: boolean;
   selectedDays: readonly string[];
   selectedTimeRanges: readonly string[];
+  selectedRuntimeRanges: readonly string[];
   sessionCinemaIds?: readonly number[] | null;
   preferredCinemaIds?: readonly number[] | null;
   cinemaPresets?: readonly CinemaPresetSummary[];
@@ -44,6 +48,7 @@ type BuildActiveFiltersInput = {
   watchlistOnly: boolean;
   selectedDaysCount: number;
   selectedTimeRangesCount: number;
+  selectedRuntimeRangesCount: number;
   isCinemaFilterActive: boolean;
 };
 
@@ -81,6 +86,7 @@ export const buildSharedTabPillFilters = ({
   watchlistOnly,
   selectedDays,
   selectedTimeRanges,
+  selectedRuntimeRanges,
   sessionCinemaIds,
   preferredCinemaIds,
   cinemaPresets,
@@ -136,6 +142,9 @@ export const buildSharedTabPillFilters = ({
     if (filter.id === "times") {
       return { ...filter, label: formatTimePillLabel(selectedTimeRanges) };
     }
+    if (filter.id === "runtime") {
+      return { ...filter, label: formatRuntimePillLabel(selectedRuntimeRanges) };
+    }
     return filter;
   });
 };
@@ -145,6 +154,7 @@ export const buildSharedTabActiveFilterIds = ({
   watchlistOnly,
   selectedDaysCount,
   selectedTimeRangesCount,
+  selectedRuntimeRangesCount,
   isCinemaFilterActive,
 }: BuildActiveFiltersInput): SharedTabFilterId[] => {
   const active: SharedTabFilterId[] = [];
@@ -156,6 +166,9 @@ export const buildSharedTabActiveFilterIds = ({
   }
   if (selectedTimeRangesCount > 0) {
     active.push("times");
+  }
+  if (selectedRuntimeRangesCount > 0) {
+    active.push("runtime");
   }
   if (isCinemaFilterActive) {
     active.push("cinemas");

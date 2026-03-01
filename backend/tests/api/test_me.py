@@ -146,7 +146,9 @@ def test_delete_me_removes_user_and_related_rows(
     assert deleted_user is None
     assert (
         db_transaction.exec(
-            select(ShowtimeSelection).where(ShowtimeSelection.user_id == current_user_id)
+            select(ShowtimeSelection).where(
+                ShowtimeSelection.user_id == current_user_id
+            )
         ).one_or_none()
         is None
     )
@@ -157,7 +159,9 @@ def test_delete_me_removes_user_and_related_rows(
         is None
     )
     assert (
-        db_transaction.exec(select(PushToken).where(PushToken.user_id == current_user_id)).one_or_none()
+        db_transaction.exec(
+            select(PushToken).where(PushToken.user_id == current_user_id)
+        ).one_or_none()
         is None
     )
     assert (
@@ -260,7 +264,10 @@ def test_update_me_rejects_duplicate_display_name(
     )
 
     assert update_response.status_code == 409
-    assert update_response.json()["detail"] == "User with display name taken name already exists."
+    assert (
+        update_response.json()["detail"]
+        == "User with display name taken name already exists."
+    )
 
 
 def test_update_me_allows_duplicate_letterboxd_username_and_normalizes_lowercase(
@@ -497,7 +504,9 @@ def test_me_pings_sorting_is_done_in_backend(
         headers=normal_user_token_headers,
     )
     assert default_sorted_response.status_code == 200
-    default_showtime_ids = [item["showtime_id"] for item in default_sorted_response.json()]
+    default_showtime_ids = [
+        item["showtime_id"] for item in default_sorted_response.json()
+    ]
     assert default_showtime_ids == [earlier_showtime.id, later_showtime.id]
 
     showtime_sorted_response = client.get(
@@ -506,7 +515,9 @@ def test_me_pings_sorting_is_done_in_backend(
         params={"sort_by": "showtime_datetime"},
     )
     assert showtime_sorted_response.status_code == 200
-    showtime_sorted_ids = [item["showtime_id"] for item in showtime_sorted_response.json()]
+    showtime_sorted_ids = [
+        item["showtime_id"] for item in showtime_sorted_response.json()
+    ]
     assert showtime_sorted_ids == [later_showtime.id, earlier_showtime.id]
 
 
@@ -522,6 +533,7 @@ def test_filter_presets_are_scoped_and_include_all_pill_filters(
             "watchlist_only": True,
             "days": ["2026-02-21", "2026-02-22"],
             "time_ranges": ["18:00-21:59", "22:00-"],
+            "runtime_ranges": ["90-130"],
         },
     }
     movies_payload = {
@@ -531,6 +543,7 @@ def test_filter_presets_are_scoped_and_include_all_pill_filters(
             "watchlist_only": False,
             "days": ["2026-02-23"],
             "time_ranges": ["10:00-14:00"],
+            "runtime_ranges": ["-120"],
         },
     }
 
@@ -555,7 +568,9 @@ def test_filter_presets_are_scoped_and_include_all_pill_filters(
     )
     assert showtimes_list.status_code == 200
     showtimes_presets = showtimes_list.json()
-    showtimes_default = next(preset for preset in showtimes_presets if preset["is_default"] is True)
+    showtimes_default = next(
+        preset for preset in showtimes_presets if preset["is_default"] is True
+    )
     assert showtimes_default["name"] == "Default"
     assert showtimes_default["scope"] == "SHOWTIMES"
     assert showtimes_default["filters"]["selected_showtime_filter"] == "all"
@@ -563,14 +578,18 @@ def test_filter_presets_are_scoped_and_include_all_pill_filters(
     assert showtimes_default["filters"]["watchlist_only"] is False
     assert showtimes_default["filters"]["days"] is None
     assert showtimes_default["filters"]["time_ranges"] is None
+    assert showtimes_default["filters"]["runtime_ranges"] is None
 
-    showtimes_saved = next(preset for preset in showtimes_presets if preset["name"] == "After Work")
+    showtimes_saved = next(
+        preset for preset in showtimes_presets if preset["name"] == "After Work"
+    )
     assert showtimes_saved["scope"] == "SHOWTIMES"
     assert showtimes_saved["filters"]["selected_showtime_filter"] == "interested"
     assert showtimes_saved["filters"]["showtime_audience"] == "only-you"
     assert showtimes_saved["filters"]["watchlist_only"] is True
     assert showtimes_saved["filters"]["days"] == ["2026-02-21", "2026-02-22"]
     assert showtimes_saved["filters"]["time_ranges"] == ["18:00-21:59", "22:00-"]
+    assert showtimes_saved["filters"]["runtime_ranges"] == ["90-130"]
     assert showtimes_saved["is_favorite"] is False
 
     movies_list = client.get(
@@ -580,7 +599,9 @@ def test_filter_presets_are_scoped_and_include_all_pill_filters(
     )
     assert movies_list.status_code == 200
     movies_presets = movies_list.json()
-    movies_default = next(preset for preset in movies_presets if preset["is_default"] is True)
+    movies_default = next(
+        preset for preset in movies_presets if preset["is_default"] is True
+    )
     assert movies_default["name"] == "Default"
     assert movies_default["scope"] == "MOVIES"
     assert movies_default["filters"]["selected_showtime_filter"] == "all"
@@ -588,12 +609,16 @@ def test_filter_presets_are_scoped_and_include_all_pill_filters(
     assert movies_default["filters"]["watchlist_only"] is False
     assert movies_default["filters"]["days"] is None
     assert movies_default["filters"]["time_ranges"] is None
+    assert movies_default["filters"]["runtime_ranges"] is None
 
-    movies_saved = next(preset for preset in movies_presets if preset["name"] == "Weekend Movies")
+    movies_saved = next(
+        preset for preset in movies_presets if preset["name"] == "Weekend Movies"
+    )
     assert movies_saved["scope"] == "MOVIES"
     assert movies_saved["filters"]["watchlist_only"] is False
     assert movies_saved["filters"]["days"] == ["2026-02-23"]
     assert movies_saved["filters"]["time_ranges"] == ["10:00-14:00"]
+    assert movies_saved["filters"]["runtime_ranges"] == ["-120"]
     assert movies_saved["filters"]["selected_showtime_filter"] is None
     assert movies_saved["filters"]["showtime_audience"] == "including-friends"
     assert movies_saved["is_favorite"] is False

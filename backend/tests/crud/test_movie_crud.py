@@ -134,10 +134,7 @@ def test_get_movies_without_letterboxd_slug(
     assert movies_without_slug[0].letterboxd_slug is None
 
 
-def test_update_movie_success(
-    *,
-    movie_factory: Callable[..., Movie]
-):
+def test_update_movie_success(*, movie_factory: Callable[..., Movie]):
     movie: Movie = movie_factory()
 
     movie_update = MovieUpdate(letterboxd_slug="updated-slug")
@@ -203,49 +200,49 @@ def test_upsert_movie_preserves_existing_duration_when_payload_duration_is_missi
 #         ]
 #     )
 
-    # user_crud.set_cinema_selections(
-    #     session=db_transaction,
-    #     user_id=user.id,
-    #     cinema_ids=[cinema_1.id, cinema_3.id, cinema_4.id],
-    # )
+# user_crud.set_cinema_selections(
+#     session=db_transaction,
+#     user_id=user.id,
+#     cinema_ids=[cinema_1.id, cinema_3.id, cinema_4.id],
+# )
 
-    # cinemas = movie_crud.get_cinemas_for_movie(
-    #     session=db_transaction,
-    #     movie_id=movie.id,
-    #     snapshot_time=now_amsterdam_naive(),
-    #     current_user_id=user.id,
-    # )
+# cinemas = movie_crud.get_cinemas_for_movie(
+#     session=db_transaction,
+#     movie_id=movie.id,
+#     snapshot_time=now_amsterdam_naive(),
+#     current_user_id=user.id,
+# )
 
-    # assert cinema_3 in cinemas
-    # assert len(cinemas) == 1
+# assert cinema_3 in cinemas
+# assert len(cinemas) == 1
 
-    # user_crud.set_cinema_selections(
-    #     session=db_transaction,
-    #     user_id=user.id,
-    #     cinema_ids=[cinema_1.id, cinema_2.id, cinema_3.id, cinema_4.id],
-    # )
+# user_crud.set_cinema_selections(
+#     session=db_transaction,
+#     user_id=user.id,
+#     cinema_ids=[cinema_1.id, cinema_2.id, cinema_3.id, cinema_4.id],
+# )
 
-    # cinemas = movie_crud.get_cinemas_for_movie(
-    #     session=db_transaction,
-    #     movie_id=movie.id,
-    #     snapshot_time=now_amsterdam_naive(),
-    #     current_user_id=user.id,
-    # )
+# cinemas = movie_crud.get_cinemas_for_movie(
+#     session=db_transaction,
+#     movie_id=movie.id,
+#     snapshot_time=now_amsterdam_naive(),
+#     current_user_id=user.id,
+# )
 
-    # assert cinema_2 in cinemas
-    # assert cinema_3 in cinemas
-    # assert len(cinemas) == 2
+# assert cinema_2 in cinemas
+# assert cinema_3 in cinemas
+# assert len(cinemas) == 2
 
-    # more_future = now_amsterdam_naive() + timedelta(minutes=20)
+# more_future = now_amsterdam_naive() + timedelta(minutes=20)
 
-    # cinemas_in_20_minutes = movie_crud.get_cinemas_for_movie(
-    #     session=db_transaction,
-    #     movie_id=movie.id,
-    #     snapshot_time=more_future,
-    #     current_user_id=user.id,
-    # )
+# cinemas_in_20_minutes = movie_crud.get_cinemas_for_movie(
+#     session=db_transaction,
+#     movie_id=movie.id,
+#     snapshot_time=more_future,
+#     current_user_id=user.id,
+# )
 
-    # assert len(cinemas_in_20_minutes) == 0
+# assert len(cinemas_in_20_minutes) == 0
 
 
 def test_get_friends_for_movie(
@@ -456,6 +453,38 @@ def test_get_movies_filters_by_selected_statuses(
         movie_going.id,
         movie_interested.id,
     }
+
+
+def test_get_movies_filters_by_runtime(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    movie_short = movie_factory(duration=80)
+    movie_match = movie_factory(duration=105)
+    movie_long = movie_factory(duration=150)
+
+    showtime_factory(movie=movie_short)
+    showtime_factory(movie=movie_match)
+    showtime_factory(movie=movie_long)
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            runtime_min=90,
+            runtime_max=120,
+        ),
+    )
+
+    assert {movie.id for movie in movies} == {movie_match.id}
 
 
 # def test_get_showtimes_for_movie(

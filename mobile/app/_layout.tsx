@@ -17,6 +17,12 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { PENDING_FRIEND_INVITE_RECEIVER_ID_KEY } from '@/constants/friend-invite';
+import {
+  canRouteFromNotificationAction,
+  configureNotificationCategories,
+  handleNotificationQuickAction,
+  resolveNotificationRoute,
+} from '@/utils/push-notifications';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import axios, { AxiosRequestTransformer } from 'axios'
@@ -128,6 +134,8 @@ function RootLayourContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   // Keeps the previous token for dev logging without causing rerenders.
   const lastTokenRef = useRef<string | null>(null)
+  // Prevent duplicate handling when the same notification response is replayed.
+  const handledNotificationResponsesRef = useRef<Set<string>>(new Set())
 
   // Shared auth check used on mount and whenever route segments change.
   const checkAuth = useCallback(async (shouldBlock = false) => {
@@ -179,6 +187,63 @@ function RootLayourContent() {
       router.replace('/(tabs)')
     }
   }, [isAuthenticated, router, segments, isChecking])
+
+  const handleNotificationResponse = useCallback(
+    async (response: Notifications.NotificationResponse) => {
+      const responseKey = `${response.notification.request.identifier}:${response.actionIdentifier}`
+      if (handledNotificationResponsesRef.current.has(responseKey)) {
+        return
+      }
+      handledNotificationResponsesRef.current.add(responseKey)
+
+      try {
+        await handleNotificationQuickAction(response)
+      } catch (error) {
+        console.error('Error handling notification quick action:', error)
+      }
+
+      if (canRouteFromNotificationAction(response.actionIdentifier)) {
+        const route = resolveNotificationRoute(response.notification.request.content.data)
+        if (route) {
+          router.push(route)
+        }
+      }
+
+      try {
+        await Notifications.clearLastNotificationResponseAsync()
+      } catch (error) {
+        console.error('Error clearing last notification response:', error)
+      }
+    },
+    [router]
+  )
+
+  useEffect(() => {
+    void configureNotificationCategories().catch((error) => {
+      console.error('Error configuring notification categories:', error)
+    })
+  }, [])
+
+  useEffect(() => {
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      void handleNotificationResponse(response)
+    })
+
+    let isMounted = true
+    void Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (!isMounted || !response) return
+        void handleNotificationResponse(response)
+      })
+      .catch((error) => {
+        console.error('Error loading last notification response:', error)
+      })
+
+    return () => {
+      isMounted = false
+      responseSubscription.remove()
+    }
+  }, [handleNotificationResponse])
 
   if (isChecking) {
     // Avoid flashing protected screens before auth status is known.

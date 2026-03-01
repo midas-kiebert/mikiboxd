@@ -644,6 +644,8 @@ export class MeService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.runtimeMin Minimum movie runtime in minutes
+   * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -664,6 +666,8 @@ export class MeService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        runtime_min: data.runtimeMin,
+        runtime_max: data.runtimeMax,
       },
       errors: {
         422: "Validation Error",
@@ -861,6 +865,8 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.runtimeMin Minimum movie runtime in minutes
+   * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns MovieSummaryLoggedIn Successful Response
    * @throws ApiError
    */
@@ -882,6 +888,8 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        runtime_min: data.runtimeMin,
+        runtime_max: data.runtimeMax,
       },
       errors: {
         422: "Validation Error",
@@ -903,6 +911,8 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.runtimeMin Minimum movie runtime in minutes
+   * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeInMovieLoggedIn Successful Response
    * @throws ApiError
    */
@@ -926,6 +936,8 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        runtime_min: data.runtimeMin,
+        runtime_max: data.runtimeMax,
       },
       errors: {
         422: "Validation Error",
@@ -946,6 +958,8 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.runtimeMin Minimum movie runtime in minutes
+   * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns MovieLoggedIn Successful Response
    * @throws ApiError
    */
@@ -968,6 +982,8 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        runtime_min: data.runtimeMin,
+        runtime_max: data.runtimeMax,
       },
       errors: {
         422: "Validation Error",
@@ -990,6 +1006,8 @@ export class ShowtimesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.runtimeMin Minimum movie runtime in minutes
+   * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -1011,6 +1029,8 @@ export class ShowtimesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        runtime_min: data.runtimeMin,
+        runtime_max: data.runtimeMax,
       },
       body: data.requestBody,
       mediaType: "application/json",
@@ -1126,6 +1146,8 @@ export class ShowtimesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.runtimeMin Minimum movie runtime in minutes
+   * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -1146,6 +1168,8 @@ export class ShowtimesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        runtime_min: data.runtimeMin,
+        runtime_max: data.runtimeMax,
       },
       errors: {
         422: "Validation Error",
@@ -1239,6 +1263,8 @@ export class UsersService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.runtimeMin Minimum movie runtime in minutes
+   * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -1262,6 +1288,8 @@ export class UsersService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        runtime_min: data.runtimeMin,
+        runtime_max: data.runtimeMax,
       },
       errors: {
         422: "Validation Error",

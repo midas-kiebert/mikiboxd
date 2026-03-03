@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useMemo, useState } from "react";
 
 import { DateTime } from "luxon";
 import type { MovieSummaryLoggedIn } from "shared";
@@ -25,15 +26,28 @@ type MovieCardProps = {
 
 const MAX_SHOWTIMES = 5;
 const POSTER_HEIGHT = 150;
-
+const COMPACT_BADGE_ROW_HEIGHT = 14;
+const COMPACT_BADGE_ROW_GAP = 2;
+const COMPACT_BADGE_TOP_PADDING = 3;
+const MAX_COMPACT_BADGE_ROWS = 4;
 
 const formatLastShowtime = (datetime: string) =>
   DateTime.fromISO(datetime).toFormat("ccc, LLL d");
+
+const getCompactBadgeRowsForHeight = (height: number) => {
+  const normalizedHeight = Math.max(0, height);
+  const rows = Math.floor(
+    (normalizedHeight + COMPACT_BADGE_ROW_GAP) /
+      (COMPACT_BADGE_ROW_HEIGHT + COMPACT_BADGE_ROW_GAP)
+  );
+  return Math.max(1, Math.min(MAX_COMPACT_BADGE_ROWS, rows));
+};
 
 export default function MovieCard({ movie, onPress }: MovieCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  const [friendBadgeAreaHeight, setFriendBadgeAreaHeight] = useState(0);
   // Use backend totals when available so collapsed rows still show accurate "+N more" text.
   const showtimes = movie.showtimes || [];
   const totalShowtimes = movie.total_showtimes ?? showtimes.length;
@@ -45,6 +59,11 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
 
   const friendsGoing = movie.friends_going || [];
   const friendsInterested = movie.friends_interested || [];
+  const hasAudience = friendsGoing.length > 0 || friendsInterested.length > 0;
+  const responsiveBadgeRows = useMemo(() => {
+    if (!hasAudience) return undefined;
+    return getCompactBadgeRowsForHeight(friendBadgeAreaHeight - COMPACT_BADGE_TOP_PADDING);
+  }, [friendBadgeAreaHeight, hasAudience]);
   const cardStatusStyle =
     movie.going === "GOING"
       ? styles.movieCardGoing
@@ -69,31 +88,43 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
             {movie.title}
           </ThemedText>
           <View style={styles.showtimesSection}>
-            {visibleShowtimes.length === 0 ? (
-              <ThemedText style={styles.noShowtimesText}>No upcoming showtimes</ThemedText>
-            ) : (
-              <View style={styles.showtimeList}>
-                {visibleShowtimes.map((showtime) => (
-                  <ShowtimeRow
-                    key={showtime.id}
-                    showtime={showtime}
-                    variant="compact"
-                  />
-                ))}
+            <View style={styles.showtimesBody}>
+              {visibleShowtimes.length === 0 ? (
+                <ThemedText style={styles.noShowtimesText}>No upcoming showtimes</ThemedText>
+              ) : (
+                <View style={styles.showtimeList}>
+                  {visibleShowtimes.map((showtime) => (
+                    <ShowtimeRow
+                      key={showtime.id}
+                      showtime={showtime}
+                      variant="compact"
+                    />
+                  ))}
+                </View>
+              )}
+              {movie.last_showtime_datetime && additionalShowtimes > 0 ? (
+                <ThemedText style={styles.moreShowtimesText}>
+                  +{additionalShowtimes} more (last on {formatLastShowtime(movie.last_showtime_datetime)})
+                </ThemedText>
+              ) : null}
+            </View>
+            {hasAudience ? (
+              <View
+                style={styles.friendBadgeArea}
+                onLayout={(event) => {
+                  const nextHeight = Math.floor(event.nativeEvent.layout.height);
+                  if (nextHeight === friendBadgeAreaHeight) return;
+                  setFriendBadgeAreaHeight(nextHeight);
+                }}
+              >
+                <FriendBadges
+                  friendsGoing={friendsGoing}
+                  friendsInterested={friendsInterested}
+                  variant="compact"
+                  maxRows={responsiveBadgeRows}
+                />
               </View>
-            )}
-            {movie.last_showtime_datetime && additionalShowtimes > 0 ? (
-              <ThemedText style={styles.moreShowtimesText}>
-                +{additionalShowtimes} more (last on {formatLastShowtime(movie.last_showtime_datetime)})
-              </ThemedText>
             ) : null}
-            <FriendBadges
-              friendsGoing={friendsGoing}
-              friendsInterested={friendsInterested}
-              variant="compact"
-              maxVisible={3}
-              style={styles.friendBadges}
-            />
           </View>
         </View>
       </TouchableOpacity>
@@ -138,6 +169,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingHorizontal: 10,
       paddingVertical: 8,
       justifyContent: "flex-start",
+      minHeight: 0,
     },
     movieTitle: {
       fontSize: Platform.OS === "ios" ? 14 : 15,
@@ -147,7 +179,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       marginBottom: 2,
     },
     showtimesSection: {
+      flex: 1,
+      minHeight: 0,
+    },
+    showtimesBody: {
       flexShrink: 1,
+      minHeight: 0,
     },
     showtimeList: {
       gap: 3,
@@ -156,8 +193,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 11,
       color: colors.textSecondary,
     },
-    friendBadges: {
-      marginTop: 3,
+    friendBadgeArea: {
+      flex: 1,
+      minHeight: 0,
+      overflow: "hidden",
+      paddingTop: COMPACT_BADGE_TOP_PADDING,
     },
     moreShowtimesText: {
       fontSize: 9,

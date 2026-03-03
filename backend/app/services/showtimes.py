@@ -13,6 +13,7 @@ from app.core.cinema_seating import (
 )
 from app.core.enums import GoingStatus
 from app.crud import cinema_preset as cinema_presets_crud
+from app.crud import friend_group as friend_groups_crud
 from app.crud import friendship as friendship_crud
 from app.crud import movie as movies_crud
 from app.crud import showtime as showtimes_crud
@@ -237,6 +238,77 @@ def ping_friend_for_showtime(
     return Message(message="Friend pinged successfully")
 
 
+def ping_friend_group_for_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    actor_id: UUID,
+    group_id: UUID,
+) -> Message | None:
+    group = friend_groups_crud.get_user_group_by_id(
+        session=session,
+        user_id=actor_id,
+        group_id=group_id,
+    )
+    if group is None:
+        return None
+
+    if (
+        showtimes_crud.get_showtime_by_id(
+            session=session,
+            showtime_id=showtime_id,
+        )
+        is None
+    ):
+        raise ShowtimeNotFoundError(showtime_id)
+
+    all_friend_ids = {
+        friend.id for friend in user_crud.get_friends(session=session, user_id=actor_id)
+    }
+    group_friend_ids = friend_groups_crud.get_group_member_ids(
+        session=session,
+        group_id=group_id,
+    )
+    receiver_ids = sorted(
+        {
+            friend_id
+            for friend_id in group_friend_ids
+            if friend_id in all_friend_ids and friend_id != actor_id
+        },
+        key=str,
+    )
+
+    if len(receiver_ids) == 0:
+        return Message(message="No friends in this group could be pinged.")
+
+    sent_count = 0
+    for receiver_id in receiver_ids:
+        try:
+            created_showtime = _create_showtime_ping(
+                session=session,
+                showtime_id=showtime_id,
+                sender_id=actor_id,
+                receiver_id=receiver_id,
+                require_friendship=False,
+            )
+        except (ShowtimePingAlreadySelectedError, ShowtimePingAlreadySentError):
+            continue
+
+        push_notifications.notify_user_on_showtime_ping(
+            session=session,
+            sender_id=actor_id,
+            receiver_id=receiver_id,
+            showtime=created_showtime,
+        )
+        sent_count += 1
+
+    if sent_count == 0:
+        return Message(message="No new pings were sent.")
+    if sent_count == 1:
+        return Message(message="Pinged 1 friend successfully.")
+    return Message(message=f"Pinged {sent_count} friends successfully.")
+
+
 def receive_ping_from_link(
     *,
     session: Session,
@@ -386,29 +458,72 @@ def get_showtime_visibility(
 
     friends = user_crud.get_friends(session=session, user_id=actor_id)
     all_friend_ids = sorted((friend.id for friend in friends), key=str)
-    explicit_visible_friend_ids = (
-        showtime_visibility_crud.get_visible_friend_ids_for_showtime(
-            session=session,
-            owner_id=actor_id,
-            showtime_id=showtime_id,
-        )
+    all_friend_id_set = set(all_friend_ids)
+    setting = showtime_visibility_crud.get_showtime_visibility_setting(
+        session=session,
+        owner_id=actor_id,
+        showtime_id=showtime_id,
     )
 
-    if explicit_visible_friend_ids is None:
-        visible_friend_ids = all_friend_ids
-        all_friends_selected = True
+    if setting is None:
+        favorite_group_ids = showtime_visibility_crud.get_favorite_group_ids_for_owner(
+            session=session,
+            owner_id=actor_id,
+        )
+        if len(favorite_group_ids) == 0:
+            visible_group_ids = []
+            effective_visible_friend_ids = all_friend_id_set
+        else:
+            visible_group_ids = sorted(set(favorite_group_ids), key=str)
+            visible_from_groups = (
+                showtime_visibility_crud.get_friend_ids_for_owner_groups(
+                    session=session,
+                    owner_id=actor_id,
+                    group_ids=visible_group_ids,
+                )
+            )
+            effective_visible_friend_ids = visible_from_groups & all_friend_id_set
+    elif setting.is_all_friends:
+        visible_group_ids = []
+        effective_visible_friend_ids = all_friend_id_set
     else:
-        visible_friend_ids = [
-            friend_id
-            for friend_id in all_friend_ids
-            if friend_id in explicit_visible_friend_ids
-        ]
-        all_friends_selected = len(visible_friend_ids) == len(all_friend_ids)
+        explicit_visible_friend_ids = (
+            showtime_visibility_crud.get_visible_friend_ids_for_showtime(
+                session=session,
+                owner_id=actor_id,
+                showtime_id=showtime_id,
+            )
+            or set()
+        )
+        visible_group_ids = sorted(
+            showtime_visibility_crud.get_visible_group_ids_for_showtime(
+                session=session,
+                owner_id=actor_id,
+                showtime_id=showtime_id,
+            ),
+            key=str,
+        )
+        visible_from_groups = showtime_visibility_crud.get_friend_ids_for_owner_groups(
+            session=session,
+            owner_id=actor_id,
+            group_ids=visible_group_ids,
+        )
+        effective_visible_friend_ids = (
+            explicit_visible_friend_ids | visible_from_groups
+        ) & all_friend_id_set
+
+    visible_friend_ids = [
+        friend_id
+        for friend_id in all_friend_ids
+        if friend_id in effective_visible_friend_ids
+    ]
+    all_friends_selected = len(visible_friend_ids) == len(all_friend_ids)
 
     return ShowtimeVisibilityPublic(
         showtime_id=showtime_id,
         movie_id=showtime.movie_id,
         visible_friend_ids=visible_friend_ids,
+        visible_group_ids=visible_group_ids,
         all_friends_selected=all_friends_selected,
     )
 
@@ -419,6 +534,7 @@ def update_showtime_visibility(
     showtime_id: int,
     actor_id: UUID,
     visible_friend_ids: list[UUID],
+    visible_group_ids: list[UUID],
 ) -> ShowtimeVisibilityPublic:
     showtime = showtimes_crud.get_showtime_by_id(
         session=session, showtime_id=showtime_id
@@ -429,6 +545,7 @@ def update_showtime_visibility(
     friends = user_crud.get_friends(session=session, user_id=actor_id)
     all_friend_ids = {friend.id for friend in friends}
     normalized_visible_friend_ids = sorted(set(visible_friend_ids), key=str)
+    normalized_visible_group_ids = sorted(set(visible_group_ids), key=str)
     invalid_friend_ids = [
         friend_id
         for friend_id in normalized_visible_friend_ids
@@ -437,12 +554,43 @@ def update_showtime_visibility(
     if invalid_friend_ids:
         raise ValueError("Visibility list contains users who are not your friends.")
 
-    showtime_visibility_crud.set_visible_friend_ids_for_showtime(
+    existing_group_ids = friend_groups_crud.get_existing_user_group_ids(
+        session=session,
+        user_id=actor_id,
+        group_ids=normalized_visible_group_ids,
+    )
+    invalid_group_ids = [
+        group_id
+        for group_id in normalized_visible_group_ids
+        if group_id not in existing_group_ids
+    ]
+    if invalid_group_ids:
+        raise ValueError("Visibility list contains friend groups you do not own.")
+
+    favorite_group_ids = showtime_visibility_crud.get_favorite_group_ids_for_owner(
+        session=session,
+        owner_id=actor_id,
+    )
+    if len(favorite_group_ids) == 0:
+        default_visible_friend_ids = all_friend_ids
+    else:
+        default_visible_friend_ids = (
+            showtime_visibility_crud.get_friend_ids_for_owner_groups(
+                session=session,
+                owner_id=actor_id,
+                group_ids=favorite_group_ids,
+            )
+            & all_friend_ids
+        )
+
+    showtime_visibility_crud.set_visibility_for_showtime(
         session=session,
         owner_id=actor_id,
         showtime_id=showtime_id,
         visible_friend_ids=normalized_visible_friend_ids,
+        visible_group_ids=normalized_visible_group_ids,
         all_friend_ids=all_friend_ids,
+        default_visible_friend_ids=default_visible_friend_ids,
         now=now_amsterdam_naive(),
     )
     session.commit()

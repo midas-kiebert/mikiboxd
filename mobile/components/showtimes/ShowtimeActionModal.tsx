@@ -16,25 +16,31 @@ import {
 } from "react-native";
 import { BlurView } from "expo-blur";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import {
+  MeService,
   ShowtimesService,
+  type FriendGroupPublic,
   type GoingStatus,
   type ShowtimeInMovieLoggedIn,
   type ShowtimeLoggedIn,
 } from "shared";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
 
+import FriendBadges from "@/components/badges/FriendBadges";
 import { ThemedText } from "@/components/themed-text";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 import { formatSeatLabel } from "@/utils/seat-label";
+import { triggerLongPressHaptic } from "@/utils/long-press";
 import { buildShowtimePingUrl } from "@/constants/ping-link";
 
 type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
 type DetailPanel = "none" | "ping" | "visibility";
+type VisibilityButtonState = "all" | "none" | "partial";
 
 type ShowtimeActionModalProps = {
   visible: boolean;
@@ -48,7 +54,7 @@ type ShowtimeActionModalProps = {
   onClose: () => void;
 };
 
-const DETAIL_PANEL_HEIGHT = 360;
+const DETAIL_PANEL_HEIGHT = 430;
 const MODAL_OPEN_DURATION_MS = 200;
 const DETAIL_PANEL_OPEN_DURATION_MS = 440;
 const DETAIL_PANEL_CLOSE_DURATION_MS = 240;
@@ -114,7 +120,6 @@ const validateSeatFieldValue = (
   return null;
 };
 
-
 export default function ShowtimeActionModal({
   visible,
   showtime,
@@ -137,12 +142,14 @@ export default function ShowtimeActionModal({
   const [activeDetailPanel, setActiveDetailPanel] = useState<DetailPanel>("none");
   const [renderedDetailPanel, setRenderedDetailPanel] = useState<DetailPanel>("none");
   const activeDetailPanelRef = useRef<DetailPanel>("none");
+  const suppressVisibilityPressRef = useRef(false);
   const [pingSearchQuery, setPingSearchQuery] = useState("");
   const [visibilitySearchQuery, setVisibilitySearchQuery] = useState("");
   const [seatRowDraft, setSeatRowDraft] = useState("");
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
   const [visibleFriendIdsDraft, setVisibleFriendIdsDraft] = useState<Set<string>>(new Set());
+  const [visibleGroupIdsDraft, setVisibleGroupIdsDraft] = useState<Set<string>>(new Set());
 
   const selectedShowtimeId = showtime?.id ?? null;
   const { data: friends } = useFetchFriends({ enabled: visible && selectedShowtimeId !== null });
@@ -172,6 +179,29 @@ export default function ShowtimeActionModal({
     gcTime: 5 * 60 * 1000,
   });
 
+  const { data: friendGroups = [], isFetching: isFetchingFriendGroups } = useQuery<
+    FriendGroupPublic[],
+    Error
+  >({
+    queryKey: ["friend-groups"],
+    enabled: visible && selectedShowtimeId !== null,
+    queryFn: () => MeService.getFriendGroups(),
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
+  });
+  const friendIdsSet = useMemo(
+    () => new Set((friends ?? []).map((friend) => friend.id)),
+    [friends]
+  );
+  const friendGroupsWithCurrentMembers = useMemo(
+    () =>
+      friendGroups.map((group) => ({
+        ...group,
+        friend_ids: group.friend_ids.filter((friendId) => friendIdsSet.has(friendId)),
+      })),
+    [friendGroups, friendIdsSet]
+  );
+
   const { mutate: pingFriendForShowtime, isPending: isPingingFriend } = useMutation({
     mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
       ShowtimesService.pingFriendForShowtime({
@@ -198,15 +228,39 @@ export default function ShowtimeActionModal({
     },
   });
 
+  const { mutate: pingFriendGroupForShowtime, isPending: isPingingFriendGroup } = useMutation({
+    mutationFn: ({ showtimeId, groupId }: { showtimeId: number; groupId: string }) =>
+      ShowtimesService.pingFriendGroupForShowtime({
+        showtimeId,
+        groupId,
+      }),
+    onSuccess: (_message, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["showtimes", "pingedFriends", variables.showtimeId] });
+    },
+    onError: (error) => {
+      console.error("Error pinging group for showtime:", error);
+      Alert.alert("Error", "Could not ping this group.");
+    },
+  });
+
   const { mutate: updateShowtimeVisibility, isPending: isUpdatingShowtimeVisibility } = useMutation({
-    mutationFn: ({ showtimeId, visibleFriendIds }: { showtimeId: number; visibleFriendIds: string[] }) =>
+    mutationFn: ({
+      showtimeId,
+      visibleFriendIds,
+      visibleGroupIds,
+    }: {
+      showtimeId: number;
+      visibleFriendIds: string[];
+      visibleGroupIds: string[];
+    }) =>
       ShowtimesService.updateShowtimeVisibility({
         showtimeId,
-        requestBody: { visible_friend_ids: visibleFriendIds },
+        requestBody: { visible_friend_ids: visibleFriendIds, visible_group_ids: visibleGroupIds },
       }),
     onSuccess: (updatedVisibility, variables) => {
       queryClient.setQueryData(["showtimes", "visibility", variables.showtimeId], updatedVisibility);
       setVisibleFriendIdsDraft(new Set(updatedVisibility.visible_friend_ids));
+      setVisibleGroupIdsDraft(new Set(updatedVisibility.visible_group_ids ?? []));
       queryClient.invalidateQueries({ queryKey: ["showtimes"] });
       queryClient.invalidateQueries({ queryKey: ["movie"] });
       queryClient.invalidateQueries({ queryKey: ["movies"] });
@@ -230,6 +284,7 @@ export default function ShowtimeActionModal({
       setSeatNumberDraft("");
       setIsSeatDialogVisible(false);
       setVisibleFriendIdsDraft(new Set());
+      setVisibleGroupIdsDraft(new Set());
       return;
     }
 
@@ -261,7 +316,29 @@ export default function ShowtimeActionModal({
       return;
     }
     setVisibleFriendIdsDraft(new Set(showtimeVisibility.visible_friend_ids));
+    setVisibleGroupIdsDraft(new Set(showtimeVisibility.visible_group_ids ?? []));
   }, [showtimeVisibility]);
+
+  useEffect(() => {
+    setVisibleFriendIdsDraft((previous) => {
+      const nextIds = Array.from(previous).filter((friendId) => friendIdsSet.has(friendId));
+      if (nextIds.length === previous.size) {
+        return previous;
+      }
+      return new Set(nextIds);
+    });
+  }, [friendIdsSet]);
+
+  useEffect(() => {
+    const groupIds = new Set(friendGroupsWithCurrentMembers.map((group) => group.id));
+    setVisibleGroupIdsDraft((previous) => {
+      const nextIds = Array.from(previous).filter((groupId) => groupIds.has(groupId));
+      if (nextIds.length === previous.size) {
+        return previous;
+      }
+      return new Set(nextIds);
+    });
+  }, [friendGroupsWithCurrentMembers]);
 
   useEffect(() => {
     activeDetailPanelRef.current = activeDetailPanel;
@@ -331,6 +408,16 @@ export default function ShowtimeActionModal({
     });
   };
 
+  const handlePingGroup = (groupId: string) => {
+    if (!showtime || isPingingFriendGroup) {
+      return;
+    }
+    pingFriendGroupForShowtime({
+      showtimeId: showtime.id,
+      groupId,
+    });
+  };
+
   const handleSharePingLink = async () => {
     if (!showtime || !currentUser?.id) {
       Alert.alert("Error", "Could not build ping link.");
@@ -348,7 +435,7 @@ export default function ShowtimeActionModal({
     const cinemaLabel = showtime.cinema?.name?.trim() || "the cinema";
     try {
       await Share.share({
-        message: `Come see ${movieLabel} at ${dateTimeLabel} in ${cinemaLabel}: ${pingUrl}`,
+        message: `Come see ${movieLabel} at ${dateTimeLabel} in ${cinemaLabel}`,
         url: pingUrl,
       });
     } catch (error) {
@@ -357,7 +444,38 @@ export default function ShowtimeActionModal({
     }
   };
 
+  const selectedGroupMemberIds = useMemo(() => {
+    const memberIds = new Set<string>();
+    for (const group of friendGroupsWithCurrentMembers) {
+      if (!visibleGroupIdsDraft.has(group.id)) {
+        continue;
+      }
+      for (const friendId of group.friend_ids) {
+        memberIds.add(friendId);
+      }
+    }
+    return memberIds;
+  }, [friendGroupsWithCurrentMembers, visibleGroupIdsDraft]);
+
+  const effectiveVisibleFriendIds = useMemo(() => {
+    const effectiveIds = new Set(visibleFriendIdsDraft);
+    for (const friendId of selectedGroupMemberIds) {
+      effectiveIds.add(friendId);
+    }
+    return effectiveIds;
+  }, [selectedGroupMemberIds, visibleFriendIdsDraft]);
+
   const handleToggleVisibleFriend = (friendId: string) => {
+    const includedViaSelectedGroup =
+      selectedGroupMemberIds.has(friendId) && !visibleFriendIdsDraft.has(friendId);
+    if (includedViaSelectedGroup) {
+      Alert.alert(
+        "Included via group",
+        "This friend is included by a selected group. Remove that group to hide this friend."
+      );
+      return;
+    }
+
     setVisibleFriendIdsDraft((previous) => {
       const next = new Set(previous);
       if (next.has(friendId)) {
@@ -369,13 +487,52 @@ export default function ShowtimeActionModal({
     });
   };
 
+  const handleToggleVisibleGroup = (groupId: string) => {
+    setVisibleGroupIdsDraft((previous) => {
+      const next = new Set(previous);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+
   const handleSelectAllVisibility = () => {
     const allFriendIds = (friends ?? []).map((friend) => friend.id);
     setVisibleFriendIdsDraft(new Set(allFriendIds));
+    setVisibleGroupIdsDraft(new Set());
   };
 
   const handleDeselectAllVisibility = () => {
     setVisibleFriendIdsDraft(new Set());
+    setVisibleGroupIdsDraft(new Set());
+  };
+
+  const handlePressVisibilityButton = () => {
+    if (suppressVisibilityPressRef.current) {
+      suppressVisibilityPressRef.current = false;
+      return;
+    }
+    handleToggleDetailPanel("visibility");
+  };
+
+  const handleLongPressVisibilityButton = () => {
+    triggerLongPressHaptic();
+    suppressVisibilityPressRef.current = true;
+    if (totalFriendCount > 0 && selectedVisibilityCount === totalFriendCount) {
+      handleDeselectAllVisibility();
+      return;
+    }
+    handleSelectAllVisibility();
+  };
+
+  const handleVisibilityPressOut = () => {
+    if (!suppressVisibilityPressRef.current) return;
+    requestAnimationFrame(() => {
+      suppressVisibilityPressRef.current = false;
+    });
   };
 
   const hasVisibilityChanges = useMemo(() => {
@@ -394,8 +551,19 @@ export default function ShowtimeActionModal({
       }
     }
 
+    const savedVisibleGroupIds = new Set(showtimeVisibility.visible_group_ids ?? []);
+    if (savedVisibleGroupIds.size !== visibleGroupIdsDraft.size) {
+      return true;
+    }
+
+    for (const groupId of visibleGroupIdsDraft) {
+      if (!savedVisibleGroupIds.has(groupId)) {
+        return true;
+      }
+    }
+
     return false;
-  }, [showtimeVisibility, visibleFriendIdsDraft]);
+  }, [showtimeVisibility, visibleFriendIdsDraft, visibleGroupIdsDraft]);
 
   const normalizedSeatRowDraft = seatRowDraft.trim() || null;
   const normalizedSeatNumberDraft = seatNumberDraft.trim() || null;
@@ -437,6 +605,7 @@ export default function ShowtimeActionModal({
       updateShowtimeVisibility({
         showtimeId: showtime.id,
         visibleFriendIds: Array.from(visibleFriendIdsDraft),
+        visibleGroupIds: Array.from(visibleGroupIdsDraft),
       });
     }
 
@@ -539,28 +708,58 @@ export default function ShowtimeActionModal({
       .map((friend) => ({
         id: friend.id,
         label: friend.display_name?.trim() || "Friend",
+        isSelected: effectiveVisibleFriendIds.has(friend.id),
+        isIncludedByGroup:
+          selectedGroupMemberIds.has(friend.id) && !visibleFriendIdsDraft.has(friend.id),
       }))
       .filter((friend) => (normalizedQuery ? friend.label.toLowerCase().includes(normalizedQuery) : true))
       .sort((left, right) => left.label.localeCompare(right.label));
-  }, [friends, visibilitySearchQuery]);
+  }, [effectiveVisibleFriendIds, friends, selectedGroupMemberIds, visibilitySearchQuery, visibleFriendIdsDraft]);
+
+  const groupsForVisibility = useMemo(
+    () => [...friendGroupsWithCurrentMembers].sort((left, right) => left.name.localeCompare(right.name)),
+    [friendGroupsWithCurrentMembers]
+  );
 
   const totalFriendCount = friends?.length ?? 0;
   const selectedVisibilityCount = (friends ?? []).reduce(
-    (count, friend) => count + (visibleFriendIdsDraft.has(friend.id) ? 1 : 0),
+    (count, friend) => count + (effectiveVisibleFriendIds.has(friend.id) ? 1 : 0),
     0
   );
-  const hiddenVisibilityCount = Math.max(0, totalFriendCount - selectedVisibilityCount);
-  const canEvaluateVisibilityAudience =
-    totalFriendCount > 0 && (!isFetchingShowtimeVisibility || Boolean(showtimeVisibility));
-  const visibilityButtonTone: "default" | "shown" | "hidden" = !canEvaluateVisibilityAudience
-    ? "default"
-    : selectedVisibilityCount > 0
-      ? "shown"
-      : "hidden";
-  const visibilityButtonSummaryLabel =
-    totalFriendCount > 0
-      ? `${selectedVisibilityCount} shown • ${hiddenVisibilityCount} hidden`
-      : "No friends";
+  const selectedVisibilityGroups = useMemo(
+    () => groupsForVisibility.filter((group) => visibleGroupIdsDraft.has(group.id)),
+    [groupsForVisibility, visibleGroupIdsDraft]
+  );
+  const selectedVisibilityGroupLabel = useMemo(() => {
+    if (selectedVisibilityGroups.length === 0) {
+      return null;
+    }
+    if (selectedVisibilityGroups.length === 1) {
+      return selectedVisibilityGroups[0].name;
+    }
+    return `${selectedVisibilityGroups[0].name} +${selectedVisibilityGroups.length - 1}`;
+  }, [selectedVisibilityGroups]);
+  const visibilityButtonState: VisibilityButtonState = useMemo(() => {
+    if (totalFriendCount > 0 && selectedVisibilityCount === totalFriendCount) {
+      return "all";
+    }
+    if (selectedVisibilityCount === 0) {
+      return "none";
+    }
+    return "partial";
+  }, [selectedVisibilityCount, totalFriendCount]);
+  const visibilityButtonIconLabel =
+    visibilityButtonState === "partial"
+      ? (selectedVisibilityGroupLabel ?? `${selectedVisibilityCount}/${totalFriendCount}`)
+      : null;
+  const visibilityButtonIconColor =
+    visibilityButtonState === "all"
+      ? colors.green.secondary
+      : visibilityButtonState === "partial"
+        ? colors.orange.secondary
+        : colors.textSecondary;
+  const friendsGoing = showtime?.friends_going ?? [];
+  const friendsInterested = showtime?.friends_interested ?? [];
 
   const resolvedMovieTitle = useMemo(() => {
     const fromProp = movieTitle?.trim();
@@ -659,6 +858,15 @@ export default function ShowtimeActionModal({
               {showtime.cinema.name}
             </ThemedText>
           ) : null}
+          {friendsGoing.length > 0 || friendsInterested.length > 0 ? (
+            <FriendBadges
+              friendsGoing={friendsGoing}
+              friendsInterested={friendsInterested}
+              variant="compact"
+              maxVisible={12}
+              style={styles.audienceBadges}
+            />
+          ) : null}
 
           <View style={styles.statusButtons}>
             <TouchableOpacity
@@ -700,7 +908,6 @@ export default function ShowtimeActionModal({
               </ThemedText>
             </TouchableOpacity>
           </View>
-
           {renderedDetailPanel === "ping" ? (
             <Animated.View style={[styles.detailPanelAnimatedContainer, detailPanelAnimatedStyle]}>
               <View style={styles.detailPanel}>
@@ -718,6 +925,48 @@ export default function ShowtimeActionModal({
                       color={!showtime || !currentUser?.id ? colors.textSecondary : colors.tint}
                     />
                   </TouchableOpacity>
+                </View>
+                <View style={styles.groupPingSection}>
+                  <ThemedText style={styles.groupPingSectionTitle}>Ping saved groups</ThemedText>
+                  {isFetchingFriendGroups && friendGroupsWithCurrentMembers.length === 0 ? (
+                    <ActivityIndicator size="small" color={colors.tint} />
+                  ) : friendGroupsWithCurrentMembers.length === 0 ? (
+                    <ThemedText style={styles.groupPingEmptyText}>No groups saved.</ThemedText>
+                  ) : (
+                    <View style={styles.groupPingList}>
+                      {friendGroupsWithCurrentMembers
+                        .slice()
+                        .sort((left, right) => left.name.localeCompare(right.name))
+                        .map((group) => {
+                          const canPingGroup = group.friend_ids.length > 0 && !isPingingFriendGroup;
+                          return (
+                            <View key={group.id} style={styles.groupPingRow}>
+                              <View style={styles.groupPingIdentity}>
+                                <View style={styles.groupPingNameRow}>
+                                  <ThemedText style={styles.groupPingName}>{group.name}</ThemedText>
+                                  {group.is_favorite ? (
+                                    <MaterialIcons name="star" size={13} color={colors.yellow.secondary} />
+                                  ) : null}
+                                </View>
+                                <ThemedText style={styles.groupPingMeta}>
+                                  {group.friend_ids.length} friend{group.friend_ids.length === 1 ? "" : "s"}
+                                </ThemedText>
+                              </View>
+                              <TouchableOpacity
+                                style={[styles.pingButton, !canPingGroup && styles.pingButtonDisabled]}
+                                onPress={() => handlePingGroup(group.id)}
+                                disabled={!canPingGroup}
+                                activeOpacity={0.8}
+                              >
+                                <ThemedText style={[styles.pingButtonText, !canPingGroup && styles.pingButtonTextDisabled]}>
+                                  Ping Group
+                                </ThemedText>
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })}
+                    </View>
+                  )}
                 </View>
                 <View style={styles.detailSearchRow}>
                   <MaterialIcons name="search" size={15} color={colors.textSecondary} />
@@ -798,6 +1047,49 @@ export default function ShowtimeActionModal({
                     <ThemedText style={styles.visibilityActionText}>Deselect all</ThemedText>
                   </TouchableOpacity>
                 </View>
+                <View style={styles.visibilityGroupsSection}>
+                  <ThemedText style={styles.visibilityGroupsTitle}>Groups</ThemedText>
+                  {isFetchingFriendGroups && friendGroups.length === 0 ? (
+                    <ActivityIndicator size="small" color={colors.tint} />
+                  ) : groupsForVisibility.length === 0 ? (
+                    <ThemedText style={styles.visibilityGroupsEmptyText}>No groups saved.</ThemedText>
+                  ) : (
+                    <ScrollView
+                      style={styles.visibilityGroupsScroll}
+                      contentContainerStyle={styles.visibilityGroupsScrollContent}
+                      nestedScrollEnabled
+                    >
+                      {groupsForVisibility.map((group) => {
+                        const isSelected = visibleGroupIdsDraft.has(group.id);
+                        return (
+                          <TouchableOpacity
+                            key={group.id}
+                            style={styles.visibilityGroupRow}
+                            onPress={() => handleToggleVisibleGroup(group.id)}
+                            activeOpacity={0.8}
+                          >
+                            <View style={styles.visibilityGroupIdentity}>
+                              <View style={styles.visibilityGroupNameRow}>
+                                <ThemedText style={styles.visibilityGroupName}>{group.name}</ThemedText>
+                                {group.is_favorite ? (
+                                  <MaterialIcons name="star" size={12} color={colors.yellow.secondary} />
+                                ) : null}
+                              </View>
+                              <ThemedText style={styles.visibilityGroupMeta}>
+                                {group.friend_ids.length} friend{group.friend_ids.length === 1 ? "" : "s"}
+                              </ThemedText>
+                            </View>
+                            <MaterialIcons
+                              name={isSelected ? "check-box" : "check-box-outline-blank"}
+                              size={20}
+                              color={isSelected ? colors.tint : colors.textSecondary}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
                 <View style={styles.detailSearchRow}>
                   <MaterialIcons name="search" size={15} color={colors.textSecondary} />
                   <TextInput
@@ -820,7 +1112,6 @@ export default function ShowtimeActionModal({
                   ) : (
                     <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} nestedScrollEnabled>
                       {friendsForVisibility.map((friend) => {
-                        const isSelected = visibleFriendIdsDraft.has(friend.id);
                         return (
                           <TouchableOpacity
                             key={friend.id}
@@ -828,11 +1119,22 @@ export default function ShowtimeActionModal({
                             onPress={() => handleToggleVisibleFriend(friend.id)}
                             activeOpacity={0.8}
                           >
-                            <ThemedText style={styles.visibilityFriendName}>{friend.label}</ThemedText>
+                            <View style={styles.visibilityFriendIdentity}>
+                              <ThemedText style={styles.visibilityFriendName}>{friend.label}</ThemedText>
+                              {friend.isIncludedByGroup ? (
+                                <ThemedText style={styles.visibilityFriendMeta}>Included via group</ThemedText>
+                              ) : null}
+                            </View>
                             <MaterialIcons
-                              name={isSelected ? "check-box" : "check-box-outline-blank"}
+                              name={
+                                friend.isSelected
+                                  ? friend.isIncludedByGroup
+                                    ? "indeterminate-check-box"
+                                    : "check-box"
+                                  : "check-box-outline-blank"
+                              }
                               size={20}
-                              color={isSelected ? colors.tint : colors.textSecondary}
+                              color={friend.isSelected ? colors.tint : colors.textSecondary}
                             />
                           </TouchableOpacity>
                         );
@@ -853,7 +1155,7 @@ export default function ShowtimeActionModal({
             >
               <MaterialIcons
                 name="confirmation-number"
-                size={16}
+                size={18}
                 color={!hasTicketLink ? colors.textSecondary : colors.tint}
               />
               <ThemedText style={[styles.actionButtonText, !hasTicketLink && styles.actionButtonTextDisabled]}>
@@ -897,8 +1199,7 @@ export default function ShowtimeActionModal({
 
             <TouchableOpacity
               style={[styles.actionButton, activeDetailPanel === "ping" && styles.actionButtonActive]}
-              onPressIn={() => handleToggleDetailPanel("ping")}
-              delayPressIn={0}
+              onPress={() => handleToggleDetailPanel("ping")}
               activeOpacity={0.8}
             >
               <MaterialIcons
@@ -919,46 +1220,54 @@ export default function ShowtimeActionModal({
             <TouchableOpacity
               style={[
                 styles.actionButton,
-                activeDetailPanel === "visibility" && styles.actionButtonActive,
-                visibilityButtonTone === "shown" && styles.actionButtonVisibilityShown,
-                visibilityButtonTone === "hidden" && styles.actionButtonVisibilityHidden,
+                visibilityButtonState === "all"
+                  ? styles.actionButtonVisibilityAll
+                  : visibilityButtonState === "partial"
+                    ? styles.actionButtonVisibilityPartial
+                    : styles.actionButtonVisibilityNone,
+                activeDetailPanel === "visibility" && styles.actionButtonVisibilityPanelActive,
               ]}
-              onPressIn={() => handleToggleDetailPanel("visibility")}
-              delayPressIn={0}
+              onPress={handlePressVisibilityButton}
+              onLongPress={handleLongPressVisibilityButton}
+              onPressOut={handleVisibilityPressOut}
               activeOpacity={0.8}
             >
-              <MaterialIcons
-                name="visibility"
-                size={16}
-                color={
-                  visibilityButtonTone === "shown"
-                    ? colors.green.secondary
-                    : visibilityButtonTone === "hidden"
-                      ? colors.red.secondary
-                      : activeDetailPanel === "visibility"
-                        ? colors.tint
-                        : colors.textSecondary
-                }
-              />
+              <View style={styles.actionButtonIconSlot}>
+                {visibilityButtonState === "none" ? (
+                  <MaterialCommunityIcons
+                    name="incognito"
+                    size={16}
+                    color={visibilityButtonIconColor}
+                  />
+                ) : visibilityButtonIconLabel ? (
+                  <ThemedText
+                    style={[
+                      styles.actionButtonIconLabel,
+                      { color: visibilityButtonIconColor },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {visibilityButtonIconLabel}
+                  </ThemedText>
+                ) : (
+                  <MaterialIcons
+                    name="visibility"
+                    size={16}
+                    color={visibilityButtonIconColor}
+                  />
+                )}
+              </View>
               <ThemedText
                 style={[
                   styles.actionButtonText,
-                  activeDetailPanel === "visibility" && styles.actionButtonTextActive,
-                  visibilityButtonTone === "shown" && styles.actionButtonTextVisibilityShown,
-                  visibilityButtonTone === "hidden" && styles.actionButtonTextVisibilityHidden,
+                  visibilityButtonState === "all"
+                    ? styles.actionButtonTextVisibilityAll
+                    : visibilityButtonState === "partial"
+                      ? styles.actionButtonTextVisibilityPartial
+                      : styles.actionButtonTextVisibilityNone,
                 ]}
               >
                 Visibility
-              </ThemedText>
-              <ThemedText
-                style={[
-                  styles.actionButtonSubText,
-                  visibilityButtonTone === "shown" && styles.actionButtonSubTextVisibilityShown,
-                  visibilityButtonTone === "hidden" && styles.actionButtonSubTextVisibilityHidden,
-                ]}
-                numberOfLines={1}
-              >
-                {visibilityButtonSummaryLabel}
               </ThemedText>
             </TouchableOpacity>
           </View>
@@ -1083,6 +1392,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 12,
       color: colors.textSecondary,
     },
+    audienceBadges: {
+      marginTop: 1,
+    },
     statusButtons: {
       gap: 8,
       marginTop: 2,
@@ -1139,6 +1451,21 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingVertical: 7,
       gap: 2,
     },
+    actionButtonVisibilityAll: {
+      borderColor: colors.green.secondary,
+      backgroundColor: colors.green.primary,
+    },
+    actionButtonVisibilityPartial: {
+      borderColor: colors.orange.secondary,
+      backgroundColor: colors.orange.primary,
+    },
+    actionButtonVisibilityNone: {
+      borderColor: colors.divider,
+      backgroundColor: colors.pillBackground,
+    },
+    actionButtonVisibilityPanelActive: {
+      borderWidth: 2,
+    },
     actionButtonActive: {
       borderColor: colors.tint,
       backgroundColor: colors.cardBackground,
@@ -1146,14 +1473,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     actionButtonSeatSet: {
       borderColor: colors.green.secondary,
       backgroundColor: colors.green.primary,
-    },
-    actionButtonVisibilityShown: {
-      borderColor: colors.green.secondary,
-      backgroundColor: colors.green.primary,
-    },
-    actionButtonVisibilityHidden: {
-      borderColor: colors.red.secondary,
-      backgroundColor: colors.red.primary,
     },
     actionButtonDisabled: {
       borderColor: colors.divider,
@@ -1164,29 +1483,34 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "700",
       color: colors.textSecondary,
     },
+    actionButtonTextVisibilityAll: {
+      color: colors.green.secondary,
+    },
+    actionButtonTextVisibilityPartial: {
+      color: colors.orange.secondary,
+    },
+    actionButtonTextVisibilityNone: {
+      color: colors.textSecondary,
+    },
+    actionButtonIconLabel: {
+      fontSize: 9,
+      lineHeight: 10,
+      fontWeight: "700",
+      maxWidth: "100%",
+      textAlign: "center",
+    },
+    actionButtonIconSlot: {
+      height: 16,
+      minWidth: 16,
+      width: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+    },
     actionButtonTextActive: {
       color: colors.tint,
     },
     actionButtonTextSeatSet: {
       color: colors.green.secondary,
-    },
-    actionButtonTextVisibilityShown: {
-      color: colors.green.secondary,
-    },
-    actionButtonTextVisibilityHidden: {
-      color: colors.red.secondary,
-    },
-    actionButtonSubText: {
-      fontSize: 9,
-      fontWeight: "600",
-      color: colors.textSecondary,
-      lineHeight: 11,
-    },
-    actionButtonSubTextVisibilityShown: {
-      color: colors.green.secondary,
-    },
-    actionButtonSubTextVisibilityHidden: {
-      color: colors.red.secondary,
     },
     actionButtonTextDisabled: {
       color: colors.textSecondary,
@@ -1265,6 +1589,52 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 12,
       color: colors.textSecondary,
     },
+    groupPingSection: {
+      gap: 6,
+    },
+    groupPingSectionTitle: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
+    groupPingEmptyText: {
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
+    groupPingList: {
+      gap: 6,
+    },
+    groupPingRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+    },
+    groupPingIdentity: {
+      flex: 1,
+      justifyContent: "center",
+      gap: 1,
+    },
+    groupPingNameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+    },
+    groupPingName: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    groupPingMeta: {
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
     pingRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -1334,6 +1704,61 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "600",
       color: colors.textSecondary,
     },
+    visibilityGroupsSection: {
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      padding: 8,
+      gap: 6,
+      maxHeight: 110,
+    },
+    visibilityGroupsTitle: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
+    visibilityGroupsEmptyText: {
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
+    visibilityGroupsScroll: {
+      flexGrow: 0,
+    },
+    visibilityGroupsScrollContent: {
+      gap: 6,
+    },
+    visibilityGroupRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.background,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+    },
+    visibilityGroupIdentity: {
+      flex: 1,
+      justifyContent: "center",
+      gap: 1,
+    },
+    visibilityGroupNameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+    },
+    visibilityGroupName: {
+      fontSize: 12,
+      color: colors.text,
+      fontWeight: "600",
+    },
+    visibilityGroupMeta: {
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
     visibilityRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -1346,10 +1771,18 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingHorizontal: 10,
       paddingVertical: 8,
     },
-    visibilityFriendName: {
+    visibilityFriendIdentity: {
       flex: 1,
+      justifyContent: "center",
+      gap: 1,
+    },
+    visibilityFriendName: {
       fontSize: 13,
       color: colors.text,
+    },
+    visibilityFriendMeta: {
+      fontSize: 11,
+      color: colors.textSecondary,
     },
     seatEditorRow: {
       flexDirection: "row",

@@ -1,5 +1,6 @@
 import asyncio
 from types import SimpleNamespace
+from typing import Any
 
 from app.scraping import get_showtimes, scrape
 
@@ -89,10 +90,11 @@ def test_process_cineville_movie_falls_back_to_cineville_runtime_when_tmdb_missi
         fake_get_showtimes_json_async,
     )
 
+    session: Any = object()
     prepared_movie, errors = asyncio.run(
         scrape._process_cineville_movie_async(
             movie_data=_movie_data(duration=75),
-            session=object(),
+            session=session,
         )
     )
 
@@ -154,10 +156,11 @@ def test_process_cineville_movie_prefers_tmdb_runtime_over_cineville(
         fake_get_showtimes_json_async,
     )
 
+    session: Any = object()
     prepared_movie, errors = asyncio.run(
         scrape._process_cineville_movie_async(
             movie_data=_movie_data(duration=75),
-            session=object(),
+            session=session,
         )
     )
 

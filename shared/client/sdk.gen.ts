@@ -49,6 +49,15 @@ import type {
   MeSetFavoriteCinemaPresetResponse,
   MeDeleteCinemaPresetData,
   MeDeleteCinemaPresetResponse,
+  MeGetFriendGroupsResponse,
+  MeSaveFriendGroupData,
+  MeSaveFriendGroupResponse,
+  MeGetFavoriteFriendGroupResponse,
+  MeClearFavoriteFriendGroupResponse,
+  MeSetFavoriteFriendGroupData,
+  MeSetFavoriteFriendGroupResponse,
+  MeDeleteFriendGroupData,
+  MeDeleteFriendGroupResponse,
   MeUpdatePasswordMeData,
   MeUpdatePasswordMeResponse,
   MeGetMyShowtimesData,
@@ -78,6 +87,8 @@ import type {
   ShowtimesUpdateShowtimeSelectionResponse,
   ShowtimesPingFriendForShowtimeData,
   ShowtimesPingFriendForShowtimeResponse,
+  ShowtimesPingFriendGroupForShowtimeData,
+  ShowtimesPingFriendGroupForShowtimeResponse,
   ShowtimesReceivePingFromLinkData,
   ShowtimesReceivePingFromLinkResponse,
   ShowtimesGetPingedFriendIdsForShowtimeData,
@@ -613,6 +624,107 @@ export class MeService {
   }
 
   /**
+   * Get Friend Groups
+   * @returns FriendGroupPublic Successful Response
+   * @throws ApiError
+   */
+  public static getFriendGroups(): CancelablePromise<MeGetFriendGroupsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/friend-groups",
+    })
+  }
+
+  /**
+   * Save Friend Group
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns FriendGroupPublic Successful Response
+   * @throws ApiError
+   */
+  public static saveFriendGroup(
+    data: MeSaveFriendGroupData,
+  ): CancelablePromise<MeSaveFriendGroupResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/friend-groups",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Favorite Friend Group
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static getFavoriteFriendGroup(): CancelablePromise<MeGetFavoriteFriendGroupResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/friend-groups/favorite",
+    })
+  }
+
+  /**
+   * Clear Favorite Friend Group
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static clearFavoriteFriendGroup(): CancelablePromise<MeClearFavoriteFriendGroupResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/friend-groups/favorite",
+    })
+  }
+
+  /**
+   * Set Favorite Friend Group
+   * @param data The data for the request.
+   * @param data.groupId
+   * @returns FriendGroupPublic Successful Response
+   * @throws ApiError
+   */
+  public static setFavoriteFriendGroup(
+    data: MeSetFavoriteFriendGroupData,
+  ): CancelablePromise<MeSetFavoriteFriendGroupResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/me/friend-groups/{group_id}/favorite",
+      path: {
+        group_id: data.groupId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Delete Friend Group
+   * @param data The data for the request.
+   * @param data.groupId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static deleteFriendGroup(
+    data: MeDeleteFriendGroupData,
+  ): CancelablePromise<MeDeleteFriendGroupResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/friend-groups/{group_id}",
+      path: {
+        group_id: data.groupId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Update Password Me
    * @param data The data for the request.
    * @param data.requestBody
@@ -1059,6 +1171,30 @@ export class ShowtimesService {
       path: {
         showtime_id: data.showtimeId,
         friend_id: data.friendId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Ping Friend Group For Showtime
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @param data.groupId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static pingFriendGroupForShowtime(
+    data: ShowtimesPingFriendGroupForShowtimeData,
+  ): CancelablePromise<ShowtimesPingFriendGroupForShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/showtimes/{showtime_id}/ping-group/{group_id}",
+      path: {
+        showtime_id: data.showtimeId,
+        group_id: data.groupId,
       },
       errors: {
         422: "Validation Error",

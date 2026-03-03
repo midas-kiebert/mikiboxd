@@ -73,7 +73,7 @@ def test_render_letterboxd_failure_item_includes_response_meta() -> None:
 
 
 def test_tmdb_low_confidence_lookups_filters_and_sorts() -> None:
-    lookups = [
+    lookups: list[dict[str, Any]] = [
         {
             "timestamp": "2026-02-25T12:00:00",
             "tmdb_id": 3,

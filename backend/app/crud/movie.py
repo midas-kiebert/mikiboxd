@@ -18,6 +18,11 @@ from app.models.user import User
 from app.models.watchlist_selection import WatchlistSelection
 
 DAY_BUCKET_CUTOFF = time(4, 0)
+DAY_BUCKET_OFFSET = timedelta(
+    hours=DAY_BUCKET_CUTOFF.hour,
+    minutes=DAY_BUCKET_CUTOFF.minute,
+    seconds=DAY_BUCKET_CUTOFF.second,
+)
 
 
 def _normalized_original_title(
@@ -58,22 +63,36 @@ def time_range_clause(
         if start is None and end is None:
             return time_col.is_not(None)
         if start is None:
-            return time_col <= end
-        if end is None:
-            # Open-ended "start-" ranges are bounded by the day-bucket cutoff (04:00).
-            if start <= DAY_BUCKET_CUTOFF:
-                return time_col.between(start, DAY_BUCKET_CUTOFF)
+            end_time = end
+            assert end_time is not None
+            # Open-ended "-end" ranges start at the configured day-bucket cutoff.
+            if end_time >= DAY_BUCKET_CUTOFF:
+                return time_col.between(DAY_BUCKET_CUTOFF, end_time)
             return or_(
-                time_col >= start,
+                time_col >= DAY_BUCKET_CUTOFF,
+                time_col <= end_time,
+            )
+        if end is None:
+            start_time = start
+            assert start_time is not None
+            # Open-ended "start-" ranges are bounded by the day-bucket cutoff (04:00).
+            if start_time <= DAY_BUCKET_CUTOFF:
+                return time_col.between(start_time, DAY_BUCKET_CUTOFF)
+            return or_(
+                time_col >= start_time,
                 time_col <= DAY_BUCKET_CUTOFF,
             )
-        if start <= end:
-            return time_col.between(start, end)
+        start_time = start
+        end_time = end
+        assert start_time is not None
+        assert end_time is not None
+        if start_time <= end_time:
+            return time_col.between(start_time, end_time)
 
         # crosses midnight
         return or_(
-            time_col >= start,
-            time_col <= end,
+            time_col >= start_time,
+            time_col <= end_time,
         )
 
     start_time_col = cast(start_datetime_column, Time)
@@ -91,8 +110,8 @@ def time_range_clause(
 
 
 def day_bucket_date_clause(datetime_column):
-    # Shift by 4 hours so 00:00-03:59 belongs to previous calendar day for filtering.
-    return func.date(datetime_column - timedelta(hours=4))
+    # Shift by the configured day-bucket cutoff so post-midnight slots stay on the prior day.
+    return func.date(datetime_column - DAY_BUCKET_OFFSET)
 
 
 def get_movie_by_id(*, session: Session, id: int) -> Movie | None:

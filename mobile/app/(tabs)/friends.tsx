@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MeService } from 'shared';
@@ -54,6 +55,7 @@ export default function FriendsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  const router = useRouter();
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
@@ -140,6 +142,10 @@ export default function FriendsScreen() {
     }
   };
 
+  const handleOpenGroupsPage = () => {
+    router.push('/friend-groups');
+  };
+
   // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -187,6 +193,11 @@ export default function FriendsScreen() {
       />
       <View style={styles.searchBarContainer}>
         <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder={searchPlaceholder} />
+      </View>
+      <View style={styles.groupsActionRow}>
+        <TouchableOpacity style={styles.groupsActionButton} onPress={handleOpenGroupsPage} activeOpacity={0.8}>
+          <ThemedText style={styles.groupsActionButtonText}>Manage Friend Groups</ThemedText>
+        </TouchableOpacity>
       </View>
 
       {activeTab === 'users' ? (
@@ -337,6 +348,24 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     searchBarContainer: {
       paddingHorizontal: 0,
       paddingBottom: 2,
+    },
+    groupsActionRow: {
+      paddingHorizontal: 16,
+      paddingBottom: 8,
+    },
+    groupsActionButton: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+    },
+    groupsActionButtonText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textSecondary,
     },
     content: {
       padding: 16,

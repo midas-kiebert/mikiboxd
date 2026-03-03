@@ -21,6 +21,13 @@ fi
 COVERAGE_HTML_DIR="${COVERAGE_HTML_DIR:-.coverage_html}"
 COVERAGE_HTML_TITLE="${COVERAGE_HTML_TITLE:-coverage}"
 
+# Backward-compatible CI input:
+# scripts/test.sh "Coverage for <sha>" [pytest args...]
+if [ "$#" -gt 0 ] && [[ "$1" == Coverage\ for* ]]; then
+  COVERAGE_HTML_TITLE="$1"
+  shift
+fi
+
 # Start local Postgres for tests when Docker is available.
 if command -v docker >/dev/null 2>&1 && [ -f ../docker-compose.yml ]; then
   if docker info >/dev/null 2>&1; then

@@ -126,9 +126,10 @@ def test_delete_me_removes_user_and_related_rows(
     )
     db_transaction.add(friend_group)
     db_transaction.flush()
+    friend_group_id = friend_group.id
     db_transaction.add(
         FriendGroupMember(
-            group_id=friend_group.id,
+            group_id=friend_group_id,
             friend_id=other_user.id,
             created_at=now_amsterdam_naive(),
         )
@@ -190,7 +191,7 @@ def test_delete_me_removes_user_and_related_rows(
     )
     assert (
         db_transaction.exec(
-            select(FriendGroupMember).where(FriendGroupMember.group_id == friend_group.id)
+            select(FriendGroupMember).where(FriendGroupMember.group_id == friend_group_id)
         ).one_or_none()
         is None
     )
@@ -1141,6 +1142,7 @@ def test_unfriending_removes_users_from_both_friend_groups(
     current_user_id = _normal_user_id(db_transaction)
     friend_user = user_factory()
     friend_id = friend_user.id
+    friend_email = friend_user.email
 
     friendship_crud.create_friendship(
         session=db_transaction,
@@ -1161,7 +1163,7 @@ def test_unfriending_removes_users_from_both_friend_groups(
 
     friend_login_response = client.post(
         f"{settings.API_V1_STR}/login/access-token",
-        data={"username": friend_user.email, "password": "password"},
+        data={"username": friend_email, "password": "password"},
     )
     assert friend_login_response.status_code == 200
     friend_headers = {

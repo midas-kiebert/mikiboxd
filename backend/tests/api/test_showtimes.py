@@ -389,6 +389,70 @@ def test_showtime_visibility_get_and_update(
     assert updated_get_response.json()["visible_friend_ids"] == [str(first_friend_id)]
 
 
+def test_showtime_visibility_batch_returns_payload_per_showtime(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    first_friend = user_factory()
+    second_friend = user_factory()
+    first_showtime = showtime_factory()
+    second_showtime = showtime_factory(movie=first_showtime.movie)
+    first_friend_id = first_friend.id
+    second_friend_id = second_friend.id
+    first_showtime_id = first_showtime.id
+    second_showtime_id = second_showtime.id
+    first_showtime_movie_id = first_showtime.movie_id
+    second_showtime_movie_id = second_showtime.movie_id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=first_friend_id,
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=second_friend_id,
+    )
+    db_transaction.commit()
+
+    update_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{first_showtime_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"visible_friend_ids": [str(first_friend_id)]},
+    )
+    assert update_response.status_code == 200
+
+    batch_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/visibility/batch",
+        headers=normal_user_token_headers,
+        params=[
+            ("showtime_ids", first_showtime_id),
+            ("showtime_ids", second_showtime_id),
+        ],
+    )
+    assert batch_response.status_code == 200
+    body = batch_response.json()
+    assert [item["showtime_id"] for item in body] == [
+        first_showtime_id,
+        second_showtime_id,
+    ]
+    assert body[0]["movie_id"] == first_showtime_movie_id
+    assert body[0]["all_friends_selected"] is False
+    assert body[0]["visible_group_ids"] == []
+    assert body[0]["visible_friend_ids"] == [str(first_friend_id)]
+    assert body[1]["movie_id"] == second_showtime_movie_id
+    assert body[1]["all_friends_selected"] is True
+    assert body[1]["visible_group_ids"] == []
+    assert sorted(body[1]["visible_friend_ids"]) == sorted(
+        [str(first_friend_id), str(second_friend_id)]
+    )
+
+
 def test_showtime_visibility_is_scoped_per_showtime(
     client: TestClient,
     normal_user_token_headers: dict[str, str],

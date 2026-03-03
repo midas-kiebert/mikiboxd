@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -136,6 +137,23 @@ def get_showtime_visibility_setting(
     return session.get(ShowtimeVisibilitySetting, (owner_id, showtime_id))
 
 
+def get_showtime_visibility_settings_for_showtimes(
+    *,
+    session: Session,
+    owner_id: UUID,
+    showtime_ids: list[int],
+) -> dict[int, ShowtimeVisibilitySetting]:
+    if len(showtime_ids) == 0:
+        return {}
+
+    stmt = select(ShowtimeVisibilitySetting).where(
+        ShowtimeVisibilitySetting.owner_id == owner_id,
+        col(ShowtimeVisibilitySetting.showtime_id).in_(showtime_ids),
+    )
+    settings = list(session.exec(stmt).all())
+    return {setting.showtime_id: setting for setting in settings}
+
+
 def get_visible_group_ids_for_showtime(
     *,
     session: Session,
@@ -151,6 +169,52 @@ def get_visible_group_ids_for_showtime(
         ShowtimeVisibilityGroup.showtime_id == showtime_id,
     )
     return set(session.exec(stmt).all())
+
+
+def get_visible_friend_ids_for_showtimes(
+    *,
+    session: Session,
+    owner_id: UUID,
+    showtime_ids: list[int],
+) -> dict[int, set[UUID]]:
+    if len(showtime_ids) == 0:
+        return {}
+
+    stmt = select(
+        ShowtimeVisibilityFriend.showtime_id,
+        ShowtimeVisibilityFriend.viewer_id,
+    ).where(
+        ShowtimeVisibilityFriend.owner_id == owner_id,
+        col(ShowtimeVisibilityFriend.showtime_id).in_(showtime_ids),
+    )
+    rows = list(session.exec(stmt).all())
+    friend_ids_by_showtime: dict[int, set[UUID]] = defaultdict(set)
+    for showtime_id, viewer_id in rows:
+        friend_ids_by_showtime[showtime_id].add(viewer_id)
+    return dict(friend_ids_by_showtime)
+
+
+def get_visible_group_ids_for_showtimes(
+    *,
+    session: Session,
+    owner_id: UUID,
+    showtime_ids: list[int],
+) -> dict[int, set[UUID]]:
+    if len(showtime_ids) == 0:
+        return {}
+
+    stmt = select(
+        ShowtimeVisibilityGroup.showtime_id,
+        ShowtimeVisibilityGroup.group_id,
+    ).where(
+        ShowtimeVisibilityGroup.owner_id == owner_id,
+        col(ShowtimeVisibilityGroup.showtime_id).in_(showtime_ids),
+    )
+    rows = list(session.exec(stmt).all())
+    group_ids_by_showtime: dict[int, set[UUID]] = defaultdict(set)
+    for showtime_id, group_id in rows:
+        group_ids_by_showtime[showtime_id].add(group_id)
+    return dict(group_ids_by_showtime)
 
 
 def get_favorite_group_ids_for_owner(
@@ -182,6 +246,30 @@ def get_friend_ids_for_owner_groups(
         )
     )
     return set(session.exec(stmt).all())
+
+
+def get_friend_ids_for_owner_groups_map(
+    *,
+    session: Session,
+    owner_id: UUID,
+    group_ids: list[UUID],
+) -> dict[UUID, set[UUID]]:
+    if len(group_ids) == 0:
+        return {}
+
+    stmt = (
+        select(FriendGroupMember.group_id, FriendGroupMember.friend_id)
+        .join(FriendGroup, col(FriendGroup.id) == col(FriendGroupMember.group_id))
+        .where(
+            col(FriendGroup.owner_user_id) == owner_id,
+            col(FriendGroup.id).in_(group_ids),
+        )
+    )
+    rows = list(session.exec(stmt).all())
+    friend_ids_by_group: dict[UUID, set[UUID]] = defaultdict(set)
+    for group_id, friend_id in rows:
+        friend_ids_by_group[group_id].add(friend_id)
+    return dict(friend_ids_by_group)
 
 
 def set_visibility_for_showtime(

@@ -4,6 +4,7 @@ from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlmodel import Session
 
+from app.crud import friend_group as friend_groups_crud
 from app.crud import friendship as friendship_crud
 from app.exceptions.base import AppError
 from app.exceptions.friends_exceptions import (
@@ -15,6 +16,7 @@ from app.exceptions.friends_exceptions import (
 from app.exceptions.user_exceptions import OneOrMoreUsersNotFound
 from app.models.auth_schemas import Message
 from app.services import push_notifications
+from app.utils import now_amsterdam_naive
 
 
 def create_friend_request(
@@ -179,6 +181,19 @@ def remove_friend(
             session=session,
             user_id=current_user,
             friend_id=friend_id,
+        )
+        now = now_amsterdam_naive()
+        friend_groups_crud.remove_member_from_owner_groups(
+            session=session,
+            owner_id=current_user,
+            friend_id=friend_id,
+            now=now,
+        )
+        friend_groups_crud.remove_member_from_owner_groups(
+            session=session,
+            owner_id=friend_id,
+            friend_id=current_user,
+            now=now,
         )
         session.commit()
     except NoResultFound as e:

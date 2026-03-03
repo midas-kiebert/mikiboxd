@@ -2,9 +2,10 @@
  * Mobile showtimes feature component: Showtime Card.
  */
 import { Image, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
-import { useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { DateTime } from "luxon";
 import { useRouter } from "expo-router";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { ShowtimeLoggedIn } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
@@ -12,6 +13,7 @@ import CinemaPill from "@/components/badges/CinemaPill";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useShowtimeVisibilityIndicator } from "@/hooks/use-showtime-visibility-indicator";
 import {
   GLOBAL_LONG_PRESS_DELAY_MS,
   triggerLongPressHaptic,
@@ -24,11 +26,26 @@ type ShowtimeCardProps = {
 };
 
 const POSTER_HEIGHT = 112;
+const COMPACT_BADGE_ROW_HEIGHT = 14;
+const COMPACT_BADGE_ROW_GAP = 2;
+const COMPACT_BADGE_TOP_PADDING = 2;
+const VISIBILITY_HINT_RESERVED_HEIGHT = 10;
+const MAX_COMPACT_BADGE_ROWS = 4;
+
+const getCompactBadgeRowsForHeight = (height: number) => {
+  const normalizedHeight = Math.max(0, height);
+  const rows = Math.floor(
+    (normalizedHeight + COMPACT_BADGE_ROW_GAP) /
+      (COMPACT_BADGE_ROW_HEIGHT + COMPACT_BADGE_ROW_GAP)
+  );
+  return Math.max(1, Math.min(MAX_COMPACT_BADGE_ROWS, rows));
+};
 
 export default function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
   const suppressNextPressRef = useRef(false);
+  const [friendBadgeAreaHeight, setFriendBadgeAreaHeight] = useState(0);
   // Read the active theme color tokens used by this screen/component.
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -57,6 +74,21 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
       : showtime.going === "INTERESTED"
         ? styles.dateColumnInterested
         : undefined;
+  const hasAudience =
+    (showtime.friends_going?.length ?? 0) > 0 ||
+    (showtime.friends_interested?.length ?? 0) > 0;
+  const visibilityIndicator = useShowtimeVisibilityIndicator({
+    showtimeId: showtime.id,
+  });
+  const hasVisibilityHint = visibilityIndicator !== null;
+  const responsiveBadgeRows = useMemo(() => {
+    if (!hasAudience) return undefined;
+    return getCompactBadgeRowsForHeight(
+      friendBadgeAreaHeight -
+        COMPACT_BADGE_TOP_PADDING -
+        (hasVisibilityHint ? VISIBILITY_HINT_RESERVED_HEIGHT : 0)
+    );
+  }, [friendBadgeAreaHeight, hasAudience, hasVisibilityHint]);
 
   // Handle press behavior for this module.
   const handlePress = () => {
@@ -117,13 +149,30 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
             </ThemedText>
             <CinemaPill cinema={showtime.cinema} variant="compact" />
           </View>
-          <FriendBadges
-            friendsGoing={showtime.friends_going}
-            friendsInterested={showtime.friends_interested}
-            variant="compact"
-            maxVisible={2}
-            style={styles.friendRow}
-          />
+          <View
+            style={styles.friendBadgeArea}
+            onLayout={(event) => {
+              const nextHeight = Math.floor(event.nativeEvent.layout.height);
+              if (nextHeight === friendBadgeAreaHeight) return;
+              setFriendBadgeAreaHeight(nextHeight);
+            }}
+          >
+            <FriendBadges
+              friendsGoing={showtime.friends_going}
+              friendsInterested={showtime.friends_interested}
+              variant="compact"
+              maxRows={responsiveBadgeRows}
+            />
+            {visibilityIndicator?.kind === "none" ? (
+              <View style={styles.visibilityHintIcon}>
+                <MaterialCommunityIcons name="incognito" size={9} color={colors.textSecondary} />
+              </View>
+            ) : visibilityIndicator?.kind === "label" ? (
+              <ThemedText style={styles.visibilityHintText} numberOfLines={1}>
+                {visibilityIndicator.label}
+              </ThemedText>
+            ) : null}
+          </View>
         </View>
       </TouchableOpacity>
     </View>
@@ -239,8 +288,27 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flex: 1,
       minWidth: 0,
     },
-    friendRow: {
-      marginTop: 2,
+    friendBadgeArea: {
+      flex: 1,
+      minHeight: 0,
+      overflow: "hidden",
+      paddingTop: COMPACT_BADGE_TOP_PADDING,
+      position: "relative",
+    },
+    visibilityHintText: {
+      position: "absolute",
+      right: 0,
+      bottom: 0,
+      fontSize: 8,
+      lineHeight: 9,
+      color: colors.textSecondary,
+      maxWidth: 84,
+      textAlign: "right",
+    },
+    visibilityHintIcon: {
+      position: "absolute",
+      right: 0,
+      bottom: 0,
     },
   });
 };

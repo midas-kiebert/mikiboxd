@@ -1,3 +1,4 @@
+from datetime import datetime
 from logging import getLogger
 from uuid import UUID
 
@@ -11,6 +12,7 @@ from app.core.enums import FilterPresetScope, ShowtimePingSort
 from app.crud import cinema as cinemas_crud
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import filter_preset as filter_presets_crud
+from app.crud import friend_group as friend_groups_crud
 from app.crud import push_token as push_tokens_crud
 from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
@@ -20,10 +22,12 @@ from app.exceptions.user_exceptions import DisplayNameAlreadyExists, EmailAlread
 from app.inputs.movie import Filters
 from app.models.cinema_preset import CinemaPreset
 from app.models.filter_preset import FilterPreset
+from app.models.friend_group import FriendGroup
 from app.models.showtime import Showtime
 from app.models.user import User, UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
+from app.schemas.friend_group import FriendGroupCreate, FriendGroupPublic
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe
@@ -457,6 +461,242 @@ def clear_favorite_cinema_preset(
     user_id: UUID,
 ) -> None:
     cinema_presets_crud.clear_user_favorite_preset(
+        session=session,
+        user_id=user_id,
+    )
+    session.commit()
+
+
+def _to_friend_group_public(
+    *,
+    group: FriendGroup,
+    friend_ids: list[UUID],
+) -> FriendGroupPublic:
+    return FriendGroupPublic.model_validate(
+        {
+            "id": group.id,
+            "name": group.name,
+            "friend_ids": sorted(friend_ids, key=str),
+            "is_favorite": group.is_favorite,
+            "created_at": group.created_at,
+            "updated_at": group.updated_at,
+        }
+    )
+
+
+def _normalize_friend_ids(friend_ids: list[UUID]) -> list[UUID]:
+    return sorted(set(friend_ids), key=str)
+
+
+def _sanitize_group_member_ids(
+    *,
+    session: Session,
+    group: FriendGroup,
+    all_friend_ids: set[UUID],
+    now: datetime,
+) -> tuple[list[UUID], bool]:
+    group_member_ids = set(
+        friend_groups_crud.get_group_member_ids(
+            session=session,
+            group_id=group.id,
+        )
+    )
+    normalized_friend_ids = sorted(group_member_ids & all_friend_ids, key=str)
+    if len(group_member_ids) == len(normalized_friend_ids):
+        return sorted(group_member_ids, key=str), False
+
+    friend_groups_crud.replace_group_members(
+        session=session,
+        group=group,
+        friend_ids=normalized_friend_ids,
+        now=now,
+    )
+    group.updated_at = now
+    session.add(group)
+    return normalized_friend_ids, True
+
+
+def list_friend_groups(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> list[FriendGroupPublic]:
+    all_friend_ids = {
+        friend.id for friend in users_crud.get_friends(session=session, user_id=user_id)
+    }
+    now = now_amsterdam_naive()
+    groups = friend_groups_crud.list_user_groups(
+        session=session,
+        user_id=user_id,
+    )
+    public_groups: list[FriendGroupPublic] = []
+    had_updates = False
+    for group in groups:
+        friend_ids, was_updated = _sanitize_group_member_ids(
+            session=session,
+            group=group,
+            all_friend_ids=all_friend_ids,
+            now=now,
+        )
+        if was_updated:
+            had_updates = True
+        public_groups.append(
+            _to_friend_group_public(
+                group=group,
+                friend_ids=friend_ids,
+            )
+        )
+
+    if had_updates:
+        session.commit()
+
+    return public_groups
+
+
+def save_friend_group(
+    *,
+    session: Session,
+    user_id: UUID,
+    payload: FriendGroupCreate,
+) -> FriendGroupPublic:
+    now = now_amsterdam_naive()
+    group_name = payload.name.strip()
+    friend_ids = _normalize_friend_ids(payload.friend_ids)
+    should_set_favorite = payload.is_favorite is True
+
+    all_friend_ids = {
+        friend.id for friend in users_crud.get_friends(session=session, user_id=user_id)
+    }
+    invalid_friend_ids = [
+        friend_id for friend_id in friend_ids if friend_id not in all_friend_ids
+    ]
+    if invalid_friend_ids:
+        raise ValueError("Friend group contains users who are not your friends.")
+
+    existing = friend_groups_crud.get_user_group_by_name(
+        session=session,
+        user_id=user_id,
+        name=group_name,
+    )
+
+    if should_set_favorite:
+        friend_groups_crud.clear_user_favorite_group(
+            session=session,
+            user_id=user_id,
+        )
+
+    if existing is None:
+        group = friend_groups_crud.create_group(
+            session=session,
+            user_id=user_id,
+            name=group_name,
+            is_favorite=should_set_favorite,
+            now=now,
+        )
+    else:
+        group = friend_groups_crud.update_group(
+            session=session,
+            group=existing,
+            is_favorite=payload.is_favorite,
+            now=now,
+        )
+
+    friend_groups_crud.replace_group_members(
+        session=session,
+        group=group,
+        friend_ids=friend_ids,
+        now=now,
+    )
+
+    session.commit()
+    return _to_friend_group_public(group=group, friend_ids=friend_ids)
+
+
+def delete_friend_group(
+    *,
+    session: Session,
+    user_id: UUID,
+    group_id: UUID,
+) -> bool:
+    deleted = friend_groups_crud.delete_group(
+        session=session,
+        user_id=user_id,
+        group_id=group_id,
+    )
+    if deleted:
+        session.commit()
+    return deleted
+
+
+def get_favorite_friend_group(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> FriendGroupPublic | None:
+    favorite = friend_groups_crud.get_user_favorite_group(
+        session=session,
+        user_id=user_id,
+    )
+    if favorite is None:
+        return None
+    all_friend_ids = {
+        friend.id for friend in users_crud.get_friends(session=session, user_id=user_id)
+    }
+    friend_ids, was_updated = _sanitize_group_member_ids(
+        session=session,
+        group=favorite,
+        all_friend_ids=all_friend_ids,
+        now=now_amsterdam_naive(),
+    )
+    if was_updated:
+        session.commit()
+    return _to_friend_group_public(group=favorite, friend_ids=friend_ids)
+
+
+def set_favorite_friend_group(
+    *,
+    session: Session,
+    user_id: UUID,
+    group_id: UUID,
+) -> FriendGroupPublic | None:
+    now = now_amsterdam_naive()
+    group = friend_groups_crud.get_user_group_by_id(
+        session=session,
+        user_id=user_id,
+        group_id=group_id,
+    )
+    if group is None:
+        return None
+
+    friend_groups_crud.clear_user_favorite_group(
+        session=session,
+        user_id=user_id,
+    )
+    favorite = friend_groups_crud.set_group_favorite(
+        session=session,
+        group=group,
+        is_favorite=True,
+        now=now,
+    )
+    all_friend_ids = {
+        friend.id for friend in users_crud.get_friends(session=session, user_id=user_id)
+    }
+    friend_ids, _ = _sanitize_group_member_ids(
+        session=session,
+        group=favorite,
+        all_friend_ids=all_friend_ids,
+        now=now,
+    )
+    session.commit()
+    return _to_friend_group_public(group=favorite, friend_ids=friend_ids)
+
+
+def clear_favorite_friend_group(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> None:
+    friend_groups_crud.clear_user_favorite_group(
         session=session,
         user_id=user_id,
     )

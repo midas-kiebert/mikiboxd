@@ -38,6 +38,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { useSharedDayTimeFilters } from "@/hooks/useSharedDayTimeFilters";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selection";
+import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 
 const SHOWTIMES_PAGE_SIZE = 20;
@@ -82,6 +83,8 @@ export default function MoviePage() {
   const [timeQuickPopoverVisible, setTimeQuickPopoverVisible] = useState(false);
   const [timeQuickPopoverAnchor, setTimeQuickPopoverAnchor] =
     useState<FilterPillLongPressPosition | null>(null);
+  // Controls pull-to-refresh spinner visibility.
+  const [refreshing, setRefreshing] = useState(false);
   // Controls visibility of the day-filter modal.
   const [dayModalVisible, setDayModalVisible] = useState(false);
   const { selectedDays, setSelectedDays, selectedTimeRanges, setSelectedTimeRanges } =
@@ -95,11 +98,8 @@ export default function MoviePage() {
 
   // Convert route param to numeric movie ID for API calls/query keys.
   const movieId = useMemo(() => Number(id), [id]);
-  // Keep one snapshot timestamp so list pages stay consistent while scrolling.
-  const snapshotTime = useMemo(
-    () => DateTime.now().setZone("Europe/Amsterdam").toFormat("yyyy-MM-dd'T'HH:mm:ss"),
-    []
-  );
+  // Snapshot timestamp used to keep paginated API responses consistent.
+  const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
   const { selections: sessionCinemaIds } = useSessionCinemaSelections();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
 
@@ -181,6 +181,22 @@ export default function MoviePage() {
     void fetchNextPage().finally(() => {
       isFetchingMoreRef.current = false;
     });
+  };
+
+  // Refresh the current showtimes dataset and reset stale pagination.
+  const handleRefresh = async () => {
+    if (!Number.isFinite(movieId) || movieId <= 0) return;
+    setRefreshing(true);
+    try {
+      await refreshInfiniteQueryWithFreshSnapshot<ShowtimeInMovieLoggedIn[]>({
+        queryClient,
+        queryKey: ["movie", movieId, "showtimes", showtimesFilters],
+        setSnapshotTime,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["movie", movieId] });
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Update all relevant query caches so the status chip updates instantly across screens.
@@ -554,7 +570,13 @@ export default function MoviePage() {
                         : undefined,
                     ]}
                   >
-                    <ShowtimeRow showtime={item} showFriends alignCinemaRight showDate={false} />
+                    <ShowtimeRow
+                      showtime={item}
+                      showFriends
+                      alignCinemaRight
+                      showDate={false}
+                      showVisibilityHint
+                    />
                   </View>
                 </TouchableOpacity>
             )}
@@ -564,6 +586,8 @@ export default function MoviePage() {
               </View>
             )}
             contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) }]}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
             onEndReached={handleEndReached}
             onEndReachedThreshold={0.4}
             ListHeaderComponent={

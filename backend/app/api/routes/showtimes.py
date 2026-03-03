@@ -56,6 +56,25 @@ def ping_friend_for_showtime(
     )
 
 
+@router.post("/{showtime_id}/ping-group/{group_id}", response_model=Message)
+def ping_friend_group_for_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    group_id: UUID,
+    current_user: CurrentUser,
+) -> Message:
+    message = showtimes_service.ping_friend_group_for_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+        group_id=group_id,
+    )
+    if message is None:
+        raise HTTPException(status_code=404, detail="Friend group not found")
+    return message
+
+
 @router.post("/{showtime_id}/ping-link/{sender_identifier}", response_model=Message)
 def receive_ping_from_link(
     *,
@@ -114,6 +133,7 @@ def update_showtime_visibility(
             showtime_id=showtime_id,
             actor_id=current_user.id,
             visible_friend_ids=payload.visible_friend_ids,
+            visible_group_ids=payload.visible_group_ids,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))

@@ -471,6 +471,77 @@ def test_get_main_page_showtimes_open_ended_start_range_includes_until_4am(
     assert showtime_after_cutoff not in showtimes
 
 
+def test_get_main_page_showtimes_open_ended_end_range_starts_at_day_bucket_cutoff(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    base_day = now_amsterdam_naive().replace(
+        hour=12, minute=0, second=0, microsecond=0
+    ) + timedelta(days=1)
+
+    day_bucket_cutoff = showtime_crud.DAY_BUCKET_CUTOFF
+    day_start = base_day.replace(
+        hour=day_bucket_cutoff.hour,
+        minute=day_bucket_cutoff.minute,
+        second=0,
+        microsecond=0,
+    )
+
+    before_day_start_start = day_start - timedelta(minutes=30)
+    showtime_before_day_start = showtime_factory(
+        datetime=before_day_start_start,
+        end_datetime=before_day_start_start + timedelta(minutes=20),
+    )
+
+    from_day_start_start = day_start + timedelta(minutes=15)
+    showtime_from_day_start = showtime_factory(
+        datetime=from_day_start_start,
+        end_datetime=from_day_start_start + timedelta(minutes=20),
+    )
+
+    late_evening_start = base_day.replace(hour=23, minute=30, second=0, microsecond=0)
+    showtime_late_evening = showtime_factory(
+        datetime=late_evening_start,
+        end_datetime=late_evening_start + timedelta(hours=1),
+    )
+
+    after_midnight_start = (base_day + timedelta(days=1)).replace(
+        hour=0, minute=15, second=0, microsecond=0
+    )
+    showtime_after_midnight = showtime_factory(
+        datetime=after_midnight_start,
+        end_datetime=after_midnight_start + timedelta(minutes=30),
+    )
+
+    after_end_start = (base_day + timedelta(days=1)).replace(
+        hour=0, minute=50, second=0, microsecond=0
+    )
+    showtime_after_end = showtime_factory(
+        datetime=after_end_start,
+        end_datetime=after_end_start + timedelta(minutes=30),
+    )
+
+    showtimes = showtime_crud.get_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=base_day - timedelta(days=1),
+            time_ranges=[TimeRange(start=None, end=time(1, 0))],
+        ),
+    )
+
+    assert showtime_before_day_start not in showtimes
+    assert showtime_from_day_start in showtimes
+    assert showtime_late_evening in showtimes
+    assert showtime_after_midnight in showtimes
+    assert showtime_after_end not in showtimes
+
+
 def test_get_main_page_showtimes_bounded_range_checks_showtime_end_time(
     *,
     db_transaction: Session,

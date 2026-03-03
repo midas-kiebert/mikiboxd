@@ -364,6 +364,7 @@ def test_showtime_visibility_get_and_update(
     assert initial_body["showtime_id"] == showtime_id
     assert initial_body["movie_id"] == showtime.movie_id
     assert initial_body["all_friends_selected"] is True
+    assert initial_body["visible_group_ids"] == []
     assert sorted(initial_body["visible_friend_ids"]) == sorted(
         [str(first_friend_id), str(second_friend_id)]
     )
@@ -376,6 +377,7 @@ def test_showtime_visibility_get_and_update(
     assert update_response.status_code == 200
     update_body = update_response.json()
     assert update_body["all_friends_selected"] is False
+    assert update_body["visible_group_ids"] == []
     assert update_body["visible_friend_ids"] == [str(first_friend_id)]
 
     updated_get_response = client.get(
@@ -383,6 +385,7 @@ def test_showtime_visibility_get_and_update(
         headers=normal_user_token_headers,
     )
     assert updated_get_response.status_code == 200
+    assert updated_get_response.json()["visible_group_ids"] == []
     assert updated_get_response.json()["visible_friend_ids"] == [str(first_friend_id)]
 
 
@@ -422,6 +425,7 @@ def test_showtime_visibility_is_scoped_per_showtime(
     )
     assert update_response.status_code == 200
     assert update_response.json()["all_friends_selected"] is False
+    assert update_response.json()["visible_group_ids"] == []
     assert update_response.json()["visible_friend_ids"] == [str(first_friend_id)]
 
     unaffected_response = client.get(
@@ -431,7 +435,126 @@ def test_showtime_visibility_is_scoped_per_showtime(
     assert unaffected_response.status_code == 200
     unaffected_body = unaffected_response.json()
     assert unaffected_body["all_friends_selected"] is True
+    assert unaffected_body["visible_group_ids"] == []
     assert sorted(unaffected_body["visible_friend_ids"]) == sorted(
+        [str(first_friend_id), str(second_friend_id)]
+    )
+
+
+def test_showtime_visibility_uses_default_friend_group_when_no_override(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    visible_friend = user_factory()
+    hidden_friend = user_factory()
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    visible_friend_id = visible_friend.id
+    hidden_friend_id = hidden_friend.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=visible_friend_id,
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=hidden_friend_id,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
+    )
+    db_transaction.commit()
+
+    group_create_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Default Visibility Group",
+            "friend_ids": [str(visible_friend_id)],
+            "is_favorite": True,
+        },
+    )
+    assert group_create_response.status_code == 200
+    group_id = group_create_response.json()["id"]
+
+    visibility_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+    )
+    assert visibility_response.status_code == 200
+    visibility_body = visibility_response.json()
+    assert visibility_body["all_friends_selected"] is False
+    assert visibility_body["visible_friend_ids"] == [str(visible_friend_id)]
+    assert visibility_body["visible_group_ids"] == [group_id]
+
+
+def test_ping_friend_group_for_showtime(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    first_friend = user_factory()
+    second_friend = user_factory()
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    first_friend_id = first_friend.id
+    second_friend_id = second_friend.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=first_friend_id,
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=second_friend_id,
+    )
+    db_transaction.commit()
+
+    group_create_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Ping Group",
+            "friend_ids": [str(first_friend_id), str(second_friend_id)],
+        },
+    )
+    assert group_create_response.status_code == 200
+    group_id = group_create_response.json()["id"]
+
+    ping_group_response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-group/{group_id}",
+        headers=normal_user_token_headers,
+    )
+    assert ping_group_response.status_code == 200
+    assert ping_group_response.json()["message"] == "Pinged 2 friends successfully."
+
+    second_ping_group_response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-group/{group_id}",
+        headers=normal_user_token_headers,
+    )
+    assert second_ping_group_response.status_code == 200
+    assert second_ping_group_response.json()["message"] == "No new pings were sent."
+
+    list_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/pinged-friends",
+        headers=normal_user_token_headers,
+    )
+    assert list_response.status_code == 200
+    assert sorted(list_response.json()) == sorted(
         [str(first_friend_id), str(second_friend_id)]
     )
 
@@ -526,6 +649,65 @@ def test_showtime_visibility_filters_friend_status_in_showtime_payload(
     assert not any(
         showtime_item["id"] == showtime_id for showtime_item in hidden_friend_view.json()
     )
+
+
+def test_showtime_visibility_no_longer_applies_after_unfriend(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    friend_user = user_factory()
+    friend_id = friend_user.id
+    friend_email = friend_user.email
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
+    )
+    db_transaction.commit()
+
+    visibility_update_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"visible_friend_ids": [str(friend_id)]},
+    )
+    assert visibility_update_response.status_code == 200
+
+    friendship_crud.delete_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    db_transaction.commit()
+
+    friend_login_response = client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": friend_email, "password": "password"},
+    )
+    assert friend_login_response.status_code == 200
+    friend_headers = {
+        "Authorization": f"Bearer {friend_login_response.json()['access_token']}"
+    }
+
+    showtimes_response = client.get(
+        f"{settings.API_V1_STR}/users/{current_user_id}/showtimes",
+        headers=friend_headers,
+        params={"limit": 50, "offset": 0},
+    )
+    assert showtimes_response.status_code == 403
+    assert "is not a friend" in showtimes_response.json()["detail"]
 
 
 def test_update_showtime_selection_seat_roundtrip_and_clear(

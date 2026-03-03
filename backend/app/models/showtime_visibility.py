@@ -8,6 +8,7 @@ from app.utils import now_amsterdam_naive
 __all__ = [
     "ShowtimeVisibilitySetting",
     "ShowtimeVisibilityFriend",
+    "ShowtimeVisibilityGroup",
 ]
 
 
@@ -39,6 +40,25 @@ class ShowtimeVisibilityFriend(SQLModel, table=True):
     )
     viewer_id: UUID = Field(
         foreign_key="user.id",
+        primary_key=True,
+        ondelete="CASCADE",
+    )
+    created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
+
+
+class ShowtimeVisibilityGroup(SQLModel, table=True):
+    owner_id: UUID = Field(
+        foreign_key="user.id",
+        primary_key=True,
+        ondelete="CASCADE",
+    )
+    showtime_id: int = Field(
+        foreign_key="showtime.id",
+        primary_key=True,
+        ondelete="CASCADE",
+    )
+    group_id: UUID = Field(
+        foreign_key="friendgroup.id",
         primary_key=True,
         ondelete="CASCADE",
     )

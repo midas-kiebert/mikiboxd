@@ -451,6 +451,7 @@ def test_showtime_visibility_uses_default_friend_group_when_no_override(
     visible_friend = user_factory()
     hidden_friend = user_factory()
     showtime = showtime_factory()
+    showtime_id = showtime.id
     visible_friend_id = visible_friend.id
     hidden_friend_id = hidden_friend.id
     current_user_id = _normal_user_id(db_transaction)
@@ -467,7 +468,7 @@ def test_showtime_visibility_uses_default_friend_group_when_no_override(
     )
     showtime_crud.add_showtime_selection(
         session=db_transaction,
-        showtime_id=showtime.id,
+        showtime_id=showtime_id,
         user_id=current_user_id,
         going_status=GoingStatus.GOING,
     )
@@ -486,7 +487,7 @@ def test_showtime_visibility_uses_default_friend_group_when_no_override(
     group_id = group_create_response.json()["id"]
 
     visibility_response = client.get(
-        f"{settings.API_V1_STR}/showtimes/{showtime.id}/visibility",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
         headers=normal_user_token_headers,
     )
     assert visibility_response.status_code == 200
@@ -506,6 +507,7 @@ def test_ping_friend_group_for_showtime(
     first_friend = user_factory()
     second_friend = user_factory()
     showtime = showtime_factory()
+    showtime_id = showtime.id
     first_friend_id = first_friend.id
     second_friend_id = second_friend.id
     current_user_id = _normal_user_id(db_transaction)
@@ -534,21 +536,21 @@ def test_ping_friend_group_for_showtime(
     group_id = group_create_response.json()["id"]
 
     ping_group_response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime.id}/ping-group/{group_id}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-group/{group_id}",
         headers=normal_user_token_headers,
     )
     assert ping_group_response.status_code == 200
     assert ping_group_response.json()["message"] == "Pinged 2 friends successfully."
 
     second_ping_group_response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime.id}/ping-group/{group_id}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-group/{group_id}",
         headers=normal_user_token_headers,
     )
     assert second_ping_group_response.status_code == 200
     assert second_ping_group_response.json()["message"] == "No new pings were sent."
 
     list_response = client.get(
-        f"{settings.API_V1_STR}/showtimes/{showtime.id}/pinged-friends",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/pinged-friends",
         headers=normal_user_token_headers,
     )
     assert list_response.status_code == 200
@@ -704,10 +706,8 @@ def test_showtime_visibility_no_longer_applies_after_unfriend(
         headers=friend_headers,
         params={"limit": 50, "offset": 0},
     )
-    assert showtimes_response.status_code == 200
-    assert not any(
-        showtime_item["id"] == showtime_id for showtime_item in showtimes_response.json()
-    )
+    assert showtimes_response.status_code == 403
+    assert "is not a friend" in showtimes_response.json()["detail"]
 
 
 def test_update_showtime_selection_seat_roundtrip_and_clear(

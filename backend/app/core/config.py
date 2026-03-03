@@ -9,6 +9,7 @@ from pydantic import (
     HttpUrl,
     PostgresDsn,
     computed_field,
+    field_validator,
     model_validator,
 )
 from pydantic_core import MultiHostUrl
@@ -110,6 +111,17 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER_PASSWORD: str
 
     DEBUG: bool = False
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def _normalize_debug_aliases(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized == "release":
+                return False
+            if normalized == "debug":
+                return True
+        return value
 
     TMDB_KEY: str
     TELEGRAM_USER_ID: int | None = None

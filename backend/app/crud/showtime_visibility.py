@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, exists, or_
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, col, select
 
@@ -21,59 +22,73 @@ def is_showtime_visible_to_viewer(
     showtime_id_value: Any,
     viewer_id_value: Any,
 ) -> ColumnElement[bool]:
+    setting_row = aliased(ShowtimeVisibilitySetting)
+    all_friends_setting_row = aliased(ShowtimeVisibilitySetting)
+    visible_friend_row = aliased(ShowtimeVisibilityFriend)
+    visible_group_row = aliased(ShowtimeVisibilityGroup)
+    visible_group_member_row = aliased(FriendGroupMember)
+    favorite_group_row = aliased(FriendGroup)
+    favorite_group_for_viewer_row = aliased(FriendGroup)
+    favorite_group_member_row = aliased(FriendGroupMember)
+    friendship_row = aliased(Friendship)
+
     setting_exists = exists(
-        select(ShowtimeVisibilitySetting.owner_id).where(
-            col(ShowtimeVisibilitySetting.owner_id) == owner_id_value,
-            col(ShowtimeVisibilitySetting.showtime_id) == showtime_id_value,
+        select(setting_row.owner_id).where(
+            col(setting_row.owner_id) == owner_id_value,
+            col(setting_row.showtime_id) == showtime_id_value,
         )
     )
     all_friends_setting_exists = exists(
-        select(ShowtimeVisibilitySetting.owner_id).where(
-            col(ShowtimeVisibilitySetting.owner_id) == owner_id_value,
-            col(ShowtimeVisibilitySetting.showtime_id) == showtime_id_value,
-            col(ShowtimeVisibilitySetting.is_all_friends).is_(True),
+        select(all_friends_setting_row.owner_id).where(
+            col(all_friends_setting_row.owner_id) == owner_id_value,
+            col(all_friends_setting_row.showtime_id) == showtime_id_value,
+            col(all_friends_setting_row.is_all_friends).is_(True),
         )
     )
     explicit_viewer_visibility_exists = exists(
-        select(ShowtimeVisibilityFriend.owner_id).where(
-            col(ShowtimeVisibilityFriend.owner_id) == owner_id_value,
-            col(ShowtimeVisibilityFriend.showtime_id) == showtime_id_value,
-            col(ShowtimeVisibilityFriend.viewer_id) == viewer_id_value,
+        select(visible_friend_row.owner_id).where(
+            col(visible_friend_row.owner_id) == owner_id_value,
+            col(visible_friend_row.showtime_id) == showtime_id_value,
+            col(visible_friend_row.viewer_id) == viewer_id_value,
         )
     )
     explicit_group_visibility_exists = exists(
-        select(ShowtimeVisibilityGroup.owner_id)
+        select(visible_group_row.owner_id)
         .join(
-            FriendGroupMember,
-            col(FriendGroupMember.group_id) == col(ShowtimeVisibilityGroup.group_id),
+            visible_group_member_row,
+            col(visible_group_member_row.group_id) == col(visible_group_row.group_id),
         )
         .where(
-            col(ShowtimeVisibilityGroup.owner_id) == owner_id_value,
-            col(ShowtimeVisibilityGroup.showtime_id) == showtime_id_value,
-            col(FriendGroupMember.friend_id) == viewer_id_value,
+            col(visible_group_row.owner_id) == owner_id_value,
+            col(visible_group_row.showtime_id) == showtime_id_value,
+            col(visible_group_member_row.friend_id) == viewer_id_value,
         )
     )
     favorite_group_exists = exists(
-        select(FriendGroup.id).where(
-            col(FriendGroup.owner_user_id) == owner_id_value,
-            col(FriendGroup.is_favorite).is_(True),
+        select(favorite_group_row.id).where(
+            col(favorite_group_row.owner_user_id) == owner_id_value,
+            col(favorite_group_row.is_favorite).is_(True),
         )
     )
     favorite_group_viewer_visibility_exists = exists(
-        select(FriendGroup.id)
-        .join(FriendGroupMember, col(FriendGroupMember.group_id) == col(FriendGroup.id))
+        select(favorite_group_for_viewer_row.id)
+        .join(
+            favorite_group_member_row,
+            col(favorite_group_member_row.group_id)
+            == col(favorite_group_for_viewer_row.id),
+        )
         .where(
-            col(FriendGroup.owner_user_id) == owner_id_value,
-            col(FriendGroup.is_favorite).is_(True),
-            col(FriendGroupMember.friend_id) == viewer_id_value,
+            col(favorite_group_for_viewer_row.owner_user_id) == owner_id_value,
+            col(favorite_group_for_viewer_row.is_favorite).is_(True),
+            col(favorite_group_member_row.friend_id) == viewer_id_value,
         )
     )
     viewer_is_owner_or_friend = or_(
         owner_id_value == viewer_id_value,
         exists(
-            select(Friendship.user_id).where(
-                col(Friendship.user_id) == owner_id_value,
-                col(Friendship.friend_id) == viewer_id_value,
+            select(friendship_row.user_id).where(
+                col(friendship_row.user_id) == owner_id_value,
+                col(friendship_row.friend_id) == viewer_id_value,
             )
         ),
     )

@@ -103,6 +103,19 @@ def get_showtime_by_id(
     return session.get(Showtime, showtime_id)
 
 
+def get_showtimes_by_ids(
+    *,
+    session: Session,
+    showtime_ids: Sequence[int],
+) -> dict[int, Showtime]:
+    if len(showtime_ids) == 0:
+        return {}
+
+    stmt = select(Showtime).where(col(Showtime.id).in_(showtime_ids))
+    showtimes = list(session.exec(stmt).all())
+    return {showtime.id: showtime for showtime in showtimes}
+
+
 def get_showtime_close_in_time(
     *,
     session: Session,

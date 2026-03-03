@@ -715,6 +715,13 @@ export type ShowtimesGetPingedFriendIdsForShowtimeData = {
 
 export type ShowtimesGetPingedFriendIdsForShowtimeResponse = Array<string>
 
+export type ShowtimesGetShowtimeVisibilityBatchData = {
+  showtimeIds?: Array<number>
+}
+
+export type ShowtimesGetShowtimeVisibilityBatchResponse =
+  Array<ShowtimeVisibilityPublic>
+
 export type ShowtimesGetShowtimeVisibilityData = {
   showtimeId: number
 }

@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = ""
+    SQLALCHEMY_POOL_SIZE: int = 20
+    SQLALCHEMY_MAX_OVERFLOW: int = 20
+    SQLALCHEMY_POOL_TIMEOUT_SECONDS: int = 30
+    SQLALCHEMY_POOL_RECYCLE_SECONDS: int = 1800
+    SQLALCHEMY_POOL_PRE_PING: bool = True
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -127,6 +132,9 @@ class Settings(BaseSettings):
     TELEGRAM_USER_ID: int | None = None
     TELEGRAM_BOT_TOKEN: str | None = None
     ENABLE_TELEGRAM: bool = False
+    ENABLE_GZIP: bool = True
+    GZIP_MINIMUM_SIZE_BYTES: int = 500
+    GZIP_COMPRESS_LEVEL: int = 6
 
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":

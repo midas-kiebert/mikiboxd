@@ -15,27 +15,28 @@ type UseShowtimeVisibilityIndicatorProps = {
 
 export const useShowtimeVisibilityIndicator = ({
   showtimeId,
-  enabled = true,
+  enabled = false,
 }: UseShowtimeVisibilityIndicatorProps): VisibilityIndicator => {
-  const isEnabled = enabled && typeof showtimeId === "number";
-  const { data: friends = [] } = useFetchFriends({ enabled: isEnabled });
+  const hasShowtimeId = typeof showtimeId === "number";
+  const isVisibilityQueryEnabled = enabled && hasShowtimeId;
+  const { data: friends = [] } = useFetchFriends({ enabled: hasShowtimeId });
 
   const { data: showtimeVisibility } = useQuery({
     queryKey: ["showtimes", "visibility", showtimeId],
-    enabled: isEnabled,
+    enabled: isVisibilityQueryEnabled,
     queryFn: () =>
       ShowtimesService.getShowtimeVisibility({
         showtimeId: showtimeId as number,
       }),
-    staleTime: 0,
+    staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
   });
 
   const { data: friendGroups = [] } = useQuery<FriendGroupPublic[], Error>({
     queryKey: ["friend-groups"],
-    enabled: isEnabled,
+    enabled: hasShowtimeId,
     queryFn: () => MeService.getFriendGroups(),
-    staleTime: 0,
+    staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
   });
 

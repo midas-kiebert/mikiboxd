@@ -93,6 +93,8 @@ import type {
   ShowtimesReceivePingFromLinkResponse,
   ShowtimesGetPingedFriendIdsForShowtimeData,
   ShowtimesGetPingedFriendIdsForShowtimeResponse,
+  ShowtimesGetShowtimeVisibilityBatchData,
+  ShowtimesGetShowtimeVisibilityBatchResponse,
   ShowtimesGetShowtimeVisibilityData,
   ShowtimesGetShowtimeVisibilityResponse,
   ShowtimesUpdateShowtimeVisibilityData,
@@ -1241,6 +1243,28 @@ export class ShowtimesService {
       url: "/api/v1/showtimes/{showtime_id}/pinged-friends",
       path: {
         showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Showtime Visibility Batch
+   * @param data The data for the request.
+   * @param data.showtimeIds
+   * @returns ShowtimeVisibilityPublic Successful Response
+   * @throws ApiError
+   */
+  public static getShowtimeVisibilityBatch(
+    data: ShowtimesGetShowtimeVisibilityBatchData = {},
+  ): CancelablePromise<ShowtimesGetShowtimeVisibilityBatchResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/visibility/batch",
+      query: {
+        showtime_ids: data.showtimeIds,
       },
       errors: {
         422: "Validation Error",

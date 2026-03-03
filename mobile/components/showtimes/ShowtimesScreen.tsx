@@ -2,6 +2,7 @@
  * Mobile showtimes feature component: Showtimes Screen.
  */
 import { useState } from "react";
+import { useMemo } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -9,6 +10,7 @@ import { ShowtimesService, type GoingStatus, type ShowtimeLoggedIn } from "share
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { usePrefetchShowtimeVisibilityBatch } from "@/hooks/use-prefetch-showtime-visibility-batch";
 import TopBar from "@/components/layout/TopBar";
 import SearchBar from "@/components/inputs/SearchBar";
 import FilterPills, {
@@ -165,6 +167,18 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   };
 
   const isOnlyYouAudienceActive = audienceToggle?.value === "only-you";
+  const visibilityPrefetchShowtimeIds = useMemo(
+    () =>
+      showtimes
+        .filter((showtime) => showtime.going !== "NOT_GOING")
+        .map((showtime) => showtime.id),
+    [showtimes]
+  );
+
+  usePrefetchShowtimeVisibilityBatch({
+    showtimeIds: visibilityPrefetchShowtimeIds,
+    enabled: showtimes.length > 0,
+  });
 
   // Render infinite-scroll loading feedback at the bottom of the list.
   const renderFooter = () => {

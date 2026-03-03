@@ -4,8 +4,18 @@ from app.core.config import settings
 from app.crud import user as user_crud
 from app.models.user import User, UserCreate
 
-engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
-test_engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI_TEST))
+_engine_options = {
+    "pool_size": settings.SQLALCHEMY_POOL_SIZE,
+    "max_overflow": settings.SQLALCHEMY_MAX_OVERFLOW,
+    "pool_timeout": settings.SQLALCHEMY_POOL_TIMEOUT_SECONDS,
+    "pool_recycle": settings.SQLALCHEMY_POOL_RECYCLE_SECONDS,
+    "pool_pre_ping": settings.SQLALCHEMY_POOL_PRE_PING,
+}
+
+engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI), **_engine_options)
+test_engine = create_engine(
+    str(settings.SQLALCHEMY_DATABASE_URI_TEST), **_engine_options
+)
 
 
 # make sure all SQLModel models are imported (app.models) before initializing DB

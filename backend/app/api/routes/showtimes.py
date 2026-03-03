@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import CurrentUser, SessionDep
 from app.inputs.movie import Filters, get_filters
@@ -101,6 +101,20 @@ def get_pinged_friend_ids_for_showtime(
     return showtimes_service.get_pinged_friend_ids_for_showtime(
         session=session,
         showtime_id=showtime_id,
+        actor_id=current_user.id,
+    )
+
+
+@router.get("/visibility/batch", response_model=list[ShowtimeVisibilityPublic])
+def get_showtime_visibility_batch(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    showtime_ids: list[int] = Query(default=[]),
+) -> list[ShowtimeVisibilityPublic]:
+    return showtimes_service.get_showtime_visibility_batch(
+        session=session,
+        showtime_ids=showtime_ids,
         actor_id=current_user.id,
     )
 

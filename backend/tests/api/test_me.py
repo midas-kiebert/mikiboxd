@@ -4,7 +4,9 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.core.config import settings
+from app.crud import friendship as friendship_crud
 from app.models.cinema_selection import CinemaSelection
+from app.models.friend_group import FriendGroup, FriendGroupMember
 from app.models.friendship import FriendRequest, Friendship
 from app.models.push_token import PushToken
 from app.models.showtime_ping import ShowtimePing
@@ -115,6 +117,23 @@ def test_delete_me_removes_user_and_related_rows(
             platform="ios",
         )
     )
+    friend_group = FriendGroup(
+        owner_user_id=current_user_id,
+        name="Close friends",
+        is_favorite=True,
+        created_at=now_amsterdam_naive(),
+        updated_at=now_amsterdam_naive(),
+    )
+    db_transaction.add(friend_group)
+    db_transaction.flush()
+    friend_group_id = friend_group.id
+    db_transaction.add(
+        FriendGroupMember(
+            group_id=friend_group_id,
+            friend_id=other_user.id,
+            created_at=now_amsterdam_naive(),
+        )
+    )
     db_transaction.add(
         ShowtimePing(
             showtime_id=showtime.id,
@@ -161,6 +180,18 @@ def test_delete_me_removes_user_and_related_rows(
     assert (
         db_transaction.exec(
             select(PushToken).where(PushToken.user_id == current_user_id)
+        ).one_or_none()
+        is None
+    )
+    assert (
+        db_transaction.exec(
+            select(FriendGroup).where(FriendGroup.owner_user_id == current_user_id)
+        ).one_or_none()
+        is None
+    )
+    assert (
+        db_transaction.exec(
+            select(FriendGroupMember).where(FriendGroupMember.group_id == friend_group_id)
         ).one_or_none()
         is None
     )
@@ -965,3 +996,211 @@ def test_legacy_preferred_cinemas_still_work_on_me_cinemas(
     )
     assert favorite_get.status_code == 200
     assert favorite_get.json() == [first_cinema_id]
+
+
+def test_friend_groups_crud_and_default_visibility_selection(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+) -> None:
+    current_user_id = _normal_user_id(db_transaction)
+    first_friend = user_factory()
+    second_friend = user_factory()
+    first_friend_id = first_friend.id
+    second_friend_id = second_friend.id
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=first_friend_id,
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=second_friend_id,
+    )
+    db_transaction.commit()
+
+    create_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Core Crew",
+            "friend_ids": [str(first_friend_id)],
+        },
+    )
+    assert create_response.status_code == 200
+    create_body = create_response.json()
+    group_id = create_body["id"]
+    assert create_body["name"] == "Core Crew"
+    assert create_body["friend_ids"] == [str(first_friend_id)]
+    assert create_body["is_favorite"] is False
+
+    list_response = client.get(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+    )
+    assert list_response.status_code == 200
+    listed_groups = list_response.json()
+    assert len(listed_groups) == 1
+    assert listed_groups[0]["id"] == group_id
+    assert listed_groups[0]["friend_ids"] == [str(first_friend_id)]
+
+    favorite_before_set = client.get(
+        f"{settings.API_V1_STR}/me/friend-groups/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert favorite_before_set.status_code == 200
+    assert favorite_before_set.json() is None
+
+    set_favorite_response = client.put(
+        f"{settings.API_V1_STR}/me/friend-groups/{group_id}/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert set_favorite_response.status_code == 200
+    assert set_favorite_response.json()["is_favorite"] is True
+
+    favorite_after_set = client.get(
+        f"{settings.API_V1_STR}/me/friend-groups/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert favorite_after_set.status_code == 200
+    assert favorite_after_set.json()["id"] == group_id
+
+    upsert_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Core Crew",
+            "friend_ids": [str(first_friend_id), str(second_friend_id)],
+        },
+    )
+    assert upsert_response.status_code == 200
+    upsert_body = upsert_response.json()
+    assert upsert_body["id"] == group_id
+    assert sorted(upsert_body["friend_ids"]) == sorted(
+        [str(first_friend_id), str(second_friend_id)]
+    )
+
+    clear_favorite_response = client.delete(
+        f"{settings.API_V1_STR}/me/friend-groups/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert clear_favorite_response.status_code == 200
+
+    favorite_after_clear = client.get(
+        f"{settings.API_V1_STR}/me/friend-groups/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert favorite_after_clear.status_code == 200
+    assert favorite_after_clear.json() is None
+
+    delete_response = client.delete(
+        f"{settings.API_V1_STR}/me/friend-groups/{group_id}",
+        headers=normal_user_token_headers,
+    )
+    assert delete_response.status_code == 200
+    assert delete_response.json()["message"] == "Friend group deleted successfully"
+
+    list_after_delete = client.get(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+    )
+    assert list_after_delete.status_code == 200
+    assert list_after_delete.json() == []
+
+
+def test_friend_group_rejects_non_friend_member(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    user_factory,
+) -> None:
+    non_friend = user_factory()
+
+    create_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Invalid Group",
+            "friend_ids": [str(non_friend.id)],
+        },
+    )
+    assert create_response.status_code == 400
+    assert (
+        create_response.json()["detail"]
+        == "Friend group contains users who are not your friends."
+    )
+
+
+def test_unfriending_removes_users_from_both_friend_groups(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+) -> None:
+    current_user_id = _normal_user_id(db_transaction)
+    friend_user = user_factory()
+    friend_id = friend_user.id
+    friend_email = friend_user.email
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    db_transaction.commit()
+
+    own_group_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "My Group",
+            "friend_ids": [str(friend_id)],
+        },
+    )
+    assert own_group_response.status_code == 200
+
+    friend_login_response = client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": friend_email, "password": "password"},
+    )
+    assert friend_login_response.status_code == 200
+    friend_headers = {
+        "Authorization": f"Bearer {friend_login_response.json()['access_token']}"
+    }
+
+    friend_group_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=friend_headers,
+        json={
+            "name": "Friend Group",
+            "friend_ids": [str(current_user_id)],
+        },
+    )
+    assert friend_group_response.status_code == 200
+
+    remove_friend_response = client.delete(
+        f"{settings.API_V1_STR}/friends/{friend_id}",
+        headers=normal_user_token_headers,
+    )
+    assert remove_friend_response.status_code == 200
+    assert remove_friend_response.json()["message"] == "Friend removed successfully."
+
+    own_groups_after_response = client.get(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+    )
+    assert own_groups_after_response.status_code == 200
+    own_groups_after = own_groups_after_response.json()
+    assert len(own_groups_after) == 1
+    assert own_groups_after[0]["friend_ids"] == []
+
+    friend_groups_after_response = client.get(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=friend_headers,
+    )
+    assert friend_groups_after_response.status_code == 200
+    friend_groups_after = friend_groups_after_response.json()
+    assert len(friend_groups_after) == 1
+    assert friend_groups_after[0]["friend_ids"] == []

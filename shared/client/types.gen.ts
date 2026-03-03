@@ -81,6 +81,21 @@ export type FilterPresetPublic = {
 
 export type FilterPresetScope = "SHOWTIMES" | "MOVIES"
 
+export type FriendGroupCreate = {
+  name: string
+  friend_ids?: Array<string>
+  is_favorite?: boolean | null
+}
+
+export type FriendGroupPublic = {
+  id: string
+  name: string
+  friend_ids: Array<string>
+  is_favorite: boolean
+  created_at: string
+  updated_at: string
+}
+
 export type GoingStatus = "GOING" | "NOT_GOING" | "INTERESTED"
 
 export type HTTPValidationError = {
@@ -190,12 +205,14 @@ export type ShowtimeSelectionUpdate = {
 export type ShowtimeVisibilityPublic = {
   showtime_id: number
   movie_id: number
-  visible_friend_ids: Array<string>
+  visible_friend_ids?: Array<string>
+  visible_group_ids?: Array<string>
   all_friends_selected: boolean
 }
 
 export type ShowtimeVisibilityUpdate = {
-  visible_friend_ids: Array<string>
+  visible_friend_ids?: Array<string>
+  visible_group_ids?: Array<string>
 }
 
 export type TimeOfDay = "MORNING" | "AFTERNOON" | "EVENING" | "NIGHT"
@@ -423,6 +440,30 @@ export type MeDeleteCinemaPresetData = {
 }
 
 export type MeDeleteCinemaPresetResponse = Message
+
+export type MeGetFriendGroupsResponse = Array<FriendGroupPublic>
+
+export type MeSaveFriendGroupData = {
+  requestBody: FriendGroupCreate
+}
+
+export type MeSaveFriendGroupResponse = FriendGroupPublic
+
+export type MeGetFavoriteFriendGroupResponse = FriendGroupPublic | null
+
+export type MeClearFavoriteFriendGroupResponse = Message
+
+export type MeSetFavoriteFriendGroupData = {
+  groupId: string
+}
+
+export type MeSetFavoriteFriendGroupResponse = FriendGroupPublic
+
+export type MeDeleteFriendGroupData = {
+  groupId: string
+}
+
+export type MeDeleteFriendGroupResponse = Message
 
 export type MeUpdatePasswordMeData = {
   requestBody: UpdatePassword
@@ -653,6 +694,13 @@ export type ShowtimesPingFriendForShowtimeData = {
 }
 
 export type ShowtimesPingFriendForShowtimeResponse = Message
+
+export type ShowtimesPingFriendGroupForShowtimeData = {
+  groupId: string
+  showtimeId: number
+}
+
+export type ShowtimesPingFriendGroupForShowtimeResponse = Message
 
 export type ShowtimesReceivePingFromLinkData = {
   senderIdentifier: string

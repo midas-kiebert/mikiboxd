@@ -17,7 +17,13 @@ import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { PasswordInput } from "@/components/ui/password-input"
 import useAuth, { isLoggedIn } from "shared/hooks/useAuth"
-import { confirmPasswordRules, emailPattern, passwordRules } from "@/utils"
+import {
+  confirmPasswordRules,
+  emailPattern,
+  passwordRules,
+  usernameMaxLength,
+  usernamePattern,
+} from "@/utils"
 import Logo from "/assets/images/fastapi-logo.svg"
 
 export const Route = createFileRoute("/signup")({
@@ -92,11 +98,16 @@ function SignUp() {
             <InputGroup w="100%" startElement={<FiUser />}>
               <Input
                 id="display_name"
-                minLength={3}
                 {...register("display_name", {
-                  required: "Display Name is required",
+                  required: "Username is required",
+                  pattern: usernamePattern,
+                  maxLength: {
+                    value: usernameMaxLength,
+                    message: `Username must be at most ${usernameMaxLength} characters`,
+                  },
                 })}
-                placeholder="Display Name"
+                maxLength={usernameMaxLength}
+                placeholder="Username"
                 type="text"
               />
             </InputGroup>

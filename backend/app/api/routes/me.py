@@ -326,7 +326,7 @@ def update_password_me(
 def get_my_showtimes(
     session: SessionDep,
     current_user: CurrentUser,
-    limit: int = Query(20, ge=1, le=50),
+    limit: int = Query(10, ge=1, le=50),
     offset: int = Query(0, ge=0),
     filters: Filters = Depends(get_filters),
 ) -> list[ShowtimeLoggedIn]:
@@ -377,7 +377,7 @@ def mark_my_showtime_pings_seen(
         session=session,
         user_id=current_user.id,
     )
-    return Message(message="Showtime pings marked as seen")
+    return Message(message="Showtime invites marked as seen")
 
 
 @router.delete("/pings/{ping_id}", response_model=Message)
@@ -392,8 +392,8 @@ def delete_my_showtime_ping(
         ping_id=ping_id,
     )
     if not deleted:
-        raise HTTPException(status_code=404, detail="Showtime ping not found")
-    return Message(message="Showtime ping deleted successfully")
+        raise HTTPException(status_code=404, detail="Showtime invite not found")
+    return Message(message="Showtime invite deleted successfully")
 
 
 @router.put("/watchlist", response_model=Message)

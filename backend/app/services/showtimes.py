@@ -298,7 +298,7 @@ def ping_friend_for_showtime(
         receiver_id=friend_id,
         showtime=showtime,
     )
-    return Message(message="Friend pinged successfully")
+    return Message(message="Friend invited successfully")
 
 
 def ping_friend_group_for_showtime(
@@ -342,7 +342,7 @@ def ping_friend_group_for_showtime(
     )
 
     if len(receiver_ids) == 0:
-        return Message(message="No friends in this group could be pinged.")
+        return Message(message="No friends in this group could be invited.")
 
     sent_count = 0
     for receiver_id in receiver_ids:
@@ -366,10 +366,10 @@ def ping_friend_group_for_showtime(
         sent_count += 1
 
     if sent_count == 0:
-        return Message(message="No new pings were sent.")
+        return Message(message="No new invites were sent.")
     if sent_count == 1:
-        return Message(message="Pinged 1 friend successfully.")
-    return Message(message=f"Pinged {sent_count} friends successfully.")
+        return Message(message="Invited 1 friend successfully.")
+    return Message(message=f"Invited {sent_count} friends successfully.")
 
 
 def receive_ping_from_link(
@@ -412,7 +412,7 @@ def receive_ping_from_link(
     except ShowtimePingAlreadySentError:
         # Opening the same shared link more than once should remain a no-op success.
         pass
-    return Message(message="Ping received successfully")
+    return Message(message="Invite received successfully")
 
 
 def _create_showtime_ping(

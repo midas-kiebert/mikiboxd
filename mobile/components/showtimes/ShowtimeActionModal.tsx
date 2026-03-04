@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Animated,
   Easing,
   Linking,
+  type LayoutChangeEvent,
   Modal,
   Pressable,
   Share,
@@ -12,20 +13,26 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   MeService,
   ShowtimesService,
   type FriendGroupPublic,
   type GoingStatus,
+  type MeGetCurrentUserResponse,
+  type MeGetFriendsResponse,
   type ShowtimeInMovieLoggedIn,
   type ShowtimeLoggedIn,
+  type ShowtimeVisibilityPublic,
 } from "shared";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
 
@@ -41,6 +48,10 @@ import { buildShowtimePingUrl } from "@/constants/ping-link";
 type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
 type DetailPanel = "none" | "ping" | "visibility";
 type VisibilityButtonState = "all" | "none" | "partial";
+type VisibilityDraftSeed = {
+  visibleFriendIds: string[];
+  visibleGroupIds: string[];
+};
 
 type ShowtimeActionModalProps = {
   visible: boolean;
@@ -67,6 +78,8 @@ const DETAIL_PANEL_HEIGHT = 430;
 const MODAL_OPEN_DURATION_MS = 200;
 const DETAIL_PANEL_OPEN_DURATION_MS = 440;
 const DETAIL_PANEL_CLOSE_DURATION_MS = 240;
+const STATUS_MODAL_EDGE_PADDING = 20;
+const ESTIMATED_COLLAPSED_CARD_HEIGHT = 320;
 
 type SeatFieldKind = "unknown" | "digits" | "letter";
 
@@ -138,13 +151,13 @@ export default function ShowtimeActionModal({
   onClose,
 }: ShowtimeActionModalProps) {
   const colorScheme = useColorScheme();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const queryClient = useQueryClient();
-  const currentUser = queryClient.getQueryData<{
-    id?: string;
-    display_name?: string | null;
-  }>(["currentUser"]);
+  const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>(["currentUser"]);
   const modalProgress = useRef(new Animated.Value(0)).current;
   const detailPanelProgress = useRef(new Animated.Value(0)).current;
 
@@ -157,11 +170,15 @@ export default function ShowtimeActionModal({
   const [seatRowDraft, setSeatRowDraft] = useState("");
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
+  const [collapsedCardHeight, setCollapsedCardHeight] = useState(0);
   const [visibleFriendIdsDraft, setVisibleFriendIdsDraft] = useState<Set<string>>(new Set());
   const [visibleGroupIdsDraft, setVisibleGroupIdsDraft] = useState<Set<string>>(new Set());
+  const visibilitySeededShowtimeIdRef = useRef<number | null>(null);
 
   const selectedShowtimeId = showtime?.id ?? null;
-  const { data: friends } = useFetchFriends({ enabled: visible && selectedShowtimeId !== null });
+  const { data: friends, isFetched: isFetchedFriends } = useFetchFriends({
+    enabled: visible && selectedShowtimeId !== null,
+  });
 
   const { data: pingedFriendIds = [], isFetching: isFetchingPingedFriends } = useQuery<
     string[],
@@ -188,7 +205,11 @@ export default function ShowtimeActionModal({
     gcTime: 5 * 60 * 1000,
   });
 
-  const { data: friendGroups = [], isFetching: isFetchingFriendGroups } = useQuery<
+  const {
+    data: friendGroups,
+    isFetching: isFetchingFriendGroups,
+    isFetched: isFetchedFriendGroups,
+  } = useQuery<
     FriendGroupPublic[],
     Error
   >({
@@ -198,17 +219,107 @@ export default function ShowtimeActionModal({
     staleTime: 0,
     gcTime: 5 * 60 * 1000,
   });
+  const friendGroupsList = friendGroups ?? [];
+  const visibilityDraftSeed = useMemo<VisibilityDraftSeed | null>(() => {
+    if (!visible || selectedShowtimeId === null) {
+      return null;
+    }
+
+    const cachedShowtimeVisibility = queryClient.getQueryData<ShowtimeVisibilityPublic>([
+      "showtimes",
+      "visibility",
+      selectedShowtimeId,
+    ]);
+    const showtimeVisibilitySnapshot = showtimeVisibility ?? cachedShowtimeVisibility;
+    if (showtimeVisibilitySnapshot) {
+      return {
+        visibleFriendIds: showtimeVisibilitySnapshot.visible_friend_ids ?? [],
+        visibleGroupIds: showtimeVisibilitySnapshot.visible_group_ids ?? [],
+      };
+    }
+
+    // Only infer defaults for NOT_GOING showtimes because GOING/INTERESTED may already have custom saved visibility.
+    if (showtime?.going !== "NOT_GOING") {
+      return null;
+    }
+
+    const cachedFriends = queryClient.getQueryData<MeGetFriendsResponse>(["users", "friends"]);
+    const friendsSnapshot = friends ?? cachedFriends;
+    const hasFriendSnapshot =
+      friends !== undefined || cachedFriends !== undefined || isFetchedFriends;
+    if (!hasFriendSnapshot || !friendsSnapshot) {
+      return null;
+    }
+
+    if (currentUser?.incognito_mode) {
+      return {
+        visibleFriendIds: [],
+        visibleGroupIds: [],
+      };
+    }
+
+    const cachedFriendGroups = queryClient.getQueryData<FriendGroupPublic[]>(["friend-groups"]);
+    const friendGroupsSnapshot = friendGroups ?? cachedFriendGroups;
+    const hasFriendGroupSnapshot =
+      friendGroups !== undefined || cachedFriendGroups !== undefined || isFetchedFriendGroups;
+    if (!hasFriendGroupSnapshot || !friendGroupsSnapshot) {
+      return null;
+    }
+
+    const friendIds = friendsSnapshot.map((friend) => friend.id);
+    const favoriteGroups = friendGroupsSnapshot.filter((group) => group.is_favorite);
+    if (favoriteGroups.length === 0) {
+      return {
+        visibleFriendIds: friendIds,
+        visibleGroupIds: [],
+      };
+    }
+
+    const friendIdSet = new Set(friendIds);
+    const favoriteMemberIds = new Set<string>();
+    for (const group of favoriteGroups) {
+      for (const friendId of group.friend_ids) {
+        if (friendIdSet.has(friendId)) {
+          favoriteMemberIds.add(friendId);
+        }
+      }
+    }
+
+    return {
+      visibleFriendIds: friendIds.filter((friendId) => favoriteMemberIds.has(friendId)),
+      visibleGroupIds: favoriteGroups
+        .map((group) => group.id)
+        .sort((left, right) => left.localeCompare(right)),
+    };
+  }, [
+    currentUser?.incognito_mode,
+    friendGroups,
+    friends,
+    isFetchedFriendGroups,
+    isFetchedFriends,
+    queryClient,
+    selectedShowtimeId,
+    showtime?.going,
+    showtimeVisibility,
+    visible,
+  ]);
+  const isVisibilityInitializing =
+    visible &&
+    selectedShowtimeId !== null &&
+    isFetchingShowtimeVisibility &&
+    showtimeVisibility === undefined &&
+    visibilityDraftSeed === null;
   const friendIdsSet = useMemo(
     () => new Set((friends ?? []).map((friend) => friend.id)),
     [friends]
   );
   const friendGroupsWithCurrentMembers = useMemo(
     () =>
-      friendGroups.map((group) => ({
+      friendGroupsList.map((group) => ({
         ...group,
         friend_ids: group.friend_ids.filter((friendId) => friendIdsSet.has(friendId)),
       })),
-    [friendGroups, friendIdsSet]
+    [friendGroupsList, friendIdsSet]
   );
 
   const { mutate: pingFriendForShowtime, isPending: isPingingFriend } = useMutation({
@@ -225,7 +336,7 @@ export default function ShowtimeActionModal({
       );
     },
     onError: (error) => {
-      console.error("Error pinging friend for showtime:", error);
+      console.error("Error inviting friend for showtime:", error);
       const detail =
         typeof error === "object" &&
         error !== null &&
@@ -233,7 +344,7 @@ export default function ShowtimeActionModal({
         typeof (error as { body?: { detail?: unknown } }).body?.detail === "string"
           ? (error as { body?: { detail?: string } }).body?.detail
           : undefined;
-      Alert.alert("Error", detail ?? "Could not send ping.");
+      Alert.alert("Error", detail ?? "Could not send invite.");
     },
   });
 
@@ -247,8 +358,8 @@ export default function ShowtimeActionModal({
       queryClient.invalidateQueries({ queryKey: ["showtimes", "pingedFriends", variables.showtimeId] });
     },
     onError: (error) => {
-      console.error("Error pinging group for showtime:", error);
-      Alert.alert("Error", "Could not ping this group.");
+      console.error("Error inviting group for showtime:", error);
+      Alert.alert("Error", "Could not invite this group.");
     },
   });
 
@@ -292,6 +403,8 @@ export default function ShowtimeActionModal({
       setSeatRowDraft("");
       setSeatNumberDraft("");
       setIsSeatDialogVisible(false);
+      setCollapsedCardHeight(0);
+      visibilitySeededShowtimeIdRef.current = null;
       setVisibleFriendIdsDraft(new Set());
       setVisibleGroupIdsDraft(new Set());
       return;
@@ -309,6 +422,25 @@ export default function ShowtimeActionModal({
       useNativeDriver: true,
     }).start();
   }, [modalProgress, selectedShowtimeId, visible]);
+
+  useLayoutEffect(() => {
+    if (!visible || selectedShowtimeId === null) {
+      visibilitySeededShowtimeIdRef.current = null;
+      return;
+    }
+
+    if (!visibilityDraftSeed) {
+      return;
+    }
+
+    if (visibilitySeededShowtimeIdRef.current === selectedShowtimeId) {
+      return;
+    }
+
+    setVisibleFriendIdsDraft(new Set(visibilityDraftSeed.visibleFriendIds));
+    setVisibleGroupIdsDraft(new Set(visibilityDraftSeed.visibleGroupIds));
+    visibilitySeededShowtimeIdRef.current = selectedShowtimeId;
+  }, [selectedShowtimeId, visibilityDraftSeed, visible]);
 
   useEffect(() => {
     if (!visible || !showtime) {
@@ -399,7 +531,7 @@ export default function ShowtimeActionModal({
       return;
     }
 
-    // Switching ping <-> visibility while open: keep the panel fully expanded.
+    // Switching invite <-> visibility while open: keep the panel fully expanded.
     setRenderedDetailPanel(panel);
     setActiveDetailPanel(panel);
     detailPanelProgress.stopAnimation();
@@ -429,7 +561,7 @@ export default function ShowtimeActionModal({
 
   const handleSharePingLink = async () => {
     if (!showtime || !currentUser?.id) {
-      Alert.alert("Error", "Could not build ping link.");
+      Alert.alert("Error", "Could not build invite link.");
       return;
     }
 
@@ -448,8 +580,8 @@ export default function ShowtimeActionModal({
         url: pingUrl,
       });
     } catch (error) {
-      console.error("Error sharing showtime ping link:", error);
-      Alert.alert("Error", "Could not share ping link.");
+      console.error("Error sharing showtime invite link:", error);
+      Alert.alert("Error", "Could not share invite link.");
     }
   };
 
@@ -475,6 +607,10 @@ export default function ShowtimeActionModal({
   }, [selectedGroupMemberIds, visibleFriendIdsDraft]);
 
   const handleToggleVisibleFriend = (friendId: string) => {
+    if (isVisibilityInitializing) {
+      return;
+    }
+
     // Any direct friend edit exits "group mode": keep the current effective selection,
     // apply the toggle, then clear selected groups.
     const nextEffectiveIds = new Set(effectiveVisibleFriendIds);
@@ -488,6 +624,10 @@ export default function ShowtimeActionModal({
   };
 
   const handleToggleVisibleGroup = (groupId: string) => {
+    if (isVisibilityInitializing) {
+      return;
+    }
+
     const group = groupsForVisibility.find((candidate) => candidate.id === groupId);
     if (!group) return;
 
@@ -512,12 +652,20 @@ export default function ShowtimeActionModal({
   };
 
   const handleSelectAllVisibility = () => {
+    if (isVisibilityInitializing) {
+      return;
+    }
+
     const allFriendIds = (friends ?? []).map((friend) => friend.id);
     setVisibleFriendIdsDraft(new Set(allFriendIds));
     setVisibleGroupIdsDraft(new Set());
   };
 
   const handleDeselectAllVisibility = () => {
+    if (isVisibilityInitializing) {
+      return;
+    }
+
     setVisibleFriendIdsDraft(new Set());
     setVisibleGroupIdsDraft(new Set());
   };
@@ -531,6 +679,10 @@ export default function ShowtimeActionModal({
   };
 
   const handleLongPressVisibilityButton = () => {
+    if (isVisibilityInitializing) {
+      return;
+    }
+
     triggerLongPressHaptic();
     suppressVisibilityPressRef.current = true;
     if (totalFriendCount > 0 && selectedVisibilityCount === totalFriendCount) {
@@ -548,11 +700,18 @@ export default function ShowtimeActionModal({
   };
 
   const hasVisibilityChanges = useMemo(() => {
-    if (!showtimeVisibility) {
+    const baselineVisibility = showtimeVisibility
+      ? {
+          visibleFriendIds: showtimeVisibility.visible_friend_ids ?? [],
+          visibleGroupIds: showtimeVisibility.visible_group_ids ?? [],
+        }
+      : visibilityDraftSeed;
+
+    if (!baselineVisibility) {
       return false;
     }
 
-    const savedVisibleFriendIds = new Set(showtimeVisibility.visible_friend_ids);
+    const savedVisibleFriendIds = new Set(baselineVisibility.visibleFriendIds);
     if (savedVisibleFriendIds.size !== visibleFriendIdsDraft.size) {
       return true;
     }
@@ -563,7 +722,7 @@ export default function ShowtimeActionModal({
       }
     }
 
-    const savedVisibleGroupIds = new Set(showtimeVisibility.visible_group_ids ?? []);
+    const savedVisibleGroupIds = new Set(baselineVisibility.visibleGroupIds);
     if (savedVisibleGroupIds.size !== visibleGroupIdsDraft.size) {
       return true;
     }
@@ -575,7 +734,7 @@ export default function ShowtimeActionModal({
     }
 
     return false;
-  }, [showtimeVisibility, visibleFriendIdsDraft, visibleGroupIdsDraft]);
+  }, [showtimeVisibility, visibilityDraftSeed, visibleFriendIdsDraft, visibleGroupIdsDraft]);
 
   const normalizedSeatRowDraft = seatRowDraft.trim() || null;
   const normalizedSeatNumberDraft = seatNumberDraft.trim() || null;
@@ -631,6 +790,16 @@ export default function ShowtimeActionModal({
       onClose();
     }
   };
+
+  const handleOpenManageGroups = useCallback(() => {
+    if (isUpdatingStatus) {
+      return;
+    }
+    handleCloseModal();
+    requestAnimationFrame(() => {
+      router.push("/friend-groups");
+    });
+  }, [handleCloseModal, isUpdatingStatus, router]);
 
   const handleOpenSeatDialog = () => {
     if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) {
@@ -851,10 +1020,47 @@ export default function ShowtimeActionModal({
     ],
   };
 
+  const statusModalBackdropInsetsStyle = useMemo(
+    () => ({
+      paddingTop: STATUS_MODAL_EDGE_PADDING + insets.top,
+      paddingBottom: STATUS_MODAL_EDGE_PADDING + insets.bottom,
+      paddingHorizontal: STATUS_MODAL_EDGE_PADDING,
+    }),
+    [insets.bottom, insets.top]
+  );
+  const modalCardMaxHeight = useMemo(
+    () =>
+      Math.max(
+        0,
+        windowHeight - insets.top - insets.bottom - STATUS_MODAL_EDGE_PADDING * 2
+      ),
+    [insets.bottom, insets.top, windowHeight]
+  );
+  const detailPanelExpandedHeight = useMemo(() => {
+    const collapsedHeightForSizing =
+      collapsedCardHeight > 0 ? collapsedCardHeight : ESTIMATED_COLLAPSED_CARD_HEIGHT;
+    const availablePanelHeight = modalCardMaxHeight - collapsedHeightForSizing;
+    return Math.max(0, Math.min(DETAIL_PANEL_HEIGHT, availablePanelHeight));
+  }, [collapsedCardHeight, modalCardMaxHeight]);
+  const statusModalCardSizeStyle = useMemo(
+    () => ({ maxHeight: modalCardMaxHeight }),
+    [modalCardMaxHeight]
+  );
+  const handleStatusModalCardLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (renderedDetailPanel !== "none") {
+        return;
+      }
+      const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+      setCollapsedCardHeight((previous) => (previous === nextHeight ? previous : nextHeight));
+    },
+    [renderedDetailPanel]
+  );
+
   const detailPanelAnimatedStyle = {
     height: detailPanelProgress.interpolate({
       inputRange: [0, 1],
-      outputRange: [0, DETAIL_PANEL_HEIGHT],
+      outputRange: [0, detailPanelExpandedHeight],
     }),
     opacity: detailPanelProgress,
     transform: [
@@ -874,7 +1080,13 @@ export default function ShowtimeActionModal({
       animationType="none"
       onRequestClose={handleCloseModal}
     >
-      <Animated.View style={[styles.statusModalBackdrop, statusModalBackdropAnimatedStyle]}>
+      <Animated.View
+        style={[
+          styles.statusModalBackdrop,
+          statusModalBackdropAnimatedStyle,
+          statusModalBackdropInsetsStyle,
+        ]}
+      >
         <BlurView
           style={styles.statusModalBlur}
           intensity={4}
@@ -887,7 +1099,10 @@ export default function ShowtimeActionModal({
           onPress={handleCloseModal}
         />
 
-        <Animated.View style={[styles.statusModalCard, statusModalCardAnimatedStyle]}>
+        <Animated.View
+          style={[styles.statusModalCard, statusModalCardAnimatedStyle, statusModalCardSizeStyle]}
+          onLayout={handleStatusModalCardLayout}
+        >
           <ThemedText style={styles.statusModalTitle}>Update your status</ThemedText>
           {resolvedMovieTitle ? (
             <ThemedText style={styles.statusModalMovieTitle}>{resolvedMovieTitle}</ThemedText>
@@ -953,7 +1168,7 @@ export default function ShowtimeActionModal({
             <Animated.View style={[styles.detailPanelAnimatedContainer, detailPanelAnimatedStyle]}>
               <View style={styles.detailPanel}>
                 <View style={styles.detailPanelHeaderRow}>
-                  <ThemedText style={styles.detailPanelTitle}>Ping friends</ThemedText>
+                  <ThemedText style={styles.detailPanelTitle}>Invite friends</ThemedText>
                   <TouchableOpacity
                     style={styles.detailHeaderAction}
                     activeOpacity={0.8}
@@ -968,13 +1183,29 @@ export default function ShowtimeActionModal({
                   </TouchableOpacity>
                 </View>
                 <View style={styles.groupPingSection}>
-                  <ThemedText style={styles.groupPingSectionTitle}>Ping saved groups</ThemedText>
+                  <View style={styles.groupPingHeaderRow}>
+                    <ThemedText style={styles.groupPingSectionTitle}>Groups</ThemedText>
+                    <TouchableOpacity
+                      style={styles.visibilityGroupsManageButton}
+                      onPress={handleOpenManageGroups}
+                      activeOpacity={0.8}
+                    >
+                      <ThemedText style={styles.visibilityGroupsManageButtonText}>
+                        Manage Groups
+                      </ThemedText>
+                      <MaterialIcons name="open-in-new" size={14} color={colors.tint} />
+                    </TouchableOpacity>
+                  </View>
                   {isFetchingFriendGroups && friendGroupsWithCurrentMembers.length === 0 ? (
                     <ActivityIndicator size="small" color={colors.tint} />
                   ) : friendGroupsWithCurrentMembers.length === 0 ? (
                     <ThemedText style={styles.groupPingEmptyText}>No groups saved.</ThemedText>
                   ) : (
-                    <View style={styles.groupPingList}>
+                    <ScrollView
+                      style={styles.groupPingScroll}
+                      contentContainerStyle={styles.groupPingScrollContent}
+                      nestedScrollEnabled
+                    >
                       {friendGroupsWithCurrentMembers
                         .slice()
                         .sort((left, right) => left.name.localeCompare(right.name))
@@ -999,14 +1230,19 @@ export default function ShowtimeActionModal({
                                 disabled={!canPingGroup}
                                 activeOpacity={0.8}
                               >
-                                <ThemedText style={[styles.pingButtonText, !canPingGroup && styles.pingButtonTextDisabled]}>
-                                  Ping Group
+                                <ThemedText
+                                  style={[
+                                    styles.pingButtonText,
+                                    !canPingGroup && styles.pingButtonTextDisabled,
+                                  ]}
+                                >
+                                  Invite Group
                                 </ThemedText>
                               </TouchableOpacity>
                             </View>
                           );
                         })}
-                    </View>
+                    </ScrollView>
                   )}
                 </View>
                 <View style={styles.detailSearchRow}>
@@ -1031,9 +1267,9 @@ export default function ShowtimeActionModal({
                           friend.availability === "eligible" && !isPingingFriend && !isFetchingPingedFriends;
                         const pingButtonLabel =
                           friend.availability === "eligible"
-                            ? "Ping"
+                            ? "Invite"
                             : friend.availability === "pinged"
-                              ? "Pinged"
+                              ? "Invited"
                               : friend.availability === "going"
                                 ? "Going"
                                 : "Interested";
@@ -1069,111 +1305,137 @@ export default function ShowtimeActionModal({
                 <View style={styles.visibilityHeaderRow}>
                   <ThemedText style={styles.detailPanelTitle}>Control who can see your status</ThemedText>
                   <ThemedText style={styles.visibilitySummary}>
-                    {selectedVisibilityCount}/{totalFriendCount} selected
+                    {isVisibilityInitializing
+                      ? "Loading visibility..."
+                      : `${selectedVisibilityCount}/${totalFriendCount} selected`}
                   </ThemedText>
                 </View>
-                <View style={styles.visibilityActionsRow}>
-                  <TouchableOpacity
-                    style={styles.visibilityActionButton}
-                    onPress={handleSelectAllVisibility}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText style={styles.visibilityActionText}>Select all</ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.visibilityActionButton}
-                    onPress={handleDeselectAllVisibility}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText style={styles.visibilityActionText}>Deselect all</ThemedText>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.visibilityGroupsSection}>
-                  <ThemedText style={styles.visibilityGroupsTitle}>Groups</ThemedText>
-                  {isFetchingFriendGroups && friendGroups.length === 0 ? (
+                {isVisibilityInitializing ? (
+                  <View style={styles.detailListStateContainer}>
                     <ActivityIndicator size="small" color={colors.tint} />
-                  ) : groupsForVisibility.length === 0 ? (
-                    <ThemedText style={styles.visibilityGroupsEmptyText}>No groups saved.</ThemedText>
-                  ) : (
-                    <ScrollView
-                      style={styles.visibilityGroupsScroll}
-                      contentContainerStyle={styles.visibilityGroupsScrollContent}
-                      nestedScrollEnabled
-                    >
-                      {groupsForVisibility.map((group) => {
-                        const isSelected = visibleGroupIdsDraft.has(group.id);
-                        return (
-                          <TouchableOpacity
-                            key={group.id}
-                            style={styles.visibilityGroupRow}
-                            onPress={() => handleToggleVisibleGroup(group.id)}
-                            activeOpacity={0.8}
-                          >
-                            <View style={styles.visibilityGroupIdentity}>
-                              <View style={styles.visibilityGroupNameRow}>
-                                <ThemedText style={styles.visibilityGroupName}>{group.name}</ThemedText>
-                                {group.is_favorite ? (
-                                  <MaterialIcons name="star" size={12} color={colors.yellow.secondary} />
-                                ) : null}
-                              </View>
-                              <ThemedText style={styles.visibilityGroupMeta}>
-                                {group.friend_ids.length} friend{group.friend_ids.length === 1 ? "" : "s"}
-                              </ThemedText>
-                            </View>
-                            <MaterialIcons
-                              name={isSelected ? "check-box" : "check-box-outline-blank"}
-                              size={20}
-                              color={isSelected ? colors.tint : colors.textSecondary}
-                            />
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  )}
-                </View>
-                <View style={styles.detailSearchRow}>
-                  <MaterialIcons name="search" size={15} color={colors.textSecondary} />
-                  <TextInput
-                    value={visibilitySearchQuery}
-                    onChangeText={setVisibilitySearchQuery}
-                    placeholder="Search friends"
-                    placeholderTextColor={colors.textSecondary}
-                    style={styles.detailSearchInput}
-                  />
-                </View>
-                <View style={styles.detailListContainer}>
-                  {isFetchingShowtimeVisibility && !showtimeVisibility ? (
-                    <View style={styles.detailListStateContainer}>
-                      <ActivityIndicator size="small" color={colors.tint} />
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.visibilityActionsRow}>
+                      <TouchableOpacity
+                        style={styles.visibilityActionButton}
+                        onPress={handleSelectAllVisibility}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText style={styles.visibilityActionText}>Select all</ThemedText>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.visibilityActionButton}
+                        onPress={handleDeselectAllVisibility}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText style={styles.visibilityActionText}>Deselect all</ThemedText>
+                      </TouchableOpacity>
                     </View>
-                  ) : friendsForVisibility.length === 0 ? (
-                    <View style={styles.detailListStateContainer}>
-                      <ThemedText style={styles.detailEmptyText}>No friends found.</ThemedText>
+                    <View style={styles.visibilityGroupsSection}>
+                      <View style={styles.visibilityGroupsHeaderRow}>
+                        <ThemedText style={styles.visibilityGroupsTitle}>Groups</ThemedText>
+                        <TouchableOpacity
+                          style={styles.visibilityGroupsManageButton}
+                          onPress={handleOpenManageGroups}
+                          activeOpacity={0.8}
+                        >
+                          <ThemedText style={styles.visibilityGroupsManageButtonText}>
+                            Manage Groups
+                          </ThemedText>
+                          <MaterialIcons
+                            name="open-in-new"
+                            size={14}
+                            color={colors.tint}
+                          />
+                        </TouchableOpacity>
+                      </View>
+                      {isFetchingFriendGroups && friendGroupsList.length === 0 ? (
+                        <ActivityIndicator size="small" color={colors.tint} />
+                      ) : groupsForVisibility.length === 0 ? (
+                        <ThemedText style={styles.visibilityGroupsEmptyText}>No groups saved.</ThemedText>
+                      ) : (
+                        <ScrollView
+                          style={styles.visibilityGroupsScroll}
+                          contentContainerStyle={styles.visibilityGroupsScrollContent}
+                          nestedScrollEnabled
+                        >
+                          {groupsForVisibility.map((group) => {
+                            const isSelected = visibleGroupIdsDraft.has(group.id);
+                            return (
+                              <TouchableOpacity
+                                key={group.id}
+                                style={styles.visibilityGroupRow}
+                                onPress={() => handleToggleVisibleGroup(group.id)}
+                                activeOpacity={0.8}
+                              >
+                                <View style={styles.visibilityGroupIdentity}>
+                                  <View style={styles.visibilityGroupNameRow}>
+                                    <ThemedText style={styles.visibilityGroupName}>{group.name}</ThemedText>
+                                    {group.is_favorite ? (
+                                      <MaterialIcons name="star" size={12} color={colors.yellow.secondary} />
+                                    ) : null}
+                                  </View>
+                                  <ThemedText style={styles.visibilityGroupMeta}>
+                                    {group.friend_ids.length} friend{group.friend_ids.length === 1 ? "" : "s"}
+                                  </ThemedText>
+                                </View>
+                                <MaterialIcons
+                                  name={isSelected ? "check-box" : "check-box-outline-blank"}
+                                  size={20}
+                                  color={isSelected ? colors.tint : colors.textSecondary}
+                                />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      )}
                     </View>
-                  ) : (
-                    <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} nestedScrollEnabled>
-                      {friendsForVisibility.map((friend) => {
-                        return (
-                          <TouchableOpacity
-                            key={friend.id}
-                            style={styles.visibilityRow}
-                            onPress={() => handleToggleVisibleFriend(friend.id)}
-                            activeOpacity={0.8}
-                          >
-                            <View style={styles.visibilityFriendIdentity}>
-                              <ThemedText style={styles.visibilityFriendName}>{friend.label}</ThemedText>
-                            </View>
-                            <MaterialIcons
-                              name={friend.isSelected ? "check-box" : "check-box-outline-blank"}
-                              size={20}
-                              color={friend.isSelected ? colors.tint : colors.textSecondary}
-                            />
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  )}
-                </View>
+                    <View style={styles.detailSearchRow}>
+                      <MaterialIcons name="search" size={15} color={colors.textSecondary} />
+                      <TextInput
+                        value={visibilitySearchQuery}
+                        onChangeText={setVisibilitySearchQuery}
+                        placeholder="Search friends"
+                        placeholderTextColor={colors.textSecondary}
+                        style={styles.detailSearchInput}
+                      />
+                    </View>
+                    <View style={styles.detailListContainer}>
+                      {friendsForVisibility.length === 0 ? (
+                        <View style={styles.detailListStateContainer}>
+                          <ThemedText style={styles.detailEmptyText}>No friends found.</ThemedText>
+                        </View>
+                      ) : (
+                        <ScrollView
+                          style={styles.detailScroll}
+                          contentContainerStyle={styles.detailScrollContent}
+                          nestedScrollEnabled
+                        >
+                          {friendsForVisibility.map((friend) => {
+                            return (
+                              <TouchableOpacity
+                                key={friend.id}
+                                style={styles.visibilityRow}
+                                onPress={() => handleToggleVisibleFriend(friend.id)}
+                                activeOpacity={0.8}
+                              >
+                                <View style={styles.visibilityFriendIdentity}>
+                                  <ThemedText style={styles.visibilityFriendName}>{friend.label}</ThemedText>
+                                </View>
+                                <MaterialIcons
+                                  name={friend.isSelected ? "check-box" : "check-box-outline-blank"}
+                                  size={20}
+                                  color={friend.isSelected ? colors.tint : colors.textSecondary}
+                                />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      )}
+                    </View>
+                  </>
+                )}
               </View>
             </Animated.View>
           ) : null}
@@ -1245,7 +1507,7 @@ export default function ShowtimeActionModal({
                   activeDetailPanel === "ping" && styles.actionButtonTextActive,
                 ]}
               >
-                Ping
+                Invite
               </ThemedText>
             </TouchableOpacity>
 
@@ -1265,7 +1527,9 @@ export default function ShowtimeActionModal({
               activeOpacity={0.8}
             >
               <View style={styles.actionButtonIconSlot}>
-                {visibilityButtonState === "none" ? (
+                {isVisibilityInitializing ? (
+                  <ActivityIndicator size="small" color={colors.tint} />
+                ) : visibilityButtonState === "none" ? (
                   <MaterialCommunityIcons
                     name="incognito"
                     size={16}
@@ -1304,14 +1568,6 @@ export default function ShowtimeActionModal({
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            style={styles.statusCancelButton}
-            disabled={isUpdatingStatus}
-            onPress={handleCloseModal}
-            activeOpacity={0.8}
-          >
-            <ThemedText style={styles.statusCancelText}>{isUpdatingStatus ? "Updating..." : "Cancel"}</ThemedText>
-          </TouchableOpacity>
         </Animated.View>
 
         <Modal
@@ -1390,7 +1646,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     statusModalBackdrop: {
       flex: 1,
       justifyContent: "center",
-      padding: 20,
     },
     statusModalBlur: {
       ...StyleSheet.absoluteFillObject,
@@ -1409,6 +1664,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderColor: colors.cardBorder,
       padding: 14,
       gap: 10,
+      overflow: "hidden",
     },
     statusModalTitle: {
       fontSize: 18,
@@ -1622,7 +1878,19 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
     },
     groupPingSection: {
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      padding: 8,
       gap: 6,
+      maxHeight: 120,
+    },
+    groupPingHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
     },
     groupPingSectionTitle: {
       fontSize: 11,
@@ -1633,7 +1901,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 11,
       color: colors.textSecondary,
     },
-    groupPingList: {
+    groupPingScroll: {
+      flexGrow: 0,
+    },
+    groupPingScrollContent: {
       gap: 6,
     },
     groupPingRow: {
@@ -1641,12 +1912,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "center",
       justifyContent: "space-between",
       gap: 8,
-      borderRadius: 9,
+      borderRadius: 8,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      paddingHorizontal: 10,
-      paddingVertical: 7,
+      backgroundColor: colors.background,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
     },
     groupPingIdentity: {
       flex: 1,
@@ -1659,7 +1930,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 4,
     },
     groupPingName: {
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: "600",
       color: colors.text,
     },
@@ -1749,6 +2020,28 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 11,
       fontWeight: "700",
       color: colors.textSecondary,
+    },
+    visibilityGroupsHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    visibilityGroupsManageButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 7,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.background,
+    },
+    visibilityGroupsManageButtonText: {
+      fontSize: 10,
+      fontWeight: "700",
+      color: colors.tint,
     },
     visibilityGroupsEmptyText: {
       fontSize: 11,
@@ -1925,15 +2218,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.pillActiveText,
     },
     seatDialogButtonTextSecondary: {
-      color: colors.textSecondary,
-    },
-    statusCancelButton: {
-      alignItems: "center",
-      paddingTop: 2,
-    },
-    statusCancelText: {
-      fontSize: 13,
-      fontWeight: "600",
       color: colors.textSecondary,
     },
   });

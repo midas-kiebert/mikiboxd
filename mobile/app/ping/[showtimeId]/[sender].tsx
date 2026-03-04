@@ -25,7 +25,7 @@ function getErrorDetail(body: unknown, status: number) {
   ) {
     return (body as ErrorBody).detail as string;
   }
-  return `Could not process ping link (${status}).`;
+  return `Could not process invite link (${status}).`;
 }
 
 export default function PingLinkScreen() {
@@ -57,7 +57,7 @@ export default function PingLinkScreen() {
     hasAttemptedRef.current = true;
 
     if (normalizedShowtimeId === null || normalizedSender.length === 0) {
-      setErrorMessage("Invalid ping link.");
+      setErrorMessage("Invalid invite link.");
       setState("error");
       return;
     }
@@ -66,7 +66,7 @@ export default function PingLinkScreen() {
       try {
         const token = await storage.getItem("access_token");
         if (!token) {
-          throw new Error("You need to log in before opening this ping link.");
+          throw new Error("You need to log in before opening this invite link.");
         }
 
         const response = await fetch(
@@ -96,7 +96,7 @@ export default function PingLinkScreen() {
         const message =
           error instanceof Error && error.message
             ? error.message
-            : "Could not process ping link.";
+            : "Could not process invite link.";
         setErrorMessage(message);
         setState("error");
       }
@@ -107,23 +107,23 @@ export default function PingLinkScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <TopBar title="Ping Link" showBackButton />
+      <TopBar title="Invite Link" showBackButton />
       <View style={styles.content}>
         {state === "loading" ? (
           <>
             <ActivityIndicator size="large" color={colors.tint} />
-            <ThemedText style={styles.helperText}>Opening ping...</ThemedText>
+            <ThemedText style={styles.helperText}>Opening invite...</ThemedText>
           </>
         ) : (
           <>
-            <ThemedText style={styles.errorTitle}>Could not open ping</ThemedText>
+            <ThemedText style={styles.errorTitle}>Could not open invite</ThemedText>
             <ThemedText style={styles.helperText}>{errorMessage ?? "Try again later."}</ThemedText>
             <TouchableOpacity
               style={styles.primaryButton}
               activeOpacity={0.8}
               onPress={() => router.replace("/(tabs)/pings")}
             >
-              <ThemedText style={styles.primaryButtonText}>Open Pings</ThemedText>
+              <ThemedText style={styles.primaryButtonText}>Open Invites</ThemedText>
             </TouchableOpacity>
           </>
         )}

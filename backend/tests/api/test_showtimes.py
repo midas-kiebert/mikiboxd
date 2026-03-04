@@ -48,7 +48,7 @@ def test_ping_friend_for_showtime(
     )
 
     assert response.status_code == 200
-    assert response.json() == {"message": "Friend pinged successfully"}
+    assert response.json() == {"message": "Friend invited successfully"}
     notify_ping.assert_called_once()
 
 
@@ -69,7 +69,7 @@ def test_ping_friend_for_showtime_requires_friendship(
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "You can only ping your friends."
+    assert response.json()["detail"] == "You can only invite your friends."
 
 
 def test_ping_friend_for_showtime_rejects_when_already_selected(
@@ -150,7 +150,7 @@ def test_ping_friend_for_showtime_allows_ping_when_selection_is_hidden(
     )
 
     assert response.status_code == 200
-    assert response.json() == {"message": "Friend pinged successfully"}
+    assert response.json() == {"message": "Friend invited successfully"}
     notify_ping.assert_called_once()
 
 
@@ -187,7 +187,7 @@ def test_ping_friend_for_showtime_rejects_duplicate_ping(
     assert second_response.status_code == 409
     assert (
         second_response.json()["detail"]
-        == "You already pinged this friend for this showtime."
+        == "You already invited this friend for this showtime."
     )
 
 
@@ -244,7 +244,7 @@ def test_receive_ping_from_link_allows_non_friend_sender(
     )
 
     assert response.status_code == 200
-    assert response.json() == {"message": "Ping received successfully"}
+    assert response.json() == {"message": "Invite received successfully"}
 
     stored_ping = db_transaction.exec(
         select(ShowtimePing).where(
@@ -273,7 +273,7 @@ def test_receive_ping_from_link_accepts_display_name_identifier(
     )
 
     assert response.status_code == 200
-    assert response.json() == {"message": "Ping received successfully"}
+    assert response.json() == {"message": "Invite received successfully"}
 
 
 def test_receive_ping_from_link_is_idempotent(
@@ -300,7 +300,7 @@ def test_receive_ping_from_link_is_idempotent(
         headers=normal_user_token_headers,
     )
     assert second_response.status_code == 200
-    assert second_response.json() == {"message": "Ping received successfully"}
+    assert second_response.json() == {"message": "Invite received successfully"}
 
     ping_rows = db_transaction.exec(
         select(ShowtimePing).where(
@@ -325,7 +325,7 @@ def test_receive_ping_from_link_rejects_unknown_sender(
     )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Sender for this ping link was not found."
+    assert response.json()["detail"] == "Sender for this invite link was not found."
 
 
 def test_showtime_visibility_get_and_update(
@@ -915,14 +915,14 @@ def test_ping_friend_group_for_showtime(
         headers=normal_user_token_headers,
     )
     assert ping_group_response.status_code == 200
-    assert ping_group_response.json()["message"] == "Pinged 2 friends successfully."
+    assert ping_group_response.json()["message"] == "Invited 2 friends successfully."
 
     second_ping_group_response = client.post(
         f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-group/{group_id}",
         headers=normal_user_token_headers,
     )
     assert second_ping_group_response.status_code == 200
-    assert second_ping_group_response.json()["message"] == "No new pings were sent."
+    assert second_ping_group_response.json()["message"] == "No new invites were sent."
 
     list_response = client.get(
         f"{settings.API_V1_STR}/showtimes/{showtime_id}/pinged-friends",

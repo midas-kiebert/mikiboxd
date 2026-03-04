@@ -515,7 +515,7 @@ def test_notify_user_on_showtime_ping(
 
     sent_payload = send_messages.call_args.args[0]
     assert len(sent_payload) == 1
-    assert sent_payload[0]["title"] == "Alex pinged you"
+    assert sent_payload[0]["title"] == "Alex invited you"
     assert sent_payload[0]["data"]["type"] == "showtime_ping"
     assert sent_payload[0]["data"]["showtimeId"] == showtime.id
     assert sent_payload[0]["data"]["movieId"] == showtime.movie_id
@@ -564,7 +564,7 @@ def test_notify_user_on_showtime_ping_uses_email_channel(
     send_email.assert_called_once()
     email_call = send_email.call_args.kwargs
     assert email_call["email_to"] == "friend@example.com"
-    assert email_call["subject"] == "Alex pinged you"
+    assert email_call["subject"] == "Alex invited you"
     assert "Memories of Murder" in email_call["body"]
 
 

@@ -9,10 +9,17 @@ export const emailPattern = {
   message: "Invalid email address",
 }
 
-export const namePattern = {
-  value: /^[A-Za-z\s\u00C0-\u017F]{1,30}$/,
-  message: "Invalid name",
+export const usernameMinLength = 4
+export const usernameMaxLength = 15
+
+export const usernamePattern = {
+  value: /^[A-Za-z0-9_]{4,15}$/,
+  message:
+    "Username must be 4-15 characters and use only letters, numbers, and underscores.",
 }
+
+// Backward-compatible alias for older imports.
+export const namePattern = usernamePattern
 
 export const passwordRules = (isRequired = true) => {
   const rules: any = {

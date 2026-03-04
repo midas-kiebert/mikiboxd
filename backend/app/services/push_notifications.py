@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.enums import GoingStatus, NotificationChannel
 from app.crud import push_token as push_token_crud
 from app.crud import showtime as showtime_crud
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
@@ -158,9 +159,16 @@ def notify_friends_on_showtime_selection(
     if not opted_in_recipients:
         return
 
-    # Recipients are already filtered by effective visibility in
-    # get_friends_with_showtime_selection.
-    visible_recipients = opted_in_recipients
+    visible_recipients = [
+        user
+        for user in opted_in_recipients
+        if showtime_visibility_crud.is_showtime_visible_to_viewer_for_ids(
+            session=session,
+            owner_id=actor_id,
+            showtime_id=showtime.id,
+            viewer_id=user.id,
+        )
+    ]
     if not visible_recipients:
         return
 

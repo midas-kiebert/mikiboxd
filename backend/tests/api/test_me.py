@@ -30,6 +30,7 @@ def test_get_me_superuser(
     assert current_user["is_active"] is True
     assert current_user["is_superuser"] is True
     assert current_user["email"] == settings.FIRST_SUPERUSER
+    assert isinstance(current_user["incognito_mode"], bool)
     assert isinstance(current_user["notify_on_friend_showtime_match"], bool)
     assert isinstance(current_user["notify_on_friend_requests"], bool)
     assert isinstance(current_user["notify_on_showtime_ping"], bool)
@@ -51,6 +52,7 @@ def test_get_me_normal_user(
     assert current_user["is_active"] is True
     assert current_user["is_superuser"] is False
     assert current_user["email"] == settings.EMAIL_TEST_USER
+    assert isinstance(current_user["incognito_mode"], bool)
     assert isinstance(current_user["notify_on_friend_showtime_match"], bool)
     assert isinstance(current_user["notify_on_friend_requests"], bool)
     assert isinstance(current_user["notify_on_showtime_ping"], bool)
@@ -279,6 +281,34 @@ def test_update_me_notification_preference(
     assert me_response.json()["notify_channel_friend_requests"] == "email"
     assert me_response.json()["notify_channel_showtime_ping"] == "email"
     assert me_response.json()["notify_channel_interest_reminder"] == "email"
+
+
+def test_update_me_incognito_mode(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    enable_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"incognito_mode": True},
+    )
+    assert enable_response.status_code == 200
+    assert enable_response.json()["incognito_mode"] is True
+
+    get_enabled_response = client.get(
+        f"{settings.API_V1_STR}/me",
+        headers=normal_user_token_headers,
+    )
+    assert get_enabled_response.status_code == 200
+    assert get_enabled_response.json()["incognito_mode"] is True
+
+    disable_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"incognito_mode": False},
+    )
+    assert disable_response.status_code == 200
+    assert disable_response.json()["incognito_mode"] is False
 
 
 def test_update_me_rejects_duplicate_display_name(
@@ -1133,6 +1163,74 @@ def test_friend_group_rejects_non_friend_member(
     )
 
 
+def test_friend_group_rejects_empty_member_set(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Empty Group",
+            "friend_ids": [],
+        },
+    )
+    assert create_response.status_code == 400
+    assert (
+        create_response.json()["detail"]
+        == "Friend group must contain at least one friend."
+    )
+
+
+def test_friend_group_rejects_duplicate_member_set(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+) -> None:
+    current_user_id = _normal_user_id(db_transaction)
+    first_friend = user_factory()
+    second_friend = user_factory()
+    first_friend_id = first_friend.id
+    second_friend_id = second_friend.id
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=first_friend_id,
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=second_friend_id,
+    )
+    db_transaction.commit()
+
+    first_group_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Core Crew",
+            "friend_ids": [str(first_friend_id), str(second_friend_id)],
+        },
+    )
+    assert first_group_response.status_code == 200
+
+    duplicate_group_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Same People Different Name",
+            "friend_ids": [str(second_friend_id), str(first_friend_id)],
+        },
+    )
+    assert duplicate_group_response.status_code == 400
+    assert (
+        duplicate_group_response.json()["detail"]
+        == "A friend group with the same members already exists."
+    )
+
+
 def test_unfriending_removes_users_from_both_friend_groups(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
@@ -1192,15 +1290,73 @@ def test_unfriending_removes_users_from_both_friend_groups(
         headers=normal_user_token_headers,
     )
     assert own_groups_after_response.status_code == 200
-    own_groups_after = own_groups_after_response.json()
-    assert len(own_groups_after) == 1
-    assert own_groups_after[0]["friend_ids"] == []
+    assert own_groups_after_response.json() == []
 
     friend_groups_after_response = client.get(
         f"{settings.API_V1_STR}/me/friend-groups",
         headers=friend_headers,
     )
     assert friend_groups_after_response.status_code == 200
-    friend_groups_after = friend_groups_after_response.json()
-    assert len(friend_groups_after) == 1
-    assert friend_groups_after[0]["friend_ids"] == []
+    assert friend_groups_after_response.json() == []
+
+
+def test_friend_group_shrinkage_deletes_group_that_coincides_with_existing_group(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+) -> None:
+    current_user_id = _normal_user_id(db_transaction)
+    first_friend = user_factory()
+    second_friend = user_factory()
+    first_friend_id = first_friend.id
+    second_friend_id = second_friend.id
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=first_friend_id,
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=second_friend_id,
+    )
+    db_transaction.commit()
+
+    stable_group_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Only First Friend",
+            "friend_ids": [str(first_friend_id)],
+        },
+    )
+    assert stable_group_response.status_code == 200
+    stable_group_id = stable_group_response.json()["id"]
+
+    shrinking_group_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Both Friends",
+            "friend_ids": [str(first_friend_id), str(second_friend_id)],
+        },
+    )
+    assert shrinking_group_response.status_code == 200
+
+    remove_friend_response = client.delete(
+        f"{settings.API_V1_STR}/friends/{second_friend_id}",
+        headers=normal_user_token_headers,
+    )
+    assert remove_friend_response.status_code == 200
+
+    groups_after_response = client.get(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+    )
+    assert groups_after_response.status_code == 200
+    groups_after = groups_after_response.json()
+    assert len(groups_after) == 1
+    assert groups_after[0]["id"] == stable_group_id
+    assert groups_after[0]["friend_ids"] == [str(first_friend_id)]

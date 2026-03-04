@@ -28,6 +28,7 @@ class UserPublic(SQLModel):
 class UserMe(UserPublic):
     email: EmailStr
     is_superuser: bool
+    incognito_mode: bool
     notify_on_friend_showtime_match: bool
     notify_on_friend_requests: bool
     notify_on_showtime_ping: bool

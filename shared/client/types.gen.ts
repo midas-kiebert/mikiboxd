@@ -210,6 +210,8 @@ export type ShowtimeSelectionUpdate = {
   going_status: GoingStatus
   seat_row?: string | null
   seat_number?: string | null
+  visible_friend_ids?: Array<string> | null
+  visible_group_ids?: Array<string> | null
 }
 
 export type ShowtimeVisibilityPublic = {
@@ -266,6 +268,7 @@ export type UserMe = {
   seat_number?: string | null
   email: string
   is_superuser: boolean
+  incognito_mode: boolean
   notify_on_friend_showtime_match: boolean
   notify_on_friend_requests: boolean
   notify_on_showtime_ping: boolean
@@ -295,6 +298,7 @@ export type UserUpdate = {
   display_name?: string | null
   email?: string | null
   letterboxd_username?: string | null
+  incognito_mode?: boolean | null
   notify_on_friend_showtime_match?: boolean | null
   notify_on_friend_requests?: boolean | null
   notify_on_showtime_ping?: boolean | null

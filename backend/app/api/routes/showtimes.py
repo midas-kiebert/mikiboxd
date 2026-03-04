@@ -27,15 +27,20 @@ def update_showtime_selection(
         "seat_row" in payload.model_fields_set
         or "seat_number" in payload.model_fields_set
     )
-    return showtimes_service.update_showtime_selection(
-        session=session,
-        showtime_id=showtime_id,
-        user_id=current_user.id,
-        going_status=payload.going_status,
-        seat_row=payload.seat_row,
-        seat_number=payload.seat_number,
-        update_seat=should_update_seat,
-    )
+    try:
+        return showtimes_service.update_showtime_selection(
+            session=session,
+            showtime_id=showtime_id,
+            user_id=current_user.id,
+            going_status=payload.going_status,
+            seat_row=payload.seat_row,
+            seat_number=payload.seat_number,
+            visible_friend_ids=payload.visible_friend_ids,
+            visible_group_ids=payload.visible_group_ids,
+            update_seat=should_update_seat,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
 
 @router.post("/{showtime_id}/ping/{friend_id}", response_model=Message)

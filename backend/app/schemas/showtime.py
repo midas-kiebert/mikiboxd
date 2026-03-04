@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -22,6 +23,8 @@ class ShowtimeSelectionUpdate(BaseModel):
     going_status: GoingStatus
     seat_row: str | None = None
     seat_number: str | None = None
+    visible_friend_ids: list[UUID] | None = None
+    visible_group_ids: list[UUID] | None = None
 
 
 class ShowtimeLoggedIn(ShowtimeBase):

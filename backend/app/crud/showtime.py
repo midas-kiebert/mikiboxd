@@ -10,6 +10,7 @@ from sqlmodel import Session, Time, cast, col, or_, select
 from app.core.enums import GoingStatus
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.inputs.movie import Filters
+from app.models.friendship import Friendship
 from app.models.movie import Movie
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.models.showtime_selection import ShowtimeSelection
@@ -253,33 +254,21 @@ def get_friends_with_showtime_selection(
     if len(statuses) == 0:
         return []
 
-    # Resolve statuses separately and merge recipients. This preserves the original
-    # "actor visibility to recipient" semantics while avoiding one broad IN query.
     unique_statuses = list(dict.fromkeys(statuses))
-    recipients_by_id: dict[UUID, User] = {}
-    for status in unique_statuses:
-        stmt = (
-            select(User)
-            .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == User.id)
-            .join(
-                ShowtimeVisibilityEffective,
-                (col(ShowtimeVisibilityEffective.owner_id) == friend_id)
-                & (
-                    col(ShowtimeVisibilityEffective.showtime_id)
-                    == col(ShowtimeSelection.showtime_id)
-                )
-                & (col(ShowtimeVisibilityEffective.viewer_id) == col(User.id)),
-            )
-            .where(
-                col(ShowtimeSelection.showtime_id) == showtime_id,
-                col(ShowtimeSelection.going_status) == status,
-            )
+    stmt = (
+        select(User)
+        .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == col(User.id))
+        .join(
+            Friendship,
+            (col(Friendship.user_id) == friend_id)
+            & (col(Friendship.friend_id) == col(User.id)),
         )
-        recipients = list(session.exec(stmt).all())
-        for recipient in recipients:
-            recipients_by_id[recipient.id] = recipient
-
-    return list(recipients_by_id.values())
+        .where(
+            col(ShowtimeSelection.showtime_id) == showtime_id,
+            col(ShowtimeSelection.going_status).in_(unique_statuses),
+        )
+    )
+    return list(session.exec(stmt).all())
 
 
 def get_interested_reminder_candidates(

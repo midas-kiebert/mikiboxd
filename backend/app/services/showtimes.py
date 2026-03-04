@@ -468,6 +468,22 @@ def get_showtime_visibility_batch(
         owner_id=actor_id,
     )
     favorite_group_ids_sorted = sorted(set(favorite_group_ids), key=str)
+    if len(favorite_group_ids_sorted) == 0:
+        default_visible_friend_ids = all_friend_ids
+    else:
+        default_visible_friend_id_set = (
+            showtime_visibility_crud.get_friend_ids_for_owner_groups(
+                session=session,
+                owner_id=actor_id,
+                group_ids=favorite_group_ids_sorted,
+            )
+            & all_friend_id_set
+        )
+        default_visible_friend_ids = [
+            friend_id
+            for friend_id in all_friend_ids
+            if friend_id in default_visible_friend_id_set
+        ]
     effective_visible_friend_ids_by_showtime_id = (
         showtime_visibility_crud.get_effective_visible_friend_ids_for_showtimes(
             session=session,
@@ -502,24 +518,24 @@ def get_showtime_visibility_batch(
                 visible_group_ids: list[UUID] = []
             else:
                 visible_group_ids = favorite_group_ids_sorted
+            visible_friend_ids = default_visible_friend_ids
         elif setting.is_all_friends:
             visible_group_ids = []
+            visible_friend_ids = all_friend_ids
         else:
             visible_group_ids = sorted(
                 visible_group_ids_by_showtime_id.get(showtime_id, set()),
                 key=str,
             )
-
-        effective_visible_friend_ids = (
-            effective_visible_friend_ids_by_showtime_id.get(showtime_id, set())
-            & all_friend_id_set
-        )
-
-        visible_friend_ids = [
-            friend_id
-            for friend_id in all_friend_ids
-            if friend_id in effective_visible_friend_ids
-        ]
+            effective_visible_friend_ids = (
+                effective_visible_friend_ids_by_showtime_id.get(showtime_id, set())
+                & all_friend_id_set
+            )
+            visible_friend_ids = [
+                friend_id
+                for friend_id in all_friend_ids
+                if friend_id in effective_visible_friend_ids
+            ]
         all_friends_selected = len(visible_friend_ids) == len(all_friend_ids)
         visibility_payload.append(
             ShowtimeVisibilityPublic(
@@ -549,14 +565,6 @@ def get_showtime_visibility(
     friends = user_crud.get_friends(session=session, user_id=actor_id)
     all_friend_ids = sorted((friend.id for friend in friends), key=str)
     all_friend_id_set = set(all_friend_ids)
-    effective_visible_friend_ids = (
-        showtime_visibility_crud.get_effective_visible_friend_ids_for_showtimes(
-            session=session,
-            owner_id=actor_id,
-            showtime_ids=[showtime_id],
-        ).get(showtime_id, set())
-        & all_friend_id_set
-    )
     setting = showtime_visibility_crud.get_showtime_visibility_setting(
         session=session,
         owner_id=actor_id,
@@ -570,10 +578,25 @@ def get_showtime_visibility(
         )
         if len(favorite_group_ids) == 0:
             visible_group_ids = []
+            visible_friend_ids = all_friend_ids
         else:
             visible_group_ids = sorted(set(favorite_group_ids), key=str)
+            default_visible_friend_id_set = (
+                showtime_visibility_crud.get_friend_ids_for_owner_groups(
+                    session=session,
+                    owner_id=actor_id,
+                    group_ids=visible_group_ids,
+                )
+                & all_friend_id_set
+            )
+            visible_friend_ids = [
+                friend_id
+                for friend_id in all_friend_ids
+                if friend_id in default_visible_friend_id_set
+            ]
     elif setting.is_all_friends:
         visible_group_ids = []
+        visible_friend_ids = all_friend_ids
     else:
         visible_group_ids = sorted(
             showtime_visibility_crud.get_visible_group_ids_for_showtime(
@@ -583,12 +606,19 @@ def get_showtime_visibility(
             ),
             key=str,
         )
-
-    visible_friend_ids = [
-        friend_id
-        for friend_id in all_friend_ids
-        if friend_id in effective_visible_friend_ids
-    ]
+        effective_visible_friend_ids = (
+            showtime_visibility_crud.get_effective_visible_friend_ids_for_showtimes(
+                session=session,
+                owner_id=actor_id,
+                showtime_ids=[showtime_id],
+            ).get(showtime_id, set())
+            & all_friend_id_set
+        )
+        visible_friend_ids = [
+            friend_id
+            for friend_id in all_friend_ids
+            if friend_id in effective_visible_friend_ids
+        ]
     all_friends_selected = len(visible_friend_ids) == len(all_friend_ids)
 
     return ShowtimeVisibilityPublic(

@@ -7,6 +7,7 @@ from sqlmodel import Session, Time, case, cast, col, delete, or_, select
 
 from app.core.enums import GoingStatus
 from app.core.security import get_password_hash, verify_password
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.inputs.movie import Filters
 from app.models.cinema_selection import CinemaSelection
 from app.models.friendship import FriendRequest, Friendship
@@ -490,6 +491,11 @@ def add_showtime_selection(
     selection = ShowtimeSelection(user_id=user_id, showtime_id=showtime_id)
     session.add(selection)
     session.flush()
+    showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+        session=session,
+        owner_id=user_id,
+        showtime_id=showtime_id,
+    )
 
     stmt = select(Showtime).where(Showtime.id == showtime_id)
     showtime = session.exec(stmt).one()
@@ -527,6 +533,12 @@ def delete_showtime_selection(
     ).one()
 
     session.delete(showtime_selection)
+    session.flush()
+    showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+        session=session,
+        owner_id=user_id,
+        showtime_id=showtime_id,
+    )
     return showtime
 
 

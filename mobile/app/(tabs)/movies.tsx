@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for (tabs) / movies. It controls navigation and screen-level state for this route.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   StyleSheet,
   FlatList,
@@ -14,6 +14,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { MeService } from 'shared';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
+import useAuth from 'shared/hooks/useAuth';
 import { DateTime } from 'luxon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ThemedView } from '@/components/themed-view';
@@ -102,6 +103,10 @@ export default function MovieScreen() {
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
   } = useSharedTabFilters();
+  const { user } = useAuth();
+  const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
+  const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
+  const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
   const isFocused = useIsFocused();
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
@@ -133,11 +138,16 @@ export default function MovieScreen() {
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    if (hasLetterboxdUsername || !watchlistOnly) return;
+    setWatchlistOnly(false);
+  }, [hasLetterboxdUsername, setWatchlistOnly, watchlistOnly]);
+
   // Build the filter payload once per relevant state change to avoid unnecessary refetches.
   const movieFilters = useMemo<MovieFilters>(
     () => ({
       query: searchQuery,
-      watchlistOnly: appliedWatchlistOnly ? true : undefined,
+      watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
       days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       runtimeMin: runtimeBounds.runtimeMin,
@@ -147,7 +157,7 @@ export default function MovieScreen() {
     }),
     [
       searchQuery,
-      appliedWatchlistOnly,
+      effectiveAppliedWatchlistOnly,
       resolvedApiDays,
       selectedTimeRanges,
       runtimeBounds.runtimeMin,
@@ -161,7 +171,7 @@ export default function MovieScreen() {
     () => ({
       selected_showtime_filter: selectedShowtimeFilter,
       showtime_audience: shouldShowAudienceToggle ? selectedShowtimeAudience : 'including-friends',
-      watchlist_only: watchlistOnly,
+      watchlist_only: effectiveWatchlistOnly,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
       runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
@@ -170,7 +180,7 @@ export default function MovieScreen() {
       selectedShowtimeFilter,
       shouldShowAudienceToggle,
       selectedShowtimeAudience,
-      watchlistOnly,
+      effectiveWatchlistOnly,
       selectedDays,
       selectedTimeRanges,
       selectedRuntimeRanges,
@@ -261,7 +271,7 @@ export default function MovieScreen() {
       return;
     }
     if (filterId === 'watchlist-only') {
-      setWatchlistOnly(!watchlistOnly);
+      setWatchlistOnly(!effectiveWatchlistOnly);
       return;
     }
     if (filterId === 'cinemas') {
@@ -293,7 +303,7 @@ export default function MovieScreen() {
   const handleApplyPreset = (filters: PageFilterPresetState) => {
     setSelectedShowtimeFilter(toSharedTabShowtimeFilter(filters.selected_showtime_filter));
     setSelectedShowtimeAudience(toAudienceFilter(filters.showtime_audience));
-    setWatchlistOnly(Boolean(filters.watchlist_only));
+    setWatchlistOnly(hasLetterboxdUsername && Boolean(filters.watchlist_only));
     setSelectedDays(filters.days ?? []);
     setSelectedTimeRanges(filters.time_ranges ?? []);
     setSelectedRuntimeRanges(filters.runtime_ranges ?? []);
@@ -329,7 +339,8 @@ export default function MovieScreen() {
       const filters = buildSharedTabPillFilters({
         colors,
         selectedShowtimeFilter,
-        watchlistOnly,
+        watchlistOnly: effectiveWatchlistOnly,
+        canUseWatchlistFilter: hasLetterboxdUsername,
         selectedDays,
         selectedTimeRanges,
         selectedRuntimeRanges,
@@ -348,7 +359,8 @@ export default function MovieScreen() {
       selectedTimeRanges,
       selectedRuntimeRanges,
       sessionCinemaIds,
-      watchlistOnly,
+      hasLetterboxdUsername,
+      effectiveWatchlistOnly,
     ]
   );
 
@@ -367,7 +379,8 @@ export default function MovieScreen() {
     () =>
       buildSharedTabActiveFilterIds({
         selectedShowtimeFilter,
-        watchlistOnly,
+        watchlistOnly: effectiveWatchlistOnly,
+        canUseWatchlistFilter: hasLetterboxdUsername,
         selectedDaysCount: selectedDays.length,
         selectedTimeRangesCount: selectedTimeRanges.length,
         selectedRuntimeRangesCount: selectedRuntimeRanges.length,
@@ -375,7 +388,8 @@ export default function MovieScreen() {
       }),
     [
       selectedShowtimeFilter,
-      watchlistOnly,
+      hasLetterboxdUsername,
+      effectiveWatchlistOnly,
       selectedDays.length,
       selectedTimeRanges.length,
       selectedRuntimeRanges.length,

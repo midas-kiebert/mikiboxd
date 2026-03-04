@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Modal,
   StyleSheet,
   TextInput,
@@ -61,6 +63,9 @@ const SUMMARY_CARD_HEIGHT = 58;
 const QUICK_ACTION_HEIGHT = 40;
 const OPEN_MODAL_ROW_HEIGHT = 42;
 const ACTION_GAP = 8;
+const POPOVER_OPEN_DURATION_MS = 90;
+const POPOVER_OPEN_START_SCALE = 0.96;
+const POPOVER_OPEN_START_Y = -3;
 
 const normalizeFilters = (
   filters: PageFilterPresetState | FilterPresetPublic["filters"]
@@ -163,6 +168,7 @@ export default function FilterPresetQuickPopover({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const modalRootRef = useRef<View | null>(null);
+  const cardOpenProgress = useRef(new Animated.Value(0)).current;
   const [modalRootTop, setModalRootTop] = useState(0);
   const queryClient = useQueryClient();
   const [presetName, setPresetName] = useState("");
@@ -185,7 +191,6 @@ export default function FilterPresetQuickPopover({
   }, [visible]);
 
   useEffect(() => {
-    if (!visible) return;
     let isMounted = true;
     loadFilterPresetOrder(scope).then((orderedIds) => {
       if (!isMounted) return;
@@ -194,12 +199,31 @@ export default function FilterPresetQuickPopover({
     return () => {
       isMounted = false;
     };
-  }, [scope, visible]);
+  }, [scope]);
+
+  useEffect(() => {
+    if (!visible) {
+      cardOpenProgress.setValue(0);
+      return;
+    }
+
+    cardOpenProgress.setValue(0);
+    const animation = Animated.timing(cardOpenProgress, {
+      toValue: 1,
+      duration: POPOVER_OPEN_DURATION_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => {
+      animation.stop();
+    };
+  }, [cardOpenProgress, visible]);
 
   const { data: presets = [], isLoading } = useQuery({
     queryKey: ["filter-presets", scope],
-    enabled: visible,
     queryFn: () => MeService.getFilterPresets({ scope }),
+    staleTime: 60_000,
   });
   const presetsQueryKey = useMemo(() => ["filter-presets", scope] as const, [scope]);
   const savePresetMutation = useMutation({
@@ -292,6 +316,29 @@ export default function FilterPresetQuickPopover({
   const arrowCenterX = cardLeft + arrowLeft + ARROW_SIZE / 2;
   const cardBottom = cardTop + estimatedCardHeight;
   const arrowTipY = cardBottom + ARROW_SIZE / 2;
+  const cardAnimatedStyle = useMemo(
+    () => ({
+      opacity: cardOpenProgress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.92, 1],
+      }),
+      transform: [
+        {
+          translateY: cardOpenProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [POPOVER_OPEN_START_Y, 0],
+          }),
+        },
+        {
+          scale: cardOpenProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [POPOVER_OPEN_START_SCALE, 1],
+          }),
+        },
+      ],
+    }),
+    [cardOpenProgress]
+  );
 
   useEffect(() => {
     if (!__DEV__ || !visible) return;
@@ -398,13 +445,15 @@ export default function FilterPresetQuickPopover({
       transparent
       statusBarTranslucent
       visible={visible}
-      animationType="fade"
+      animationType="none"
       onShow={updateModalRootTop}
       onRequestClose={handleClose}
     >
       <View ref={modalRootRef} style={styles.modalRoot} onLayout={updateModalRootTop}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleClose} />
-        <View style={[styles.card, { top: cardTop, left: cardLeft, width: CARD_WIDTH }]}>
+        <Animated.View
+          style={[styles.card, cardAnimatedStyle, { top: cardTop, left: cardLeft, width: CARD_WIDTH }]}
+        >
           <View
             style={[
               styles.arrow,
@@ -514,7 +563,7 @@ export default function FilterPresetQuickPopover({
               Manage all presets
             </ThemedText>
           </TouchableOpacity>
-        </View>
+        </Animated.View>
         <Modal
           transparent
           visible={isSavePresetDialogVisible}

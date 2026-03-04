@@ -9,6 +9,7 @@ import { useIsFocused } from "@react-navigation/native";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
 import { useFetchMyShowtimes } from "shared/hooks/useFetchMyShowtimes";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
+import useAuth from "shared/hooks/useAuth";
 
 import ShowtimesScreen from "@/components/showtimes/ShowtimesScreen";
 import DayFilterModal from "@/components/filters/DayFilterModal";
@@ -96,7 +97,11 @@ export default function CinemaShowtimesScreen() {
     selectedRuntimeRanges: sharedSelectedRuntimeRanges,
     setSelectedRuntimeRanges,
   } = useSharedTabFilters();
+  const { user } = useAuth();
   const isFocused = useIsFocused();
+  const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
+  const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
+  const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
   const selectedDays = sharedSelectedDays ?? EMPTY_DAYS;
   const selectedTimeRanges = sharedSelectedTimeRanges ?? EMPTY_TIME_RANGES;
   const selectedRuntimeRanges = sharedSelectedRuntimeRanges ?? EMPTY_RUNTIME_RANGES;
@@ -119,6 +124,11 @@ export default function CinemaShowtimesScreen() {
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    if (hasLetterboxdUsername || !watchlistOnly) return;
+    setWatchlistOnly(false);
+  }, [hasLetterboxdUsername, setWatchlistOnly, watchlistOnly]);
+
   const cinemaFromList = useMemo(
     () => cinemas?.find((cinemaValue) => cinemaValue.id === cinemaId),
     [cinemaId, cinemas]
@@ -137,7 +147,7 @@ export default function CinemaShowtimesScreen() {
       runtimeMin: runtimeBounds.runtimeMin,
       runtimeMax: runtimeBounds.runtimeMax,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
-      watchlistOnly: appliedWatchlistOnly ? true : undefined,
+      watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
     };
   }, [
     cinemaId,
@@ -147,7 +157,7 @@ export default function CinemaShowtimesScreen() {
     selectedTimeRanges,
     runtimeBounds.runtimeMin,
     runtimeBounds.runtimeMax,
-    appliedWatchlistOnly,
+    effectiveAppliedWatchlistOnly,
   ]);
 
   // Build pills with the shared tab helper so status pill visuals match the main Showtimes page exactly.
@@ -155,18 +165,20 @@ export default function CinemaShowtimesScreen() {
     return buildSharedTabPillFilters({
       colors,
       selectedShowtimeFilter,
-      watchlistOnly,
+      watchlistOnly: effectiveWatchlistOnly,
+      canUseWatchlistFilter: hasLetterboxdUsername,
       selectedDays,
       selectedTimeRanges,
       selectedRuntimeRanges,
     }).filter((filter) => CINEMA_FILTER_ID_SET.has(filter.id));
   }, [
     colors,
+    hasLetterboxdUsername,
     selectedDays,
     selectedShowtimeFilter,
     selectedTimeRanges,
     selectedRuntimeRanges,
-    watchlistOnly,
+    effectiveWatchlistOnly,
   ]);
 
   // Compute which filter pills should render as active.
@@ -174,18 +186,20 @@ export default function CinemaShowtimesScreen() {
     () =>
       buildSharedTabActiveFilterIds({
         selectedShowtimeFilter,
-        watchlistOnly,
+        watchlistOnly: effectiveWatchlistOnly,
+        canUseWatchlistFilter: hasLetterboxdUsername,
         selectedDaysCount: selectedDays.length,
         selectedTimeRangesCount: selectedTimeRanges.length,
         selectedRuntimeRangesCount: selectedRuntimeRanges.length,
         isCinemaFilterActive: false,
       }).filter((id): id is CinemaShowtimesFilterId => CINEMA_FILTER_ID_SET.has(id)),
     [
+      hasLetterboxdUsername,
       selectedShowtimeFilter,
       selectedDays.length,
       selectedTimeRanges.length,
       selectedRuntimeRanges.length,
-      watchlistOnly,
+      effectiveWatchlistOnly,
     ]
   );
 
@@ -216,7 +230,7 @@ export default function CinemaShowtimesScreen() {
     shouldShowAudienceToggle && audienceFilter !== appliedAudienceFilter;
   const isAppliedFilterTransitionPending =
     selectedShowtimeFilter !== appliedShowtimeFilter ||
-    watchlistOnly !== appliedWatchlistOnly ||
+    effectiveWatchlistOnly !== effectiveAppliedWatchlistOnly ||
     isAudienceTransitionPending;
 
   // Flatten/derive list data for rendering efficiency.
@@ -308,7 +322,7 @@ export default function CinemaShowtimesScreen() {
     }
     if (filterId === "watchlist-only") {
       startFilterTransitionLoading();
-      setWatchlistOnly(!watchlistOnly);
+      setWatchlistOnly(!effectiveWatchlistOnly);
       return;
     }
   };

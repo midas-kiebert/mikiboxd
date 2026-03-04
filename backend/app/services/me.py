@@ -604,10 +604,13 @@ def list_friend_groups(
             retained_group_ids.add(grouped_entries[0][0].id)
             continue
 
-        # If a shrinkage creates a duplicate, remove the shrunk group(s) first.
-        preferred_entry = next(
-            (entry for entry in grouped_entries if not entry[2]),
-            grouped_entries[0],
+        # If a shrinkage creates a duplicate, prefer a non-updated group.
+        # Tie-break deterministically by earliest creation time.
+        non_updated_entries = [entry for entry in grouped_entries if not entry[2]]
+        candidate_entries = non_updated_entries or grouped_entries
+        preferred_entry = min(
+            candidate_entries,
+            key=lambda entry: (entry[0].created_at, str(entry[0].id)),
         )
         retained_group_ids.add(preferred_entry[0].id)
         for entry in grouped_entries:

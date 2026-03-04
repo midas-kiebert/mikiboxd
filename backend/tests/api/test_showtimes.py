@@ -510,8 +510,8 @@ def test_removing_showtime_selection_clears_showtime_visibility_rows(
     )
     assert visibility_update_response.status_code == 200
 
-    deselect_response = client.patch(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}",
+    deselect_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
         headers=normal_user_token_headers,
         json={"going_status": "NOT_GOING"},
     )

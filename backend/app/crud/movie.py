@@ -2,18 +2,18 @@ from datetime import datetime, time, timedelta
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_
 
 from app.core.enums import GoingStatus
-from app.crud import showtime_visibility as showtime_visibility_crud
 from app.inputs.movie import Filters
 from app.models.cinema import Cinema
 from app.models.cinema_selection import CinemaSelection
-from app.models.friendship import Friendship
 from app.models.movie import Movie, MovieCreate, MovieUpdate
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
+from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
 from app.models.watchlist_selection import WatchlistSelection
 
@@ -345,24 +345,23 @@ def get_friends_for_movie(
     """
     stmt = (
         select(User)
-        .join(Friendship, col(Friendship.friend_id) == col(User.id))
         .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == col(User.id))
         .join(Showtime, col(Showtime.id) == col(ShowtimeSelection.showtime_id))
+        .join(
+            ShowtimeVisibilityEffective,
+            (col(ShowtimeVisibilityEffective.owner_id) == col(User.id))
+            & (col(ShowtimeVisibilityEffective.showtime_id) == col(Showtime.id))
+            & (col(ShowtimeVisibilityEffective.viewer_id) == current_user),
+        )
         .join(
             CinemaSelection,
             col(CinemaSelection.cinema_id) == col(Showtime.cinema_id),
         )
         .where(
-            col(Friendship.user_id) == current_user,
             col(Showtime.movie_id) == movie_id,
             col(Showtime.datetime) >= snapshot_time,
             col(CinemaSelection.user_id) == current_user,
             col(ShowtimeSelection.going_status) == going_status,
-            showtime_visibility_crud.is_showtime_visible_to_viewer(
-                owner_id_value=col(User.id),
-                showtime_id_value=col(Showtime.id),
-                viewer_id_value=current_user,
-            ),
         )
         .distinct()
     )
@@ -437,25 +436,22 @@ def get_showtimes_for_movie(
         and filters.selected_statuses is not None
         and len(filters.selected_statuses) > 0
     ):
-        friends_subq = select(col(Friendship.friend_id)).where(
-            col(Friendship.user_id) == current_user_id
-        )
+        visible_row = aliased(ShowtimeVisibilityEffective)
         stmt = (
             stmt.join(
                 ShowtimeSelection,
                 col(ShowtimeSelection.showtime_id) == col(Showtime.id),
             )
+            .outerjoin(
+                visible_row,
+                (col(visible_row.owner_id) == col(ShowtimeSelection.user_id))
+                & (col(visible_row.showtime_id) == col(Showtime.id))
+                & (col(visible_row.viewer_id) == current_user_id),
+            )
             .where(
                 or_(
-                    ShowtimeSelection.user_id == current_user_id,
-                    (
-                        col(ShowtimeSelection.user_id).in_(friends_subq)
-                        & showtime_visibility_crud.is_showtime_visible_to_viewer(
-                            owner_id_value=col(ShowtimeSelection.user_id),
-                            showtime_id_value=col(Showtime.id),
-                            viewer_id_value=current_user_id,
-                        )
-                    ),
+                    col(ShowtimeSelection.user_id) == current_user_id,
+                    col(visible_row.viewer_id).is_not(None),
                 ),
                 col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
             )
@@ -570,25 +566,25 @@ def get_movies(
         )
 
     if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
-        friends_subq = select(col(Friendship.friend_id)).where(
-            col(Friendship.user_id) == current_user_id
-        )
-        stmt = stmt.join(
-            ShowtimeSelection,
-            col(Showtime.id) == col(ShowtimeSelection.showtime_id),
-        ).where(
-            or_(
-                ShowtimeSelection.user_id == current_user_id,
-                (
-                    col(ShowtimeSelection.user_id).in_(friends_subq)
-                    & showtime_visibility_crud.is_showtime_visible_to_viewer(
-                        owner_id_value=col(ShowtimeSelection.user_id),
-                        showtime_id_value=col(Showtime.id),
-                        viewer_id_value=current_user_id,
-                    )
+        visible_row = aliased(ShowtimeVisibilityEffective)
+        stmt = (
+            stmt.join(
+                ShowtimeSelection,
+                col(Showtime.id) == col(ShowtimeSelection.showtime_id),
+            )
+            .outerjoin(
+                visible_row,
+                (col(visible_row.owner_id) == col(ShowtimeSelection.user_id))
+                & (col(visible_row.showtime_id) == col(Showtime.id))
+                & (col(visible_row.viewer_id) == current_user_id),
+            )
+            .where(
+                or_(
+                    col(ShowtimeSelection.user_id) == current_user_id,
+                    col(visible_row.viewer_id).is_not(None),
                 ),
-            ),
-            col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
+                col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
+            )
         )
 
     stmt = (

@@ -3,16 +3,17 @@ from datetime import datetime, time, timedelta
 from uuid import UUID
 
 from sqlalchemy import func
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_, select
 
 from app.core.enums import GoingStatus
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.inputs.movie import Filters
-from app.models.friendship import Friendship
 from app.models.movie import Movie
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.models.showtime_selection import ShowtimeSelection
+from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
 from app.models.watchlist_selection import WatchlistSelection
 from app.utils import now_amsterdam_naive
@@ -222,18 +223,19 @@ def get_friends_for_showtime(
     """
     stmt = (
         select(User)
-        .join(Friendship, col(Friendship.friend_id) == User.id)
         .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == User.id)
-        .join(Showtime, col(Showtime.id) == col(ShowtimeSelection.showtime_id))
+        .join(
+            ShowtimeVisibilityEffective,
+            (col(ShowtimeVisibilityEffective.owner_id) == col(User.id))
+            & (
+                col(ShowtimeVisibilityEffective.showtime_id)
+                == col(ShowtimeSelection.showtime_id)
+            )
+            & (col(ShowtimeVisibilityEffective.viewer_id) == user_id),
+        )
         .where(
-            Friendship.user_id == user_id,
-            ShowtimeSelection.showtime_id == showtime_id,
-            ShowtimeSelection.going_status == going_status,
-            showtime_visibility_crud.is_showtime_visible_to_viewer(
-                owner_id_value=col(User.id),
-                showtime_id_value=col(Showtime.id),
-                viewer_id_value=user_id,
-            ),
+            col(ShowtimeSelection.showtime_id) == showtime_id,
+            col(ShowtimeSelection.going_status) == going_status,
         )
     )
     result = session.execute(stmt)
@@ -258,18 +260,19 @@ def get_friends_with_showtime_selection(
     for status in unique_statuses:
         stmt = (
             select(User)
-            .join(Friendship, col(Friendship.user_id) == User.id)
             .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == User.id)
-            .join(Showtime, col(Showtime.id) == col(ShowtimeSelection.showtime_id))
+            .join(
+                ShowtimeVisibilityEffective,
+                (col(ShowtimeVisibilityEffective.owner_id) == friend_id)
+                & (
+                    col(ShowtimeVisibilityEffective.showtime_id)
+                    == col(ShowtimeSelection.showtime_id)
+                )
+                & (col(ShowtimeVisibilityEffective.viewer_id) == col(User.id)),
+            )
             .where(
-                Friendship.friend_id == friend_id,
-                ShowtimeSelection.showtime_id == showtime_id,
-                ShowtimeSelection.going_status == status,
-                showtime_visibility_crud.is_showtime_visible_to_viewer(
-                    owner_id_value=friend_id,
-                    showtime_id_value=col(Showtime.id),
-                    viewer_id_value=col(User.id),
-                ),
+                col(ShowtimeSelection.showtime_id) == showtime_id,
+                col(ShowtimeSelection.going_status) == status,
             )
         )
         recipients = list(session.exec(stmt).all())
@@ -374,23 +377,22 @@ def get_main_page_showtimes(
         ).where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
 
     if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
-        friends_subq = select(Friendship.friend_id).where(Friendship.user_id == user_id)
+        visible_row = aliased(ShowtimeVisibilityEffective)
         stmt = (
             stmt.join(
                 ShowtimeSelection,
                 col(Showtime.id) == col(ShowtimeSelection.showtime_id),
             )
+            .outerjoin(
+                visible_row,
+                (col(visible_row.owner_id) == col(ShowtimeSelection.user_id))
+                & (col(visible_row.showtime_id) == col(Showtime.id))
+                & (col(visible_row.viewer_id) == user_id),
+            )
             .where(
                 or_(
-                    ShowtimeSelection.user_id == user_id,
-                    (
-                        col(ShowtimeSelection.user_id).in_(friends_subq)
-                        & showtime_visibility_crud.is_showtime_visible_to_viewer(
-                            owner_id_value=col(ShowtimeSelection.user_id),
-                            showtime_id_value=col(Showtime.id),
-                            viewer_id_value=user_id,
-                        )
-                    ),
+                    col(ShowtimeSelection.user_id) == user_id,
+                    col(visible_row.viewer_id).is_not(None),
                 ),
                 col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
             )
@@ -450,6 +452,11 @@ def add_showtime_selection(
             showtime_selection.updated_at = now
             session.add(showtime_selection)
             session.flush()
+        showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+            session=session,
+            owner_id=user_id,
+            showtime_id=showtime_id,
+        )
         return showtime
 
     db_obj = ShowtimeSelection(
@@ -463,6 +470,11 @@ def add_showtime_selection(
     )
     session.add(db_obj)
     session.flush()  # So that the ID is set, and check for integrity errors
+    showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+        session=session,
+        owner_id=user_id,
+        showtime_id=showtime_id,
+    )
     return showtime
 
 
@@ -507,5 +519,11 @@ def remove_showtime_selection(
     if showtime_selection is not None:
         session.delete(showtime_selection)
         session.flush()
+
+    showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+        session=session,
+        owner_id=user_id,
+        showtime_id=showtime_id,
+    )
 
     return showtime

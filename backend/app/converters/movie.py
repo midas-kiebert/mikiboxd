@@ -10,7 +10,12 @@ from app.crud import movie as movies_crud
 from app.crud import user as user_crud
 from app.inputs.movie import Filters
 from app.models.movie import Movie
-from app.schemas.movie import MovieLoggedIn, MovieSummaryLoggedIn
+from app.schemas.movie import MovieInShowtime, MovieLoggedIn, MovieSummaryLoggedIn
+
+
+def to_in_showtime(movie: Movie) -> MovieInShowtime:
+    Movie.model_validate(movie)
+    return MovieInShowtime(**movie.model_dump())
 
 
 def to_summary_logged_in(

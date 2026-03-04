@@ -106,6 +106,18 @@ export type Message = {
   message: string
 }
 
+export type MovieInShowtime = {
+  id: number
+  title: string
+  original_title?: string | null
+  poster_link?: string | null
+  letterboxd_slug?: string | null
+  directors?: Array<string> | null
+  release_year?: number | null
+  duration?: number | null
+  languages?: Array<string> | null
+}
+
 export type MovieLoggedIn = {
   id: number
   title: string
@@ -157,8 +169,6 @@ export type ShowtimeInMovieLoggedIn = {
   subtitles?: Array<string> | null
   id: number
   cinema: CinemaPublic
-  friends_going: Array<UserPublic>
-  friends_interested: Array<UserPublic>
   going: GoingStatus
   seat_row?: string | null
   seat_number?: string | null
@@ -170,7 +180,7 @@ export type ShowtimeLoggedIn = {
   ticket_link?: string | null
   subtitles?: Array<string> | null
   id: number
-  movie: MovieSummaryLoggedIn
+  movie: MovieInShowtime
   cinema: CinemaPublic
   friends_going: Array<UserPublic>
   friends_interested: Array<UserPublic>

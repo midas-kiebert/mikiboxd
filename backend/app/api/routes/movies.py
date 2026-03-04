@@ -14,7 +14,7 @@ def read_movies(
     session: SessionDep,
     current_user: CurrentUser,
     offset: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=50),
+    limit: int = Query(15, ge=1, le=50),
     showtime_limit: int = Query(5, ge=1, le=10),
     filters: Filters = Depends(get_filters),
 ) -> list[MovieSummaryLoggedIn]:

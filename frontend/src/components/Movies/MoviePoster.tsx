@@ -2,11 +2,11 @@
  * Movies list feature component: Movie Poster.
  */
 import { Link } from "@tanstack/react-router"
-import { MovieSummaryLoggedIn } from "shared";
+import type { MovieInShowtime, MovieSummaryLoggedIn } from "shared";
 import { Box, Image } from "@chakra-ui/react";
 
 type MoviePosterProps = {
-    movie: MovieSummaryLoggedIn;
+    movie: MovieSummaryLoggedIn | MovieInShowtime;
     size?: {base: string, md: string};
 };
 

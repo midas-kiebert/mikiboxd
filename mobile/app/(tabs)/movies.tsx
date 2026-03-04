@@ -186,7 +186,7 @@ export default function MovieScreen() {
     hasNextPage,
     fetchNextPage
   } = useFetchMovies({
-    limit: 20,
+    limit: 15,
     snapshotTime,
     filters: movieFilters,
     enabled: isFocused,

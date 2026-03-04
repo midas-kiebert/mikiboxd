@@ -119,7 +119,7 @@ def get_selected_showtimes(
     )
     return [
         showtime_converters.to_logged_in(
-            showtime=showtime, session=session, user_id=current_user_id, filters=filters
+            showtime=showtime, session=session, user_id=current_user_id
         )
         for showtime in showtimes
     ]

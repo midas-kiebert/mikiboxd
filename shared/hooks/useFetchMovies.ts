@@ -24,7 +24,7 @@ type useFetchMoviesProps = {
 
 export function useFetchMovies(
     {
-        limit = 20,
+        limit = 15,
         snapshotTime = DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"),
         filters = {},
         enabled = true,

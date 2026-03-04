@@ -10,9 +10,14 @@ if TYPE_CHECKING:
     from .user import UserPublic
 
 __all__ = [
+    "MovieInShowtime",
     "MovieSummaryLoggedIn",
     "MovieLoggedIn",
 ]
+
+
+class MovieInShowtime(MovieBase):
+    pass
 
 
 class MovieSummaryLoggedIn(MovieBase):

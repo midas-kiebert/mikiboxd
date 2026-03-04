@@ -192,13 +192,13 @@ def test_register_user_rejects_duplicate_username_case_insensitive(
     mocker: MockerFixture,
 ):
     mock_get_by_display_name = mocker.patch("app.crud.user.get_user_by_display_name")
-    mock_get_by_display_name.return_value = mocker.MagicMock(display_name="Aa")
+    mock_get_by_display_name.return_value = mocker.MagicMock(display_name="Aaaa")
     mock_create_user = mocker.patch("app.crud.user.create_user")
     mock_session = mocker.MagicMock()
     user_in = UserRegister(
         email="duplicate_username@example.com",
         password="password123",
-        display_name="aa",
+        display_name="aaaa",
     )
 
     with pytest.raises(DisplayNameAlreadyExists):
@@ -209,7 +209,7 @@ def test_register_user_rejects_duplicate_username_case_insensitive(
 
     mock_get_by_display_name.assert_called_once_with(
         session=mock_session,
-        display_name="aa",
+        display_name="aaaa",
     )
     mock_create_user.assert_not_called()
 

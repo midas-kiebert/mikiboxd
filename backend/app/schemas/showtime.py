@@ -8,7 +8,7 @@ from app.models.showtime import ShowtimeBase
 
 if TYPE_CHECKING:
     from .cinema import CinemaPublic
-    from .movie import MovieSummaryLoggedIn
+    from .movie import MovieInShowtime
     from .user import UserPublic
 
 
@@ -26,7 +26,7 @@ class ShowtimeSelectionUpdate(BaseModel):
 
 class ShowtimeLoggedIn(ShowtimeBase):
     id: int
-    movie: "MovieSummaryLoggedIn"
+    movie: "MovieInShowtime"
     cinema: "CinemaPublic"
     friends_going: Sequence["UserPublic"]
     friends_interested: Sequence["UserPublic"]
@@ -39,8 +39,6 @@ class ShowtimeLoggedIn(ShowtimeBase):
 class ShowtimeInMovieLoggedIn(ShowtimeBase):
     id: int
     cinema: "CinemaPublic"
-    friends_going: Sequence["UserPublic"]
-    friends_interested: Sequence["UserPublic"]
     going: GoingStatus
     seat_row: str | None = None
     seat_number: str | None = None

@@ -16,10 +16,10 @@ from app.crud import friend_group as friend_groups_crud
 from app.crud import push_token as push_tokens_crud
 from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
 from app.exceptions.user_exceptions import DisplayNameAlreadyExists, EmailAlreadyExists
-from app.inputs.movie import Filters
 from app.models.cinema_preset import CinemaPreset
 from app.models.filter_preset import FilterPreset
 from app.models.friend_group import FriendGroup
@@ -548,6 +548,10 @@ def list_friend_groups(
         )
 
     if had_updates:
+        showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+            session=session,
+            owner_id=user_id,
+        )
         session.commit()
 
     return public_groups
@@ -608,6 +612,10 @@ def save_friend_group(
         now=now,
     )
 
+    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+        session=session,
+        owner_id=user_id,
+    )
     session.commit()
     return _to_friend_group_public(group=group, friend_ids=friend_ids)
 
@@ -624,6 +632,10 @@ def delete_friend_group(
         group_id=group_id,
     )
     if deleted:
+        showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+            session=session,
+            owner_id=user_id,
+        )
         session.commit()
     return deleted
 
@@ -649,6 +661,10 @@ def get_favorite_friend_group(
         now=now_amsterdam_naive(),
     )
     if was_updated:
+        showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+            session=session,
+            owner_id=user_id,
+        )
         session.commit()
     return _to_friend_group_public(group=favorite, friend_ids=friend_ids)
 
@@ -687,6 +703,10 @@ def set_favorite_friend_group(
         all_friend_ids=all_friend_ids,
         now=now,
     )
+    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+        session=session,
+        owner_id=user_id,
+    )
     session.commit()
     return _to_friend_group_public(group=favorite, friend_ids=friend_ids)
 
@@ -699,6 +719,10 @@ def clear_favorite_friend_group(
     friend_groups_crud.clear_user_favorite_group(
         session=session,
         user_id=user_id,
+    )
+    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+        session=session,
+        owner_id=user_id,
     )
     session.commit()
 
@@ -795,7 +819,6 @@ def get_received_showtime_pings(
     showtime_cache: dict[int, Showtime | None] = {}
     showtime_public_cache: dict[int, ShowtimeLoggedIn] = {}
     result: list[ShowtimePingPublic] = []
-    filters = Filters(snapshot_time=now_amsterdam_naive())
 
     for ping in pings:
         sender = sender_cache.get(ping.sender_id)
@@ -821,7 +844,6 @@ def get_received_showtime_pings(
                 showtime=showtime,
                 session=session,
                 user_id=user_id,
-                filters=filters,
             )
             showtime_public_cache[showtime.id] = showtime_public
 

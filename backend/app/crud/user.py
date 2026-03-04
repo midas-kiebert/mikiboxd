@@ -15,6 +15,7 @@ from app.models.letterboxd import Letterboxd
 from app.models.movie import Movie
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
+from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User, UserCreate, UserUpdate
 from app.models.watchlist_selection import WatchlistSelection
 
@@ -356,12 +357,11 @@ def get_selected_showtimes(
     )
 
     if viewer_id is not None and viewer_id != user_id:
-        stmt = stmt.where(
-            showtime_visibility_crud.is_showtime_visible_to_viewer(
-                owner_id_value=user_id,
-                showtime_id_value=col(Showtime.id),
-                viewer_id_value=viewer_id,
-            )
+        stmt = stmt.join(
+            ShowtimeVisibilityEffective,
+            (col(ShowtimeVisibilityEffective.owner_id) == user_id)
+            & (col(ShowtimeVisibilityEffective.showtime_id) == col(Showtime.id))
+            & (col(ShowtimeVisibilityEffective.viewer_id) == viewer_id),
         )
 
     if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
@@ -491,6 +491,11 @@ def add_showtime_selection(
     selection = ShowtimeSelection(user_id=user_id, showtime_id=showtime_id)
     session.add(selection)
     session.flush()
+    showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+        session=session,
+        owner_id=user_id,
+        showtime_id=showtime_id,
+    )
 
     stmt = select(Showtime).where(Showtime.id == showtime_id)
     showtime = session.exec(stmt).one()
@@ -528,6 +533,12 @@ def delete_showtime_selection(
     ).one()
 
     session.delete(showtime_selection)
+    session.flush()
+    showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+        session=session,
+        owner_id=user_id,
+        showtime_id=showtime_id,
+    )
     return showtime
 
 

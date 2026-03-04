@@ -35,6 +35,7 @@ type BuildPillFiltersInput = {
   colors: ThemeColors;
   selectedShowtimeFilter: SharedTabShowtimeFilter;
   watchlistOnly: boolean;
+  canUseWatchlistFilter?: boolean;
   selectedDays: readonly string[];
   selectedTimeRanges: readonly string[];
   selectedRuntimeRanges: readonly string[];
@@ -46,6 +47,7 @@ type BuildPillFiltersInput = {
 type BuildActiveFiltersInput = {
   selectedShowtimeFilter: SharedTabShowtimeFilter;
   watchlistOnly: boolean;
+  canUseWatchlistFilter?: boolean;
   selectedDaysCount: number;
   selectedTimeRangesCount: number;
   selectedRuntimeRangesCount: number;
@@ -84,6 +86,7 @@ export const buildSharedTabPillFilters = ({
   colors,
   selectedShowtimeFilter,
   watchlistOnly,
+  canUseWatchlistFilter = true,
   selectedDays,
   selectedTimeRanges,
   selectedRuntimeRanges,
@@ -98,8 +101,11 @@ export const buildSharedTabPillFilters = ({
     (preset) => serializeCinemaIds(preset.cinema_ids) === selectedCinemaSignature
   );
   const cinemasLabel = matchingCinemaPreset?.name?.trim() || `Cinemas (${selectedCinemaCount})`;
+  const visibleFilters = canUseWatchlistFilter
+    ? SHARED_TAB_FILTERS
+    : SHARED_TAB_FILTERS.filter((filter) => filter.id !== "watchlist-only");
 
-  return SHARED_TAB_FILTERS.map((filter) => {
+  return visibleFilters.map((filter) => {
     if (filter.id === "showtime-filter") {
       const label =
         selectedShowtimeFilter === "all"
@@ -152,6 +158,7 @@ export const buildSharedTabPillFilters = ({
 export const buildSharedTabActiveFilterIds = ({
   selectedShowtimeFilter,
   watchlistOnly,
+  canUseWatchlistFilter = true,
   selectedDaysCount,
   selectedTimeRangesCount,
   selectedRuntimeRangesCount,
@@ -173,7 +180,7 @@ export const buildSharedTabActiveFilterIds = ({
   if (isCinemaFilterActive) {
     active.push("cinemas");
   }
-  if (watchlistOnly) {
+  if (canUseWatchlistFilter && watchlistOnly) {
     active.push("watchlist-only");
   }
   return active;

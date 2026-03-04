@@ -9,6 +9,7 @@ import { MeService } from 'shared';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useFetchMyShowtimes } from 'shared/hooks/useFetchMyShowtimes';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
+import useAuth from 'shared/hooks/useAuth';
 
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import CinemaPresetQuickPopover from '@/components/filters/CinemaPresetQuickPopover';
@@ -94,7 +95,11 @@ export default function MainShowtimesScreen() {
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
   } = useSharedTabFilters();
+  const { user } = useAuth();
   const isFocused = useIsFocused();
+  const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
+  const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
+  const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
   const { data: cinemaPresets = [] } = useQuery({
     queryKey: ['cinema-presets'],
@@ -118,6 +123,11 @@ export default function MainShowtimesScreen() {
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    if (hasLetterboxdUsername || !watchlistOnly) return;
+    setWatchlistOnly(false);
+  }, [hasLetterboxdUsername, setWatchlistOnly, watchlistOnly]);
+
   // Build the filter payload from current UI selections.
   const showtimesFilters = useMemo(() => {
     return {
@@ -128,7 +138,7 @@ export default function MainShowtimesScreen() {
       runtimeMin: runtimeBounds.runtimeMin,
       runtimeMax: runtimeBounds.runtimeMax,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
-      watchlistOnly: appliedWatchlistOnly ? true : undefined,
+      watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
     };
   }, [
     searchQuery,
@@ -138,14 +148,14 @@ export default function MainShowtimesScreen() {
     runtimeBounds.runtimeMin,
     runtimeBounds.runtimeMax,
     sessionCinemaIds,
-    appliedWatchlistOnly,
+    effectiveAppliedWatchlistOnly,
   ]);
 
   const currentPresetFilters = useMemo<PageFilterPresetState>(
     () => ({
       selected_showtime_filter: selectedShowtimeFilter,
       showtime_audience: shouldShowAudienceToggle ? selectedShowtimeAudience : 'including-friends',
-      watchlist_only: watchlistOnly,
+      watchlist_only: effectiveWatchlistOnly,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
       runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
@@ -157,7 +167,7 @@ export default function MainShowtimesScreen() {
       selectedTimeRanges,
       selectedRuntimeRanges,
       shouldShowAudienceToggle,
-      watchlistOnly,
+      effectiveWatchlistOnly,
     ]
   );
 
@@ -167,7 +177,8 @@ export default function MainShowtimesScreen() {
       buildSharedTabPillFilters({
         colors,
         selectedShowtimeFilter,
-        watchlistOnly,
+        watchlistOnly: effectiveWatchlistOnly,
+        canUseWatchlistFilter: hasLetterboxdUsername,
         selectedDays,
         selectedTimeRanges,
         selectedRuntimeRanges,
@@ -184,7 +195,8 @@ export default function MainShowtimesScreen() {
       selectedTimeRanges,
       selectedRuntimeRanges,
       sessionCinemaIds,
-      watchlistOnly,
+      hasLetterboxdUsername,
+      effectiveWatchlistOnly,
     ]
   );
 
@@ -203,7 +215,8 @@ export default function MainShowtimesScreen() {
     () =>
       buildSharedTabActiveFilterIds({
         selectedShowtimeFilter,
-        watchlistOnly,
+        watchlistOnly: effectiveWatchlistOnly,
+        canUseWatchlistFilter: hasLetterboxdUsername,
         selectedDaysCount: selectedDays.length,
         selectedTimeRangesCount: selectedTimeRanges.length,
         selectedRuntimeRangesCount: selectedRuntimeRanges.length,
@@ -211,7 +224,8 @@ export default function MainShowtimesScreen() {
       }),
     [
       selectedShowtimeFilter,
-      watchlistOnly,
+      hasLetterboxdUsername,
+      effectiveWatchlistOnly,
       selectedDays.length,
       selectedTimeRanges.length,
       selectedRuntimeRanges.length,
@@ -246,7 +260,7 @@ export default function MainShowtimesScreen() {
     shouldShowAudienceToggle && selectedShowtimeAudience !== appliedShowtimeAudience;
   const isAppliedFilterTransitionPending =
     selectedShowtimeFilter !== appliedShowtimeFilter ||
-    watchlistOnly !== appliedWatchlistOnly ||
+    effectiveWatchlistOnly !== effectiveAppliedWatchlistOnly ||
     isAudienceTransitionPending;
 
   // Flatten/derive list data for rendering efficiency.
@@ -327,7 +341,7 @@ export default function MainShowtimesScreen() {
     }
     if (filterId === 'watchlist-only') {
       startFilterTransitionLoading();
-      setWatchlistOnly(!watchlistOnly);
+      setWatchlistOnly(!effectiveWatchlistOnly);
       return;
     }
   };
@@ -335,7 +349,7 @@ export default function MainShowtimesScreen() {
   const handleApplyPreset = (filters: PageFilterPresetState) => {
     setSelectedShowtimeFilter(toSharedTabShowtimeFilter(filters.selected_showtime_filter));
     setSelectedShowtimeAudience(toAudienceFilter(filters.showtime_audience));
-    setWatchlistOnly(Boolean(filters.watchlist_only));
+    setWatchlistOnly(hasLetterboxdUsername && Boolean(filters.watchlist_only));
     setSelectedDays(filters.days ?? []);
     setSelectedTimeRanges(filters.time_ranges ?? []);
     setSelectedRuntimeRanges(filters.runtime_ranges ?? []);

@@ -27,6 +27,23 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "production-store": {
+      "extends": "base",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  },
+  "submit": {
+    "ios-testflight": {
+      "ios": {}
+    },
+    "android-closed": {
+      "android": {
+        "track": "alpha",
+        "releaseStatus": "completed"
+      }
     }
   }
 }

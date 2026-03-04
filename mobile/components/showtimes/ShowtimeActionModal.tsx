@@ -49,7 +49,8 @@ type ShowtimeActionModalProps = {
   isUpdatingStatus: boolean;
   onUpdateStatus: (
     going: GoingStatus,
-    seat?: { seatRow: string | null; seatNumber: string | null }
+    seat?: { seatRow: string | null; seatNumber: string | null },
+    visibility?: { visibleFriendIds: string[]; visibleGroupIds: string[] }
   ) => void;
   onClose: () => void;
 };
@@ -474,37 +475,40 @@ export default function ShowtimeActionModal({
   }, [selectedGroupMemberIds, visibleFriendIdsDraft]);
 
   const handleToggleVisibleFriend = (friendId: string) => {
-    const includedViaSelectedGroup =
-      selectedGroupMemberIds.has(friendId) && !visibleFriendIdsDraft.has(friendId);
-    if (includedViaSelectedGroup) {
-      Alert.alert(
-        "Included via group",
-        "This friend is included by a selected group. Remove that group to hide this friend."
-      );
-      return;
+    // Any direct friend edit exits "group mode": keep the current effective selection,
+    // apply the toggle, then clear selected groups.
+    const nextEffectiveIds = new Set(effectiveVisibleFriendIds);
+    if (nextEffectiveIds.has(friendId)) {
+      nextEffectiveIds.delete(friendId);
+    } else {
+      nextEffectiveIds.add(friendId);
     }
-
-    setVisibleFriendIdsDraft((previous) => {
-      const next = new Set(previous);
-      if (next.has(friendId)) {
-        next.delete(friendId);
-      } else {
-        next.add(friendId);
-      }
-      return next;
-    });
+    setVisibleFriendIdsDraft(nextEffectiveIds);
+    setVisibleGroupIdsDraft(new Set());
   };
 
   const handleToggleVisibleGroup = (groupId: string) => {
-    setVisibleGroupIdsDraft((previous) => {
-      const next = new Set(previous);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      return next;
-    });
+    const group = groupsForVisibility.find((candidate) => candidate.id === groupId);
+    if (!group) return;
+
+    const allGroupMembersSelected =
+      group.friend_ids.length > 0 &&
+      group.friend_ids.every((friendId) => effectiveVisibleFriendIds.has(friendId));
+
+    if (allGroupMembersSelected) {
+      // Group already fully selected: keep only this group's members.
+      setVisibleFriendIdsDraft(new Set(group.friend_ids));
+      setVisibleGroupIdsDraft(new Set([group.id]));
+      return;
+    }
+
+    // Group not fully selected: add all of its members without changing other picks.
+    const nextEffectiveIds = new Set(effectiveVisibleFriendIds);
+    for (const friendId of group.friend_ids) {
+      nextEffectiveIds.add(friendId);
+    }
+    setVisibleFriendIdsDraft(nextEffectiveIds);
+    setVisibleGroupIdsDraft((previous) => new Set([...previous, group.id]));
   };
 
   const handleSelectAllVisibility = () => {
@@ -609,7 +613,13 @@ export default function ShowtimeActionModal({
       return;
     }
 
-    if (!isUpdatingStatus && showtime && hasVisibilityChanges && !isUpdatingShowtimeVisibility) {
+    if (
+      !isUpdatingStatus &&
+      showtime &&
+      showtime.going !== "NOT_GOING" &&
+      hasVisibilityChanges &&
+      !isUpdatingShowtimeVisibility
+    ) {
       updateShowtimeVisibility({
         showtimeId: showtime.id,
         visibleFriendIds: Array.from(visibleFriendIdsDraft),
@@ -649,6 +659,18 @@ export default function ShowtimeActionModal({
       seatNumber: normalizedSeatNumberDraft,
     });
     setIsSeatDialogVisible(false);
+  };
+
+  const handleStatusPress = (going: GoingStatus) => {
+    if (!showtime || isUpdatingStatus) return;
+    const visibilityPayload =
+      going === "NOT_GOING" || !hasVisibilityChanges
+        ? undefined
+        : {
+            visibleFriendIds: Array.from(visibleFriendIdsDraft),
+            visibleGroupIds: Array.from(visibleGroupIdsDraft),
+          };
+    onUpdateStatus(going, undefined, visibilityPayload);
   };
 
   const friendsGoingIds = useMemo(() => {
@@ -721,12 +743,10 @@ export default function ShowtimeActionModal({
         id: friend.id,
         label: friend.display_name?.trim() || "Friend",
         isSelected: effectiveVisibleFriendIds.has(friend.id),
-        isIncludedByGroup:
-          selectedGroupMemberIds.has(friend.id) && !visibleFriendIdsDraft.has(friend.id),
       }))
       .filter((friend) => (normalizedQuery ? friend.label.toLowerCase().includes(normalizedQuery) : true))
       .sort((left, right) => left.label.localeCompare(right.label));
-  }, [effectiveVisibleFriendIds, friends, selectedGroupMemberIds, visibilitySearchQuery, visibleFriendIdsDraft]);
+  }, [effectiveVisibleFriendIds, friends, visibilitySearchQuery]);
 
   const groupsForVisibility = useMemo(
     () => [...friendGroupsWithCurrentMembers].sort((left, right) => left.name.localeCompare(right.name)),
@@ -738,19 +758,28 @@ export default function ShowtimeActionModal({
     (count, friend) => count + (effectiveVisibleFriendIds.has(friend.id) ? 1 : 0),
     0
   );
-  const selectedVisibilityGroups = useMemo(
-    () => groupsForVisibility.filter((group) => visibleGroupIdsDraft.has(group.id)),
-    [groupsForVisibility, visibleGroupIdsDraft]
-  );
   const selectedVisibilityGroupLabel = useMemo(() => {
-    if (selectedVisibilityGroups.length === 0) {
+    if (visibleGroupIdsDraft.size !== 1) {
       return null;
     }
-    if (selectedVisibilityGroups.length === 1) {
-      return selectedVisibilityGroups[0].name;
+    const [selectedGroupId] = Array.from(visibleGroupIdsDraft);
+    const selectedGroup = groupsForVisibility.find((group) => group.id === selectedGroupId);
+    if (!selectedGroup) {
+      return null;
     }
-    return `${selectedVisibilityGroups[0].name} +${selectedVisibilityGroups.length - 1}`;
-  }, [selectedVisibilityGroups]);
+    if (selectedGroup.friend_ids.length !== selectedVisibilityCount) {
+      return null;
+    }
+    const isExactSelectedSet = selectedGroup.friend_ids.every((friendId) =>
+      effectiveVisibleFriendIds.has(friendId)
+    );
+    return isExactSelectedSet ? selectedGroup.name : null;
+  }, [
+    effectiveVisibleFriendIds,
+    groupsForVisibility,
+    selectedVisibilityCount,
+    visibleGroupIdsDraft,
+  ]);
   const visibilityButtonState: VisibilityButtonState = useMemo(() => {
     if (totalFriendCount > 0 && selectedVisibilityCount === totalFriendCount) {
       return "all";
@@ -884,7 +913,7 @@ export default function ShowtimeActionModal({
             <TouchableOpacity
               style={[styles.statusButton, styles.statusButtonGoing, isGoingSelected && styles.statusButtonActive]}
               disabled={isUpdatingStatus}
-              onPress={() => onUpdateStatus("GOING")}
+              onPress={() => handleStatusPress("GOING")}
               activeOpacity={0.8}
             >
               <ThemedText style={[styles.statusButtonText, isGoingSelected && styles.statusButtonTextActive]}>
@@ -898,7 +927,7 @@ export default function ShowtimeActionModal({
                 isInterestedSelected && styles.statusButtonActive,
               ]}
               disabled={isUpdatingStatus}
-              onPress={() => onUpdateStatus("INTERESTED")}
+              onPress={() => handleStatusPress("INTERESTED")}
               activeOpacity={0.8}
             >
               <ThemedText style={[styles.statusButtonText, isInterestedSelected && styles.statusButtonTextActive]}>
@@ -912,7 +941,7 @@ export default function ShowtimeActionModal({
                 isNotGoingSelected && styles.statusButtonActive,
               ]}
               disabled={isUpdatingStatus}
-              onPress={() => onUpdateStatus("NOT_GOING")}
+              onPress={() => handleStatusPress("NOT_GOING")}
               activeOpacity={0.8}
             >
               <ThemedText style={[styles.statusButtonText, isNotGoingSelected && styles.statusButtonTextActive]}>
@@ -1133,18 +1162,9 @@ export default function ShowtimeActionModal({
                           >
                             <View style={styles.visibilityFriendIdentity}>
                               <ThemedText style={styles.visibilityFriendName}>{friend.label}</ThemedText>
-                              {friend.isIncludedByGroup ? (
-                                <ThemedText style={styles.visibilityFriendMeta}>Included via group</ThemedText>
-                              ) : null}
                             </View>
                             <MaterialIcons
-                              name={
-                                friend.isSelected
-                                  ? friend.isIncludedByGroup
-                                    ? "indeterminate-check-box"
-                                    : "check-box"
-                                  : "check-box-outline-blank"
-                              }
+                              name={friend.isSelected ? "check-box" : "check-box-outline-blank"}
                               size={20}
                               color={friend.isSelected ? colors.tint : colors.textSecondary}
                             />

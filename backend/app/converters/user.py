@@ -40,6 +40,7 @@ def to_me(user: User) -> UserMe:
         display_name=user.display_name,
         email=user.email,
         is_superuser=user.is_superuser,
+        incognito_mode=user.incognito_mode,
         notify_on_friend_showtime_match=user.notify_on_friend_showtime_match,
         notify_on_friend_requests=user.notify_on_friend_requests,
         notify_on_showtime_ping=user.notify_on_showtime_ping,

@@ -94,16 +94,22 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
       going,
       seatRow,
       seatNumber,
+      visibleFriendIds,
+      visibleGroupIds,
     }: {
       showtimeId: number;
       going: GoingStatus;
       seatRow?: string | null;
       seatNumber?: string | null;
+      visibleFriendIds?: string[];
+      visibleGroupIds?: string[];
     }) => {
       const requestBody: {
         going_status: GoingStatus;
         seat_row?: string | null;
         seat_number?: string | null;
+        visible_friend_ids?: string[];
+        visible_group_ids?: string[];
       } = {
         going_status: going,
       };
@@ -112,6 +118,12 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
       }
       if (seatNumber !== undefined) {
         requestBody.seat_number = seatNumber;
+      }
+      if (visibleFriendIds !== undefined) {
+        requestBody.visible_friend_ids = visibleFriendIds;
+      }
+      if (visibleGroupIds !== undefined) {
+        requestBody.visible_group_ids = visibleGroupIds;
       }
       return ShowtimesService.updateShowtimeSelection({
         showtimeId,
@@ -126,7 +138,12 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
     onError: (error) => {
       console.error("Error updating showtime selection:", error);
     },
-    onSettled: () => {
+    onSettled: (_data, _error, variables) => {
+      if (variables) {
+        queryClient.invalidateQueries({
+          queryKey: ["showtimes", "visibility", variables.showtimeId],
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["showtimes"] });
       queryClient.invalidateQueries({ queryKey: ["movie"] });
       queryClient.invalidateQueries({ queryKey: ["movies"] });
@@ -136,7 +153,8 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   // Submit the selected going/interested/not-going status.
   const handleShowtimeStatusUpdate = (
     going: GoingStatus,
-    seat?: { seatRow: string | null; seatNumber: string | null }
+    seat?: { seatRow: string | null; seatNumber: string | null },
+    visibility?: { visibleFriendIds: string[]; visibleGroupIds: string[] }
   ) => {
     if (!selectedShowtime || isUpdatingShowtimeSelection) return;
     const nextSeatRow =
@@ -163,6 +181,8 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
       going,
       seatRow: seat?.seatRow,
       seatNumber: seat?.seatNumber,
+      visibleFriendIds: visibility?.visibleFriendIds,
+      visibleGroupIds: visibility?.visibleGroupIds,
     });
   };
 

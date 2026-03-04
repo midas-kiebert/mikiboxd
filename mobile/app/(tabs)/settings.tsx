@@ -133,12 +133,16 @@ export default function SettingsScreen() {
   // Local notification channel state per preference (push/email).
   const [notificationChannels, setNotificationChannels] =
     useState<NotificationChannelsState>(() => buildNotificationChannelsState(user));
+  // Local privacy toggle state for incognito default visibility.
+  const [incognitoMode, setIncognitoMode] = useState<boolean>(Boolean(user?.incognito_mode));
   // Identifies which notification toggle is currently updating.
   const [pendingNotificationToggle, setPendingNotificationToggle] =
     useState<NotificationPreferenceKey | null>(null);
   // Identifies which notification channel is currently updating.
   const [pendingNotificationChannel, setPendingNotificationChannel] =
     useState<NotificationChannelPreferenceKey | null>(null);
+  // Tracks whether the incognito setting update is in-flight.
+  const [isTogglingIncognitoMode, setIsTogglingIncognitoMode] = useState(false);
   // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -155,6 +159,7 @@ export default function SettingsScreen() {
   useEffect(() => {
     setNotificationPreferences(buildNotificationPreferencesState(user));
     setNotificationChannels(buildNotificationChannelsState(user));
+    setIncognitoMode(Boolean(user?.incognito_mode));
   }, [user]);
 
   // Read the current OS-level notification permission status for friendly UI feedback.
@@ -218,6 +223,21 @@ export default function SettingsScreen() {
     onError: (error) => {
       console.error('Error updating notification preferences:', error);
       Alert.alert('Error', 'Could not update notification preferences.');
+    },
+  });
+
+  // Incognito mode controls default showtime visibility.
+  const incognitoModeMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      MeService.updateUserMe({
+        requestBody: { incognito_mode: enabled },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+    },
+    onError: (error) => {
+      console.error('Error updating incognito mode:', error);
+      Alert.alert('Error', 'Could not update incognito mode.');
     },
   });
 
@@ -397,6 +417,24 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleIncognitoModeToggle = async (enabled: boolean) => {
+    if (!user) return;
+    const previousValue = incognitoMode;
+    setIncognitoMode(enabled);
+    try {
+      setIsTogglingIncognitoMode(true);
+      const updatedUser = await incognitoModeMutation.mutateAsync(enabled);
+      setIncognitoMode(Boolean(updatedUser.incognito_mode));
+      setNotificationPreferences(buildNotificationPreferencesState(updatedUser));
+      setNotificationChannels(buildNotificationChannelsState(updatedUser));
+    } catch (error) {
+      console.error('Error toggling incognito mode:', error);
+      setIncognitoMode(previousValue);
+    } finally {
+      setIsTogglingIncognitoMode(false);
+    }
+  };
+
   const isProfileSaving = profileMutation.isPending;
   const isPasswordSaving = passwordMutation.isPending;
   const isUpdatingNotifications = notificationPreferenceMutation.isPending;
@@ -537,6 +575,27 @@ export default function SettingsScreen() {
           <ThemedText style={styles.sectionTitle}>Appearance</ThemedText>
           <View style={styles.card}>
             <ThemedText style={styles.helperText}>Appearance follows your system setting.</ThemedText>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Privacy</ThemedText>
+          <View style={styles.card}>
+            <View style={styles.settingToggleRow}>
+              <View style={styles.settingToggleTextContainer}>
+                <ThemedText style={styles.settingToggleTitle}>Incognito mode</ThemedText>
+                <ThemedText style={styles.settingToggleDescription}>
+                  Hide new showtimes from everyone by default until you choose visibility manually.
+                </ThemedText>
+              </View>
+              <Switch
+                value={incognitoMode}
+                onValueChange={(value) => void handleIncognitoModeToggle(value)}
+                disabled={!user || isTogglingIncognitoMode}
+                trackColor={{ false: colors.divider, true: colors.tint }}
+                thumbColor="#ffffff"
+              />
+            </View>
           </View>
         </View>
 
@@ -753,6 +812,25 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     helperText: {
       fontSize: 12,
       color: colors.textSecondary,
+    },
+    settingToggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    settingToggleTextContainer: {
+      flex: 1,
+      gap: 2,
+    },
+    settingToggleTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    settingToggleDescription: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      lineHeight: 15,
     },
     notificationToggleRow: {
       gap: 10,

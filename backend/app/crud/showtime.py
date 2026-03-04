@@ -509,7 +509,7 @@ def remove_showtime_selection(
         session.delete(showtime_selection)
         session.flush()
 
-    showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+    showtime_visibility_crud.clear_visibility_for_showtime(
         session=session,
         owner_id=user_id,
         showtime_id=showtime_id,

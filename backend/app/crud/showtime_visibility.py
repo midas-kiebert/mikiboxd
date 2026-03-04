@@ -17,6 +17,7 @@ from app.models.showtime_visibility import (
     ShowtimeVisibilityGroup,
     ShowtimeVisibilitySetting,
 )
+from app.models.user import User
 
 
 def is_showtime_visible_to_viewer(
@@ -156,6 +157,75 @@ def get_favorite_group_ids_for_owner(
     return list(session.exec(stmt).all())
 
 
+def is_owner_in_incognito_mode(
+    *,
+    session: Session,
+    owner_id: UUID,
+) -> bool:
+    owner = session.get(User, owner_id)
+    if owner is None:
+        return False
+    return owner.incognito_mode
+
+
+def get_default_visible_group_ids_for_owner(
+    *,
+    session: Session,
+    owner_id: UUID,
+) -> list[UUID]:
+    if is_owner_in_incognito_mode(
+        session=session,
+        owner_id=owner_id,
+    ):
+        return []
+    return sorted(
+        set(
+            get_favorite_group_ids_for_owner(
+                session=session,
+                owner_id=owner_id,
+            )
+        ),
+        key=str,
+    )
+
+
+def get_default_visible_friend_ids_for_owner(
+    *,
+    session: Session,
+    owner_id: UUID,
+    all_friend_ids: set[UUID] | None = None,
+) -> set[UUID]:
+    owner_friend_ids = all_friend_ids
+    if owner_friend_ids is None:
+        owner_friend_ids = set(
+            session.exec(
+                select(Friendship.friend_id).where(col(Friendship.user_id) == owner_id)
+            ).all()
+        )
+
+    if is_owner_in_incognito_mode(
+        session=session,
+        owner_id=owner_id,
+    ):
+        return set()
+
+    default_visible_group_ids = get_default_visible_group_ids_for_owner(
+        session=session,
+        owner_id=owner_id,
+    )
+    if len(default_visible_group_ids) == 0:
+        return set(owner_friend_ids)
+
+    return (
+        get_friend_ids_for_owner_groups(
+            session=session,
+            owner_id=owner_id,
+            group_ids=default_visible_group_ids,
+        )
+        & owner_friend_ids
+    )
+
+
 def get_friend_ids_for_owner_groups(
     *,
     session: Session,
@@ -205,6 +275,10 @@ def _compute_effective_visible_friend_ids_for_showtime(
     owner_id: UUID,
     showtime_id: int,
 ) -> set[UUID]:
+    owner_selection = session.get(ShowtimeSelection, (owner_id, showtime_id))
+    if owner_selection is None:
+        return set()
+
     all_friend_ids = set(
         session.exec(
             select(Friendship.friend_id).where(col(Friendship.user_id) == owner_id)
@@ -215,19 +289,10 @@ def _compute_effective_visible_friend_ids_for_showtime(
 
     setting = session.get(ShowtimeVisibilitySetting, (owner_id, showtime_id))
     if setting is None:
-        favorite_group_ids = get_favorite_group_ids_for_owner(
+        return get_default_visible_friend_ids_for_owner(
             session=session,
             owner_id=owner_id,
-        )
-        if len(favorite_group_ids) == 0:
-            return all_friend_ids
-        return (
-            get_friend_ids_for_owner_groups(
-                session=session,
-                owner_id=owner_id,
-                group_ids=favorite_group_ids,
-            )
-            & all_friend_ids
+            all_friend_ids=all_friend_ids,
         )
 
     if setting.is_all_friends:
@@ -287,40 +352,83 @@ def rebuild_effective_visibility_for_showtime(
     session.flush()
 
 
+def clear_visibility_for_showtime(
+    *,
+    session: Session,
+    owner_id: UUID,
+    showtime_id: int,
+) -> None:
+    setting = session.get(ShowtimeVisibilitySetting, (owner_id, showtime_id))
+    if setting is not None:
+        session.delete(setting)
+
+    session.execute(
+        delete(ShowtimeVisibilityFriend).where(
+            col(ShowtimeVisibilityFriend.owner_id) == owner_id,
+            col(ShowtimeVisibilityFriend.showtime_id) == showtime_id,
+        )
+    )
+    session.execute(
+        delete(ShowtimeVisibilityGroup).where(
+            col(ShowtimeVisibilityGroup.owner_id) == owner_id,
+            col(ShowtimeVisibilityGroup.showtime_id) == showtime_id,
+        )
+    )
+    session.execute(
+        delete(ShowtimeVisibilityEffective).where(
+            col(ShowtimeVisibilityEffective.owner_id) == owner_id,
+            col(ShowtimeVisibilityEffective.showtime_id) == showtime_id,
+        )
+    )
+    session.flush()
+
+
 def rebuild_effective_visibility_for_owner(
     *,
     session: Session,
     owner_id: UUID,
 ) -> None:
-    selected_showtime_ids = list(
+    selected_showtime_ids = set(
         session.exec(
             select(ShowtimeSelection.showtime_id).where(
                 col(ShowtimeSelection.user_id) == owner_id
             )
         ).all()
     )
-    settings_showtime_ids = list(
+    settings_showtime_ids = set(
         session.exec(
             select(ShowtimeVisibilitySetting.showtime_id).where(
                 col(ShowtimeVisibilitySetting.owner_id) == owner_id
             )
         ).all()
     )
-    existing_effective_showtime_ids = list(
+
+    stale_settings_showtime_ids = sorted(settings_showtime_ids - selected_showtime_ids)
+    for showtime_id in stale_settings_showtime_ids:
+        clear_visibility_for_showtime(
+            session=session,
+            owner_id=owner_id,
+            showtime_id=showtime_id,
+        )
+
+    existing_effective_showtime_ids = set(
         session.exec(
             select(ShowtimeVisibilityEffective.showtime_id).where(
                 col(ShowtimeVisibilityEffective.owner_id) == owner_id
             )
         ).all()
     )
-    all_showtime_ids = sorted(
-        {
-            *selected_showtime_ids,
-            *settings_showtime_ids,
-            *existing_effective_showtime_ids,
-        }
+    stale_effective_showtime_ids = sorted(
+        existing_effective_showtime_ids - selected_showtime_ids
     )
-    for showtime_id in all_showtime_ids:
+    for showtime_id in stale_effective_showtime_ids:
+        clear_visibility_for_showtime(
+            session=session,
+            owner_id=owner_id,
+            showtime_id=showtime_id,
+        )
+
+    for showtime_id in sorted(selected_showtime_ids):
         rebuild_effective_visibility_for_showtime(
             session=session,
             owner_id=owner_id,

@@ -664,36 +664,8 @@ export type MoviesReadMovieData = {
 export type MoviesReadMovieResponse = MovieLoggedIn
 
 export type ShowtimesUpdateShowtimeSelectionData = {
-  days?: Array<string> | null
-  query?: string | null
   requestBody: ShowtimeSelectionUpdate
-  /**
-   * Maximum movie runtime in minutes
-   */
-  runtimeMax?: number | null
-  /**
-   * Minimum movie runtime in minutes
-   */
-  runtimeMin?: number | null
-  /**
-   * Filter showtimes to only these cinema IDs
-   */
-  selectedCinemaIds?: Array<number> | null
-  /**
-   * Filter by selection statuses (GOING/INTERESTED)
-   */
-  selectedStatuses?: Array<GoingStatus> | null
   showtimeId: number
-  /**
-   * Only show showtimes after this moment
-   */
-  snapshotTime?: string | null
-  timeRanges?: Array<string> | null
-  /**
-   * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
-   */
-  timesOfDay?: Array<TimeOfDay> | null
-  watchlistOnly?: boolean
 }
 
 export type ShowtimesUpdateShowtimeSelectionResponse = ShowtimeLoggedIn

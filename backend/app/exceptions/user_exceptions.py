@@ -33,7 +33,14 @@ class DisplayNameAlreadyExists(AppError):
     status_code = status.HTTP_409_CONFLICT
 
     def __init__(self, display_name: str):
-        detail = f"User with display name {display_name} already exists."
+        detail = f"User with username {display_name} already exists."
+        super().__init__(detail)
+
+
+class InvalidUsername(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    def __init__(self, detail: str):
         super().__init__(detail)
 
 

@@ -359,7 +359,7 @@ def notify_user_on_showtime_ping(
 
     sender_name = sender.display_name or "A friend"
     formatted_datetime = showtime.datetime.strftime("%a, %b %d at %H:%M")
-    subject = f"{sender_name} pinged you"
+    subject = f"{sender_name} invited you"
     body = f"{showtime.movie.title} • {formatted_datetime}"
     if receiver.notify_channel_showtime_ping == NotificationChannel.EMAIL:
         _send_email_notification(
@@ -398,7 +398,7 @@ def notify_user_on_showtime_ping(
     try:
         results = _send_expo_messages(messages)
     except Exception:
-        logger.exception("Failed sending showtime ping notification")
+        logger.exception("Failed sending showtime invite notification")
         return
 
     _handle_expo_results(

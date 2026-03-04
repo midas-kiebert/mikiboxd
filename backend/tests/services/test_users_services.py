@@ -7,9 +7,12 @@ from pytest_mock import MockerFixture
 from sqlalchemy.exc import IntegrityError
 
 from app.exceptions.user_exceptions import (
+    DisplayNameAlreadyExists,
     EmailAlreadyExists,
+    InvalidUsername,
     UserNotFound,
 )
+from app.models.user import UserRegister
 from app.services import users as users_services
 
 
@@ -91,17 +94,28 @@ def test_register_user_success(
     mocker: MockerFixture,
 ):
     mock_validate = mocker.patch("app.models.user.UserCreate.model_validate")
+    mock_get_by_display_name = mocker.patch("app.crud.user.get_user_by_display_name")
+    mock_get_by_display_name.return_value = None
     mock_crud = mocker.patch("app.crud.user.create_user")
     mock_converter = mocker.patch("app.converters.user.to_public")
     mock_session = mocker.MagicMock()
+    user_in = UserRegister(
+        email="new_user@example.com",
+        password="password123",
+        display_name="new_user",
+    )
 
     user_create = mock_validate.return_value
 
     users_services.register_user(
         session=mock_session,
-        user_in=mocker.MagicMock(),
+        user_in=user_in,
     )
 
+    mock_get_by_display_name.assert_called_once_with(
+        session=mock_session,
+        display_name="new_user",
+    )
     mock_crud.assert_called_once_with(
         session=mock_session,
         user_create=user_create,
@@ -113,13 +127,17 @@ def test_register_user_email_already_exists(
     mocker: MockerFixture,
 ):
     mocker.patch("app.models.user.UserCreate.model_validate")
+    mocker.patch("app.crud.user.get_user_by_display_name", return_value=None)
     mock_crud = mocker.patch("app.crud.user.create_user")
     mock_crud.side_effect = IntegrityError(
         "Unique violation", params=None, orig=UniqueViolation("Email already exists")
     )
     mock_session = mocker.MagicMock()
-
-    user_in = mocker.MagicMock()
+    user_in = UserRegister(
+        email="existing_user@example.com",
+        password="password123",
+        display_name="existing_user",
+    )
 
     with pytest.raises(EmailAlreadyExists):
         users_services.register_user(
@@ -128,6 +146,72 @@ def test_register_user_email_already_exists(
         )
 
     mock_session.rollback.assert_called_once()
+
+
+def test_register_user_rejects_invalid_username(
+    mocker: MockerFixture,
+):
+    mock_create_user = mocker.patch("app.crud.user.create_user")
+    mock_session = mocker.MagicMock()
+    user_in = UserRegister(
+        email="invalid_username@example.com",
+        password="password123",
+        display_name="invalid username",
+    )
+
+    with pytest.raises(InvalidUsername):
+        users_services.register_user(
+            session=mock_session,
+            user_in=user_in,
+        )
+
+    mock_create_user.assert_not_called()
+
+
+def test_register_user_rejects_too_short_username(
+    mocker: MockerFixture,
+):
+    mock_create_user = mocker.patch("app.crud.user.create_user")
+    mock_session = mocker.MagicMock()
+    user_in = UserRegister(
+        email="short_username@example.com",
+        password="password123",
+        display_name="abc",
+    )
+
+    with pytest.raises(InvalidUsername):
+        users_services.register_user(
+            session=mock_session,
+            user_in=user_in,
+        )
+
+    mock_create_user.assert_not_called()
+
+
+def test_register_user_rejects_duplicate_username_case_insensitive(
+    mocker: MockerFixture,
+):
+    mock_get_by_display_name = mocker.patch("app.crud.user.get_user_by_display_name")
+    mock_get_by_display_name.return_value = mocker.MagicMock(display_name="Aaaa")
+    mock_create_user = mocker.patch("app.crud.user.create_user")
+    mock_session = mocker.MagicMock()
+    user_in = UserRegister(
+        email="duplicate_username@example.com",
+        password="password123",
+        display_name="aaaa",
+    )
+
+    with pytest.raises(DisplayNameAlreadyExists):
+        users_services.register_user(
+            session=mock_session,
+            user_in=user_in,
+        )
+
+    mock_get_by_display_name.assert_called_once_with(
+        session=mock_session,
+        display_name="aaaa",
+    )
+    mock_create_user.assert_not_called()
 
 
 # def test_get_selected_showtimes_success(

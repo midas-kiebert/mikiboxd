@@ -4,7 +4,7 @@
 import { StyleSheet, View } from "react-native";
 import { DateTime } from "luxon";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import type { CinemaPublic, UserPublic } from "shared";
+import type { CinemaPublic, GoingStatus, UserPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import CinemaPill from "@/components/badges/CinemaPill";
@@ -17,6 +17,7 @@ type ShowtimeBase = {
   id?: number;
   datetime: string;
   end_datetime?: string | null;
+  going?: GoingStatus;
   seat_row?: string | null;
   seat_number?: string | null;
   cinema: CinemaPublic;
@@ -58,9 +59,12 @@ export default function ShowtimeRow({
   const styles = createStyles(colors);
   // Compact mode is used in dense cards; default mode is used in full showtime lists.
   const isCompact = variant === "compact";
+  const hasSelectedStatusForVisibility =
+    showtime.going === "GOING" || showtime.going === "INTERESTED";
+  const shouldShowVisibilityHint = showVisibilityHint && hasSelectedStatusForVisibility;
   const visibilityIndicator = useShowtimeVisibilityIndicator({
     showtimeId: showtime.id,
-    enabled: showVisibilityHint,
+    enabled: shouldShowVisibilityHint,
   });
 
   // Render/output using the state and derived values prepared above.
@@ -77,7 +81,7 @@ export default function ShowtimeRow({
         >
           {formatShowtime(showtime.datetime, showtime.end_datetime, showDate)}
         </ThemedText>
-        {showVisibilityHint && visibilityIndicator?.kind === "none" ? (
+        {shouldShowVisibilityHint && visibilityIndicator?.kind === "none" ? (
           <MaterialCommunityIcons
             name="incognito"
             size={8}
@@ -85,7 +89,7 @@ export default function ShowtimeRow({
             style={styles.visibilityHintIcon}
           />
         ) : null}
-        {showVisibilityHint && visibilityIndicator?.kind === "label" ? (
+        {shouldShowVisibilityHint && visibilityIndicator?.kind === "label" ? (
           <ThemedText style={styles.visibilityHintText} numberOfLines={1}>
             {visibilityIndicator.label}
           </ThemedText>

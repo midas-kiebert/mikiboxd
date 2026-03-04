@@ -187,7 +187,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="pings"
         options={{
-          title: 'Pings',
+          title: 'Invites',
           tabBarIcon: ({ color }) => (
             <View style={styles.iconContainer}>
               <IconSymbol size={28} name="bell.fill" color={color} />

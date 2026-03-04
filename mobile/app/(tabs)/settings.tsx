@@ -18,7 +18,7 @@ import {
   type UpdatePassword,
   type UserUpdate,
 } from 'shared';
-import { emailPattern } from 'shared/utils';
+import { emailPattern, usernameMaxLength, usernamePattern } from 'shared/utils';
 import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications';
 
 type ProfileState = {
@@ -247,9 +247,17 @@ export default function SettingsScreen() {
       Alert.alert('Invalid email', 'Please enter a valid email address.');
       return;
     }
+    const normalizedUsername = profile.display_name.trim();
+    const normalizedCurrentUsername = user?.display_name?.trim() ?? '';
+    const isUsernameChanged =
+      normalizedUsername.toLowerCase() !== normalizedCurrentUsername.toLowerCase();
+    if (isUsernameChanged && normalizedUsername && !usernamePattern.value.test(normalizedUsername)) {
+      Alert.alert('Invalid username', usernamePattern.message);
+      return;
+    }
 
     profileMutation.mutate({
-      display_name: profile.display_name || null,
+      display_name: normalizedUsername || null,
       email: profile.email,
       letterboxd_username: profile.letterboxd_username || null,
     });
@@ -457,8 +465,8 @@ export default function SettingsScreen() {
     {
       key: 'notify_on_showtime_ping',
       channelKey: 'notify_channel_showtime_ping',
-      label: 'Pings',
-      description: 'When a friend pings you to go to a showtime.',
+      label: 'Invites',
+      description: 'When a friend invites you to a showtime.',
       value: notificationPreferences.notify_on_showtime_ping,
       channel: notificationChannels.notify_channel_showtime_ping,
     },
@@ -488,13 +496,16 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>My profile</ThemedText>
           <View style={styles.card}>
-            <ThemedText style={styles.label}>Display name</ThemedText>
+            <ThemedText style={styles.label}>Username</ThemedText>
             <TextInput
               style={styles.input}
               value={profile.display_name}
               onChangeText={(value) => setProfile((prev) => ({ ...prev, display_name: value }))}
-              placeholder="Your name"
+              placeholder="username"
               placeholderTextColor={colors.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={usernameMaxLength}
             />
             <ThemedText style={styles.label}>Email</ThemedText>
             <TextInput

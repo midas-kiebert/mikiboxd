@@ -1,13 +1,14 @@
 /**
  * Expo Router screen/module for friend-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { DateTime } from 'luxon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { UsersService, type GoingStatus } from 'shared';
 import { useFetchUserShowtimes } from 'shared/hooks/useFetchUserShowtimes';
 import { useSessionShowtimeFilter } from 'shared/hooks/useSessionShowtimeFilter';
+import useAuth from 'shared/hooks/useAuth';
 
 import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
 import DayFilterModal from '@/components/filters/DayFilterModal';
@@ -43,6 +44,8 @@ const getFriendTitle = (displayName: string | null | undefined) => {
 export default function FriendShowtimesScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
+  const { user } = useAuth();
+  const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const { selection: sharedShowtimeFilter } = useSessionShowtimeFilter();
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const userId = useMemo(() => getRouteParam(id), [id]);
@@ -73,6 +76,13 @@ export default function FriendShowtimesScreen() {
     [dayAnchorKey, selectedDays]
   );
 
+  useEffect(() => {
+    if (hasLetterboxdUsername) return;
+    setActiveFilterIds((current) =>
+      current.filter((filterId) => filterId !== 'watchlist-only')
+    );
+  }, [hasLetterboxdUsername]);
+
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
@@ -92,7 +102,8 @@ export default function FriendShowtimesScreen() {
   const showtimesFilters = useMemo(() => {
     const selectedStatuses: GoingStatus[] =
       selectedShowtimeFilter === 'going' ? ['GOING'] : ['GOING', 'INTERESTED'];
-    const watchlistOnly = activeFilterIds.includes('watchlist-only');
+    const watchlistOnly =
+      hasLetterboxdUsername && activeFilterIds.includes('watchlist-only');
 
     return {
       query: searchQuery || undefined,
@@ -101,7 +112,14 @@ export default function FriendShowtimesScreen() {
       selectedStatuses,
       watchlistOnly: watchlistOnly ? true : undefined,
     };
-  }, [activeFilterIds, resolvedApiDays, searchQuery, selectedShowtimeFilter, selectedTimeRanges]);
+  }, [
+    activeFilterIds,
+    hasLetterboxdUsername,
+    resolvedApiDays,
+    searchQuery,
+    selectedShowtimeFilter,
+    selectedTimeRanges,
+  ]);
 
   // Data hooks keep this module synced with backend data and shared cache state.
   const {
@@ -163,6 +181,9 @@ export default function FriendShowtimesScreen() {
       setTimeQuickPopoverVisible(true);
       return;
     }
+    if (filterId === 'watchlist-only' && !hasLetterboxdUsername) {
+      return;
+    }
     setActiveFilterIds((prev) => {
       const isActive = prev.includes(filterId);
       return isActive ? prev.filter((idValue) => idValue !== filterId) : [...prev, filterId];
@@ -187,7 +208,10 @@ export default function FriendShowtimesScreen() {
 
   const pillFilters = useMemo(
     () =>
-      BASE_FILTERS.map((filter) =>
+      (hasLetterboxdUsername
+        ? BASE_FILTERS
+        : BASE_FILTERS.filter((filter) => filter.id !== 'watchlist-only')
+      ).map((filter) =>
         filter.id === 'showtime-filter'
           ? {
               ...filter,
@@ -209,11 +233,16 @@ export default function FriendShowtimesScreen() {
             ? { ...filter, label: formatTimePillLabel(selectedTimeRanges) }
             : filter
       ),
-    [colors, selectedDays, selectedShowtimeFilter, selectedTimeRanges]
+    [colors, hasLetterboxdUsername, selectedDays, selectedShowtimeFilter, selectedTimeRanges]
   );
 
   const highlightedFilterIds = useMemo(() => {
-    const active: FriendAgendaFilterId[] = ['showtime-filter', ...activeFilterIds];
+    const active: FriendAgendaFilterId[] = [
+      'showtime-filter',
+      ...(hasLetterboxdUsername
+        ? activeFilterIds
+        : activeFilterIds.filter((filterId) => filterId !== 'watchlist-only')),
+    ];
     if (selectedDays.length > 0) {
       active.push('days');
     }
@@ -221,7 +250,7 @@ export default function FriendShowtimesScreen() {
       active.push('times');
     }
     return active;
-  }, [activeFilterIds, selectedDays.length, selectedTimeRanges.length]);
+  }, [activeFilterIds, hasLetterboxdUsername, selectedDays.length, selectedTimeRanges.length]);
 
   // Render/output using the state and derived values prepared above.
   return (

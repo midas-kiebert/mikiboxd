@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.midaskiebert.mobile",
+      "bundleIdentifier": "com.midaskiebert.mikino",
       "config": {
         "usesNonExemptEncryption": false
       }
@@ -45,7 +45,7 @@
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.midaskiebert.mobile"
+      "package": "com.midaskiebert.mikino"
     },
     "web": {
       "output": "static",

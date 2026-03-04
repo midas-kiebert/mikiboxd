@@ -517,7 +517,7 @@ export default function SettingsScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
             />
-            <ThemedText style={styles.label}>Letterboxd username</ThemedText>
+            <ThemedText style={styles.label}>Letterboxd username for watchlist (will update periodically)</ThemedText>
             <TextInput
               style={styles.input}
               value={profile.letterboxd_username}

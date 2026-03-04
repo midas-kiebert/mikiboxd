@@ -24,7 +24,7 @@ import {
   usernameMaxLength,
   usernamePattern,
 } from "@/utils"
-import Logo from "/assets/images/fastapi-logo.svg"
+import Logo from "/assets/images/mikino-logo.png"
 
 export const Route = createFileRoute("/signup")({
   component: SignUp,
@@ -85,7 +85,7 @@ function SignUp() {
         >
           <Image
             src={Logo}
-            alt="FastAPI logo"
+            alt="MiKiNO logo"
             height="auto"
             maxW="2xs"
             alignSelf="center"

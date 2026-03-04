@@ -248,16 +248,22 @@ export default function MoviePage() {
       going,
       seatRow,
       seatNumber,
+      visibleFriendIds,
+      visibleGroupIds,
     }: {
       showtimeId: number;
       going: GoingStatus;
       seatRow?: string | null;
       seatNumber?: string | null;
+      visibleFriendIds?: string[];
+      visibleGroupIds?: string[];
     }) => {
       const requestBody: {
         going_status: GoingStatus;
         seat_row?: string | null;
         seat_number?: string | null;
+        visible_friend_ids?: string[];
+        visible_group_ids?: string[];
       } = {
         going_status: going,
       };
@@ -266,6 +272,12 @@ export default function MoviePage() {
       }
       if (seatNumber !== undefined) {
         requestBody.seat_number = seatNumber;
+      }
+      if (visibleFriendIds !== undefined) {
+        requestBody.visible_friend_ids = visibleFriendIds;
+      }
+      if (visibleGroupIds !== undefined) {
+        requestBody.visible_group_ids = visibleGroupIds;
       }
       return ShowtimesService.updateShowtimeSelection({
         showtimeId,
@@ -342,7 +354,12 @@ export default function MoviePage() {
           : previous
       );
     },
-    onSettled: () => {
+    onSettled: (_data, _error, variables) => {
+      if (variables) {
+        queryClient.invalidateQueries({
+          queryKey: ["showtimes", "visibility", variables.showtimeId],
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["movie", movieId, "showtimes"] });
       queryClient.invalidateQueries({ queryKey: ["movie", movieId] });
       queryClient.invalidateQueries({ queryKey: ["showtimes"] });
@@ -353,7 +370,8 @@ export default function MoviePage() {
   // Submit the selected going/interested/not-going status.
   const handleShowtimeStatusUpdate = (
     going: GoingStatus,
-    seat?: { seatRow: string | null; seatNumber: string | null }
+    seat?: { seatRow: string | null; seatNumber: string | null },
+    visibility?: { visibleFriendIds: string[]; visibleGroupIds: string[] }
   ) => {
     if (!selectedShowtime || isUpdatingShowtimeSelection) return;
     updateShowtimeSelection({
@@ -361,6 +379,8 @@ export default function MoviePage() {
       going,
       seatRow: seat?.seatRow,
       seatNumber: seat?.seatNumber,
+      visibleFriendIds: visibility?.visibleFriendIds,
+      visibleGroupIds: visibility?.visibleGroupIds,
     });
   };
 

@@ -353,6 +353,12 @@ def test_showtime_visibility_get_and_update(
         user_id=current_user_id,
         friend_id=second_friend_id,
     )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
+    )
     db_transaction.commit()
 
     initial_response = client.get(
@@ -389,6 +395,146 @@ def test_showtime_visibility_get_and_update(
     assert updated_get_response.json()["visible_friend_ids"] == [str(first_friend_id)]
 
 
+def test_update_showtime_visibility_rejects_unselected_showtime(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    friend = user_factory()
+    showtime = showtime_factory()
+    friend_id = friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    db_transaction.commit()
+
+    update_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"visible_friend_ids": [str(friend_id)]},
+    )
+    assert update_response.status_code == 400
+    assert (
+        update_response.json()["detail"]
+        == "Visibility can only be configured for showtimes you marked as Going or Interested."
+    )
+
+
+def test_update_showtime_selection_applies_visibility_payload(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    visible_friend = user_factory()
+    hidden_friend = user_factory()
+    showtime = showtime_factory()
+    visible_friend_id = visible_friend.id
+    hidden_friend_id = hidden_friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=visible_friend_id,
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=hidden_friend_id,
+    )
+    db_transaction.commit()
+
+    selection_update_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={
+            "going_status": "GOING",
+            "visible_friend_ids": [str(visible_friend_id)],
+            "visible_group_ids": [],
+        },
+    )
+    assert selection_update_response.status_code == 200
+    assert selection_update_response.json()["going"] == "GOING"
+
+    visibility_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+    )
+    assert visibility_response.status_code == 200
+    visibility_body = visibility_response.json()
+    assert visibility_body["all_friends_selected"] is False
+    assert visibility_body["visible_group_ids"] == []
+    assert visibility_body["visible_friend_ids"] == [str(visible_friend_id)]
+
+
+def test_removing_showtime_selection_clears_showtime_visibility_rows(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    friend = user_factory()
+    showtime = showtime_factory()
+    friend_id = friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
+    )
+    db_transaction.commit()
+
+    visibility_update_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"visible_friend_ids": [str(friend_id)]},
+    )
+    assert visibility_update_response.status_code == 200
+
+    deselect_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "NOT_GOING"},
+    )
+    assert deselect_response.status_code == 200
+
+    assert (
+        showtime_visibility_crud.get_showtime_visibility_setting(
+            session=db_transaction,
+            owner_id=current_user_id,
+            showtime_id=showtime_id,
+        )
+        is None
+    )
+    assert (
+        showtime_visibility_crud.get_effective_visible_friend_ids_for_showtimes(
+            session=db_transaction,
+            owner_id=current_user_id,
+            showtime_ids=[showtime_id],
+        )
+        == {}
+    )
+
+
 def test_showtime_visibility_batch_returns_payload_per_showtime(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
@@ -417,6 +563,18 @@ def test_showtime_visibility_batch_returns_payload_per_showtime(
         session=db_transaction,
         user_id=current_user_id,
         friend_id=second_friend_id,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=first_showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=second_showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
     )
     db_transaction.commit()
 
@@ -479,6 +637,18 @@ def test_showtime_visibility_is_scoped_per_showtime(
         session=db_transaction,
         user_id=current_user_id,
         friend_id=second_friend_id,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=second_showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
     )
     db_transaction.commit()
 
@@ -559,6 +729,147 @@ def test_showtime_visibility_uses_default_friend_group_when_no_override(
     assert visibility_body["all_friends_selected"] is False
     assert visibility_body["visible_friend_ids"] == [str(visible_friend_id)]
     assert visibility_body["visible_group_ids"] == [group_id]
+
+
+def test_incognito_mode_overrides_and_restores_default_friend_group_visibility(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    visible_friend = user_factory()
+    hidden_friend = user_factory()
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    visible_friend_id = visible_friend.id
+    hidden_friend_id = hidden_friend.id
+    visible_friend_email = visible_friend.email
+    hidden_friend_email = hidden_friend.email
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=visible_friend_id,
+    )
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=hidden_friend_id,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
+    )
+    db_transaction.commit()
+
+    group_create_response = client.post(
+        f"{settings.API_V1_STR}/me/friend-groups",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Default Visibility Group",
+            "friend_ids": [str(visible_friend_id)],
+            "is_favorite": True,
+        },
+    )
+    assert group_create_response.status_code == 200
+    group_id = group_create_response.json()["id"]
+
+    before_incognito_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+    )
+    assert before_incognito_response.status_code == 200
+    before_incognito_body = before_incognito_response.json()
+    assert before_incognito_body["visible_friend_ids"] == [str(visible_friend_id)]
+    assert before_incognito_body["visible_group_ids"] == [group_id]
+
+    enable_incognito_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"incognito_mode": True},
+    )
+    assert enable_incognito_response.status_code == 200
+    assert enable_incognito_response.json()["incognito_mode"] is True
+
+    while_incognito_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+    )
+    assert while_incognito_response.status_code == 200
+    while_incognito_body = while_incognito_response.json()
+    assert while_incognito_body["all_friends_selected"] is False
+    assert while_incognito_body["visible_friend_ids"] == []
+    assert while_incognito_body["visible_group_ids"] == []
+
+    visible_friend_login = client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": visible_friend_email, "password": "password"},
+    )
+    assert visible_friend_login.status_code == 200
+    visible_friend_headers = {
+        "Authorization": f"Bearer {visible_friend_login.json()['access_token']}"
+    }
+    visible_friend_view_while_incognito = client.get(
+        f"{settings.API_V1_STR}/users/{current_user_id}/showtimes",
+        headers=visible_friend_headers,
+        params={"limit": 50, "offset": 0},
+    )
+    assert visible_friend_view_while_incognito.status_code == 200
+    assert not any(
+        showtime_item["id"] == showtime_id
+        for showtime_item in visible_friend_view_while_incognito.json()
+    )
+
+    hidden_friend_login = client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": hidden_friend_email, "password": "password"},
+    )
+    assert hidden_friend_login.status_code == 200
+    hidden_friend_headers = {
+        "Authorization": f"Bearer {hidden_friend_login.json()['access_token']}"
+    }
+    hidden_friend_view_while_incognito = client.get(
+        f"{settings.API_V1_STR}/users/{current_user_id}/showtimes",
+        headers=hidden_friend_headers,
+        params={"limit": 50, "offset": 0},
+    )
+    assert hidden_friend_view_while_incognito.status_code == 200
+    assert not any(
+        showtime_item["id"] == showtime_id
+        for showtime_item in hidden_friend_view_while_incognito.json()
+    )
+
+    disable_incognito_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"incognito_mode": False},
+    )
+    assert disable_incognito_response.status_code == 200
+    assert disable_incognito_response.json()["incognito_mode"] is False
+
+    after_incognito_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+    )
+    assert after_incognito_response.status_code == 200
+    after_incognito_body = after_incognito_response.json()
+    assert after_incognito_body["visible_friend_ids"] == [str(visible_friend_id)]
+    assert after_incognito_body["visible_group_ids"] == [group_id]
+
+    visible_friend_view_after_incognito = client.get(
+        f"{settings.API_V1_STR}/users/{current_user_id}/showtimes",
+        headers=visible_friend_headers,
+        params={"limit": 50, "offset": 0},
+    )
+    assert visible_friend_view_after_incognito.status_code == 200
+    assert any(
+        showtime_item["id"] == showtime_id
+        for showtime_item in visible_friend_view_after_incognito.json()
+    )
 
 
 def test_ping_friend_group_for_showtime(

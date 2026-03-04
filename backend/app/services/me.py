@@ -73,6 +73,12 @@ def update_me(
     current_user: User,
 ) -> UserMe:
     user_data = user_in.model_dump(exclude_unset=True)
+    incognito_mode_changed = False
+    if "incognito_mode" in user_data and user_data["incognito_mode"] is not None:
+        incognito_mode_changed = (
+            user_data["incognito_mode"] != current_user.incognito_mode
+        )
+
     if "display_name" in user_data:
         display_name = user_data["display_name"]
         if display_name is not None:
@@ -102,6 +108,13 @@ def update_me(
             raise AppError from e
     except Exception as e:
         raise AppError() from e
+
+    if incognito_mode_changed:
+        showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+            session=session,
+            owner_id=current_user.id,
+        )
+
     session.commit()
     user_public = user_converters.to_me(current_user)
     return user_public
@@ -488,6 +501,38 @@ def _normalize_friend_ids(friend_ids: list[UUID]) -> list[UUID]:
     return sorted(set(friend_ids), key=str)
 
 
+def _find_group_with_same_members(
+    *,
+    session: Session,
+    user_id: UUID,
+    friend_ids: list[UUID],
+    exclude_group_id: UUID | None = None,
+    all_friend_ids: set[UUID] | None = None,
+) -> FriendGroup | None:
+    target_member_ids = set(_normalize_friend_ids(friend_ids))
+    if len(target_member_ids) == 0:
+        return None
+
+    groups = friend_groups_crud.list_user_groups(
+        session=session,
+        user_id=user_id,
+    )
+    for group in groups:
+        if exclude_group_id is not None and group.id == exclude_group_id:
+            continue
+        group_member_ids = set(
+            friend_groups_crud.get_group_member_ids(
+                session=session,
+                group_id=group.id,
+            )
+        )
+        if all_friend_ids is not None:
+            group_member_ids &= all_friend_ids
+        if group_member_ids == target_member_ids:
+            return group
+    return None
+
+
 def _sanitize_group_member_ids(
     *,
     session: Session,
@@ -529,7 +574,7 @@ def list_friend_groups(
         session=session,
         user_id=user_id,
     )
-    public_groups: list[FriendGroupPublic] = []
+    sanitized_groups: list[tuple[FriendGroup, list[UUID], bool]] = []
     had_updates = False
     for group in groups:
         friend_ids, was_updated = _sanitize_group_member_ids(
@@ -540,6 +585,45 @@ def list_friend_groups(
         )
         if was_updated:
             had_updates = True
+        if len(friend_ids) == 0:
+            session.delete(group)
+            had_updates = True
+            continue
+        sanitized_groups.append((group, friend_ids, was_updated))
+
+    groups_by_member_key: dict[
+        tuple[UUID, ...], list[tuple[FriendGroup, list[UUID], bool]]
+    ] = {}
+    for entry in sanitized_groups:
+        _, friend_ids, _ = entry
+        groups_by_member_key.setdefault(tuple(friend_ids), []).append(entry)
+
+    retained_group_ids: set[UUID] = set()
+    for grouped_entries in groups_by_member_key.values():
+        if len(grouped_entries) == 1:
+            retained_group_ids.add(grouped_entries[0][0].id)
+            continue
+
+        # If a shrinkage creates a duplicate, prefer a non-updated group.
+        # Tie-break deterministically by earliest creation time.
+        non_updated_entries = [entry for entry in grouped_entries if not entry[2]]
+        candidate_entries = non_updated_entries or grouped_entries
+        preferred_entry = min(
+            candidate_entries,
+            key=lambda entry: (entry[0].created_at, str(entry[0].id)),
+        )
+        retained_group_ids.add(preferred_entry[0].id)
+        for entry in grouped_entries:
+            group, _, _ = entry
+            if group.id == preferred_entry[0].id:
+                continue
+            session.delete(group)
+            had_updates = True
+
+    public_groups: list[FriendGroupPublic] = []
+    for group, friend_ids, _ in sanitized_groups:
+        if group.id not in retained_group_ids:
+            continue
         public_groups.append(
             _to_friend_group_public(
                 group=group,
@@ -576,12 +660,23 @@ def save_friend_group(
     ]
     if invalid_friend_ids:
         raise ValueError("Friend group contains users who are not your friends.")
+    if len(friend_ids) == 0:
+        raise ValueError("Friend group must contain at least one friend.")
 
     existing = friend_groups_crud.get_user_group_by_name(
         session=session,
         user_id=user_id,
         name=group_name,
     )
+    duplicate_group = _find_group_with_same_members(
+        session=session,
+        user_id=user_id,
+        friend_ids=friend_ids,
+        exclude_group_id=existing.id if existing is not None else None,
+        all_friend_ids=all_friend_ids,
+    )
+    if duplicate_group is not None:
+        raise ValueError("A friend group with the same members already exists.")
 
     if should_set_favorite:
         friend_groups_crud.clear_user_favorite_group(
@@ -645,28 +740,14 @@ def get_favorite_friend_group(
     session: Session,
     user_id: UUID,
 ) -> FriendGroupPublic | None:
-    favorite = friend_groups_crud.get_user_favorite_group(
+    groups = list_friend_groups(
         session=session,
         user_id=user_id,
     )
-    if favorite is None:
-        return None
-    all_friend_ids = {
-        friend.id for friend in users_crud.get_friends(session=session, user_id=user_id)
-    }
-    friend_ids, was_updated = _sanitize_group_member_ids(
-        session=session,
-        group=favorite,
-        all_friend_ids=all_friend_ids,
-        now=now_amsterdam_naive(),
-    )
-    if was_updated:
-        showtime_visibility_crud.rebuild_effective_visibility_for_owner(
-            session=session,
-            owner_id=user_id,
-        )
-        session.commit()
-    return _to_friend_group_public(group=favorite, friend_ids=friend_ids)
+    for group in groups:
+        if group.is_favorite:
+            return group
+    return None
 
 
 def set_favorite_friend_group(
@@ -703,6 +784,14 @@ def set_favorite_friend_group(
         all_friend_ids=all_friend_ids,
         now=now,
     )
+    if len(friend_ids) == 0:
+        session.delete(favorite)
+        showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+            session=session,
+            owner_id=user_id,
+        )
+        session.commit()
+        return None
     showtime_visibility_crud.rebuild_effective_visibility_for_owner(
         session=session,
         owner_id=user_id,

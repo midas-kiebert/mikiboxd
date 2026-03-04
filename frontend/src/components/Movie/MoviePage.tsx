@@ -201,7 +201,7 @@ const MoviePage = () => {
             );
         },
         onError: (error) => {
-            console.error("Error pinging friend:", error);
+            console.error("Error inviting friend:", error);
         },
     });
 
@@ -276,7 +276,7 @@ const MoviePage = () => {
                                             onClick={() => setPingListOpen((previous) => !previous)}
                                             disabled={isPingingFriend}
                                         >
-                                            {pingListOpen ? "Hide friends" : "Ping friends"}
+                                            {pingListOpen ? "Hide friends" : "Invite friends"}
                                         </Button>
                                         {pingListOpen ? (
                                             <Box
@@ -306,7 +306,7 @@ const MoviePage = () => {
                                                                 friend.availability === "eligible" && !isPingingFriend;
                                                             const statusLabel =
                                                                 friend.availability === "pinged"
-                                                                    ? "Pinged"
+                                                                    ? "Invited"
                                                                     : "Ready";
                                                             return (
                                                                 <Flex
@@ -364,7 +364,7 @@ const MoviePage = () => {
                                                                         }
                                                                     >
                                                                         {friend.availability === "eligible"
-                                                                            ? "Ping"
+                                                                            ? "Invite"
                                                                             : statusLabel}
                                                                     </Button>
                                                                 </Flex>

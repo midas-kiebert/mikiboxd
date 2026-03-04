@@ -85,6 +85,24 @@ export default function FriendGroupsScreen({
   const allFriendIds = useMemo(() => friends.map((friend) => friend.id), [friends]);
   const allSelected =
     allFriendIds.length > 0 && allFriendIds.every((friendId) => selectedFriendIds.has(friendId));
+  const normalizedSelectedFriendIds = useMemo(
+    () => sortFriendIds(selectedFriendIds),
+    [selectedFriendIds]
+  );
+  const duplicateMembersGroup = useMemo(
+    () =>
+      groups.find((group) => {
+        const normalizedGroupFriendIds = sortFriendIds(group.friend_ids);
+        return (
+          normalizedGroupFriendIds.length === normalizedSelectedFriendIds.length &&
+          normalizedGroupFriendIds.every(
+            (friendId, index) => friendId === normalizedSelectedFriendIds[index]
+          )
+        );
+      }) ?? null,
+    [groups, normalizedSelectedFriendIds]
+  );
+  const trimmedGroupName = groupName.trim();
 
   const saveGroupMutation = useMutation({
     mutationFn: (requestBody: FriendGroupCreate) => MeService.saveFriendGroup({ requestBody }),
@@ -106,6 +124,8 @@ export default function FriendGroupsScreen({
       setGroupError('Could not save group. Please try again.');
     },
   });
+  const isSaveGroupDisabled =
+    saveGroupMutation.isPending || trimmedGroupName.length === 0 || duplicateMembersGroup !== null;
 
   const deleteGroupMutation = useMutation({
     mutationFn: (groupId: string) => MeService.deleteFriendGroup({ groupId }),
@@ -211,36 +231,28 @@ export default function FriendGroupsScreen({
   }, [saveGroupMutation.isPending]);
 
   const handleSaveGroup = useCallback(() => {
-    const trimmedName = groupName.trim();
-    if (!trimmedName) {
+    if (!trimmedGroupName) {
       setGroupError('Enter a group name.');
       return;
     }
 
-    const normalizedSelectedFriendIds = sortFriendIds(selectedFriendIds);
-    const sameNameGroup = groups.find(
-      (group) => group.name.trim().toLowerCase() === trimmedName.toLowerCase()
-    );
-    const duplicateMembersGroup = groups.find((group) => {
-      const normalizedGroupFriendIds = sortFriendIds(group.friend_ids);
-      const sameMembers =
-        normalizedGroupFriendIds.length === normalizedSelectedFriendIds.length &&
-        normalizedGroupFriendIds.every((friendId, index) => friendId === normalizedSelectedFriendIds[index]);
-      if (!sameMembers) return false;
-      if (sameNameGroup && group.id === sameNameGroup.id) return false;
-      return true;
-    });
     if (duplicateMembersGroup) {
       setGroupError('A group with the same members already exists.');
       return;
     }
 
     saveGroupMutation.mutate({
-      name: trimmedName,
+      name: trimmedGroupName,
       friend_ids: normalizedSelectedFriendIds,
       is_favorite: saveAsDefault,
     });
-  }, [groupName, groups, saveAsDefault, saveGroupMutation, selectedFriendIds]);
+  }, [
+    duplicateMembersGroup,
+    normalizedSelectedFriendIds,
+    saveAsDefault,
+    saveGroupMutation,
+    trimmedGroupName,
+  ]);
 
   const renderFriend: ListRenderItem<{ id: string; label: string }> = useCallback(
     ({ item }) => {
@@ -449,18 +461,32 @@ export default function FriendGroupsScreen({
               />
               <ThemedText style={styles.defaultToggleText}>Set as default visibility group</ThemedText>
             </TouchableOpacity>
-            {groupError ? <ThemedText style={styles.dialogErrorText}>{groupError}</ThemedText> : null}
+            {groupError || duplicateMembersGroup ? (
+              <ThemedText style={styles.dialogErrorText}>
+                {groupError ?? 'A group with the same members already exists.'}
+              </ThemedText>
+            ) : null}
             <View style={styles.dialogActions}>
               <TouchableOpacity style={styles.dialogActionButton} onPress={handleCloseSaveDialog} activeOpacity={0.8}>
                 <ThemedText style={styles.dialogActionText}>Cancel</ThemedText>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.dialogActionButton, styles.dialogPrimaryAction]}
+                style={[
+                  styles.dialogActionButton,
+                  styles.dialogPrimaryAction,
+                  isSaveGroupDisabled && styles.dialogActionButtonDisabled,
+                ]}
                 onPress={handleSaveGroup}
                 activeOpacity={0.8}
-                disabled={saveGroupMutation.isPending}
+                disabled={isSaveGroupDisabled}
               >
-                <ThemedText style={[styles.dialogActionText, styles.dialogPrimaryActionText]}>
+                <ThemedText
+                  style={[
+                    styles.dialogActionText,
+                    styles.dialogPrimaryActionText,
+                    isSaveGroupDisabled && styles.dialogActionTextDisabled,
+                  ]}
+                >
                   {saveGroupMutation.isPending ? 'Saving...' : 'Save'}
                 </ThemedText>
               </TouchableOpacity>
@@ -714,9 +740,16 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       borderColor: colors.tint,
       backgroundColor: colors.tint,
     },
+    dialogActionButtonDisabled: {
+      borderColor: colors.divider,
+      backgroundColor: colors.pillBackground,
+    },
     dialogActionText: {
       fontSize: 12,
       fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    dialogActionTextDisabled: {
       color: colors.textSecondary,
     },
     dialogPrimaryActionText: {

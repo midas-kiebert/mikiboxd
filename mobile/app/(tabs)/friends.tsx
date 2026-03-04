@@ -12,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MeService } from 'shared';
@@ -28,15 +27,16 @@ import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import FriendCard from '@/components/friends/FriendCard';
 import FilterPills from '@/components/filters/FilterPills';
+import FriendGroupsScreen from './friend-groups';
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
-type FriendsTabId = 'users' | 'received' | 'sent' | 'friends';
+type FriendsTabId = 'users' | 'received' | 'sent' | 'friends' | 'groups';
 type FriendsTabMeta = {
   emptyText: string;
 };
 
-const TAB_META: Record<FriendsTabId, FriendsTabMeta> = {
+const TAB_META: Record<Exclude<FriendsTabId, 'groups'>, FriendsTabMeta> = {
   users: {
     emptyText: 'No users found',
   },
@@ -55,7 +55,6 @@ export default function FriendsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
-  const router = useRouter();
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
@@ -129,6 +128,10 @@ export default function FriendsScreen() {
     () => (currentUser?.id ? buildFriendInviteUrl(currentUser.id) : null),
     [currentUser?.id]
   );
+  const inviteUsername = useMemo(
+    () => currentUser?.display_name?.trim() || null,
+    [currentUser?.display_name]
+  );
 
   const handleShareInviteLink = async () => {
     if (!inviteUrl) return;
@@ -140,10 +143,6 @@ export default function FriendsScreen() {
     } catch (error) {
       console.error('Error sharing friend invite link:', error);
     }
-  };
-
-  const handleOpenGroupsPage = () => {
-    router.push('/friend-groups');
   };
 
   // Refresh the current dataset and reset any stale pagination state.
@@ -160,6 +159,8 @@ export default function FriendsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['users', 'sentRequests'] });
     } else if (activeTab === 'friends') {
       await queryClient.invalidateQueries({ queryKey: ['users', 'friends'] });
+    } else if (activeTab === 'groups') {
+      await queryClient.invalidateQueries({ queryKey: ['friend-groups'] });
     }
     setRefreshing(false);
   };
@@ -178,9 +179,12 @@ export default function FriendsScreen() {
       { id: 'received', label: 'Requests Received', badgeCount: received.length },
       { id: 'sent', label: 'Requests Sent' },
       { id: 'friends', label: 'Friends' },
+      { id: 'groups', label: 'Friend Groups' },
     ],
     [received.length]
   );
+
+  const handleSelectTab = useCallback((id: FriendsTabId) => setActiveTab(id), []);
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -189,18 +193,19 @@ export default function FriendsScreen() {
       <FilterPills
         filters={tabs}
         selectedId={activeTab}
-        onSelect={setActiveTab}
+        onSelect={handleSelectTab}
       />
       <View style={styles.searchBarContainer}>
         <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder={searchPlaceholder} />
       </View>
-      <View style={styles.groupsActionRow}>
-        <TouchableOpacity style={styles.groupsActionButton} onPress={handleOpenGroupsPage} activeOpacity={0.8}>
-          <ThemedText style={styles.groupsActionButtonText}>Manage Friend Groups</ThemedText>
-        </TouchableOpacity>
-      </View>
 
-      {activeTab === 'users' ? (
+      {activeTab === 'groups' ? (
+        <FriendGroupsScreen
+          embedded
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+        />
+      ) : activeTab === 'users' ? (
         <FlatList
           data={displayedUsers}
           keyExtractor={(item) => `user-${item.id}`}
@@ -215,6 +220,9 @@ export default function FriendsScreen() {
             !hasUserSearch ? (
               <View style={styles.inviteCard}>
                 <ThemedText style={styles.inviteTitle}>Scan To Add Me</ThemedText>
+                {inviteUsername ? (
+                  <ThemedText style={styles.inviteUsername}>{inviteUsername}</ThemedText>
+                ) : null}
                 {inviteUrl ? (
                   <View style={styles.qrWrapper}>
                     <QRCode value={inviteUrl} size={210} backgroundColor="#ffffff" color="#111111" />
@@ -236,7 +244,6 @@ export default function FriendsScreen() {
                     <ThemedText style={styles.inviteShareButtonText}>Share Invite Link</ThemedText>
                   </TouchableOpacity>
                 ) : null}
-                <ThemedText style={styles.emptyText}>Type a name to search users</ThemedText>
               </View>
             ) : isFetchingUsers ? (
               <View style={styles.centerContainer}>
@@ -349,24 +356,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       paddingHorizontal: 0,
       paddingBottom: 2,
     },
-    groupsActionRow: {
-      paddingHorizontal: 16,
-      paddingBottom: 8,
-    },
-    groupsActionButton: {
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      alignItems: 'center',
-    },
-    groupsActionButtonText: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: colors.textSecondary,
-    },
     content: {
       padding: 16,
       paddingTop: 10,
@@ -407,6 +396,12 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       fontSize: 17,
       fontWeight: '700',
       color: colors.text,
+      textAlign: 'center',
+    },
+    inviteUsername: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.textSecondary,
       textAlign: 'center',
     },
     qrWrapper: {

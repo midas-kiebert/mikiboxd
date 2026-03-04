@@ -80,6 +80,58 @@ def _normalize_seat_value(value: str | None) -> str | None:
     return normalized if normalized else None
 
 
+def _apply_showtime_visibility_for_owner(
+    *,
+    session: Session,
+    showtime_id: int,
+    owner_id: UUID,
+    visible_friend_ids: list[UUID],
+    visible_group_ids: list[UUID],
+) -> None:
+    friends = user_crud.get_friends(session=session, user_id=owner_id)
+    all_friend_ids = {friend.id for friend in friends}
+    normalized_visible_friend_ids = sorted(set(visible_friend_ids), key=str)
+    normalized_visible_group_ids = sorted(set(visible_group_ids), key=str)
+    invalid_friend_ids = [
+        friend_id
+        for friend_id in normalized_visible_friend_ids
+        if friend_id not in all_friend_ids
+    ]
+    if invalid_friend_ids:
+        raise ValueError("Visibility list contains users who are not your friends.")
+
+    existing_group_ids = friend_groups_crud.get_existing_user_group_ids(
+        session=session,
+        user_id=owner_id,
+        group_ids=normalized_visible_group_ids,
+    )
+    invalid_group_ids = [
+        group_id
+        for group_id in normalized_visible_group_ids
+        if group_id not in existing_group_ids
+    ]
+    if invalid_group_ids:
+        raise ValueError("Visibility list contains friend groups you do not own.")
+
+    default_visible_friend_ids = (
+        showtime_visibility_crud.get_default_visible_friend_ids_for_owner(
+            session=session,
+            owner_id=owner_id,
+            all_friend_ids=all_friend_ids,
+        )
+    )
+    showtime_visibility_crud.set_visibility_for_showtime(
+        session=session,
+        owner_id=owner_id,
+        showtime_id=showtime_id,
+        visible_friend_ids=normalized_visible_friend_ids,
+        visible_group_ids=normalized_visible_group_ids,
+        all_friend_ids=all_friend_ids,
+        default_visible_friend_ids=default_visible_friend_ids,
+        now=now_amsterdam_naive(),
+    )
+
+
 def get_showtime_by_id(
     *,
     session: Session,
@@ -118,6 +170,8 @@ def update_showtime_selection(
     going_status: GoingStatus,
     seat_row: str | None = None,
     seat_number: str | None = None,
+    visible_friend_ids: list[UUID] | None = None,
+    visible_group_ids: list[UUID] | None = None,
     update_seat: bool = False,
 ) -> ShowtimeLoggedIn:
     previous_status = user_crud.get_showtime_going_status(
@@ -186,10 +240,21 @@ def update_showtime_selection(
                 seat_number=normalized_seat_number,
                 update_seat=update_seat,
             )
+            if visible_friend_ids is not None or visible_group_ids is not None:
+                _apply_showtime_visibility_for_owner(
+                    session=session,
+                    showtime_id=showtime_id,
+                    owner_id=user_id,
+                    visible_friend_ids=visible_friend_ids or [],
+                    visible_group_ids=visible_group_ids or [],
+                )
             session.commit()
         except NoResultFound as e:
             session.rollback()
             raise ShowtimeNotFoundError(showtime_id) from e
+        except ValueError:
+            session.rollback()
+            raise
         except AppError:
             session.rollback()
             raise
@@ -463,27 +528,24 @@ def get_showtime_visibility_batch(
     friends = user_crud.get_friends(session=session, user_id=actor_id)
     all_friend_ids = sorted((friend.id for friend in friends), key=str)
     all_friend_id_set = set(all_friend_ids)
-    favorite_group_ids = showtime_visibility_crud.get_favorite_group_ids_for_owner(
-        session=session,
-        owner_id=actor_id,
-    )
-    favorite_group_ids_sorted = sorted(set(favorite_group_ids), key=str)
-    if len(favorite_group_ids_sorted) == 0:
-        default_visible_friend_ids = all_friend_ids
-    else:
-        default_visible_friend_id_set = (
-            showtime_visibility_crud.get_friend_ids_for_owner_groups(
-                session=session,
-                owner_id=actor_id,
-                group_ids=favorite_group_ids_sorted,
-            )
-            & all_friend_id_set
+    default_visible_group_ids = (
+        showtime_visibility_crud.get_default_visible_group_ids_for_owner(
+            session=session,
+            owner_id=actor_id,
         )
-        default_visible_friend_ids = [
-            friend_id
-            for friend_id in all_friend_ids
-            if friend_id in default_visible_friend_id_set
-        ]
+    )
+    default_visible_friend_id_set = (
+        showtime_visibility_crud.get_default_visible_friend_ids_for_owner(
+            session=session,
+            owner_id=actor_id,
+            all_friend_ids=all_friend_id_set,
+        )
+    )
+    default_visible_friend_ids = [
+        friend_id
+        for friend_id in all_friend_ids
+        if friend_id in default_visible_friend_id_set
+    ]
     effective_visible_friend_ids_by_showtime_id = (
         showtime_visibility_crud.get_effective_visible_friend_ids_for_showtimes(
             session=session,
@@ -514,10 +576,7 @@ def get_showtime_visibility_batch(
 
         setting = settings_by_showtime_id.get(showtime_id)
         if setting is None:
-            if len(favorite_group_ids_sorted) == 0:
-                visible_group_ids: list[UUID] = []
-            else:
-                visible_group_ids = favorite_group_ids_sorted
+            visible_group_ids = default_visible_group_ids
             visible_friend_ids = default_visible_friend_ids
         elif setting.is_all_friends:
             visible_group_ids = []
@@ -572,28 +631,24 @@ def get_showtime_visibility(
     )
 
     if setting is None:
-        favorite_group_ids = showtime_visibility_crud.get_favorite_group_ids_for_owner(
-            session=session,
-            owner_id=actor_id,
-        )
-        if len(favorite_group_ids) == 0:
-            visible_group_ids = []
-            visible_friend_ids = all_friend_ids
-        else:
-            visible_group_ids = sorted(set(favorite_group_ids), key=str)
-            default_visible_friend_id_set = (
-                showtime_visibility_crud.get_friend_ids_for_owner_groups(
-                    session=session,
-                    owner_id=actor_id,
-                    group_ids=visible_group_ids,
-                )
-                & all_friend_id_set
+        visible_group_ids = (
+            showtime_visibility_crud.get_default_visible_group_ids_for_owner(
+                session=session,
+                owner_id=actor_id,
             )
-            visible_friend_ids = [
-                friend_id
-                for friend_id in all_friend_ids
-                if friend_id in default_visible_friend_id_set
-            ]
+        )
+        default_visible_friend_id_set = (
+            showtime_visibility_crud.get_default_visible_friend_ids_for_owner(
+                session=session,
+                owner_id=actor_id,
+                all_friend_ids=all_friend_id_set,
+            )
+        )
+        visible_friend_ids = [
+            friend_id
+            for friend_id in all_friend_ids
+            if friend_id in default_visible_friend_id_set
+        ]
     elif setting.is_all_friends:
         visible_group_ids = []
         visible_friend_ids = all_friend_ids
@@ -644,56 +699,22 @@ def update_showtime_visibility(
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
 
-    friends = user_crud.get_friends(session=session, user_id=actor_id)
-    all_friend_ids = {friend.id for friend in friends}
-    normalized_visible_friend_ids = sorted(set(visible_friend_ids), key=str)
-    normalized_visible_group_ids = sorted(set(visible_group_ids), key=str)
-    invalid_friend_ids = [
-        friend_id
-        for friend_id in normalized_visible_friend_ids
-        if friend_id not in all_friend_ids
-    ]
-    if invalid_friend_ids:
-        raise ValueError("Visibility list contains users who are not your friends.")
-
-    existing_group_ids = friend_groups_crud.get_existing_user_group_ids(
+    actor_selection_status = user_crud.get_showtime_going_status(
         session=session,
+        showtime_id=showtime_id,
         user_id=actor_id,
-        group_ids=normalized_visible_group_ids,
     )
-    invalid_group_ids = [
-        group_id
-        for group_id in normalized_visible_group_ids
-        if group_id not in existing_group_ids
-    ]
-    if invalid_group_ids:
-        raise ValueError("Visibility list contains friend groups you do not own.")
-
-    favorite_group_ids = showtime_visibility_crud.get_favorite_group_ids_for_owner(
-        session=session,
-        owner_id=actor_id,
-    )
-    if len(favorite_group_ids) == 0:
-        default_visible_friend_ids = all_friend_ids
-    else:
-        default_visible_friend_ids = (
-            showtime_visibility_crud.get_friend_ids_for_owner_groups(
-                session=session,
-                owner_id=actor_id,
-                group_ids=favorite_group_ids,
-            )
-            & all_friend_ids
+    if actor_selection_status not in {GoingStatus.GOING, GoingStatus.INTERESTED}:
+        raise ValueError(
+            "Visibility can only be configured for showtimes you marked as Going or Interested."
         )
 
-    showtime_visibility_crud.set_visibility_for_showtime(
+    _apply_showtime_visibility_for_owner(
         session=session,
-        owner_id=actor_id,
         showtime_id=showtime_id,
-        visible_friend_ids=normalized_visible_friend_ids,
-        visible_group_ids=normalized_visible_group_ids,
-        all_friend_ids=all_friend_ids,
-        default_visible_friend_ids=default_visible_friend_ids,
-        now=now_amsterdam_naive(),
+        owner_id=actor_id,
+        visible_friend_ids=visible_friend_ids,
+        visible_group_ids=visible_group_ids,
     )
     session.commit()
     return get_showtime_visibility(

@@ -26,15 +26,24 @@ import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
 
 type FriendGroupsPage = 'selection' | 'groups';
+type FriendGroupsScreenProps = {
+  embedded?: boolean;
+  searchQuery?: string;
+  onSearchQueryChange?: (value: string) => void;
+};
 
 const sortFriendIds = (friendIds: Iterable<string>) => Array.from(new Set(friendIds)).sort((a, b) => a.localeCompare(b));
 
-export default function FriendGroupsScreen() {
+export default function FriendGroupsScreen({
+  embedded = false,
+  searchQuery,
+  onSearchQueryChange,
+}: FriendGroupsScreenProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
   const [page, setPage] = useState<FriendGroupsPage>('selection');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [localSearchQuery, setLocalSearchQuery] = useState('');
   const [selectedFriendIds, setSelectedFriendIds] = useState<Set<string>>(new Set());
   const [groupName, setGroupName] = useState('');
   const [groupError, setGroupError] = useState<string | null>(null);
@@ -56,8 +65,11 @@ export default function FriendGroupsScreen() {
     [friends]
   );
 
+  const effectiveSearchQuery = searchQuery ?? localSearchQuery;
+  const handleSearchQueryChange = onSearchQueryChange ?? setLocalSearchQuery;
+
   const filteredFriends = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
+    const normalizedQuery = effectiveSearchQuery.trim().toLowerCase();
     return friends
       .map((friend) => ({
         id: friend.id,
@@ -67,7 +79,7 @@ export default function FriendGroupsScreen() {
         normalizedQuery ? friend.label.toLowerCase().includes(normalizedQuery) : true
       )
       .sort((left, right) => left.label.localeCompare(right.label));
-  }, [friends, searchQuery]);
+  }, [effectiveSearchQuery, friends]);
 
   const selectedCount = selectedFriendIds.size;
   const allFriendIds = useMemo(() => friends.map((friend) => friend.id), [friends]);
@@ -205,12 +217,30 @@ export default function FriendGroupsScreen() {
       return;
     }
 
+    const normalizedSelectedFriendIds = sortFriendIds(selectedFriendIds);
+    const sameNameGroup = groups.find(
+      (group) => group.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+    const duplicateMembersGroup = groups.find((group) => {
+      const normalizedGroupFriendIds = sortFriendIds(group.friend_ids);
+      const sameMembers =
+        normalizedGroupFriendIds.length === normalizedSelectedFriendIds.length &&
+        normalizedGroupFriendIds.every((friendId, index) => friendId === normalizedSelectedFriendIds[index]);
+      if (!sameMembers) return false;
+      if (sameNameGroup && group.id === sameNameGroup.id) return false;
+      return true;
+    });
+    if (duplicateMembersGroup) {
+      setGroupError('A group with the same members already exists.');
+      return;
+    }
+
     saveGroupMutation.mutate({
       name: trimmedName,
-      friend_ids: sortFriendIds(selectedFriendIds),
+      friend_ids: normalizedSelectedFriendIds,
       is_favorite: saveAsDefault,
     });
-  }, [groupName, saveAsDefault, saveGroupMutation, selectedFriendIds]);
+  }, [groupName, groups, saveAsDefault, saveGroupMutation, selectedFriendIds]);
 
   const renderFriend: ListRenderItem<{ id: string; label: string }> = useCallback(
     ({ item }) => {
@@ -236,7 +266,6 @@ export default function FriendGroupsScreen() {
   const renderGroup: ListRenderItem<FriendGroupPublic> = useCallback(
     ({ item }) => {
       const memberPreview = item.friend_ids
-        .slice(0, 3)
         .map((friendId) => friendNameById.get(friendId))
         .filter(Boolean)
         .join(', ');
@@ -254,7 +283,7 @@ export default function FriendGroupsScreen() {
                 {item.friend_ids.length} friend{item.friend_ids.length === 1 ? '' : 's'}
               </ThemedText>
               {memberPreview ? (
-                <ThemedText style={styles.groupPreview} numberOfLines={1}>
+                <ThemedText style={styles.groupPreview}>
                   {memberPreview}
                 </ThemedText>
               ) : null}
@@ -312,34 +341,18 @@ export default function FriendGroupsScreen() {
     ]
   );
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <TopBar title="Friend Groups" showBackButton />
-      <View style={styles.pageSwitcherRow}>
-        <TouchableOpacity
-          style={[styles.pageSwitcherButton, page === 'selection' && styles.pageSwitcherButtonActive]}
-          onPress={() => setPage('selection')}
-          activeOpacity={0.8}
-        >
-          <ThemedText style={[styles.pageSwitcherText, page === 'selection' && styles.pageSwitcherTextActive]}>
-            Selection
-          </ThemedText>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.pageSwitcherButton, page === 'groups' && styles.pageSwitcherButtonActive]}
-          onPress={() => setPage('groups')}
-          activeOpacity={0.8}
-        >
-          <ThemedText style={[styles.pageSwitcherText, page === 'groups' && styles.pageSwitcherTextActive]}>
-            Groups
-          </ThemedText>
-        </TouchableOpacity>
-      </View>
-
+  const content = (
+    <>
       {page === 'selection' ? (
         <>
           <View style={styles.selectionHeader}>
-            <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search friends" />
+            {!embedded ? (
+              <SearchBar
+                value={effectiveSearchQuery}
+                onChangeText={handleSearchQueryChange}
+                placeholder="Search friends"
+              />
+            ) : null}
             <View style={styles.selectionMetaRow}>
               <ThemedText style={styles.selectionMetaText}>
                 {selectedCount} of {friends.length} selected
@@ -384,19 +397,30 @@ export default function FriendGroupsScreen() {
           <ActivityIndicator size="large" color={colors.tint} />
         </View>
       ) : (
-        <FlatList
-          data={groups}
-          keyExtractor={(item) => item.id}
-          renderItem={renderGroup}
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          ListEmptyComponent={
-            <View style={styles.emptyCard}>
-              <ThemedText style={styles.emptyText}>No groups saved yet.</ThemedText>
-            </View>
-          }
-        />
+        <>
+          <FlatList
+            data={groups}
+            keyExtractor={(item) => item.id}
+            renderItem={renderGroup}
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            ListEmptyComponent={
+              <View style={styles.emptyCard}>
+                <ThemedText style={styles.emptyText}>No groups saved yet.</ThemedText>
+              </View>
+            }
+          />
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.footerSecondaryButton}
+              onPress={() => setPage('selection')}
+              activeOpacity={0.8}
+            >
+              <ThemedText style={styles.footerSecondaryButtonText}>Back To Selection</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </>
       )}
 
       <Modal visible={isSaveDialogVisible} transparent animationType="fade" onRequestClose={handleCloseSaveDialog}>
@@ -444,6 +468,17 @@ export default function FriendGroupsScreen() {
           </View>
         </View>
       </Modal>
+    </>
+  );
+
+  if (embedded) {
+    return <View style={styles.container}>{content}</View>;
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <TopBar title="Friend Groups" showBackButton />
+      {content}
     </SafeAreaView>
   );
 }
@@ -453,35 +488,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     container: {
       flex: 1,
       backgroundColor: colors.background,
-    },
-    pageSwitcherRow: {
-      flexDirection: 'row',
-      gap: 8,
-      paddingHorizontal: 16,
-      paddingTop: 10,
-      paddingBottom: 8,
-    },
-    pageSwitcherButton: {
-      flex: 1,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      borderRadius: 10,
-      backgroundColor: colors.cardBackground,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 8,
-    },
-    pageSwitcherButtonActive: {
-      borderColor: colors.tint,
-      backgroundColor: colors.pillBackground,
-    },
-    pageSwitcherText: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.textSecondary,
-    },
-    pageSwitcherTextActive: {
-      color: colors.tint,
     },
     selectionHeader: {
       paddingHorizontal: 16,

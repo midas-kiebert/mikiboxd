@@ -43,7 +43,7 @@ For the first build, let EAS manage certificates/profiles automatically when pro
 After build completes:
 
 ```bash
-npx eas submit --platform ios --latest
+npx eas submit --platform ios --profile ios-testflight --latest
 ```
 
 Alternative all-in-one flow:
@@ -59,7 +59,7 @@ In App Store Connect:
 1. Open your app -> **TestFlight**
 2. Wait until build processing is complete
 3. Add **Internal Testers** (fastest path)
-4. For **External Testers**, complete Beta App Review once
+4. For **External Testers**, submit the build for Beta App Review before external distribution
 
 ## 6. Next app versions
 
@@ -67,7 +67,7 @@ For each new release candidate:
 
 ```bash
 npx eas build --platform ios --profile production
-npx eas submit --platform ios --latest
+npx eas submit --platform ios --profile ios-testflight --latest
 ```
 
 Because `eas.json` uses `"appVersionSource": "remote"`, keep versioning in EAS/Expo workflow for subsequent uploads.

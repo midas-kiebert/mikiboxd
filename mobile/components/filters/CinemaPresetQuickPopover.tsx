@@ -4,6 +4,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Modal,
   StyleSheet,
   TouchableOpacity,
@@ -35,6 +37,9 @@ const CARD_BOTTOM_MARGIN = 12;
 const ARROW_SIZE = 14;
 const ARROW_SIDE_GUTTER = 18;
 const CARD_ANCHOR_GAP = 0;
+const POPOVER_OPEN_DURATION_MS = 90;
+const POPOVER_OPEN_START_SCALE = 0.96;
+const POPOVER_OPEN_START_Y = -3;
 const EMPTY_CINEMA_IDS: readonly number[] = [];
 
 const sortCinemaIds = (cinemaIds: Iterable<number>) =>
@@ -52,6 +57,7 @@ export default function CinemaPresetQuickPopover({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const modalRootRef = useRef<View | null>(null);
+  const cardOpenProgress = useRef(new Animated.Value(0)).current;
   const [modalRootTop, setModalRootTop] = useState(0);
 
   const updateModalRootTop = useCallback(() => {
@@ -74,12 +80,11 @@ export default function CinemaPresetQuickPopover({
 
   const { data: presets = [], isLoading } = useQuery({
     queryKey: ["cinema-presets"],
-    enabled: visible,
     queryFn: () => MeService.getCinemaPresets(),
+    staleTime: 60_000,
   });
 
   useEffect(() => {
-    if (!visible) return;
     let isMounted = true;
     loadCinemaPresetOrder().then((orderedIds) => {
       if (!isMounted) return;
@@ -88,7 +93,28 @@ export default function CinemaPresetQuickPopover({
     return () => {
       isMounted = false;
     };
-  }, [visible]);
+  }, []);
+
+  useEffect(() => {
+    if (!visible) {
+      cardOpenProgress.stopAnimation();
+      cardOpenProgress.setValue(0);
+      return;
+    }
+
+    cardOpenProgress.stopAnimation();
+    cardOpenProgress.setValue(0);
+    const animation = Animated.timing(cardOpenProgress, {
+      toValue: 1,
+      duration: POPOVER_OPEN_DURATION_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => {
+      animation.stop();
+    };
+  }, [cardOpenProgress, visible]);
 
   const visiblePresets = useMemo(() => {
     const ordered = sortCinemaPresetsByOrder(presets, orderedPresetIds);
@@ -97,11 +123,15 @@ export default function CinemaPresetQuickPopover({
   }, [maxPresets, orderedPresetIds, presets]);
 
   const hiddenPresetCount = Math.max(0, presets.length - visiblePresets.length);
+  const estimatedPresetRowCount = Math.max(
+    1,
+    isLoading ? maxPresets : visiblePresets.length
+  );
 
   const estimatedCardHeight =
     ARROW_SIZE / 2 +
     20 +
-    Math.max(1, visiblePresets.length) * 52 +
+    estimatedPresetRowCount * 52 +
     (hiddenPresetCount > 0 ? 24 : 0) +
     50 +
     8;
@@ -120,6 +150,29 @@ export default function CinemaPresetQuickPopover({
     Math.min((anchor?.pageX ?? screenWidth / 2) - cardLeft, CARD_WIDTH - ARROW_SIDE_GUTTER)
   );
   const arrowLeft = arrowCenterX - ARROW_SIZE / 2;
+  const cardAnimatedStyle = useMemo(
+    () => ({
+      opacity: cardOpenProgress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.92, 1],
+      }),
+      transform: [
+        {
+          translateY: cardOpenProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [POPOVER_OPEN_START_Y, 0],
+          }),
+        },
+        {
+          scale: cardOpenProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [POPOVER_OPEN_START_SCALE, 1],
+          }),
+        },
+      ],
+    }),
+    [cardOpenProgress]
+  );
 
   const handleApplyPreset = (preset: CinemaPresetPublic) => {
     setSelections(sortCinemaIds(preset.cinema_ids));
@@ -136,13 +189,15 @@ export default function CinemaPresetQuickPopover({
       transparent
       statusBarTranslucent
       visible={visible}
-      animationType="fade"
+      animationType="none"
       onShow={updateModalRootTop}
       onRequestClose={onClose}
     >
       <View ref={modalRootRef} style={styles.modalRoot} onLayout={updateModalRootTop}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.card, { top: cardTop, left: cardLeft, width: CARD_WIDTH }]}>
+        <Animated.View
+          style={[styles.card, cardAnimatedStyle, { top: cardTop, left: cardLeft, width: CARD_WIDTH }]}
+        >
           <View
             style={[
               styles.arrow,
@@ -208,7 +263,7 @@ export default function CinemaPresetQuickPopover({
               Open full cinemas filter
             </ThemedText>
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

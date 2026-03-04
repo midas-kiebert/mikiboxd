@@ -24,12 +24,14 @@
     },
     "production": {
       "extends": "base",
+      "environment": "production",
       "android": {
         "buildType": "apk"
       }
     },
     "production-store": {
       "extends": "base",
+      "environment": "production",
       "android": {
         "buildType": "app-bundle"
       }

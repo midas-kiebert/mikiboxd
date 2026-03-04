@@ -16,6 +16,7 @@ import { Controller, useForm } from 'react-hook-form';
 
 import useAuth from 'shared/hooks/useAuth';
 import type { UserRegister } from 'shared';
+import { usernameMaxLength, usernamePattern } from 'shared/utils';
 import { useThemeColors } from '@/hooks/use-theme-color';
 
 type SignUpForm = UserRegister & {
@@ -76,28 +77,31 @@ export default function SignUpScreen() {
           </View>
         ) : null}
 
-        {/* Display name helps other users identify this account in social screens. */}
+        {/* Username helps other users identify this account in social screens. */}
         <Controller
           control={control}
           name="display_name"
           rules={{
-            required: 'Display name is required',
-            minLength: {
-              value: 2,
-              message: 'Display name must be at least 2 characters',
+            required: 'Username is required',
+            pattern: usernamePattern,
+            maxLength: {
+              value: usernameMaxLength,
+              message: `Username must be at most ${usernameMaxLength} characters`,
             },
           }}
           render={({ field: { onChange, onBlur, value } }) => (
             <View style={styles.inputContainer}>
               <TextInput
                 style={[styles.input, errors.display_name && styles.inputError]}
-                placeholder="Display Name"
+                placeholder="Username"
                 placeholderTextColor={colors.textSecondary}
                 onBlur={onBlur}
                 onChangeText={onChange}
                 value={value ?? ''}
-                autoCapitalize="words"
-                autoComplete="name"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="username"
+                maxLength={usernameMaxLength}
                 selectionColor={colors.tint}
               />
               {errors.display_name ? (

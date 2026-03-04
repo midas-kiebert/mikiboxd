@@ -60,7 +60,7 @@ def get_user_selected_showtimes(
     session: SessionDep,
     current_user: CurrentUser,
     user_id: UUID,
-    limit: int = Query(20, ge=1, le=50),
+    limit: int = Query(10, ge=1, le=50),
     offset: int = Query(0, ge=0),
     filters: Filters = Depends(get_filters),
 ) -> list[ShowtimeLoggedIn]:

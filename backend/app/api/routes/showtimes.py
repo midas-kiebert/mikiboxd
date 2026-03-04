@@ -161,7 +161,7 @@ def get_main_page_showtimes(
     *,
     session: SessionDep,
     current_user: CurrentUser,
-    limit: int = 20,
+    limit: int = 10,
     offset: int = 0,
     filters: Filters = Depends(get_filters),
 ) -> list[ShowtimeLoggedIn]:

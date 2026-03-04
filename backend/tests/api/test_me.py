@@ -316,19 +316,92 @@ def test_update_me_rejects_duplicate_display_name(
     normal_user_token_headers: dict[str, str],
     user_factory,
 ) -> None:
-    user_factory(display_name="Taken Name")
+    user_factory(display_name="Taken_Name")
 
     update_response = client.patch(
         f"{settings.API_V1_STR}/me/",
         headers=normal_user_token_headers,
-        json={"display_name": "taken name"},
+        json={"display_name": "taken_name"},
     )
 
     assert update_response.status_code == 409
     assert (
         update_response.json()["detail"]
-        == "User with display name taken name already exists."
+        == "User with username taken_name already exists."
     )
+
+
+def test_update_me_rejects_invalid_username_characters(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": "not valid"},
+    )
+
+    assert update_response.status_code == 400
+    assert (
+        update_response.json()["detail"]
+        == "Username must be 4-15 characters and use only letters, numbers, and underscores."
+    )
+
+
+def test_update_me_rejects_username_under_min_length(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": "abc"},
+    )
+
+    assert update_response.status_code == 400
+    assert (
+        update_response.json()["detail"]
+        == "Username must be 4-15 characters and use only letters, numbers, and underscores."
+    )
+
+
+def test_update_me_rejects_username_over_max_length(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": "a" * 16},
+    )
+
+    assert update_response.status_code == 400
+    assert (
+        update_response.json()["detail"]
+        == "Username must be 4-15 characters and use only letters, numbers, and underscores."
+    )
+
+
+def test_update_me_allows_unchanged_legacy_username(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+) -> None:
+    normal_user = db_transaction.exec(
+        select(User).where(User.email == settings.EMAIL_TEST_USER)
+    ).one()
+    normal_user.display_name = "Legacy Name"
+    db_transaction.add(normal_user)
+    db_transaction.commit()
+
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": "Legacy Name"},
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json()["display_name"] == "Legacy Name"
 
 
 def test_update_me_allows_duplicate_letterboxd_username_and_normalizes_lowercase(
@@ -449,7 +522,7 @@ def test_delete_showtime_ping_endpoint(
         headers=normal_user_token_headers,
     )
     assert delete_response.status_code == 200
-    assert delete_response.json()["message"] == "Showtime ping deleted successfully"
+    assert delete_response.json()["message"] == "Showtime invite deleted successfully"
 
     deleted_ping = db_transaction.exec(
         select(ShowtimePing).where(ShowtimePing.id == ping_for_me_id)
@@ -466,7 +539,7 @@ def test_delete_showtime_ping_endpoint(
         headers=normal_user_token_headers,
     )
     assert delete_missing_response.status_code == 404
-    assert delete_missing_response.json()["detail"] == "Showtime ping not found"
+    assert delete_missing_response.json()["detail"] == "Showtime invite not found"
 
 
 def test_me_pings_prune_past_showtimes_and_return_only_future(

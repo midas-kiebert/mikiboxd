@@ -21,7 +21,7 @@ import {
 } from "shared"
 import useAuth from "shared/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
-import { emailPattern, handleError } from "@/utils"
+import { emailPattern, handleError, usernameMaxLength, usernamePattern } from "@/utils"
 import { Field } from "../ui/field"
 
 const UserInformation = () => {
@@ -75,6 +75,19 @@ const UserInformation = () => {
     toggleEditMode()
   }
 
+  const validateUsername = (value: string | null | undefined) => {
+    const normalizedUsername = value?.trim() ?? ""
+    const normalizedCurrentUsername = currentUser?.display_name?.trim() ?? ""
+    const isUsernameChanged =
+      normalizedUsername.toLowerCase() !== normalizedCurrentUsername.toLowerCase()
+    if (!isUsernameChanged || !normalizedUsername) {
+      return true
+    }
+    return (
+      usernamePattern.value.test(normalizedUsername) || usernamePattern.message
+    )
+  }
+
   // Render/output using the state and derived values prepared above.
   return (
     <>
@@ -87,10 +100,15 @@ const UserInformation = () => {
           as="form"
           onSubmit={handleSubmit(onSubmit)}
         >
-          <Field label="Full name">
+          <Field
+            label="Username"
+            invalid={!!errors.display_name}
+            errorText={errors.display_name?.message}
+          >
             {editMode ? (
               <Input
-                {...register("display_name", { maxLength: 30 })}
+                {...register("display_name", { validate: validateUsername })}
+                maxLength={usernameMaxLength}
                 type="text"
                 size="md"
               />

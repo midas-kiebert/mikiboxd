@@ -77,10 +77,14 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const hasAudience =
     (showtime.friends_going?.length ?? 0) > 0 ||
     (showtime.friends_interested?.length ?? 0) > 0;
+  const hasSelectedStatusForVisibility =
+    showtime.going === "GOING" || showtime.going === "INTERESTED";
   const visibilityIndicator = useShowtimeVisibilityIndicator({
     showtimeId: showtime.id,
+    enabled: hasSelectedStatusForVisibility,
   });
-  const hasVisibilityHint = visibilityIndicator !== null;
+  const hasVisibilityHint =
+    hasSelectedStatusForVisibility && visibilityIndicator !== null;
   const responsiveBadgeRows = useMemo(() => {
     if (!hasAudience) return undefined;
     return getCompactBadgeRowsForHeight(
@@ -163,11 +167,11 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
               variant="compact"
               maxRows={responsiveBadgeRows}
             />
-            {visibilityIndicator?.kind === "none" ? (
+            {hasSelectedStatusForVisibility && visibilityIndicator?.kind === "none" ? (
               <View style={styles.visibilityHintIcon}>
                 <MaterialCommunityIcons name="incognito" size={9} color={colors.textSecondary} />
               </View>
-            ) : visibilityIndicator?.kind === "label" ? (
+            ) : hasSelectedStatusForVisibility && visibilityIndicator?.kind === "label" ? (
               <ThemedText style={styles.visibilityHintText} numberOfLines={1}>
                 {visibilityIndicator.label}
               </ThemedText>

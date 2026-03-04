@@ -126,7 +126,7 @@ export default function PingsScreen() {
       queryClient.invalidateQueries({ queryKey: ["me", "showtimePings"] });
     },
     onError: (error) => {
-      console.error("Error marking showtime pings as seen:", error);
+      console.error("Error marking showtime invites as seen:", error);
     },
   });
 
@@ -168,8 +168,8 @@ export default function PingsScreen() {
         });
       }
 
-      console.error("Error deleting showtime ping:", error);
-      Alert.alert("Error", "Could not dismiss ping.");
+      console.error("Error deleting showtime invite:", error);
+      Alert.alert("Error", "Could not dismiss invite.");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["me", "showtimePings", "unseenCount"] });
@@ -177,7 +177,7 @@ export default function PingsScreen() {
     },
   });
 
-  // Mark pings as seen as soon as this tab is viewed.
+  // Mark invites as seen as soon as this tab is viewed.
   useEffect(() => {
     if (!isFocused) return;
     markSeenMutation.mutate();
@@ -308,7 +308,7 @@ export default function PingsScreen() {
     () => [
       {
         id: "sort-mode" as const,
-        label: sortMode === "ping-date" ? "Sort By Ping Date" : "Sort By Showtime Date",
+        label: sortMode === "ping-date" ? "Sort By Invite Date" : "Sort By Showtime Date",
       },
     ],
     [sortMode]
@@ -317,7 +317,7 @@ export default function PingsScreen() {
   // Render/output using the state and derived values prepared above.
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <TopBar title="Pings" />
+      <TopBar title="Invites" />
       <FilterPills<PingSortFilterId>
         filters={sortFilters}
         selectedId=""
@@ -353,9 +353,9 @@ export default function PingsScreen() {
             </View>
           ) : (
             <View style={styles.emptyCard}>
-              <ThemedText style={styles.emptyTitle}>No pings yet</ThemedText>
+              <ThemedText style={styles.emptyTitle}>No invites yet</ThemedText>
               <ThemedText style={styles.emptyText}>
-                When friends ping you for a showtime, it will show up here.
+                When friends invite you to a showtime, it will show up here.
               </ThemedText>
             </View>
           )
@@ -369,10 +369,10 @@ export default function PingsScreen() {
             .filter((value, index, all) => all.indexOf(value) === index);
           const senderSummary =
             senderNames.length <= 1
-              ? `Pinged by ${senderNames[0] ?? "Friend"}`
+              ? `Invited by ${senderNames[0] ?? "Friend"}`
               : senderNames.length === 2
-                ? `Pinged by ${senderNames[0]} and ${senderNames[1]}`
-                : `Pinged by ${senderNames[0]} and ${senderNames.length - 1} others`;
+                ? `Invited by ${senderNames[0]} and ${senderNames[1]}`
+                : `Invited by ${senderNames[0]} and ${senderNames.length - 1} others`;
 
           return (
             <View style={styles.cardWrapper}>
@@ -390,7 +390,7 @@ export default function PingsScreen() {
                     {item.hasUnseen ? <View style={styles.unseenDot} /> : null}
                   </View>
                   <ThemedText style={styles.metaTimestamp} numberOfLines={1}>
-                    Latest ping: {latestPingTimestamp}
+                    Latest invite: {latestPingTimestamp}
                   </ThemedText>
                 </View>
                 <TouchableOpacity

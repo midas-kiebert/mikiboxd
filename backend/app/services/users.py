@@ -6,11 +6,22 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
+from app.core.username import (
+    USERNAME_VALIDATION_MESSAGE,
+    is_valid_username,
+    normalize_username,
+)
 from app.crud import cinema as cinemas_crud
 from app.crud import friendship as friendship_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
-from app.exceptions.user_exceptions import EmailAlreadyExists, NotAFriend, UserNotFound
+from app.exceptions.user_exceptions import (
+    DisplayNameAlreadyExists,
+    EmailAlreadyExists,
+    InvalidUsername,
+    NotAFriend,
+    UserNotFound,
+)
 from app.inputs.movie import Filters
 from app.models.user import UserCreate, UserRegister
 from app.schemas.showtime import ShowtimeLoggedIn
@@ -289,7 +300,25 @@ def register_user(
         EmailAlreadyExists: If a user with the given email already exists.
         AppError: If there is an error during user creation.
     """
-    user_create = UserCreate.model_validate(user_in)
+    normalized_display_name = normalize_username(user_in.display_name)
+    if not normalized_display_name:
+        raise InvalidUsername("Username is required.")
+    if not is_valid_username(normalized_display_name):
+        raise InvalidUsername(USERNAME_VALIDATION_MESSAGE)
+
+    existing_user = users_crud.get_user_by_display_name(
+        session=session,
+        display_name=normalized_display_name,
+    )
+    if existing_user is not None:
+        raise DisplayNameAlreadyExists(normalized_display_name)
+
+    user_create = UserCreate.model_validate(
+        {
+            **user_in.model_dump(),
+            "display_name": normalized_display_name,
+        }
+    )
     try:
         user = users_crud.create_user(
             session=session,

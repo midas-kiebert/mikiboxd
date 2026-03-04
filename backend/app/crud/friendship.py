@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlmodel import Session, select
 
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.models.friendship import FriendRequest, Friendship
 
 
@@ -30,6 +31,14 @@ def create_friendship(
     session.add(friendship)
     session.add(reverse_friendship)
     session.flush()
+    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+        session=session,
+        owner_id=user_id,
+    )
+    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+        session=session,
+        owner_id=friend_id,
+    )
     return friendship
 
 
@@ -145,6 +154,15 @@ def delete_friendship(
 
     session.delete(friendship)
     session.delete(reverse_friendship)
+    session.flush()
+    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+        session=session,
+        owner_id=user_id,
+    )
+    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+        session=session,
+        owner_id=friend_id,
+    )
 
     return friendship
 

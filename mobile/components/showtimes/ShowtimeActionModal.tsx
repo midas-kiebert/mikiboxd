@@ -54,6 +54,14 @@ type ShowtimeActionModalProps = {
   onClose: () => void;
 };
 
+const getShowtimeFriendsGoing = (
+  showtime: ShowtimeInMovieLoggedIn | ShowtimeLoggedIn | null
+) => (showtime && "friends_going" in showtime ? showtime.friends_going : []);
+
+const getShowtimeFriendsInterested = (
+  showtime: ShowtimeInMovieLoggedIn | ShowtimeLoggedIn | null
+) => (showtime && "friends_interested" in showtime ? showtime.friends_interested : []);
+
 const DETAIL_PANEL_HEIGHT = 430;
 const MODAL_OPEN_DURATION_MS = 200;
 const DETAIL_PANEL_OPEN_DURATION_MS = 440;
@@ -647,14 +655,18 @@ export default function ShowtimeActionModal({
     if (!showtime) {
       return new Set<string>();
     }
-    return new Set<string>(showtime.friends_going.map((friend) => friend.id));
+    return new Set<string>(
+      getShowtimeFriendsGoing(showtime).map((friend) => friend.id)
+    );
   }, [showtime]);
 
   const friendsInterestedIds = useMemo(() => {
     if (!showtime) {
       return new Set<string>();
     }
-    return new Set<string>(showtime.friends_interested.map((friend) => friend.id));
+    return new Set<string>(
+      getShowtimeFriendsInterested(showtime).map((friend) => friend.id)
+    );
   }, [showtime]);
 
   const friendsForPing = useMemo(() => {
@@ -758,8 +770,8 @@ export default function ShowtimeActionModal({
       : visibilityButtonState === "partial"
         ? colors.orange.secondary
         : colors.textSecondary;
-  const friendsGoing = showtime?.friends_going ?? [];
-  const friendsInterested = showtime?.friends_interested ?? [];
+  const friendsGoing = getShowtimeFriendsGoing(showtime);
+  const friendsInterested = getShowtimeFriendsInterested(showtime);
 
   const resolvedMovieTitle = useMemo(() => {
     const fromProp = movieTitle?.trim();

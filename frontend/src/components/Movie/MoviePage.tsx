@@ -28,7 +28,7 @@ import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
 import { DateTime } from "luxon";
 
-type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
+type FriendPingAvailability = "eligible" | "pinged";
 
 type UpdateCacheData = {
     movieId: number;
@@ -93,39 +93,17 @@ const MoviePage = () => {
         }
     }, [selectedShowtime]);
 
-    const friendsGoingIds = useMemo(() => {
-        if (!selectedShowtime) {
-            return new Set<string>();
-        }
-        return new Set<string>(selectedShowtime.friends_going.map((friend) => friend.id));
-    }, [selectedShowtime]);
-    const friendsInterestedIds = useMemo(() => {
-        if (!selectedShowtime) {
-            return new Set<string>();
-        }
-        return new Set<string>(
-            selectedShowtime.friends_interested.map((friend) => friend.id),
-        );
-    }, [selectedShowtime]);
     const friendsForPing = useMemo(() => {
         const availabilityRank: Record<FriendPingAvailability, number> = {
             eligible: 0,
             pinged: 1,
-            interested: 2,
-            going: 3,
         };
         return (friends ?? [])
             .map((friend) => {
-                const isGoing = friendsGoingIds.has(friend.id);
-                const isInterested = friendsInterestedIds.has(friend.id);
                 const alreadyPinged = pingedFriendIds.includes(friend.id);
-                const availability: FriendPingAvailability = isGoing
-                    ? "going"
-                    : isInterested
-                        ? "interested"
-                        : alreadyPinged
-                            ? "pinged"
-                            : "eligible";
+                const availability: FriendPingAvailability = alreadyPinged
+                    ? "pinged"
+                    : "eligible";
                 const label = friend.display_name?.trim() || "Friend";
                 return {
                     id: friend.id,
@@ -142,7 +120,7 @@ const MoviePage = () => {
                 }
                 return left.label.localeCompare(right.label);
             });
-    }, [friends, friendsGoingIds, friendsInterestedIds, pingedFriendIds]);
+    }, [friends, pingedFriendIds]);
 
     // Keep movie details and movie-list caches in sync after a showtime status change.
     const updateCacheAfterShowtimeToggle = ({ movieId, showtimeId, newValue }: UpdateCacheData) => {
@@ -327,13 +305,9 @@ const MoviePage = () => {
                                                             const canPing =
                                                                 friend.availability === "eligible" && !isPingingFriend;
                                                             const statusLabel =
-                                                                friend.availability === "going"
-                                                                    ? "Going"
-                                                                    : friend.availability === "interested"
-                                                                        ? "Interested"
-                                                                        : friend.availability === "pinged"
-                                                                            ? "Pinged"
-                                                                            : "Ready";
+                                                                friend.availability === "pinged"
+                                                                    ? "Pinged"
+                                                                    : "Ready";
                                                             return (
                                                                 <Flex
                                                                     key={friend.id}

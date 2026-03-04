@@ -17,7 +17,7 @@ import { DateTime } from "luxon";
 
 const MoviesPage = () => {
     // Read flow: prepare derived values/handlers first, then return component JSX.
-    const limit = 20;
+    const limit = 15;
     // Keep one fixed snapshot timestamp so pagination pages stay consistent while scrolling.
     const [snapshotTime] = useState(() => DateTime.now().setZone('Europe/Amsterdam').toFormat("yyyy-MM-dd'T'HH:mm:ss"));
     const loadMoreRef = useRef<HTMLDivElement | null>(null);

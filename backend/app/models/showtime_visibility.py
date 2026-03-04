@@ -9,6 +9,7 @@ __all__ = [
     "ShowtimeVisibilitySetting",
     "ShowtimeVisibilityFriend",
     "ShowtimeVisibilityGroup",
+    "ShowtimeVisibilityEffective",
 ]
 
 
@@ -63,3 +64,27 @@ class ShowtimeVisibilityGroup(SQLModel, table=True):
         ondelete="CASCADE",
     )
     created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
+
+
+class ShowtimeVisibilityEffective(SQLModel, table=True):
+    """
+    Denormalized per-showtime visibility edges used by read paths.
+    A row means: viewer_id can see owner_id's status for showtime_id.
+    """
+
+    owner_id: UUID = Field(
+        foreign_key="user.id",
+        primary_key=True,
+        ondelete="CASCADE",
+    )
+    showtime_id: int = Field(
+        foreign_key="showtime.id",
+        primary_key=True,
+        ondelete="CASCADE",
+    )
+    viewer_id: UUID = Field(
+        foreign_key="user.id",
+        primary_key=True,
+        ondelete="CASCADE",
+        index=True,
+    )

@@ -22,7 +22,6 @@ def update_showtime_selection(
     showtime_id: int,
     payload: ShowtimeSelectionUpdate,
     current_user: CurrentUser,
-    filters: Filters = Depends(get_filters),
 ) -> ShowtimeLoggedIn:
     should_update_seat = (
         "seat_row" in payload.model_fields_set
@@ -36,7 +35,6 @@ def update_showtime_selection(
         seat_row=payload.seat_row,
         seat_number=payload.seat_number,
         update_seat=should_update_seat,
-        filters=filters,
     )
 
 

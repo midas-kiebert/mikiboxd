@@ -25,6 +25,7 @@
     "production": {
       "extends": "base",
       "environment": "production",
+      "autoIncrement": true,
       "android": {
         "buildType": "apk"
       }
@@ -32,6 +33,7 @@
     "production-store": {
       "extends": "base",
       "environment": "production",
+      "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
       }

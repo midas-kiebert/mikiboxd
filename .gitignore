@@ -6,6 +6,7 @@ node_modules/
 /playwright/.cache/
 .env
 app/logs
+backend/app/logs/
 test.py
 google-services.json
 mobile/google-services.json

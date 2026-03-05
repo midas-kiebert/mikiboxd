@@ -275,6 +275,7 @@ class ShowtimeInMovieLoggedInFactory(Factory):
     ticket_link = Faker("url")
     cinema = SubFactory(CinemaPublicFactory)
     friends_going = LazyFunction(lambda: [UserPublicFactory() for _ in range(3)])
+    friends_interested = LazyFunction(lambda: [UserPublicFactory() for _ in range(2)])
     going = Faker("boolean", chance_of_getting_true=50)
 
 

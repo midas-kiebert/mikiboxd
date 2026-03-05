@@ -42,6 +42,8 @@ class ShowtimeLoggedIn(ShowtimeBase):
 class ShowtimeInMovieLoggedIn(ShowtimeBase):
     id: int
     cinema: "CinemaPublic"
+    friends_going: Sequence["UserPublic"]
+    friends_interested: Sequence["UserPublic"]
     going: GoingStatus
     seat_row: str | None = None
     seat_number: str | None = None

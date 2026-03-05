@@ -169,6 +169,8 @@ export type ShowtimeInMovieLoggedIn = {
   subtitles?: Array<string> | null
   id: number
   cinema: CinemaPublic
+  friends_going: Array<UserPublic>
+  friends_interested: Array<UserPublic>
   going: GoingStatus
   seat_row?: string | null
   seat_number?: string | null

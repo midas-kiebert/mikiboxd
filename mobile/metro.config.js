@@ -1,23 +1,17 @@
-// mobile/metro.config.js
-const { getDefaultConfig } = require('expo/metro-config');
-const path = require('path');
+const { getDefaultConfig } = require('expo/metro-config')
+const path = require('path')
 
-const config = getDefaultConfig(__dirname);
+const config = getDefaultConfig(__dirname)
 
-// Point to the workspace root so Metro can find the shared package
-const projectRoot = __dirname;
-const workspaceRoot = path.resolve(projectRoot, '..');
+const projectRoot = __dirname
+const workspaceRoot = path.resolve(projectRoot, '..')
 
-// Required for pnpm/workspace symlinked packages like `shared`.
-config.resolver.unstable_enableSymlinks = true;
+// Keep Expo defaults and append workspace root for monorepo packages.
+config.watchFolders = Array.from(new Set([...(config.watchFolders || []), workspaceRoot]))
 
-// Watch the entire monorepo
-config.watchFolders = [workspaceRoot];
-
-// Let Metro know where to find node_modules
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
-];
+]
 
-module.exports = config;
+module.exports = config

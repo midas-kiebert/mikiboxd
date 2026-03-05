@@ -111,6 +111,7 @@ def setup_logger(name: str, log_dir: str = "app/logs") -> Logger:
         enqueue=True,
         backtrace=True,
         diagnose=True,
+        retention="30 days",
     )
 
     logger.add(

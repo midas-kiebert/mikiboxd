@@ -39,6 +39,44 @@ def _selection_status_and_seat(
     return selection.going_status, selection.seat_row, selection.seat_number
 
 
+def _friends_for_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID,
+) -> tuple[list, list]:
+    friends_going_users = showtime_crud.get_friends_for_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        user_id=user_id,
+        going_status=GoingStatus.GOING,
+    )
+    friends_going_selections = showtime_crud.get_showtime_selections_for_users(
+        session=session,
+        showtime_id=showtime_id,
+        user_ids=[friend.id for friend in friends_going_users],
+    )
+    friends_going = [
+        _friend_to_public_with_seat(
+            friend=friend,
+            selection_by_user_id=friends_going_selections,
+        )
+        for friend in friends_going_users
+    ]
+    friend_going_ids = {friend.id for friend in friends_going}
+    friends_interested = [
+        user_converters.to_public(friend)
+        for friend in showtime_crud.get_friends_for_showtime(
+            session=session,
+            showtime_id=showtime_id,
+            user_id=user_id,
+            going_status=GoingStatus.INTERESTED,
+        )
+        if friend.id not in friend_going_ids
+    ]
+    return friends_going, friends_interested
+
+
 def to_logged_in(
     showtime: Showtime,
     *,
@@ -60,35 +98,11 @@ def to_logged_in(
         ValidationError: If the showtime does not match the expected model.
     """
     Showtime.model_validate(showtime)
-    friends_going_users = showtime_crud.get_friends_for_showtime(
+    friends_going, friends_interested = _friends_for_showtime(
         session=session,
         showtime_id=showtime.id,
         user_id=user_id,
-        going_status=GoingStatus.GOING,
     )
-    friends_going_selections = showtime_crud.get_showtime_selections_for_users(
-        session=session,
-        showtime_id=showtime.id,
-        user_ids=[friend.id for friend in friends_going_users],
-    )
-    friends_going = [
-        _friend_to_public_with_seat(
-            friend=friend,
-            selection_by_user_id=friends_going_selections,
-        )
-        for friend in friends_going_users
-    ]
-    friend_going_ids = {friend.id for friend in friends_going}
-    friends_interested = [
-        user_converters.to_public(friend)
-        for friend in showtime_crud.get_friends_for_showtime(
-            session=session,
-            showtime_id=showtime.id,
-            user_id=user_id,
-            going_status=GoingStatus.INTERESTED,
-        )
-        if friend.id not in friend_going_ids
-    ]
     current_selection = showtime_crud.get_showtime_selection(
         session=session,
         showtime_id=showtime.id,
@@ -134,6 +148,11 @@ def to_in_movie_logged_in(
         ValidationError: If the showtime does not match the expected model.
     """
     Showtime.model_validate(showtime)
+    friends_going, friends_interested = _friends_for_showtime(
+        session=session,
+        showtime_id=showtime.id,
+        user_id=user_id,
+    )
     current_selection = showtime_crud.get_showtime_selection(
         session=session,
         showtime_id=showtime.id,
@@ -148,6 +167,8 @@ def to_in_movie_logged_in(
 
     return ShowtimeInMovieLoggedIn(
         **showtime.model_dump(),
+        friends_going=friends_going,
+        friends_interested=friends_interested,
         going=going,
         seat_row=seat_row,
         seat_number=seat_number,

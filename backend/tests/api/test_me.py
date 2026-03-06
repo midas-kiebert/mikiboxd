@@ -236,9 +236,13 @@ def test_delete_push_token_for_current_user(
     db_transaction.add(PushToken(token=test_token, user_id=current_user_id, platform="android"))
     db_transaction.commit()
 
-    response = client.delete(
+    response = client.request(
+        "DELETE",
         f"{settings.API_V1_STR}/me/push-tokens",
-        headers=normal_user_token_headers,
+        headers={
+            **normal_user_token_headers,
+            "Content-Type": "application/json",
+        },
         json={"token": test_token},
     )
     assert response.status_code == 200

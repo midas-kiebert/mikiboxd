@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from fastapi.testclient import TestClient
@@ -238,8 +239,11 @@ def test_delete_push_token_for_current_user(
 
     response = client.delete(
         f"{settings.API_V1_STR}/me/push-tokens",
-        headers=normal_user_token_headers,
-        json={"token": test_token},
+        headers={
+            **normal_user_token_headers,
+            "Content-Type": "application/json",
+        },
+        data=json.dumps({"token": test_token}),
     )
     assert response.status_code == 200
     assert response.json()["message"] == "Push token deleted successfully"

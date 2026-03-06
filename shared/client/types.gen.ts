@@ -157,6 +157,10 @@ export type NewPassword = {
 
 export type NotificationChannel = "push" | "email"
 
+export type PushTokenDelete = {
+  token: string
+}
+
 export type PushTokenRegister = {
   token: string
   platform?: "ios" | "android" | "web" | null
@@ -563,7 +567,7 @@ export type MeRegisterPushTokenData = {
 export type MeRegisterPushTokenResponse = Message
 
 export type MeDeletePushTokenData = {
-  requestBody: PushTokenRegister
+  requestBody: PushTokenDelete
 }
 
 export type MeDeletePushTokenResponse = Message

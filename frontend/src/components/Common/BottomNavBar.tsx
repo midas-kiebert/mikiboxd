@@ -2,7 +2,7 @@
  * Shared web layout/presentation component: Bottom Nav Bar.
  */
 import { Box, Grid } from "@chakra-ui/react";
-import { FiFilm, FiHome, FiSettings } from "react-icons/fi"
+import { FiFilm, FiHome, FiSettings, FiBell } from "react-icons/fi"
 import { FaUserFriends } from "react-icons/fa"
 import { FaRegCalendar } from "react-icons/fa6";
 import { Link as RouterLink } from "@tanstack/react-router"
@@ -13,6 +13,7 @@ const items = [
     { icon: FiHome, title: "Dashboard", path: "/" },
     { icon: FiFilm, title: "Movies", path: "/movies" },
     { icon: FaUserFriends, title: "Friends", path: "/friends" },
+    { icon: FiBell, title: "Invites", path: "/pings" },
 ]
 
 const BottomNavBar = () => {
@@ -45,7 +46,7 @@ const BottomNavBar = () => {
             p={4}
             >
             <Grid
-                templateColumns="repeat(5, 1fr)"
+                templateColumns={`repeat(${items.length}, 1fr)`}
                 gap={4}
                 height="100%"
                 alignItems="center"

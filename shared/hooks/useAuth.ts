@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { storage } from "../storage"
 import type { AuthHook } from "../types"
 
@@ -22,11 +22,11 @@ const isLoggedIn = async () => {
 const useAuth = (onLoginSuccess?: () => void, onLogout?: () => void): AuthHook => {
   const [error, setError] = useState<string | null>(null)
   const queryClient = useQueryClient()
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
-  useState(() => {
-    isLoggedIn().then(setIsAuthenticated)
-  })
+  useEffect(() => {
+    void isLoggedIn().then(setIsAuthenticated)
+  }, [])
 
   const {data: user } = useQuery<MeGetCurrentUserResponse | null, Error>({
     queryKey: ["currentUser"],
@@ -60,6 +60,7 @@ const useAuth = (onLoginSuccess?: () => void, onLogout?: () => void): AuthHook =
   const loginMutation = useMutation({
     mutationFn: login,
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["currentUser"] })
       if (onLoginSuccess) onLoginSuccess()
     },
     onError: (err: ApiError) => {

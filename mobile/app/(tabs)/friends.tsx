@@ -1,7 +1,8 @@
 /**
  * Expo Router screen/module for (tabs) / friends. It controls navigation and screen-level state for this route.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
@@ -66,7 +67,23 @@ export default function FriendsScreen() {
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
   // Keeps track of the currently selected tab on this screen.
-  const [activeTab, setActiveTab] = useState<FriendsTabId>('users');
+  const { tab } = useLocalSearchParams<{ tab?: string | string[] }>();
+  const requestedTab = useMemo((): FriendsTabId | null => {
+    const normalizedTab = Array.isArray(tab) ? tab[0] : tab;
+    return normalizedTab === 'received' ||
+      normalizedTab === 'sent' ||
+      normalizedTab === 'friends' ||
+      normalizedTab === 'users' ||
+      normalizedTab === 'groups'
+      ? normalizedTab
+      : null;
+  }, [tab]);
+  const [activeTab, setActiveTab] = useState<FriendsTabId>(requestedTab ?? 'users');
+
+  useEffect(() => {
+    if (requestedTab === null) return;
+    setActiveTab(requestedTab);
+  }, [requestedTab]);
 
   // Build the filter payload from current UI selections.
   const userFilters = useMemo(

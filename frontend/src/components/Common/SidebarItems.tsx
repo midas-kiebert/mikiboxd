@@ -3,7 +3,7 @@
  */
 import { Box, Flex, Icon, Text } from "@chakra-ui/react"
 import { Link as RouterLink } from "@tanstack/react-router"
-import { FiFilm, FiHome, FiSettings } from "react-icons/fi"
+import { FiFilm, FiHome, FiSettings, FiBell } from "react-icons/fi"
 import { FaUserFriends } from "react-icons/fa"
 import { FaRegCalendar } from "react-icons/fa6";
 
@@ -12,6 +12,7 @@ const items = [
   { icon: FiFilm, title: "Movies", path: "/movies" },
   { icon: FaRegCalendar, title: "Agenda", path: "/me/showtimes" },
   { icon: FaUserFriends, title: "Friends", path: "/friends" },
+  { icon: FiBell, title: "Invites", path: "/pings" },
   { icon: FiSettings, title: "User Settings", path: "/settings" },
 ]
 

@@ -23,6 +23,7 @@ import {
   configureNotificationCategories,
   handleNotificationQuickAction,
   resolveNotificationRoute,
+  registerPushTokenForCurrentDevice,
 } from '@/utils/push-notifications';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -262,6 +263,18 @@ function RootLayourContent() {
       responseSubscription.remove()
     }
   }, [handleNotificationResponse])
+
+  useEffect(() => {
+    const pushTokenListener = Notifications.addPushTokenListener(() => {
+      void registerPushTokenForCurrentDevice().catch((error) => {
+        console.error('Error refreshing push token after token update:', error)
+      })
+    })
+
+    return () => {
+      pushTokenListener.remove()
+    }
+  }, [])
 
   if (isChecking) {
     // Avoid flashing protected screens before auth status is known.

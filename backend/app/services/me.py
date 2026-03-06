@@ -32,6 +32,7 @@ from app.exceptions.user_exceptions import (
 from app.models.cinema_preset import CinemaPreset
 from app.models.filter_preset import FilterPreset
 from app.models.friend_group import FriendGroup
+from app.models.push_token import PushToken
 from app.models.showtime import Showtime
 from app.models.user import User, UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
@@ -168,6 +169,26 @@ def register_push_token(
     except Exception as e:
         raise AppError from e
     session.commit()
+
+
+def delete_push_token_for_user(
+    *,
+    session: Session,
+    user_id: UUID,
+    token: str,
+) -> bool:
+    db_obj = session.get(PushToken, token)
+    if db_obj is None:
+        return False
+    if db_obj.user_id != user_id:
+        raise AppError(detail="Push token belongs to a different user")
+
+    try:
+        push_tokens_crud.delete_push_token(session=session, token=token)
+    except Exception as e:
+        raise AppError from e
+    session.commit()
+    return True
 
 
 def _to_filter_preset_public(preset: FilterPreset) -> FilterPresetPublic:

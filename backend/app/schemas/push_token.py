@@ -4,9 +4,14 @@ from pydantic import BaseModel, Field
 
 __all__ = [
     "PushTokenRegister",
+    "PushTokenDelete",
 ]
 
 
 class PushTokenRegister(BaseModel):
     token: str = Field(min_length=1, max_length=255)
     platform: Literal["ios", "android", "web"] | None = None
+
+
+class PushTokenDelete(BaseModel):
+    token: str = Field(min_length=1, max_length=255)

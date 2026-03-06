@@ -226,6 +226,30 @@ def test_delete_me_removes_user_and_related_rows(
     )
 
 
+def test_delete_push_token_for_current_user(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+) -> None:
+    current_user_id = _normal_user_id(db_transaction)
+    test_token = f"delete-token-{current_user_id}"
+    db_transaction.add(PushToken(token=test_token, user_id=current_user_id, platform="android"))
+    db_transaction.commit()
+
+    response = client.delete(
+        f"{settings.API_V1_STR}/me/push-tokens",
+        headers=normal_user_token_headers,
+        json={"token": test_token},
+    )
+    assert response.status_code == 200
+    assert response.json()["message"] == "Push token deleted successfully"
+
+    assert (
+        db_transaction.exec(select(PushToken).where(PushToken.token == test_token)).one_or_none()
+        is None
+    )
+
+
 def test_delete_me_rejects_superuser(
     client: TestClient,
     superuser_token_headers: dict[str, str],

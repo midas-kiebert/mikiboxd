@@ -19,7 +19,10 @@ import {
   type UserUpdate,
 } from 'shared';
 import { emailPattern, usernameMaxLength, usernamePattern } from 'shared/utils';
-import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications';
+import {
+  registerPushTokenForCurrentDevice,
+  unregisterPushTokenForCurrentDevice,
+} from '@/utils/push-notifications';
 
 type ProfileState = {
   display_name: string;
@@ -309,6 +312,7 @@ export default function SettingsScreen() {
           onPress: async () => {
             try {
               setIsLoggingOut(true);
+              await unregisterPushTokenForCurrentDevice();
               await logout();
             } finally {
               setIsLoggingOut(false);

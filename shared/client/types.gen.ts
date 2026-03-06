@@ -562,6 +562,12 @@ export type MeRegisterPushTokenData = {
 
 export type MeRegisterPushTokenResponse = Message
 
+export type MeDeletePushTokenData = {
+  requestBody: PushTokenRegister
+}
+
+export type MeDeletePushTokenResponse = Message
+
 export type MoviesReadMoviesData = {
   days?: Array<string> | null
   limit?: number

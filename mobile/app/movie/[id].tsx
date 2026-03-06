@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for movie / [id]. It controls navigation and screen-level state for this route.
  */
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   SectionList,
@@ -67,7 +67,10 @@ export default function MoviePage() {
   const queryClient = useQueryClient();
   // Safe-area inset values used to avoid notches/home indicators.
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, showtimeId } = useLocalSearchParams<{
+    id: string;
+    showtimeId?: string | string[];
+  }>();
   // Tracks the selected showtime-status mode (all / interested / going).
   const [selectedFilter, setSelectedFilter] = useState<ShowtimeFilter>("all");
   // Stores the showtime currently selected for status/ticket actions.
@@ -95,6 +98,14 @@ export default function MoviePage() {
     () => resolveDaySelectionsForApi(selectedDays),
     [dayAnchorKey, selectedDays]
   );
+
+  const targetShowtimeId = useMemo(() => {
+    const normalizedShowtimeId = Array.isArray(showtimeId)
+      ? showtimeId[0]
+      : showtimeId;
+    const parsed = Number.parseInt(normalizedShowtimeId?.trim() ?? "", 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, [showtimeId]);
 
   // Convert route param to numeric movie ID for API calls/query keys.
   const movieId = useMemo(() => Number(id), [id]);
@@ -524,6 +535,17 @@ export default function MoviePage() {
   }, [selectedFilter, selectedDays.length, selectedTimeRanges.length, isCinemaFilterActive]);
 
   // Render/output using the state and derived values prepared above.
+  useEffect(() => {
+    if (targetShowtimeId === null || showtimes.length === 0) return;
+
+    const matchingShowtime = showtimes.find((showtime) => showtime.id === targetShowtimeId);
+    if (!matchingShowtime) return;
+
+    setSelectedShowtime((previous) =>
+      previous?.id === matchingShowtime.id ? previous : matchingShowtime
+    );
+  }, [targetShowtimeId, showtimes]);
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <Stack.Screen

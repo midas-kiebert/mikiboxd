@@ -15,7 +15,7 @@ from app.models.user import UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
 from app.schemas.friend_group import FriendGroupCreate, FriendGroupPublic
-from app.schemas.push_token import PushTokenRegister
+from app.schemas.push_token import PushTokenDelete, PushTokenRegister
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe, UserWithFriendStatus
@@ -468,3 +468,18 @@ def register_push_token(
         platform=payload.platform,
     )
     return Message(message="Push token registered successfully")
+
+
+@router.delete("/push-tokens", response_model=Message)
+def delete_push_token(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    payload: PushTokenDelete,
+) -> Message:
+    me_service.delete_push_token_for_user(
+        session=session,
+        user_id=current_user.id,
+        token=payload.token,
+    )
+    return Message(message="Push token deleted successfully")

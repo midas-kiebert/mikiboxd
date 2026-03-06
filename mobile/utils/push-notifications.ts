@@ -11,9 +11,6 @@ export const ANDROID_PUSH_CHANNEL_ID = "heads-up";
 export const SHOWTIME_PING_NOTIFICATION_CATEGORY_ID = "showtime-ping";
 export const SHOWTIME_PING_ACTION_INTERESTED_ID = "showtime-ping-interest";
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 type PushNotificationData = {
   type?: unknown;
   showtimeId?: unknown;
@@ -40,14 +37,6 @@ const parsePositiveInteger = (value: unknown): number | null => {
   }
   const parsed = Number.parseInt(trimmed, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-};
-
-const parseUuid = (value: unknown): string | null => {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return UUID_PATTERN.test(trimmed) ? trimmed : null;
 };
 
 export async function configureNotificationCategories(): Promise<void> {
@@ -83,18 +72,28 @@ export function resolveNotificationRoute(data: unknown): Href | null {
     case "showtime_status_removed":
     case "showtime_interest_reminder": {
       const movieId = parsePositiveInteger(data.movieId);
-      return movieId === null
-        ? "/(tabs)"
-        : { pathname: "/movie/[id]", params: { id: String(movieId) } };
+      const showtimeId = parsePositiveInteger(data.showtimeId);
+      if (movieId === null) {
+        return "/(tabs)";
+      }
+      const params: { id: string; showtimeId?: string } = {
+        id: String(movieId),
+      };
+      if (showtimeId !== null) {
+        params.showtimeId = String(showtimeId);
+      }
+      return {
+        pathname: "/movie/[id]",
+        params,
+      };
     }
     case "friend_request_received":
-      return "/(tabs)/friends";
-    case "friend_request_accepted": {
-      const accepterId = parseUuid(data.accepterId);
-      return accepterId === null
-        ? "/(tabs)/friends"
-        : { pathname: "/friend-showtimes/[id]", params: { id: accepterId } };
-    }
+      return {
+        pathname: "/(tabs)/friends",
+        params: { tab: "received" },
+      };
+    case "friend_request_accepted":
+      return { pathname: "/(tabs)/friends", params: { tab: "friends" } };
     default:
       return null;
   }
@@ -124,6 +123,14 @@ export async function handleNotificationQuickAction(
     },
   });
   return true;
+}
+
+async function getProjectId(): Promise<string | null> {
+  return (
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    Constants.easConfig?.projectId ??
+    null
+  );
 }
 
 export async function registerPushTokenForCurrentDevice(): Promise<string | null> {
@@ -158,9 +165,7 @@ export async function registerPushTokenForCurrentDevice(): Promise<string | null
     return null;
   }
 
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ??
-    Constants.easConfig?.projectId;
+  const projectId = await getProjectId();
 
   if (!projectId) {
     throw new Error("Missing Expo project ID for push token registration")
@@ -181,4 +186,23 @@ export async function registerPushTokenForCurrentDevice(): Promise<string | null
   });
 
   return token;
+}
+
+export async function unregisterPushTokenForCurrentDevice(): Promise<void> {
+  try {
+    const projectId = await getProjectId();
+    if (!projectId) {
+      return;
+    }
+
+    const tokenResult = await Notifications.getExpoPushTokenAsync({ projectId });
+
+    await MeService.deletePushToken({
+      requestBody: {
+        token: tokenResult.data,
+      },
+    });
+  } catch {
+    // Ignore token unregistration errors during logout.
+  }
 }

@@ -18,6 +18,7 @@ import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as MovieMovieIdRouteImport } from './routes/movie.$movieId'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
+import { Route as LayoutPingsRouteImport } from './routes/_layout/pings'
 import { Route as LayoutMoviesRouteImport } from './routes/_layout/movies'
 import { Route as LayoutFriendsRouteImport } from './routes/_layout/friends'
 import { Route as LayoutMeShowtimesRouteImport } from './routes/_layout/me/showtimes'
@@ -67,6 +68,11 @@ const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutPingsRoute = LayoutPingsRouteImport.update({
+  id: '/pings',
+  path: '/pings',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutMoviesRoute = LayoutMoviesRouteImport.update({
   id: '/movies',
   path: '/movies',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/friends': typeof LayoutFriendsRoute
   '/movies': typeof LayoutMoviesRoute
+  '/pings': typeof LayoutPingsRoute
   '/settings': typeof LayoutSettingsRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/friends': typeof LayoutFriendsRoute
   '/movies': typeof LayoutMoviesRoute
+  '/pings': typeof LayoutPingsRoute
   '/settings': typeof LayoutSettingsRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/': typeof LayoutIndexRoute
@@ -126,6 +134,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_layout/friends': typeof LayoutFriendsRoute
   '/_layout/movies': typeof LayoutMoviesRoute
+  '/_layout/pings': typeof LayoutPingsRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/_layout/': typeof LayoutIndexRoute
@@ -143,6 +152,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/friends'
     | '/movies'
+    | '/pings'
     | '/settings'
     | '/movie/$movieId'
     | '/$userId/showtimes'
@@ -156,6 +166,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/friends'
     | '/movies'
+    | '/pings'
     | '/settings'
     | '/movie/$movieId'
     | '/'
@@ -171,6 +182,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_layout/friends'
     | '/_layout/movies'
+    | '/_layout/pings'
     | '/_layout/settings'
     | '/movie/$movieId'
     | '/_layout/'
@@ -253,6 +265,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutSettingsRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/pings': {
+      id: '/_layout/pings'
+      path: '/pings'
+      fullPath: '/pings'
+      preLoaderRoute: typeof LayoutPingsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/movies': {
       id: '/_layout/movies'
       path: '/movies'
@@ -287,6 +306,7 @@ declare module '@tanstack/react-router' {
 interface LayoutRouteChildren {
   LayoutFriendsRoute: typeof LayoutFriendsRoute
   LayoutMoviesRoute: typeof LayoutMoviesRoute
+  LayoutPingsRoute: typeof LayoutPingsRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
   LayoutUserIdShowtimesRoute: typeof LayoutUserIdShowtimesRoute
@@ -296,6 +316,7 @@ interface LayoutRouteChildren {
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutFriendsRoute: LayoutFriendsRoute,
   LayoutMoviesRoute: LayoutMoviesRoute,
+  LayoutPingsRoute: LayoutPingsRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
   LayoutUserIdShowtimesRoute: LayoutUserIdShowtimesRoute,

@@ -6,12 +6,14 @@ import { Flex, Badge, IconButton, Spacer, Icon } from "@chakra-ui/react"
 import { IoMdRemove, IoIosCheckmark } from "react-icons/io";
 import { LiaTimesSolid, LiaPlusSolid } from "react-icons/lia";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link as RouterLink } from "@tanstack/react-router";
 import {
     FriendsService,
     FriendsRemoveFriendData,
     FriendsAcceptFriendRequestData,
     FriendsSendFriendRequestData,
-    FriendsCancelFriendRequestData
+    FriendsCancelFriendRequestData,
+    FriendsDeclineFriendRequestData
 } from "shared";
 import FriendBadge from "@/components/Common/FriendBadge";
 
@@ -55,6 +57,16 @@ const UserCard = ({ user }: UserCardProps) => {
         },
         onError: (error) => {
             console.error("Error accepting friend request:", error);
+        }
+    });
+
+    const declineFriendRequestMutation = useMutation({
+        mutationFn: (data: FriendsDeclineFriendRequestData) => FriendsService.declineFriendRequest(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["users"] });
+        },
+        onError: (error) => {
+            console.error("Error declining friend request:", error);
         }
     });
 
@@ -109,6 +121,7 @@ const UserCard = ({ user }: UserCardProps) => {
                 _hover={{ bg: "red.600"}}
                 rounded={"full"}
                 size={{base: "2xs", md: "xs"}}
+                onClick={() => declineFriendRequestMutation.mutate({ senderId: user.id })}
             >
                 <Icon as={LiaTimesSolid} boxSize={5}></Icon>
             </IconButton>
@@ -169,7 +182,7 @@ const UserCard = ({ user }: UserCardProps) => {
 
 
     // Render/output using the state and derived values prepared above.
-    return (
+  const cardContent = (
         <Flex
             borderWidth="1px"
             borderRadius="md"
@@ -201,7 +214,21 @@ const UserCard = ({ user }: UserCardProps) => {
             { button }
             { secondButton }
         </Flex>
-    );
+  )
+
+  if (user.is_friend) {
+    return (
+        <RouterLink
+            to="/$userId/showtimes"
+            params={{ userId: user.id }}
+            style={{ textDecoration: "none", color: "inherit" }}
+        >
+            {cardContent}
+        </RouterLink>
+    )
+  }
+
+  return cardContent;
 }
 
 export default UserCard;

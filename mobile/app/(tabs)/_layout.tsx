@@ -45,6 +45,7 @@ export default function TabLayout() {
   const showPingBadge = unseenPingCount > 0;
   const pingBadgeLabel = unseenPingCount > 99 ? '99+' : String(unseenPingCount);
   const isSyncingWatchlistRef = useRef(false);
+  const lastRegisteredUserIdRef = useRef<string | null>(null);
 
   // Keep server watchlist state in sync when entering or returning to the app.
   useEffect(() => {
@@ -88,12 +89,21 @@ export default function TabLayout() {
     if (!user) return;
 
     const maybePromptForNotificationPermission = async () => {
+      const currentUserId = String(user.id);
+      const hasSwitchedAccount = lastRegisteredUserIdRef.current !== currentUserId;
       const storageKey = `${NOTIFICATION_PERMISSION_PROMPTED_KEY}:${user.id}`;
       try {
         const alreadyPrompted = await storage.getItem(storageKey);
+        const prefsStorageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}:${user.id}`;
         const existingPermissions = await Notifications.getPermissionsAsync();
         if (alreadyPrompted === '1' && existingPermissions.status !== 'granted') {
           return;
+        }
+
+        if (hasSwitchedAccount) {
+          await storage.removeItem(storageKey);
+          await storage.removeItem(prefsStorageKey);
+          lastRegisteredUserIdRef.current = currentUserId;
         }
 
         await registerPushTokenForCurrentDevice();

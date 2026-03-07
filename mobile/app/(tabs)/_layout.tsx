@@ -17,7 +17,10 @@ import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications';
+import {
+  clearPushTokenRegistrationState,
+  registerPushTokenForCurrentDevice,
+} from '@/utils/push-notifications';
 
 const NOTIFICATION_PERMISSION_PROMPTED_KEY = 'mobile.notifications.permission_prompted_v3';
 const NOTIFICATION_PREFS_INITIALIZED_KEY = 'mobile.notifications.preferences_initialized_v1';
@@ -93,23 +96,20 @@ export default function TabLayout() {
       const hasSwitchedAccount = lastRegisteredUserIdRef.current !== currentUserId;
       const storageKey = `${NOTIFICATION_PERMISSION_PROMPTED_KEY}:${user.id}`;
       try {
-        const alreadyPrompted = await storage.getItem(storageKey);
         const prefsStorageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}:${user.id}`;
-        const existingPermissions = await Notifications.getPermissionsAsync();
-        if (alreadyPrompted === '1' && existingPermissions.status !== 'granted') {
-          return;
-        }
 
         if (hasSwitchedAccount) {
           await storage.removeItem(storageKey);
           await storage.removeItem(prefsStorageKey);
+          clearPushTokenRegistrationState();
           lastRegisteredUserIdRef.current = currentUserId;
         }
 
-        await registerPushTokenForCurrentDevice();
-
-        const finalPermissions = await Notifications.getPermissionsAsync();
-        if (finalPermissions.status !== 'undetermined') {
+        // Always attempt registration once user context exists.
+        // This handles fresh installs, account switches, and OS-level permission changes.
+        await registerPushTokenForCurrentDevice({ userId: currentUserId, force: true });
+        const currentPermissions = await Notifications.getPermissionsAsync();
+        if (currentPermissions.status !== 'undetermined') {
           await storage.setItem(storageKey, '1');
         }
       } catch (error) {

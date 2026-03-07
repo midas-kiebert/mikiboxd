@@ -19,7 +19,8 @@ from app.models.showtime_selection import ShowtimeSelection
 from app.utils import EmailDeliveryError, now_amsterdam_naive, send_email
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
-ANDROID_PUSH_CHANNEL_ID = "heads-up"
+# Channel ID is versioned to recover from user-disabled/stale channel configs.
+ANDROID_PUSH_CHANNEL_ID = "mikino-heads-up-v2"
 SHOWTIME_PING_NOTIFICATION_CATEGORY_ID = "showtime-ping"
 REMINDER_HORIZON = timedelta(hours=24)
 REMINDER_MINIMUM_NOTICE = timedelta(hours=2)

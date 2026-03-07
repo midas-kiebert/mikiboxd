@@ -57,7 +57,9 @@ export default function LoginScreen() {
             console.log("About to call login mutation")
             await loginMutation.mutateAsync(data)
             try {
-                await registerPushTokenForCurrentDevice()
+                // Redundant with tab onboarding by design: this catches edge cases
+                // where Android permission/token flow is skipped during initial mount.
+                await registerPushTokenForCurrentDevice({ force: true })
             } catch (notificationError) {
                 console.error('Error initializing push notifications after login:', notificationError)
             }

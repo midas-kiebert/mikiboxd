@@ -7,7 +7,20 @@ import type { Href } from "expo-router";
 import { Platform } from "react-native";
 import { MeService, ShowtimesService } from "shared";
 
-export const ANDROID_PUSH_CHANNEL_ID = "heads-up";
+type PushTokenRegistrationState = {
+  token: string;
+  platform: string;
+  registeredAt: number;
+};
+
+type PushTokenRegistrationOptions = {
+  force?: boolean;
+  userId?: string;
+};
+
+// Channel ID is versioned to recover from user-disabled/stale channel configs.
+export const ANDROID_PUSH_CHANNEL_ID = "mikino-heads-up-v2";
+const LEGACY_ANDROID_PUSH_CHANNEL_ID = "heads-up";
 export const SHOWTIME_PING_NOTIFICATION_CATEGORY_ID = "showtime-ping";
 export const SHOWTIME_PING_ACTION_INTERESTED_ID = "showtime-ping-interest";
 
@@ -133,60 +146,239 @@ async function getProjectId(): Promise<string | null> {
   );
 }
 
-export async function registerPushTokenForCurrentDevice(): Promise<string | null> {
-  // Android requires a channel before notifications can be displayed.
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync(ANDROID_PUSH_CHANNEL_ID, {
-      name: "Heads Up",
-      importance: Notifications.AndroidImportance.MAX,
-      sound: "default",
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#FFFFFF",
-    });
+const PUSH_TOKEN_RETRY_SCOPE_ANONYMOUS = "__anonymous__";
+const MAX_TOKEN_REGISTRATION_AGE_MS = 12 * 60 * 60 * 1000;
+const PUSH_TOKEN_REGISTRATION_THROTTLE_MS = 1000;
+
+const lastTokenRegistrationByScope = new Map<string, PushTokenRegistrationState>();
+const registerPushTokenInFlightByScope = new Map<string, Promise<string | null>>();
+const lastTokenRegistrationAttemptByScope = new Map<string, number>();
+
+const getPushTokenRegistrationScope = (userId?: string): string =>
+  userId && userId.length > 0 ? `user:${userId}` : PUSH_TOKEN_RETRY_SCOPE_ANONYMOUS;
+
+const getNow = (): number => Date.now();
+
+const isPushTokenRegistrationFresh = (
+  scope: string,
+  token: string,
+  platform: string
+): boolean => {
+  const lastState = lastTokenRegistrationByScope.get(scope);
+  if (!lastState) {
+    return false;
+  }
+  const isSameToken = lastState.token === token;
+  const isSamePlatform = lastState.platform === platform;
+  const isFresh = getNow() - lastState.registeredAt < MAX_TOKEN_REGISTRATION_AGE_MS;
+  return isSameToken && isSamePlatform && isFresh;
+};
+
+const setTokenRegistrationState = (scope: string, token: string, platform: string): void => {
+  lastTokenRegistrationByScope.set(scope, {
+    token,
+    platform,
+    registeredAt: getNow(),
+  });
+};
+
+const clearPushTokenRegistrationStateForToken = (token: string): void => {
+  for (const [scope, state] of lastTokenRegistrationByScope.entries()) {
+    if (state.token === token) {
+      lastTokenRegistrationByScope.delete(scope);
+      lastTokenRegistrationAttemptByScope.delete(scope);
+    }
+  }
+};
+
+const isLikelyExpoPushToken = (token: string): boolean =>
+  token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken[");
+
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const ensureAndroidNotificationChannels = async (force: boolean): Promise<void> => {
+  const channelConfig = {
+    name: "Heads Up",
+    importance: Notifications.AndroidImportance.MAX,
+    sound: "default",
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: "#FFFFFF",
+  };
+
+  const channelIds = [ANDROID_PUSH_CHANNEL_ID, LEGACY_ANDROID_PUSH_CHANNEL_ID];
+  for (const channelId of channelIds) {
+    if (force) {
+      try {
+        const existing = await Notifications.getNotificationChannelAsync(channelId);
+        if (existing) {
+          await Notifications.deleteNotificationChannelAsync(channelId);
+        }
+      } catch {
+        // Best effort cleanup before recreation.
+      }
+    }
+    await Notifications.setNotificationChannelAsync(channelId, channelConfig);
+  }
+};
+
+export async function registerPushTokenForCurrentDevice(
+  options: PushTokenRegistrationOptions = {}
+): Promise<string | null> {
+  const { force = false, userId } = options;
+  const scope = getPushTokenRegistrationScope(userId);
+  const now = getNow();
+
+  if (!force) {
+    const lastAttempt = lastTokenRegistrationAttemptByScope.get(scope);
+    const lastState = lastTokenRegistrationByScope.get(scope);
+    if (
+      lastAttempt !== undefined &&
+      now - lastAttempt < PUSH_TOKEN_REGISTRATION_THROTTLE_MS
+    ) {
+      return lastState ? lastState.token : null;
+    }
+    lastTokenRegistrationAttemptByScope.set(scope, now);
   }
 
-  const permissions = await Notifications.getPermissionsAsync();
-  let finalStatus = permissions.status;
+  const inFlight = registerPushTokenInFlightByScope.get(scope);
+  if (inFlight) {
+    return inFlight;
+  }
 
-  // Ask the user only when permission is not already granted.
-  if (finalStatus !== "granted") {
-    const requested = await Notifications.requestPermissionsAsync({
-      ios: {
-        allowAlert: true,
-        allowBadge: true,
-        allowSound: true,
+  const registrationPromise = (async (): Promise<string | null> => {
+    // Android requires a channel before notifications can be displayed.
+    if (Platform.OS === "android") {
+      await ensureAndroidNotificationChannels(force);
+    }
+
+    const permissions = await Notifications.getPermissionsAsync();
+    let finalStatus = permissions.status;
+
+    // Ask the user only when permission is not already granted.
+    if (finalStatus !== "granted") {
+      const requested =
+        Platform.OS === "ios"
+          ? await Notifications.requestPermissionsAsync({
+              ios: {
+                allowAlert: true,
+                allowBadge: true,
+                allowSound: true,
+              },
+            })
+          : await Notifications.requestPermissionsAsync();
+      finalStatus = requested.status;
+    }
+
+    // Caller can show a friendly prompt when token registration is denied.
+    if (finalStatus !== "granted") {
+      return null;
+    }
+
+    const projectId = await getProjectId();
+    if (!projectId) {
+      throw new Error("Missing Expo project ID for push token registration");
+    }
+    const applicationId = Constants.expoConfig?.android?.package ?? undefined;
+
+    let tokenResult: Notifications.ExpoPushToken;
+
+    if (Platform.OS === "android") {
+      // Fail loudly on Android registration issues so we can debug FCM mapping problems.
+      let devicePushToken: Notifications.DevicePushToken;
+      try {
+        devicePushToken = await Notifications.getDevicePushTokenAsync();
+      } catch (error) {
+        throw new Error(
+          `Failed to fetch native Android push token (projectId=${projectId}, applicationId=${
+            applicationId ?? "unknown"
+          }): ${getErrorMessage(error)}`
+        );
+      }
+
+      if (devicePushToken.type !== "android" && devicePushToken.type !== "fcm") {
+        throw new Error(
+          `Unexpected Android native token type "${devicePushToken.type}" (expected "android")`
+        );
+      }
+
+      if (typeof devicePushToken.data !== "string" || devicePushToken.data.length === 0) {
+        throw new Error("Android native FCM token is empty");
+      }
+
+      try {
+        tokenResult = await Notifications.getExpoPushTokenAsync({
+          projectId,
+          applicationId,
+          devicePushToken,
+        });
+      } catch (error) {
+        throw new Error(
+          `Failed to map native FCM token to Expo push token (projectId=${projectId}, applicationId=${
+            applicationId ?? "unknown"
+          }): ${getErrorMessage(error)}`
+        );
+      }
+    } else {
+      tokenResult = await Notifications.getExpoPushTokenAsync({ projectId });
+    }
+
+    const token = tokenResult.data;
+    const platform =
+      Platform.OS === "android" ? "android" : Platform.OS === "ios" ? "ios" : "web";
+
+    if (!isLikelyExpoPushToken(token)) {
+      throw new Error("Received a non-Expo push token during registration");
+    }
+
+    if (
+      !force &&
+      finalStatus === "granted" &&
+      isPushTokenRegistrationFresh(scope, token, platform)
+    ) {
+      return token;
+    }
+
+    await MeService.registerPushToken({
+      requestBody: {
+        token,
+        platform,
       },
     });
-    finalStatus = requested.status;
+    setTokenRegistrationState(scope, token, platform);
+
+    return token;
+  })();
+
+  registerPushTokenInFlightByScope.set(scope, registrationPromise);
+
+  try {
+    return await registrationPromise;
+  } finally {
+    if (registerPushTokenInFlightByScope.get(scope) === registrationPromise) {
+      registerPushTokenInFlightByScope.delete(scope);
+    }
   }
-
-  // Caller can show a friendly prompt when token registration is denied.
-  if (finalStatus !== "granted") {
-    return null;
-  }
-
-  const projectId = await getProjectId();
-
-  if (!projectId) {
-    throw new Error("Missing Expo project ID for push token registration")
-  }
-
-  // Register with Expo first, then persist token on our backend.
-  const tokenResult = await Notifications.getExpoPushTokenAsync({ projectId });
-  const token = tokenResult.data;
-
-  const platform =
-    Platform.OS === "android" ? "android" : Platform.OS === "ios" ? "ios" : "web";
-
-  await MeService.registerPushToken({
-    requestBody: {
-      token,
-      platform,
-    },
-  });
-
-  return token;
 }
+
+export const clearPushTokenRegistrationState = (scope?: string): void => {
+  if (scope) {
+    lastTokenRegistrationByScope.delete(scope);
+    registerPushTokenInFlightByScope.delete(scope);
+    lastTokenRegistrationAttemptByScope.delete(scope);
+    return;
+  }
+  lastTokenRegistrationByScope.clear();
+  registerPushTokenInFlightByScope.clear();
+  lastTokenRegistrationAttemptByScope.clear();
+};
+
+export const clearPushTokenRegistrationStateForCurrentUser = (userId?: string): void => {
+  const scope = getPushTokenRegistrationScope(userId);
+  lastTokenRegistrationByScope.delete(scope);
+  registerPushTokenInFlightByScope.delete(scope);
+  lastTokenRegistrationAttemptByScope.delete(scope);
+};
 
 export async function unregisterPushTokenForCurrentDevice(): Promise<void> {
   try {
@@ -202,6 +394,7 @@ export async function unregisterPushTokenForCurrentDevice(): Promise<void> {
         token: tokenResult.data,
       },
     });
+    clearPushTokenRegistrationStateForToken(tokenResult.data);
   } catch {
     // Ignore token unregistration errors during logout.
   }

@@ -1917,6 +1917,32 @@ def run() -> None:
         cinema_summary = run_cinema_scrapers()
         _combine_summaries(current=summary, new=cinema_summary)
         logger.info("Ran all cinema scrapers.")
+        logger.info("Starting old showtime cleanup...")
+        try:
+            with get_db_context() as session:
+                old_deleted = scrape_sync_service.delete_old_showtimes(session=session)
+                letterboxd_cleanup = scrape_sync_service.cleanup_letterboxd_data(
+                    session=session,
+                )
+                session.commit()
+            summary.deleted_showtimes.extend(old_deleted)
+            logger.info(
+                "Old showtime cleanup finished. Deleted %s showtime(s).",
+                len(old_deleted),
+            )
+            logger.info(
+                "Letterboxd cleanup finished. Cleared %s stale sync timestamp(s), "
+                "deleted %s orphaned row(s).",
+                letterboxd_cleanup.stale_sync_timestamps_cleared,
+                letterboxd_cleanup.orphaned_rows_deleted,
+            )
+        except Exception as cleanup_error:
+            summary.errors.append(
+                "stage=old_showtime_cleanup | "
+                f"error_type={type(cleanup_error).__name__} | "
+                f"error={cleanup_error}"
+            )
+            logger.error("Failed during old showtime cleanup", exc_info=True)
         logger.info("Starting Cineville conflict cleanup...")
         try:
             with get_db_context() as session:

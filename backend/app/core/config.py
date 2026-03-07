@@ -97,6 +97,8 @@ class Settings(BaseSettings):
     EMAILS_FROM_EMAIL: EmailStr | None = None
     EMAILS_FROM_NAME: EmailStr | None = None
     SCRAPE_RECAP_EMAIL_TIMEOUT_SECONDS: float = 120.0
+    SHOWTIME_RETENTION_DAYS: int = 1
+    LETTERBOXD_LAST_WATCHLIST_SYNC_RETENTION_DAYS: int = 1
 
     @model_validator(mode="after")
     def _set_default_emails_from(self) -> Self:

@@ -1,12 +1,16 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import exists
-from sqlmodel import Session, col, delete, select
+from sqlalchemy import exists, func
+from sqlmodel import Session, col, delete, select, update
 
+from app.core.config import settings
+from app.models.letterboxd import Letterboxd
 from app.models.scrape_run import ScrapeRun, ScrapeRunStatus
 from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
+from app.models.user import User
+from app.models.watchlist_selection import WatchlistSelection
 from app.utils import now_amsterdam_naive
 
 MISSING_STREAK_TO_DEACTIVATE = 2
@@ -30,6 +34,70 @@ class DeletedShowtimeInfo:
     cinema_name: str
     datetime: datetime
     ticket_link: str | None
+
+
+@dataclass(frozen=True)
+class LetterboxdCleanupResult:
+    stale_sync_timestamps_cleared: int
+    orphaned_rows_deleted: int
+
+
+def _orphaned_letterboxd_usernames_stmt():
+    used_by_users = select(User.letterboxd_username).where(
+        col(User.letterboxd_username).is_not(None)
+    )
+    used_by_watchlist = select(WatchlistSelection.letterboxd_username)
+
+    return select(Letterboxd.letterboxd_username).where(
+        col(Letterboxd.letterboxd_username).not_in(used_by_users),
+        col(Letterboxd.letterboxd_username).not_in(used_by_watchlist),
+    )
+
+
+def cleanup_letterboxd_data(
+    *,
+    session: Session,
+) -> LetterboxdCleanupResult:
+    retention_days = settings.LETTERBOXD_LAST_WATCHLIST_SYNC_RETENTION_DAYS
+    if retention_days <= 0:
+        retention_days = 1
+    cutoff = now_amsterdam_naive() - timedelta(days=retention_days)
+
+    stale_timestamp_count_stmt = (
+        select(func.count())
+        .select_from(Letterboxd)
+        .where(
+            col(Letterboxd.last_watchlist_sync).is_not(None),
+            col(Letterboxd.last_watchlist_sync) < cutoff,
+        )
+    )
+    stale_timestamp_count = int(session.exec(stale_timestamp_count_stmt).one())
+    session.execute(
+        update(Letterboxd)
+        .where(
+            col(Letterboxd.last_watchlist_sync).is_not(None),
+            col(Letterboxd.last_watchlist_sync) < cutoff,
+        )
+        .values(last_watchlist_sync=None)
+    )
+
+    orphaned_usernames = _orphaned_letterboxd_usernames_stmt()
+    orphaned_row_count_stmt = (
+        select(func.count())
+        .select_from(Letterboxd)
+        .where(col(Letterboxd.letterboxd_username).in_(orphaned_usernames))
+    )
+    orphaned_row_count = int(session.exec(orphaned_row_count_stmt).one())
+    session.execute(
+        delete(Letterboxd).where(
+            col(Letterboxd.letterboxd_username).in_(orphaned_usernames)
+        )
+    )
+
+    return LetterboxdCleanupResult(
+        stale_sync_timestamps_cleared=stale_timestamp_count,
+        orphaned_rows_deleted=orphaned_row_count,
+    )
 
 
 def fallback_source_event_key(
@@ -223,6 +291,46 @@ def _delete_orphaned_managed_showtimes(
         ~active_presence_exists,
         Showtime.datetime >= cutoff,
     )
+    showtime_ids = set(session.exec(stmt_ids).all())
+
+    showtime_ids_list = list(showtime_ids)
+    if not showtime_ids_list:
+        return []
+
+    stmt_showtimes = select(Showtime).where(col(Showtime.id).in_(showtime_ids_list))
+    showtimes = list(session.exec(stmt_showtimes).all())
+    deleted_showtimes = [
+        DeletedShowtimeInfo(
+            showtime_id=showtime.id,
+            movie_id=showtime.movie_id,
+            movie_title=showtime.movie.title,
+            cinema_id=showtime.cinema_id,
+            cinema_name=showtime.cinema.name,
+            datetime=showtime.datetime,
+            ticket_link=showtime.ticket_link,
+        )
+        for showtime in showtimes
+    ]
+
+    stmt_delete = delete(Showtime).where(col(Showtime.id).in_(showtime_ids_list))
+    session.execute(stmt_delete)
+    return deleted_showtimes
+
+
+def delete_old_showtimes(
+    *,
+    session: Session,
+    cutoff_days: int | None = None,
+) -> list[DeletedShowtimeInfo]:
+    retention_days = (
+        cutoff_days if cutoff_days is not None else settings.SHOWTIME_RETENTION_DAYS
+    )
+    if retention_days <= 0:
+        retention_days = 1
+
+    cutoff = now_amsterdam_naive() - timedelta(days=retention_days)
+
+    stmt_ids = select(Showtime.id).where(Showtime.datetime < cutoff)
     showtime_ids = set(session.exec(stmt_ids).all())
 
     showtime_ids_list = list(showtime_ids)

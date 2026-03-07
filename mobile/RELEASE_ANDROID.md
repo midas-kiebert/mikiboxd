@@ -134,6 +134,9 @@ used by the installed app build.
   certificate fingerprint, not the Expo upload keystore fingerprint. Only keep
   the debug fingerprint in the file if you intentionally want local debug builds
   to verify App Links too.
+- Keep `mikino.nl` and `www.mikino.nl` in separate Android intent filters. On
+  older Android versions, one failing host in a shared filter can prevent the
+  whole filter from verifying as an App Link.
 
 After updating `assetlinks.json`, redeploy the frontend and then reinstall the
 Play test build or reset supported links on the device before testing again.

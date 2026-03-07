@@ -38,7 +38,17 @@
             {
               "scheme": "https",
               "host": "mikino.nl"
-            },
+            }
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": [
             {
               "scheme": "https",
               "host": "www.mikino.nl"

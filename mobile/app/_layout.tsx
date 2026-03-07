@@ -29,6 +29,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import axios, { AxiosRequestTransformer } from 'axios'
 import * as qs from 'qs'
+import useAuth from 'shared/hooks/useAuth';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -134,6 +135,8 @@ function RootLayourContent() {
   const [isChecking, setIsChecking] = useState(true)
   // Tracks whether a valid access token exists.
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const { user } = useAuth();
+  const userId = user?.id ? String(user.id) : undefined;
   // Keeps the previous token for dev logging without causing rerenders.
   const lastTokenRef = useRef<string | null>(null)
   // Prevent duplicate handling when the same notification response is replayed.
@@ -265,8 +268,10 @@ function RootLayourContent() {
   }, [handleNotificationResponse])
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const pushTokenListener = Notifications.addPushTokenListener(() => {
-      void registerPushTokenForCurrentDevice().catch((error) => {
+      void registerPushTokenForCurrentDevice({ userId }).catch((error) => {
         console.error('Error refreshing push token after token update:', error)
       })
     })
@@ -274,7 +279,7 @@ function RootLayourContent() {
     return () => {
       pushTokenListener.remove()
     }
-  }, [])
+  }, [isAuthenticated, userId])
 
   if (isChecking) {
     // Avoid flashing protected screens before auth status is known.

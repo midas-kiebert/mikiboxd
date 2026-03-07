@@ -8,8 +8,9 @@
     "start:tunnel": "EXPO_TUNNEL_SUBDOMAIN=${EXPO_TUNNEL_SUBDOMAIN:-midas$(date +%s)} expo start --tunnel -c",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
-    "build:apk": "bash ./scripts/build-android-apk.sh gradle release",
-    "build:apk:local": "bash ./scripts/build-android-apk.sh gradle debug",
+    "build:apk": "bash ./scripts/build-android.sh apk release",
+    "build:apk:local": "bash ./scripts/build-android.sh apk debug",
+    "build:aab": "bash ./scripts/build-android.sh aab release",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"

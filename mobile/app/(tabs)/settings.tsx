@@ -338,7 +338,10 @@ export default function SettingsScreen() {
     try {
       setPendingNotificationToggle(key);
       if (enabled && channel === 'push') {
-        const token = await registerPushTokenForCurrentDevice();
+        const token = await registerPushTokenForCurrentDevice({
+          userId: String(user.id),
+          force: true,
+        });
         const permissions = await Notifications.getPermissionsAsync();
         setNotificationPermissionStatus(permissions.status);
         if (!token) {
@@ -369,7 +372,10 @@ export default function SettingsScreen() {
         ...previous,
         [key]: previousValue,
       }));
-      Alert.alert('Error', 'Could not update notification preferences.');
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'Could not update notification preferences.'
+      );
     } finally {
       setPendingNotificationToggle(null);
     }
@@ -392,7 +398,10 @@ export default function SettingsScreen() {
     try {
       setPendingNotificationChannel(channelKey);
       if (channel === 'push' && notificationPreferences[preferenceKey]) {
-        const token = await registerPushTokenForCurrentDevice();
+        const token = await registerPushTokenForCurrentDevice({
+          userId: String(user.id),
+          force: true,
+        });
         const permissions = await Notifications.getPermissionsAsync();
         setNotificationPermissionStatus(permissions.status);
         if (!token) {
@@ -423,7 +432,10 @@ export default function SettingsScreen() {
         ...previous,
         [channelKey]: previousChannel,
       }));
-      Alert.alert('Error', 'Could not update notification delivery channel.');
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'Could not update notification delivery channel.'
+      );
     } finally {
       setPendingNotificationChannel(null);
     }

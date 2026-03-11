@@ -119,19 +119,30 @@ function AddFriendLinkPage() {
 
         <VStack gap={2}>
           {isSuccess && (
-            <Button as="a" href="/friends" colorScheme="teal">
+            <Button
+              onClick={() => window.location.assign("/friends")}
+              colorScheme="teal"
+            >
               Open Friends
             </Button>
           )}
 
           {isError && (
-            <Button as="a" href="/friends" colorScheme="teal" variant="outline">
+            <Button
+              onClick={() => window.location.assign("/friends")}
+              colorScheme="teal"
+              variant="outline"
+            >
               Go to Friends
             </Button>
           )}
 
           {!hasAuth && hasCheckedAuth && (
-            <Button as="a" href="/login" colorScheme="teal" variant="solid">
+            <Button
+              onClick={() => window.location.assign("/login")}
+              colorScheme="teal"
+              variant="solid"
+            >
               Log in
             </Button>
           )}

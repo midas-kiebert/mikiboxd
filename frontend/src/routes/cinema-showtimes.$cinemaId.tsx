@@ -25,7 +25,7 @@ function CinemaShowtimesLinkPage() {
         </Text>
 
         <VStack gap={2}>
-          <Button as="a" href="/movies" colorScheme="teal">
+          <Button onClick={() => window.location.assign("/movies")} colorScheme="teal">
             Go to Movies
           </Button>
         </VStack>

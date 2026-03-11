@@ -136,13 +136,17 @@ function PingLinkPage() {
 
         <VStack gap={2}>
           {isSuccess && (
-            <Button as="a" href="/pings" colorScheme="teal">
+            <Button onClick={() => window.location.assign("/pings")} colorScheme="teal">
               Open Invites
             </Button>
           )}
 
           {hasCheckedAuth && !hasAuth && (
-            <Button as="a" href="/login" colorScheme="teal" variant="solid">
+            <Button
+              onClick={() => window.location.assign("/login")}
+              colorScheme="teal"
+              variant="solid"
+            >
               Log in
             </Button>
           )}

@@ -1,8 +1,8 @@
 import { Button, Center, Flex, Spinner, Text, VStack } from "@chakra-ui/react"
-import { Link as RouterLink, createFileRoute } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import { useMutation } from "@tanstack/react-query"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { type ApiError, FriendsService } from "shared"
+import { ApiError, FriendsService } from "shared"
 import { storage } from "shared/storage"
 
 const UUID_PATTERN =
@@ -24,13 +24,20 @@ const getErrorMessage = (error: unknown): string => {
   return `Could not send friend request (${error.status}).`
 }
 
-export const Route = createFileRoute("/add-friend/$receiverId")({
+export const Route = createFileRoute("/add-friend/$receiverId" as never)({
   component: AddFriendLinkPage,
 })
 
 function AddFriendLinkPage() {
-  const { receiverId } = Route.useParams()
-  const normalizedReceiverId = useMemo(() => receiverId?.trim() || "", [receiverId])
+  const normalizedReceiverId = useMemo(() => {
+    const match = window.location.pathname.match(/^\/add-friend\/([^/]+)$/)
+    const value = match?.[1] ?? ""
+    try {
+      return decodeURIComponent(value).trim()
+    } catch {
+      return value.trim()
+    }
+  }, [])
 
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false)
   const [hasAuth, setHasAuth] = useState(false)
@@ -112,25 +119,21 @@ function AddFriendLinkPage() {
 
         <VStack gap={2}>
           {isSuccess && (
-            <RouterLink to="/friends">
-              <Button colorScheme="teal">Open Friends</Button>
-            </RouterLink>
+            <Button as="a" href="/friends" colorScheme="teal">
+              Open Friends
+            </Button>
           )}
 
           {isError && (
-            <RouterLink to="/friends">
-              <Button colorScheme="teal" variant="outline">
-                Go to Friends
-              </Button>
-            </RouterLink>
+            <Button as="a" href="/friends" colorScheme="teal" variant="outline">
+              Go to Friends
+            </Button>
           )}
 
           {!hasAuth && hasCheckedAuth && (
-            <RouterLink to="/login">
-              <Button colorScheme="teal" variant="solid">
-                Log in
-              </Button>
-            </RouterLink>
+            <Button as="a" href="/login" colorScheme="teal" variant="solid">
+              Log in
+            </Button>
           )}
         </VStack>
       </Flex>

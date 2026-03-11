@@ -1,12 +1,12 @@
+import { createFileRoute } from "@tanstack/react-router"
 import { Button, Center, Flex, Text, VStack } from "@chakra-ui/react"
-import { Link as RouterLink, createFileRoute } from "@tanstack/react-router"
 
-export const Route = createFileRoute("/cinema-showtimes/$cinemaId")({
+export const Route = createFileRoute("/cinema-showtimes/$cinemaId" as never)({
   component: CinemaShowtimesLinkPage,
 })
 
 function CinemaShowtimesLinkPage() {
-  const { cinemaId } = Route.useParams()
+  const cinemaId = window.location.pathname.replace(/^\/cinema-showtimes\//, "")
 
   return (
     <Center minH="100vh" px={4}>
@@ -25,9 +25,9 @@ function CinemaShowtimesLinkPage() {
         </Text>
 
         <VStack gap={2}>
-          <RouterLink to="/movies">
-            <Button colorScheme="teal">Go to Movies</Button>
-          </RouterLink>
+          <Button as="a" href="/movies" colorScheme="teal">
+            Go to Movies
+          </Button>
         </VStack>
       </Flex>
     </Center>

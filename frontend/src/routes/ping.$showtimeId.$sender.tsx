@@ -1,8 +1,8 @@
 import { Button, Center, Flex, Spinner, Text, VStack } from "@chakra-ui/react"
-import { Link as RouterLink, createFileRoute } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import { useMutation } from "@tanstack/react-query"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { type ApiError, ShowtimesService } from "shared"
+import { ApiError, ShowtimesService } from "shared"
 import { storage } from "shared/storage"
 
 const getErrorMessage = (error: unknown): string => {
@@ -21,12 +21,25 @@ const getErrorMessage = (error: unknown): string => {
   return `Could not process the invite link (${error.status}).`
 }
 
-export const Route = createFileRoute("/ping/$showtimeId/$sender")({
+export const Route = createFileRoute("/ping/$showtimeId/$sender" as never)({
   component: PingLinkPage,
 })
 
 function PingLinkPage() {
-  const { showtimeId, sender } = Route.useParams()
+  const [pathShowtimeId, pathSender] = useMemo(() => {
+    const match = window.location.pathname.match(/^\/ping\/([^/]+)\/([^/]+)$/)
+    if (!match) return ["", ""]
+
+    const rawShowtimeId = match[1] ?? ""
+    const rawSender = match[2] ?? ""
+    try {
+      return [decodeURIComponent(rawShowtimeId), decodeURIComponent(rawSender)]
+    } catch {
+      return [rawShowtimeId, rawSender]
+    }
+  }, [])
+
+  const { showtimeId, sender } = { showtimeId: pathShowtimeId, sender: pathSender }
 
   const normalizedShowtimeId = useMemo(() => {
     const parsed = Number.parseInt(showtimeId?.trim() ?? "", 10)
@@ -123,17 +136,15 @@ function PingLinkPage() {
 
         <VStack gap={2}>
           {isSuccess && (
-            <RouterLink to="/pings">
-              <Button colorScheme="teal">Open Invites</Button>
-            </RouterLink>
+            <Button as="a" href="/pings" colorScheme="teal">
+              Open Invites
+            </Button>
           )}
 
           {hasCheckedAuth && !hasAuth && (
-            <RouterLink to="/login">
-              <Button colorScheme="teal" variant="solid">
-                Log in
-              </Button>
-            </RouterLink>
+            <Button as="a" href="/login" colorScheme="teal" variant="solid">
+              Log in
+            </Button>
           )}
         </VStack>
       </Flex>

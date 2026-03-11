@@ -1,0 +1,65 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "LBL44UHYFT.com.midaskiebert.mikino",
+        "paths": [
+          "/",
+          "/add-friend/*",
+          "/ping/*",
+          "/movie/*",
+          "/friend-showtimes/*",
+          "/cinema-showtimes/*",
+          "/friends",
+          "/friends/*",
+          "/movies",
+          "/movies/*",
+          "/pings",
+          "/pings/*",
+          "/settings",
+          "/settings/*",
+          "/me/*",
+          "/recover-password",
+          "/recover-password/*",
+          "/reset-password",
+          "/reset-password/*",
+          "/login",
+          "/login/*",
+          "/signup",
+          "/friend-groups",
+          "/friend-groups/*"
+        ]
+      },
+      {
+        "appID": "LBL44UHYFT.com.midaskiebert.mobile",
+        "paths": [
+          "/",
+          "/add-friend/*",
+          "/ping/*",
+          "/movie/*",
+          "/friend-showtimes/*",
+          "/cinema-showtimes/*",
+          "/friends",
+          "/friends/*",
+          "/movies",
+          "/movies/*",
+          "/pings",
+          "/pings/*",
+          "/settings",
+          "/settings/*",
+          "/me/*",
+          "/recover-password",
+          "/recover-password/*",
+          "/reset-password",
+          "/reset-password/*",
+          "/login",
+          "/login/*",
+          "/signup",
+          "/friend-groups",
+          "/friend-groups/*"
+        ]
+      }
+    ]
+  }
+}

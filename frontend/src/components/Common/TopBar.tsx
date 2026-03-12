@@ -4,7 +4,7 @@
 import { Box } from "@chakra-ui/react";
 import { SIDEBAR_WIDTH } from "@/constants";
 import { ReactNode } from "react";
-import { TOPBAR_HEIGHT } from "@/constants";
+import { TOPBAR_HEIGHT, PAGE_NOTICE_BANNER_OFFSET_CSS_VAR } from "@/constants";
 
 interface Props {
     children?: ReactNode | null;
@@ -18,7 +18,7 @@ const TopBar = ({ children } : Props) => {
         <Box
             position="fixed"
             height={`${TOPBAR_HEIGHT}px`}
-            top="0"
+            top={`var(${PAGE_NOTICE_BANNER_OFFSET_CSS_VAR}, 0px)`}
             flex={"1"}
             left={{ base: "0", md: SIDEBAR_WIDTH }}
             right="0"

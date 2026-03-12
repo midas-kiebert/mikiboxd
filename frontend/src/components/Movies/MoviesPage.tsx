@@ -70,6 +70,7 @@ const MoviesPage = () => {
         navigate({
             //@ts-ignore
             search: (prev) => ({
+              //@ts-ignore
                 ...prev,
                 query: debouncedSearchQuery,
                 watchlistOnly: watchlistOnly,

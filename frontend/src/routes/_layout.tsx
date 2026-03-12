@@ -4,12 +4,12 @@
 import { Flex } from "@chakra-ui/react"
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router"
 
+import BottomNavBar from "@/components/Common/BottomNavBar"
 // import Navbar from "@/components/Common/Navbar"
 import Sidebar from "@/components/Common/Sidebar"
-import { isLoggedIn } from "shared/hooks/useAuth"
-import { Box } from "@chakra-ui/react"
 import { useIsMobile } from "@/hooks/useIsMobile"
-import BottomNavBar from "@/components/Common/BottomNavBar"
+import { Box } from "@chakra-ui/react"
+import { isLoggedIn } from "shared/hooks/useAuth"
 
 export const Route = createFileRoute("/_layout")({
   component: Layout,
@@ -24,24 +24,21 @@ export const Route = createFileRoute("/_layout")({
 
 function Layout() {
   // Read flow: route state and data hooks first, then handlers, then page JSX.
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile()
 
-  const height = isMobile ? "calc(100% - 60px)" : "100%";
+  const height = isMobile ? "calc(100% - 60px)" : "100%"
 
   // Render/output using the state and derived values prepared above.
   return (
     <Flex direction="column" height="100vh">
       {/* <Navbar /> */}
       <Flex flex="1">
-        {isMobile
-          ? <BottomNavBar />
-          : <Sidebar />
-        }
+        {isMobile ? <BottomNavBar /> : <Sidebar />}
         <Box
           flex="1"
           px={2}
           height={height}
-          mb={ isMobile ? "60px" : "0px"}
+          mb={isMobile ? "60px" : "0px"}
           overflowY={"auto"}
         >
           <Outlet />

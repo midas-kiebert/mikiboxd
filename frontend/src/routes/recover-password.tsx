@@ -4,18 +4,18 @@
 import { Container, Heading, Input, Text } from "@chakra-ui/react"
 import { useMutation } from "@tanstack/react-query"
 import { createFileRoute, redirect } from "@tanstack/react-router"
-import { type SubmitHandler, useForm } from "react-hook-form"
-import { FiMail } from "react-icons/fi"
 import { useState } from "react"
 import { useEffect } from "react"
+import { type SubmitHandler, useForm } from "react-hook-form"
+import { FiMail } from "react-icons/fi"
 
-import { type ApiError, LoginService } from "shared"
 import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
-import { isLoggedIn } from "shared/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { emailPattern, handleError } from "@/utils"
+import { type ApiError, LoginService } from "shared"
+import { isLoggedIn } from "shared/hooks/useAuth"
 
 interface FormData {
   email: string

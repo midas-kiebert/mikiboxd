@@ -5,10 +5,10 @@ import { Button, Container, Heading, Text, VStack } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 
-import { type ApiError, MeService } from "shared"
-import useAuth from "shared/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
+import { type ApiError, MeService } from "shared"
+import useAuth from "shared/hooks/useAuth"
 import { Checkbox } from "../ui/checkbox"
 
 const Notifications = () => {
@@ -52,7 +52,9 @@ const Notifications = () => {
         </Text>
         <Checkbox
           checked={friendMatchEnabled}
-          onCheckedChange={(details) => setFriendMatchEnabled(!!details.checked)}
+          onCheckedChange={(details) =>
+            setFriendMatchEnabled(!!details.checked)
+          }
         >
           Friend showtime overlap notifications
         </Checkbox>
@@ -61,7 +63,8 @@ const Notifications = () => {
           loading={mutation.isPending}
           disabled={
             mutation.isPending ||
-            friendMatchEnabled === !!currentUser?.notify_on_friend_showtime_match
+            friendMatchEnabled ===
+              !!currentUser?.notify_on_friend_showtime_match
           }
         >
           Save

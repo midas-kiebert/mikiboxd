@@ -13,8 +13,8 @@ import ReactDOM from "react-dom/client"
 import { routeTree } from "./routeTree.gen"
 
 import { ApiError, OpenAPI } from "shared"
-import { CustomProvider } from "./components/ui/provider"
 import { setStorage, storage } from "shared/storage"
+import { CustomProvider } from "./components/ui/provider"
 
 // The generated API client expects async storage helpers, so we adapt browser localStorage here.
 setStorage({
@@ -27,7 +27,6 @@ setStorage({
   },
 })
 
-
 // Configure the generated OpenAPI client once at startup.
 OpenAPI.BASE = import.meta.env.VITE_API_URL
 OpenAPI.TOKEN = async () => {
@@ -37,7 +36,7 @@ OpenAPI.TOKEN = async () => {
 const router = createRouter({
   routeTree,
   scrollRestoration: true,
-});
+})
 
 // Centralized API error handling keeps auth redirects consistent for every query/mutation.
 const handleApiError = async (error: Error) => {
@@ -45,7 +44,7 @@ const handleApiError = async (error: Error) => {
     await storage.removeItem("access_token")
     router.navigate({ to: "/login" })
   } else if (error instanceof ApiError && error.status === 403) {
-    router.navigate({ to: "/forbidden", replace: true})
+    router.navigate({ to: "/forbidden", replace: true })
   }
 }
 
@@ -58,7 +57,6 @@ const queryClient = new QueryClient({
     onError: handleApiError,
   }),
 })
-
 
 declare module "@tanstack/react-router" {
   interface Register {

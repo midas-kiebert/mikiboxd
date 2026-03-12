@@ -1,30 +1,30 @@
+import { Badge } from "@chakra-ui/react"
 // import Badge from "@/components/Common/Badge";
-import { CinemaPublic } from "shared";
-import { Badge } from "@chakra-ui/react";
+import type { CinemaPublic } from "shared"
 
 interface CinemaBadgeProps extends React.ComponentProps<typeof Badge> {
-    cinema: CinemaPublic;
-    enabled?: boolean;
+  cinema: CinemaPublic
+  enabled?: boolean
 }
 
-const CinemaBadge = ({ cinema, enabled = true, ...rest } : CinemaBadgeProps) => {
-    // Read flow: prepare derived values/handlers first, then return component JSX.
-    const name = cinema.name;
-    const color = cinema.badge_bg_color || "gray.500";
+const CinemaBadge = ({ cinema, enabled = true, ...rest }: CinemaBadgeProps) => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
+  const name = cinema.name
+  const color = cinema.badge_bg_color || "gray.500"
 
-    // Render/output using the state and derived values prepared above.
-    return (
-        <Badge
-            m={0.5}
-            ml={{base: 0, md: 0.5}}
-            variant={"surface"}
-            colorPalette={enabled ? color : "grey"}
-            size={{base: "xs", md: "sm"}}
-            {...rest}
-        >
-            {name}
-        </Badge>
-    );
-};
+  // Render/output using the state and derived values prepared above.
+  return (
+    <Badge
+      m={0.5}
+      ml={{ base: 0, md: 0.5 }}
+      variant={"surface"}
+      colorPalette={enabled ? color : "grey"}
+      size={{ base: "xs", md: "sm" }}
+      {...rest}
+    >
+      {name}
+    </Badge>
+  )
+}
 
-export default CinemaBadge;
+export default CinemaBadge

@@ -4,13 +4,13 @@
 import { Container, Heading, Tabs } from "@chakra-ui/react"
 import { createFileRoute } from "@tanstack/react-router"
 
+import Page from "@/components/Common/Page"
 import Appearance from "@/components/UserSettings/Appearance"
 import ChangePassword from "@/components/UserSettings/ChangePassword"
 import DeleteAccount from "@/components/UserSettings/DeleteAccount"
 import Notifications from "@/components/UserSettings/Notifications"
 import UserInformation from "@/components/UserSettings/UserInformation"
 import useAuth from "shared/hooks/useAuth"
-import Page from "@/components/Common/Page"
 
 const tabsConfig = [
   { value: "my-profile", title: "My profile", component: UserInformation },

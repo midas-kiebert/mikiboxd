@@ -1,9 +1,9 @@
 /**
  * Shared TypeScript type aliases and interfaces for the web app.
  */
-import type { GoingStatus } from "shared";
+import type { GoingStatus } from "shared"
 
-type Breakpoint = "base" | "sm" | "md" | "lg" | "xl" | "2xl";
+type Breakpoint = "base" | "sm" | "md" | "lg" | "xl" | "2xl"
 
 /**
  * Accept:
@@ -11,10 +11,9 @@ type Breakpoint = "base" | "sm" | "md" | "lg" | "xl" | "2xl";
  *  - Partial<Record<Breakpoint, T>>  -> { base?: T; md?: T; ... }
  *  - (T | null)[]                   -> ["sm", null, "lg"]
  */
-export type Responsive<T> = T | Partial<Record<Breakpoint, T>> | Array<T | null>;
-
+export type Responsive<T> = T | Partial<Record<Breakpoint, T>> | Array<T | null>
 
 export type ShowtimeSelectionTogglePayload = {
-    showtimeId: number;
-    going_status: GoingStatus;
-};
+  showtimeId: number
+  going_status: GoingStatus
+}

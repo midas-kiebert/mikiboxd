@@ -7,12 +7,12 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiLock } from "react-icons/fi"
 
-import { type ApiError, LoginService, type NewPassword } from "shared"
 import { Button } from "@/components/ui/button"
 import { PasswordInput } from "@/components/ui/password-input"
-import { isLoggedIn } from "shared/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { confirmPasswordRules, handleError, passwordRules } from "@/utils"
+import { type ApiError, LoginService, type NewPassword } from "shared"
+import { isLoggedIn } from "shared/hooks/useAuth"
 
 interface NewPasswordForm extends NewPassword {
   confirm_password: string

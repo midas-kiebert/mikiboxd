@@ -11,11 +11,11 @@ import {
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiLock, FiMail } from "react-icons/fi"
 
-import type { Body_login_login_access_token as AccessToken } from "shared"
 import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { PasswordInput } from "@/components/ui/password-input"
+import type { Body_login_login_access_token as AccessToken } from "shared"
 import useAuth, { isLoggedIn } from "shared/hooks/useAuth"
 import Logo from "/assets/images/mikino-logo.png"
 import { emailPattern, passwordRules } from "../utils"
@@ -37,7 +37,7 @@ function Login() {
   // Data hooks keep this module synced with backend data and shared cache state.
   const { loginMutation, error, resetError } = useAuth(
     () => navigate({ to: "/" }), // onLoginSuccess
-    () => navigate({ to: "/login" }) // onLogout
+    () => navigate({ to: "/login" }), // onLogout
   )
   const {
     register,

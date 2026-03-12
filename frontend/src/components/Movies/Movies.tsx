@@ -1,82 +1,82 @@
 // load all movie cards
 
-import { Spinner, Center } from "@chakra-ui/react";
-import { MovieSummaryLoggedIn } from "shared";
-import MovieCard from "./MovieCard";
-import MoviesContainer from "./MoviesContainer";
-import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { useEffect } from "react";
-import { useIsMobile } from "@/hooks/useIsMobile";
+import { useIsMobile } from "@/hooks/useIsMobile"
+import { Center, Spinner } from "@chakra-ui/react"
+import { useWindowVirtualizer } from "@tanstack/react-virtual"
+import { useEffect } from "react"
+import type { MovieSummaryLoggedIn } from "shared"
+import MovieCard from "./MovieCard"
+import MoviesContainer from "./MoviesContainer"
 
 type MoviesProps = {
-    movies: Array<MovieSummaryLoggedIn>
-    isLoading: boolean
+  movies: Array<MovieSummaryLoggedIn>
+  isLoading: boolean
 }
 
-export default function Movies( { movies, isLoading } : MoviesProps) {
-    // Read flow: prepare derived values/handlers first, then return component JSX.
-    // keep track of the scroll position at all times
-    const isMobile = useIsMobile();
-    useEffect(() => {
-        const handleScroll = () => {
-            sessionStorage.setItem('scrollPosition', window.scrollY.toString())
-        };
-
-        window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
-
-    const initialOffset = sessionStorage.getItem('scrollPosition')
-                        ? parseInt(sessionStorage.getItem('scrollPosition')!)
-                        : 0;
-
-    const rowVirtualizer = useWindowVirtualizer({
-        count: movies.length,
-        estimateSize: () => isMobile ? 125 :250, // Estimate height of each movie card
-        overscan: 2, // Number of items to render outside the visible area
-        initialOffset
-    })
-
-    if (isLoading) {
-        return (
-            <Center h="100vh">
-                <Spinner size="xl" />
-            </Center>
-        );
+export default function Movies({ movies, isLoading }: MoviesProps) {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
+  // keep track of the scroll position at all times
+  const isMobile = useIsMobile()
+  useEffect(() => {
+    const handleScroll = () => {
+      sessionStorage.setItem("scrollPosition", window.scrollY.toString())
     }
 
-    // Render/output using the state and derived values prepared above.
-    return (
-        <MoviesContainer>
-                <div
-                    style={{
-                        height: `${rowVirtualizer.getTotalSize()}px`,
-                        width: '100%',
-                        position: 'relative',
-                    }}
-                >
-                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                        const movie = movies[virtualRow.index];
-                        if (!movie) return null;
+    window.addEventListener("scroll", handleScroll)
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
 
-                        return (
-                            <div
-                                key={movie.id}
-                                data-index={virtualRow.index}
-                                ref={rowVirtualizer.measureElement}
-                                style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    transform: `translateY(${virtualRow.start}px)`,
-                                }}
-                            >
-                                <MovieCard movie={movie} />
-                            </div>
-                        );
-                    })}
-                </div>
-        </MoviesContainer>
-    );
+  const initialOffset = sessionStorage.getItem("scrollPosition")
+    ? Number.parseInt(sessionStorage.getItem("scrollPosition")!)
+    : 0
+
+  const rowVirtualizer = useWindowVirtualizer({
+    count: movies.length,
+    estimateSize: () => (isMobile ? 125 : 250), // Estimate height of each movie card
+    overscan: 2, // Number of items to render outside the visible area
+    initialOffset,
+  })
+
+  if (isLoading) {
+    return (
+      <Center h="100vh">
+        <Spinner size="xl" />
+      </Center>
+    )
+  }
+
+  // Render/output using the state and derived values prepared above.
+  return (
+    <MoviesContainer>
+      <div
+        style={{
+          height: `${rowVirtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+          const movie = movies[virtualRow.index]
+          if (!movie) return null
+
+          return (
+            <div
+              key={movie.id}
+              data-index={virtualRow.index}
+              ref={rowVirtualizer.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              <MovieCard movie={movie} />
+            </div>
+          )
+        })}
+      </div>
+    </MoviesContainer>
+  )
 }

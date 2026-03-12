@@ -1,68 +1,62 @@
+import CinemaBadge from "@/components/Common/CinemaBadge"
 /**
  * Movies list feature component: More Cinemas.
  */
-import { Popover, Badge, Portal, For } from "@chakra-ui/react";
-import type { CinemaPublic } from "shared";
-import CinemaBadge from "@/components/Common/CinemaBadge";
+import { Badge, For, Popover, Portal } from "@chakra-ui/react"
+import type { CinemaPublic } from "shared"
 
 type MoreCinemasProps = {
-    cinemas: CinemaPublic[];
-    visibleCount: number;
-    morePos: number;
-    moreRef: React.RefObject<HTMLDivElement | null>;
-};
-
-const MoreCinemas = ({
-    cinemas,
-    visibleCount,
-    morePos,
-    moreRef
-}: MoreCinemasProps) => {
-
-    // Read flow: prepare derived values/handlers first, then return component JSX.
-    const hidden = cinemas.length - visibleCount;
-
-    // Render/output using the state and derived values prepared above.
-    return (
-        <Popover.Root>
-            <Popover.Trigger asChild>
-                <Badge
-                    m={0.5}
-                    variant={"surface"}
-                    colorPalette={"grey"}
-                    size={"sm"}
-                    position={"absolute"}
-                    left={`${morePos}px`}
-                    ref={moreRef}
-                    visibility={hidden > 0 ? "visible" : "hidden"}
-                >
-                    {`+${hidden} more`}
-                </Badge>
-            </Popover.Trigger>
-            <Portal>
-                <Popover.Positioner>
-                    <Popover.Content maxW={"max-content"} >
-                        <Popover.Arrow/>
-                        <Popover.Body
-                            p={1.5}
-                            display="flex"
-                            flexWrap="wrap"
-                            justifyContent={"center"}
-                        >
-                            <For each={cinemas.slice(visibleCount)}>
-                                {(cinema) =>
-                                    <CinemaBadge
-                                        key={cinema.id}
-                                        cinema={cinema}
-                                    />
-                                }
-                            </For>
-                        </Popover.Body>
-                    </Popover.Content>
-                </Popover.Positioner>
-            </Portal>
-        </Popover.Root>
-    );
+  cinemas: CinemaPublic[]
+  visibleCount: number
+  morePos: number
+  moreRef: React.RefObject<HTMLDivElement | null>
 }
 
-export default MoreCinemas;
+const MoreCinemas = ({
+  cinemas,
+  visibleCount,
+  morePos,
+  moreRef,
+}: MoreCinemasProps) => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
+  const hidden = cinemas.length - visibleCount
+
+  // Render/output using the state and derived values prepared above.
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <Badge
+          m={0.5}
+          variant={"surface"}
+          colorPalette={"grey"}
+          size={"sm"}
+          position={"absolute"}
+          left={`${morePos}px`}
+          ref={moreRef}
+          visibility={hidden > 0 ? "visible" : "hidden"}
+        >
+          {`+${hidden} more`}
+        </Badge>
+      </Popover.Trigger>
+      <Portal>
+        <Popover.Positioner>
+          <Popover.Content maxW={"max-content"}>
+            <Popover.Arrow />
+            <Popover.Body
+              p={1.5}
+              display="flex"
+              flexWrap="wrap"
+              justifyContent={"center"}
+            >
+              <For each={cinemas.slice(visibleCount)}>
+                {(cinema) => <CinemaBadge key={cinema.id} cinema={cinema} />}
+              </For>
+            </Popover.Body>
+          </Popover.Content>
+        </Popover.Positioner>
+      </Portal>
+    </Popover.Root>
+  )
+}
+
+export default MoreCinemas

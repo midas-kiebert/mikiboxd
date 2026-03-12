@@ -1,69 +1,62 @@
 /**
  * Movies list feature component: Movie Info Box.
  */
-import { Separator, Flex } from "@chakra-ui/react";
-import MovieTitle from "./MovieTitle";
-import OriginalTitle from "./OriginalTitle";
-import { MovieSummaryLoggedIn } from "shared";
-import CinemaBadges from "./CinemaBadges";
-import ShowtimeInfo from "./ShowtimeInfo";
-import FriendBadges from "./FriendBadges";
-
-
+import { Flex, Separator } from "@chakra-ui/react"
+import type { MovieSummaryLoggedIn } from "shared"
+import CinemaBadges from "./CinemaBadges"
+import FriendBadges from "./FriendBadges"
+import MovieTitle from "./MovieTitle"
+import OriginalTitle from "./OriginalTitle"
+import ShowtimeInfo from "./ShowtimeInfo"
 
 type MovieInfoBoxProps = {
-    movie: MovieSummaryLoggedIn;
-};
+  movie: MovieSummaryLoggedIn
+}
 
 const goingBorderMap: Record<string, string> = {
-    GOING: "green.500",
-    INTERESTED: "orange.500",
-    NOT_GOING: "gray.300",
-  };
+  GOING: "green.500",
+  INTERESTED: "orange.500",
+  NOT_GOING: "gray.300",
+}
 
-
-export default function MovieInfoBox({ movie } : MovieInfoBoxProps) {
-    // Read flow: prepare derived values/handlers first, then return component JSX.
-    const showtimes = movie.showtimes || [];
-    const cinemas = movie.cinemas || [];
-    const lastShowtime = movie.last_showtime_datetime || null;
-    const total_showtimes = movie.total_showtimes || 0;
-    const friends_going = movie.friends_going || [];
-    const friends_interested = movie.friends_interested || [];
-    const original_title = movie.original_title || null;
-    // Render/output using the state and derived values prepared above.
-    return (
-        <Flex
-            ml={{base: 2, md: 8}}
-            // bg="blue.200"
-            flex="1"
-            flexDirection="column"
-            minW={0}
-        >
-            <Flex gap={"2"} align="center">
-                <MovieTitle title={movie.title} />
-                <OriginalTitle originalTitle={original_title} />
-                <CinemaBadges cinemas={cinemas} />
-            </Flex>
-            <Separator
-                mt={0.5}
-                mb={2}
-                borderColor={goingBorderMap[movie.going]}
-            />
-            <Flex flex="1">
-                <ShowtimeInfo
-                    showtimes={showtimes}
-                    lastShowtime={lastShowtime}
-                    total_showtimes={total_showtimes}
-                />
-                <Separator
-                    orientation={"vertical"}
-                    mx={2}
-                    borderColor={goingBorderMap[movie.going]}
-                />
-                <FriendBadges friends={friends_going} goingStatus="GOING"/>
-                <FriendBadges friends={friends_interested} goingStatus="INTERESTED"/>
-            </Flex>
-        </Flex>
-    )
+export default function MovieInfoBox({ movie }: MovieInfoBoxProps) {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
+  const showtimes = movie.showtimes || []
+  const cinemas = movie.cinemas || []
+  const lastShowtime = movie.last_showtime_datetime || null
+  const total_showtimes = movie.total_showtimes || 0
+  const friends_going = movie.friends_going || []
+  const friends_interested = movie.friends_interested || []
+  const original_title = movie.original_title || null
+  // Render/output using the state and derived values prepared above.
+  return (
+    <Flex
+      ml={{ base: 2, md: 8 }}
+      // bg="blue.200"
+      flex="1"
+      flexDirection="column"
+      minW={0}
+    >
+      <Flex gap={"2"} align="center">
+        <MovieTitle title={movie.title} />
+        <OriginalTitle originalTitle={original_title} />
+        <CinemaBadges cinemas={cinemas} />
+      </Flex>
+      <Separator mt={0.5} mb={2} borderColor={goingBorderMap[movie.going]} />
+      <Flex flex="1">
+        <ShowtimeInfo
+          showtimes={showtimes}
+          lastShowtime={lastShowtime}
+          total_showtimes={total_showtimes}
+        />
+        <Separator
+          orientation={"vertical"}
+          mx={2}
+          borderColor={goingBorderMap[movie.going]}
+        />
+        <FriendBadges friends={friends_going} goingStatus="GOING" />
+        <FriendBadges friends={friends_interested} goingStatus="INTERESTED" />
+      </Flex>
+    </Flex>
+  )
 }

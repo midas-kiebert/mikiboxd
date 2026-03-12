@@ -33,7 +33,13 @@ export default function MoviePoster({
       position="relative"
     >
       {!isLoaded && (
-        <Skeleton width="100%" height="100%" position="absolute" top={0} left={0} />
+        <Skeleton
+          width="100%"
+          height="100%"
+          position="absolute"
+          top={0}
+          left={0}
+        />
       )}
       <Image
         src={posterUrl}

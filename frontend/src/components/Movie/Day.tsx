@@ -1,16 +1,16 @@
 /**
  * Single-movie detail feature component: Day.
  */
-import { VStack, Text } from "@chakra-ui/react";
-import ShowtimeRow from "./ShowtimeRow"; // adjust path as needed
+import { Text, VStack } from "@chakra-ui/react"
+import ShowtimeRow from "./ShowtimeRow" // adjust path as needed
 
-import type { ShowtimeInMovieLoggedIn } from "shared";
+import type { ShowtimeInMovieLoggedIn } from "shared"
 
 type DayProps = {
-  date: string;
-  showtimes: ShowtimeInMovieLoggedIn[];
-  onOpenShowtime: (showtime: ShowtimeInMovieLoggedIn) => void;
-};
+  date: string
+  showtimes: ShowtimeInMovieLoggedIn[]
+  onOpenShowtime: (showtime: ShowtimeInMovieLoggedIn) => void
+}
 
 export default function Day({ date, showtimes, onOpenShowtime }: DayProps) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
@@ -18,7 +18,7 @@ export default function Day({ date, showtimes, onOpenShowtime }: DayProps) {
     weekday: "long",
     month: "long",
     day: "numeric",
-  });
+  })
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -34,5 +34,5 @@ export default function Day({ date, showtimes, onOpenShowtime }: DayProps) {
         />
       ))}
     </VStack>
-  );
+  )
 }

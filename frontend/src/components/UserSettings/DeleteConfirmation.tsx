@@ -3,11 +3,10 @@
  */
 import { Button, ButtonGroup, Text } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { useForm } from "react-hook-form"
-import { useNavigate } from "@tanstack/react-router"
 
-import { type ApiError, MeService } from "shared"
 import {
   DialogActionTrigger,
   DialogBody,
@@ -19,9 +18,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import useAuth from "shared/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
+import { type ApiError, MeService } from "shared"
+import useAuth from "shared/hooks/useAuth"
 
 const DeleteConfirmation = () => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
@@ -36,7 +36,7 @@ const DeleteConfirmation = () => {
   } = useForm()
   const { logout } = useAuth(
     () => navigate({ to: "/" }), // onLoginSuccess
-    () => navigate({ to: "/login" }) // onLogout
+    () => navigate({ to: "/login" }), // onLogout
   )
 
   const mutation = useMutation({

@@ -1,38 +1,38 @@
 /**
  * Movies list feature component: Movie Card.
  */
-import { Flex } from "@chakra-ui/react";
-import MoviePoster from "./MoviePoster";
-import MovieInfoBox from "./MovieInfoBox";
-import { MovieSummaryLoggedIn } from "shared";
-import React from "react";
+import { Flex } from "@chakra-ui/react"
+import React from "react"
+import type { MovieSummaryLoggedIn } from "shared"
+import MovieInfoBox from "./MovieInfoBox"
+import MoviePoster from "./MoviePoster"
 
 type MovieCardProps = {
-    movie: MovieSummaryLoggedIn;
-};
+  movie: MovieSummaryLoggedIn
+}
 
 const goingBgMap: Record<string, string> = {
-    GOING: "green.200",
-    INTERESTED: "orange.200",
-    NOT_GOING: "gray.50",
-};
+  GOING: "green.200",
+  INTERESTED: "orange.200",
+  NOT_GOING: "gray.50",
+}
 
 const MovieCard = React.memo(function MovieCard({ movie }: MovieCardProps) {
-    return (
-        <>
-            <Flex
-                bg={goingBgMap[movie.going]}
-                borderBottom={"1px solid"}
-                borderColor={"gray.200"}
-                py={3}
-                px={2}
-                height={{ base: "125px", md: "250px" }}
-            >
-                <MoviePoster movie={movie} />
-                <MovieInfoBox movie={movie} />
-            </Flex>
-        </>
-    );
-});
+  return (
+    <>
+      <Flex
+        bg={goingBgMap[movie.going]}
+        borderBottom={"1px solid"}
+        borderColor={"gray.200"}
+        py={3}
+        px={2}
+        height={{ base: "125px", md: "250px" }}
+      >
+        <MoviePoster movie={movie} />
+        <MovieInfoBox movie={movie} />
+      </Flex>
+    </>
+  )
+})
 
-export default MovieCard;
+export default MovieCard

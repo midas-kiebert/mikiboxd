@@ -1,42 +1,39 @@
+import ShowtimeList from "@/components/Movies/ShowtimeList"
 /**
  * Movies list feature component: Showtime Info.
  */
-import { Box } from "@chakra-ui/react";
-import ShowtimeList from "@/components/Movies/ShowtimeList";
-import type { ShowtimeInMovieLoggedIn } from "shared";
-import MoreShowtimes from "./MoreShowtimes";
-
-
-
+import { Box } from "@chakra-ui/react"
+import type { ShowtimeInMovieLoggedIn } from "shared"
+import MoreShowtimes from "./MoreShowtimes"
 
 type ShowtimeInfoProps = {
-    showtimes: ShowtimeInMovieLoggedIn[];
-    lastShowtime?: string | null;
-    total_showtimes: number;
-};
+  showtimes: ShowtimeInMovieLoggedIn[]
+  lastShowtime?: string | null
+  total_showtimes: number
+}
 
 export default function ShowtimeInfo({
-    showtimes,
-    lastShowtime = null,
-    total_showtimes = 0,
+  showtimes,
+  lastShowtime = null,
+  total_showtimes = 0,
 }: ShowtimeInfoProps) {
-    // Read flow: prepare derived values/handlers first, then return component JSX.
-    return (
-        <Box
-            // bg="orange.100"
-            width={"50%"}
-            maxW={"50%"}
-            overflow={"cover"}
-            flex="1"
-            // display={"flex"}
-            height={"100%"}
-            pl={0.5}
-        >
-            <ShowtimeList showtimes={showtimes} />
-            <MoreShowtimes
-                lastShowtime={lastShowtime}
-                additional_showtime_count={total_showtimes - showtimes.length}
-            />
-        </Box>
-    );
+  // Read flow: prepare derived values/handlers first, then return component JSX.
+  return (
+    <Box
+      // bg="orange.100"
+      width={"50%"}
+      maxW={"50%"}
+      overflow={"cover"}
+      flex="1"
+      // display={"flex"}
+      height={"100%"}
+      pl={0.5}
+    >
+      <ShowtimeList showtimes={showtimes} />
+      <MoreShowtimes
+        lastShowtime={lastShowtime}
+        additional_showtime_count={total_showtimes - showtimes.length}
+      />
+    </Box>
+  )
 }

@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router"
 import { Button, Center, Flex, Text, VStack } from "@chakra-ui/react"
+import { createFileRoute } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/cinema-showtimes/$cinemaId" as never)({
   component: CinemaShowtimesLinkPage,
@@ -10,14 +10,20 @@ function CinemaShowtimesLinkPage() {
 
   return (
     <Center minH="100vh" px={4}>
-      <Flex direction="column" align="center" gap={4} maxW="md" textAlign="center">
+      <Flex
+        direction="column"
+        align="center"
+        gap={4}
+        maxW="md"
+        textAlign="center"
+      >
         <Text fontSize="2xl" fontWeight="bold">
           Cinema Page Link
         </Text>
 
         <Text>
-          Cinema links are opened via the app. You can browse movies and showtimes from here
-          instead.
+          Cinema links are opened via the app. You can browse movies and
+          showtimes from here instead.
         </Text>
 
         <Text color="gray.500" fontSize="sm">
@@ -25,7 +31,10 @@ function CinemaShowtimesLinkPage() {
         </Text>
 
         <VStack gap={2}>
-          <Button onClick={() => window.location.assign("/movies")} colorScheme="teal">
+          <Button
+            onClick={() => window.location.assign("/movies")}
+            colorScheme="teal"
+          >
             Go to Movies
           </Button>
         </VStack>

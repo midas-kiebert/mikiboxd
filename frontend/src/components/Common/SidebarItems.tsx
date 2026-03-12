@@ -3,9 +3,9 @@
  */
 import { Box, Flex, Icon, Text } from "@chakra-ui/react"
 import { Link as RouterLink } from "@tanstack/react-router"
-import { FiFilm, FiHome, FiSettings, FiBell } from "react-icons/fi"
 import { FaUserFriends } from "react-icons/fa"
-import { FaRegCalendar } from "react-icons/fa6";
+import { FaRegCalendar } from "react-icons/fa6"
+import { FiBell, FiFilm, FiHome, FiSettings } from "react-icons/fi"
 
 const items = [
   { icon: FiHome, title: "Dashboard", path: "/" },
@@ -20,9 +20,7 @@ interface SidebarItemsProps {
   onClose?: () => void
 }
 
-
 const SidebarItems = ({ onClose }: SidebarItemsProps) => {
-
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const listItems = items.map(({ icon, title, path }) => (
     <RouterLink key={title} to={path} onClick={onClose}>

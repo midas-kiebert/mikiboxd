@@ -13,14 +13,22 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as FriendShowtimesRouteImport } from './routes/friend-showtimes'
+import { Route as FriendGroupsRouteImport } from './routes/friend-groups'
 import { Route as ForbiddenRouteImport } from './routes/forbidden'
+import { Route as CinemaShowtimesRouteImport } from './routes/cinema-showtimes'
+import { Route as BetaRouteImport } from './routes/beta'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as MovieMovieIdRouteImport } from './routes/movie.$movieId'
+import { Route as FriendShowtimesFriendIdRouteImport } from './routes/friend-showtimes.$friendId'
+import { Route as CinemaShowtimesCinemaIdRouteImport } from './routes/cinema-showtimes.$cinemaId'
+import { Route as AddFriendReceiverIdRouteImport } from './routes/add-friend.$receiverId'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutPingsRouteImport } from './routes/_layout/pings'
 import { Route as LayoutMoviesRouteImport } from './routes/_layout/movies'
 import { Route as LayoutFriendsRouteImport } from './routes/_layout/friends'
+import { Route as PingShowtimeIdSenderRouteImport } from './routes/ping.$showtimeId.$sender'
 import { Route as LayoutMeShowtimesRouteImport } from './routes/_layout/me/showtimes'
 import { Route as LayoutUserIdShowtimesRouteImport } from './routes/_layout/$userId/showtimes'
 
@@ -44,9 +52,29 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FriendShowtimesRoute = FriendShowtimesRouteImport.update({
+  id: '/friend-showtimes',
+  path: '/friend-showtimes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FriendGroupsRoute = FriendGroupsRouteImport.update({
+  id: '/friend-groups',
+  path: '/friend-groups',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ForbiddenRoute = ForbiddenRouteImport.update({
   id: '/forbidden',
   path: '/forbidden',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CinemaShowtimesRoute = CinemaShowtimesRouteImport.update({
+  id: '/cinema-showtimes',
+  path: '/cinema-showtimes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BetaRoute = BetaRouteImport.update({
+  id: '/beta',
+  path: '/beta',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutRoute = LayoutRouteImport.update({
@@ -61,6 +89,21 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
 const MovieMovieIdRoute = MovieMovieIdRouteImport.update({
   id: '/movie/$movieId',
   path: '/movie/$movieId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FriendShowtimesFriendIdRoute = FriendShowtimesFriendIdRouteImport.update({
+  id: '/$friendId',
+  path: '/$friendId',
+  getParentRoute: () => FriendShowtimesRoute,
+} as any)
+const CinemaShowtimesCinemaIdRoute = CinemaShowtimesCinemaIdRouteImport.update({
+  id: '/$cinemaId',
+  path: '/$cinemaId',
+  getParentRoute: () => CinemaShowtimesRoute,
+} as any)
+const AddFriendReceiverIdRoute = AddFriendReceiverIdRouteImport.update({
+  id: '/add-friend/$receiverId',
+  path: '/add-friend/$receiverId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
@@ -83,6 +126,11 @@ const LayoutFriendsRoute = LayoutFriendsRouteImport.update({
   path: '/friends',
   getParentRoute: () => LayoutRoute,
 } as any)
+const PingShowtimeIdSenderRoute = PingShowtimeIdSenderRouteImport.update({
+  id: '/ping/$showtimeId/$sender',
+  path: '/ping/$showtimeId/$sender',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutMeShowtimesRoute = LayoutMeShowtimesRouteImport.update({
   id: '/me/showtimes',
   path: '/me/showtimes',
@@ -96,7 +144,11 @@ const LayoutUserIdShowtimesRoute = LayoutUserIdShowtimesRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
+  '/beta': typeof BetaRoute
+  '/cinema-showtimes': typeof CinemaShowtimesRouteWithChildren
   '/forbidden': typeof ForbiddenRoute
+  '/friend-groups': typeof FriendGroupsRoute
+  '/friend-showtimes': typeof FriendShowtimesRouteWithChildren
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -105,12 +157,20 @@ export interface FileRoutesByFullPath {
   '/movies': typeof LayoutMoviesRoute
   '/pings': typeof LayoutPingsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/add-friend/$receiverId': typeof AddFriendReceiverIdRoute
+  '/cinema-showtimes/$cinemaId': typeof CinemaShowtimesCinemaIdRoute
+  '/friend-showtimes/$friendId': typeof FriendShowtimesFriendIdRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
   '/me/showtimes': typeof LayoutMeShowtimesRoute
+  '/ping/$showtimeId/$sender': typeof PingShowtimeIdSenderRoute
 }
 export interface FileRoutesByTo {
+  '/beta': typeof BetaRoute
+  '/cinema-showtimes': typeof CinemaShowtimesRouteWithChildren
   '/forbidden': typeof ForbiddenRoute
+  '/friend-groups': typeof FriendGroupsRoute
+  '/friend-showtimes': typeof FriendShowtimesRouteWithChildren
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -119,15 +179,23 @@ export interface FileRoutesByTo {
   '/movies': typeof LayoutMoviesRoute
   '/pings': typeof LayoutPingsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/add-friend/$receiverId': typeof AddFriendReceiverIdRoute
+  '/cinema-showtimes/$cinemaId': typeof CinemaShowtimesCinemaIdRoute
+  '/friend-showtimes/$friendId': typeof FriendShowtimesFriendIdRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/': typeof LayoutIndexRoute
   '/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
   '/me/showtimes': typeof LayoutMeShowtimesRoute
+  '/ping/$showtimeId/$sender': typeof PingShowtimeIdSenderRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
+  '/beta': typeof BetaRoute
+  '/cinema-showtimes': typeof CinemaShowtimesRouteWithChildren
   '/forbidden': typeof ForbiddenRoute
+  '/friend-groups': typeof FriendGroupsRoute
+  '/friend-showtimes': typeof FriendShowtimesRouteWithChildren
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -136,16 +204,24 @@ export interface FileRoutesById {
   '/_layout/movies': typeof LayoutMoviesRoute
   '/_layout/pings': typeof LayoutPingsRoute
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/add-friend/$receiverId': typeof AddFriendReceiverIdRoute
+  '/cinema-showtimes/$cinemaId': typeof CinemaShowtimesCinemaIdRoute
+  '/friend-showtimes/$friendId': typeof FriendShowtimesFriendIdRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/_layout/': typeof LayoutIndexRoute
   '/_layout/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
   '/_layout/me/showtimes': typeof LayoutMeShowtimesRoute
+  '/ping/$showtimeId/$sender': typeof PingShowtimeIdSenderRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/beta'
+    | '/cinema-showtimes'
     | '/forbidden'
+    | '/friend-groups'
+    | '/friend-showtimes'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -154,12 +230,20 @@ export interface FileRouteTypes {
     | '/movies'
     | '/pings'
     | '/settings'
+    | '/add-friend/$receiverId'
+    | '/cinema-showtimes/$cinemaId'
+    | '/friend-showtimes/$friendId'
     | '/movie/$movieId'
     | '/$userId/showtimes'
     | '/me/showtimes'
+    | '/ping/$showtimeId/$sender'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/beta'
+    | '/cinema-showtimes'
     | '/forbidden'
+    | '/friend-groups'
+    | '/friend-showtimes'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -168,14 +252,22 @@ export interface FileRouteTypes {
     | '/movies'
     | '/pings'
     | '/settings'
+    | '/add-friend/$receiverId'
+    | '/cinema-showtimes/$cinemaId'
+    | '/friend-showtimes/$friendId'
     | '/movie/$movieId'
     | '/'
     | '/$userId/showtimes'
     | '/me/showtimes'
+    | '/ping/$showtimeId/$sender'
   id:
     | '__root__'
     | '/_layout'
+    | '/beta'
+    | '/cinema-showtimes'
     | '/forbidden'
+    | '/friend-groups'
+    | '/friend-showtimes'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -184,20 +276,30 @@ export interface FileRouteTypes {
     | '/_layout/movies'
     | '/_layout/pings'
     | '/_layout/settings'
+    | '/add-friend/$receiverId'
+    | '/cinema-showtimes/$cinemaId'
+    | '/friend-showtimes/$friendId'
     | '/movie/$movieId'
     | '/_layout/'
     | '/_layout/$userId/showtimes'
     | '/_layout/me/showtimes'
+    | '/ping/$showtimeId/$sender'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
+  BetaRoute: typeof BetaRoute
+  CinemaShowtimesRoute: typeof CinemaShowtimesRouteWithChildren
   ForbiddenRoute: typeof ForbiddenRoute
+  FriendGroupsRoute: typeof FriendGroupsRoute
+  FriendShowtimesRoute: typeof FriendShowtimesRouteWithChildren
   LoginRoute: typeof LoginRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  AddFriendReceiverIdRoute: typeof AddFriendReceiverIdRoute
   MovieMovieIdRoute: typeof MovieMovieIdRoute
+  PingShowtimeIdSenderRoute: typeof PingShowtimeIdSenderRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -230,11 +332,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/friend-showtimes': {
+      id: '/friend-showtimes'
+      path: '/friend-showtimes'
+      fullPath: '/friend-showtimes'
+      preLoaderRoute: typeof FriendShowtimesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/friend-groups': {
+      id: '/friend-groups'
+      path: '/friend-groups'
+      fullPath: '/friend-groups'
+      preLoaderRoute: typeof FriendGroupsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/forbidden': {
       id: '/forbidden'
       path: '/forbidden'
       fullPath: '/forbidden'
       preLoaderRoute: typeof ForbiddenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cinema-showtimes': {
+      id: '/cinema-showtimes'
+      path: '/cinema-showtimes'
+      fullPath: '/cinema-showtimes'
+      preLoaderRoute: typeof CinemaShowtimesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/beta': {
+      id: '/beta'
+      path: '/beta'
+      fullPath: '/beta'
+      preLoaderRoute: typeof BetaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout': {
@@ -256,6 +386,27 @@ declare module '@tanstack/react-router' {
       path: '/movie/$movieId'
       fullPath: '/movie/$movieId'
       preLoaderRoute: typeof MovieMovieIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/friend-showtimes/$friendId': {
+      id: '/friend-showtimes/$friendId'
+      path: '/$friendId'
+      fullPath: '/friend-showtimes/$friendId'
+      preLoaderRoute: typeof FriendShowtimesFriendIdRouteImport
+      parentRoute: typeof FriendShowtimesRoute
+    }
+    '/cinema-showtimes/$cinemaId': {
+      id: '/cinema-showtimes/$cinemaId'
+      path: '/$cinemaId'
+      fullPath: '/cinema-showtimes/$cinemaId'
+      preLoaderRoute: typeof CinemaShowtimesCinemaIdRouteImport
+      parentRoute: typeof CinemaShowtimesRoute
+    }
+    '/add-friend/$receiverId': {
+      id: '/add-friend/$receiverId'
+      path: '/add-friend/$receiverId'
+      fullPath: '/add-friend/$receiverId'
+      preLoaderRoute: typeof AddFriendReceiverIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout/settings': {
@@ -285,6 +436,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/friends'
       preLoaderRoute: typeof LayoutFriendsRouteImport
       parentRoute: typeof LayoutRoute
+    }
+    '/ping/$showtimeId/$sender': {
+      id: '/ping/$showtimeId/$sender'
+      path: '/ping/$showtimeId/$sender'
+      fullPath: '/ping/$showtimeId/$sender'
+      preLoaderRoute: typeof PingShowtimeIdSenderRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_layout/me/showtimes': {
       id: '/_layout/me/showtimes'
@@ -326,14 +484,44 @@ const LayoutRouteChildren: LayoutRouteChildren = {
 const LayoutRouteWithChildren =
   LayoutRoute._addFileChildren(LayoutRouteChildren)
 
+interface CinemaShowtimesRouteChildren {
+  CinemaShowtimesCinemaIdRoute: typeof CinemaShowtimesCinemaIdRoute
+}
+
+const CinemaShowtimesRouteChildren: CinemaShowtimesRouteChildren = {
+  CinemaShowtimesCinemaIdRoute: CinemaShowtimesCinemaIdRoute,
+}
+
+const CinemaShowtimesRouteWithChildren = CinemaShowtimesRoute._addFileChildren(
+  CinemaShowtimesRouteChildren,
+)
+
+interface FriendShowtimesRouteChildren {
+  FriendShowtimesFriendIdRoute: typeof FriendShowtimesFriendIdRoute
+}
+
+const FriendShowtimesRouteChildren: FriendShowtimesRouteChildren = {
+  FriendShowtimesFriendIdRoute: FriendShowtimesFriendIdRoute,
+}
+
+const FriendShowtimesRouteWithChildren = FriendShowtimesRoute._addFileChildren(
+  FriendShowtimesRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
+  BetaRoute: BetaRoute,
+  CinemaShowtimesRoute: CinemaShowtimesRouteWithChildren,
   ForbiddenRoute: ForbiddenRoute,
+  FriendGroupsRoute: FriendGroupsRoute,
+  FriendShowtimesRoute: FriendShowtimesRouteWithChildren,
   LoginRoute: LoginRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  AddFriendReceiverIdRoute: AddFriendReceiverIdRoute,
   MovieMovieIdRoute: MovieMovieIdRoute,
+  PingShowtimeIdSenderRoute: PingShowtimeIdSenderRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

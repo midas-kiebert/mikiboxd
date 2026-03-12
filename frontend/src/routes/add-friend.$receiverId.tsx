@@ -1,6 +1,6 @@
 import { Button, Center, Flex, Spinner, Text, VStack } from "@chakra-ui/react"
-import { createFileRoute } from "@tanstack/react-router"
 import { useMutation } from "@tanstack/react-query"
+import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ApiError, FriendsService } from "shared"
 import { storage } from "shared/storage"
@@ -103,7 +103,13 @@ function AddFriendLinkPage() {
 
   return (
     <Center minH="100vh" px={4}>
-      <Flex direction="column" align="center" gap={4} maxW="md" textAlign="center">
+      <Flex
+        direction="column"
+        align="center"
+        gap={4}
+        maxW="md"
+        textAlign="center"
+      >
         <Text fontSize="2xl" fontWeight="bold">
           Add Friend
         </Text>

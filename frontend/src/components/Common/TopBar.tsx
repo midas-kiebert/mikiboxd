@@ -1,5 +1,8 @@
-import { SIDEBAR_WIDTH } from "@/constants"
-import { TOPBAR_HEIGHT } from "@/constants"
+import {
+  PAGE_NOTICE_BANNER_OFFSET_CSS_VAR,
+  SIDEBAR_WIDTH,
+  TOPBAR_HEIGHT,
+} from "@/constants"
 /**
  * Shared web layout/presentation component: Top Bar.
  */
@@ -16,11 +19,11 @@ const TopBar = ({ children }: Props) => {
     <Box
       position="fixed"
       height={`${TOPBAR_HEIGHT}px`}
-      top="0"
+      top={`var(${PAGE_NOTICE_BANNER_OFFSET_CSS_VAR}, 0px)`}
       flex={"1"}
       left={{ base: "0", md: SIDEBAR_WIDTH }}
       right="0"
-      zIndex="sticky"
+      zIndex={1200}
       bg="gray.50"
       px={4}
       py={2}

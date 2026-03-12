@@ -8,7 +8,10 @@ import { useState } from "react"
 import { FaBars } from "react-icons/fa"
 import { FiLogOut } from "react-icons/fi"
 
-import { SIDEBAR_WIDTH } from "@/constants"
+import {
+  PAGE_NOTICE_BANNER_OFFSET_CSS_VAR,
+  SIDEBAR_WIDTH,
+} from "@/constants"
 import type { MeGetCurrentUserResponse } from "shared"
 import useAuth from "shared/hooks/useAuth"
 import {
@@ -57,6 +60,7 @@ const Sidebar = () => {
             display={{ base: "flex", md: "none" }}
             aria-label="Open Menu"
             position="absolute"
+            top={`var(${PAGE_NOTICE_BANNER_OFFSET_CSS_VAR}, 0px)`}
             zIndex="100"
             m={4}
           >
@@ -98,10 +102,10 @@ const Sidebar = () => {
         display={{ base: "none", md: "flex" }}
         position="fixed"
         bg="bg.subtle"
-        top={0}
+        top={`var(${PAGE_NOTICE_BANNER_OFFSET_CSS_VAR}, 0px)`}
         // minW="xs"
         width={SIDEBAR_WIDTH}
-        h="100vh"
+        h={`calc(100vh - var(${PAGE_NOTICE_BANNER_OFFSET_CSS_VAR}, 0px))`}
         p={4}
       >
         <Box w="100%">

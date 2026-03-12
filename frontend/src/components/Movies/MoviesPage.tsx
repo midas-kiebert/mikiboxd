@@ -7,13 +7,21 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 /**
  * Movies list feature component: Movies Page.
  */
-import { useNavigate, useSearch } from "@tanstack/react-router"
+import { getRouteApi } from "@tanstack/react-router"
 import { DateTime } from "luxon"
 import { useEffect, useRef, useState } from "react"
 import { MeService } from "shared"
 import { useFetchMovies } from "shared/hooks/useFetchMovies"
 import type { MovieFilters } from "shared/hooks/useFetchMovies"
 import { useDebounce } from "use-debounce"
+
+type MoviesSearchParams = {
+  query: string
+  watchlistOnly: boolean
+  days: string[]
+}
+
+const moviesRoute = getRouteApi("/_layout/movies")
 
 const MoviesPage = () => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
@@ -25,32 +33,30 @@ const MoviesPage = () => {
       .toFormat("yyyy-MM-dd'T'HH:mm:ss"),
   )
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
-  const search = useSearch({ from: "/_layout/movies" })
+  const search = moviesRoute.useSearch() as MoviesSearchParams
+  const navigate = moviesRoute.useNavigate()
   const [searchQuery, setSearchQuery] = useState<string>(search.query ?? "")
   const [debouncedSearchQuery] = useDebounce(searchQuery, 250)
   const [watchlistOnly, setWatchlistOnly] = useState<boolean>(
     search.watchlistOnly,
   )
   // Convert URL string days to Date objects for the DayFilter
-  const selectedDays = search.days.map((d) => DateTime.fromISO(d).toJSDate())
+  const selectedDays = search.days.map((d: string) =>
+    DateTime.fromISO(d).toJSDate(),
+  )
 
   const handleDaysChange = (days: Date[]) => {
     // Convert Date objects to ISO strings for the URL
-    const isoDays = days.map((d) => DateTime.fromJSDate(d).toISODate())
+    const isoDays = days.map((d: Date) => DateTime.fromJSDate(d).toISODate())
     navigate({
-      //@ts-ignore
-      search: (prev) => ({
-        ...(prev as {
-          query?: string
-          watchlistOnly?: boolean
-          days?: string[]
-        }),
+      search: {
+        query: searchQuery,
+        watchlistOnly,
         days: isoDays,
-      }),
+      },
       replace: true,
     })
   }
-  const navigate = useNavigate()
 
   const queryClient = useQueryClient()
 
@@ -78,12 +84,11 @@ const MoviesPage = () => {
       search.watchlistOnly === watchlistOnly
     if (isSame) return
     navigate({
-      //@ts-ignore
-      search: (prev) => ({
-        ...prev,
+      search: {
         query: debouncedSearchQuery,
         watchlistOnly: watchlistOnly,
-      }),
+        days: search.days,
+      },
       replace: true,
     })
   }, [debouncedSearchQuery, watchlistOnly, navigate])
@@ -92,7 +97,9 @@ const MoviesPage = () => {
   const filters: MovieFilters = {
     query: debouncedSearchQuery,
     watchlistOnly: watchlistOnly,
-    days: selectedDays.map((d) => DateTime.fromJSDate(d).toISODate() || ""),
+    days: selectedDays.map((d: Date) =>
+      DateTime.fromJSDate(d).toISODate() || "",
+    ),
   }
 
   const {

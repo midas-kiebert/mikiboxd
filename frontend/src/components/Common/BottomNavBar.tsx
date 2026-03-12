@@ -19,7 +19,13 @@ const items = [
 const BottomNavBar = () => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const listItems = items.map(({ icon: Icon, title, path }) => (
-    <RouterLink key={title} to={path} style={{ width: "100%", height: "100%" }}>
+    <RouterLink
+      key={title}
+      from="/"
+      search={true}
+      to={path}
+      style={{ width: "100%", height: "100%" }}
+    >
       <Box
         key={title}
         width="100%"

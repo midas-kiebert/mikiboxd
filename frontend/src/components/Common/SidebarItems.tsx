@@ -23,7 +23,7 @@ interface SidebarItemsProps {
 const SidebarItems = ({ onClose }: SidebarItemsProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const listItems = items.map(({ icon, title, path }) => (
-    <RouterLink key={title} to={path} onClick={onClose}>
+    <RouterLink key={title} from="/" to={path} search={true} onClick={onClose}>
       <Flex
         gap={4}
         px={4}

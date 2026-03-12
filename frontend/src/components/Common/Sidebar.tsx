@@ -2,12 +2,13 @@
  * Shared web layout/presentation component: Sidebar.
  */
 import { Box, Flex, IconButton, Text } from "@chakra-ui/react"
-import { useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { FaBars } from "react-icons/fa"
 import { FiLogOut } from "react-icons/fi"
 
+import { SIDEBAR_WIDTH } from "@/constants"
 import type { MeGetCurrentUserResponse } from "shared"
 import useAuth from "shared/hooks/useAuth"
 import {
@@ -27,11 +28,13 @@ const Sidebar = () => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
-  const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>(["currentUser"])
+  const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>([
+    "currentUser",
+  ])
   // Data hooks keep this module synced with backend data and shared cache state.
   const { logout } = useAuth(
     () => navigate({ to: "/" }), // onLoginSuccess
-    () => navigate({ to: "/login" }) // onLogout
+    () => navigate({ to: "/login" }), // onLogout
   )
   const [open, setOpen] = useState(false)
 

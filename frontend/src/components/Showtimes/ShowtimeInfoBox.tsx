@@ -1,45 +1,39 @@
+import { useIsMobile } from "@/hooks/useIsMobile"
 /**
  * Showtimes feature component: Showtime Info Box.
  */
-import { Flex, Stack } from "@chakra-ui/react";
-import MovieTitle from "../Movies/MovieTitle";
-import FriendBadges from "../Movies/FriendBadges";
-import { ShowtimeLoggedIn } from "shared";
-import CinemaBadge from "../Common/CinemaBadge";
-import { useIsMobile } from "@/hooks/useIsMobile";
-
+import { Flex, Stack } from "@chakra-ui/react"
+import type { ShowtimeLoggedIn } from "shared"
+import CinemaBadge from "../Common/CinemaBadge"
+import FriendBadges from "../Movies/FriendBadges"
+import MovieTitle from "../Movies/MovieTitle"
 
 type ShowtimeInfoBoxProps = {
-    showtime: ShowtimeLoggedIn;
-};
+  showtime: ShowtimeLoggedIn
+}
 
-export default function ShowtimeInfoBox({ showtime } : ShowtimeInfoBoxProps) {
-    // Read flow: prepare derived values/handlers first, then return component JSX.
-    const friendsGoing = showtime.friends_going;
-    const friendsInterested = showtime.friends_interested;
-    const isMobile = useIsMobile();
-    // Render/output using the state and derived values prepared above.
-    return (
-        <Flex
-            ml={ isMobile ? 2 : 8}
-            flex="1"
-            flexDirection="column"
-            minW={0}
-        >
-            <Stack
-                gap={ isMobile ? 0 : 2}
-                direction={isMobile ? "column" : "row"}
-                align={ isMobile ? "flex-start" : "center"}
-            >
-            {/* <Flex gap={2} */}
-                <MovieTitle title={showtime.movie.title} />
-                <CinemaBadge cinema={showtime.cinema} />
-            {/* </Flex> */}
-            </Stack>
-            <Flex flex="1">
-                <FriendBadges friends={friendsGoing} goingStatus="GOING"/>
-                <FriendBadges friends={friendsInterested} goingStatus="INTERESTED"/>
-            </Flex>
-        </Flex>
-    )
+export default function ShowtimeInfoBox({ showtime }: ShowtimeInfoBoxProps) {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
+  const friendsGoing = showtime.friends_going
+  const friendsInterested = showtime.friends_interested
+  const isMobile = useIsMobile()
+  // Render/output using the state and derived values prepared above.
+  return (
+    <Flex ml={isMobile ? 2 : 8} flex="1" flexDirection="column" minW={0}>
+      <Stack
+        gap={isMobile ? 0 : 2}
+        direction={isMobile ? "column" : "row"}
+        align={isMobile ? "flex-start" : "center"}
+      >
+        {/* <Flex gap={2} */}
+        <MovieTitle title={showtime.movie.title} />
+        <CinemaBadge cinema={showtime.cinema} />
+        {/* </Flex> */}
+      </Stack>
+      <Flex flex="1">
+        <FriendBadges friends={friendsGoing} goingStatus="GOING" />
+        <FriendBadges friends={friendsInterested} goingStatus="INTERESTED" />
+      </Flex>
+    </Flex>
+  )
 }

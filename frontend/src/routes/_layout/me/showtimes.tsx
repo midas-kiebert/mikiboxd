@@ -1,10 +1,10 @@
+import MyShowtimesPage from "@/components/Showtimes/MyShowtimesPage"
 /**
  * TanStack Router route module for me / showtimes. It connects URL state to the matching page component.
  */
-import { createFileRoute, } from "@tanstack/react-router";
-import MyShowtimesPage from "@/components/Showtimes/MyShowtimesPage";
+import { createFileRoute } from "@tanstack/react-router"
 
 //@ts-ignore
 export const Route = createFileRoute("/_layout/me/showtimes")({
-    component: MyShowtimesPage,
-});
+  component: MyShowtimesPage,
+})

@@ -1,3 +1,5 @@
+import { SIDEBAR_WIDTH } from "@/constants"
+import { TOPBAR_HEIGHT } from "@/constants"
 /**
  * Shared web layout/presentation component: Top Bar.
  */
@@ -7,7 +9,7 @@ import { ReactNode } from "react";
 import { TOPBAR_HEIGHT, PAGE_NOTICE_BANNER_OFFSET_CSS_VAR } from "@/constants";
 
 interface Props {
-    children?: ReactNode | null;
+  children?: ReactNode | null
 }
 
 
@@ -34,4 +36,4 @@ const TopBar = ({ children } : Props) => {
     );
 }
 
-export default TopBar;
+export default TopBar

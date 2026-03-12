@@ -7,16 +7,14 @@ import {
   createFileRoute,
   redirect,
 } from "@tanstack/react-router"
+import { useNavigate } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
 import { FiLock, FiUser } from "react-icons/fi"
-import { useNavigate } from "@tanstack/react-router"
 
-import type { UserRegister } from "shared"
 import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { PasswordInput } from "@/components/ui/password-input"
-import useAuth, { isLoggedIn } from "shared/hooks/useAuth"
 import {
   confirmPasswordRules,
   emailPattern,
@@ -24,6 +22,8 @@ import {
   usernameMaxLength,
   usernamePattern,
 } from "@/utils"
+import type { UserRegister } from "shared"
+import useAuth, { isLoggedIn } from "shared/hooks/useAuth"
 import Logo from "/assets/images/mikino-logo.png"
 
 export const Route = createFileRoute("/signup")({
@@ -47,7 +47,7 @@ function SignUp() {
   // Data hooks keep this module synced with backend data and shared cache state.
   const { signUpMutation } = useAuth(
     () => navigate({ to: "/login" }), // onSignUpSuccess
-    () => navigate({ to: "/login" }) // onLogout
+    () => navigate({ to: "/login" }), // onLogout
   )
   const {
     register,

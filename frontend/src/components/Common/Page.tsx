@@ -1,3 +1,6 @@
+import { SIDEBAR_WIDTH } from "@/constants"
+import { TOPBAR_HEIGHT } from "@/constants"
+import { useIsMobile } from "@/hooks/useIsMobile"
 /**
  * Shared web layout/presentation component: Page.
  */
@@ -8,15 +11,23 @@ import { TOPBAR_HEIGHT } from "@/constants";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 interface Props {
-    children: ReactNode;
-    sidebarWidth?: number;
-    topbarHeight?: number;
+  children: ReactNode
+  sidebarWidth?: number
+  topbarHeight?: number
 }
 
-const Page = ({ children, sidebarWidth = SIDEBAR_WIDTH, topbarHeight = TOPBAR_HEIGHT } : Props) => {
+const Page = ({
+  children,
+  sidebarWidth = SIDEBAR_WIDTH,
+  topbarHeight = TOPBAR_HEIGHT,
+}: Props) => {
+  // Read flow: prepare derived values/handlers first, then return component JSX.
+  const isMobile = useIsMobile()
 
-    // Read flow: prepare derived values/handlers first, then return component JSX.
-    const isMobile = useIsMobile();
+  if (isMobile) {
+    sidebarWidth = 0
+    topbarHeight = 50
+  }
 
 
     if (isMobile) {
@@ -40,4 +51,4 @@ const Page = ({ children, sidebarWidth = SIDEBAR_WIDTH, topbarHeight = TOPBAR_HE
     );
 }
 
-export default Page;
+export default Page

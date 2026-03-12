@@ -1,72 +1,60 @@
+import { useIsMobile } from "@/hooks/useIsMobile"
 /**
  * Showtimes feature component: Datetime Card.
  */
-import { Text, VStack } from "@chakra-ui/react";
+import { Text, VStack } from "@chakra-ui/react"
 import days from "dayjs"
-import type { ShowtimeLoggedIn } from "shared";
-import { useIsMobile } from "@/hooks/useIsMobile";
-
+import type { ShowtimeLoggedIn } from "shared"
 
 type DatetimeCardProps = {
-    showtime: ShowtimeLoggedIn;
+  showtime: ShowtimeLoggedIn
 }
 
 const DatetimeCard = ({ showtime }: DatetimeCardProps) => {
-    // Read flow: prepare derived values/handlers first, then return component JSX.
-    const datetime = new Date(showtime.datetime);
-    const day = days(datetime).format('D');
-    const month = days(datetime).format('MMMM');
-    const time = days(datetime).format('HH:mm');
-    const weekday = days(datetime).format('ddd');
+  // Read flow: prepare derived values/handlers first, then return component JSX.
+  const datetime = new Date(showtime.datetime)
+  const day = days(datetime).format("D")
+  const month = days(datetime).format("MMMM")
+  const time = days(datetime).format("HH:mm")
+  const weekday = days(datetime).format("ddd")
 
-    const isMobile = useIsMobile();
+  const isMobile = useIsMobile()
 
-    const width = isMobile ? "60px" : "80px";
+  const width = isMobile ? "60px" : "80px"
 
-
-
-    // Render/output using the state and derived values prepared above.
-    return (
-        <VStack
-            gap={0}
-            align="center"
-            justify="center"
-            width={width}
-            height="100%"
-        >
-            <Text
-                fontSize={ isMobile ? "2xs" : "xs"}
-                color="gray.500"
-                textTransform="uppercase"
-                lineHeight={"3"}
-            >
-                {weekday}
-            </Text>
-            <Text
-                fontSize={ isMobile ? "2xl" : "3xl"}
-                fontWeight="bold"
-                lineHeight={"0.7"}
-                color="green.700"
-            >
-                {day}
-            </Text>
-            <Text
-                fontSize={isMobile ? '2xs' : 'xs'}
-                color="gray.600"
-            >
-                {month}
-            </Text>
-            <Text
-                fontSize={ isMobile ? "sm" : "xl"}
-                color="gray.800"
-                fontWeight="semibold"
-                lineHeight={"1.2"}
-                fontFamily={"monospace"}
-            >
-                {time}
-            </Text>
-        </VStack>
-    );
+  // Render/output using the state and derived values prepared above.
+  return (
+    <VStack gap={0} align="center" justify="center" width={width} height="100%">
+      <Text
+        fontSize={isMobile ? "2xs" : "xs"}
+        color="gray.500"
+        textTransform="uppercase"
+        lineHeight={"3"}
+      >
+        {weekday}
+      </Text>
+      <Text
+        fontSize={isMobile ? "2xl" : "3xl"}
+        fontWeight="bold"
+        lineHeight={"0.7"}
+        color="green.700"
+      >
+        {day}
+      </Text>
+      <Text fontSize={isMobile ? "2xs" : "xs"} color="gray.600">
+        {month}
+      </Text>
+      <Text
+        fontSize={isMobile ? "sm" : "xl"}
+        color="gray.800"
+        fontWeight="semibold"
+        lineHeight={"1.2"}
+        fontFamily={"monospace"}
+      >
+        {time}
+      </Text>
+    </VStack>
+  )
 }
 
-export default DatetimeCard;
+export default DatetimeCard

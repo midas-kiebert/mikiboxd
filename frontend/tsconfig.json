@@ -24,7 +24,14 @@
       "shared/*": ["../shared/*"]
     }
   },
-  "include": ["src/**/*", "tests/**/*.ts", "playwright.config.ts", "../shared/**/*.ts", "../shared/**/*.d.ts", "../shared/**/*.tsx"],
+  "include": [
+    "src/**/*",
+    "tests/**/*.ts",
+    "playwright.config.ts",
+    "../shared/**/*.ts",
+    "../shared/**/*.d.ts",
+    "../shared/**/*.tsx"
+  ],
   "references": [
     {
       "path": "./tsconfig.node.json"

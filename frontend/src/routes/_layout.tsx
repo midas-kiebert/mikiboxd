@@ -4,10 +4,9 @@
 import { Flex } from "@chakra-ui/react"
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router"
 
+import BottomNavBar from "@/components/Common/BottomNavBar"
 // import Navbar from "@/components/Common/Navbar"
 import Sidebar from "@/components/Common/Sidebar"
-import { isLoggedIn } from "shared/hooks/useAuth"
-import { Box } from "@chakra-ui/react"
 import { useIsMobile } from "@/hooks/useIsMobile"
 import BottomNavBar from "@/components/Common/BottomNavBar"
 import { PAGE_NOTICE_BANNER_OFFSET_CSS_VAR } from "@/constants"
@@ -28,22 +27,19 @@ function Layout() {
   const isMobile = useIsMobile();
   const pageNoticeOffset = `var(${PAGE_NOTICE_BANNER_OFFSET_CSS_VAR}, 0px)`
 
-  const height = isMobile ? "calc(100% - 60px)" : "100%";
+  const height = isMobile ? "calc(100% - 60px)" : "100%"
 
   // Render/output using the state and derived values prepared above.
   return (
     <Flex direction="column" height={`calc(100vh - ${pageNoticeOffset})`} mt={pageNoticeOffset}>
       {/* <Navbar /> */}
       <Flex flex="1">
-        {isMobile
-          ? <BottomNavBar />
-          : <Sidebar />
-        }
+        {isMobile ? <BottomNavBar /> : <Sidebar />}
         <Box
           flex="1"
           px={2}
           height={height}
-          mb={ isMobile ? "60px" : "0px"}
+          mb={isMobile ? "60px" : "0px"}
           overflowY={"auto"}
         >
           <Outlet />

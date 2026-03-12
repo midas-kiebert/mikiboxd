@@ -1,39 +1,38 @@
+import Badge from "@/components/Common/Badge"
 /**
  * Single-movie detail feature component: Movie Links.
  */
-import { HStack } from '@chakra-ui/react';
-import Badge from '@/components/Common/Badge';
+import { HStack } from "@chakra-ui/react"
 
 type MovieLinksProps = {
-  imdb?: string;
-  letterboxd?: string;
-};
+  imdb?: string
+  letterboxd?: string
+}
 
 export default function MovieLinks({ imdb, letterboxd }: MovieLinksProps) {
-    // Read flow: prepare derived values/handlers first, then return component JSX.
-    return (
-        <HStack gap={1} my={2}>
-            {letterboxd &&
-                <Badge
-                    text={"Letterboxd"}
-                    bgColor="gray.700"
-                    textColor="white"
-                    hoverColor="gray.800"
-                    textSize="9px"
-                    url={letterboxd}
-                />
-            }
-            {imdb &&
-                <Badge
-                text={"IMDB"}
-                bgColor="gray.700"
-                textColor="white"
-                hoverColor="gray.800"
-                textSize="9px"
-                url={imdb}
-            />
-            }
-        </HStack>
-    )
-
+  // Read flow: prepare derived values/handlers first, then return component JSX.
+  return (
+    <HStack gap={1} my={2}>
+      {letterboxd && (
+        <Badge
+          text={"Letterboxd"}
+          bgColor="gray.700"
+          textColor="white"
+          hoverColor="gray.800"
+          textSize="9px"
+          url={letterboxd}
+        />
+      )}
+      {imdb && (
+        <Badge
+          text={"IMDB"}
+          bgColor="gray.700"
+          textColor="white"
+          hoverColor="gray.800"
+          textSize="9px"
+          url={imdb}
+        />
+      )}
+    </HStack>
+  )
 }

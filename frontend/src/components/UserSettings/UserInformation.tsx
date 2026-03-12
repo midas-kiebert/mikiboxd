@@ -14,14 +14,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { type SubmitHandler, useForm } from "react-hook-form"
 
-import {
-  type ApiError,
-  type UserUpdate,
-  MeService,
-} from "shared"
-import useAuth from "shared/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
-import { emailPattern, handleError, usernameMaxLength, usernamePattern } from "@/utils"
+import {
+  emailPattern,
+  handleError,
+  usernameMaxLength,
+  usernamePattern,
+} from "@/utils"
+import { type ApiError, MeService, type UserUpdate } from "shared"
+import useAuth from "shared/hooks/useAuth"
 import { Field } from "../ui/field"
 
 const UserInformation = () => {
@@ -79,7 +80,8 @@ const UserInformation = () => {
     const normalizedUsername = value?.trim() ?? ""
     const normalizedCurrentUsername = currentUser?.display_name?.trim() ?? ""
     const isUsernameChanged =
-      normalizedUsername.toLowerCase() !== normalizedCurrentUsername.toLowerCase()
+      normalizedUsername.toLowerCase() !==
+      normalizedCurrentUsername.toLowerCase()
     if (!isUsernameChanged || !normalizedUsername) {
       return true
     }
@@ -153,7 +155,7 @@ const UserInformation = () => {
           >
             {editMode ? (
               <Input
-              {...register("letterboxd_username")}
+                {...register("letterboxd_username")}
                 type="text"
                 size="md"
               />

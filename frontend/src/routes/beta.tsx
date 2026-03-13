@@ -2,7 +2,7 @@ import { Button, Center, Flex, Input, Link, Text } from "@chakra-ui/react"
 import { type FormEvent, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import useCustomToast from "@/hooks/useCustomToast"
-import { type ApiError, UtilsService } from "shared"
+import { ApiError, UtilsService } from "shared"
 
 export const Route = createFileRoute("/beta" as never)({
   component: BetaInstallPage,

@@ -111,6 +111,8 @@ import type {
   UsersGetUserResponse,
   UsersGetUserSelectedShowtimesData,
   UsersGetUserSelectedShowtimesResponse,
+  UtilsRequestAndroidBetaData,
+  UtilsRequestAndroidBetaResponse,
   UtilsTestEmailData,
   UtilsTestEmailResponse,
   UtilsHealthCheckResponse,
@@ -1486,6 +1488,28 @@ export class UsersService {
 }
 
 export class UtilsService {
+  /**
+   * Request Android Beta
+   * Request access to the Android beta.
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static requestAndroidBeta(
+    data: UtilsRequestAndroidBetaData,
+  ): CancelablePromise<UtilsRequestAndroidBetaResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/utils/android-beta-request/",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
   /**
    * Test Email
    * Test emails.

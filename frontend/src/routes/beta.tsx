@@ -1,6 +1,7 @@
 import { Button, Center, Flex, Input, Link, Text } from "@chakra-ui/react"
 import { type FormEvent, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
+import useCustomToast from "@/hooks/useCustomToast"
 
 export const Route = createFileRoute("/beta" as never)({
   component: BetaInstallPage,
@@ -8,17 +9,40 @@ export const Route = createFileRoute("/beta" as never)({
 
 function BetaInstallPage() {
   const [googlePlayEmail, setGooglePlayEmail] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { showSuccessToast, showErrorToast } = useCustomToast()
 
-  const handleAndroidSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleAndroidSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const trimmedEmail = googlePlayEmail.trim()
     if (!trimmedEmail) return
 
-    const subject = encodeURIComponent("Android Beta Invite")
-    const body = encodeURIComponent(
-      `Google Play account email: ${trimmedEmail}`,
-    )
-    window.location.href = `mailto:android-beta@mikino.nl?subject=${subject}&body=${body}`
+    setIsSubmitting(true)
+    try {
+      const response = await fetch("/api/v1/utils/android-beta-request/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          google_play_email: trimmedEmail,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as {
+          detail?: string
+        }
+        throw new Error(data.detail || "Could not submit Android beta request.")
+      }
+
+      showSuccessToast("Android beta request submitted successfully.")
+      setGooglePlayEmail("")
+    } catch (err) {
+      showErrorToast(err instanceof Error ? err.message : "Could not submit request.")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -78,22 +102,23 @@ function BetaInstallPage() {
               placeholder="you@googleaccount.com"
               required
               mb={3}
+              disabled={isSubmitting}
             />
-            <Button colorScheme="blue" type="submit">
+            <Button colorScheme="blue" type="submit" loading={isSubmitting}>
               Submit
             </Button>
           </Flex>
         </form>
         <Text>
-          After being accepted, you can install the app via
+          After being accepted, you can install the app via{" "}
           <Link
-              href="https://play.google.com/store/apps/details?id=com.midaskiebert.mikino"
-              target="_blank"
-              rel="noopener noreferrer"
-              color="blue.500"
-            >
-              https://play.google.com/store/apps/details?id=com.midaskiebert.mikino
-            </Link>
+            href="https://play.google.com/store/apps/details?id=com.midaskiebert.mikino"
+            target="_blank"
+            rel="noopener noreferrer"
+            color="blue.500"
+          >
+            https://play.google.com/store/apps/details?id=com.midaskiebert.mikino
+          </Link>
         </Text>
       </Flex>
     </Center>

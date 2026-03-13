@@ -48,7 +48,7 @@ def request_android_beta(request: AndroidBetaRequest) -> Message:
     )
     try:
         send_email(
-            email_to="android-beta@mikino.nl",
+            email_to="android-beta@midaskiebert.nl",
             subject=subject,
             html_content=html_content,
         )

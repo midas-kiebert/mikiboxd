@@ -1,4 +1,5 @@
-import { Center, Flex, Link, Text } from "@chakra-ui/react"
+import { Button, Center, Flex, Input, Link, Text } from "@chakra-ui/react"
+import { type FormEvent, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/beta" as never)({
@@ -6,6 +7,20 @@ export const Route = createFileRoute("/beta" as never)({
 })
 
 function BetaInstallPage() {
+  const [googlePlayEmail, setGooglePlayEmail] = useState("")
+
+  const handleAndroidSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const trimmedEmail = googlePlayEmail.trim()
+    if (!trimmedEmail) return
+
+    const subject = encodeURIComponent("Android Beta Invite")
+    const body = encodeURIComponent(
+      `Google Play account email: ${trimmedEmail}`,
+    )
+    window.location.href = `mailto:android-beta@mikino.nl?subject=${subject}&body=${body}`
+  }
+
   return (
     <Center minH="100vh" px={4}>
       <Flex
@@ -46,20 +61,40 @@ function BetaInstallPage() {
         </ol>
 
         <Text fontWeight="bold">Android:</Text>
-        <ol style={{ marginTop: "0", paddingLeft: "1.25rem" }}>
-          <li>
-            Send an email to{" "}
-            <Link
-              href="mailto:android-beta@mikino.nl"
+        <Text>
+          Enter the email address of the Google account you use in Google Play and
+          submit to request access.
+        </Text>
+
+        <form
+          onSubmit={handleAndroidSubmit}
+          style={{ width: "100%" }}
+        >
+          <Flex direction="column" w="100%">
+            <Input
+              type="email"
+              value={googlePlayEmail}
+              onChange={(event) => setGooglePlayEmail(event.target.value)}
+              placeholder="you@googleaccount.com"
+              required
+              mb={3}
+            />
+            <Button colorScheme="blue" type="submit">
+              Submit
+            </Button>
+          </Flex>
+        </form>
+        <Text>
+          After being accepted, you can install the app via
+          <Link
+              href="https://play.google.com/store/apps/details?id=com.midaskiebert.mikino"
               target="_blank"
               rel="noopener noreferrer"
               color="blue.500"
             >
-              android-beta@mikino.nl
-            </Link>{" "}
-            with the email address you use in Google Play.
-          </li>
-        </ol>
+              https://play.google.com/store/apps/details?id=com.midaskiebert.mikino
+            </Link>
+        </Text>
       </Flex>
     </Center>
   )

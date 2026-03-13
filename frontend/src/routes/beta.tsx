@@ -2,6 +2,7 @@ import { Button, Center, Flex, Input, Link, Text } from "@chakra-ui/react"
 import { type FormEvent, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import useCustomToast from "@/hooks/useCustomToast"
+import { type ApiError, UtilsService } from "shared"
 
 export const Route = createFileRoute("/beta" as never)({
   component: BetaInstallPage,
@@ -19,27 +20,28 @@ function BetaInstallPage() {
 
     setIsSubmitting(true)
     try {
-      const response = await fetch("/api/v1/utils/android-beta-request/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      await UtilsService.requestAndroidBeta({
+        requestBody: {
           google_play_email: trimmedEmail,
-        }),
+        },
       })
-
-      if (!response.ok) {
-        const data = (await response.json().catch(() => ({}))) as {
-          detail?: string
-        }
-        throw new Error(data.detail || "Could not submit Android beta request.")
-      }
-
       showSuccessToast("Android beta request submitted successfully.")
       setGooglePlayEmail("")
     } catch (err) {
-      showErrorToast(err instanceof Error ? err.message : "Could not submit request.")
+      if (
+        err instanceof ApiError &&
+        typeof err.body === "object" &&
+        err.body !== null &&
+        "detail" in err.body &&
+        typeof (err.body as { detail?: string }).detail === "string"
+      ) {
+        showErrorToast((err.body as { detail: string }).detail)
+        return
+      }
+
+      showErrorToast(
+        err instanceof Error ? err.message : "Could not submit request.",
+      )
     } finally {
       setIsSubmitting(false)
     }

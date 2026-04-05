@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from pydantic import field_validator
 from sqlmodel import Field, Relationship, SQLModel
 
-from app.core.cinema_seating import (
+from app.validators.cinema_seating import (
     DEFAULT_CINEMA_SEATING_PRESET,
     normalize_cinema_seating_preset,
 )

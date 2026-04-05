@@ -9,11 +9,6 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
 from app.core.enums import FilterPresetScope, ShowtimePingSort
-from app.core.username import (
-    USERNAME_VALIDATION_MESSAGE,
-    is_valid_username,
-    normalize_username,
-)
 from app.crud import cinema as cinemas_crud
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import filter_preset as filter_presets_crud
@@ -42,6 +37,11 @@ from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe
 from app.utils import now_amsterdam_naive
+from app.validators.username import (
+    USERNAME_VALIDATION_MESSAGE,
+    is_valid_username,
+    normalize_username,
+)
 
 logger = getLogger(__name__)
 

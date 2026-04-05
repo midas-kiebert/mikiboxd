@@ -13,7 +13,6 @@ from factory import (
 from factory.alchemy import SQLAlchemyModelFactory
 from sqlmodel import Session
 
-from app.core.cinema_seating import DEFAULT_CINEMA_SEATING_PRESET
 from app.core.security import get_password_hash
 from app.models.cinema import Cinema, CinemaCreate
 from app.models.city import City, CityCreate
@@ -27,6 +26,7 @@ from app.schemas.city import CityPublic
 from app.schemas.movie import MovieSummaryLoggedIn
 from app.schemas.showtime import ShowtimeInMovieLoggedIn
 from app.schemas.user import UserPublic
+from app.validators.cinema_seating import DEFAULT_CINEMA_SEATING_PRESET
 
 __all__ = [
     "city_create_factory",

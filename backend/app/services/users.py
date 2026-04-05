@@ -6,11 +6,6 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
-from app.core.username import (
-    USERNAME_VALIDATION_MESSAGE,
-    is_valid_username,
-    normalize_username,
-)
 from app.crud import cinema as cinemas_crud
 from app.crud import friendship as friendship_crud
 from app.crud import user as users_crud
@@ -26,6 +21,11 @@ from app.inputs.movie import Filters
 from app.models.user import UserCreate, UserRegister
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.user import UserPublic, UserWithFriendStatus
+from app.validators.username import (
+    USERNAME_VALIDATION_MESSAGE,
+    is_valid_username,
+    normalize_username,
+)
 
 
 def get_user(

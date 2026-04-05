@@ -1,8 +1,25 @@
+"""Application-wide enumerations.
+
+All enums inherit from `str` so that their values serialize directly to strings
+in JSON responses and can be used as string values in SQLAlchemy columns —
+without any extra conversion step.
+
+Using enums instead of plain strings for status fields gives you:
+  - A closed set of valid values (typos are caught at runtime or by type checkers)
+  - IDE autocompletion
+  - A single source of truth — change the enum, the change propagates everywhere
+"""
+
 from enum import Enum, unique
 
 
 @unique
 class GoingStatus(str, Enum):
+    """Whether a user intends to attend a showtime.
+
+    Stored on ShowtimeSelection rows and used in visibility calculations.
+    """
+
     GOING = "GOING"
     NOT_GOING = "NOT_GOING"
     INTERESTED = "INTERESTED"
@@ -10,6 +27,13 @@ class GoingStatus(str, Enum):
 
 @unique
 class TimeOfDay(str, Enum):
+    """Coarse time-of-day bucket used for showtime filtering.
+
+    Showtimes are bucketed into one of these values based on their start time,
+    allowing users to filter by "evening showings" etc. without specifying exact
+    hour ranges.
+    """
+
     MORNING = "MORNING"
     AFTERNOON = "AFTERNOON"
     EVENING = "EVENING"
@@ -18,17 +42,23 @@ class TimeOfDay(str, Enum):
 
 @unique
 class FilterPresetScope(str, Enum):
+    """Whether a saved filter preset applies to the movies list or showtimes list."""
+
     SHOWTIMES = "SHOWTIMES"
     MOVIES = "MOVIES"
 
 
 @unique
 class NotificationChannel(str, Enum):
-    PUSH = "push"
+    """The delivery mechanism for a notification sent to a user."""
+
+    PUSH = "push"   # Mobile push notification via FCM
     EMAIL = "email"
 
 
 @unique
 class ShowtimePingSort(str, Enum):
-    PING_CREATED_AT = "ping_created_at"
-    SHOWTIME_DATETIME = "showtime_datetime"
+    """Sort order options for the pings list endpoint."""
+
+    PING_CREATED_AT = "ping_created_at"      # Most recently sent pings first
+    SHOWTIME_DATETIME = "showtime_datetime"  # Soonest showtime first

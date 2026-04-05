@@ -6,11 +6,6 @@ from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
-from app.core.cinema_seating import (
-    CinemaSeatingPreset,
-    normalize_cinema_seating_preset,
-    validate_seat_for_preset,
-)
 from app.core.enums import GoingStatus
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import friend_group as friend_groups_crud
@@ -38,6 +33,11 @@ from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_visibility import ShowtimeVisibilityPublic
 from app.services import push_notifications
 from app.utils import now_amsterdam_naive
+from app.validators.cinema_seating import (
+    CinemaSeatingPreset,
+    normalize_cinema_seating_preset,
+    validate_seat_for_preset,
+)
 
 
 def _apply_upsert_update(

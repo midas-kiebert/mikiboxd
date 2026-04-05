@@ -1,9 +1,25 @@
+"""Database engine and initialization.
+
+This module creates the SQLAlchemy engine (the connection pool to PostgreSQL)
+and exposes `init_db`, which seeds the first superuser on a fresh installation.
+
+The engine is a module-level singleton — it is created once when the application
+starts and reused for the lifetime of the process. SQLModel sessions are opened
+per-request via the `get_db` dependency in `api/deps.py`.
+
+The test engine (`test_engine`) points at a separate `<db>_test` database and
+is only intended to be used by the test suite. It shares the same pool settings
+as the main engine.
+"""
+
 from sqlmodel import Session, create_engine, select
 
 from app.core.config import settings
 from app.crud import user as user_crud
 from app.models.user import User, UserCreate
 
+# Pool settings are read from config so they can be tuned per environment
+# without changing code. See config.py for explanations of each option.
 _engine_options = {
     "pool_size": settings.SQLALCHEMY_POOL_SIZE,
     "max_overflow": settings.SQLALCHEMY_MAX_OVERFLOW,
@@ -12,26 +28,30 @@ _engine_options = {
     "pool_pre_ping": settings.SQLALCHEMY_POOL_PRE_PING,
 }
 
+# Main application engine — connects to the primary database.
 engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI), **_engine_options)
+
+# Test engine — connects to a separate `<db>_test` database so tests never
+# touch production data. Only import this from test code (conftest.py).
 test_engine = create_engine(
     str(settings.SQLALCHEMY_DATABASE_URI_TEST), **_engine_options
 )
 
 
-# make sure all SQLModel models are imported (app.models) before initializing DB
-# otherwise, SQLModel might fail to initialize relationships properly
-# for more details: https://github.com/fastapi/full-stack-fastapi-template/issues/28
-
-
 def init_db(session: Session) -> None:
-    # Tables should be created with Alembic migrations
-    # But if you don't want to use migrations, create
-    # the tables un-commenting the next lines
-    # from sqlmodel import SQLModel
+    """Seed the database with required initial data on first startup.
 
-    # This works because the models are already imported and registered from app.models
-    # SQLModel.metadata.create_all(engine)
+    This is called by the prestart script before the application server launches.
+    It is safe to call multiple times — it checks for existence before creating.
 
+    Note: Tables must already exist (created by Alembic migrations) before this
+    function is called. This function only seeds *data*, not schema.
+
+    Args:
+        session: An open database session to use for queries and inserts.
+    """
+    # Create the superuser if it doesn't exist yet. The credentials come from
+    # FIRST_SUPERUSER and FIRST_SUPERUSER_PASSWORD in the environment.
     user = session.exec(
         select(User).where(User.email == settings.FIRST_SUPERUSER)
     ).first()
@@ -41,16 +61,6 @@ def init_db(session: Session) -> None:
             password=settings.FIRST_SUPERUSER_PASSWORD,
             is_superuser=True,
         )
-        user = user_crud.create_user(session=session, user_create=user_in)
-    test_user = session.exec(
-        select(User).where(User.email == settings.EMAIL_TEST_USER)
-    ).first()
-    if not test_user:
-        test_user_in = UserCreate(
-            email=settings.EMAIL_TEST_USER,
-            password=settings.FIRST_SUPERUSER_PASSWORD,
-            is_superuser=False,
-        )
-        test_user = user_crud.create_user(session=session, user_create=test_user_in)
+        user_crud.create_user(session=session, user_create=user_in)
 
     session.commit()

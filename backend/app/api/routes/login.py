@@ -9,17 +9,15 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core import security
 from app.core.config import settings
-from app.core.security import get_password_hash
-from app.crud import user as users_crud
-from app.models.auth_schemas import Message, NewPassword, Token
-from app.schemas.user import UserPublic
-from app.utils import (
-    EmailDeliveryError,
+from app.core.security import (
     generate_password_reset_token,
-    generate_reset_password_email,
-    send_email,
+    get_password_hash,
     verify_password_reset_token,
 )
+from app.crud import user as users_crud
+from app.email import EmailDeliveryError, generate_reset_password_email, send_email
+from app.models.auth_schemas import Message, NewPassword, Token
+from app.schemas.user import UserPublic
 
 router = APIRouter(tags=["login"])
 logger = logging.getLogger(__name__)

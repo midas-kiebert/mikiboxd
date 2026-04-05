@@ -75,3 +75,35 @@ def get_password_hash(password: str) -> str:
         A bcrypt hash string safe to store in the database.
     """
     return _pwd_context.hash(password)
+
+
+def generate_password_reset_token(email: str) -> str:
+    """Generate a short-lived JWT for use in password reset emails.
+
+    The token encodes the user's email as the `sub` claim and expires after
+    EMAIL_RESET_TOKEN_EXPIRE_HOURS hours.
+    """
+    delta = timedelta(hours=settings.EMAIL_RESET_TOKEN_EXPIRE_HOURS)
+    now = datetime.now(timezone.utc)
+    exp = (now + delta).timestamp()
+    return jwt.encode(
+        {"exp": exp, "nbf": now, "sub": email},
+        settings.SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+
+def verify_password_reset_token(token: str) -> str | None:
+    """Decode and validate a password reset token.
+
+    Returns:
+        The email address encoded in the token, or None if the token is
+        invalid or expired.
+    """
+    try:
+        decoded = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[ALGORITHM]
+        )
+        return str(decoded["sub"])
+    except jwt.exceptions.InvalidTokenError:
+        return None

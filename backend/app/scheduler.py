@@ -1,3 +1,13 @@
+"""Background job scheduler.
+
+Runs as a standalone blocking process (separate from the API server) and
+executes periodic tasks via APScheduler cron triggers.
+
+Usage:
+    uv run python -m app.scheduler
+"""
+
+import logging
 from logging import getLogger
 from zoneinfo import ZoneInfo
 
@@ -6,16 +16,26 @@ from apscheduler.schedulers.background import (  # type: ignore[import-untyped]
 )
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 
+logging.basicConfig(level=logging.INFO)
 logger = getLogger(__name__)
 
 
-def scrape_data():
+def _scrape_data() -> None:
+    """Run the nightly scrape — fetches showtimes for all cinemas and syncs them to the DB."""
     from app.scraping.runner import run
 
-    run()
+    try:
+        run()
+    except Exception:
+        logger.exception("Failed to run nightly scrape job")
 
 
-def send_interested_showtime_reminders():
+def _send_interested_showtime_reminders() -> None:
+    """Send push notifications for showtimes the user marked as interested in.
+
+    Runs every 15 minutes. Only logs when at least one notification was sent.
+    Errors are caught so a single failure does not stop the scheduler.
+    """
     from app.api.deps import get_db_context
     from app.services import push_notifications
 
@@ -33,12 +53,12 @@ def send_interested_showtime_reminders():
 if __name__ == "__main__":
     scheduler = BlockingScheduler()
     scheduler.add_job(
-        func=scrape_data,
+        func=_scrape_data,
         trigger=CronTrigger(hour=3, minute=0, timezone=ZoneInfo("Europe/Amsterdam")),
         id="nightly_scrape",
     )
     scheduler.add_job(
-        func=send_interested_showtime_reminders,
+        func=_send_interested_showtime_reminders,
         trigger=CronTrigger(minute="*/15", timezone=ZoneInfo("Europe/Amsterdam")),
         id="interested_showtime_reminders",
     )

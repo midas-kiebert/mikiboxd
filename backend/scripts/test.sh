@@ -39,7 +39,7 @@ if command -v docker >/dev/null 2>&1 && [ -f ../docker-compose.yml ]; then
 fi
 
 # Wait for database connectivity. Migrations for the test DB are applied in tests/conftest.py.
-"${PYTHON_BIN}" app/tests_pre_start.py
+"${PYTHON_BIN}" app/backend_pre_start.py
 
 "${COVERAGE_BIN}" run --source=app -m pytest "$@"
 "${COVERAGE_BIN}" report --show-missing

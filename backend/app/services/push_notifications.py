@@ -14,9 +14,10 @@ from app.crud import push_token as push_token_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
+from app.email import EmailDeliveryError, send_email
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
-from app.utils import EmailDeliveryError, now_amsterdam_naive, send_email
+from app.utils import now_amsterdam_naive
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 # Channel ID is versioned to recover from user-disabled/stale channel configs.

@@ -14,7 +14,7 @@ Legend:
 
 - [x] `config.py` — App settings (Pydantic Settings, env vars, DB/SMTP/auth config)
 - [x] `db.py` — Engine creation, connection pool, `init_db` seeding
-- [x] `security.py` — JWT creation, password hashing/verification
+- [x] `security.py` — JWT creation, password hashing/verification, password reset tokens (moved from `utils.py`)
 - [x] `enums.py` — App-wide enums (GoingStatus, TimeOfDay, etc.)
 
 ---
@@ -29,12 +29,12 @@ Legend:
 ## Backend — Entry Points & App Setup
 
 - [x] `main.py` — FastAPI app factory, middleware, Sentry, router mounting
-- [ ] `backend_pre_start.py` — Startup readiness check (waits for DB)
-- [ ] `initial_data.py` — Calls `init_db` to seed first superuser
-- [ ] `tests_pre_start.py` — Same readiness check but for the test DB
-- [ ] `scheduler.py` — APScheduler setup, registers scraping jobs
-- [ ] `utils.py` — Miscellaneous helpers (email sending, etc.)
-- [ ] `logging_/logger.py` — Loguru configuration
+- [x] `backend_pre_start.py` — Startup readiness check (waits for DB)
+- [x] `initial_data.py` — Calls `init_db` to seed first superuser
+- [x] `scheduler.py` — APScheduler setup, registers scraping jobs
+- [x] `utils.py` — Generic helpers (`now_amsterdam_naive`, `to_amsterdam_time`, `clean_title`)
+- [x] `email.py` — Email sending and template rendering (split out of `utils.py`)
+- ~~`logging_/logger.py`~~ — deleted (loguru removed, stdlib logging used throughout)
 
 ---
 

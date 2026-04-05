@@ -6,9 +6,9 @@ from sqlmodel import Field, SQLModel
 
 from app.api.deps import SessionDep, get_current_active_superuser
 from app.core.config import settings
+from app.email import EmailDeliveryError, generate_test_email, send_email
 from app.models.auth_schemas import Message
 from app.scraping.tmdb_runtime import upsert_tmdb_lookup_cache_entry
-from app.utils import EmailDeliveryError, generate_test_email, send_email
 
 router = APIRouter(prefix="/utils", tags=["utils"])
 logger = logging.getLogger(__name__)

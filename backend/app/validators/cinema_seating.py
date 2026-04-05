@@ -5,21 +5,20 @@ while others use row letters (A, B, C). This module defines the known seating
 formats as an enum and provides validation to ensure that a seat entered by the
 user actually matches the format the cinema uses.
 
+The seating preset for each cinema is configured in:
+    backend/data/cinemas.yaml
+
 Example:
-    A cinema with ROW_LETTER_SEAT_NUMBER seating expects input like row="B",
-    seat="12". Entering row="2" would be rejected because "2" is a number, not a
-    letter, so it doesn't fit the expected format for that cinema.
+    A cinema with LETTER_NUMBER seating expects input like row="B", seat="12".
+    Entering row="2" would be rejected because "2" is a number, not a letter.
 """
 
 import re
-from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
 
 __all__ = [
     "CinemaSeatingPreset",
-    "DEFAULT_CINEMA_SEATING_PRESET",
-    "CINEMA_SEATING_PRESET_NAMES",
-    "normalize_cinema_seating_preset",
     "validate_seat_for_preset",
 ]
 
@@ -27,77 +26,74 @@ __all__ = [
 class CinemaSeatingPreset(str, Enum):
     """The seat labelling format used by a cinema.
 
-    Each value describes how the row and seat are identified:
-      - UNKNOWN:                Row and seat can be a letter or 1-2 digits (flexible).
-      - FREE:                   No assigned seating — no row/seat input allowed.
-      - ROW_NUMBER_SEAT_NUMBER: Row is 1-2 digits, seat is 1-2 digits. E.g. row=3, seat=12.
-      - ROW_LETTER_SEAT_NUMBER: Row is a letter, seat is 1-2 digits. E.g. row=B, seat=12.
-      - ROW_NUMBER_SEAT_LETTER: Row is 1-2 digits, seat is a letter. E.g. row=3, seat=C.
-      - ROW_LETTER_SEAT_LETTER: Row is a letter, seat is a letter. E.g. row=B, seat=C.
+    The value encodes the format as "{row_type}-{seat_type}". For assigned-seating
+    presets, the type is either "number" (1-2 digits) or "letter" (a single letter).
+
+    Values:
+      - unknown:        Row and seat can be a letter or 1-2 digits (flexible default).
+      - free:           No assigned seating — no row/seat input allowed.
+      - number-number:  Row is 1-2 digits, seat is 1-2 digits. E.g. row=3, seat=12.
+      - letter-number:  Row is a letter, seat is 1-2 digits. E.g. row=B, seat=12.
+      - number-letter:  Row is 1-2 digits, seat is a letter. E.g. row=3, seat=C.
+      - letter-letter:  Row is a letter, seat is a letter. E.g. row=B, seat=C.
     """
 
     UNKNOWN = "unknown"
     FREE = "free"
-    ROW_NUMBER_SEAT_NUMBER = "row-number-seat-number"
-    ROW_LETTER_SEAT_NUMBER = "row-letter-seat-number"
-    ROW_NUMBER_SEAT_LETTER = "row-number-seat-letter"
-    ROW_LETTER_SEAT_LETTER = "row-letter-seat-letter"
+    NUMBER_NUMBER = "number-number"
+    LETTER_NUMBER = "letter-number"
+    NUMBER_LETTER = "number-letter"
+    LETTER_LETTER = "letter-letter"
 
-
-DEFAULT_CINEMA_SEATING_PRESET = CinemaSeatingPreset.UNKNOWN.value
-CINEMA_SEATING_PRESET_NAMES = tuple(preset.value for preset in CinemaSeatingPreset)
 
 # ---------------------------------------------------------------------------
-# Private validators — each returns True if the value matches the expected format
+# Private helpers
 # ---------------------------------------------------------------------------
 
-_ONE_LETTER_PATTERN = re.compile(r"^[A-Za-z]$")
-_ONE_OR_TWO_DIGITS_PATTERN = re.compile(r"^\d{1,2}$")
+@dataclass(frozen=True)
+class _FieldRule:
+    """A seat field validator: holds a regex pattern and a human-readable description."""
+
+    pattern: re.Pattern[str]
+    description: str
+
+    def matches(self, value: str | None) -> bool:
+        return value is not None and bool(self.pattern.fullmatch(value))
 
 
-def _matches_number(value: str | None) -> bool:
-    return value is not None and bool(_ONE_OR_TWO_DIGITS_PATTERN.fullmatch(value))
+_NUMBER = _FieldRule(pattern=re.compile(r"^\d{1,2}$"), description="1-2 digits")
+_LETTER = _FieldRule(pattern=re.compile(r"^[A-Za-z]$"), description="a single letter")
+
+_FIELD_RULES: dict[str, _FieldRule] = {
+    "number": _NUMBER,
+    "letter": _LETTER,
+}
 
 
-def _matches_letter(value: str | None) -> bool:
-    return value is not None and bool(_ONE_LETTER_PATTERN.fullmatch(value))
+@dataclass(frozen=True)
+class _PresetRule:
+    """The row and seat rules for a specific seating preset."""
+
+    row: _FieldRule
+    seat: _FieldRule
+
+    @classmethod
+    def from_preset(cls, preset: CinemaSeatingPreset) -> "_PresetRule":
+        """Derive the row and seat rules from the preset's value string.
+
+        The preset value encodes the format as "{row_type}-{seat_type}", so we
+        can split on "-" to get the two field types and look up their rules.
+        Only valid for assigned-seating presets (not UNKNOWN or FREE).
+        """
+        row_type, seat_type = preset.value.split("-")
+        return cls(row=_FIELD_RULES[row_type], seat=_FIELD_RULES[seat_type])
 
 
 def _matches_unknown(value: str | None) -> bool:
     """Accept None, a single letter, or 1-2 digits (the flexible 'unknown' format)."""
     if value is None:
         return True
-    return _matches_letter(value) or _matches_number(value)
-
-
-# ---------------------------------------------------------------------------
-# Preset validation rules
-#
-# Maps each preset to (row_validator, row_description, seat_validator, seat_description).
-# Used by validate_seat_for_preset to check input without repeating the same
-# if/raise pattern for every preset.
-# ---------------------------------------------------------------------------
-
-_Validator = Callable[[str | None], bool]
-
-_PRESET_RULES: dict[str, tuple[_Validator, str, _Validator, str]] = {
-    CinemaSeatingPreset.ROW_NUMBER_SEAT_NUMBER.value: (
-        _matches_number, "1-2 digits",
-        _matches_number, "1-2 digits",
-    ),
-    CinemaSeatingPreset.ROW_LETTER_SEAT_NUMBER.value: (
-        _matches_letter, "a single letter",
-        _matches_number, "1-2 digits",
-    ),
-    CinemaSeatingPreset.ROW_NUMBER_SEAT_LETTER.value: (
-        _matches_number, "1-2 digits",
-        _matches_letter, "a single letter",
-    ),
-    CinemaSeatingPreset.ROW_LETTER_SEAT_LETTER.value: (
-        _matches_letter, "a single letter",
-        _matches_letter, "a single letter",
-    ),
-}
+    return _LETTER.matches(value) or _NUMBER.matches(value)
 
 
 # ---------------------------------------------------------------------------
@@ -105,43 +101,9 @@ _PRESET_RULES: dict[str, tuple[_Validator, str, _Validator, str]] = {
 # ---------------------------------------------------------------------------
 
 
-def normalize_cinema_seating_preset(
-    value: str | CinemaSeatingPreset | None,
-) -> str:
-    """Coerce a seating preset value to its canonical string form.
-
-    Accepts a CinemaSeatingPreset enum member, a raw string, or None.
-    Raises ValueError if the string is not a known preset.
-
-    Args:
-        value: The preset to normalize. None returns the default preset.
-
-    Returns:
-        The canonical string value of the preset (e.g. "row-letter-seat-number").
-    """
-    if value is None:
-        return DEFAULT_CINEMA_SEATING_PRESET
-
-    if isinstance(value, CinemaSeatingPreset):
-        normalized = value.value
-    else:
-        normalized = value.strip().lower()
-
-    if not normalized:
-        return DEFAULT_CINEMA_SEATING_PRESET
-
-    if normalized not in CINEMA_SEATING_PRESET_NAMES:
-        raise ValueError(
-            "Invalid cinema seating preset. "
-            f"Allowed values: {', '.join(CINEMA_SEATING_PRESET_NAMES)}."
-        )
-
-    return normalized
-
-
 def validate_seat_for_preset(
     *,
-    seating_preset: str | CinemaSeatingPreset,
+    seating_preset: CinemaSeatingPreset,
     seat_row: str | None,
     seat_number: str | None,
 ) -> None:
@@ -168,16 +130,14 @@ def validate_seat_for_preset(
             "Seat row and seat number must either both be set or both be empty."
         )
 
-    normalized_preset = normalize_cinema_seating_preset(seating_preset)
-
     # Free seating cinemas don't have assigned seats at all.
-    if normalized_preset == CinemaSeatingPreset.FREE.value:
+    if seating_preset == CinemaSeatingPreset.FREE:
         raise ValueError(
             "This cinema uses free seating and does not support seat input."
         )
 
     # The UNKNOWN preset is flexible — accept letters or digits for both fields.
-    if normalized_preset == CinemaSeatingPreset.UNKNOWN.value:
+    if seating_preset == CinemaSeatingPreset.UNKNOWN:
         if not _matches_unknown(seat_row):
             raise ValueError(
                 "Invalid row value for seating='unknown'. "
@@ -190,18 +150,16 @@ def validate_seat_for_preset(
             )
         return
 
-    # All remaining presets follow a fixed pattern — look up the rules and apply them.
-    if normalized_preset in _PRESET_RULES:
-        row_validator, row_desc, seat_validator, seat_desc = _PRESET_RULES[
-            normalized_preset
-        ]
-        if seat_row is not None and not row_validator(seat_row):
-            raise ValueError(
-                f"Invalid row value for seating='{normalized_preset}'. "
-                f"Use {row_desc}."
-            )
-        if seat_number is not None and not seat_validator(seat_number):
-            raise ValueError(
-                f"Invalid seat value for seating='{normalized_preset}'. "
-                f"Use {seat_desc}."
-            )
+    # All other presets encode their format as "{row_type}-{seat_type}" in their
+    # value, so we can derive the validators directly from the preset name.
+    rule = _PresetRule.from_preset(seating_preset)
+    if seat_row is not None and not rule.row.matches(seat_row):
+        raise ValueError(
+            f"Invalid row value for seating='{seating_preset.value}'. "
+            f"Use {rule.row.description}."
+        )
+    if seat_number is not None and not rule.seat.matches(seat_number):
+        raise ValueError(
+            f"Invalid seat value for seating='{seating_preset.value}'. "
+            f"Use {rule.seat.description}."
+        )

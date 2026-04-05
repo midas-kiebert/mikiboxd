@@ -231,16 +231,6 @@ class Settings(BaseSettings):
     ENABLE_TELEGRAM: bool = False
 
     # -------------------------------------------------------------------------
-    # Performance
-    # -------------------------------------------------------------------------
-
-    # GZip-compress HTTP responses larger than GZIP_MINIMUM_SIZE_BYTES.
-    # Level 6 is the default zlib balance between speed and compression ratio.
-    ENABLE_GZIP: bool = True
-    GZIP_MINIMUM_SIZE_BYTES: int = 500
-    GZIP_COMPRESS_LEVEL: int = 6
-
-    # -------------------------------------------------------------------------
     # First-run / Seeding
     # -------------------------------------------------------------------------
 

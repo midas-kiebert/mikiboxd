@@ -28,7 +28,7 @@ Legend:
 
 ## Backend — Entry Points & App Setup
 
-- [ ] `main.py` — FastAPI app factory, middleware, Sentry, router mounting
+- [x] `main.py` — FastAPI app factory, middleware, Sentry, router mounting
 - [ ] `backend_pre_start.py` — Startup readiness check (waits for DB)
 - [ ] `initial_data.py` — Calls `init_db` to seed first superuser
 - [ ] `tests_pre_start.py` — Same readiness check but for the test DB
@@ -160,7 +160,6 @@ Legend:
 > Services raise these; the global handler converts them to HTTP responses.
 
 - [ ] `base.py` — Base exception class with HTTP status
-- [ ] `handlers.py` — FastAPI exception handler registration
 - [ ] `user_exceptions.py` — User-related errors (not found, duplicate email, etc.)
 - [ ] `movie_exceptions.py` — Movie-related errors
 - [ ] `showtime_exceptions.py` — Showtime-related errors

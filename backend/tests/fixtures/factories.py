@@ -26,7 +26,7 @@ from app.schemas.city import CityPublic
 from app.schemas.movie import MovieSummaryLoggedIn
 from app.schemas.showtime import ShowtimeInMovieLoggedIn
 from app.schemas.user import UserPublic
-from app.validators.cinema_seating import DEFAULT_CINEMA_SEATING_PRESET
+from app.validators.cinema_seating import CinemaSeatingPreset
 
 __all__ = [
     "city_create_factory",
@@ -96,7 +96,7 @@ class CinemaCreateFactory(Factory):
     badge_bg_color = Faker("color")
     badge_text_color = Faker("color")
     url = Faker("url")
-    seating = DEFAULT_CINEMA_SEATING_PRESET
+    seating = CinemaSeatingPreset.UNKNOWN
     city_id: int
 
 
@@ -115,7 +115,7 @@ class CinemaFactory(SQLModelFactory):
     badge_bg_color = Faker("color")
     badge_text_color = Faker("color")
     url = Faker("url")
-    seating = DEFAULT_CINEMA_SEATING_PRESET
+    seating = CinemaSeatingPreset.UNKNOWN
     city = SubFactory(CityFactory)
     city_id = SelfAttribute("city.id")
 
@@ -243,7 +243,7 @@ class CinemaPublicFactory(Factory):
     badge_bg_color = Faker("color")
     badge_text_color = Faker("color")
     url = Faker("url")
-    seating = DEFAULT_CINEMA_SEATING_PRESET
+    seating = CinemaSeatingPreset.UNKNOWN
     city = SubFactory(CityPublicFactory)
 
 

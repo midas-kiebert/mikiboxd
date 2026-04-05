@@ -37,11 +37,7 @@ from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe
 from app.utils import now_amsterdam_naive
-from app.validators.username import (
-    USERNAME_VALIDATION_MESSAGE,
-    is_valid_username,
-    normalize_username,
-)
+from app.validators.username import is_valid_username
 
 logger = getLogger(__name__)
 
@@ -92,21 +88,20 @@ def update_me(
     if "display_name" in user_data:
         display_name = user_data["display_name"]
         if display_name is not None:
-            normalized_display_name = normalize_username(display_name)
+            normalized_display_name = display_name.strip()
             if normalized_display_name == "":
                 user_data["display_name"] = None
                 normalized_display_name = None
             else:
                 user_data["display_name"] = normalized_display_name
-            normalized_current_display_name = normalize_username(
-                current_user.display_name
-            )
+            # TODO: Normalize
+            normalized_current_display_name = current_user.display_name
             username_changed = (normalized_display_name or "").lower() != (
                 normalized_current_display_name or ""
             ).lower()
             if normalized_display_name:
                 if username_changed and not is_valid_username(normalized_display_name):
-                    raise InvalidUsername(USERNAME_VALIDATION_MESSAGE)
+                    raise InvalidUsername()
                 if username_changed:
                     existing_user = users_crud.get_user_by_display_name(
                         session=session,

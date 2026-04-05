@@ -1155,7 +1155,7 @@ def test_update_showtime_selection_rejects_invalid_row_number_seat_number_format
     normal_user_token_headers: dict[str, str],
     showtime_factory,
 ) -> None:
-    showtime = showtime_factory(cinema__seating="row-number-seat-number")
+    showtime = showtime_factory(cinema__seating="number-number")
     showtime_id = showtime.id
 
     response = client.put(
@@ -1165,7 +1165,7 @@ def test_update_showtime_selection_rejects_invalid_row_number_seat_number_format
     )
 
     assert response.status_code == 400
-    assert "row-number-seat-number" in response.json()["detail"]
+    assert "number-number" in response.json()["detail"]
 
 
 def test_update_showtime_selection_rejects_seat_input_for_free_seating(
@@ -1191,7 +1191,7 @@ def test_update_showtime_selection_accepts_blank_seat_pair_as_no_selection(
     normal_user_token_headers: dict[str, str],
     showtime_factory,
 ) -> None:
-    showtime = showtime_factory(cinema__seating="row-letter-seat-number")
+    showtime = showtime_factory(cinema__seating="letter-number")
     showtime_id = showtime.id
 
     response = client.put(

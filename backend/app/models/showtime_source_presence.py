@@ -1,14 +1,23 @@
+"""Showtime source presence tracking.
+
+Tracks whether a showtime is still being seen in a scrape source stream.
+Used to soft-delete showtimes that have disappeared from a source.
+"""
+
 import datetime as dt
 
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
-__all__ = [
-    "ShowtimeSourcePresence",
-]
-
 
 class ShowtimeSourcePresence(SQLModel, table=True):
+    """One row per (source_stream, source_event_key) pair observed during scraping.
+
+    source_stream    — identifies the scraper (e.g. "pathé-amsterdam")
+    source_event_key — the source's own stable identifier for this showtime
+    missing_streak   — how many consecutive runs the showtime was absent; resets to 0 on re-appearance
+    active           — False once missing_streak exceeds the soft-delete threshold
+    """
     __table_args__ = (
         UniqueConstraint(
             "source_stream",

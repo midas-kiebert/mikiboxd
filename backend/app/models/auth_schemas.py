@@ -1,3 +1,9 @@
+"""Auth-related request/response schemas shared across login and me routes.
+
+These are plain Pydantic models (no table=True) and live in models/ because they
+are simple data containers with no route-layer or service-layer concerns.
+"""
+
 from pydantic import EmailStr
 from sqlmodel import Field, SQLModel
 

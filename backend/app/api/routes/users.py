@@ -1,3 +1,5 @@
+"""User Endpoints."""
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -46,9 +48,7 @@ def get_user(
     session: SessionDep,
     user_id: UUID,
 ) -> UserPublic:
-    """
-    Get a user by their ID.
-    """
+    """Get a user by their ID."""
     return users_service.get_user(
         session=session,
         user_id=user_id,

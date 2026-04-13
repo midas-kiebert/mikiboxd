@@ -1,8 +1,6 @@
-from sqlmodel import Field, SQLModel
+"""Watchlist selection — movies on a Letterboxd user's watchlist that are currently showing."""
 
-__all__ = [
-    "WatchlistSelection",
-]
+from sqlmodel import Field, SQLModel
 
 
 class WatchlistSelection(SQLModel, table=True):

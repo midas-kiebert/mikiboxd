@@ -1,11 +1,9 @@
+"""TMDB lookup cache — deduplicates movie identity lookups against the TMDB API."""
+
 import datetime as dt
 
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
-
-__all__ = [
-    "TmdbLookupCache",
-]
 
 
 class TmdbLookupCache(SQLModel, table=True):

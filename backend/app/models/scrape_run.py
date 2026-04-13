@@ -1,22 +1,20 @@
+"""Scrape run audit log."""
+
 import datetime as dt
 from enum import Enum
 
 from sqlalchemy import Enum as SAEnum
 from sqlmodel import Column, Field, SQLModel
 
-__all__ = [
-    "ScrapeRunStatus",
-    "ScrapeRun",
-]
-
 
 class ScrapeRunStatus(str, Enum):
     SUCCESS = "success"
     FAILED = "failed"
-    DEGRADED = "degraded"
+    DEGRADED = "degraded"  # completed but with partial errors (some cinemas failed)
 
 
 class ScrapeRun(SQLModel, table=True):
+    """One row per scrape job execution, keyed by source_stream (e.g. "pathé-amsterdam")."""
     id: int | None = Field(default=None, primary_key=True)
     source_stream: str = Field(index=True)
     status: ScrapeRunStatus = Field(

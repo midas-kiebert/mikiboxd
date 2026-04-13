@@ -1,3 +1,5 @@
+"""Cinema models."""
+
 from typing import TYPE_CHECKING
 
 from sqlmodel import Field, Relationship, SQLModel
@@ -6,12 +8,6 @@ from app.validators.cinema_seating import CinemaSeatingPreset
 
 if TYPE_CHECKING:
     from .city import City
-
-__all__ = [
-    "CinemaBase",
-    "CinemaCreate",
-    "Cinema",
-]
 
 
 class CinemaBase(SQLModel):
@@ -35,4 +31,4 @@ class Cinema(CinemaBase, table=True):
         index=True,
     )
     city_id: int = Field(foreign_key="city.id")
-    city: "City" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    city: City = Relationship(sa_relationship_kwargs={"lazy": "joined"})

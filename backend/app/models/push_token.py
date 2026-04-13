@@ -1,10 +1,8 @@
+"""Push token model — Expo push tokens registered per user device."""
+
 from uuid import UUID
 
 from sqlmodel import Field, SQLModel
-
-__all__ = [
-    "PushToken",
-]
 
 
 class PushToken(SQLModel, table=True):

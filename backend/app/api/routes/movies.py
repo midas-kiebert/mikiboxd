@@ -1,3 +1,5 @@
+"""Movie endpoints."""
+
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import CurrentUser, SessionDep

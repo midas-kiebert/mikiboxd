@@ -40,17 +40,16 @@ Legend:
 
 ## Backend — API Layer (`backend/app/api/`)
 
-- [~] `deps.py` — FastAPI dependencies (get_db, CurrentUser, SessionDep, etc.)
-- [ ] `main.py` — Router composition (mounts all route modules)
-- [ ] `routes/login.py` — Auth endpoints (access-token, test-token, password reset)
-- [ ] `routes/me.py` — Current user endpoints (profile, settings, presets, watchlist) ⚠️ Large (485 LOC)
-- [ ] `routes/movies.py` — Movie listing endpoints
-- [ ] `routes/showtimes.py` — Showtime endpoints (list, selection, visibility, pings)
-- [ ] `routes/friends.py` — Friend request and friendship endpoints
-- [ ] `routes/cinemas.py` — Cinema listing endpoints
-- [ ] `routes/cities.py` — City listing endpoints
-- [ ] `routes/users.py` — User lookup endpoints (admin + public profiles)
-- [ ] `routes/utils.py` — Utility endpoints (health check, test email)
+- [x] `deps.py` — FastAPI dependencies (get_db, CurrentUser, SessionDep, etc.)
+- [x] `main.py` — Router composition (mounts all route modules)
+- [~] `routes/login.py` — Auth endpoints (access-token, test-token, password reset)
+- [x] `routes/me.py` — Current user endpoints (profile, settings, presets, watchlist) ⚠️ Large (485 LOC)
+- [x] `routes/movies.py` — Movie listing endpoints
+- [x] `routes/showtimes.py` — Showtime endpoints (list, selection, visibility, pings)
+- [x] `routes/friends.py` — Friend request and friendship endpoints
+- [x] `routes/cinemas.py` — Cinema listing endpoints
+- [x] `routes/users.py` — User lookup endpoints (admin + public profiles)
+- [~] `routes/utils.py` — Utility endpoints (health check, test email)
 
 ---
 
@@ -60,7 +59,7 @@ Legend:
 > the base data shape. Each model corresponds to one database table.
 
 - [ ] `auth_schemas.py` — Token and token-payload shapes (not a DB model)
-- [ ] `user.py` — User account (email, password hash, settings, flags)
+- [x] `user.py` — User account (email, password hash, settings, flags)
 - [ ] `cinema.py` — Cinema venue (name, city, coords, seating preset)
 - [ ] `cinema_selection.py` — Which cinemas a user has selected
 - [ ] `cinema_preset.py` — Saved named sets of cinema selections

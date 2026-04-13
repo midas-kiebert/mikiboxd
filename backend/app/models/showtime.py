@@ -9,12 +9,7 @@ if TYPE_CHECKING:
     from .cinema import Cinema
     from .movie import Movie
 
-__all__ = [
-    "ShowtimeBase",
-    "ShowtimeCreate",
-    "Showtime",
-]
-
+"""Showtime models."""
 
 # Shared properties
 class ShowtimeBase(SQLModel):
@@ -41,6 +36,6 @@ class Showtime(ShowtimeBase, table=True):
     )
     id: int = Field(primary_key=True)
     movie_id: int = Field(foreign_key="movie.id")
-    movie: "Movie" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    movie: Movie = Relationship(sa_relationship_kwargs={"lazy": "joined"})
     cinema_id: int = Field(foreign_key="cinema.id")
-    cinema: "Cinema" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    cinema: Cinema = Relationship(sa_relationship_kwargs={"lazy": "joined"})

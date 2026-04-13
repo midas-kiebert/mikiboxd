@@ -1,3 +1,5 @@
+"""Friend group models — user-defined named subsets of their friends."""
+
 import uuid
 from datetime import datetime
 from uuid import UUID
@@ -6,11 +8,6 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from app.utils import now_amsterdam_naive
-
-__all__ = [
-    "FriendGroup",
-    "FriendGroupMember",
-]
 
 
 class FriendGroup(SQLModel, table=True):

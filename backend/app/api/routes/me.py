@@ -1,6 +1,13 @@
+"""Current user endpoints.
+
+All routes are scoped to the authenticated user — they operate on the user's
+own data (profile, presets, cinemas, pings, friends, watchlist, push tokens).
+"""
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status as http_status
 
 from app.api.deps import (
     CurrentUser,
@@ -45,13 +52,16 @@ def get_filter_presets(
 
 
 @router.post("/filter-presets", response_model=FilterPresetPublic)
-def save_filter_preset(
+def create_filter_preset(
     session: SessionDep,
     current_user: CurrentUser,
     payload: FilterPresetCreate,
 ) -> FilterPresetPublic:
     if not payload.name.strip():
-        raise HTTPException(status_code=400, detail="Preset name cannot be empty")
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Preset name cannot be empty",
+        )
     return me_service.save_filter_preset(
         session=session,
         user_id=current_user.id,
@@ -84,7 +94,10 @@ def set_favorite_filter_preset(
         preset_id=preset_id,
     )
     if favorite is None:
-        raise HTTPException(status_code=404, detail="Filter preset not found")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Filter preset not found",
+        )
     return favorite
 
 
@@ -114,7 +127,10 @@ def delete_filter_preset(
         preset_id=preset_id,
     )
     if not deleted:
-        raise HTTPException(status_code=404, detail="Filter preset not found")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Filter preset not found",
+        )
     return Message(message="Filter preset deleted successfully")
 
 
@@ -141,13 +157,16 @@ def get_favorite_cinema_preset(
 
 
 @router.post("/cinema-presets", response_model=CinemaPresetPublic)
-def save_cinema_preset(
+def create_cinema_preset(
     session: SessionDep,
     current_user: CurrentUser,
     payload: CinemaPresetCreate,
 ) -> CinemaPresetPublic:
     if not payload.name.strip():
-        raise HTTPException(status_code=400, detail="Preset name cannot be empty")
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Preset name cannot be empty",
+        )
     return me_service.save_cinema_preset(
         session=session,
         user_id=current_user.id,
@@ -167,7 +186,10 @@ def set_favorite_cinema_preset(
         preset_id=preset_id,
     )
     if favorite is None:
-        raise HTTPException(status_code=404, detail="Cinema preset not found")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Cinema preset not found",
+        )
     return favorite
 
 
@@ -195,7 +217,10 @@ def delete_cinema_preset(
         preset_id=preset_id,
     )
     if not deleted:
-        raise HTTPException(status_code=404, detail="Cinema preset not found")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Cinema preset not found",
+        )
     return Message(message="Cinema preset deleted successfully")
 
 
@@ -222,21 +247,27 @@ def get_favorite_friend_group(
 
 
 @router.post("/friend-groups", response_model=FriendGroupPublic)
-def save_friend_group(
+def create_friend_group(
     session: SessionDep,
     current_user: CurrentUser,
     payload: FriendGroupCreate,
 ) -> FriendGroupPublic:
     if not payload.name.strip():
-        raise HTTPException(status_code=400, detail="Group name cannot be empty")
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Group name cannot be empty",
+        )
     try:
         return me_service.save_friend_group(
             session=session,
             user_id=current_user.id,
             payload=payload,
         )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
 
 
 @router.put("/friend-groups/{group_id}/favorite", response_model=FriendGroupPublic)
@@ -251,7 +282,10 @@ def set_favorite_friend_group(
         group_id=group_id,
     )
     if favorite is None:
-        raise HTTPException(status_code=404, detail="Friend group not found")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Friend group not found",
+        )
     return favorite
 
 
@@ -279,15 +313,20 @@ def delete_friend_group(
         group_id=group_id,
     )
     if not deleted:
-        raise HTTPException(status_code=404, detail="Friend group not found")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Friend group not found",
+        )
     return Message(message="Friend group deleted successfully")
 
 
 @router.delete("/", response_model=Message)
 def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Message:
+    """Delete the authenticated user's own account. Superusers cannot delete themselves."""
     if current_user.is_superuser:
         raise HTTPException(
-            status_code=403, detail="Super users are not allowed to delete themselves"
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Super users are not allowed to delete themselves",
         )
     me_service.delete_me(
         session=session,
@@ -309,14 +348,18 @@ def update_user_me(
 def update_password_me(
     *, session: SessionDep, body: UpdatePassword, current_user: CurrentUser
 ) -> Message:
+    """Change the authenticated user's password. Requires the current password to be provided."""
     if not verify_password(body.current_password, current_user.hashed_password):
-        raise HTTPException(status_code=400, detail="Incorrect password")
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect password",
+        )
     if body.current_password == body.new_password:
         raise HTTPException(
-            status_code=400, detail="New password cannot be the same as the current one"
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="New password cannot be the same as the current one",
         )
-    hashed_password = get_password_hash(body.new_password)
-    current_user.hashed_password = hashed_password
+    current_user.hashed_password = get_password_hash(body.new_password)
     session.add(current_user)
     session.commit()
     return Message(message="Password updated successfully")
@@ -392,7 +435,10 @@ def delete_my_showtime_ping(
         ping_id=ping_id,
     )
     if not deleted:
-        raise HTTPException(status_code=404, detail="Showtime invite not found")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Showtime invite not found",
+        )
     return Message(message="Showtime invite deleted successfully")
 
 
@@ -412,7 +458,7 @@ def get_friends(
     return users_service.get_friends(session=session, user_id=current_user.id)
 
 
-@router.get("/requests/sent")
+@router.get("/requests/sent", response_model=list[UserWithFriendStatus])
 def get_sent_friend_requests(
     *,
     session: SessionDep,
@@ -423,7 +469,7 @@ def get_sent_friend_requests(
     )
 
 
-@router.get("/requests/received")
+@router.get("/requests/received", response_model=list[UserWithFriendStatus])
 def get_received_friend_requests(
     *,
     session: SessionDep,

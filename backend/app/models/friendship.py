@@ -1,11 +1,12 @@
+"""Friendship and friend request models.
+
+Friendship is symmetric but stored as two rows: (A→B) and (B→A).
+FriendRequest is directional: sender → receiver, deleted once accepted or rejected.
+"""
+
 from uuid import UUID
 
 from sqlmodel import Field, SQLModel
-
-__all__ = [
-    "Friendship",
-    "FriendRequest",
-]
 
 
 class Friendship(SQLModel, table=True):

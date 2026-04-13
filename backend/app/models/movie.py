@@ -4,13 +4,7 @@ from sqlalchemy import String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlmodel import Column, Field, SQLModel
 
-__all__ = [
-    "MovieBase",
-    "MovieCreate",
-    "MovieUpdate",
-    "Movie",
-]
-
+"""Movie models."""
 
 # Shared properties
 class MovieBase(SQLModel):

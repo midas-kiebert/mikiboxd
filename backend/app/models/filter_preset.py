@@ -1,3 +1,5 @@
+"""Filter preset model — user-saved showtime filter configurations."""
+
 import uuid
 from datetime import datetime
 from typing import Any
@@ -8,10 +10,6 @@ from sqlmodel import Column, Field, SQLModel
 
 from app.core.enums import FilterPresetScope
 from app.utils import now_amsterdam_naive
-
-__all__ = [
-    "FilterPreset",
-]
 
 
 class FilterPreset(SQLModel, table=True):

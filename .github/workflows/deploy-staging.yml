@@ -53,3 +53,6 @@ jobs:
           EOF
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging build
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach
+      - name: Dump prestart logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml --project-name mikiboxd-staging logs prestart backend --no-color --tail 200

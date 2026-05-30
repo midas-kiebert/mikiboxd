@@ -65,6 +65,7 @@ if settings.ENABLE_GZIP:
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+
 @app.exception_handler(AppError)
 async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
     """Convert domain exceptions (AppError subclasses) to JSON HTTP responses."""

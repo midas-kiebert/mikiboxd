@@ -15,6 +15,7 @@ class ScrapeRunStatus(str, Enum):
 
 class ScrapeRun(SQLModel, table=True):
     """One row per scrape job execution, keyed by source_stream (e.g. "pathé-amsterdam")."""
+
     id: int | None = Field(default=None, primary_key=True)
     source_stream: str = Field(index=True)
     status: ScrapeRunStatus = Field(

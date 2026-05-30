@@ -43,7 +43,9 @@ def update_showtime_selection(
             update_seat=should_update_seat,
         )
     except ValueError as error:
-        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(error))
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail=str(error)
+        )
 
 
 @router.post("/{showtime_id}/ping/{friend_id}", response_model=Message)
@@ -77,7 +79,9 @@ def ping_friend_group_for_showtime(
         group_id=group_id,
     )
     if message is None:
-        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Friend group not found")
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Friend group not found"
+        )
     return message
 
 
@@ -156,7 +160,9 @@ def update_showtime_visibility(
             visible_group_ids=payload.visible_group_ids,
         )
     except ValueError as error:
-        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(error))
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail=str(error)
+        )
 
 
 @router.get("/")

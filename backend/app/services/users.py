@@ -297,7 +297,9 @@ def register_user(
         EmailAlreadyExists: If a user with the given email already exists.
         AppError: If there is an error during user creation.
     """
-    normalized_display_name = user_in.display_name.strip() if user_in.display_name else None
+    normalized_display_name = (
+        user_in.display_name.strip() if user_in.display_name else None
+    )
     if not normalized_display_name:
         raise UsernameRequired()
     if not is_valid_username(normalized_display_name):

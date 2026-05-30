@@ -16,7 +16,7 @@ from sqlmodel import Session, col, delete, select
 
 from app.api.deps import get_db_context
 from app.core.config import settings
-from app.email import send_email
+from app.mailer import send_email
 from app.models.cinema import Cinema
 from app.models.movie import Movie
 from app.models.scrape_run import ScrapeRun, ScrapeRunStatus

@@ -66,7 +66,7 @@ class FilterPresetScope(str, Enum):
 class NotificationChannel(str, Enum):
     """The delivery mechanism for a notification sent to a user."""
 
-    PUSH = "push"   # Mobile push notification via FCM
+    PUSH = "push"  # Mobile push notification via FCM
     EMAIL = "email"
 
 
@@ -74,5 +74,5 @@ class NotificationChannel(str, Enum):
 class ShowtimePingSort(str, Enum):
     """Sort order options for the pings list endpoint."""
 
-    PING_CREATED_AT = "ping_created_at"      # Most recently sent pings first
+    PING_CREATED_AT = "ping_created_at"  # Most recently sent pings first
     SHOWTIME_DATETIME = "showtime_datetime"  # Soonest showtime first

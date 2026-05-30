@@ -17,7 +17,7 @@ from app.core.security import (
     verify_password_reset_token,
 )
 from app.crud import user as users_crud
-from app.email import EmailDeliveryError, generate_reset_password_email, send_email
+from app.mailer import EmailDeliveryError, generate_reset_password_email, send_email
 from app.models.auth_schemas import Message, NewPassword, Token
 
 router = APIRouter(tags=["login"])
@@ -52,6 +52,7 @@ def login_access_token(
         access_token=create_access_token(user.id, expires_delta=access_token_expires)
     )
 
+
 @router.post("/password-recovery/{email}")
 def recover_password(email: str, session: SessionDep) -> Message:
     """Send a password reset email to the given address.
@@ -62,7 +63,9 @@ def recover_password(email: str, session: SessionDep) -> Message:
     user = users_crud.get_user_by_email(session=session, email=email)
     if not user:
         # Return success without sending to avoid leaking account existence.
-        return Message(message="If that email is registered, a recovery link has been sent.")
+        return Message(
+            message="If that email is registered, a recovery link has been sent."
+        )
     password_reset_token = generate_password_reset_token(email=email)
     email_data = generate_reset_password_email(
         email_to=user.email, email=email, token=password_reset_token
@@ -79,7 +82,9 @@ def recover_password(email: str, session: SessionDep) -> Message:
             status_code=http_status.HTTP_502_BAD_GATEWAY,
             detail=f"Could not deliver password recovery email: {e}",
         ) from e
-    return Message(message="If that email is registered, a recovery link has been sent.")
+    return Message(
+        message="If that email is registered, a recovery link has been sent."
+    )
 
 
 @router.post("/reset-password/")

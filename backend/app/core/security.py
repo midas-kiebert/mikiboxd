@@ -101,9 +101,7 @@ def verify_password_reset_token(token: str) -> str | None:
         invalid or expired.
     """
     try:
-        decoded = jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[ALGORITHM]
-        )
+        decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         return str(decoded["sub"])
     except jwt.exceptions.InvalidTokenError:
         return None

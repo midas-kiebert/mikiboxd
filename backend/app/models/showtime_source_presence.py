@@ -18,6 +18,7 @@ class ShowtimeSourcePresence(SQLModel, table=True):
     missing_streak   — how many consecutive runs the showtime was absent; resets to 0 on re-appearance
     active           — False once missing_streak exceeds the soft-delete threshold
     """
+
     __table_args__ = (
         UniqueConstraint(
             "source_stream",

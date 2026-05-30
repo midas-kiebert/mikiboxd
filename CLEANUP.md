@@ -33,7 +33,7 @@ Legend:
 - [x] `initial_data.py` — Calls `init_db` to seed first superuser
 - [x] `scheduler.py` — APScheduler setup, registers scraping jobs
 - [x] `utils.py` — Generic helpers (`now_amsterdam_naive`, `to_amsterdam_time`, `clean_title`)
-- [x] `email.py` — Email sending and template rendering (split out of `utils.py`)
+- [x] `mailer.py` — Email sending and template rendering (split out of `utils.py`; not named `email.py` because it would shadow stdlib `email`)
 - ~~`logging_/logger.py`~~ — deleted (loguru removed, stdlib logging used throughout)
 
 ---

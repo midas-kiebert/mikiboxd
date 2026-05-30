@@ -50,6 +50,7 @@ class CinemaSeatingPreset(str, Enum):
 # Private helpers
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class _FieldRule:
     """A seat field validator: holds a regex pattern and a human-readable description."""

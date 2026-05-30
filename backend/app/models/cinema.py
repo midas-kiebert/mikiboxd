@@ -31,4 +31,4 @@ class Cinema(CinemaBase, table=True):
         index=True,
     )
     city_id: int = Field(foreign_key="city.id")
-    city: City = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    city: "City" = Relationship(sa_relationship_kwargs={"lazy": "joined"})

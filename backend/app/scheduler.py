@@ -19,6 +19,8 @@ from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped
 logging.basicConfig(level=logging.INFO)
 logger = getLogger(__name__)
 
+_TIMEZONE = ZoneInfo("Europe/Amsterdam")
+
 
 def _scrape_data() -> None:
     """Run the nightly scrape — fetches showtimes for all cinemas and syncs them to the DB."""
@@ -54,12 +56,12 @@ if __name__ == "__main__":
     scheduler = BlockingScheduler()
     scheduler.add_job(
         func=_scrape_data,
-        trigger=CronTrigger(hour=3, minute=0, timezone=ZoneInfo("Europe/Amsterdam")),
+        trigger=CronTrigger(hour=3, minute=0, timezone=_TIMEZONE),
         id="nightly_scrape",
     )
     scheduler.add_job(
         func=_send_interested_showtime_reminders,
-        trigger=CronTrigger(minute="*/15", timezone=ZoneInfo("Europe/Amsterdam")),
+        trigger=CronTrigger(minute="*/15", timezone=_TIMEZONE),
         id="interested_showtime_reminders",
     )
     scheduler.start()

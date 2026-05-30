@@ -49,7 +49,7 @@ jobs:
           TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
           ENABLE_TELEGRAM=false
           EOF
-      - run: docker compose build
+      - run: docker compose build backend frontend adminer
       - run: docker compose down -v --remove-orphans
       - name: Try starting backend
         run: |

@@ -87,17 +87,6 @@ def send_email(
         raise EmailDeliveryError(f"{status_code} {status_text}")
 
 
-def generate_test_email(email_to: str) -> EmailData:
-    """Generate a test email to verify SMTP configuration is working."""
-    project_name = settings.PROJECT_NAME
-    subject = f"{project_name} - Test email"
-    html_content = _render_email_template(
-        template_name="test_email.html",
-        context={"project_name": settings.PROJECT_NAME, "email": email_to},
-    )
-    return EmailData(html_content=html_content, subject=subject)
-
-
 def generate_reset_password_email(email_to: str, email: str, token: str) -> EmailData:
     """Generate a password reset email containing a signed reset link."""
     project_name = settings.PROJECT_NAME

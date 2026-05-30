@@ -42,14 +42,14 @@ Legend:
 
 - [x] `deps.py` — FastAPI dependencies (get_db, CurrentUser, SessionDep, etc.)
 - [x] `main.py` — Router composition (mounts all route modules)
-- [~] `routes/login.py` — Auth endpoints (access-token, test-token, password reset)
+- [x] `routes/login.py` — Auth endpoints (access-token, password reset)
 - [x] `routes/me.py` — Current user endpoints (profile, settings, presets, watchlist) ⚠️ Large (485 LOC)
 - [x] `routes/movies.py` — Movie listing endpoints
 - [x] `routes/showtimes.py` — Showtime endpoints (list, selection, visibility, pings)
 - [x] `routes/friends.py` — Friend request and friendship endpoints
 - [x] `routes/cinemas.py` — Cinema listing endpoints
 - [x] `routes/users.py` — User lookup endpoints (admin + public profiles)
-- [~] `routes/utils.py` — Utility endpoints (health check, test email)
+- [x] `routes/utils.py` — Utility endpoints (health check, TMDB cache override)
 
 ---
 

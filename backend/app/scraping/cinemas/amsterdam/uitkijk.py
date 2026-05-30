@@ -5,7 +5,7 @@ from re import sub
 
 import requests
 import urllib3
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from pydantic import BaseModel
 
 from app.api.deps import get_db_context
@@ -160,7 +160,9 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
-    director_elements = soup.find_all("strong", string="Regie:")
+    director_elements = [
+        s for s in soup.find_all("strong") if isinstance(s, Tag) and s.string == "Regie:"
+    ]
     if not director_elements:
         logger.warning(f"No director found for {slug}, skipping")
         return None
@@ -179,7 +181,9 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
         for name in li.get_text(strip=True).encode("latin1").decode("utf-8").split(",")
     ]
     try:
-        actor_element = soup.find_all("strong", string="Cast:")[0]
+        actor_element = [
+            s for s in soup.find_all("strong") if isinstance(s, Tag) and s.string == "Cast:"
+        ][0]
         li = actor_element.parent
         if not li:
             logger.warning(f"No actor parent found for {slug}, skipping")

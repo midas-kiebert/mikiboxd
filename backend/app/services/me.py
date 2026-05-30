@@ -94,8 +94,9 @@ def update_me(
                 normalized_display_name = None
             else:
                 user_data["display_name"] = normalized_display_name
-            # TODO: Normalize
-            normalized_current_display_name = current_user.display_name
+            normalized_current_display_name = (
+                current_user.display_name.strip() if current_user.display_name else None
+            )
             username_changed = (normalized_display_name or "").lower() != (
                 normalized_current_display_name or ""
             ).lower()

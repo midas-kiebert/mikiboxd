@@ -1,10 +1,11 @@
+"""Movie models."""
+
 from datetime import datetime
 
 from sqlalchemy import String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlmodel import Column, Field, SQLModel
 
-"""Movie models."""
 
 # Shared properties
 class MovieBase(SQLModel):

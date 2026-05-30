@@ -1,3 +1,5 @@
+"""Showtime models."""
+
 import datetime as dt
 from typing import TYPE_CHECKING
 
@@ -9,7 +11,6 @@ if TYPE_CHECKING:
     from .cinema import Cinema
     from .movie import Movie
 
-"""Showtime models."""
 
 # Shared properties
 class ShowtimeBase(SQLModel):

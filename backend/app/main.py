@@ -14,9 +14,11 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.api.main import api_router
 from app.core.config import settings
+from app.core.enums import Environment
 from app.exceptions.base import AppError
 
 logger = getLogger(__name__)
@@ -34,7 +36,7 @@ def _generate_operation_id(route: APIRoute) -> str:
 # Sentry captures unhandled exceptions and sends them to the Sentry dashboard,
 # including the full stack trace and request context. Only enabled outside local
 # development so you don't pollute the project with dev noise.
-if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
+if settings.SENTRY_DSN and settings.ENVIRONMENT is not Environment.LOCAL:
     sentry_sdk.init(dsn=str(settings.SENTRY_DSN), enable_tracing=True)
 
 app = FastAPI(
@@ -52,6 +54,13 @@ if settings.all_cors_origins:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+
+if settings.ENABLE_GZIP:
+    app.add_middleware(
+        GZipMiddleware,
+        minimum_size=settings.GZIP_MINIMUM_SIZE_BYTES,
+        compresslevel=settings.GZIP_COMPRESS_LEVEL,
     )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)

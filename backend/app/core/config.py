@@ -15,7 +15,7 @@ Environment variables are declared as class fields. Computed fields (marked with
 
 import secrets
 import warnings
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from pydantic import (
     AnyUrl,
@@ -30,6 +30,8 @@ from pydantic import (
 from pydantic_core import MultiHostUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing_extensions import Self
+
+from app.core.enums import Environment
 
 
 def _parse_cors(v: Any) -> list[str] | str:
@@ -63,7 +65,7 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str
     API_V1_STR: str = "/api/v1"
-    ENVIRONMENT: Literal["local", "staging", "production"] = "local"
+    ENVIRONMENT: Environment = Environment.LOCAL
     DEBUG: bool = False
 
     @field_validator("DEBUG", mode="before")
@@ -231,6 +233,16 @@ class Settings(BaseSettings):
     ENABLE_TELEGRAM: bool = False
 
     # -------------------------------------------------------------------------
+    # Response compression
+    # -------------------------------------------------------------------------
+
+    # GZip middleware compresses JSON responses on the wire — typical payloads
+    # shrink 5–10x at compresslevel=6 (the standard CPU/bandwidth tradeoff).
+    ENABLE_GZIP: bool = True
+    GZIP_MINIMUM_SIZE_BYTES: int = 500  # Don't compress tiny responses
+    GZIP_COMPRESS_LEVEL: int = 6
+
+    # -------------------------------------------------------------------------
     # First-run / Seeding
     # -------------------------------------------------------------------------
 
@@ -256,7 +268,7 @@ class Settings(BaseSettings):
                 f'The value of {var_name} is "changethis", '
                 "for security, please change it, at least for deployments."
             )
-            if self.ENVIRONMENT == "local":
+            if self.ENVIRONMENT is Environment.LOCAL:
                 warnings.warn(message, stacklevel=1)
             else:
                 raise ValueError(message)

@@ -14,6 +14,20 @@ from enum import Enum, unique
 
 
 @unique
+class Environment(str, Enum):
+    """Which deployment environment the app is running in.
+
+    Values match the strings set via the ENVIRONMENT env var. Behaviour that
+    differs between environments (Sentry, secret enforcement, etc.) should
+    branch on this enum rather than on raw strings.
+    """
+
+    LOCAL = "local"
+    STAGING = "staging"
+    PRODUCTION = "production"
+
+
+@unique
 class GoingStatus(str, Enum):
     """Whether a user intends to attend a showtime.
 

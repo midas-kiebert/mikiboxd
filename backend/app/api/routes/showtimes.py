@@ -161,7 +161,7 @@ def update_showtime_visibility(
         )
     except ValueError as error:
         raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND, detail=str(error)
+            status_code=http_status.HTTP_400_BAD_REQUEST, detail=str(error)
         )
 
 

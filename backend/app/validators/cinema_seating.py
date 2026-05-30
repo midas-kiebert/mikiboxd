@@ -104,7 +104,7 @@ def _matches_unknown(value: str | None) -> bool:
 
 def validate_seat_for_preset(
     *,
-    seating_preset: CinemaSeatingPreset,
+    seating_preset: CinemaSeatingPreset | str,
     seat_row: str | None,
     seat_number: str | None,
 ) -> None:
@@ -121,6 +121,9 @@ def validate_seat_for_preset(
     Raises:
         ValueError: If the row/seat combination is invalid for the preset.
     """
+    # Accept either the enum or its string value (SQLAlchemy may hand back the raw column value).
+    seating_preset = CinemaSeatingPreset(seating_preset)
+
     # An entirely empty pair means "no seat selected" — always valid.
     if seat_row is None and seat_number is None:
         return

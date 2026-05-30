@@ -16,6 +16,7 @@ from sqlmodel import Session, col, delete, select
 
 from app.api.deps import get_db_context
 from app.core.config import settings
+from app.mailer import send_email
 from app.models.cinema import Cinema
 from app.models.movie import Movie
 from app.models.scrape_run import ScrapeRun, ScrapeRunStatus
@@ -43,7 +44,7 @@ from app.scraping.tmdb_runtime import (
 )
 from app.services import scrape_sync as scrape_sync_service
 from app.services.scrape_sync import DeletedShowtimeInfo
-from app.utils import clean_title, now_amsterdam_naive, send_email
+from app.utils import clean_title, now_amsterdam_naive
 
 RECAP_EMAIL_TO = "scraper.mikino@midaskiebert.nl"
 STAGE_PATTERN = re.compile(r"(^|\s)stage=([^|]+)")

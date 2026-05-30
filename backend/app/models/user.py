@@ -9,17 +9,9 @@ from app.core.enums import NotificationChannel
 if TYPE_CHECKING:
     from app.models.letterboxd import Letterboxd
 
-__all__ = [
-    "UserBase",
-    "UserCreate",
-    "UserUpdate",
-    "UserRegister",
-    "User",
-]
 
-
-# Shared properties
-class UserBase(SQLModel):
+# Shared properties — private base class, not part of the public API
+class _UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
@@ -49,11 +41,12 @@ class UserBase(SQLModel):
     )
 
 
-# Properties to receive via API on creation
-class UserCreate(UserBase):
+# Properties to receive via API on creation (admin/superuser use — exposes all fields)
+class UserCreate(_UserBase):
     password: str = Field(min_length=1, max_length=255)
 
 
+# Properties to receive via API on self-registration (email + password + display_name only)
 class UserRegister(SQLModel):
     email: EmailStr = Field(max_length=255)
     password: str = Field(min_length=1, max_length=255)
@@ -80,7 +73,7 @@ class UserUpdate(SQLModel):
 
 
 # Database model, database table inferred from class name
-class User(UserBase, table=True):
+class User(_UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
     letterboxd: Optional["Letterboxd"] = Relationship(

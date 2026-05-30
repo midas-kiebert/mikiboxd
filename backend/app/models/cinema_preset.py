@@ -1,3 +1,5 @@
+"""Cinema preset model — user-saved cinema selection configurations."""
+
 import uuid
 from datetime import datetime
 
@@ -5,10 +7,6 @@ from sqlalchemy import JSON, UniqueConstraint
 from sqlmodel import Column, Field, SQLModel
 
 from app.utils import now_amsterdam_naive
-
-__all__ = [
-    "CinemaPreset",
-]
 
 
 class CinemaPreset(SQLModel, table=True):

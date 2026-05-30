@@ -1,3 +1,9 @@
+"""API router composition.
+
+Mounts all route modules onto a single `api_router`, which is included in the
+FastAPI app in `app/main.py` under the `/api/` prefix.
+"""
+
 from fastapi import APIRouter
 
 from app.api.routes import (

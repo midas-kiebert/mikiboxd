@@ -1,10 +1,10 @@
-# Optional `seating` presets per cinema:
-# - unknown (default if omitted)
-# - free
-# - row-number-seat-number
-# - row-letter-seat-number
-# - row-number-seat-letter
-# - row-letter-seat-letter
+# Optional `seating` presets per cinema (defined in app/validators/cinema_seating.py):
+# - unknown (default if omitted) — row and seat accept a letter or 1-2 digits
+# - free                        — no assigned seating, no seat input allowed
+# - number-number               — row: 1-2 digits, seat: 1-2 digits
+# - letter-number               — row: single letter, seat: 1-2 digits
+# - number-letter               — row: 1-2 digits, seat: single letter
+# - letter-letter               — row: single letter, seat: single letter
 
 - name: Eye
   city: Amsterdam
@@ -32,14 +32,14 @@
   cineville: true
   badge_bg_color: "green"
   url: "https://www.filmhallen.nl"
-  seating: "row-number-seat-number"
+  seating: "number-number"
 
 - name: The Movies
   city: Amsterdam
   cineville: true
   badge_bg_color: "orange"
   url: "https://www.themovies.nl"
-  seating: "row-number-seat-number"
+  seating: "number-number"
 
 - name: FC Hyena
   city: Amsterdam
@@ -61,49 +61,56 @@
   badge_bg_color: "yellow"
   badge_text_color: "#e8d68f"
   url: "https://www.filmkoepel.nl"
+  seating: "number-number"
 
 - name: Lido
   city: Leiden
   cineville: true
   badge_bg_color: "orange"
   url: "https://www.bioscopenleiden.nl"
+  seating: "number-number"
 
 - name: Trianon
   city: Leiden
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.bioscopenleiden.nl"
+  seating: "number-number"
 
 - name: Kijkhuis
   city: Leiden
   cineville: true
   badge_bg_color: "teal"
   url: "https://www.bioscopenleiden.nl"
+  seating: "number-number"
 
 - name: Louis Hartlooper Complex
   city: Utrecht
   cineville: true
   badge_bg_color: "green"
   url: "https://www.hartlooper.nl"
+  seating: "number-number"
 
 - name: Slachtstraat
   city: Utrecht
   cineville: true
   badge_bg_color: "red"
   url: "https://www.slachtstraat.nl"
+  seating: "number-number"
 
 - name: Springhaver
   city: Utrecht
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.springhaver.nl"
+  seating: "number-number"
 
 - name: KINO
   city: Rotterdam
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.kinorotterdam.nl"
-  seating: "row-number-seat-number"
+  seating: "number-number"
 
 - name: Aan de Slinger
   city: Houten
@@ -122,6 +129,7 @@
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.chasse.nl"
+
 
 - name: Cinecenter
   city: Amsterdam
@@ -473,3 +481,9 @@
   cineville: true
   badge_bg_color: "red"
   url: "https://www.cinemathepulse.com"
+
+- name: AnnexCinema
+  city: Woerden
+  cineville: true
+  badge_bg_color: "purple"
+  url: "https://www.annexcinema.nl"

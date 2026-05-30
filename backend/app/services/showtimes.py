@@ -6,11 +6,6 @@ from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
-from app.core.cinema_seating import (
-    CinemaSeatingPreset,
-    normalize_cinema_seating_preset,
-    validate_seat_for_preset,
-)
 from app.core.enums import GoingStatus
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import friend_group as friend_groups_crud
@@ -38,6 +33,7 @@ from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_visibility import ShowtimeVisibilityPublic
 from app.services import push_notifications
 from app.utils import now_amsterdam_naive
+from app.validators.cinema_seating import CinemaSeatingPreset, validate_seat_for_preset
 
 
 def _apply_upsert_update(
@@ -209,9 +205,7 @@ def update_showtime_selection(
             if showtime_for_validation is None:
                 raise ShowtimeNotFoundError(showtime_id)
 
-            seating_preset = normalize_cinema_seating_preset(
-                showtime_for_validation.cinema.seating
-            )
+            seating = showtime_for_validation.cinema.seating
             normalized_seat_row = _normalize_seat_value(seat_row)
             normalized_seat_number = _normalize_seat_value(seat_number)
 
@@ -219,13 +213,13 @@ def update_showtime_selection(
                 if update_seat:
                     try:
                         validate_seat_for_preset(
-                            seating_preset=seating_preset,
+                            seating_preset=seating,
                             seat_row=normalized_seat_row,
                             seat_number=normalized_seat_number,
                         )
                     except ValueError as e:
                         raise ShowtimeSeatValidationError(str(e))
-                elif seating_preset == CinemaSeatingPreset.FREE.value:
+                elif seating == CinemaSeatingPreset.FREE:
                     # Clear any stale seat data if cinema seating is configured as free.
                     update_seat = True
                     normalized_seat_row = None

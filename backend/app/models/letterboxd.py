@@ -1,3 +1,5 @@
+"""Letterboxd account model — tracks linked accounts and their last watchlist sync time."""
+
 from datetime import datetime
 
 from sqlmodel import Field, SQLModel

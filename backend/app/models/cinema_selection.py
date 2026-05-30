@@ -1,10 +1,8 @@
+"""Cinema selection — the set of cinemas a user has chosen to follow."""
+
 from uuid import UUID
 
 from sqlmodel import Field, SQLModel
-
-__all__ = [
-    "CinemaSelection",
-]
 
 
 class CinemaSelection(SQLModel, table=True):

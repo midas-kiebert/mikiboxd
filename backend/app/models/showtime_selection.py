@@ -1,3 +1,5 @@
+"""Showtime selection — a user's attendance record for a specific showtime."""
+
 from datetime import datetime
 from uuid import UUID
 
@@ -6,10 +8,6 @@ from sqlmodel import Column, Field, SQLModel
 
 from app.core.enums import GoingStatus
 from app.utils import now_amsterdam_naive
-
-__all__ = [
-    "ShowtimeSelection",
-]
 
 
 class ShowtimeSelection(SQLModel, table=True):

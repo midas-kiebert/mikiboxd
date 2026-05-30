@@ -5,32 +5,33 @@ import sys
 
 from pydantic import BaseModel
 
-# do from .module import * for all modules in this package
-for module_info in pkgutil.iter_modules(__path__):
-    module_name = module_info.name
-    if module_name.startswith("_"):
+# Import all public names (no leading underscore) that are defined in each submodule.
+# Names imported into a module from elsewhere (e.g. SQLModel, Field) are excluded
+# by checking that obj.__module__ matches the submodule being loaded.
+for _module_info in pkgutil.iter_modules(__path__):
+    _module_name = _module_info.name
+    if _module_name.startswith("_"):
         continue
 
-    full_module_name = f"{__name__}.{module_name}"
-    module = importlib.import_module(full_module_name)
+    _full_module_name = f"{__name__}.{_module_name}"
+    _module = importlib.import_module(_full_module_name)
 
-    if not hasattr(module, "__all__"):
-        continue
+    for _name, _obj in vars(_module).items():
+        if _name.startswith("_"):
+            continue
+        if getattr(_obj, "__module__", None) == _full_module_name:
+            globals()[_name] = _obj
 
-    names = module.__all__
 
-    globals().update({name: getattr(module, name) for name in names})
-
-
-# Rebuild forward references for all Pydantic models in this module
-current_module = sys.modules[__name__]
-for name, obj in inspect.getmembers(current_module):
+# Rebuild forward references for all Pydantic models in this package.
+_current_module = sys.modules[__name__]
+for _name, _obj in inspect.getmembers(_current_module):
     if (
-        inspect.isclass(obj)
-        and issubclass(obj, BaseModel)
-        and not obj.__module__.startswith("pydantic")
+        inspect.isclass(_obj)
+        and issubclass(_obj, BaseModel)
+        and not _obj.__module__.startswith("pydantic")
     ):
         try:
-            obj.model_rebuild()
+            _obj.model_rebuild()
         except Exception as e:
-            raise RuntimeError(f"Failed to rebuild {name}: {e}")
+            raise RuntimeError(f"Failed to rebuild {_name}: {e}")

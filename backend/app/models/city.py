@@ -1,10 +1,6 @@
-from sqlmodel import Field, SQLModel
+"""City models."""
 
-__all__ = [
-    "CityBase",
-    "CityCreate",
-    "City",
-]
+from sqlmodel import Field, SQLModel
 
 
 class CityBase(SQLModel):

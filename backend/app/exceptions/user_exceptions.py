@@ -2,6 +2,8 @@ from uuid import UUID
 
 from fastapi import status
 
+from app.validators.username import USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH
+
 from .base import AppError
 
 
@@ -37,11 +39,21 @@ class DisplayNameAlreadyExists(AppError):
         super().__init__(detail)
 
 
+class UsernameRequired(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    def __init__(self):
+        super().__init__("Username is required.")
+
+
 class InvalidUsername(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
 
-    def __init__(self, detail: str):
-        super().__init__(detail)
+    def __init__(self):
+        super().__init__(
+            f"Username must be {USERNAME_MIN_LENGTH}-{USERNAME_MAX_LENGTH} characters "
+            "and use only letters, numbers, and underscores."
+        )
 
 
 class OneOrMoreUsersNotFound(AppError):

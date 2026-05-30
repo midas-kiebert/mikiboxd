@@ -1,15 +1,10 @@
+"""Movie models."""
+
 from datetime import datetime
 
 from sqlalchemy import String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlmodel import Column, Field, SQLModel
-
-__all__ = [
-    "MovieBase",
-    "MovieCreate",
-    "MovieUpdate",
-    "Movie",
-]
 
 
 # Shared properties

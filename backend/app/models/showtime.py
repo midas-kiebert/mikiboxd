@@ -1,3 +1,5 @@
+"""Showtime models."""
+
 import datetime as dt
 from typing import TYPE_CHECKING
 
@@ -8,12 +10,6 @@ from sqlmodel import Column, Field, Relationship, SQLModel
 if TYPE_CHECKING:
     from .cinema import Cinema
     from .movie import Movie
-
-__all__ = [
-    "ShowtimeBase",
-    "ShowtimeCreate",
-    "Showtime",
-]
 
 
 # Shared properties

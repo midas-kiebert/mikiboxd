@@ -1,3 +1,17 @@
+"""Showtime visibility models.
+
+Four tables work together to control who can see whose showtime attendance:
+
+- ShowtimeVisibilitySetting  — per (owner, showtime): is visibility open to all
+  friends, or restricted to specific friends/groups?
+- ShowtimeVisibilityFriend   — explicit allow-list: (owner, showtime) → viewer
+- ShowtimeVisibilityGroup    — group-based allow-list: (owner, showtime) → group
+- ShowtimeVisibilityEffective — denormalized read cache: (owner, showtime) → viewer
+  rows that are materialized from the three tables above.
+
+Write paths update Setting/Friend/Group. Read paths query only Effective.
+"""
+
 from datetime import datetime
 from uuid import UUID
 
@@ -5,15 +19,10 @@ from sqlmodel import Field, SQLModel
 
 from app.utils import now_amsterdam_naive
 
-__all__ = [
-    "ShowtimeVisibilitySetting",
-    "ShowtimeVisibilityFriend",
-    "ShowtimeVisibilityGroup",
-    "ShowtimeVisibilityEffective",
-]
-
 
 class ShowtimeVisibilitySetting(SQLModel, table=True):
+    """Whether a user's attendance for a showtime is visible to all friends or restricted."""
+
     owner_id: UUID = Field(
         foreign_key="user.id",
         primary_key=True,
@@ -29,6 +38,8 @@ class ShowtimeVisibilitySetting(SQLModel, table=True):
 
 
 class ShowtimeVisibilityFriend(SQLModel, table=True):
+    """Explicit friend-level allow: viewer_id may see owner's attendance for showtime_id."""
+
     owner_id: UUID = Field(
         foreign_key="user.id",
         primary_key=True,
@@ -48,6 +59,8 @@ class ShowtimeVisibilityFriend(SQLModel, table=True):
 
 
 class ShowtimeVisibilityGroup(SQLModel, table=True):
+    """Group-level allow: all members of group_id may see owner's attendance for showtime_id."""
+
     owner_id: UUID = Field(
         foreign_key="user.id",
         primary_key=True,

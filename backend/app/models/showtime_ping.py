@@ -1,3 +1,5 @@
+"""Showtime ping — a nudge from one user to another about a specific showtime."""
+
 from datetime import datetime
 from uuid import UUID
 
@@ -5,10 +7,6 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from app.utils import now_amsterdam_naive
-
-__all__ = [
-    "ShowtimePing",
-]
 
 
 class ShowtimePing(SQLModel, table=True):

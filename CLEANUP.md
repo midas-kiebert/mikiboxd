@@ -58,26 +58,26 @@ Legend:
 > Models are SQLModel classes — they define both the database table schema and
 > the base data shape. Each model corresponds to one database table.
 
-- [ ] `auth_schemas.py` — Token and token-payload shapes (not a DB model)
+- [x] `auth_schemas.py` — Token and token-payload shapes (not a DB model)
 - [x] `user.py` — User account (email, password hash, settings, flags)
-- [ ] `cinema.py` — Cinema venue (name, city, coords, seating preset)
-- [ ] `cinema_selection.py` — Which cinemas a user has selected
-- [ ] `cinema_preset.py` — Saved named sets of cinema selections
-- [ ] `movie.py` — Movie metadata (title, duration, genres, TMDB ID, poster)
-- [ ] `showtime.py` — Individual screening (datetime, cinema, movie, ticket link)
-- [ ] `showtime_selection.py` — User's going/interested status on a showtime
-- [ ] `showtime_ping.py` — Notification sent to a friend about a showtime
-- [ ] `showtime_visibility.py` — Visibility settings (who can see your going status)
-- [ ] `showtime_source_presence.py` — Tracks which scraper provided a showtime
-- [ ] `scrape_run.py` — Metadata about each scraping execution
-- [ ] `friendship.py` — Accepted friend relationships
-- [ ] `filter_preset.py` — Saved filter configurations (movies or showtimes scope)
-- [ ] `friend_group.py` — Named groups of friends for visibility rules
-- [ ] `letterboxd.py` — Cached Letterboxd watchlist data per user
-- [ ] `watchlist_selection.py` — Movies on a user's watchlist
-- [ ] `push_token.py` — FCM device tokens for push notifications
-- [ ] `tmdb_lookup_cache.py` — Cache of title → TMDB ID resolutions
-- [ ] `city.py` — City (currently Amsterdam only)
+- [x] `cinema.py` — Cinema venue (name, city, coords, seating preset)
+- [x] `cinema_selection.py` — Which cinemas a user has selected
+- [x] `cinema_preset.py` — Saved named sets of cinema selections
+- [x] `movie.py` — Movie metadata (title, duration, genres, TMDB ID, poster)
+- [x] `showtime.py` — Individual screening (datetime, cinema, movie, ticket link)
+- [x] `showtime_selection.py` — User's going/interested status on a showtime
+- [x] `showtime_ping.py` — Notification sent to a friend about a showtime
+- [x] `showtime_visibility.py` — Visibility settings (who can see your going status)
+- [x] `showtime_source_presence.py` — Tracks which scraper provided a showtime
+- [x] `scrape_run.py` — Metadata about each scraping execution
+- [x] `friendship.py` — Accepted friend relationships
+- [x] `filter_preset.py` — Saved filter configurations (movies or showtimes scope)
+- [x] `friend_group.py` — Named groups of friends for visibility rules
+- [x] `letterboxd.py` — Cached Letterboxd watchlist data per user
+- [x] `watchlist_selection.py` — Movies on a user's watchlist
+- [x] `push_token.py` — FCM device tokens for push notifications
+- [x] `tmdb_lookup_cache.py` — Cache of title → TMDB ID resolutions
+- [x] `city.py` — City (currently Amsterdam only)
 
 ---
 

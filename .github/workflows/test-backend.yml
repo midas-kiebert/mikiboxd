@@ -18,22 +18,22 @@ jobs:
       - name: Create .env file
         run: |
           cat > .env <<EOF
-          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          STACK_NAME=${{ secrets.STACK_NAME }}
+          POSTGRES_DB=${{ secrets.POSTGRES_DB || 'just-for-ci' }}
+          POSTGRES_USER=${{ secrets.POSTGRES_USER || 'just-for-ci' }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD || 'just-for-ci' }}
+          STACK_NAME=${{ secrets.STACK_NAME || 'mikiboxd' }}
           FRONTEND_HOST=${{ vars.FRONTEND_HOST }}
           DOMAIN=${{ vars.DOMAIN }}
           DOCKER_IMAGE_BACKEND=${{ vars.DOCKER_IMAGE_BACKEND }}
-          SECRET_KEY=${{ secrets.SECRET_KEY }}
-          ENVIRONMENT=${{ vars.ENVIRONMENT }}
+          SECRET_KEY=${{ secrets.SECRET_KEY || 'just-for-ci' }}
+          ENVIRONMENT=${{ vars.ENVIRONMENT || 'local' }}
           BACKEND_CORS_ORIGINS="http://localhost,http://localhost:5173,https://localhost,https://localhost:5173,http://localhost.tiangolo.com"
           FIRST_SUPERUSER=admin@example.com
           POSTGRES_SERVER=localhost
           POSTGRES_PORT=5432
           PROJECT_NAME="MikiBoxd"
           DOCKER_IMAGE_FRONTEND=frontend
-          FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
+          FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD || 'just-for-ci' }}
           SMTP_HOST=
           SMTP_USER=
           SMTP_PASSWORD=
@@ -43,7 +43,7 @@ jobs:
           SMTP_PORT=587
           SENTRY_DSN=
           DEBUG=False
-          TMDB_KEY=${{ secrets.TMDB_KEY }}
+          TMDB_KEY=${{ secrets.TMDB_KEY || 'just-for-ci' }}
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
           ENABLE_TELEGRAM=false

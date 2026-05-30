@@ -76,10 +76,12 @@ async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
 async def generic_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     """Catch-all for unhandled exceptions — returns a generic 500 response.
 
-    Note: if Sentry is enabled, call sentry_sdk.capture_exception(exc) here
-    before returning, otherwise Sentry never sees exceptions caught by this handler.
+    Forwards the exception to Sentry explicitly. Without this, Sentry's
+    middleware never sees errors caught by this handler.
     """
     logger.error("Unexpected error", exc_info=exc)
+    if settings.SENTRY_DSN and settings.ENVIRONMENT is not Environment.LOCAL:
+        sentry_sdk.capture_exception(exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "An unexpected error occurred."},

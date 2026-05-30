@@ -17,21 +17,18 @@ import type {
   FriendsRemoveFriendResponse,
   LoginLoginAccessTokenData,
   LoginLoginAccessTokenResponse,
-  LoginTestTokenResponse,
   LoginRecoverPasswordData,
   LoginRecoverPasswordResponse,
   LoginResetPasswordData,
   LoginResetPasswordResponse,
-  LoginRecoverPasswordHtmlContentData,
-  LoginRecoverPasswordHtmlContentResponse,
   MeGetCurrentUserResponse,
   MeDeleteUserMeResponse,
   MeUpdateUserMeData,
   MeUpdateUserMeResponse,
   MeGetFilterPresetsData,
   MeGetFilterPresetsResponse,
-  MeSaveFilterPresetData,
-  MeSaveFilterPresetResponse,
+  MeCreateFilterPresetData,
+  MeCreateFilterPresetResponse,
   MeGetFavoriteFilterPresetData,
   MeGetFavoriteFilterPresetResponse,
   MeClearFavoriteFilterPresetData,
@@ -41,8 +38,8 @@ import type {
   MeDeleteFilterPresetData,
   MeDeleteFilterPresetResponse,
   MeGetCinemaPresetsResponse,
-  MeSaveCinemaPresetData,
-  MeSaveCinemaPresetResponse,
+  MeCreateCinemaPresetData,
+  MeCreateCinemaPresetResponse,
   MeGetFavoriteCinemaPresetResponse,
   MeClearFavoriteCinemaPresetResponse,
   MeSetFavoriteCinemaPresetData,
@@ -50,8 +47,8 @@ import type {
   MeDeleteCinemaPresetData,
   MeDeleteCinemaPresetResponse,
   MeGetFriendGroupsResponse,
-  MeSaveFriendGroupData,
-  MeSaveFriendGroupResponse,
+  MeCreateFriendGroupData,
+  MeCreateFriendGroupResponse,
   MeGetFavoriteFriendGroupResponse,
   MeClearFavoriteFriendGroupResponse,
   MeSetFavoriteFriendGroupData,
@@ -111,10 +108,6 @@ import type {
   UsersGetUserResponse,
   UsersGetUserSelectedShowtimesData,
   UsersGetUserSelectedShowtimesResponse,
-  UtilsRequestAndroidBetaData,
-  UtilsRequestAndroidBetaResponse,
-  UtilsTestEmailData,
-  UtilsTestEmailResponse,
   UtilsHealthCheckResponse,
   UtilsOverrideTmdbCacheEntryData,
   UtilsOverrideTmdbCacheEntryResponse,
@@ -249,7 +242,11 @@ export class FriendsService {
 export class LoginService {
   /**
    * Login Access Token
-   * OAuth2 compatible token login, get an access token for future requests
+   * Authenticate a user and return a JWT access token.
+   *
+   * Uses OAuth2 password flow — credentials are submitted as form data.
+   * The returned token should be included in subsequent requests as:
+   * Authorization: Bearer <token>
    * @param data The data for the request.
    * @param data.formData
    * @returns Token Successful Response
@@ -270,21 +267,11 @@ export class LoginService {
   }
 
   /**
-   * Test Token
-   * Test access token
-   * @returns UserPublic Successful Response
-   * @throws ApiError
-   */
-  public static testToken(): CancelablePromise<LoginTestTokenResponse> {
-    return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/login/test-token",
-    })
-  }
-
-  /**
    * Recover Password
-   * Password Recovery
+   * Send a password reset email to the given address.
+   *
+   * Always returns 200 regardless of whether the email exists, to prevent
+   * user enumeration attacks.
    * @param data The data for the request.
    * @param data.email
    * @returns Message Successful Response
@@ -307,7 +294,7 @@ export class LoginService {
 
   /**
    * Reset Password
-   * Reset password
+   * Reset the user's password using a valid password reset token.
    * @param data The data for the request.
    * @param data.requestBody
    * @returns Message Successful Response
@@ -321,29 +308,6 @@ export class LoginService {
       url: "/api/v1/reset-password/",
       body: data.requestBody,
       mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Recover Password Html Content
-   * HTML Content for Password Recovery
-   * @param data The data for the request.
-   * @param data.email
-   * @returns string Successful Response
-   * @throws ApiError
-   */
-  public static recoverPasswordHtmlContent(
-    data: LoginRecoverPasswordHtmlContentData,
-  ): CancelablePromise<LoginRecoverPasswordHtmlContentResponse> {
-    return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/password-recovery-html-content/{email}",
-      path: {
-        email: data.email,
-      },
       errors: {
         422: "Validation Error",
       },
@@ -366,6 +330,7 @@ export class MeService {
 
   /**
    * Delete User Me
+   * Delete the authenticated user's own account. Superusers cannot delete themselves.
    * @returns Message Successful Response
    * @throws ApiError
    */
@@ -420,15 +385,15 @@ export class MeService {
   }
 
   /**
-   * Save Filter Preset
+   * Create Filter Preset
    * @param data The data for the request.
    * @param data.requestBody
    * @returns FilterPresetPublic Successful Response
    * @throws ApiError
    */
-  public static saveFilterPreset(
-    data: MeSaveFilterPresetData,
-  ): CancelablePromise<MeSaveFilterPresetResponse> {
+  public static createFilterPreset(
+    data: MeCreateFilterPresetData,
+  ): CancelablePromise<MeCreateFilterPresetResponse> {
     return __request(OpenAPI, {
       method: "POST",
       url: "/api/v1/me/filter-presets",
@@ -541,15 +506,15 @@ export class MeService {
   }
 
   /**
-   * Save Cinema Preset
+   * Create Cinema Preset
    * @param data The data for the request.
    * @param data.requestBody
    * @returns CinemaPresetPublic Successful Response
    * @throws ApiError
    */
-  public static saveCinemaPreset(
-    data: MeSaveCinemaPresetData,
-  ): CancelablePromise<MeSaveCinemaPresetResponse> {
+  public static createCinemaPreset(
+    data: MeCreateCinemaPresetData,
+  ): CancelablePromise<MeCreateCinemaPresetResponse> {
     return __request(OpenAPI, {
       method: "POST",
       url: "/api/v1/me/cinema-presets",
@@ -642,15 +607,15 @@ export class MeService {
   }
 
   /**
-   * Save Friend Group
+   * Create Friend Group
    * @param data The data for the request.
    * @param data.requestBody
    * @returns FriendGroupPublic Successful Response
    * @throws ApiError
    */
-  public static saveFriendGroup(
-    data: MeSaveFriendGroupData,
-  ): CancelablePromise<MeSaveFriendGroupResponse> {
+  public static createFriendGroup(
+    data: MeCreateFriendGroupData,
+  ): CancelablePromise<MeCreateFriendGroupResponse> {
     return __request(OpenAPI, {
       method: "POST",
       url: "/api/v1/me/friend-groups",
@@ -732,6 +697,7 @@ export class MeService {
 
   /**
    * Update Password Me
+   * Change the authenticated user's password. Requires the current password to be provided.
    * @param data The data for the request.
    * @param data.requestBody
    * @returns Message Successful Response
@@ -1488,51 +1454,6 @@ export class UsersService {
 }
 
 export class UtilsService {
-  /**
-   * Request Android Beta
-   * Request access to the Android beta.
-   * @param data The data for the request.
-   * @param data.requestBody
-   * @returns Message Successful Response
-   * @throws ApiError
-   */
-  public static requestAndroidBeta(
-    data: UtilsRequestAndroidBetaData,
-  ): CancelablePromise<UtilsRequestAndroidBetaResponse> {
-    return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/utils/android-beta-request/",
-      body: data.requestBody,
-      mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Test Email
-   * Test emails.
-   * @param data The data for the request.
-   * @param data.emailTo
-   * @returns Message Successful Response
-   * @throws ApiError
-   */
-  public static testEmail(
-    data: UtilsTestEmailData,
-  ): CancelablePromise<UtilsTestEmailResponse> {
-    return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/utils/test-email/",
-      query: {
-        email_to: data.emailTo,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
   /**
    * Health Check
    * @returns boolean Successful Response

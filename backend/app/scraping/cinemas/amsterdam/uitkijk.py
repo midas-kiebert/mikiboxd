@@ -161,7 +161,9 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
 
     soup = BeautifulSoup(response.text, "html.parser")
     director_elements = [
-        s for s in soup.find_all("strong") if isinstance(s, Tag) and s.string == "Regie:"
+        s
+        for s in soup.find_all("strong")
+        if isinstance(s, Tag) and s.string == "Regie:"
     ]
     if not director_elements:
         logger.warning(f"No director found for {slug}, skipping")
@@ -182,7 +184,9 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
     ]
     try:
         actor_element = [
-            s for s in soup.find_all("strong") if isinstance(s, Tag) and s.string == "Cast:"
+            s
+            for s in soup.find_all("strong")
+            if isinstance(s, Tag) and s.string == "Cast:"
         ][0]
         li = actor_element.parent
         if not li:

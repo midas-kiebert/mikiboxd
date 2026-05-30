@@ -2,7 +2,8 @@
 
 from typing import TYPE_CHECKING
 
-from sqlmodel import Field, Relationship, SQLModel
+from sqlalchemy import Enum as SAEnum
+from sqlmodel import Column, Field, Relationship, SQLModel
 
 from app.validators.cinema_seating import CinemaSeatingPreset
 
@@ -15,9 +16,22 @@ class CinemaBase(SQLModel):
     cineville: bool
     badge_bg_color: str
     url: str
-    # Pydantic coerces plain strings (e.g. "letter-number") to the enum automatically,
-    # so no manual validator is needed. Preset values are defined in CinemaSeatingPreset.
-    seating: CinemaSeatingPreset = Field(default=CinemaSeatingPreset.UNKNOWN)
+    # Store the lowercase enum *value* ("free", "number-number", ...) rather than
+    # the Python *name* ("FREE", "NUMBER_NUMBER", ...). SQLAlchemy's default Enum
+    # mapping uses the name; values_callable overrides that to use the value, which
+    # keeps the column human-readable and matches what cinemas.yaml writes.
+    seating: CinemaSeatingPreset = Field(
+        sa_column=Column(
+            SAEnum(
+                CinemaSeatingPreset,
+                native_enum=False,
+                length=40,
+                values_callable=lambda enum: [m.value for m in enum],
+            ),
+            nullable=False,
+        ),
+        default=CinemaSeatingPreset.UNKNOWN,
+    )
 
 
 class CinemaCreate(CinemaBase):

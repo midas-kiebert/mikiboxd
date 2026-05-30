@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import EmailStr
 from sqlmodel import Field, Relationship, SQLModel
@@ -78,6 +76,6 @@ class UserUpdate(SQLModel):
 class User(_UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
-    letterboxd: Letterboxd | None = Relationship(
+    letterboxd: Optional["Letterboxd"] = Relationship(
         sa_relationship_kwargs={"lazy": "joined"},
     )

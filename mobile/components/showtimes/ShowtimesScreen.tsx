@@ -296,7 +296,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.background,
     },
     listContent: {
-      padding: 16,
+      paddingTop: 4,
     },
     footerLoader: {
       paddingVertical: 20,

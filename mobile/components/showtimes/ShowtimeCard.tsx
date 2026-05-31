@@ -74,6 +74,12 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
       : showtime.going === "INTERESTED"
         ? styles.dateColumnInterested
         : undefined;
+  const datePillStatusStyle =
+    showtime.going === "GOING"
+      ? styles.datePillGoing
+      : showtime.going === "INTERESTED"
+        ? styles.datePillInterested
+        : undefined;
   const hasAudience =
     (showtime.friends_going?.length ?? 0) > 0 ||
     (showtime.friends_interested?.length ?? 0) > 0;
@@ -134,13 +140,15 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
         activeOpacity={0.8}
       >
         <View style={[styles.dateColumn, dateColumnStatusStyle]}>
-          <ThemedText style={styles.weekday}>{weekday}</ThemedText>
-          <ThemedText style={styles.day}>{day}</ThemedText>
-          <ThemedText style={styles.month}>{month}</ThemedText>
-          <ThemedText style={styles.time}>
-            <ThemedText style={styles.timeStart}>{startTime}</ThemedText>
-            {endTime ? <ThemedText style={styles.timeEnd}>{`~${endTime}`}</ThemedText> : null}
-          </ThemedText>
+          <View style={[styles.datePill, datePillStatusStyle]}>
+            <ThemedText style={styles.weekday}>{weekday}</ThemedText>
+            <ThemedText style={styles.day}>{day}</ThemedText>
+            <ThemedText style={styles.month}>{month}</ThemedText>
+            <ThemedText style={styles.time}>
+              <ThemedText style={styles.timeStart}>{startTime}</ThemedText>
+              {endTime ? <ThemedText style={styles.timeEnd}>{`~${endTime}`}</ThemedText> : null}
+            </ThemedText>
+          </View>
         </View>
         <Image
           source={{ uri: showtime.movie.poster_link ?? undefined }}
@@ -187,88 +195,94 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
   const glowStyles = createShowtimeStatusGlowStyles(colors);
   return StyleSheet.create({
     cardGlow: {
-      marginBottom: 16,
-      borderRadius: 12,
       backgroundColor: colors.cardBackground,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
     },
-    cardGlowGoing: glowStyles.going,
-    cardGlowInterested: glowStyles.interested,
+    cardGlowGoing: {},
+    cardGlowInterested: {},
     card: {
       flexDirection: "row",
       backgroundColor: colors.cardBackground,
-      borderRadius: 12,
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
       height: POSTER_HEIGHT,
+      borderLeftWidth: 3,
+      borderLeftColor: "transparent",
     },
     cardGoing: {
-      borderColor: colors.green.secondary,
-      backgroundColor: colors.green.primary,
+      borderLeftColor: colors.green.secondary,
     },
     cardInterested: {
-      borderColor: colors.orange.secondary,
-      backgroundColor: colors.orange.primary,
+      borderLeftColor: colors.orange.secondary,
     },
     dateColumn: {
-      width: 74,
+      width: 80,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.pillBackground,
-      borderRightWidth: 1,
-      borderRightColor: colors.cardBorder,
       paddingVertical: 8,
-      gap: 2,
+      paddingHorizontal: 6,
     },
-    dateColumnGoing: {
+    dateColumnGoing: {},
+    dateColumnInterested: {},
+    datePillGoing: {
       backgroundColor: colors.green.primary,
-      borderRightColor: colors.green.secondary,
     },
-    dateColumnInterested: {
+    datePillInterested: {
       backgroundColor: colors.orange.primary,
-      borderRightColor: colors.orange.secondary,
+    },
+    datePill: {
+      alignItems: "center",
+      backgroundColor: colors.pillBackground,
+      borderRadius: 8,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      gap: 1,
     },
     weekday: {
-      fontSize: 13,
+      fontSize: 11,
       fontWeight: "700",
       color: colors.textSecondary,
       textTransform: "uppercase",
-      letterSpacing: 0.6,
+      letterSpacing: 0.5,
     },
     day: {
-      fontSize: 26,
+      fontSize: 22,
       fontWeight: "800",
       color: colors.text,
-      lineHeight: 28,
+      lineHeight: 24,
     },
     month: {
-      fontSize: 13,
+      fontSize: 11,
       fontWeight: "700",
       color: colors.textSecondary,
       textTransform: "uppercase",
-      letterSpacing: 0.6,
+      letterSpacing: 0.5,
     },
     time: {
+      marginTop: 2,
       fontSize: 10,
       lineHeight: 12,
       fontWeight: "700",
       color: colors.text,
     },
     timeStart: {
-      fontSize: 11,
-      lineHeight: 13,
+      fontSize: 10,
+      lineHeight: 12,
       fontWeight: "700",
       color: colors.text,
     },
     timeEnd: {
       fontSize: 8,
       lineHeight: 10,
-      fontWeight: "700",
+      fontWeight: "600",
       color: colors.textSecondary,
     },
     poster: {
-      width: 72,
+      width: 66,
       height: "100%",
+      maxHeight: POSTER_HEIGHT - 14,
+      marginVertical: 7,
+      marginLeft: 8,
+      borderRadius: 4,
       backgroundColor: colors.posterPlaceholder,
     },
     info: {

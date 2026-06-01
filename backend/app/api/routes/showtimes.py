@@ -165,6 +165,20 @@ def update_showtime_visibility(
         )
 
 
+@router.get("/count")
+def count_main_page_showtimes(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    filters: Filters = Depends(get_filters),
+) -> int:
+    return showtimes_service.count_main_page_showtimes(
+        session=session,
+        current_user_id=current_user.id,
+        filters=filters,
+    )
+
+
 @router.get("/")
 def get_main_page_showtimes(
     *,

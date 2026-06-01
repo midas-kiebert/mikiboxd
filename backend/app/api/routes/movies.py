@@ -11,6 +11,19 @@ from app.services import movies as movies_service
 router = APIRouter(prefix="/movies", tags=["movies"])
 
 
+@router.get("/count")
+def count_movies(
+    session: SessionDep,
+    current_user: CurrentUser,
+    filters: Filters = Depends(get_filters),
+) -> int:
+    return movies_service.count_movie_summaries(
+        session=session,
+        user_id=current_user.id,
+        filters=filters,
+    )
+
+
 @router.get("/", response_model=list[MovieSummaryLoggedIn])
 def read_movies(
     session: SessionDep,

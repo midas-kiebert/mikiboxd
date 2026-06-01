@@ -967,3 +967,36 @@ def get_main_page_showtimes(
         )
         for showtime in showtimes
     ]
+
+
+def count_main_page_showtimes(
+    *,
+    session: Session,
+    current_user_id: UUID,
+    filters: Filters,
+) -> int:
+    if filters.selected_cinema_ids is None:
+        favorite_preset = cinema_presets_crud.get_user_favorite_preset(
+            session=session,
+            user_id=current_user_id,
+        )
+        if favorite_preset is not None:
+            filters.selected_cinema_ids = list(favorite_preset.cinema_ids)
+        else:
+            filters.selected_cinema_ids = user_crud.get_selected_cinemas_ids(
+                session=session,
+                user_id=current_user_id,
+            )
+
+    letterboxd_username = None
+    if filters.watchlist_only:
+        letterboxd_username = user_crud.get_letterboxd_username(
+            session=session,
+            user_id=current_user_id,
+        )
+    return showtimes_crud.count_main_page_showtimes(
+        session=session,
+        user_id=current_user_id,
+        filters=filters,
+        letterboxd_username=letterboxd_username,
+    )

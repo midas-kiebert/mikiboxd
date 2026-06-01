@@ -65,6 +65,37 @@ def get_movie_summaries(
     return movies
 
 
+def count_movie_summaries(
+    *,
+    session: Session,
+    user_id: UUID,
+    filters: Filters,
+) -> int:
+    letterboxd_username = users_crud.get_letterboxd_username(
+        session=session,
+        user_id=user_id,
+    )
+    if filters.selected_cinema_ids is None:
+        favorite_preset = cinema_presets_crud.get_user_favorite_preset(
+            session=session,
+            user_id=user_id,
+        )
+        if favorite_preset is not None:
+            filters.selected_cinema_ids = list(favorite_preset.cinema_ids)
+        else:
+            filters.selected_cinema_ids = users_crud.get_selected_cinemas_ids(
+                session=session,
+                user_id=user_id,
+            )
+
+    return movies_crud.count_movies(
+        session=session,
+        current_user_id=user_id,
+        letterboxd_username=letterboxd_username,
+        filters=filters,
+    )
+
+
 def get_movie_by_id(
     *,
     session: Session,

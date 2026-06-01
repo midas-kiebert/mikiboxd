@@ -133,6 +133,27 @@ def get_selected_showtimes(
     ]
 
 
+def count_selected_showtimes(
+    *,
+    session: Session,
+    current_user_id: UUID,
+    filters: Filters,
+) -> int:
+    letterboxd_username = None
+    if filters.watchlist_only:
+        letterboxd_username = users_crud.get_letterboxd_username(
+            session=session,
+            user_id=current_user_id,
+        )
+    return users_crud.count_selected_showtimes(
+        session=session,
+        user_id=current_user_id,
+        viewer_id=current_user_id,
+        filters=filters,
+        letterboxd_username=letterboxd_username,
+    )
+
+
 def get_friends(
     *,
     session: Session,

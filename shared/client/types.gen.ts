@@ -526,6 +526,39 @@ export type MeUpdatePasswordMeData = {
 
 export type MeUpdatePasswordMeResponse = Message
 
+export type MeCountMyShowtimesData = {
+  days?: Array<string> | null
+  query?: string | null
+  /**
+   * Maximum movie runtime in minutes
+   */
+  runtimeMax?: number | null
+  /**
+   * Minimum movie runtime in minutes
+   */
+  runtimeMin?: number | null
+  /**
+   * Filter showtimes to only these cinema IDs
+   */
+  selectedCinemaIds?: Array<number> | null
+  /**
+   * Filter by selection statuses (GOING/INTERESTED)
+   */
+  selectedStatuses?: Array<GoingStatus> | null
+  /**
+   * Only show showtimes after this moment
+   */
+  snapshotTime?: string | null
+  timeRanges?: Array<string> | null
+  /**
+   * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   */
+  timesOfDay?: Array<TimeOfDay> | null
+  watchlistOnly?: boolean
+}
+
+export type MeCountMyShowtimesResponse = number
+
 export type MeGetMyShowtimesData = {
   days?: Array<string> | null
   limit?: number

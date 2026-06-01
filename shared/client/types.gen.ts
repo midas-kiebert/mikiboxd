@@ -607,6 +607,39 @@ export type MeDeletePushTokenData = {
 
 export type MeDeletePushTokenResponse = Message
 
+export type MoviesCountMoviesData = {
+  days?: Array<string> | null
+  query?: string | null
+  /**
+   * Maximum movie runtime in minutes
+   */
+  runtimeMax?: number | null
+  /**
+   * Minimum movie runtime in minutes
+   */
+  runtimeMin?: number | null
+  /**
+   * Filter showtimes to only these cinema IDs
+   */
+  selectedCinemaIds?: Array<number> | null
+  /**
+   * Filter by selection statuses (GOING/INTERESTED)
+   */
+  selectedStatuses?: Array<GoingStatus> | null
+  /**
+   * Only show showtimes after this moment
+   */
+  snapshotTime?: string | null
+  timeRanges?: Array<string> | null
+  /**
+   * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   */
+  timesOfDay?: Array<TimeOfDay> | null
+  watchlistOnly?: boolean
+}
+
+export type MoviesCountMoviesResponse = number
+
 export type MoviesReadMoviesData = {
   days?: Array<string> | null
   limit?: number
@@ -767,6 +800,39 @@ export type ShowtimesUpdateShowtimeVisibilityData = {
 }
 
 export type ShowtimesUpdateShowtimeVisibilityResponse = ShowtimeVisibilityPublic
+
+export type ShowtimesCountMainPageShowtimesData = {
+  days?: Array<string> | null
+  query?: string | null
+  /**
+   * Maximum movie runtime in minutes
+   */
+  runtimeMax?: number | null
+  /**
+   * Minimum movie runtime in minutes
+   */
+  runtimeMin?: number | null
+  /**
+   * Filter showtimes to only these cinema IDs
+   */
+  selectedCinemaIds?: Array<number> | null
+  /**
+   * Filter by selection statuses (GOING/INTERESTED)
+   */
+  selectedStatuses?: Array<GoingStatus> | null
+  /**
+   * Only show showtimes after this moment
+   */
+  snapshotTime?: string | null
+  timeRanges?: Array<string> | null
+  /**
+   * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   */
+  timesOfDay?: Array<TimeOfDay> | null
+  watchlistOnly?: boolean
+}
+
+export type ShowtimesCountMainPageShowtimesResponse = number
 
 export type ShowtimesGetMainPageShowtimesData = {
   days?: Array<string> | null

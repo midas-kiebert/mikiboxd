@@ -365,6 +365,19 @@ def update_password_me(
     return Message(message="Password updated successfully")
 
 
+@router.get("/showtimes/count")
+def count_my_showtimes(
+    session: SessionDep,
+    current_user: CurrentUser,
+    filters: Filters = Depends(get_filters),
+) -> int:
+    return users_service.count_selected_showtimes(
+        session=session,
+        current_user_id=current_user.id,
+        filters=filters,
+    )
+
+
 @router.get("/showtimes", response_model=list[ShowtimeLoggedIn])
 def get_my_showtimes(
     session: SessionDep,

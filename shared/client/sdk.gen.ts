@@ -57,6 +57,8 @@ import type {
   MeDeleteFriendGroupResponse,
   MeUpdatePasswordMeData,
   MeUpdatePasswordMeResponse,
+  MeCountMyShowtimesData,
+  MeCountMyShowtimesResponse,
   MeGetMyShowtimesData,
   MeGetMyShowtimesResponse,
   MeGetMyShowtimePingsData,
@@ -715,6 +717,46 @@ export class MeService {
       url: "/api/v1/me/password",
       body: data.requestBody,
       mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Count My Showtimes
+   * @param data The data for the request.
+   * @param data.query
+   * @param data.snapshotTime Only show showtimes after this moment
+   * @param data.watchlistOnly
+   * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
+   * @param data.days
+   * @param data.timeRanges
+   * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.runtimeMin Minimum movie runtime in minutes
+   * @param data.runtimeMax Maximum movie runtime in minutes
+   * @returns number Successful Response
+   * @throws ApiError
+   */
+  public static countMyShowtimes(
+    data: MeCountMyShowtimesData = {},
+  ): CancelablePromise<MeCountMyShowtimesResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/showtimes/count",
+      query: {
+        query: data.query,
+        snapshot_time: data.snapshotTime,
+        watchlist_only: data.watchlistOnly,
+        selected_cinema_ids: data.selectedCinemaIds,
+        days: data.days,
+        time_ranges: data.timeRanges,
+        times_of_day: data.timesOfDay,
+        selected_statuses: data.selectedStatuses,
+        runtime_min: data.runtimeMin,
+        runtime_max: data.runtimeMax,
+      },
       errors: {
         422: "Validation Error",
       },

@@ -33,7 +33,7 @@ import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelecti
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { getDaySelectionLabel } from "@/components/filters/day-filter-utils";
+import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
 import { type SharedTabShowtimeFilter } from "@/components/filters/shared-tab-filters";
 import { type PageFilterPresetState } from "@/components/filters/FilterPresetsModal";
 import TimeRangeSliderInline from "@/components/filters/TimeRangeSliderInline";
@@ -59,6 +59,12 @@ type CombinedStatusOption = {
   filter: SharedTabShowtimeFilter;
   audience: "including-friends" | "only-you" | null;
 };
+
+const DAY_PRESETS = [
+  { token: "relative:today", label: "Today" },
+  { token: "relative:tomorrow", label: "Tomorrow" },
+  { token: "relative:day_after_tomorrow", label: "Day after tomorrow" },
+] as const;
 
 const STATUS_OPTIONS_SIMPLE: { value: SharedTabShowtimeFilter; label: string }[] = [
   { value: "all", label: "Any" },
@@ -238,6 +244,10 @@ export default function FiltersModal({
   const cinemaScrollContentW = useRef(0);
   const cinemaScrollContainerW = useRef(0);
 
+  const [hasMoreDayRight, setHasMoreDayRight] = useState(false);
+  const dayScrollContentW = useRef(0);
+  const dayScrollContainerW = useRef(0);
+
   const { data: allCinemas = [] } = useFetchCinemas();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
   const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
@@ -298,10 +308,7 @@ export default function FiltersModal({
     },
   });
 
-  const dayLabels = useMemo(
-    () => selectedDays.map((d) => ({ key: d, label: getDaySelectionLabel(d) })),
-    [selectedDays]
-  );
+  const dayLabel = formatDayPillLabel(selectedDays);
 
   return (
     <>
@@ -576,28 +583,63 @@ export default function FiltersModal({
 
             {/* Days */}
             <SectionLabel label="Days" colors={colors} />
-            {dayLabels.length > 0 ? (
-              <View style={styles.pillRow}>
-                {dayLabels.map(({ key, label }) => (
-                  <TouchableOpacity
-                    key={key}
-                    style={[styles.pill, styles.pillActive, styles.pillWithIcon]}
-                    onPress={() => setSelectedDays(selectedDays.filter((d) => d !== key))}
-                  >
-                    <ThemedText style={styles.pillTextActive}>{label}</ThemedText>
-                    <MaterialIcons name="close" size={11} color={colors.pillActiveText} />
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity onPress={() => setDayModalVisible(true)}>
-                  <ThemedText style={styles.textLink}>+ Add days</ThemedText>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity style={styles.openRow} onPress={() => setDayModalVisible(true)}>
-                <ThemedText style={styles.openRowLabel}>Any day — tap to select</ThemedText>
-                <MaterialIcons name="chevron-right" size={18} color={colors.textSecondary} />
+            <View style={styles.cinemaRow}>
+              {/* Pinned summary pill — opens full day picker */}
+              <TouchableOpacity
+                style={[styles.pill, styles.cinemaCountPill, selectedDays.length > 0 && styles.pillActive]}
+                onPress={() => setDayModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.pillContent}>
+                  <ThemedText style={selectedDays.length > 0 ? styles.pillTextActive : styles.pillText}>
+                    {dayLabel}
+                  </ThemedText>
+                  <MaterialIcons name="chevron-right" size={14} color={selectedDays.length > 0 ? colors.pillActiveText : colors.pillText} />
+                </View>
               </TouchableOpacity>
-            )}
+              <View style={styles.cinemaSeparator} />
+              {/* Quick-select presets */}
+              <View style={{ flex: 1 }}>
+                <GHScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.pillRowScroll}
+                  style={{ flex: 1 }}
+                  scrollEventThrottle={16}
+                  onLayout={(e) => {
+                    dayScrollContainerW.current = e.nativeEvent.layout.width;
+                    setHasMoreDayRight(dayScrollContentW.current > e.nativeEvent.layout.width + 2);
+                  }}
+                  onContentSizeChange={(w) => {
+                    dayScrollContentW.current = w;
+                    setHasMoreDayRight(w > dayScrollContainerW.current + 2);
+                  }}
+                  onScroll={(e) => {
+                    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+                    setHasMoreDayRight(contentOffset.x + layoutMeasurement.width < contentSize.width - 2);
+                  }}
+                >
+                  {DAY_PRESETS.map(({ token, label }) => {
+                    const isActive = selectedDays.includes(token);
+                    return (
+                      <Pill
+                        key={token}
+                        label={label}
+                        active={isActive}
+                        onPress={() => setSelectedDays(isActive ? [] : [token])}
+                        colors={colors}
+                        style={{ marginBottom: 0 }}
+                      />
+                    );
+                  })}
+                </GHScrollView>
+                {hasMoreDayRight && (
+                  <View style={styles.scrollFadeRight} pointerEvents="none">
+                    <MaterialIcons name="chevron-right" size={16} color={colors.textSecondary} />
+                  </View>
+                )}
+              </View>
+            </View>
 
             <Divider colors={colors} />
 

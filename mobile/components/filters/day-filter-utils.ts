@@ -171,11 +171,11 @@ export function getDaySelectionLabels(values?: string[] | null): string[] {
 
 export function formatDayPillLabel(values?: readonly string[] | null): string {
   const selections = canonicalizeDaySelections(values ? [...values] : null);
-  if (!selections || selections.length === 0) return "Any Day";
-  if (selections.length > 1) return `Days (${selections.length})`;
+  if (!selections || selections.length === 0) return "Any day";
+  if (selections.length > 1) return `${selections.length} days`;
 
   const [selection] = selections;
-  if (!selection) return "Any Day";
+  if (!selection) return "Any day";
 
   const relativeOption = getRelativeDayOption(selection);
   if (relativeOption) return relativeOption.label;

@@ -902,6 +902,12 @@ export type ShowtimesGetMainPageShowtimesData = {
 
 export type ShowtimesGetMainPageShowtimesResponse = Array<ShowtimeLoggedIn>
 
+export type ShowtimesGetShowtimeByIdData = {
+  showtimeId: number
+}
+
+export type ShowtimesGetShowtimeByIdResponse = ShowtimeLoggedIn
+
 export type UsersSearchUsersData = {
   limit?: number
   offset?: number

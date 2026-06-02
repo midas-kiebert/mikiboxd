@@ -1,7 +1,7 @@
 /**
  * Mobile showtimes feature component: Showtimes Screen.
  */
-import { useState } from "react";
+import React, { useState } from "react";
 import { useMemo } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -18,6 +18,177 @@ import FilterPills, {
 } from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
 import ShowtimeActionModal from "@/components/showtimes/ShowtimeActionModal";
+
+type ShowtimesListContentProps = {
+  showtimes: ShowtimeLoggedIn[];
+  isLoading: boolean;
+  isFetching: boolean;
+  isFetchingNextPage: boolean;
+  hasNextPage?: boolean;
+  onLoadMore: () => void;
+  refreshing: boolean;
+  onRefresh: () => void | Promise<void>;
+  emptyText?: string;
+};
+
+export function ShowtimesListContent({
+  showtimes,
+  isLoading,
+  isFetching,
+  isFetchingNextPage,
+  hasNextPage,
+  onLoadMore,
+  refreshing,
+  onRefresh,
+  emptyText = "No showtimes found",
+}: ShowtimesListContentProps) {
+  const colors = useThemeColors();
+  const styles = createStyles(colors);
+  const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeLoggedIn | null>(null);
+  const queryClient = useQueryClient();
+
+  const { mutate: updateShowtimeSelection, isPending: isUpdatingShowtimeSelection } = useMutation({
+    mutationFn: ({
+      showtimeId,
+      going,
+      seatRow,
+      seatNumber,
+      visibleFriendIds,
+      visibleGroupIds,
+    }: {
+      showtimeId: number;
+      going: GoingStatus;
+      seatRow?: string | null;
+      seatNumber?: string | null;
+      visibleFriendIds?: string[];
+      visibleGroupIds?: string[];
+    }) => {
+      const requestBody: {
+        going_status: GoingStatus;
+        seat_row?: string | null;
+        seat_number?: string | null;
+        visible_friend_ids?: string[];
+        visible_group_ids?: string[];
+      } = { going_status: going };
+      if (seatRow !== undefined) requestBody.seat_row = seatRow;
+      if (seatNumber !== undefined) requestBody.seat_number = seatNumber;
+      if (visibleFriendIds !== undefined) requestBody.visible_friend_ids = visibleFriendIds;
+      if (visibleGroupIds !== undefined) requestBody.visible_group_ids = visibleGroupIds;
+      return ShowtimesService.updateShowtimeSelection({ showtimeId, requestBody });
+    },
+    onSuccess: (updatedShowtime) => {
+      setSelectedShowtime((previous) =>
+        previous && previous.id === updatedShowtime.id ? updatedShowtime : previous
+      );
+    },
+    onError: (error) => {
+      console.error("Error updating showtime selection:", error);
+    },
+    onSettled: (_data, _error, variables) => {
+      if (variables) {
+        queryClient.invalidateQueries({
+          queryKey: ["showtimes", "visibility", variables.showtimeId],
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
+      queryClient.invalidateQueries({ queryKey: ["movie"] });
+      queryClient.invalidateQueries({ queryKey: ["movies"] });
+    },
+  });
+
+  const handleShowtimeStatusUpdate = (
+    going: GoingStatus,
+    seat?: { seatRow: string | null; seatNumber: string | null },
+    visibility?: { visibleFriendIds: string[]; visibleGroupIds: string[] }
+  ) => {
+    if (!selectedShowtime || isUpdatingShowtimeSelection) return;
+    const nextSeatRow =
+      going === "GOING" ? (seat?.seatRow ?? selectedShowtime.seat_row ?? null) : null;
+    const nextSeatNumber =
+      going === "GOING" ? (seat?.seatNumber ?? selectedShowtime.seat_number ?? null) : null;
+
+    setSelectedShowtime((previous) =>
+      previous
+        ? { ...previous, going, seat_row: nextSeatRow, seat_number: nextSeatNumber }
+        : previous
+    );
+    updateShowtimeSelection({
+      showtimeId: selectedShowtime.id,
+      going,
+      seatRow: seat?.seatRow,
+      seatNumber: seat?.seatNumber,
+      visibleFriendIds: visibility?.visibleFriendIds,
+      visibleGroupIds: visibility?.visibleGroupIds,
+    });
+  };
+
+  const visibilityPrefetchShowtimeIds = useMemo(
+    () =>
+      showtimes
+        .filter((showtime) => showtime.going !== "NOT_GOING")
+        .map((showtime) => showtime.id),
+    [showtimes]
+  );
+
+  usePrefetchShowtimeVisibilityBatch({
+    showtimeIds: visibilityPrefetchShowtimeIds,
+    enabled: showtimes.length > 0,
+  });
+
+  const renderFooter = () => {
+    if (!isFetchingNextPage) return null;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="large" color={colors.tint} />
+      </View>
+    );
+  };
+
+  const renderEmpty = () => {
+    if (isLoading || isFetching) {
+      return (
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={colors.tint} />
+        </View>
+      );
+    }
+    return (
+      <View style={styles.centerContainer}>
+        <ThemedText style={styles.emptyText}>{emptyText}</ThemedText>
+      </View>
+    );
+  };
+
+  return (
+    <>
+      <ShowtimeActionModal
+        visible={selectedShowtime !== null}
+        showtime={selectedShowtime}
+        movieTitle={selectedShowtime?.movie.title}
+        isUpdatingStatus={isUpdatingShowtimeSelection}
+        onUpdateStatus={handleShowtimeStatusUpdate}
+        onClose={() => setSelectedShowtime(null)}
+      />
+      <FlatList
+        data={showtimes}
+        renderItem={({ item }) => (
+          <ShowtimeCard showtime={item} onLongPress={(showtime) => setSelectedShowtime(showtime)} />
+        )}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={renderEmpty}
+        ListFooterComponent={renderFooter}
+        onEndReached={() => {
+          if (hasNextPage) onLoadMore();
+        }}
+        onEndReachedThreshold={2}
+        refreshing={isLoading}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      />
+    </>
+  );
+}
 
 type FilterOption<TId extends string = string> = {
   id: TId;
@@ -49,14 +220,17 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   onRefresh: () => void;
   searchQuery: string;
   onSearchChange: (value: string) => void;
-  filters: ReadonlyArray<FilterOption<TFilterId>>;
-  activeFilterIds: ReadonlyArray<TFilterId>;
-  onToggleFilter: (id: TFilterId, position?: FilterPillLongPressPosition) => void;
+  // Legacy pill-based filters — omit when using filterRow slot instead
+  filters?: ReadonlyArray<FilterOption<TFilterId>>;
+  activeFilterIds?: ReadonlyArray<TFilterId>;
+  onToggleFilter?: (id: TFilterId, position?: FilterPillLongPressPosition) => void;
   onLongPressFilter?: (
     id: TFilterId,
     position: FilterPillLongPressPosition
   ) => boolean | void;
   audienceToggle?: AudienceToggleOption;
+  // New slot: replaces FilterPills when provided
+  filterRow?: React.ReactElement | null | false;
   emptyText?: string;
 };
 
@@ -79,154 +253,13 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   onToggleFilter,
   onLongPressFilter,
   audienceToggle,
+  filterRow,
   emptyText = "No showtimes found",
 }: ShowtimesScreenProps<TFilterId>) {
-  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
-  const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeLoggedIn | null>(null);
-  // React Query client used for cache updates and invalidation.
-  const queryClient = useQueryClient();
-
-  const { mutate: updateShowtimeSelection, isPending: isUpdatingShowtimeSelection } = useMutation({
-    mutationFn: ({
-      showtimeId,
-      going,
-      seatRow,
-      seatNumber,
-      visibleFriendIds,
-      visibleGroupIds,
-    }: {
-      showtimeId: number;
-      going: GoingStatus;
-      seatRow?: string | null;
-      seatNumber?: string | null;
-      visibleFriendIds?: string[];
-      visibleGroupIds?: string[];
-    }) => {
-      const requestBody: {
-        going_status: GoingStatus;
-        seat_row?: string | null;
-        seat_number?: string | null;
-        visible_friend_ids?: string[];
-        visible_group_ids?: string[];
-      } = {
-        going_status: going,
-      };
-      if (seatRow !== undefined) {
-        requestBody.seat_row = seatRow;
-      }
-      if (seatNumber !== undefined) {
-        requestBody.seat_number = seatNumber;
-      }
-      if (visibleFriendIds !== undefined) {
-        requestBody.visible_friend_ids = visibleFriendIds;
-      }
-      if (visibleGroupIds !== undefined) {
-        requestBody.visible_group_ids = visibleGroupIds;
-      }
-      return ShowtimesService.updateShowtimeSelection({
-        showtimeId,
-        requestBody,
-      });
-    },
-    onSuccess: (updatedShowtime) => {
-      setSelectedShowtime((previous) =>
-        previous && previous.id === updatedShowtime.id ? updatedShowtime : previous
-      );
-    },
-    onError: (error) => {
-      console.error("Error updating showtime selection:", error);
-    },
-    onSettled: (_data, _error, variables) => {
-      if (variables) {
-        queryClient.invalidateQueries({
-          queryKey: ["showtimes", "visibility", variables.showtimeId],
-        });
-      }
-      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
-      queryClient.invalidateQueries({ queryKey: ["movie"] });
-      queryClient.invalidateQueries({ queryKey: ["movies"] });
-    },
-  });
-
-  // Submit the selected going/interested/not-going status.
-  const handleShowtimeStatusUpdate = (
-    going: GoingStatus,
-    seat?: { seatRow: string | null; seatNumber: string | null },
-    visibility?: { visibleFriendIds: string[]; visibleGroupIds: string[] }
-  ) => {
-    if (!selectedShowtime || isUpdatingShowtimeSelection) return;
-    const nextSeatRow =
-      going === "GOING"
-        ? (seat?.seatRow ?? selectedShowtime.seat_row ?? null)
-        : null;
-    const nextSeatNumber =
-      going === "GOING"
-        ? (seat?.seatNumber ?? selectedShowtime.seat_number ?? null)
-        : null;
-
-    setSelectedShowtime((previous) =>
-      previous
-        ? {
-            ...previous,
-            going,
-            seat_row: nextSeatRow,
-            seat_number: nextSeatNumber,
-          }
-        : previous
-    );
-    updateShowtimeSelection({
-      showtimeId: selectedShowtime.id,
-      going,
-      seatRow: seat?.seatRow,
-      seatNumber: seat?.seatNumber,
-      visibleFriendIds: visibility?.visibleFriendIds,
-      visibleGroupIds: visibility?.visibleGroupIds,
-    });
-  };
-
   const isOnlyYouAudienceActive = audienceToggle?.value === "only-you";
-  const visibilityPrefetchShowtimeIds = useMemo(
-    () =>
-      showtimes
-        .filter((showtime) => showtime.going !== "NOT_GOING")
-        .map((showtime) => showtime.id),
-    [showtimes]
-  );
 
-  usePrefetchShowtimeVisibilityBatch({
-    showtimeIds: visibilityPrefetchShowtimeIds,
-    enabled: showtimes.length > 0,
-  });
-
-  // Render infinite-scroll loading feedback at the bottom of the list.
-  const renderFooter = () => {
-    if (!isFetchingNextPage) return null;
-    return (
-      <View style={styles.footerLoader}>
-        <ActivityIndicator size="large" color={colors.tint} />
-      </View>
-    );
-  };
-
-  // Render the empty/loading state when list data is unavailable.
-  const renderEmpty = () => {
-    if (isLoading || isFetching) {
-      return (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.tint} />
-        </View>
-      );
-    }
-    return (
-      <View style={styles.centerContainer}>
-        <ThemedText style={styles.emptyText}>{emptyText}</ThemedText>
-      </View>
-    );
-  };
-
-  // Render/output using the state and derived values prepared above.
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <TopBar
@@ -234,56 +267,42 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         titleSuffix={topBarTitleSuffix}
         showBackButton={topBarShowBackButton}
       />
-      <ShowtimeActionModal
-        visible={selectedShowtime !== null}
-        showtime={selectedShowtime}
-        movieTitle={selectedShowtime?.movie.title}
-        isUpdatingStatus={isUpdatingShowtimeSelection}
-        onUpdateStatus={handleShowtimeStatusUpdate}
-        onClose={() => setSelectedShowtime(null)}
-      />
       <SearchBar
         value={searchQuery}
         onChangeText={onSearchChange}
         placeholder="Search showtimes"
       />
-      <FilterPills
-        filters={filters}
-        selectedId=""
-        onSelect={onToggleFilter}
-        onLongPressSelect={onLongPressFilter}
-        activeIds={activeFilterIds}
-        compoundRightToggle={
-          audienceToggle
-            ? {
-                anchorId: "showtime-filter",
-                label: isOnlyYouAudienceActive ? "Only You" : "Including Friends",
-                onPress: () =>
-                  audienceToggle.onChange(
-                    isOnlyYouAudienceActive ? "including-friends" : "only-you"
-                  ),
-              }
-            : undefined
-        }
-      />
-      <FlatList
-        data={showtimes}
-        renderItem={({ item }) => (
-          <ShowtimeCard showtime={item} onLongPress={(showtime) => setSelectedShowtime(showtime)} />
-        )}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={renderEmpty}
-        ListFooterComponent={renderFooter}
-        onEndReached={() => {
-          if (hasNextPage) {
-            onLoadMore();
+      {filterRow ?? (
+        <FilterPills
+          filters={filters ?? []}
+          selectedId=""
+          onSelect={onToggleFilter ?? (() => {})}
+          onLongPressSelect={onLongPressFilter}
+          activeIds={activeFilterIds ?? []}
+          compoundRightToggle={
+            audienceToggle
+              ? {
+                  anchorId: "showtime-filter",
+                  label: isOnlyYouAudienceActive ? "Only You" : "Including Friends",
+                  onPress: () =>
+                    audienceToggle.onChange(
+                      isOnlyYouAudienceActive ? "including-friends" : "only-you"
+                    ),
+                }
+              : undefined
           }
-        }}
-        onEndReachedThreshold={2}
-        refreshing={isLoading}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        />
+      )}
+      <ShowtimesListContent
+        showtimes={showtimes}
+        isLoading={isLoading}
+        isFetching={isFetching}
+        isFetchingNextPage={isFetchingNextPage}
+        hasNextPage={hasNextPage}
+        onLoadMore={onLoadMore}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        emptyText={emptyText}
       />
     </SafeAreaView>
   );

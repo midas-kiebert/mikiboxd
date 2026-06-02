@@ -20,3 +20,25 @@ export const formatTimePillLabel = (timeRanges: readonly string[]) => {
   }
   return "Any Time";
 };
+
+export const formatTimeRangeChipLabel = (range: string): string => {
+  const [startRaw = "", endRaw = ""] = range.split("-", 2);
+  const start = startRaw.trim();
+  const end = endRaw.trim();
+
+  if (start && end) return `${start}-${end}`;
+  if (start) return `From ${start}`;
+  if (end) return `Until ${end}`;
+  return range;
+};
+
+export const formatRuntimeRangeChipLabel = (range: string): string => {
+  const [startRaw = "", endRaw = ""] = range.split("-", 2);
+  const start = startRaw.trim();
+  const end = endRaw.trim();
+
+  if (start && end) return `${start}-${end} min`;
+  if (start) return `≥${start} min`;
+  if (end) return `≤${end} min`;
+  return range;
+};

@@ -9,7 +9,6 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
 from app.core.enums import FilterPresetScope, ShowtimePingSort
-from app.crud import cinema as cinemas_crud
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import filter_preset as filter_presets_crud
 from app.crud import friend_group as friend_groups_crud
@@ -45,9 +44,6 @@ DEFAULT_FILTER_PRESET_IDS = {
     FilterPresetScope.SHOWTIMES: UUID("00000000-0000-0000-0000-000000000001"),
     FilterPresetScope.MOVIES: UUID("00000000-0000-0000-0000-000000000002"),
 }
-DEFAULT_CINEMA_PRESET_ID = UUID("00000000-0000-0000-0000-000000000003")
-DEFAULT_CINEMA_PRESET_NAME = "All Cinemas"
-
 
 def _build_default_filter_preset(scope: FilterPresetScope) -> FilterPresetPublic:
     now = now_amsterdam_naive()
@@ -351,7 +347,6 @@ def _to_cinema_preset_public(preset: CinemaPreset) -> CinemaPresetPublic:
         {
             "id": preset.id,
             "name": preset.name,
-            "is_default": False,
             "cinema_ids": preset.cinema_ids,
             "is_favorite": preset.is_favorite,
             "created_at": preset.created_at,
@@ -364,25 +359,6 @@ def _normalize_cinema_ids(cinema_ids: list[int]) -> list[int]:
     return sorted(set(cinema_ids))
 
 
-def _get_all_cinema_ids(*, session: Session) -> list[int]:
-    return sorted(cinema.id for cinema in cinemas_crud.get_cinemas(session=session))
-
-
-def _build_default_cinema_preset(*, session: Session) -> CinemaPresetPublic:
-    now = now_amsterdam_naive()
-    return CinemaPresetPublic.model_validate(
-        {
-            "id": DEFAULT_CINEMA_PRESET_ID,
-            "name": DEFAULT_CINEMA_PRESET_NAME,
-            "is_default": True,
-            "cinema_ids": _get_all_cinema_ids(session=session),
-            "is_favorite": False,
-            "created_at": now,
-            "updated_at": now,
-        }
-    )
-
-
 def list_cinema_presets(
     *,
     session: Session,
@@ -392,13 +368,7 @@ def list_cinema_presets(
         session=session,
         user_id=user_id,
     )
-    public_presets = [_to_cinema_preset_public(preset) for preset in presets]
-    has_default = any(
-        preset.id == DEFAULT_CINEMA_PRESET_ID for preset in public_presets
-    )
-    if not has_default:
-        public_presets.insert(0, _build_default_cinema_preset(session=session))
-    return public_presets
+    return [_to_cinema_preset_public(preset) for preset in presets]
 
 
 def save_cinema_preset(
@@ -451,9 +421,6 @@ def delete_cinema_preset(
     user_id: UUID,
     preset_id: UUID,
 ) -> bool:
-    if preset_id == DEFAULT_CINEMA_PRESET_ID:
-        return False
-
     deleted = cinema_presets_crud.delete_preset(
         session=session,
         user_id=user_id,

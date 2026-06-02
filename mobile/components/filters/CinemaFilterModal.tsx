@@ -8,7 +8,6 @@ import {
   FlatList,
   type ListRenderItem,
   Modal,
-  Platform,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -40,6 +39,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 type CinemaFilterModalProps = {
   visible: boolean;
   onClose: () => void;
+  initialPage?: CinemaModalPage;
 };
 
 type CityGroup = {
@@ -190,7 +190,7 @@ const getCinemaPalette = (
   };
 };
 
-export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModalProps) {
+export default function CinemaFilterModal({ visible, onClose, initialPage = "selection" }: CinemaFilterModalProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -227,7 +227,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
     setPresetName("");
     setIsSavePresetDialogVisible(false);
     setSaveAsFavorite(false);
-    setPage("selection");
+    setPage(initialPage);
   }, [visible, selectedCinemas]);
 
   const presetsQueryKey = useMemo(() => ["cinema-presets"] as const, []);
@@ -455,7 +455,6 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
 
   const handleDeletePreset = useCallback(
     (preset: CinemaPresetPublic) => {
-      if (preset.is_default) return;
       Alert.alert(
         "Delete preset?",
         `Are you sure you want to delete "${preset.name}"?`,
@@ -570,9 +569,8 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
   const renderPreset: ListRenderItem<CinemaPresetPublic> = useCallback(
     ({ item, index }) => {
       const isCurrent = serializeCinemaIds(item.cinema_ids) === currentSelectionSignature;
-      const isDefaultPreset = item.is_default;
       const favoriteDisabled = item.is_favorite || setFavoritePresetMutation.isPending;
-      const deleteDisabled = isDefaultPreset || deletePresetMutation.isPending;
+      const deleteDisabled = deletePresetMutation.isPending;
       const itemIndex = index ?? -1;
       const canMoveUp = itemIndex > 0;
       const canMoveDown = itemIndex >= 0 && itemIndex < presetsForRender.length - 1;
@@ -688,8 +686,8 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
       <SafeAreaView style={styles.modalContainer} edges={["top", "bottom"]}>
         <View style={styles.header}>
           <ThemedText style={styles.title}>Cinemas</ThemedText>
-          <TouchableOpacity onPress={handleClose} style={styles.closeButton} activeOpacity={0.8}>
-            <ThemedText style={styles.closeButtonText}>Close</ThemedText>
+          <TouchableOpacity onPress={handleClose} hitSlop={8}>
+            <MaterialIcons name="close" size={22} color={colors.text} />
           </TouchableOpacity>
         </View>
 
@@ -833,22 +831,7 @@ export default function CinemaFilterModal({ visible, onClose }: CinemaFilterModa
                 </TouchableOpacity>
               </View>
             </>
-          ) : (
-            <View style={styles.preferenceActions}>
-              <TouchableOpacity
-                style={[styles.preferenceButton, styles.preferenceButtonSubtle, styles.preferenceButtonGrow]}
-                onPress={() => setPage("selection")}
-                activeOpacity={0.8}
-              >
-                <View style={styles.preferenceButtonInner}>
-                  <MaterialIcons name="arrow-back" size={16} color={colors.textSecondary} />
-                  <ThemedText style={[styles.preferenceButtonText, styles.preferenceButtonTextSubtle]}>
-                    Back to selection
-                  </ThemedText>
-                </View>
-              </TouchableOpacity>
-            </View>
-          )}
+          ) : null}
         </View>
         <Modal
           transparent
@@ -943,9 +926,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.background,
     },
     header: {
-      paddingHorizontal: 16,
-      paddingTop: Platform.OS === "ios" ? 20 : 12,
-      paddingBottom: 12,
+      paddingHorizontal: 20,
+      paddingTop: 16,
+      paddingBottom: 10,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
@@ -953,19 +936,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderBottomColor: colors.divider,
     },
     title: {
-      fontSize: 18,
+      fontSize: 17,
       fontWeight: "700",
-    },
-    closeButton: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
-      backgroundColor: colors.pillBackground,
-    },
-    closeButtonText: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: colors.textSecondary,
     },
     pageSwitcher: {
       paddingHorizontal: 16,

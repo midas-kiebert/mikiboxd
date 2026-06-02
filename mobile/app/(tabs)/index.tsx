@@ -2,80 +2,54 @@
  * Expo Router screen/module for (tabs) / index. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet } from 'react-native';
 import { DateTime } from 'luxon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useIsFocused } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { MeService } from 'shared';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useFetchMyShowtimes } from 'shared/hooks/useFetchMyShowtimes';
+import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
-import CinemaPresetQuickPopover from '@/components/filters/CinemaPresetQuickPopover';
-import DayFilterModal from '@/components/filters/DayFilterModal';
-import DayQuickPopover from '@/components/filters/DayQuickPopover';
-import FilterPresetQuickPopover from '@/components/filters/FilterPresetQuickPopover';
-import FilterPresetFab from '@/components/filters/FilterPresetFab';
-import FilterPresetsModal, {
-  type PageFilterPresetState,
-} from '@/components/filters/FilterPresetsModal';
-import { type FilterPillLongPressPosition } from '@/components/filters/FilterPills';
-import RuntimeQuickPopover from '@/components/filters/RuntimeQuickPopover';
-import TimeQuickPopover from '@/components/filters/TimeQuickPopover';
+import { ThemedView } from '@/components/themed-view';
+import { ThemedText } from '@/components/themed-text';
+import TopBar from '@/components/layout/TopBar';
+import SearchBar from '@/components/inputs/SearchBar';
+import FiltersRow from '@/components/filters/FiltersRow';
+import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
+import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
+import { ShowtimesListContent } from '@/components/showtimes/ShowtimesScreen';
+import MovieCard from '@/components/movies/MovieCard';
+import { type PageFilterPresetState } from '@/components/filters/FilterPresetsModal';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 import {
   SHARED_TAB_FILTER_PRESET_SCOPE,
-  buildSharedTabActiveFilterIds,
-  buildSharedTabPillFilters,
-  cycleSharedTabShowtimeFilter,
   getSelectedStatusesFromShowtimeFilter,
   toSharedTabShowtimeFilter,
-  type SharedTabFilterId,
 } from '@/components/filters/shared-tab-filters';
-import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
-import { isCinemaSelectionDifferentFromPreferred } from '@/utils/cinema-selection';
-import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
+import { isCinemaSelectionDifferentFromPreferred } from '@/utils/cinema-selection';
+import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 
 type AudienceFilter = 'including-friends' | 'only-you';
-type MainShowtimesFilterId = SharedTabFilterId;
-const toAudienceFilter = (
-  value: PageFilterPresetState['showtime_audience'] | undefined
-): AudienceFilter => (value === 'only-you' ? 'only-you' : 'including-friends');
 
 export default function MainShowtimesScreen() {
-  // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
+  const styles = createStyles(colors);
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [isFilterTransitionLoading, setIsFilterTransitionLoading] = useState(false);
-  // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
-  // Controls visibility of the cinema-filter modal.
-  const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
-  const [cinemaPresetPopoverVisible, setCinemaPresetPopoverVisible] = useState(false);
-  const [cinemaPresetPopoverAnchor, setCinemaPresetPopoverAnchor] =
-    useState<FilterPillLongPressPosition | null>(null);
-  const [dayQuickPopoverVisible, setDayQuickPopoverVisible] = useState(false);
-  const [dayQuickPopoverAnchor, setDayQuickPopoverAnchor] =
-    useState<FilterPillLongPressPosition | null>(null);
-  const [timeQuickPopoverVisible, setTimeQuickPopoverVisible] = useState(false);
-  const [timeQuickPopoverAnchor, setTimeQuickPopoverAnchor] =
-    useState<FilterPillLongPressPosition | null>(null);
-  const [runtimeQuickPopoverVisible, setRuntimeQuickPopoverVisible] = useState(false);
-  const [runtimeQuickPopoverAnchor, setRuntimeQuickPopoverAnchor] =
-    useState<FilterPillLongPressPosition | null>(null);
-  const [presetQuickPopoverVisible, setPresetQuickPopoverVisible] = useState(false);
-  const [presetQuickPopoverAnchor, setPresetQuickPopoverAnchor] =
-    useState<FilterPillLongPressPosition | null>(null);
-  // Controls visibility of the day-filter modal.
-  const [dayModalVisible, setDayModalVisible] = useState(false);
-  // Controls visibility of the filter-presets modal.
-  const [presetModalVisible, setPresetModalVisible] = useState(false);
-  // Snapshot timestamp used to keep paginated API responses consistent.
+  const { openFiltersModal } = useFiltersModal();
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
+  const isFocused = useIsFocused();
+  const queryClient = useQueryClient();
 
   const {
     selectedShowtimeFilter,
@@ -87,7 +61,10 @@ export default function MainShowtimesScreen() {
     watchlistOnly,
     appliedWatchlistOnly,
     setWatchlistOnly,
+    groupByMovie,
+    setGroupByMovie,
     sessionCinemaIds,
+    setSessionCinemaIds,
     selectedDays,
     setSelectedDays,
     selectedTimeRanges,
@@ -95,16 +72,18 @@ export default function MainShowtimesScreen() {
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
   } = useSharedTabFilters();
+
   const { user } = useAuth();
-  const isFocused = useIsFocused();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
+
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
   const { data: cinemaPresets = [] } = useQuery({
     queryKey: ['cinema-presets'],
     queryFn: () => MeService.getCinemaPresets(),
   });
+
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
   const resolvedApiDays = useMemo(
@@ -120,36 +99,149 @@ export default function MainShowtimesScreen() {
     [selectedRuntimeRanges]
   );
 
-  // React Query client used for cache updates and invalidation.
-  const queryClient = useQueryClient();
-
   useEffect(() => {
     if (hasLetterboxdUsername || !watchlistOnly) return;
     setWatchlistOnly(false);
   }, [hasLetterboxdUsername, setWatchlistOnly, watchlistOnly]);
 
-  // Build the filter payload from current UI selections.
-  const showtimesFilters = useMemo(() => {
-    return {
-      query: searchQuery || undefined,
-      selectedCinemaIds: sessionCinemaIds,
+  // ─── Showtimes query ────────────────────────────────────────────────────────
+  const showtimesFilters = useMemo(() => ({
+    query: searchQuery || undefined,
+    selectedCinemaIds: sessionCinemaIds,
+    days: resolvedApiDays,
+    timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
+    runtimeMin: runtimeBounds.runtimeMin,
+    runtimeMax: runtimeBounds.runtimeMax,
+    selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
+    watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
+  }), [
+    searchQuery, appliedShowtimeFilter, resolvedApiDays, selectedTimeRanges,
+    runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, effectiveAppliedWatchlistOnly,
+  ]);
+
+  const mainShowtimesQuery = useFetchMainPageShowtimes({
+    limit: 20,
+    snapshotTime,
+    filters: showtimesFilters,
+    enabled: isFocused && !groupByMovie && effectiveAudienceFilter === 'including-friends',
+  });
+  const myShowtimesQuery = useFetchMyShowtimes({
+    limit: 20,
+    snapshotTime,
+    filters: showtimesFilters,
+    enabled: isFocused && !groupByMovie && effectiveAudienceFilter === 'only-you',
+  });
+  const activeShowtimesQuery =
+    effectiveAudienceFilter === 'only-you' ? myShowtimesQuery : mainShowtimesQuery;
+
+  // ─── Movies query (Group by Movie mode) ─────────────────────────────────────
+  const movieFilters = useMemo<MovieFilters>(
+    () => ({
+      query: searchQuery,
+      watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
       days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       runtimeMin: runtimeBounds.runtimeMin,
       runtimeMax: runtimeBounds.runtimeMax,
+      selectedCinemaIds: sessionCinemaIds,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
-      watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
-    };
-  }, [
-    searchQuery,
-    appliedShowtimeFilter,
-    resolvedApiDays,
-    selectedTimeRanges,
-    runtimeBounds.runtimeMin,
-    runtimeBounds.runtimeMax,
-    sessionCinemaIds,
-    effectiveAppliedWatchlistOnly,
-  ]);
+    }),
+    [
+      searchQuery, effectiveAppliedWatchlistOnly, resolvedApiDays, selectedTimeRanges,
+      runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, appliedShowtimeFilter,
+    ]
+  );
+  const moviesQuery = useFetchMovies({
+    limit: 20,
+    snapshotTime,
+    filters: movieFilters,
+    enabled: isFocused && groupByMovie,
+  });
+
+  // ─── Active query ────────────────────────────────────────────────────────────
+  const {
+    data: showtimesData,
+    isLoading: showtimesLoading,
+    isFetchingNextPage: showtimesFetchingNextPage,
+    isFetching: showtimesFetching,
+    hasNextPage: showtimesHasNextPage,
+    fetchNextPage: showtimesFetchNextPage,
+  } = activeShowtimesQuery;
+
+  const {
+    data: moviesData,
+    isLoading: moviesLoading,
+    isFetchingNextPage: moviesFetchingNextPage,
+    isFetching: moviesFetching,
+    hasNextPage: moviesHasNextPage,
+    fetchNextPage: moviesFetchNextPage,
+  } = moviesQuery;
+
+  const isAppliedFilterTransitionPending =
+    selectedShowtimeFilter !== appliedShowtimeFilter ||
+    effectiveWatchlistOnly !== effectiveAppliedWatchlistOnly ||
+    (shouldShowAudienceToggle && selectedShowtimeAudience !== appliedShowtimeAudience);
+
+  const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
+  const movies = useMemo(() => moviesData?.pages.flat() ?? [], [moviesData]);
+  const visibleShowtimes = isFilterTransitionLoading ? [] : showtimes;
+
+  useEffect(() => {
+    if (!isFilterTransitionLoading) return;
+    if (isAppliedFilterTransitionPending) return;
+    const frame = requestAnimationFrame(() => setIsFilterTransitionLoading(false));
+    return () => cancelAnimationFrame(frame);
+  }, [isAppliedFilterTransitionPending, isFilterTransitionLoading]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (groupByMovie) {
+        await refreshInfiniteQueryWithFreshSnapshot({
+          queryClient,
+          queryKey: ['movies', movieFilters],
+          setSnapshotTime,
+        });
+      } else {
+        await refreshInfiniteQueryWithFreshSnapshot({
+          queryClient,
+          queryKey:
+            effectiveAudienceFilter === 'only-you'
+              ? ['showtimes', 'me', showtimesFilters]
+              : ['showtimes', 'main', showtimesFilters],
+          setSnapshotTime,
+        });
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // ─── Filter pills helpers ────────────────────────────────────────────────────
+  const isCinemaFilterActive = useMemo(
+    () => isCinemaSelectionDifferentFromPreferred({ sessionCinemaIds, preferredCinemaIds }),
+    [sessionCinemaIds, preferredCinemaIds]
+  );
+
+  const activeFilterCount = [
+    selectedShowtimeFilter !== 'all',
+    effectiveWatchlistOnly,
+    groupByMovie,
+    selectedDays.length > 0,
+    selectedTimeRanges.length > 0,
+    selectedRuntimeRanges.length > 0,
+    isCinemaFilterActive,
+  ].filter(Boolean).length;
+
+  const cinemaChipLabel = useMemo(() => {
+    if (!isCinemaFilterActive) return null;
+    const ids = sessionCinemaIds ?? preferredCinemaIds ?? [];
+    const sig = JSON.stringify(Array.from(new Set(ids)).sort((a, b) => a - b));
+    const preset = cinemaPresets.find(
+      (p) => JSON.stringify(Array.from(new Set(p.cinema_ids)).sort((a, b) => a - b)) === sig
+    );
+    return preset?.name ?? `${ids.length} cinemas`;
+  }, [isCinemaFilterActive, sessionCinemaIds, preferredCinemaIds, cinemaPresets]);
 
   const currentPresetFilters = useMemo<PageFilterPresetState>(
     () => ({
@@ -161,334 +253,143 @@ export default function MainShowtimesScreen() {
       runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
     }),
     [
-      selectedShowtimeAudience,
-      selectedShowtimeFilter,
-      selectedDays,
-      selectedTimeRanges,
-      selectedRuntimeRanges,
-      shouldShowAudienceToggle,
-      effectiveWatchlistOnly,
+      selectedShowtimeFilter, shouldShowAudienceToggle, selectedShowtimeAudience,
+      effectiveWatchlistOnly, selectedDays, selectedTimeRanges, selectedRuntimeRanges,
     ]
   );
 
-  // Build shared filter pills used by both Movies and Showtimes tabs.
-  const sharedPillFilters = useMemo(
-    () =>
-      buildSharedTabPillFilters({
-        colors,
-        selectedShowtimeFilter,
-        watchlistOnly: effectiveWatchlistOnly,
-        canUseWatchlistFilter: hasLetterboxdUsername,
-        selectedDays,
-        selectedTimeRanges,
-        selectedRuntimeRanges,
-        sessionCinemaIds,
-        preferredCinemaIds,
-        cinemaPresets,
-      }),
-    [
-      cinemaPresets,
-      colors,
-      preferredCinemaIds,
-      selectedDays,
-      selectedShowtimeFilter,
-      selectedTimeRanges,
-      selectedRuntimeRanges,
-      sessionCinemaIds,
-      hasLetterboxdUsername,
-      effectiveWatchlistOnly,
-    ]
-  );
-
-  // Cinema pill should only be active when current session differs from preferred cinemas.
-  const isCinemaFilterActive = useMemo(
-    () =>
-      isCinemaSelectionDifferentFromPreferred({
-        sessionCinemaIds,
-        preferredCinemaIds,
-      }),
-    [sessionCinemaIds, preferredCinemaIds]
-  );
-
-  // Compute shared active filter ids used by both Movies and Showtimes tabs.
-  const sharedActiveFilterIds = useMemo<SharedTabFilterId[]>(
-    () =>
-      buildSharedTabActiveFilterIds({
-        selectedShowtimeFilter,
-        watchlistOnly: effectiveWatchlistOnly,
-        canUseWatchlistFilter: hasLetterboxdUsername,
-        selectedDaysCount: selectedDays.length,
-        selectedTimeRangesCount: selectedTimeRanges.length,
-        selectedRuntimeRangesCount: selectedRuntimeRanges.length,
-        isCinemaFilterActive,
-      }),
-    [
-      selectedShowtimeFilter,
-      hasLetterboxdUsername,
-      effectiveWatchlistOnly,
-      selectedDays.length,
-      selectedTimeRanges.length,
-      selectedRuntimeRanges.length,
-      isCinemaFilterActive,
-    ]
-  );
-
-  // Data hooks keep this module synced with backend data and shared cache state.
-  const mainShowtimesQuery = useFetchMainPageShowtimes({
-    limit: 20,
-    snapshotTime,
-    filters: showtimesFilters,
-    enabled: isFocused && effectiveAudienceFilter === 'including-friends',
-  });
-  const myShowtimesQuery = useFetchMyShowtimes({
-    limit: 20,
-    snapshotTime,
-    filters: showtimesFilters,
-    enabled: isFocused && effectiveAudienceFilter === 'only-you',
-  });
-  const activeShowtimesQuery =
-    effectiveAudienceFilter === 'only-you' ? myShowtimesQuery : mainShowtimesQuery;
-  const {
-    data,
-    isLoading,
-    isFetchingNextPage,
-    isFetching,
-    hasNextPage,
-    fetchNextPage,
-  } = activeShowtimesQuery;
-  const isAudienceTransitionPending =
-    shouldShowAudienceToggle && selectedShowtimeAudience !== appliedShowtimeAudience;
-  const isAppliedFilterTransitionPending =
-    selectedShowtimeFilter !== appliedShowtimeFilter ||
-    effectiveWatchlistOnly !== effectiveAppliedWatchlistOnly ||
-    isAudienceTransitionPending;
-
-  // Flatten/derive list data for rendering efficiency.
-  const showtimes = useMemo(() => data?.pages.flat() ?? [], [data]);
-  const visibleShowtimes = isFilterTransitionLoading ? [] : showtimes;
-
-  const startFilterTransitionLoading = () => {
+  const handleApplyPreset = (preset: PageFilterPresetState) => {
     setIsFilterTransitionLoading(true);
+    setSelectedShowtimeFilter(toSharedTabShowtimeFilter(preset.selected_showtime_filter));
+    setSelectedShowtimeAudience(preset.showtime_audience === "only-you" ? "only-you" : "including-friends");
+    setWatchlistOnly(hasLetterboxdUsername && Boolean(preset.watchlist_only));
+    setSelectedDays(preset.days ?? []);
+    setSelectedTimeRanges(preset.time_ranges ?? []);
+    setSelectedRuntimeRanges(preset.runtime_ranges ?? []);
   };
 
-  useEffect(() => {
-    if (!isFilterTransitionLoading) return;
-    if (isAppliedFilterTransitionPending) return;
-
-    const frame = requestAnimationFrame(() => {
-      setIsFilterTransitionLoading(false);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [isAppliedFilterTransitionPending, isFilterTransitionLoading]);
-
-  // Refresh the current dataset and reset any stale pagination state.
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await refreshInfiniteQueryWithFreshSnapshot({
-        queryClient,
-        queryKey:
-          effectiveAudienceFilter === 'only-you'
-            ? ['showtimes', 'me', showtimesFilters]
-            : ['showtimes', 'main', showtimesFilters],
-        setSnapshotTime,
-      });
-    } finally {
-      setRefreshing(false);
-    }
+  const filtersRowProps = {
+    scope: SHARED_TAB_FILTER_PRESET_SCOPE,
+    activeFilterCount,
+    currentPresetFilters,
+    groupByMovie,
+    isModalOpen: false,
+    onOpenModal: () => openFiltersModal({ showGroupByMovie: true }),
+    onApplyPreset: handleApplyPreset,
   };
 
-  // Request the next page when the list nears the end.
-  const handleLoadMore = () => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
+  const activeChipsProps = {
+    groupByMovie,
+    setGroupByMovie,
+    watchlistOnly: effectiveWatchlistOnly,
+    setWatchlistOnly: (v: boolean) => { setIsFilterTransitionLoading(true); setWatchlistOnly(v); },
+    canUseWatchlistFilter: hasLetterboxdUsername,
+    selectedShowtimeFilter,
+    setSelectedShowtimeFilter: (v: typeof selectedShowtimeFilter) => {
+      setIsFilterTransitionLoading(true);
+      setSelectedShowtimeFilter(v);
+    },
+    showStatusFilter: true,
+    selectedDays,
+    setSelectedDays,
+    selectedTimeRanges,
+    setSelectedTimeRanges,
+    selectedRuntimeRanges,
+    setSelectedRuntimeRanges,
+    cinemaChipLabel,
+    onClearCinemas:
+      isCinemaFilterActive && preferredCinemaIds
+        ? () => setSessionCinemaIds(preferredCinemaIds)
+        : undefined,
+    onClearAll: () => {
+      setIsFilterTransitionLoading(true);
+      setSelectedShowtimeFilter('all');
+      setSelectedShowtimeAudience('including-friends');
+      setWatchlistOnly(false);
+      setGroupByMovie(false);
+      setSelectedDays([]);
+      setSelectedTimeRanges([]);
+      setSelectedRuntimeRanges([]);
+      if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
+    },
   };
 
-  // Handle filter pill presses and update filter state.
-  const handleToggleFilter = (
-    filterId: MainShowtimesFilterId,
-    position?: FilterPillLongPressPosition
-  ) => {
-    if (filterId === 'showtime-filter') {
-      startFilterTransitionLoading();
-      setSelectedShowtimeFilter(cycleSharedTabShowtimeFilter(selectedShowtimeFilter));
-      return;
+  const renderMoviesEmpty = () => {
+    if (moviesLoading || moviesFetching) {
+      return (
+        <ThemedView style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={colors.tint} />
+        </ThemedView>
+      );
     }
-    if (filterId === 'cinemas') {
-      setCinemaPresetPopoverAnchor(position ?? null);
-      setCinemaPresetPopoverVisible(true);
-      return;
-    }
-    if (filterId === 'days') {
-      setDayQuickPopoverAnchor(position ?? null);
-      setDayQuickPopoverVisible(true);
-      return;
-    }
-    if (filterId === 'times') {
-      setTimeQuickPopoverAnchor(position ?? null);
-      setTimeQuickPopoverVisible(true);
-      return;
-    }
-    if (filterId === 'runtime') {
-      setRuntimeQuickPopoverAnchor(position ?? null);
-      setRuntimeQuickPopoverVisible(true);
-      return;
-    }
-    if (filterId === 'presets') {
-      setPresetModalVisible(true);
-      return;
-    }
-    if (filterId === 'watchlist-only') {
-      startFilterTransitionLoading();
-      setWatchlistOnly(!effectiveWatchlistOnly);
-      return;
-    }
+    return (
+      <ThemedView style={styles.centerContainer}>
+        <ThemedText style={styles.emptyText}>No movies found</ThemedText>
+      </ThemedView>
+    );
   };
 
-  const handleApplyPreset = (filters: PageFilterPresetState) => {
-    setSelectedShowtimeFilter(toSharedTabShowtimeFilter(filters.selected_showtime_filter));
-    setSelectedShowtimeAudience(toAudienceFilter(filters.showtime_audience));
-    setWatchlistOnly(hasLetterboxdUsername && Boolean(filters.watchlist_only));
-    setSelectedDays(filters.days ?? []);
-    setSelectedTimeRanges(filters.time_ranges ?? []);
-    setSelectedRuntimeRanges(filters.runtime_ranges ?? []);
-  };
-
-  const handleLongPressFilter = (
-    filterId: MainShowtimesFilterId,
-    position: FilterPillLongPressPosition
-  ) => {
-    if (filterId === 'cinemas') {
-      setCinemaModalVisible(true);
-      return true;
-    }
-    if (filterId === 'days') {
-      setDayModalVisible(true);
-      return true;
-    }
-    if (filterId === 'times') {
-      setTimeQuickPopoverAnchor(position ?? null);
-      setTimeQuickPopoverVisible(true);
-      return true;
-    }
-    if (filterId === 'runtime') {
-      setRuntimeQuickPopoverAnchor(position ?? null);
-      setRuntimeQuickPopoverVisible(true);
-      return true;
-    }
-    return false;
-  };
-
-  const pillFilters = useMemo(
-    () => sharedPillFilters.filter((filter) => filter.id !== 'presets'),
-    [sharedPillFilters]
-  );
-
-  const activeFilterIds = useMemo<MainShowtimesFilterId[]>(
-    () => [...sharedActiveFilterIds],
-    [sharedActiveFilterIds]
-  );
-
-  // Render/output using the state and derived values prepared above.
   return (
-    <>
-      <ShowtimesScreen
-        showtimes={visibleShowtimes}
-        isLoading={isLoading || isFilterTransitionLoading}
-        isFetching={isFetching || isFilterTransitionLoading}
-        isFetchingNextPage={isFetchingNextPage}
-        hasNextPage={hasNextPage}
-        onLoadMore={handleLoadMore}
-        refreshing={refreshing}
-        onRefresh={handleRefresh}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        filters={pillFilters}
-        activeFilterIds={activeFilterIds}
-        onToggleFilter={handleToggleFilter}
-        onLongPressFilter={handleLongPressFilter}
-        audienceToggle={
-          shouldShowAudienceToggle
-            ? {
-                value: selectedShowtimeAudience,
-                onChange: (value) => {
-                  startFilterTransitionLoading();
-                  setSelectedShowtimeAudience(value);
-                },
-              }
-            : undefined
-        }
-        emptyText={
-          effectiveAudienceFilter === 'only-you'
-            ? 'No showtimes in your agenda'
-            : 'No showtimes found'
-        }
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <TopBar />
+      <SearchBar
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder={groupByMovie ? 'Search movies' : 'Search showtimes'}
       />
-      <CinemaPresetQuickPopover
-        visible={cinemaPresetPopoverVisible}
-        anchor={cinemaPresetPopoverAnchor}
-        onClose={() => setCinemaPresetPopoverVisible(false)}
-        onOpenModal={() => setCinemaModalVisible(true)}
-        maxPresets={6}
-      />
-      <DayQuickPopover
-        visible={dayQuickPopoverVisible}
-        anchor={dayQuickPopoverAnchor}
-        onClose={() => setDayQuickPopoverVisible(false)}
-        selectedDays={selectedDays}
-        onChange={setSelectedDays}
-        onOpenModal={() => setDayModalVisible(true)}
-      />
-      <TimeQuickPopover
-        visible={timeQuickPopoverVisible}
-        anchor={timeQuickPopoverAnchor}
-        onClose={() => setTimeQuickPopoverVisible(false)}
-        selectedTimeRanges={selectedTimeRanges}
-        onChange={setSelectedTimeRanges}
-      />
-      <RuntimeQuickPopover
-        visible={runtimeQuickPopoverVisible}
-        anchor={runtimeQuickPopoverAnchor}
-        onClose={() => setRuntimeQuickPopoverVisible(false)}
-        selectedRuntimeRanges={selectedRuntimeRanges}
-        onChange={setSelectedRuntimeRanges}
-      />
-      <CinemaFilterModal
-        visible={cinemaModalVisible}
-        onClose={() => setCinemaModalVisible(false)}
-      />
-      <DayFilterModal
-        visible={dayModalVisible}
-        onClose={() => setDayModalVisible(false)}
-        selectedDays={selectedDays}
-        onChange={setSelectedDays}
-      />
-      <FilterPresetsModal
-        visible={presetModalVisible}
-        onClose={() => setPresetModalVisible(false)}
-        scope={SHARED_TAB_FILTER_PRESET_SCOPE}
-        currentFilters={currentPresetFilters}
-        onApply={handleApplyPreset}
-      />
-      <FilterPresetFab
-        isPopoverVisible={presetQuickPopoverVisible}
-        onOpen={(anchor) => {
-          setPresetQuickPopoverAnchor(anchor);
-          setPresetQuickPopoverVisible(true);
-        }}
-        onLongPress={() => setPresetModalVisible(true)}
-      />
-      <FilterPresetQuickPopover
-        visible={presetQuickPopoverVisible}
-        anchor={presetQuickPopoverAnchor}
-        onClose={() => setPresetQuickPopoverVisible(false)}
-        onOpenModal={() => setPresetModalVisible(true)}
-        scope={SHARED_TAB_FILTER_PRESET_SCOPE}
-        currentFilters={currentPresetFilters}
-        onApply={handleApplyPreset}
-        maxPresets={6}
-      />
-    </>
+      <FiltersRow {...filtersRowProps} />
+      <ActiveFilterChips {...activeChipsProps} />
+      {groupByMovie ? (
+        <FlatList
+          data={movies}
+          renderItem={({ item }) => (
+            <MovieCard movie={item} onPress={(movie) => router.push(`/movie/${movie.id}`)} />
+          )}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.movieFeed}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={renderMoviesEmpty}
+          ListFooterComponent={
+            moviesFetchingNextPage ? (
+              <ThemedView style={styles.footerLoader}>
+                <ActivityIndicator size="large" color={colors.tint} />
+              </ThemedView>
+            ) : null
+          }
+          onEndReached={() => {
+            if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
+          }}
+          onEndReachedThreshold={2}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        />
+      ) : (
+        <ShowtimesListContent
+          showtimes={visibleShowtimes}
+          isLoading={showtimesLoading || isFilterTransitionLoading}
+          isFetching={showtimesFetching || isFilterTransitionLoading}
+          isFetchingNextPage={showtimesFetchingNextPage}
+          hasNextPage={showtimesHasNextPage}
+          onLoadMore={() => {
+            if (showtimesHasNextPage && !showtimesFetchingNextPage) showtimesFetchNextPage();
+          }}
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          emptyText={
+            effectiveAudienceFilter === 'only-you'
+              ? 'No showtimes in your agenda'
+              : 'No showtimes found'
+          }
+        />
+      )}
+    </SafeAreaView>
   );
 }
+
+const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    movieFeed: { padding: 16 },
+    footerLoader: { paddingVertical: 20, alignItems: 'center' },
+    centerContainer: { paddingVertical: 40, alignItems: 'center' },
+    emptyText: { fontSize: 16, color: colors.textSecondary },
+  });

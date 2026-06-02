@@ -9,6 +9,7 @@ import { useSessionShowtimeFilter } from "shared/hooks/useSessionShowtimeFilter"
 import { useSessionTimeRangeSelections } from "shared/hooks/useSessionTimeRangeSelections";
 import { useSessionRuntimeRangeSelections } from "shared/hooks/useSessionRuntimeRangeSelections";
 import { useSessionWatchlistOnly } from "shared/hooks/useSessionWatchlistOnly";
+import { useSessionGroupByMovie } from "shared/hooks/useSessionGroupByMovie";
 
 import {
   normalizeSingleRuntimeRangeSelection,
@@ -59,6 +60,8 @@ export function useSharedTabFilters() {
     useSessionShowtimeAudience();
   const { selection: sessionWatchlistOnly, setSelection: setSessionWatchlistOnly } =
     useSessionWatchlistOnly();
+  const { selection: groupByMovie, setSelection: setGroupByMovie } =
+    useSessionGroupByMovie();
   const favoriteFilterPresetQuery = useFetchFavoriteFilterPreset({
     scope: SHARED_TAB_FILTER_PRESET_SCOPE,
   });
@@ -265,5 +268,7 @@ export function useSharedTabFilters() {
     setSelectedTimeRanges,
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
+    groupByMovie,
+    setGroupByMovie,
   };
 }

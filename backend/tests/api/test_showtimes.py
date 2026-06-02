@@ -1240,6 +1240,66 @@ def test_update_showtime_selection_rejects_seat_only_seat_value(
     assert "both be set or both be empty" in seat_only_response.json()["detail"]
 
 
+def test_get_showtime_by_id_returns_showtime(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    movie_id = showtime.movie_id
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == showtime_id
+    assert body["movie"]["id"] == movie_id
+    assert "cinema" in body
+    assert body["going"] == "NOT_GOING"
+    assert body["friends_going"] == []
+    assert body["friends_interested"] == []
+
+
+def test_get_showtime_by_id_reflects_current_user_status(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+
+    selection_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "INTERESTED"},
+    )
+    assert selection_response.status_code == 200
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}",
+        headers=normal_user_token_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["going"] == "INTERESTED"
+
+
+def test_get_showtime_by_id_returns_404_for_unknown_id(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/99999999",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Showtime with ID 99999999 not found."
+
+
 def test_main_page_showtimes_includes_friend_seat_in_badge_payload(
     client: TestClient,
     normal_user_token_headers: dict[str, str],

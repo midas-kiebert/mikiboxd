@@ -106,6 +106,8 @@ import type {
   ShowtimesCountMainPageShowtimesResponse,
   ShowtimesGetMainPageShowtimesData,
   ShowtimesGetMainPageShowtimesResponse,
+  ShowtimesGetShowtimeByIdData,
+  ShowtimesGetShowtimeByIdResponse,
   UsersSearchUsersData,
   UsersSearchUsersResponse,
   UsersRegisterUserData,
@@ -1451,6 +1453,28 @@ export class ShowtimesService {
         selected_statuses: data.selectedStatuses,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Showtime By Id
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns ShowtimeLoggedIn Successful Response
+   * @throws ApiError
+   */
+  public static getShowtimeById(
+    data: ShowtimesGetShowtimeByIdData,
+  ): CancelablePromise<ShowtimesGetShowtimeByIdResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/{showtime_id}",
+      path: {
+        showtime_id: data.showtimeId,
       },
       errors: {
         422: "Validation Error",

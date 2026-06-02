@@ -195,3 +195,21 @@ def get_main_page_showtimes(
         offset=offset,
         filters=filters,
     )
+
+
+# Declared last so the literal routes above (/count, /visibility/batch, /) are
+# matched first and never shadowed by this dynamic single-segment route.
+@router.get("/{showtime_id}", response_model=ShowtimeLoggedIn)
+def get_showtime_by_id(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> ShowtimeLoggedIn:
+    # ShowtimeNotFoundError (an AppError, 404) is converted to JSON by the
+    # global app exception handler, so no explicit try/except is needed here.
+    return showtimes_service.get_showtime_by_id(
+        session=session,
+        showtime_id=showtime_id,
+        current_user=current_user.id,
+    )

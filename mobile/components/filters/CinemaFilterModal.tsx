@@ -6,12 +6,12 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  type ListRenderItem,
   Modal,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   View,
+  type ListRenderItem,
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -692,84 +692,82 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
         </View>
 
         {page === "selection" ? (
-          isLoadingSelection ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.tint} />
-              <ThemedText style={styles.loadingText}>Loading cinemas...</ThemedText>
-            </View>
-          ) : (
-            <FlatList
-              style={styles.mainContent}
-              contentContainerStyle={styles.content}
-              data={cinemaSections}
-              keyExtractor={(item) => item.key}
-              renderItem={renderCinemaSection}
-              initialNumToRender={2}
-              maxToRenderPerBatch={2}
-              windowSize={5}
-              removeClippedSubviews
-              showsVerticalScrollIndicator={false}
-              ListHeaderComponent={
-                <View style={[styles.sectionCard, styles.allCinemasSection]}>
-                  <View style={styles.sectionHeader}>
-                    <View>
-                      <ThemedText style={styles.sectionTitle}>All cinemas</ThemedText>
-                      <ThemedText style={styles.sectionMeta}>
-                        {selectedCount} of {allCinemaIds.length} selected
-                      </ThemedText>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.toggleButton}
-                      onPress={handleToggleAll}
-                      activeOpacity={0.8}
-                    >
-                      <ThemedText style={styles.toggleButtonText}>
-                        {allSelected ? "Deselect all" : "Select all"}
-                      </ThemedText>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              }
-              ItemSeparatorComponent={() => <View style={styles.sectionSeparator} />}
-            />
-          )
-        ) : (
-          <View style={styles.presetsContainer}>
-            {isPresetsLoading ? (
+            isLoadingSelection ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.tint} />
-                <ThemedText style={styles.loadingText}>Loading presets...</ThemedText>
+                <ThemedText style={styles.loadingText}>Loading cinemas...</ThemedText>
               </View>
             ) : (
               <FlatList
-                data={presetsForRender}
-                keyExtractor={(item) => item.id}
-                renderItem={renderPreset}
                 style={styles.mainContent}
                 contentContainerStyle={styles.content}
-                ItemSeparatorComponent={() => <View style={styles.sectionSeparator} />}
+                data={cinemaSections}
+                keyExtractor={(item) => item.key}
+                renderItem={renderCinemaSection}
+                initialNumToRender={2}
+                maxToRenderPerBatch={2}
+                windowSize={5}
+                removeClippedSubviews
+                showsVerticalScrollIndicator={false}
                 ListHeaderComponent={
-                  presetsForRender.length > 1 ? (
-                    <ThemedText style={styles.reorderHintText}>
-                      Use arrows to reorder presets.
-                    </ThemedText>
-                  ) : null
-                }
-                ListEmptyComponent={
-                  <View style={styles.emptyPresets}>
-                    <ThemedText style={styles.emptyPresetsText}>
-                      No cinema presets yet. Use Save as preset to create one.
-                    </ThemedText>
+                  <View style={[styles.sectionCard, styles.allCinemasSection]}>
+                    <View style={styles.sectionHeader}>
+                      <View>
+                        <ThemedText style={styles.sectionTitle}>All cinemas</ThemedText>
+                        <ThemedText style={styles.sectionMeta}>
+                          {selectedCount} of {allCinemaIds.length} selected
+                        </ThemedText>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.toggleButton}
+                        onPress={handleToggleAll}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText style={styles.toggleButtonText}>
+                          {allSelected ? "Deselect all" : "Select all"}
+                        </ThemedText>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 }
+                ItemSeparatorComponent={() => <View style={styles.sectionSeparator} />}
               />
-            )}
-          </View>
-        )}
-
-        <View style={styles.preferenceFooter}>
-          {page === "selection" ? (
-            <>
+            )
+          ) : (
+            <View style={styles.presetsContainer}>
+              {isPresetsLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={colors.tint} />
+                  <ThemedText style={styles.loadingText}>Loading presets...</ThemedText>
+                </View>
+              ) : (
+                <FlatList
+                  data={presetsForRender}
+                  keyExtractor={(item) => item.id}
+                  renderItem={renderPreset}
+                  style={styles.mainContent}
+                  contentContainerStyle={styles.content}
+                  ItemSeparatorComponent={() => <View style={styles.sectionSeparator} />}
+                  ListHeaderComponent={
+                    presetsForRender.length > 1 ? (
+                      <ThemedText style={styles.reorderHintText}>
+                        Use arrows to reorder presets.
+                      </ThemedText>
+                    ) : null
+                  }
+                  ListEmptyComponent={
+                    <View style={styles.emptyPresets}>
+                      <ThemedText style={styles.emptyPresetsText}>
+                        No cinema presets yet. Use Save as preset to create one.
+                      </ThemedText>
+                    </View>
+                  }
+                />
+              )}
+            </View>
+          )}
+          {page === "selection" && (
+            <View style={styles.preferenceFooter}>
               <View style={styles.preferenceText}>
                 <ThemedText style={styles.preferenceTitle}>Session selection</ThemedText>
                 <ThemedText style={styles.preferenceSubtitle}>{favoriteStatus}</ThemedText>
@@ -787,14 +785,8 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
                   disabled={!canUseFavorite}
                 >
                   <View style={styles.preferenceButtonInner}>
-                    <MaterialIcons
-                      name="history"
-                      size={16}
-                      color={colors.textSecondary}
-                    />
-                    <ThemedText
-                      style={[styles.preferenceButtonText, styles.preferenceButtonTextSubtle]}
-                    >
+                    <MaterialIcons name="history" size={16} color={colors.textSecondary} />
+                    <ThemedText style={[styles.preferenceButtonText, styles.preferenceButtonTextSubtle]}>
                       Use favorite
                     </ThemedText>
                   </View>
@@ -830,9 +822,9 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
                   </View>
                 </TouchableOpacity>
               </View>
-            </>
-          ) : null}
-        </View>
+            </View>
+          )}
+
         <Modal
           transparent
           visible={isSavePresetDialogVisible}

@@ -203,7 +203,7 @@ export default function ActiveFilterChips({
         <>
           <View style={styles.clearSeparator} />
           <TouchableOpacity onPress={onClearAll} style={styles.clearBtn}>
-            <ThemedText style={styles.clearText}>Clear all</ThemedText>
+            <ThemedText style={styles.clearText}>Clear filters</ThemedText>
           </TouchableOpacity>
         </>
       )}

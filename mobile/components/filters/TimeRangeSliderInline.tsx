@@ -226,8 +226,8 @@ export default function TimeRangeSliderInline({ selectedTimeRanges, onChange }: 
 const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
   StyleSheet.create({
     row: { flexDirection: "row", alignItems: "center", marginLeft: 16, marginRight: 10 },
-    hitArea: { flex: 2, height: SLIDER_HEIGHT, justifyContent: "center", paddingHorizontal: 4 },
-    valueLabel: { flex: 1, paddingLeft: 14, fontSize: 12, color: colors.textSecondary, textAlign: "right", alignSelf: "center", marginTop: TRACK_TOP + Math.round(TRACK_HEIGHT / 2) - Math.round(SLIDER_HEIGHT / 2) },
+    hitArea: { flex: 3, height: SLIDER_HEIGHT, justifyContent: "center", paddingHorizontal: 4 },
+    valueLabel: { flex: 1, paddingLeft: 18, paddingTop: 4, fontSize: 12, color: colors.textSecondary, textAlign: "left", alignSelf: "center", marginTop: TRACK_TOP + Math.round(TRACK_HEIGHT / 2) - Math.round(SLIDER_HEIGHT / 2) },
     rail: { height: "100%", position: "relative" },
     segment: { position: "absolute", top: TRACK_TOP, height: TRACK_HEIGHT, borderRadius: 999 },
     selected: { backgroundColor: colors.tint, opacity: 0.38 },

@@ -348,7 +348,7 @@ def ping_friend_group_for_showtime(
     sent_count = 0
     for receiver_id in receiver_ids:
         try:
-            created_showtime = _create_showtime_ping(
+            _create_showtime_ping(
                 session=session,
                 showtime_id=showtime_id,
                 sender_id=actor_id,
@@ -362,7 +362,7 @@ def ping_friend_group_for_showtime(
             session=session,
             sender_id=actor_id,
             receiver_id=receiver_id,
-            showtime=created_showtime,
+            showtime_id=showtime_id,
         )
         sent_count += 1
 

@@ -9,7 +9,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi import status as http_status
 
 from app.api.deps import CurrentUser, SessionDep, get_db_context
-from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message
@@ -81,16 +80,11 @@ async def _notify_after_delay(
             _cancelled_ping_ids.discard(ping_id)
             return
     with get_db_context() as session:
-        showtime = showtimes_crud.get_showtime_by_id(
-            session=session, showtime_id=showtime_id
-        )
-        if showtime is None:
-            return
         push_notifications.notify_user_on_showtime_ping(
             session=session,
             sender_id=sender_id,
             receiver_id=receiver_id,
-            showtime=showtime,
+            showtime_id=showtime_id,
         )
 
 

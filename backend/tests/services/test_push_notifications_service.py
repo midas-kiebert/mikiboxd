@@ -493,6 +493,10 @@ def test_notify_user_on_showtime_ping(
     token = mocker.MagicMock(token="ExponentPushToken[abc]")
 
     mocker.patch(
+        "app.services.push_notifications.showtime_crud.get_showtime_by_id",
+        return_value=showtime,
+    )
+    mocker.patch(
         "app.services.push_notifications.user_crud.get_user_by_id",
         side_effect=[sender, receiver],
     )
@@ -510,7 +514,7 @@ def test_notify_user_on_showtime_ping(
         session=session,
         sender_id=sender_id,
         receiver_id=receiver_id,
-        showtime=showtime,
+        showtime_id=showtime.id,
     )
 
     sent_payload = send_messages.call_args.args[0]
@@ -542,6 +546,10 @@ def test_notify_user_on_showtime_ping_uses_email_channel(
         notify_channel_showtime_ping=NotificationChannel.EMAIL,
     )
     mocker.patch(
+        "app.services.push_notifications.showtime_crud.get_showtime_by_id",
+        return_value=showtime,
+    )
+    mocker.patch(
         "app.services.push_notifications.user_crud.get_user_by_id",
         side_effect=[sender, receiver],
     )
@@ -557,7 +565,7 @@ def test_notify_user_on_showtime_ping_uses_email_channel(
         session=session,
         sender_id=sender_id,
         receiver_id=receiver_id,
-        showtime=showtime,
+        showtime_id=showtime.id,
     )
 
     get_tokens.assert_not_called()

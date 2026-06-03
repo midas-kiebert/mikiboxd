@@ -352,7 +352,9 @@ def notify_user_on_showtime_ping(
     receiver_id: UUID,
     showtime_id: int,
 ) -> None:
-    showtime = showtime_crud.get_showtime_by_id(session=session, showtime_id=showtime_id)
+    showtime = showtime_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
     if showtime is None:
         return
     sender = user_crud.get_user_by_id(session=session, user_id=sender_id)

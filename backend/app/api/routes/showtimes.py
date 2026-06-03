@@ -1,12 +1,15 @@
 """Showtime endpoints."""
 
 import asyncio
+import os
+import threading
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi import status as http_status
 
 from app.api.deps import CurrentUser, SessionDep, get_db_context
+from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message
@@ -20,6 +23,15 @@ from app.services import push_notifications
 from app.services import showtimes as showtimes_service
 
 router = APIRouter(prefix="/showtimes", tags=["showtimes"])
+
+# Ping IDs added here before deletion suppress the pending notification.
+# In-memory so the background task never needs a second DB round-trip,
+# which also keeps test transaction isolation intact.
+_cancelled_ping_ids: set[int] = set()
+_cancelled_ping_ids_lock = threading.Lock()
+
+
+_PING_NOTIFICATION_DELAY_SECONDS = 0 if os.getenv("TESTING") == "true" else 5  # noqa: SIM210
 
 
 @router.put("/selection/{showtime_id}", response_model=ShowtimeLoggedIn)
@@ -58,20 +70,17 @@ async def _notify_after_delay(
     receiver_id: UUID,
     showtime_id: int,
 ) -> None:
-    """Send the invite push notification after a 5-second grace window.
+    """Send the invite push notification after a short grace window.
 
-    If the sender uninvites the friend before the delay expires the ping row
-    will be gone and the notification is silently skipped.
+    Uninviting within that window adds the ping ID to _cancelled_ping_ids
+    which this task checks before sending — no second DB round-trip needed.
     """
-    await asyncio.sleep(5)
-    with get_db_context() as session:
-        ping = showtime_ping_crud.get_showtime_ping_by_id(
-            session=session, ping_id=ping_id
-        )
-        if ping is None:
+    await asyncio.sleep(_PING_NOTIFICATION_DELAY_SECONDS)
+    with _cancelled_ping_ids_lock:
+        if ping_id in _cancelled_ping_ids:
+            _cancelled_ping_ids.discard(ping_id)
             return
-        from app.crud import showtime as showtimes_crud
-
+    with get_db_context() as session:
         showtime = showtimes_crud.get_showtime_by_id(
             session=session, showtime_id=showtime_id
         )
@@ -183,6 +192,17 @@ def uninvite_friend_from_showtime(
     friend_id: UUID,
     current_user: CurrentUser,
 ) -> Message:
+    # Look up the ping ID before deleting so we can cancel the pending notification.
+    existing = showtime_ping_crud.get_showtime_ping(
+        session=session,
+        showtime_id=showtime_id,
+        sender_id=current_user.id,
+        receiver_id=friend_id,
+    )
+    if existing is not None and existing.id is not None:
+        with _cancelled_ping_ids_lock:
+            _cancelled_ping_ids.add(existing.id)
+
     deleted = showtimes_service.uninvite_friend_from_showtime(
         session=session,
         showtime_id=showtime_id,

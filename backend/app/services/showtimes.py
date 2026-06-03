@@ -298,7 +298,8 @@ def ping_friend_for_showtime(
         sender_id=actor_id,
         receiver_id=friend_id,
     )
-    return Message(message="Friend invited successfully"), ping.id  # type: ignore[union-attr]
+    assert ping is not None and ping.id is not None
+    return Message(message="Friend invited successfully"), ping.id
 
 
 def ping_friend_group_for_showtime(

@@ -70,7 +70,7 @@ def get_sent_showtime_pings(
     session: Session,
     showtime_id: int,
     sender_id: UUID,
-) -> list[tuple[ShowtimePing, str]]:
+) -> list[tuple[ShowtimePing, str | None]]:
     """Return sent pings with receiver display names, newest first."""
     stmt = (
         select(ShowtimePing, User.display_name)
@@ -81,7 +81,7 @@ def get_sent_showtime_pings(
         )
         .order_by(col(ShowtimePing.created_at).desc())
     )
-    return list(session.exec(stmt).all())
+    return list(session.exec(stmt).all())  # type: ignore[return-value]
 
 
 def delete_sent_showtime_ping(

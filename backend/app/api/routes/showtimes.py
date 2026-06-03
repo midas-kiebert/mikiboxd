@@ -1,21 +1,36 @@
 """Showtime endpoints."""
 
+import asyncio
+import os
+import threading
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi import status as http_status
 
-from app.api.deps import CurrentUser, SessionDep
+from app.api.deps import CurrentUser, SessionDep, get_db_context
+from app.crud import showtime_ping as showtime_ping_crud
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message
 from app.schemas.showtime import ShowtimeLoggedIn, ShowtimeSelectionUpdate
+from app.schemas.showtime_ping import SentShowtimePingPublic
 from app.schemas.showtime_visibility import (
     ShowtimeVisibilityPublic,
     ShowtimeVisibilityUpdate,
 )
+from app.services import push_notifications
 from app.services import showtimes as showtimes_service
 
 router = APIRouter(prefix="/showtimes", tags=["showtimes"])
+
+# Ping IDs added here before deletion suppress the pending notification.
+# In-memory so the background task never needs a second DB round-trip,
+# which also keeps test transaction isolation intact.
+_cancelled_ping_ids: set[int] = set()
+_cancelled_ping_ids_lock = threading.Lock()
+
+
+_PING_NOTIFICATION_DELAY_SECONDS = 0 if os.getenv("TESTING") == "true" else 5  # noqa: SIM210
 
 
 @router.put("/selection/{showtime_id}", response_model=ShowtimeLoggedIn)
@@ -48,20 +63,54 @@ def update_showtime_selection(
         )
 
 
+async def _notify_after_delay(
+    ping_id: int,
+    sender_id: UUID,
+    receiver_id: UUID,
+    showtime_id: int,
+) -> None:
+    """Send the invite push notification after a short grace window.
+
+    Uninviting within that window adds the ping ID to _cancelled_ping_ids
+    which this task checks before sending — no second DB round-trip needed.
+    """
+    await asyncio.sleep(_PING_NOTIFICATION_DELAY_SECONDS)
+    with _cancelled_ping_ids_lock:
+        if ping_id in _cancelled_ping_ids:
+            _cancelled_ping_ids.discard(ping_id)
+            return
+    with get_db_context() as session:
+        push_notifications.notify_user_on_showtime_ping(
+            session=session,
+            sender_id=sender_id,
+            receiver_id=receiver_id,
+            showtime_id=showtime_id,
+        )
+
+
 @router.post("/{showtime_id}/ping/{friend_id}", response_model=Message)
 def ping_friend_for_showtime(
     *,
     session: SessionDep,
+    background_tasks: BackgroundTasks,
     showtime_id: int,
     friend_id: UUID,
     current_user: CurrentUser,
 ) -> Message:
-    return showtimes_service.ping_friend_for_showtime(
+    message, ping_id = showtimes_service.ping_friend_for_showtime(
         session=session,
         showtime_id=showtime_id,
         actor_id=current_user.id,
         friend_id=friend_id,
     )
+    background_tasks.add_task(
+        _notify_after_delay,
+        ping_id=ping_id,
+        sender_id=current_user.id,
+        receiver_id=friend_id,
+        showtime_id=showtime_id,
+    )
+    return message
 
 
 @router.post("/{showtime_id}/ping-group/{group_id}", response_model=Message)
@@ -113,6 +162,52 @@ def get_pinged_friend_ids_for_showtime(
         showtime_id=showtime_id,
         actor_id=current_user.id,
     )
+
+
+@router.get("/{showtime_id}/sent-pings", response_model=list[SentShowtimePingPublic])
+def get_sent_pings_for_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> list[SentShowtimePingPublic]:
+    return showtimes_service.get_sent_pings_for_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+    )
+
+
+@router.delete("/{showtime_id}/ping/{friend_id}", response_model=Message)
+def uninvite_friend_from_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    friend_id: UUID,
+    current_user: CurrentUser,
+) -> Message:
+    # Look up the ping ID before deleting so we can cancel the pending notification.
+    existing = showtime_ping_crud.get_showtime_ping(
+        session=session,
+        showtime_id=showtime_id,
+        sender_id=current_user.id,
+        receiver_id=friend_id,
+    )
+    if existing is not None and existing.id is not None:
+        with _cancelled_ping_ids_lock:
+            _cancelled_ping_ids.add(existing.id)
+
+    deleted = showtimes_service.uninvite_friend_from_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+        friend_id=friend_id,
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Invite not found"
+        )
+    return Message(message="Invite cancelled successfully")
 
 
 @router.get("/visibility/batch", response_model=list[ShowtimeVisibilityPublic])

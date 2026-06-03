@@ -199,6 +199,15 @@ export type PushTokenRegister = {
   platform?: "ios" | "android" | "web" | null
 }
 
+export type SentShowtimePingPublic = {
+  id: number
+  receiver_id: string
+  receiver_name: string
+  created_at: string
+  seen_at: string | null
+  dismissed_at: string | null
+}
+
 export type ShowtimeInMovieLoggedIn = {
   datetime: string
   end_datetime?: string | null
@@ -612,6 +621,12 @@ export type MeDeleteMyShowtimePingData = {
 
 export type MeDeleteMyShowtimePingResponse = Message
 
+export type MeDismissMyShowtimePingData = {
+  pingId: number
+}
+
+export type MeDismissMyShowtimePingResponse = Message
+
 export type MeSyncWatchlistResponse = Message
 
 export type MeGetFriendsResponse = Array<UserWithFriendStatus>
@@ -794,6 +809,13 @@ export type ShowtimesPingFriendForShowtimeData = {
 
 export type ShowtimesPingFriendForShowtimeResponse = Message
 
+export type ShowtimesUninviteFriendFromShowtimeData = {
+  friendId: string
+  showtimeId: number
+}
+
+export type ShowtimesUninviteFriendFromShowtimeResponse = Message
+
 export type ShowtimesPingFriendGroupForShowtimeData = {
   groupId: string
   showtimeId: number
@@ -813,6 +835,13 @@ export type ShowtimesGetPingedFriendIdsForShowtimeData = {
 }
 
 export type ShowtimesGetPingedFriendIdsForShowtimeResponse = Array<string>
+
+export type ShowtimesGetSentPingsForShowtimeData = {
+  showtimeId: number
+}
+
+export type ShowtimesGetSentPingsForShowtimeResponse =
+  Array<SentShowtimePingPublic>
 
 export type ShowtimesGetShowtimeVisibilityBatchData = {
   showtimeIds?: Array<number>

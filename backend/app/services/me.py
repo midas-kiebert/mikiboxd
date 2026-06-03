@@ -1040,6 +1040,23 @@ def delete_received_showtime_ping(
     return deleted
 
 
+def dismiss_received_showtime_ping(
+    *,
+    session: Session,
+    user_id: UUID,
+    ping_id: int,
+) -> bool:
+    dismissed = showtime_ping_crud.dismiss_received_showtime_ping(
+        session=session,
+        ping_id=ping_id,
+        receiver_id=user_id,
+        dismissed_at=now_amsterdam_naive(),
+    )
+    if dismissed:
+        session.commit()
+    return dismissed
+
+
 def _prune_past_showtime_pings(
     *,
     session: Session,

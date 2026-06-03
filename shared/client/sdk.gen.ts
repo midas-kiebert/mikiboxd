@@ -65,6 +65,8 @@ import type {
   MeMarkMyShowtimePingsSeenResponse,
   MeDeleteMyShowtimePingData,
   MeDeleteMyShowtimePingResponse,
+  MeDismissMyShowtimePingData,
+  MeDismissMyShowtimePingResponse,
   MeSyncWatchlistResponse,
   MeGetFriendsResponse,
   MeGetSentFriendRequestsResponse,
@@ -88,12 +90,16 @@ import type {
   ShowtimesUpdateShowtimeSelectionResponse,
   ShowtimesPingFriendForShowtimeData,
   ShowtimesPingFriendForShowtimeResponse,
+  ShowtimesUninviteFriendFromShowtimeData,
+  ShowtimesUninviteFriendFromShowtimeResponse,
   ShowtimesPingFriendGroupForShowtimeData,
   ShowtimesPingFriendGroupForShowtimeResponse,
   ShowtimesReceivePingFromLinkData,
   ShowtimesReceivePingFromLinkResponse,
   ShowtimesGetPingedFriendIdsForShowtimeData,
   ShowtimesGetPingedFriendIdsForShowtimeResponse,
+  ShowtimesGetSentPingsForShowtimeData,
+  ShowtimesGetSentPingsForShowtimeResponse,
   ShowtimesGetShowtimeVisibilityBatchData,
   ShowtimesGetShowtimeVisibilityBatchResponse,
   ShowtimesGetShowtimeVisibilityData,
@@ -838,6 +844,28 @@ export class MeService {
   }
 
   /**
+   * Dismiss My Showtime Ping
+   * @param data The data for the request.
+   * @param data.pingId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static dismissMyShowtimePing(
+    data: MeDismissMyShowtimePingData,
+  ): CancelablePromise<MeDismissMyShowtimePingResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/pings/{ping_id}/dismiss",
+      path: {
+        ping_id: data.pingId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Sync Watchlist
    * @returns Message Successful Response
    * @throws ApiError
@@ -1194,6 +1222,30 @@ export class ShowtimesService {
   }
 
   /**
+   * Uninvite Friend From Showtime
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @param data.friendId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static uninviteFriendFromShowtime(
+    data: ShowtimesUninviteFriendFromShowtimeData,
+  ): CancelablePromise<ShowtimesUninviteFriendFromShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/showtimes/{showtime_id}/ping/{friend_id}",
+      path: {
+        showtime_id: data.showtimeId,
+        friend_id: data.friendId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Ping Friend Group For Showtime
    * @param data The data for the request.
    * @param data.showtimeId
@@ -1254,6 +1306,28 @@ export class ShowtimesService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/showtimes/{showtime_id}/pinged-friends",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Sent Pings For Showtime
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns SentShowtimePingPublic Successful Response
+   * @throws ApiError
+   */
+  public static getSentPingsForShowtime(
+    data: ShowtimesGetSentPingsForShowtimeData,
+  ): CancelablePromise<ShowtimesGetSentPingsForShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/{showtime_id}/sent-pings",
       path: {
         showtime_id: data.showtimeId,
       },

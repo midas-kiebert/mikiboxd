@@ -1,18 +1,22 @@
 """Showtime endpoints."""
 
+import asyncio
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi import status as http_status
 
-from app.api.deps import CurrentUser, SessionDep
+from app.api.deps import CurrentUser, SessionDep, get_db_context
+from app.crud import showtime_ping as showtime_ping_crud
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message
 from app.schemas.showtime import ShowtimeLoggedIn, ShowtimeSelectionUpdate
+from app.schemas.showtime_ping import SentShowtimePingPublic
 from app.schemas.showtime_visibility import (
     ShowtimeVisibilityPublic,
     ShowtimeVisibilityUpdate,
 )
+from app.services import push_notifications
 from app.services import showtimes as showtimes_service
 
 router = APIRouter(prefix="/showtimes", tags=["showtimes"])
@@ -48,20 +52,62 @@ def update_showtime_selection(
         )
 
 
+async def _notify_after_delay(
+    ping_id: int,
+    sender_id: UUID,
+    receiver_id: UUID,
+    showtime_id: int,
+) -> None:
+    """Send the invite push notification after a 5-second grace window.
+
+    If the sender uninvites the friend before the delay expires the ping row
+    will be gone and the notification is silently skipped.
+    """
+    await asyncio.sleep(5)
+    with get_db_context() as session:
+        ping = showtime_ping_crud.get_showtime_ping_by_id(
+            session=session, ping_id=ping_id
+        )
+        if ping is None:
+            return
+        from app.crud import showtime as showtimes_crud
+
+        showtime = showtimes_crud.get_showtime_by_id(
+            session=session, showtime_id=showtime_id
+        )
+        if showtime is None:
+            return
+        push_notifications.notify_user_on_showtime_ping(
+            session=session,
+            sender_id=sender_id,
+            receiver_id=receiver_id,
+            showtime=showtime,
+        )
+
+
 @router.post("/{showtime_id}/ping/{friend_id}", response_model=Message)
 def ping_friend_for_showtime(
     *,
     session: SessionDep,
+    background_tasks: BackgroundTasks,
     showtime_id: int,
     friend_id: UUID,
     current_user: CurrentUser,
 ) -> Message:
-    return showtimes_service.ping_friend_for_showtime(
+    message, ping_id = showtimes_service.ping_friend_for_showtime(
         session=session,
         showtime_id=showtime_id,
         actor_id=current_user.id,
         friend_id=friend_id,
     )
+    background_tasks.add_task(
+        _notify_after_delay,
+        ping_id=ping_id,
+        sender_id=current_user.id,
+        receiver_id=friend_id,
+        showtime_id=showtime_id,
+    )
+    return message
 
 
 @router.post("/{showtime_id}/ping-group/{group_id}", response_model=Message)
@@ -113,6 +159,41 @@ def get_pinged_friend_ids_for_showtime(
         showtime_id=showtime_id,
         actor_id=current_user.id,
     )
+
+
+@router.get("/{showtime_id}/sent-pings", response_model=list[SentShowtimePingPublic])
+def get_sent_pings_for_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> list[SentShowtimePingPublic]:
+    return showtimes_service.get_sent_pings_for_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+    )
+
+
+@router.delete("/{showtime_id}/ping/{friend_id}", response_model=Message)
+def uninvite_friend_from_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    friend_id: UUID,
+    current_user: CurrentUser,
+) -> Message:
+    deleted = showtimes_service.uninvite_friend_from_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+        friend_id=friend_id,
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Invite not found"
+        )
+    return Message(message="Invite cancelled successfully")
 
 
 @router.get("/visibility/batch", response_model=list[ShowtimeVisibilityPublic])

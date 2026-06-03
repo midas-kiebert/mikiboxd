@@ -442,6 +442,25 @@ def delete_my_showtime_ping(
     return Message(message="Showtime invite deleted successfully")
 
 
+@router.post("/pings/{ping_id}/dismiss", response_model=Message)
+def dismiss_my_showtime_ping(
+    session: SessionDep,
+    current_user: CurrentUser,
+    ping_id: int,
+) -> Message:
+    dismissed = me_service.dismiss_received_showtime_ping(
+        session=session,
+        user_id=current_user.id,
+        ping_id=ping_id,
+    )
+    if not dismissed:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Showtime invite not found",
+        )
+    return Message(message="Showtime invite dismissed")
+
+
 @router.put("/watchlist", response_model=Message)
 def sync_watchlist(
     session: SessionDep,

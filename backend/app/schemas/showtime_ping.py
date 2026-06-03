@@ -1,4 +1,5 @@
 from datetime import datetime as DateTime
+from uuid import UUID
 
 from sqlmodel import SQLModel
 
@@ -7,6 +8,7 @@ from .user import UserPublic
 
 __all__ = [
     "ShowtimePingPublic",
+    "SentShowtimePingPublic",
 ]
 
 
@@ -23,3 +25,12 @@ class ShowtimePingPublic(SQLModel):
     sender: UserPublic
     created_at: DateTime
     seen_at: DateTime | None
+
+
+class SentShowtimePingPublic(SQLModel):
+    id: int
+    receiver_id: UUID
+    receiver_name: str
+    created_at: DateTime
+    seen_at: DateTime | None
+    dismissed_at: DateTime | None

@@ -40,3 +40,4 @@ class ShowtimePing(SQLModel, table=True):
     )
     created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
     seen_at: datetime | None = Field(default=None, nullable=True)
+    dismissed_at: datetime | None = Field(default=None, nullable=True)

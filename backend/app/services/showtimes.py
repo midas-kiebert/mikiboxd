@@ -30,6 +30,7 @@ from app.inputs.movie import Filters
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.schemas.showtime import ShowtimeLoggedIn
+from app.schemas.showtime_ping import SentShowtimePingPublic
 from app.schemas.showtime_visibility import ShowtimeVisibilityPublic
 from app.services import push_notifications
 from app.utils import now_amsterdam_naive
@@ -277,22 +278,28 @@ def ping_friend_for_showtime(
     showtime_id: int,
     actor_id: UUID,
     friend_id: UUID,
-) -> Message:
-    showtime = _create_showtime_ping(
+) -> tuple[Message, int]:
+    """Create the ping and return (message, ping_id).
+
+    The caller is responsible for scheduling the push notification as a
+    background task so the sender has a 5-second window to uninvite before
+    the notification fires.
+    """
+    _create_showtime_ping(
         session=session,
         showtime_id=showtime_id,
         sender_id=actor_id,
         receiver_id=friend_id,
         require_friendship=True,
     )
-
-    push_notifications.notify_user_on_showtime_ping(
+    ping = showtime_ping_crud.get_showtime_ping(
         session=session,
+        showtime_id=showtime_id,
         sender_id=actor_id,
         receiver_id=friend_id,
-        showtime=showtime,
     )
-    return Message(message="Friend invited successfully")
+    assert ping is not None and ping.id is not None
+    return Message(message="Friend invited successfully"), ping.id
 
 
 def ping_friend_group_for_showtime(
@@ -341,7 +348,7 @@ def ping_friend_group_for_showtime(
     sent_count = 0
     for receiver_id in receiver_ids:
         try:
-            created_showtime = _create_showtime_ping(
+            _create_showtime_ping(
                 session=session,
                 showtime_id=showtime_id,
                 sender_id=actor_id,
@@ -355,7 +362,7 @@ def ping_friend_group_for_showtime(
             session=session,
             sender_id=actor_id,
             receiver_id=receiver_id,
-            showtime=created_showtime,
+            showtime_id=showtime_id,
         )
         sent_count += 1
 
@@ -499,6 +506,62 @@ def get_pinged_friend_ids_for_showtime(
         showtime_id=showtime_id,
         sender_id=actor_id,
     )
+
+
+def get_sent_pings_for_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    actor_id: UUID,
+) -> list[SentShowtimePingPublic]:
+    if (
+        showtimes_crud.get_showtime_by_id(session=session, showtime_id=showtime_id)
+        is None
+    ):
+        raise ShowtimeNotFoundError(showtime_id)
+    rows = showtime_ping_crud.get_sent_showtime_pings(
+        session=session,
+        showtime_id=showtime_id,
+        sender_id=actor_id,
+    )
+    return [
+        SentShowtimePingPublic(
+            id=ping.id,  # type: ignore[arg-type]
+            receiver_id=ping.receiver_id,
+            receiver_name=display_name or "Friend",
+            created_at=ping.created_at,
+            seen_at=ping.seen_at,
+            dismissed_at=ping.dismissed_at,
+        )
+        for ping, display_name in rows
+    ]
+
+
+def uninvite_friend_from_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    actor_id: UUID,
+    friend_id: UUID,
+) -> bool:
+    if (
+        showtimes_crud.get_showtime_by_id(session=session, showtime_id=showtime_id)
+        is None
+    ):
+        raise ShowtimeNotFoundError(showtime_id)
+    deleted = showtime_ping_crud.delete_sent_showtime_ping(
+        session=session,
+        showtime_id=showtime_id,
+        sender_id=actor_id,
+        receiver_id=friend_id,
+    )
+    if deleted:
+        try:
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise AppError from e
+    return deleted
 
 
 def get_showtime_visibility_batch(

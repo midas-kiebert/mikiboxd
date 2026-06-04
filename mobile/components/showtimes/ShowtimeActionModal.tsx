@@ -1,85 +1,105 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+/**
+ * Showtime status bottom sheet ("Update your status").
+ *
+ * Rises from the bottom (gorhom BottomSheetModal, mirroring FiltersModal) and is
+ * self-contained: poster + title + full date + time·runtime + cinema badge, a box
+ * of who is going/interested, an optional "X invited you" banner, the status
+ * buttons (Not going / Interested / Going), the Get Ticket + Seat actions, a list
+ * of who you've invited, and the invite-friends panel. A subtle colored tint bleeds
+ * from the top to reflect the current status (green going / orange interested /
+ * blue when you have an open invite).
+ *
+ * It is mounted once by ShowtimeModalProvider and driven by the controlled
+ * `visible` prop; screens open it through the useShowtimeModal() hook.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Animated,
-  Easing,
+  BackHandler,
+  Image,
+  Keyboard,
+  LayoutAnimation,
   Linking,
-  type LayoutChangeEvent,
   Modal,
-  Pressable,
+  Platform,
   Share,
-  ScrollView,
   StyleSheet,
   TextInput,
   TouchableOpacity,
+  UIManager,
   useWindowDimensions,
   View,
 } from "react-native";
-import { BlurView } from "expo-blur";
+import {
+  BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
+  BottomSheetModal,
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+} from "@gorhom/bottom-sheet";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import { useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  MeService,
   ShowtimesService,
-  type FriendGroupPublic,
   type GoingStatus,
   type MeGetCurrentUserResponse,
-  type MeGetFriendsResponse,
-  type ShowtimeInMovieLoggedIn,
+  type SentShowtimePingPublic,
   type ShowtimeLoggedIn,
-  type ShowtimeVisibilityPublic,
+  type UserPublic,
 } from "shared";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
 
+import CinemaPill from "@/components/badges/CinemaPill";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { ThemedText } from "@/components/themed-text";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 import { formatSeatLabel } from "@/utils/seat-label";
-import { triggerLongPressHaptic } from "@/utils/long-press";
 import { buildShowtimePingUrl } from "@/constants/ping-link";
 
-type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
-type DetailPanel = "none" | "ping" | "visibility";
-type VisibilityButtonState = "all" | "none" | "partial";
-type VisibilityDraftSeed = {
-  visibleFriendIds: string[];
-  visibleGroupIds: string[];
+// LayoutAnimation needs an explicit opt-in on Android (on by default on iOS).
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// Smooth height tween for the invite-friends expand/collapse "swipe open".
+const EXPAND_LAYOUT_ANIMATION = {
+  duration: 220,
+  create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+  update: { type: LayoutAnimation.Types.easeInEaseOut },
+  delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
 };
+
+export type ShowtimeInvite = {
+  senders: UserPublic[];
+  pingIds: number[];
+};
+
+type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
 
 type ShowtimeActionModalProps = {
   visible: boolean;
-  showtime: ShowtimeInMovieLoggedIn | ShowtimeLoggedIn | null;
-  movieTitle?: string | null;
+  showtime: ShowtimeLoggedIn | null;
+  /** True while a showtime opened by id is still being fetched. */
+  isLoadingShowtime?: boolean;
+  /** Present when the sheet was opened from an invite (ping). */
+  invite?: ShowtimeInvite | null;
   isUpdatingStatus: boolean;
+  isDismissingInvite?: boolean;
   onUpdateStatus: (
     going: GoingStatus,
-    seat?: { seatRow: string | null; seatNumber: string | null },
-    visibility?: { visibleFriendIds: string[]; visibleGroupIds: string[] }
+    seat?: { seatRow: string | null; seatNumber: string | null }
   ) => void;
+  onDismissInvite?: () => void;
   onClose: () => void;
 };
 
-const getShowtimeFriendsGoing = (
-  showtime: ShowtimeInMovieLoggedIn | ShowtimeLoggedIn | null
-) => (showtime && "friends_going" in showtime ? showtime.friends_going : []);
-
-const getShowtimeFriendsInterested = (
-  showtime: ShowtimeInMovieLoggedIn | ShowtimeLoggedIn | null
-) => (showtime && "friends_interested" in showtime ? showtime.friends_interested : []);
-
-const DETAIL_PANEL_HEIGHT = 430;
-const MODAL_OPEN_DURATION_MS = 200;
-const DETAIL_PANEL_OPEN_DURATION_MS = 440;
-const DETAIL_PANEL_CLOSE_DURATION_MS = 240;
-const STATUS_MODAL_EDGE_PADDING = 20;
-const ESTIMATED_COLLAPSED_CARD_HEIGHT = 320;
+// ─── Seat input helpers ───────────────────────────────────────────────────────
 
 type SeatFieldKind = "unknown" | "digits" | "letter";
 
@@ -95,30 +115,15 @@ const SEAT_LETTER_PATTERN = /^[A-Za-z]$/;
 const getSeatInputConfig = (seating: string): SeatInputConfig => {
   switch (seating) {
     case "row-number-seat-number":
-      return {
-        rowKind: "digits",
-        seatKind: "digits",
-      };
+      return { rowKind: "digits", seatKind: "digits" };
     case "row-letter-seat-number":
-      return {
-        rowKind: "letter",
-        seatKind: "digits",
-      };
+      return { rowKind: "letter", seatKind: "digits" };
     case "row-number-seat-letter":
-      return {
-        rowKind: "digits",
-        seatKind: "letter",
-      };
+      return { rowKind: "digits", seatKind: "letter" };
     case "row-letter-seat-letter":
-      return {
-        rowKind: "letter",
-        seatKind: "letter",
-      };
+      return { rowKind: "letter", seatKind: "letter" };
     default:
-      return {
-        rowKind: "unknown",
-        seatKind: "unknown",
-      };
+      return { rowKind: "unknown", seatKind: "unknown" };
   }
 };
 
@@ -142,201 +147,149 @@ const validateSeatFieldValue = (
   return null;
 };
 
+const getUniqueSenderNames = (senders: UserPublic[]): string[] =>
+  senders
+    .map((sender) => sender.display_name?.trim() || "A friend")
+    .filter((value, index, all) => all.indexOf(value) === index);
+
+const formatInvitedYou = (senders: UserPublic[]): string => {
+  const names = getUniqueSenderNames(senders);
+  if (names.length <= 1) {
+    return `${names[0] ?? "A friend"} has invited you to this showtime.`;
+  }
+  if (names.length === 2) {
+    return `${names[0]} and ${names[1]} have invited you to this showtime.`;
+  }
+  return `${names[0]} and ${names.length - 1} others have invited you to this showtime.`;
+};
+
 export default function ShowtimeActionModal({
   visible,
   showtime,
-  movieTitle,
+  isLoadingShowtime = false,
+  invite,
   isUpdatingStatus,
+  isDismissingInvite = false,
   onUpdateStatus,
+  onDismissInvite,
   onClose,
 }: ShowtimeActionModalProps) {
-  const colorScheme = useColorScheme();
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const { top: topInset, bottom: bottomInset } = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
+  // Generous trailing space so the invite section can always be scrolled to the
+  // top, even after typing shrinks the friend list (so the view doesn't jump).
+  const inviteScrollPadding = Math.round(windowHeight * 0.6);
   const colors = useThemeColors();
-  const styles = createStyles(colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
   const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>(["currentUser"]);
-  const modalProgress = useRef(new Animated.Value(0)).current;
-  const detailPanelProgress = useRef(new Animated.Value(0)).current;
 
-  const [activeDetailPanel, setActiveDetailPanel] = useState<DetailPanel>("none");
-  const [renderedDetailPanel, setRenderedDetailPanel] = useState<DetailPanel>("none");
-  const activeDetailPanelRef = useRef<DetailPanel>("none");
-  const suppressVisibilityPressRef = useRef(false);
+  const bottomSheetModalRef = useRef<BottomSheetModal>(null);
+  const scrollViewRef = useRef<any>(null);
+  const searchInputRef = useRef<any>(null);
+  // Y-offset of the "Invited" section header; used so that section is visible
+  // at the top of the sheet when the invite panel opens / search focuses.
+  const invitedSectionYRef = useRef(0);
+  // 80% by default; a full-height detent so scrolling up first lifts the sheet
+  // to the top of the screen before the content itself scrolls.
+  const snapPoints = useMemo(() => ["80%", "100%"], []);
+
+  // Drive the gorhom sheet imperatively from the controlled `visible` prop
+  // (same approach as FiltersModal): present() on open, close() on programmatic
+  // close, and never close() when gorhom already closed the sheet.
+  const hasEverPresentedRef = useRef(false);
+  const closedByGorhomRef = useRef(false);
+
+  const [showInviteFriends, setShowInviteFriends] = useState(false);
+  const [inviteListReady, setInviteListReady] = useState(false);
   const [pingSearchQuery, setPingSearchQuery] = useState("");
-  const [visibilitySearchQuery, setVisibilitySearchQuery] = useState("");
   const [seatRowDraft, setSeatRowDraft] = useState("");
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
-  const [collapsedCardHeight, setCollapsedCardHeight] = useState(0);
-  const [visibleFriendIdsDraft, setVisibleFriendIdsDraft] = useState<Set<string>>(new Set());
-  const [visibleGroupIdsDraft, setVisibleGroupIdsDraft] = useState<Set<string>>(new Set());
-  const visibilitySeededShowtimeIdRef = useRef<number | null>(null);
+
+  // Caret rotation for the invite-friends toggle (native thread, like FiltersModal).
+  const caretRotation = useRef(new Animated.Value(0)).current;
+  const caretSpin = useMemo(
+    () => caretRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }),
+    [caretRotation]
+  );
 
   const selectedShowtimeId = showtime?.id ?? null;
-  const { data: friends, isFetched: isFetchedFriends } = useFetchFriends({
-    enabled: visible && selectedShowtimeId !== null,
-  });
+  const sheetDataEnabled = visible && selectedShowtimeId !== null;
 
-  const { data: pingedFriendIds = [], isFetching: isFetchingPingedFriends } = useQuery<
-    string[],
-    Error
-  >({
-    queryKey: ["showtimes", "pingedFriends", selectedShowtimeId],
-    enabled: visible && selectedShowtimeId !== null,
-    queryFn: () =>
-      ShowtimesService.getPingedFriendIdsForShowtime({
-        showtimeId: selectedShowtimeId as number,
-      }),
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
-  });
-
-  const { data: showtimeVisibility, isFetching: isFetchingShowtimeVisibility } = useQuery({
-    queryKey: ["showtimes", "visibility", selectedShowtimeId],
-    enabled: visible && selectedShowtimeId !== null,
-    queryFn: () =>
-      ShowtimesService.getShowtimeVisibility({
-        showtimeId: selectedShowtimeId as number,
-      }),
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
-  });
-
-  const {
-    data: friendGroups,
-    isFetching: isFetchingFriendGroups,
-    isFetched: isFetchedFriendGroups,
-  } = useQuery<
-    FriendGroupPublic[],
-    Error
-  >({
-    queryKey: ["friend-groups"],
-    enabled: visible && selectedShowtimeId !== null,
-    queryFn: () => MeService.getFriendGroups(),
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
-  });
-  const friendGroupsList = friendGroups ?? [];
-  const visibilityDraftSeed = useMemo<VisibilityDraftSeed | null>(() => {
-    if (!visible || selectedShowtimeId === null) {
-      return null;
-    }
-
-    const cachedShowtimeVisibility = queryClient.getQueryData<ShowtimeVisibilityPublic>([
-      "showtimes",
-      "visibility",
-      selectedShowtimeId,
-    ]);
-    const showtimeVisibilitySnapshot = showtimeVisibility ?? cachedShowtimeVisibility;
-    if (showtimeVisibilitySnapshot) {
-      return {
-        visibleFriendIds: showtimeVisibilitySnapshot.visible_friend_ids ?? [],
-        visibleGroupIds: showtimeVisibilitySnapshot.visible_group_ids ?? [],
-      };
-    }
-
-    // Only infer defaults for NOT_GOING showtimes because GOING/INTERESTED may already have custom saved visibility.
-    if (showtime?.going !== "NOT_GOING") {
-      return null;
-    }
-
-    const cachedFriends = queryClient.getQueryData<MeGetFriendsResponse>(["users", "friends"]);
-    const friendsSnapshot = friends ?? cachedFriends;
-    const hasFriendSnapshot =
-      friends !== undefined || cachedFriends !== undefined || isFetchedFriends;
-    if (!hasFriendSnapshot || !friendsSnapshot) {
-      return null;
-    }
-
-    if (currentUser?.incognito_mode) {
-      return {
-        visibleFriendIds: [],
-        visibleGroupIds: [],
-      };
-    }
-
-    const cachedFriendGroups = queryClient.getQueryData<FriendGroupPublic[]>(["friend-groups"]);
-    const friendGroupsSnapshot = friendGroups ?? cachedFriendGroups;
-    const hasFriendGroupSnapshot =
-      friendGroups !== undefined || cachedFriendGroups !== undefined || isFetchedFriendGroups;
-    if (!hasFriendGroupSnapshot || !friendGroupsSnapshot) {
-      return null;
-    }
-
-    const friendIds = friendsSnapshot.map((friend) => friend.id);
-    const favoriteGroups = friendGroupsSnapshot.filter((group) => group.is_favorite);
-    if (favoriteGroups.length === 0) {
-      return {
-        visibleFriendIds: friendIds,
-        visibleGroupIds: [],
-      };
-    }
-
-    const friendIdSet = new Set(friendIds);
-    const favoriteMemberIds = new Set<string>();
-    for (const group of favoriteGroups) {
-      for (const friendId of group.friend_ids) {
-        if (friendIdSet.has(friendId)) {
-          favoriteMemberIds.add(friendId);
-        }
+  const handleSheetChange = useCallback(
+    (index: number) => {
+      if (index === -1) {
+        closedByGorhomRef.current = true;
+        onClose();
       }
-    }
+    },
+    [onClose]
+  );
 
-    return {
-      visibleFriendIds: friendIds.filter((friendId) => favoriteMemberIds.has(friendId)),
-      visibleGroupIds: favoriteGroups
-        .map((group) => group.id)
-        .sort((left, right) => left.localeCompare(right)),
-    };
-  }, [
-    currentUser?.incognito_mode,
-    friendGroups,
-    friends,
-    isFetchedFriendGroups,
-    isFetchedFriends,
-    queryClient,
-    selectedShowtimeId,
-    showtime?.going,
-    showtimeVisibility,
-    visible,
-  ]);
-  const isVisibilityInitializing =
-    visible &&
-    selectedShowtimeId !== null &&
-    isFetchingShowtimeVisibility &&
-    showtimeVisibility === undefined &&
-    visibilityDraftSeed === null;
-  const friendIdsSet = useMemo(
-    () => new Set((friends ?? []).map((friend) => friend.id)),
-    [friends]
+  useEffect(() => {
+    if (visible) {
+      hasEverPresentedRef.current = true;
+      closedByGorhomRef.current = false;
+      bottomSheetModalRef.current?.present();
+    } else if (hasEverPresentedRef.current && !closedByGorhomRef.current) {
+      bottomSheetModalRef.current?.close();
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, onClose]);
+
+  // Reset transient UI when the sheet closes or switches showtime.
+  useEffect(() => {
+    if (!visible) {
+      setShowInviteFriends(false);
+      setInviteListReady(false);
+      setPingSearchQuery("");
+      setIsSeatDialogVisible(false);
+      caretRotation.setValue(0);
+    }
+  }, [visible, caretRotation]);
+
+
+  useEffect(() => {
+    setSeatRowDraft(showtime?.seat_row ?? "");
+    setSeatNumberDraft(showtime?.seat_number ?? "");
+  }, [showtime?.id, showtime?.seat_row, showtime?.seat_number]);
+
+  // ─── Friends + invite data ─────────────────────────────────────────────────
+  // Friends + already-pinged ids load whenever the sheet is open so the "Invited"
+  // summary and the invite list can render.
+  const { data: friends, isLoading: isLoadingFriends } = useFetchFriends({
+    enabled: sheetDataEnabled,
+  });
+
+  const sentPingsQueryKey = useMemo(
+    () => ["showtimes", "sentPings", selectedShowtimeId] as const,
+    [selectedShowtimeId]
   );
-  const friendGroupsWithCurrentMembers = useMemo(
-    () =>
-      friendGroupsList.map((group) => ({
-        ...group,
-        friend_ids: group.friend_ids.filter((friendId) => friendIdsSet.has(friendId)),
-      })),
-    [friendGroupsList, friendIdsSet]
-  );
+  const { data: sentPings = [] } = useQuery<SentShowtimePingPublic[], Error>({
+    queryKey: sentPingsQueryKey,
+    enabled: sheetDataEnabled,
+    queryFn: () =>
+      ShowtimesService.getSentPingsForShowtime({ showtimeId: selectedShowtimeId as number }),
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
+  });
 
   const { mutate: pingFriendForShowtime, isPending: isPingingFriend } = useMutation({
     mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
-      ShowtimesService.pingFriendForShowtime({
-        showtimeId,
-        friendId,
-      }),
-    onSuccess: (_message, variables) => {
-      queryClient.setQueryData<string[]>(
-        ["showtimes", "pingedFriends", variables.showtimeId],
-        (previous) =>
-          previous?.includes(variables.friendId) ? previous : [...(previous ?? []), variables.friendId]
-      );
+      ShowtimesService.pingFriendForShowtime({ showtimeId, friendId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: sentPingsQueryKey });
     },
     onError: (error) => {
-      console.error("Error inviting friend for showtime:", error);
       const detail =
         typeof error === "object" &&
         error !== null &&
@@ -348,394 +301,20 @@ export default function ShowtimeActionModal({
     },
   });
 
-  const { mutate: pingFriendGroupForShowtime, isPending: isPingingFriendGroup } = useMutation({
-    mutationFn: ({ showtimeId, groupId }: { showtimeId: number; groupId: string }) =>
-      ShowtimesService.pingFriendGroupForShowtime({
-        showtimeId,
-        groupId,
-      }),
-    onSuccess: (_message, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["showtimes", "pingedFriends", variables.showtimeId] });
+  const { mutate: uninviteFriend, isPending: isUninviting } = useMutation({
+    mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
+      ShowtimesService.uninviteFriendFromShowtime({ showtimeId, friendId }),
+    onSuccess: (_msg, variables) => {
+      queryClient.setQueryData<SentShowtimePingPublic[]>(sentPingsQueryKey, (prev) =>
+        prev?.filter((p) => p.receiver_id !== variables.friendId) ?? []
+      );
     },
-    onError: (error) => {
-      console.error("Error inviting group for showtime:", error);
-      Alert.alert("Error", "Could not invite this group.");
+    onError: () => {
+      Alert.alert("Error", "Could not cancel invite.");
     },
   });
 
-  const { mutate: updateShowtimeVisibility, isPending: isUpdatingShowtimeVisibility } = useMutation({
-    mutationFn: ({
-      showtimeId,
-      visibleFriendIds,
-      visibleGroupIds,
-    }: {
-      showtimeId: number;
-      visibleFriendIds: string[];
-      visibleGroupIds: string[];
-    }) =>
-      ShowtimesService.updateShowtimeVisibility({
-        showtimeId,
-        requestBody: { visible_friend_ids: visibleFriendIds, visible_group_ids: visibleGroupIds },
-      }),
-    onSuccess: (updatedVisibility, variables) => {
-      queryClient.setQueryData(["showtimes", "visibility", variables.showtimeId], updatedVisibility);
-      setVisibleFriendIdsDraft(new Set(updatedVisibility.visible_friend_ids));
-      setVisibleGroupIdsDraft(new Set(updatedVisibility.visible_group_ids ?? []));
-      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
-      queryClient.invalidateQueries({ queryKey: ["movie"] });
-      queryClient.invalidateQueries({ queryKey: ["movies"] });
-      queryClient.invalidateQueries({ queryKey: ["users"] });
-    },
-    onError: (error) => {
-      console.error("Error updating showtime visibility:", error);
-      Alert.alert("Error", "Could not update visibility.");
-    },
-  });
-
-  useEffect(() => {
-    if (!visible || selectedShowtimeId === null) {
-      modalProgress.setValue(0);
-      detailPanelProgress.setValue(0);
-      setActiveDetailPanel("none");
-      setRenderedDetailPanel("none");
-      setPingSearchQuery("");
-      setVisibilitySearchQuery("");
-      setSeatRowDraft("");
-      setSeatNumberDraft("");
-      setIsSeatDialogVisible(false);
-      setCollapsedCardHeight(0);
-      visibilitySeededShowtimeIdRef.current = null;
-      setVisibleFriendIdsDraft(new Set());
-      setVisibleGroupIdsDraft(new Set());
-      return;
-    }
-
-    setActiveDetailPanel("none");
-    setPingSearchQuery("");
-    setVisibilitySearchQuery("");
-    setIsSeatDialogVisible(false);
-    modalProgress.setValue(0);
-    Animated.timing(modalProgress, {
-      toValue: 1,
-      duration: MODAL_OPEN_DURATION_MS,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
-    }).start();
-  }, [modalProgress, selectedShowtimeId, visible]);
-
-  useLayoutEffect(() => {
-    if (!visible || selectedShowtimeId === null) {
-      visibilitySeededShowtimeIdRef.current = null;
-      return;
-    }
-
-    if (!visibilityDraftSeed) {
-      return;
-    }
-
-    if (visibilitySeededShowtimeIdRef.current === selectedShowtimeId) {
-      return;
-    }
-
-    setVisibleFriendIdsDraft(new Set(visibilityDraftSeed.visibleFriendIds));
-    setVisibleGroupIdsDraft(new Set(visibilityDraftSeed.visibleGroupIds));
-    visibilitySeededShowtimeIdRef.current = selectedShowtimeId;
-  }, [selectedShowtimeId, visibilityDraftSeed, visible]);
-
-  useEffect(() => {
-    if (!visible || !showtime) {
-      setSeatRowDraft("");
-      setSeatNumberDraft("");
-      return;
-    }
-    setSeatRowDraft(showtime.seat_row ?? "");
-    setSeatNumberDraft(showtime.seat_number ?? "");
-  }, [showtime, visible]);
-
-  useEffect(() => {
-    if (!showtimeVisibility) {
-      return;
-    }
-    setVisibleFriendIdsDraft(new Set(showtimeVisibility.visible_friend_ids));
-    setVisibleGroupIdsDraft(new Set(showtimeVisibility.visible_group_ids ?? []));
-  }, [showtimeVisibility]);
-
-  useEffect(() => {
-    setVisibleFriendIdsDraft((previous) => {
-      const nextIds = Array.from(previous).filter((friendId) => friendIdsSet.has(friendId));
-      if (nextIds.length === previous.size) {
-        return previous;
-      }
-      return new Set(nextIds);
-    });
-  }, [friendIdsSet]);
-
-  useEffect(() => {
-    const groupIds = new Set(friendGroupsWithCurrentMembers.map((group) => group.id));
-    setVisibleGroupIdsDraft((previous) => {
-      const nextIds = Array.from(previous).filter((groupId) => groupIds.has(groupId));
-      if (nextIds.length === previous.size) {
-        return previous;
-      }
-      return new Set(nextIds);
-    });
-  }, [friendGroupsWithCurrentMembers]);
-
-  useEffect(() => {
-    activeDetailPanelRef.current = activeDetailPanel;
-  }, [activeDetailPanel]);
-
-  const handleOpenTicketLink = async () => {
-    const ticketLink = showtime?.ticket_link;
-    if (!ticketLink) {
-      return;
-    }
-
-    const canOpen = await Linking.canOpenURL(ticketLink);
-    if (canOpen) {
-      await Linking.openURL(ticketLink);
-    }
-  };
-
-  const handleToggleDetailPanel = (panel: Exclude<DetailPanel, "none">) => {
-    // Toggle off: animate closed, then unmount panel content.
-    if (activeDetailPanel === panel) {
-      setActiveDetailPanel("none");
-      detailPanelProgress.stopAnimation();
-      Animated.timing(detailPanelProgress, {
-        toValue: 0,
-        duration: DETAIL_PANEL_CLOSE_DURATION_MS,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: false,
-      }).start(({ finished }) => {
-        // Ignore stale callbacks when the user reopened a panel quickly.
-        if (finished && activeDetailPanelRef.current === "none") {
-          setRenderedDetailPanel("none");
-        }
-      });
-      return;
-    }
-
-    // First open from collapsed state.
-    if (activeDetailPanel === "none") {
-      setRenderedDetailPanel(panel);
-      setActiveDetailPanel(panel);
-      detailPanelProgress.stopAnimation();
-      detailPanelProgress.setValue(0);
-      Animated.timing(detailPanelProgress, {
-        toValue: 1,
-        duration: DETAIL_PANEL_OPEN_DURATION_MS,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
-      return;
-    }
-
-    // Switching invite <-> visibility while open: keep the panel fully expanded.
-    setRenderedDetailPanel(panel);
-    setActiveDetailPanel(panel);
-    detailPanelProgress.stopAnimation();
-    detailPanelProgress.setValue(1);
-  };
-
-  const handlePingFriend = (friendId: string) => {
-    if (!showtime || isPingingFriend) {
-      return;
-    }
-
-    pingFriendForShowtime({
-      showtimeId: showtime.id,
-      friendId,
-    });
-  };
-
-  const handlePingGroup = (groupId: string) => {
-    if (!showtime || isPingingFriendGroup) {
-      return;
-    }
-    pingFriendGroupForShowtime({
-      showtimeId: showtime.id,
-      groupId,
-    });
-  };
-
-  const handleSharePingLink = async () => {
-    if (!showtime || !currentUser?.id) {
-      Alert.alert("Error", "Could not build invite link.");
-      return;
-    }
-
-    const pingUrl = buildShowtimePingUrl(showtime.id, currentUser.id);
-    const movieLabel =
-      resolvedMovieTitle ||
-      ("movie" in showtime && showtime.movie?.title ? showtime.movie.title : "this showtime");
-    const startsAt = DateTime.fromISO(showtime.datetime);
-    const dateTimeLabel = startsAt.isValid
-      ? startsAt.toFormat("ccc, LLL d 'at' HH:mm")
-      : "this showtime";
-    const cinemaLabel = showtime.cinema?.name?.trim() || "the cinema";
-    try {
-      await Share.share({
-        message: `Come see ${movieLabel} at ${dateTimeLabel} in ${cinemaLabel}`,
-        url: pingUrl,
-      });
-    } catch (error) {
-      console.error("Error sharing showtime invite link:", error);
-      Alert.alert("Error", "Could not share invite link.");
-    }
-  };
-
-  const selectedGroupMemberIds = useMemo(() => {
-    const memberIds = new Set<string>();
-    for (const group of friendGroupsWithCurrentMembers) {
-      if (!visibleGroupIdsDraft.has(group.id)) {
-        continue;
-      }
-      for (const friendId of group.friend_ids) {
-        memberIds.add(friendId);
-      }
-    }
-    return memberIds;
-  }, [friendGroupsWithCurrentMembers, visibleGroupIdsDraft]);
-
-  const effectiveVisibleFriendIds = useMemo(() => {
-    const effectiveIds = new Set(visibleFriendIdsDraft);
-    for (const friendId of selectedGroupMemberIds) {
-      effectiveIds.add(friendId);
-    }
-    return effectiveIds;
-  }, [selectedGroupMemberIds, visibleFriendIdsDraft]);
-
-  const handleToggleVisibleFriend = (friendId: string) => {
-    if (isVisibilityInitializing) {
-      return;
-    }
-
-    // Any direct friend edit exits "group mode": keep the current effective selection,
-    // apply the toggle, then clear selected groups.
-    const nextEffectiveIds = new Set(effectiveVisibleFriendIds);
-    if (nextEffectiveIds.has(friendId)) {
-      nextEffectiveIds.delete(friendId);
-    } else {
-      nextEffectiveIds.add(friendId);
-    }
-    setVisibleFriendIdsDraft(nextEffectiveIds);
-    setVisibleGroupIdsDraft(new Set());
-  };
-
-  const handleToggleVisibleGroup = (groupId: string) => {
-    if (isVisibilityInitializing) {
-      return;
-    }
-
-    const group = groupsForVisibility.find((candidate) => candidate.id === groupId);
-    if (!group) return;
-
-    const allGroupMembersSelected =
-      group.friend_ids.length > 0 &&
-      group.friend_ids.every((friendId) => effectiveVisibleFriendIds.has(friendId));
-
-    if (allGroupMembersSelected) {
-      // Group already fully selected: keep only this group's members.
-      setVisibleFriendIdsDraft(new Set(group.friend_ids));
-      setVisibleGroupIdsDraft(new Set([group.id]));
-      return;
-    }
-
-    // Group not fully selected: add all of its members without changing other picks.
-    const nextEffectiveIds = new Set(effectiveVisibleFriendIds);
-    for (const friendId of group.friend_ids) {
-      nextEffectiveIds.add(friendId);
-    }
-    setVisibleFriendIdsDraft(nextEffectiveIds);
-    setVisibleGroupIdsDraft((previous) => new Set([...previous, group.id]));
-  };
-
-  const handleSelectAllVisibility = () => {
-    if (isVisibilityInitializing) {
-      return;
-    }
-
-    const allFriendIds = (friends ?? []).map((friend) => friend.id);
-    setVisibleFriendIdsDraft(new Set(allFriendIds));
-    setVisibleGroupIdsDraft(new Set());
-  };
-
-  const handleDeselectAllVisibility = () => {
-    if (isVisibilityInitializing) {
-      return;
-    }
-
-    setVisibleFriendIdsDraft(new Set());
-    setVisibleGroupIdsDraft(new Set());
-  };
-
-  const handlePressVisibilityButton = () => {
-    if (suppressVisibilityPressRef.current) {
-      suppressVisibilityPressRef.current = false;
-      return;
-    }
-    handleToggleDetailPanel("visibility");
-  };
-
-  const handleLongPressVisibilityButton = () => {
-    if (isVisibilityInitializing) {
-      return;
-    }
-
-    triggerLongPressHaptic();
-    suppressVisibilityPressRef.current = true;
-    if (totalFriendCount > 0 && selectedVisibilityCount === totalFriendCount) {
-      handleDeselectAllVisibility();
-      return;
-    }
-    handleSelectAllVisibility();
-  };
-
-  const handleVisibilityPressOut = () => {
-    if (!suppressVisibilityPressRef.current) return;
-    requestAnimationFrame(() => {
-      suppressVisibilityPressRef.current = false;
-    });
-  };
-
-  const hasVisibilityChanges = useMemo(() => {
-    const baselineVisibility = showtimeVisibility
-      ? {
-          visibleFriendIds: showtimeVisibility.visible_friend_ids ?? [],
-          visibleGroupIds: showtimeVisibility.visible_group_ids ?? [],
-        }
-      : visibilityDraftSeed;
-
-    if (!baselineVisibility) {
-      return false;
-    }
-
-    const savedVisibleFriendIds = new Set(baselineVisibility.visibleFriendIds);
-    if (savedVisibleFriendIds.size !== visibleFriendIdsDraft.size) {
-      return true;
-    }
-
-    for (const friendId of visibleFriendIdsDraft) {
-      if (!savedVisibleFriendIds.has(friendId)) {
-        return true;
-      }
-    }
-
-    const savedVisibleGroupIds = new Set(baselineVisibility.visibleGroupIds);
-    if (savedVisibleGroupIds.size !== visibleGroupIdsDraft.size) {
-      return true;
-    }
-
-    for (const groupId of visibleGroupIdsDraft) {
-      if (!savedVisibleGroupIds.has(groupId)) {
-        return true;
-      }
-    }
-
-    return false;
-  }, [showtimeVisibility, visibilityDraftSeed, visibleFriendIdsDraft, visibleGroupIdsDraft]);
-
+  // ─── Seat handling ─────────────────────────────────────────────────────────
   const normalizedSeatRowDraft = seatRowDraft.trim() || null;
   const normalizedSeatNumberDraft = seatNumberDraft.trim() || null;
   const normalizedCurrentSeatRow = showtime?.seat_row?.trim() || null;
@@ -766,59 +345,60 @@ export default function ShowtimeActionModal({
     normalizedSeatNumberDraft !== normalizedCurrentSeatNumber;
   const canSaveSeat = hasSeatChanges && !isUpdatingStatus && seatValidationError === null;
 
-  const handleCloseModal = () => {
-    if (isSeatDialogVisible) {
-      setIsSeatDialogVisible(false);
+  const hasInvite = Boolean(invite && invite.senders.length > 0);
+  const notGoingActsAsDismiss = Boolean(invite && onDismissInvite);
+  const isGoingSelected = showtime?.going === "GOING";
+  const isInterestedSelected = showtime?.going === "INTERESTED";
+  // When invited, the Not-going button is a dismiss affordance, not a status —
+  // so don't render it as "selected" even if the stored status is NOT_GOING.
+  const isNotGoingSelected = showtime?.going === "NOT_GOING" && !hasInvite;
+  const shouldShowSeatButton = isGoingSelected && !isFreeSeating;
+  const hasTicketLink = Boolean(showtime?.ticket_link);
+
+  // Top tint: green going / orange interested / blue while an invite is open.
+  const tintPalette = isGoingSelected
+    ? colors.green
+    : isInterestedSelected
+      ? colors.orange
+      : hasInvite
+        ? colors.blue
+        : null;
+
+  useEffect(() => {
+    if (shouldShowSeatButton || !isSeatDialogVisible) return;
+    setIsSeatDialogVisible(false);
+  }, [isSeatDialogVisible, shouldShowSeatButton]);
+
+  const handleStatusPress = (going: GoingStatus) => {
+    if (!showtime || isUpdatingStatus) return;
+    onUpdateStatus(going);
+  };
+
+  const handleNotGoingPress = () => {
+    if (notGoingActsAsDismiss) {
+      onDismissInvite?.();
       return;
     }
+    handleStatusPress("NOT_GOING");
+  };
 
-    if (
-      !isUpdatingStatus &&
-      showtime &&
-      showtime.going !== "NOT_GOING" &&
-      hasVisibilityChanges &&
-      !isUpdatingShowtimeVisibility
-    ) {
-      updateShowtimeVisibility({
-        showtimeId: showtime.id,
-        visibleFriendIds: Array.from(visibleFriendIdsDraft),
-        visibleGroupIds: Array.from(visibleGroupIdsDraft),
-      });
-    }
-
-    if (!isUpdatingStatus) {
-      onClose();
+  const handleOpenTicketLink = async () => {
+    const ticketLink = showtime?.ticket_link;
+    if (!ticketLink) return;
+    if (await Linking.canOpenURL(ticketLink)) {
+      await Linking.openURL(ticketLink);
     }
   };
 
-  const handleOpenManageGroups = useCallback(() => {
-    if (isUpdatingStatus) {
-      return;
-    }
-    handleCloseModal();
-    requestAnimationFrame(() => {
-      router.push("/friend-groups");
-    });
-  }, [handleCloseModal, isUpdatingStatus, router]);
-
   const handleOpenSeatDialog = () => {
-    if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) {
-      return;
-    }
+    if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) return;
     setSeatRowDraft(showtime.seat_row ?? "");
     setSeatNumberDraft(showtime.seat_number ?? "");
     setIsSeatDialogVisible(true);
   };
 
-  const handleCloseSeatDialog = () => {
-    if (isUpdatingStatus) return;
-    setIsSeatDialogVisible(false);
-  };
-
   const handleSaveSeat = () => {
-    if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) {
-      return;
-    }
+    if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) return;
     if (seatValidationError) {
       Alert.alert("Invalid seat", seatValidationError);
       return;
@@ -830,35 +410,75 @@ export default function ShowtimeActionModal({
     setIsSeatDialogVisible(false);
   };
 
-  const handleStatusPress = (going: GoingStatus) => {
-    if (!showtime || isUpdatingStatus) return;
-    const visibilityPayload =
-      going === "NOT_GOING" || !hasVisibilityChanges
-        ? undefined
-        : {
-            visibleFriendIds: Array.from(visibleFriendIdsDraft),
-            visibleGroupIds: Array.from(visibleGroupIdsDraft),
-          };
-    onUpdateStatus(going, undefined, visibilityPayload);
+  const handlePingFriend = (friendId: string) => {
+    if (!showtime || isPingingFriend) return;
+    pingFriendForShowtime({ showtimeId: showtime.id, friendId });
+    // Use the native clear() instead of resetting the controlled value — this
+    // avoids React's reconciliation pass forcing value="" onto the input, which
+    // would swallow any keystroke the user typed before that render landed.
+    setPingSearchQuery("");
+    searchInputRef.current?.clear();
   };
 
-  const friendsGoingIds = useMemo(() => {
-    if (!showtime) {
-      return new Set<string>();
+  const toggleInviteFriends = useCallback(() => {
+    const next = !showInviteFriends;
+    // Rotate the caret on the native thread so it starts instantly.
+    Animated.timing(caretRotation, {
+      toValue: next ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+    if (next) {
+      // Opening: no LayoutAnimation — content appears instantly so the scroll-to
+      // position isn't a moving target. The caret rotation provides all the visual
+      // feedback needed. Defer the list render one tick so the caret animation
+      // starts painting before the (potentially heavy) list mounts.
+      setInviteListReady(false);
+      setTimeout(() => {
+        setInviteListReady(true);
+      }, 0);
+    } else {
+      // Closing: animate the height collapse so it doesn't just blink out.
+      LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
     }
-    return new Set<string>(
-      getShowtimeFriendsGoing(showtime).map((friend) => friend.id)
-    );
-  }, [showtime]);
+    setShowInviteFriends(next);
+  }, [showInviteFriends, caretRotation]);
 
-  const friendsInterestedIds = useMemo(() => {
-    if (!showtime) {
-      return new Set<string>();
+  const handleSharePingLink = async () => {
+    if (!showtime || !currentUser?.id) {
+      Alert.alert("Error", "Could not build invite link.");
+      return;
     }
-    return new Set<string>(
-      getShowtimeFriendsInterested(showtime).map((friend) => friend.id)
-    );
-  }, [showtime]);
+    const pingUrl = buildShowtimePingUrl(showtime.id, currentUser.id);
+    const startsAt = DateTime.fromISO(showtime.datetime);
+    const dateTimeLabel = startsAt.isValid
+      ? startsAt.toFormat("ccc, LLL d 'at' HH:mm")
+      : "this showtime";
+    const cinemaLabel = showtime.cinema?.name?.trim() || "the cinema";
+    try {
+      await Share.share({
+        message: `Come see ${showtime.movie.title} at ${dateTimeLabel} in ${cinemaLabel}`,
+        url: pingUrl,
+      });
+    } catch {
+      Alert.alert("Error", "Could not share invite link.");
+    }
+  };
+
+  // ─── Derivations ────────────────────────────────────────────────────────────
+  const friendsGoingIds = useMemo(
+    () => new Set((showtime?.friends_going ?? []).map((friend) => friend.id)),
+    [showtime?.friends_going]
+  );
+  const friendsInterestedIds = useMemo(
+    () => new Set((showtime?.friends_interested ?? []).map((friend) => friend.id)),
+    [showtime?.friends_interested]
+  );
+
+  const pingedReceiverIds = useMemo(
+    () => new Set(sentPings.map((p) => p.receiver_id)),
+    [sentPings]
+  );
 
   const friendsForPing = useMemo(() => {
     const availabilityRank: Record<FriendPingAvailability, number> = {
@@ -867,1292 +487,750 @@ export default function ShowtimeActionModal({
       interested: 2,
       going: 3,
     };
-
     return (friends ?? [])
       .map((friend) => {
-        const isGoing = friendsGoingIds.has(friend.id);
-        const isInterested = friendsInterestedIds.has(friend.id);
-        const alreadyPinged = pingedFriendIds.includes(friend.id);
-        const availability: FriendPingAvailability = isGoing
+        const availability: FriendPingAvailability = friendsGoingIds.has(friend.id)
           ? "going"
-          : isInterested
+          : friendsInterestedIds.has(friend.id)
             ? "interested"
-            : alreadyPinged
+            : pingedReceiverIds.has(friend.id)
               ? "pinged"
               : "eligible";
-        const label = friend.display_name?.trim() || "Friend";
-
         return {
           id: friend.id,
-          label,
+          label: friend.display_name?.trim() || "Friend",
           availability,
         };
       })
       .sort((left, right) => {
-        const rankDifference = availabilityRank[left.availability] - availabilityRank[right.availability];
-        if (rankDifference !== 0) {
-          return rankDifference;
-        }
-        return left.label.localeCompare(right.label);
+        const rankDiff = availabilityRank[left.availability] - availabilityRank[right.availability];
+        return rankDiff !== 0 ? rankDiff : left.label.localeCompare(right.label);
       });
-  }, [friends, friendsGoingIds, friendsInterestedIds, pingedFriendIds]);
+  }, [friends, friendsGoingIds, friendsInterestedIds, pingedReceiverIds]);
 
+  // The list shows friends you can still invite + those who already set a
+  // going/interested status (muted); already-pinged friends live in the summary.
   const filteredFriendsForPing = useMemo(() => {
-    const normalizedQuery = pingSearchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return friendsForPing;
-    }
-    return friendsForPing.filter((friend) => friend.label.toLowerCase().includes(normalizedQuery));
+    const invitable = friendsForPing.filter((friend) => friend.availability !== "pinged");
+    const query = pingSearchQuery.trim().toLowerCase();
+    if (!query) return invitable;
+    return invitable.filter((friend) => friend.label.toLowerCase().includes(query));
   }, [friendsForPing, pingSearchQuery]);
 
-  const friendsForVisibility = useMemo(() => {
-    const normalizedQuery = visibilitySearchQuery.trim().toLowerCase();
-    return (friends ?? [])
-      .map((friend) => ({
-        id: friend.id,
-        label: friend.display_name?.trim() || "Friend",
-        isSelected: effectiveVisibleFriendIds.has(friend.id),
-      }))
-      .filter((friend) => (normalizedQuery ? friend.label.toLowerCase().includes(normalizedQuery) : true))
-      .sort((left, right) => left.label.localeCompare(right.label));
-  }, [effectiveVisibleFriendIds, friends, visibilitySearchQuery]);
-
-  const groupsForVisibility = useMemo(
-    () => [...friendGroupsWithCurrentMembers].sort((left, right) => left.name.localeCompare(right.name)),
-    [friendGroupsWithCurrentMembers]
+  // The top eligible result is what Enter selects (and what we visually highlight).
+  const firstEligibleFriendId = useMemo(
+    () => filteredFriendsForPing.find((friend) => friend.availability === "eligible")?.id ?? null,
+    [filteredFriendsForPing]
   );
 
-  const totalFriendCount = friends?.length ?? 0;
-  const selectedVisibilityCount = (friends ?? []).reduce(
-    (count, friend) => count + (effectiveVisibleFriendIds.has(friend.id) ? 1 : 0),
-    0
-  );
-  const selectedVisibilityGroupLabel = useMemo(() => {
-    if (visibleGroupIdsDraft.size !== 1) {
-      return null;
-    }
-    const [selectedGroupId] = Array.from(visibleGroupIdsDraft);
-    const selectedGroup = groupsForVisibility.find((group) => group.id === selectedGroupId);
-    if (!selectedGroup) {
-      return null;
-    }
-    if (selectedGroup.friend_ids.length !== selectedVisibilityCount) {
-      return null;
-    }
-    const isExactSelectedSet = selectedGroup.friend_ids.every((friendId) =>
-      effectiveVisibleFriendIds.has(friendId)
-    );
-    return isExactSelectedSet ? selectedGroup.name : null;
-  }, [
-    effectiveVisibleFriendIds,
-    groupsForVisibility,
-    selectedVisibilityCount,
-    visibleGroupIdsDraft,
-  ]);
-  const visibilityButtonState: VisibilityButtonState = useMemo(() => {
-    if (totalFriendCount > 0 && selectedVisibilityCount === totalFriendCount) {
-      return "all";
-    }
-    if (selectedVisibilityCount === 0) {
-      return "none";
-    }
-    return "partial";
-  }, [selectedVisibilityCount, totalFriendCount]);
-  const visibilityButtonIconLabel =
-    visibilityButtonState === "partial"
-      ? (selectedVisibilityGroupLabel ?? `${selectedVisibilityCount}/${totalFriendCount}`)
-      : null;
-  const visibilityButtonIconColor =
-    visibilityButtonState === "all"
-      ? colors.green.secondary
-      : visibilityButtonState === "partial"
-        ? colors.orange.secondary
-        : colors.textSecondary;
-  const friendsGoing = getShowtimeFriendsGoing(showtime);
-  const friendsInterested = getShowtimeFriendsInterested(showtime);
-
-  const resolvedMovieTitle = useMemo(() => {
-    const fromProp = movieTitle?.trim();
-    if (fromProp) {
-      return fromProp;
-    }
-
-    if (!showtime) {
-      return "";
-    }
-
-    if ("movie" in showtime && showtime.movie?.title) {
-      return showtime.movie.title;
-    }
-
-    return "";
-  }, [movieTitle, showtime]);
-
-  const isGoingSelected = showtime?.going === "GOING";
-  const isInterestedSelected = showtime?.going === "INTERESTED";
-  const isNotGoingSelected = showtime?.going === "NOT_GOING";
-  const shouldShowSeatButton = isGoingSelected && !isFreeSeating;
-  const hasTicketLink = Boolean(showtime?.ticket_link);
-
-  useEffect(() => {
-    if (shouldShowSeatButton || !isSeatDialogVisible) {
+  const handleSubmitInviteSearch = () => {
+    // Empty query → just dismiss the keyboard, don't invite anyone.
+    if (!pingSearchQuery.trim()) {
+      searchInputRef.current?.blur();
       return;
     }
-    setIsSeatDialogVisible(false);
-  }, [isSeatDialogVisible, shouldShowSeatButton]);
-
-  const statusModalBackdropAnimatedStyle = {
-    opacity: modalProgress.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0, 1],
-    }),
+    if (!firstEligibleFriendId) return;
+    handlePingFriend(firstEligibleFriendId);
   };
 
-  const statusModalCardAnimatedStyle = {
-    opacity: modalProgress,
-    transform: [
-      {
-        translateY: modalProgress.interpolate({
-          inputRange: [0, 1],
-          outputRange: [18, 0],
-        }),
-      },
-    ],
+  const handleInviteSearchFocus = () => {
+    // Scroll after the keyboard has fully opened — any earlier and the sheet
+    // extension resets the scroll position.
+    const sub = Keyboard.addListener("keyboardDidShow", () => {
+      sub.remove();
+      scrollViewRef.current?.scrollTo({
+        y: Math.max(invitedSectionYRef.current - 8, 0),
+        animated: true,
+      });
+    });
   };
 
-  const statusModalBackdropInsetsStyle = useMemo(
-    () => ({
-      paddingTop: STATUS_MODAL_EDGE_PADDING + insets.top,
-      paddingBottom: STATUS_MODAL_EDGE_PADDING + insets.bottom,
-      paddingHorizontal: STATUS_MODAL_EDGE_PADDING,
-    }),
-    [insets.bottom, insets.top]
-  );
-  const modalCardMaxHeight = useMemo(
-    () =>
-      Math.max(
-        0,
-        windowHeight - insets.top - insets.bottom - STATUS_MODAL_EDGE_PADDING * 2
-      ),
-    [insets.bottom, insets.top, windowHeight]
-  );
-  const detailPanelExpandedHeight = useMemo(() => {
-    const collapsedHeightForSizing =
-      collapsedCardHeight > 0 ? collapsedCardHeight : ESTIMATED_COLLAPSED_CARD_HEIGHT;
-    const availablePanelHeight = modalCardMaxHeight - collapsedHeightForSizing;
-    return Math.max(0, Math.min(DETAIL_PANEL_HEIGHT, availablePanelHeight));
-  }, [collapsedCardHeight, modalCardMaxHeight]);
-  const statusModalCardSizeStyle = useMemo(
-    () => ({ maxHeight: modalCardMaxHeight }),
-    [modalCardMaxHeight]
-  );
-  const handleStatusModalCardLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      if (renderedDetailPanel !== "none") {
-        return;
-      }
-      const nextHeight = Math.ceil(event.nativeEvent.layout.height);
-      setCollapsedCardHeight((previous) => (previous === nextHeight ? previous : nextHeight));
+  const invitedYouLabel = hasInvite ? formatInvitedYou(invite!.senders) : null;
+  const showtimeStartsAt = showtime ? DateTime.fromISO(showtime.datetime) : null;
+  const dateLabel = showtimeStartsAt?.isValid ? showtimeStartsAt.toFormat("cccc d LLLL") : null;
+  const durationMinutes = showtime?.movie.duration ?? null;
+  const timeRangeLabel = showtime
+    ? formatShowtimeTimeRange(showtime.datetime, showtime.end_datetime)
+    : null;
+  const timeLabel =
+    timeRangeLabel && durationMinutes
+      ? `${timeRangeLabel} • ${durationMinutes} min`
+      : timeRangeLabel;
+
+  const hasAudience =
+    (showtime?.friends_going.length ?? 0) > 0 ||
+    (showtime?.friends_interested.length ?? 0) > 0;
+
+  const statusOptions = [
+    {
+      key: "NOT_GOING" as const,
+      label: "Not going",
+      icon: "cancel" as const,
+      palette: colors.gray,
+      selected: isNotGoingSelected,
+      disabled: notGoingActsAsDismiss ? isDismissingInvite : isUpdatingStatus,
+      onPress: handleNotGoingPress,
     },
-    [renderedDetailPanel]
-  );
+    {
+      key: "INTERESTED" as const,
+      label: "Interested",
+      icon: "bookmark-border" as const,
+      palette: colors.orange,
+      selected: isInterestedSelected,
+      disabled: isUpdatingStatus,
+      onPress: () => handleStatusPress("INTERESTED"),
+    },
+    {
+      key: "GOING" as const,
+      label: "Going",
+      icon: "check-circle" as const,
+      palette: colors.green,
+      selected: isGoingSelected,
+      disabled: isUpdatingStatus,
+      onPress: () => handleStatusPress("GOING"),
+    },
+  ];
 
-  const detailPanelAnimatedStyle = {
-    height: detailPanelProgress.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0, detailPanelExpandedHeight],
-    }),
-    opacity: detailPanelProgress,
-    transform: [
-      {
-        translateY: detailPanelProgress.interpolate({
-          inputRange: [0, 1],
-          outputRange: [8, 0],
-        }),
-      },
-    ],
-  };
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        disappearsOnIndex={-1}
+        appearsOnIndex={0}
+        opacity={0.45}
+        pressBehavior="close"
+      />
+    ),
+    []
+  );
 
   return (
-    <Modal
-      transparent
-      visible={visible}
-      animationType="none"
-      onRequestClose={handleCloseModal}
+    <BottomSheetModal
+      ref={bottomSheetModalRef}
+      snapPoints={snapPoints}
+      enablePanDownToClose
+      enableDismissOnClose={false}
+      enableDynamicSizing={false}
+      animationConfigs={{ duration: 220 }}
+      backdropComponent={renderBackdrop}
+      handleComponent={null}
+      backgroundStyle={styles.sheetBackground}
+      topInset={topInset}
+      bottomInset={bottomInset}
+      keyboardBehavior="extend"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      onChange={handleSheetChange}
     >
-      <Animated.View
-        style={[
-          styles.statusModalBackdrop,
-          statusModalBackdropAnimatedStyle,
-          statusModalBackdropInsetsStyle,
-        ]}
+      <BottomSheetScrollView
+        ref={scrollViewRef}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <BlurView
-          style={styles.statusModalBlur}
-          intensity={4}
-          tint={colorScheme === "dark" ? "dark" : "light"}
-          experimentalBlurMethod="dimezisBlurView"
-        />
-        <View style={styles.statusModalTint} />
-        <Pressable
-          style={styles.statusModalDismissArea}
-          onPress={handleCloseModal}
-        />
+        {/* Status tint, pinned to the top of the content so it scrolls away. */}
+        {tintPalette ? (
+          <LinearGradient
+            pointerEvents="none"
+            colors={[tintPalette.primary, tintPalette.primary, "transparent"]}
+            locations={[0, 0.25, 1]}
+            style={styles.topTint}
+          />
+        ) : null}
 
-        <Animated.View
-          style={[styles.statusModalCard, statusModalCardAnimatedStyle, statusModalCardSizeStyle]}
-          onLayout={handleStatusModalCardLayout}
-        >
-          <ThemedText style={styles.statusModalTitle}>Update your status</ThemedText>
-          {resolvedMovieTitle ? (
-            <ThemedText style={styles.statusModalMovieTitle}>{resolvedMovieTitle}</ThemedText>
-          ) : null}
-          {showtime ? (
-            <ThemedText style={styles.statusModalSubtitle}>
-              {DateTime.fromISO(showtime.datetime).toFormat("ccc, LLL d")},{" "}
-              {formatShowtimeTimeRange(showtime.datetime, showtime.end_datetime)} •{" "}
-              {showtime.cinema.name}
-            </ThemedText>
-          ) : null}
-          {friendsGoing.length > 0 || friendsInterested.length > 0 ? (
-            <FriendBadges
-              friendsGoing={friendsGoing}
-              friendsInterested={friendsInterested}
-              variant="compact"
-              maxVisible={12}
-              style={styles.audienceBadges}
-            />
-          ) : null}
-
-          <View style={styles.statusButtons}>
-            <TouchableOpacity
-              style={[styles.statusButton, styles.statusButtonGoing, isGoingSelected && styles.statusButtonActive]}
-              disabled={isUpdatingStatus}
-              onPress={() => handleStatusPress("GOING")}
-              activeOpacity={0.8}
-            >
-              <ThemedText style={[styles.statusButtonText, isGoingSelected && styles.statusButtonTextActive]}>
-                I&apos;m Going
-              </ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.statusButton,
-                styles.statusButtonInterested,
-                isInterestedSelected && styles.statusButtonActive,
-              ]}
-              disabled={isUpdatingStatus}
-              onPress={() => handleStatusPress("INTERESTED")}
-              activeOpacity={0.8}
-            >
-              <ThemedText style={[styles.statusButtonText, isInterestedSelected && styles.statusButtonTextActive]}>
-                I&apos;m Interested
-              </ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.statusButton,
-                styles.statusButtonNotGoing,
-                isNotGoingSelected && styles.statusButtonActive,
-              ]}
-              disabled={isUpdatingStatus}
-              onPress={() => handleStatusPress("NOT_GOING")}
-              activeOpacity={0.8}
-            >
-              <ThemedText style={[styles.statusButtonText, isNotGoingSelected && styles.statusButtonTextActive]}>
-                I&apos;m Not Going
-              </ThemedText>
-            </TouchableOpacity>
+        {/* Grab handle lives in the content so the tint runs through it with no
+            seam; it scrolls away with the rest of the header. */}
+        <View style={styles.handleContainer}>
+          <View
+            style={[
+              styles.handleBar,
+              tintPalette && { backgroundColor: tintPalette.secondary, opacity: 0.45 },
+            ]}
+          />
+        </View>
+        {!showtime ? (
+          <View style={styles.loadingState}>
+            {isLoadingShowtime ? (
+              <ActivityIndicator size="large" color={colors.tint} />
+            ) : (
+              <ThemedText style={styles.loadingErrorText}>Showtime unavailable.</ThemedText>
+            )}
           </View>
-          {renderedDetailPanel === "ping" ? (
-            <Animated.View style={[styles.detailPanelAnimatedContainer, detailPanelAnimatedStyle]}>
-              <View style={styles.detailPanel}>
-                <View style={styles.detailPanelHeaderRow}>
-                  <ThemedText style={styles.detailPanelTitle}>Invite friends</ThemedText>
-                  <TouchableOpacity
-                    style={styles.detailHeaderAction}
-                    activeOpacity={0.8}
-                    onPress={() => void handleSharePingLink()}
-                    disabled={!showtime || !currentUser?.id}
-                  >
-                    <MaterialIcons
-                      name="share"
-                      size={20}
-                      color={!showtime || !currentUser?.id ? colors.textSecondary : colors.tint}
-                    />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.groupPingSection}>
-                  <View style={styles.groupPingHeaderRow}>
-                    <ThemedText style={styles.groupPingSectionTitle}>Groups</ThemedText>
-                    <TouchableOpacity
-                      style={styles.visibilityGroupsManageButton}
-                      onPress={handleOpenManageGroups}
-                      activeOpacity={0.8}
-                    >
-                      <ThemedText style={styles.visibilityGroupsManageButtonText}>
-                        Manage Groups
-                      </ThemedText>
-                      <MaterialIcons name="open-in-new" size={14} color={colors.tint} />
-                    </TouchableOpacity>
-                  </View>
-                  {isFetchingFriendGroups && friendGroupsWithCurrentMembers.length === 0 ? (
-                    <ActivityIndicator size="small" color={colors.tint} />
-                  ) : friendGroupsWithCurrentMembers.length === 0 ? (
-                    <ThemedText style={styles.groupPingEmptyText}>No groups saved.</ThemedText>
-                  ) : (
-                    <ScrollView
-                      style={styles.groupPingScroll}
-                      contentContainerStyle={styles.groupPingScrollContent}
-                      nestedScrollEnabled
-                    >
-                      {friendGroupsWithCurrentMembers
-                        .slice()
-                        .sort((left, right) => left.name.localeCompare(right.name))
-                        .map((group) => {
-                          const canPingGroup = group.friend_ids.length > 0 && !isPingingFriendGroup;
-                          return (
-                            <View key={group.id} style={styles.groupPingRow}>
-                              <View style={styles.groupPingIdentity}>
-                                <View style={styles.groupPingNameRow}>
-                                  <ThemedText style={styles.groupPingName}>{group.name}</ThemedText>
-                                  {group.is_favorite ? (
-                                    <MaterialIcons name="star" size={13} color={colors.yellow.secondary} />
-                                  ) : null}
-                                </View>
-                                <ThemedText style={styles.groupPingMeta}>
-                                  {group.friend_ids.length} friend{group.friend_ids.length === 1 ? "" : "s"}
-                                </ThemedText>
-                              </View>
-                              <TouchableOpacity
-                                style={[styles.pingButton, !canPingGroup && styles.pingButtonDisabled]}
-                                onPress={() => handlePingGroup(group.id)}
-                                disabled={!canPingGroup}
-                                activeOpacity={0.8}
-                              >
-                                <ThemedText
-                                  style={[
-                                    styles.pingButtonText,
-                                    !canPingGroup && styles.pingButtonTextDisabled,
-                                  ]}
-                                >
-                                  Invite Group
-                                </ThemedText>
-                              </TouchableOpacity>
-                            </View>
-                          );
-                        })}
-                    </ScrollView>
-                  )}
-                </View>
-                <View style={styles.detailSearchRow}>
-                  <MaterialIcons name="search" size={15} color={colors.textSecondary} />
-                  <TextInput
-                    value={pingSearchQuery}
-                    onChangeText={setPingSearchQuery}
-                    placeholder="Search friends"
-                    placeholderTextColor={colors.textSecondary}
-                    style={styles.detailSearchInput}
-                  />
-                </View>
-                <View style={styles.detailListContainer}>
-                  {filteredFriendsForPing.length === 0 ? (
-                    <View style={styles.detailListStateContainer}>
-                      <ThemedText style={styles.detailEmptyText}>No friends found.</ThemedText>
-                    </View>
-                  ) : (
-                    <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} nestedScrollEnabled>
-                      {filteredFriendsForPing.map((friend) => {
-                        const canPing =
-                          friend.availability === "eligible" && !isPingingFriend && !isFetchingPingedFriends;
-                        const pingButtonLabel =
-                          friend.availability === "eligible"
-                            ? "Invite"
-                            : friend.availability === "pinged"
-                              ? "Invited"
-                              : friend.availability === "going"
-                                ? "Going"
-                                : "Interested";
-
-                        return (
-                          <View key={friend.id} style={styles.pingRow}>
-                            <View style={styles.pingFriendIdentity}>
-                              <ThemedText style={styles.pingFriendName}>{friend.label}</ThemedText>
-                            </View>
-                            <TouchableOpacity
-                              style={[styles.pingButton, !canPing && styles.pingButtonDisabled]}
-                              disabled={!canPing}
-                              onPress={() => handlePingFriend(friend.id)}
-                              activeOpacity={0.8}
-                            >
-                              <ThemedText style={[styles.pingButtonText, !canPing && styles.pingButtonTextDisabled]}>
-                                {pingButtonLabel}
-                              </ThemedText>
-                            </TouchableOpacity>
-                          </View>
-                        );
-                      })}
-                    </ScrollView>
-                  )}
+        ) : (
+          <>
+            {/* Header: poster + title + date + time·runtime + cinema badge */}
+            <View style={styles.summaryRow}>
+              <Image
+                source={{ uri: showtime.movie.poster_link ?? undefined }}
+                style={styles.poster}
+              />
+              <View style={styles.summaryInfo}>
+                <ThemedText style={styles.movieTitle} numberOfLines={3}>
+                  {showtime.movie.title}
+                </ThemedText>
+                {dateLabel ? (
+                  <ThemedText style={styles.dateText}>{dateLabel}</ThemedText>
+                ) : null}
+                {timeLabel ? (
+                  <ThemedText style={styles.timeText}>{timeLabel}</ThemedText>
+                ) : null}
+                <View style={styles.cinemaBadgeRow}>
+                  <CinemaPill cinema={showtime.cinema} />
                 </View>
               </View>
-            </Animated.View>
-          ) : null}
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => bottomSheetModalRef.current?.close()}
+                hitSlop={8}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="close" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
 
-          {renderedDetailPanel === "visibility" ? (
-            <Animated.View style={[styles.detailPanelAnimatedContainer, detailPanelAnimatedStyle]}>
-              <View style={styles.detailPanel}>
-                <View style={styles.visibilityHeaderRow}>
-                  <ThemedText style={styles.detailPanelTitle}>Control who can see your status</ThemedText>
-                  <ThemedText style={styles.visibilitySummary}>
-                    {isVisibilityInitializing
-                      ? "Loading visibility..."
-                      : `${selectedVisibilityCount}/${totalFriendCount} selected`}
+            {/* Friends going / interested */}
+            <View style={[styles.audienceBox, !hasAudience && styles.audienceBoxEmpty]}>
+              {hasAudience ? (
+                <FriendBadges
+                  friendsGoing={showtime.friends_going}
+                  friendsInterested={showtime.friends_interested}
+                  variant="default"
+                  maxVisible={30}
+                />
+              ) : (
+                <ThemedText style={styles.audienceEmptyText}>
+                  No friends are interested in this showtime yet.
+                </ThemedText>
+              )}
+            </View>
+
+            {/* Optional "X invited you" banner */}
+            {invitedYouLabel ? (
+              <View style={styles.invitedYouBanner}>
+                <MaterialIcons name="mail-outline" size={16} color={colors.blue.secondary} />
+                <ThemedText style={styles.invitedYouText}>{invitedYouLabel}</ThemedText>
+              </View>
+            ) : null}
+
+            {/* Status buttons: Not going | Interested | Going */}
+            <View style={styles.statusRow}>
+              {statusOptions.map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.statusButton,
+                    option.selected && {
+                      backgroundColor: option.palette.primary,
+                      borderColor: option.palette.secondary,
+                      shadowColor: option.palette.secondary,
+                    },
+                    option.selected && styles.statusButtonSelected,
+                  ]}
+                  disabled={option.disabled}
+                  onPress={option.onPress}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons
+                    name={option.icon}
+                    size={22}
+                    color={option.selected ? option.palette.secondary : colors.textSecondary}
+                  />
+                  <ThemedText
+                    style={[
+                      styles.statusButtonText,
+                      option.selected && { color: option.palette.secondary },
+                    ]}
+                  >
+                    {option.label}
                   </ThemedText>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Actions: Share + Get Ticket (+ Seat) */}
+            <View style={styles.ctaRow}>
+              <TouchableOpacity
+                style={[styles.shareButton, !hasTicketLink && styles.shareButtonFull]}
+                onPress={() => void handleSharePingLink()}
+                disabled={!currentUser?.id}
+                activeOpacity={0.85}
+              >
+                <MaterialIcons name="share" size={18} color={colors.textSecondary} />
+                {!hasTicketLink ? (
+                  <ThemedText style={styles.shareButtonText}>Share</ThemedText>
+                ) : null}
+              </TouchableOpacity>
+              {hasTicketLink ? (
+                <TouchableOpacity
+                  style={styles.ticketButton}
+                  onPress={handleOpenTicketLink}
+                  activeOpacity={0.85}
+                >
+                  <MaterialIcons name="local-activity" size={20} color="#ffffff" />
+                  <ThemedText style={styles.ticketButtonText}>Get Ticket</ThemedText>
+                </TouchableOpacity>
+              ) : null}
+              {shouldShowSeatButton ? (
+                <TouchableOpacity
+                  style={[styles.seatButton, isSeatConfigured && styles.seatButtonSet]}
+                  onPress={handleOpenSeatDialog}
+                  activeOpacity={0.85}
+                >
+                  <MaterialIcons
+                    name="event-seat"
+                    size={18}
+                    color={isSeatConfigured ? colors.green.secondary : colors.textSecondary}
+                  />
+                  <ThemedText
+                    style={[
+                      styles.seatButtonText,
+                      isSeatConfigured && styles.seatButtonTextSet,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {seatLabel ? `Seat ${seatLabel}` : "Seat"}
+                  </ThemedText>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* Who you've invited */}
+            <View
+              style={styles.invitedSection}
+              onLayout={(event) => {
+                invitedSectionYRef.current = event.nativeEvent.layout.y;
+              }}
+            >
+              <ThemedText style={styles.sectionLabel}>Invited</ThemedText>
+              {sentPings.length === 0 ? (
+                <ThemedText style={styles.invitedEmptyText}>
+                  You haven&apos;t invited anyone yet.
+                </ThemedText>
+              ) : (
+                <View style={styles.invitedList}>
+                  {sentPings.map((ping) => {
+                    const statusLabel = ping.dismissed_at
+                      ? "Dismissed"
+                      : ping.seen_at
+                        ? "Seen"
+                        : "Pending";
+                    const statusColor = ping.dismissed_at
+                      ? colors.red.secondary
+                      : ping.seen_at
+                        ? colors.green.secondary
+                        : colors.textSecondary;
+                    return (
+                      <View key={ping.id} style={styles.invitedRow}>
+                        <MaterialIcons name="person" size={14} color={colors.textSecondary} />
+                        <ThemedText style={styles.invitedRowName} numberOfLines={1}>
+                          {ping.receiver_name}
+                        </ThemedText>
+                        <ThemedText style={[styles.invitedRowStatus, { color: statusColor }]}>
+                          {statusLabel}
+                        </ThemedText>
+                        <TouchableOpacity
+                          style={styles.uninviteButton}
+                          onPress={() => {
+                            if (!showtime) return;
+                            uninviteFriend({ showtimeId: showtime.id, friendId: ping.receiver_id });
+                          }}
+                          disabled={isUninviting}
+                          hitSlop={6}
+                          activeOpacity={0.6}
+                        >
+                          <MaterialIcons name="close" size={14} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
                 </View>
-                {isVisibilityInitializing ? (
-                  <View style={styles.detailListStateContainer}>
+              )}
+            </View>
+
+            {/* Invite friends (collapsible, blue invite coding) */}
+            <TouchableOpacity
+              style={styles.inviteToggle}
+              onPress={toggleInviteFriends}
+              activeOpacity={0.85}
+            >
+              <MaterialIcons name="mail-outline" size={18} color={colors.blue.secondary} />
+              <ThemedText style={styles.inviteToggleText}>Invite friends</ThemedText>
+              <Animated.View style={{ transform: [{ rotate: caretSpin }] }}>
+                <MaterialIcons name="expand-more" size={20} color={colors.blue.secondary} />
+              </Animated.View>
+            </TouchableOpacity>
+
+            {showInviteFriends ? (
+              <View style={styles.invitePanel}>
+                {!inviteListReady || isLoadingFriends ? (
+                  <View style={styles.inviteLoader}>
                     <ActivityIndicator size="small" color={colors.tint} />
                   </View>
                 ) : (
                   <>
-                    <View style={styles.visibilityActionsRow}>
-                      <TouchableOpacity
-                        style={styles.visibilityActionButton}
-                        onPress={handleSelectAllVisibility}
-                        activeOpacity={0.8}
-                      >
-                        <ThemedText style={styles.visibilityActionText}>Select all</ThemedText>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.visibilityActionButton}
-                        onPress={handleDeselectAllVisibility}
-                        activeOpacity={0.8}
-                      >
-                        <ThemedText style={styles.visibilityActionText}>Deselect all</ThemedText>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.visibilityGroupsSection}>
-                      <View style={styles.visibilityGroupsHeaderRow}>
-                        <ThemedText style={styles.visibilityGroupsTitle}>Groups</ThemedText>
-                        <TouchableOpacity
-                          style={styles.visibilityGroupsManageButton}
-                          onPress={handleOpenManageGroups}
-                          activeOpacity={0.8}
-                        >
-                          <ThemedText style={styles.visibilityGroupsManageButtonText}>
-                            Manage Groups
-                          </ThemedText>
-                          <MaterialIcons
-                            name="open-in-new"
-                            size={14}
-                            color={colors.tint}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                      {isFetchingFriendGroups && friendGroupsList.length === 0 ? (
-                        <ActivityIndicator size="small" color={colors.tint} />
-                      ) : groupsForVisibility.length === 0 ? (
-                        <ThemedText style={styles.visibilityGroupsEmptyText}>No groups saved.</ThemedText>
-                      ) : (
-                        <ScrollView
-                          style={styles.visibilityGroupsScroll}
-                          contentContainerStyle={styles.visibilityGroupsScrollContent}
-                          nestedScrollEnabled
-                        >
-                          {groupsForVisibility.map((group) => {
-                            const isSelected = visibleGroupIdsDraft.has(group.id);
-                            return (
-                              <TouchableOpacity
-                                key={group.id}
-                                style={styles.visibilityGroupRow}
-                                onPress={() => handleToggleVisibleGroup(group.id)}
-                                activeOpacity={0.8}
-                              >
-                                <View style={styles.visibilityGroupIdentity}>
-                                  <View style={styles.visibilityGroupNameRow}>
-                                    <ThemedText style={styles.visibilityGroupName}>{group.name}</ThemedText>
-                                    {group.is_favorite ? (
-                                      <MaterialIcons name="star" size={12} color={colors.yellow.secondary} />
-                                    ) : null}
-                                  </View>
-                                  <ThemedText style={styles.visibilityGroupMeta}>
-                                    {group.friend_ids.length} friend{group.friend_ids.length === 1 ? "" : "s"}
-                                  </ThemedText>
-                                </View>
-                                <MaterialIcons
-                                  name={isSelected ? "check-box" : "check-box-outline-blank"}
-                                  size={20}
-                                  color={isSelected ? colors.tint : colors.textSecondary}
-                                />
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </ScrollView>
-                      )}
-                    </View>
-                    <View style={styles.detailSearchRow}>
+                    <View style={styles.inviteSearchRow}>
                       <MaterialIcons name="search" size={15} color={colors.textSecondary} />
-                      <TextInput
-                        value={visibilitySearchQuery}
-                        onChangeText={setVisibilitySearchQuery}
+                      <BottomSheetTextInput
+                        ref={searchInputRef}
+                        autoFocus
+                        onChangeText={setPingSearchQuery}
                         placeholder="Search friends"
                         placeholderTextColor={colors.textSecondary}
-                        style={styles.detailSearchInput}
+                        style={styles.inviteSearchInput}
+                        returnKeyType="done"
+                        submitBehavior="submit"
+                        onFocus={handleInviteSearchFocus}
+                        onSubmitEditing={handleSubmitInviteSearch}
                       />
                     </View>
-                    <View style={styles.detailListContainer}>
-                      {friendsForVisibility.length === 0 ? (
-                        <View style={styles.detailListStateContainer}>
-                          <ThemedText style={styles.detailEmptyText}>No friends found.</ThemedText>
-                        </View>
-                      ) : (
-                        <ScrollView
-                          style={styles.detailScroll}
-                          contentContainerStyle={styles.detailScrollContent}
-                          nestedScrollEnabled
-                        >
-                          {friendsForVisibility.map((friend) => {
-                            return (
-                              <TouchableOpacity
-                                key={friend.id}
-                                style={styles.visibilityRow}
-                                onPress={() => handleToggleVisibleFriend(friend.id)}
-                                activeOpacity={0.8}
+                    {filteredFriendsForPing.length === 0 ? (
+                      <ThemedText style={styles.inviteEmptyText}>No friends found.</ThemedText>
+                    ) : (
+                      <View style={styles.inviteList}>
+                        {filteredFriendsForPing.map((friend) => {
+                          const isEligible = friend.availability === "eligible";
+                          const isHighlighted =
+                            isEligible &&
+                            friend.id === firstEligibleFriendId &&
+                            pingSearchQuery.trim().length > 0;
+                          const statusLabel =
+                            friend.availability === "going"
+                              ? "Going"
+                              : friend.availability === "interested"
+                                ? "Interested"
+                                : null;
+                          return (
+                            <TouchableOpacity
+                              key={friend.id}
+                              style={[styles.friendRow, isHighlighted && styles.friendRowHighlighted]}
+                              disabled={!isEligible || isPingingFriend}
+                              onPress={() => handlePingFriend(friend.id)}
+                              activeOpacity={0.7}
+                            >
+                              <ThemedText
+                                style={[styles.friendName, !isEligible && styles.friendNameMuted]}
+                                numberOfLines={1}
                               >
-                                <View style={styles.visibilityFriendIdentity}>
-                                  <ThemedText style={styles.visibilityFriendName}>{friend.label}</ThemedText>
-                                </View>
+                                {friend.label}
+                              </ThemedText>
+                              {isHighlighted ? (
                                 <MaterialIcons
-                                  name={friend.isSelected ? "check-box" : "check-box-outline-blank"}
-                                  size={20}
-                                  color={friend.isSelected ? colors.tint : colors.textSecondary}
+                                  name="keyboard-return"
+                                  size={16}
+                                  color={colors.blue.secondary}
                                 />
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </ScrollView>
-                      )}
+                              ) : statusLabel ? (
+                                <ThemedText style={styles.friendStatusText}>{statusLabel}</ThemedText>
+                              ) : (
+                                <MaterialIcons name="add" size={18} color={colors.blue.secondary} />
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                    {/* Over-scroll room + a subtle end marker so the search can
+                        always be parked above the keyboard, even when typing has
+                        filtered the list down to a couple of names. */}
+                    <View
+                      style={[styles.inviteEndSpacer, { height: inviteScrollPadding }]}
+                      pointerEvents="none"
+                    >
+                      {filteredFriendsForPing.length > 0 ? (
+                        <View style={styles.inviteEndMark} />
+                      ) : null}
                     </View>
                   </>
                 )}
               </View>
-            </Animated.View>
-          ) : null}
-
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={[styles.actionButton, !hasTicketLink && styles.actionButtonDisabled]}
-              disabled={!hasTicketLink}
-              onPress={handleOpenTicketLink}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons
-                name="confirmation-number"
-                size={18}
-                color={!hasTicketLink ? colors.textSecondary : colors.tint}
-              />
-              <ThemedText style={[styles.actionButtonText, !hasTicketLink && styles.actionButtonTextDisabled]}>
-                Ticket
-              </ThemedText>
-            </TouchableOpacity>
-
-            {shouldShowSeatButton ? (
-              <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  isSeatDialogVisible && styles.actionButtonActive,
-                  isSeatConfigured && styles.actionButtonSeatSet,
-                ]}
-                onPress={handleOpenSeatDialog}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons
-                  name="event-seat"
-                  size={16}
-                  color={
-                    isSeatConfigured
-                      ? colors.green.secondary
-                      : isSeatDialogVisible
-                        ? colors.tint
-                        : colors.textSecondary
-                  }
-                />
-                <ThemedText
-                  style={[
-                    styles.actionButtonText,
-                    isSeatDialogVisible && styles.actionButtonTextActive,
-                    isSeatConfigured && styles.actionButtonTextSeatSet,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {seatLabel ? `Seat ${seatLabel}` : "Seat"}
-                </ThemedText>
-              </TouchableOpacity>
             ) : null}
+          </>
+        )}
+      </BottomSheetScrollView>
 
-            <TouchableOpacity
-              style={[styles.actionButton, activeDetailPanel === "ping" && styles.actionButtonActive]}
-              onPress={() => handleToggleDetailPanel("ping")}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons
-                name="campaign"
-                size={16}
-                color={activeDetailPanel === "ping" ? colors.tint : colors.textSecondary}
+      {/* Seat editor (assigned-seating cinemas only) */}
+      <Modal
+        transparent
+        statusBarTranslucent
+        visible={isSeatDialogVisible && !isFreeSeating}
+        animationType="fade"
+        onRequestClose={() => setIsSeatDialogVisible(false)}
+      >
+        <View style={styles.seatDialogBackdrop}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setIsSeatDialogVisible(false)}
+          />
+          <View style={styles.seatDialogCard}>
+            <ThemedText style={styles.seatDialogTitle}>Seat info</ThemedText>
+            <View style={styles.seatEditorRow}>
+              <TextInput
+                value={seatRowDraft}
+                onChangeText={setSeatRowDraft}
+                placeholder="Row"
+                placeholderTextColor={colors.textSecondary}
+                style={[styles.seatInput, seatRowValidationError && styles.seatInputInvalid]}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                keyboardType={seatInputConfig.rowKind === "digits" ? "number-pad" : "default"}
+                maxLength={getSeatFieldMaxLength(seatInputConfig.rowKind)}
               />
-              <ThemedText
-                style={[
-                  styles.actionButtonText,
-                  activeDetailPanel === "ping" && styles.actionButtonTextActive,
-                ]}
-              >
-                Invite
-              </ThemedText>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                visibilityButtonState === "all"
-                  ? styles.actionButtonVisibilityAll
-                  : visibilityButtonState === "partial"
-                    ? styles.actionButtonVisibilityPartial
-                    : styles.actionButtonVisibilityNone,
-                activeDetailPanel === "visibility" && styles.actionButtonVisibilityPanelActive,
-              ]}
-              onPress={handlePressVisibilityButton}
-              onLongPress={handleLongPressVisibilityButton}
-              onPressOut={handleVisibilityPressOut}
-              activeOpacity={0.8}
-            >
-              <View style={styles.actionButtonIconSlot}>
-                {isVisibilityInitializing ? (
-                  <ActivityIndicator size="small" color={colors.tint} />
-                ) : visibilityButtonState === "none" ? (
-                  <MaterialCommunityIcons
-                    name="incognito"
-                    size={16}
-                    color={visibilityButtonIconColor}
-                  />
-                ) : visibilityButtonIconLabel ? (
-                  <ThemedText
-                    style={[
-                      styles.actionButtonIconLabel,
-                      { color: visibilityButtonIconColor },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {visibilityButtonIconLabel}
-                  </ThemedText>
-                ) : (
-                  <MaterialIcons
-                    name="visibility"
-                    size={16}
-                    color={visibilityButtonIconColor}
-                  />
-                )}
-              </View>
-              <ThemedText
-                style={[
-                  styles.actionButtonText,
-                  visibilityButtonState === "all"
-                    ? styles.actionButtonTextVisibilityAll
-                    : visibilityButtonState === "partial"
-                      ? styles.actionButtonTextVisibilityPartial
-                      : styles.actionButtonTextVisibilityNone,
-                ]}
-              >
-                Visibility
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
-
-        </Animated.View>
-
-        <Modal
-          transparent
-          visible={isSeatDialogVisible && !isFreeSeating}
-          animationType="fade"
-          onRequestClose={handleCloseSeatDialog}
-        >
-          <View style={styles.seatDialogBackdrop}>
-            <TouchableOpacity
-              style={styles.seatDialogBackdropPressable}
-              activeOpacity={1}
-              onPress={handleCloseSeatDialog}
-            />
-            <View style={styles.seatDialogCard}>
-              <View style={styles.seatDialogHeader}>
-                <ThemedText style={styles.seatDialogTitle}>Seat info</ThemedText>
-              </View>
-              <View style={styles.seatEditorRow}>
-                <View style={styles.seatEditorField}>
-                  <TextInput
-                    value={seatRowDraft}
-                    onChangeText={setSeatRowDraft}
-                    placeholder={"Row"}
-                    placeholderTextColor={colors.textSecondary}
-                    style={[styles.seatInput, seatRowValidationError && styles.seatInputInvalid]}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                    keyboardType={seatInputConfig.rowKind === "digits" ? "number-pad" : "default"}
-                    maxLength={getSeatFieldMaxLength(seatInputConfig.rowKind)}
-                  />
-                </View>
-                <View style={styles.seatEditorField}>
-                  <TextInput
-                    value={seatNumberDraft}
-                    onChangeText={setSeatNumberDraft}
-                    placeholder={"Seat"}
-                    placeholderTextColor={colors.textSecondary}
-                    style={[styles.seatInput, seatNumberValidationError && styles.seatInputInvalid]}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                    keyboardType={seatInputConfig.seatKind === "digits" ? "number-pad" : "default"}
-                    maxLength={getSeatFieldMaxLength(seatInputConfig.seatKind)}
-                  />
-                </View>
-              </View>
-              {seatValidationError ? (
-                <ThemedText style={styles.seatValidationErrorText}>{seatValidationError}</ThemedText>
-              ) : null}
-              <View style={styles.seatDialogActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.seatDialogButton,
-                    styles.seatDialogButtonPrimary,
-                    !canSaveSeat && styles.seatDialogButtonDisabled,
-                  ]}
-                  onPress={handleSaveSeat}
-                  activeOpacity={0.8}
-                  disabled={!canSaveSeat}
-                >
-                  <ThemedText style={[styles.seatDialogButtonText, styles.seatDialogButtonTextPrimary]}>
-                    Save
-                  </ThemedText>
-                </TouchableOpacity>
-              </View>
+              <TextInput
+                value={seatNumberDraft}
+                onChangeText={setSeatNumberDraft}
+                placeholder="Seat"
+                placeholderTextColor={colors.textSecondary}
+                style={[styles.seatInput, seatNumberValidationError && styles.seatInputInvalid]}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                keyboardType={seatInputConfig.seatKind === "digits" ? "number-pad" : "default"}
+                maxLength={getSeatFieldMaxLength(seatInputConfig.seatKind)}
+              />
             </View>
+            {seatValidationError ? (
+              <ThemedText style={styles.seatValidationErrorText}>{seatValidationError}</ThemedText>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.seatSaveButton, !canSaveSeat && styles.seatSaveButtonDisabled]}
+              onPress={handleSaveSeat}
+              activeOpacity={0.8}
+              disabled={!canSaveSeat}
+            >
+              <ThemedText style={styles.seatSaveButtonText}>Save</ThemedText>
+            </TouchableOpacity>
           </View>
-        </Modal>
-      </Animated.View>
-    </Modal>
+        </View>
+      </Modal>
+    </BottomSheetModal>
   );
 }
 
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
-    statusModalBackdrop: {
-      flex: 1,
-      justifyContent: "center",
+    handleContainer: {
+      alignItems: "center",
+      paddingTop: 10,
+      paddingBottom: 2,
     },
-    statusModalBlur: {
-      ...StyleSheet.absoluteFillObject,
+    handleBar: {
+      width: 40,
+      height: 4,
+      borderRadius: 999,
+      backgroundColor: colors.divider,
     },
-    statusModalTint: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: "rgba(0, 0, 0, 0.06)",
-    },
-    statusModalDismissArea: {
-      ...StyleSheet.absoluteFillObject,
-    },
-    statusModalCard: {
-      backgroundColor: colors.cardBackground,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      padding: 14,
-      gap: 10,
+    sheetBackground: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
       overflow: "hidden",
     },
-    statusModalTitle: {
-      fontSize: 18,
-      fontWeight: "700",
-      color: colors.text,
+    topTint: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 190,
+      opacity: 0.45,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
     },
-    statusModalMovieTitle: {
-      fontSize: 14,
-      fontWeight: "700",
-      color: colors.text,
+    scroll: { flex: 1, backgroundColor: "transparent" },
+    scrollContent: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 32, gap: 14, flexGrow: 1 },
+
+    loadingState: { alignItems: "center", justifyContent: "center", paddingVertical: 60 },
+    loadingErrorText: { fontSize: 14, color: colors.textSecondary },
+
+    summaryRow: { flexDirection: "row", gap: 12 },
+    poster: {
+      width: 84,
+      height: 126,
+      borderRadius: 8,
+      backgroundColor: colors.posterPlaceholder,
     },
-    statusModalSubtitle: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    audienceBadges: {
-      marginTop: 1,
-    },
-    statusButtons: {
-      gap: 8,
-      marginTop: 2,
-    },
-    statusButton: {
-      borderRadius: 10,
-      borderWidth: 1,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      alignItems: "center",
-    },
-    statusButtonGoing: {
-      backgroundColor: colors.green.primary,
-      borderColor: colors.green.secondary,
-    },
-    statusButtonInterested: {
-      backgroundColor: colors.orange.primary,
-      borderColor: colors.orange.secondary,
-    },
-    statusButtonNotGoing: {
-      backgroundColor: colors.red.primary,
-      borderColor: colors.red.secondary,
-    },
-    statusButtonActive: {
-      borderWidth: 3,
-      shadowColor: colors.text,
-      shadowOpacity: 0.28,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 3 },
-      elevation: 7,
-      transform: [{ scale: 1.02 }],
-    },
-    statusButtonText: {
-      fontSize: 14,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    statusButtonTextActive: {
-      fontWeight: "800",
-    },
-    actionRow: {
-      flexDirection: "row",
-      gap: 8,
-      marginTop: 2,
-    },
-    actionButton: {
-      flex: 1,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.pillBackground,
+    summaryInfo: { flex: 1, gap: 3 },
+    movieTitle: { fontSize: 19, fontWeight: "800", color: colors.text, paddingRight: 36 },
+    dateText: { fontSize: 12.5, fontWeight: "600", color: colors.text },
+    timeText: { fontSize: 12.5, color: colors.textSecondary },
+    cinemaBadgeRow: { flexDirection: "row", alignItems: "center", marginTop: 1 },
+    closeButton: {
+      position: "absolute",
+      top: -10,
+      right: 0,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
       alignItems: "center",
       justifyContent: "center",
-      paddingVertical: 7,
-      gap: 2,
-    },
-    actionButtonVisibilityAll: {
-      borderColor: colors.green.secondary,
-      backgroundColor: colors.green.primary,
-    },
-    actionButtonVisibilityPartial: {
-      borderColor: colors.orange.secondary,
-      backgroundColor: colors.orange.primary,
-    },
-    actionButtonVisibilityNone: {
-      borderColor: colors.divider,
       backgroundColor: colors.pillBackground,
     },
-    actionButtonVisibilityPanelActive: {
-      borderWidth: 2,
+
+    audienceBox: {
+      minHeight: 42,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderColor: `${colors.divider}80`,
+      paddingVertical: 10,
+      justifyContent: "center",
     },
-    actionButtonActive: {
-      borderColor: colors.tint,
-      backgroundColor: colors.cardBackground,
-    },
-    actionButtonSeatSet: {
-      borderColor: colors.green.secondary,
-      backgroundColor: colors.green.primary,
-    },
-    actionButtonDisabled: {
-      borderColor: colors.divider,
-      backgroundColor: colors.pillBackground,
-    },
-    actionButtonText: {
-      fontSize: 11,
-      fontWeight: "700",
+    audienceBoxEmpty: { alignItems: "center" },
+    audienceEmptyText: {
+      fontSize: 13,
       color: colors.textSecondary,
-    },
-    actionButtonTextVisibilityAll: {
-      color: colors.green.secondary,
-    },
-    actionButtonTextVisibilityPartial: {
-      color: colors.orange.secondary,
-    },
-    actionButtonTextVisibilityNone: {
-      color: colors.textSecondary,
-    },
-    actionButtonIconLabel: {
-      fontSize: 9,
-      lineHeight: 10,
-      fontWeight: "700",
-      maxWidth: "100%",
       textAlign: "center",
     },
-    actionButtonIconSlot: {
-      height: 16,
-      minWidth: 16,
-      width: "100%",
+
+    invitedYouBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      backgroundColor: colors.blue.primary,
+    },
+    invitedYouText: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.text },
+
+    statusRow: { flexDirection: "row", gap: 8 },
+    statusButton: {
+      flex: 1,
+      gap: 5,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.pillBackground,
+      paddingVertical: 14,
       alignItems: "center",
       justifyContent: "center",
     },
-    actionButtonTextActive: {
-      color: colors.tint,
+    statusButtonSelected: {
+      shadowOpacity: 0.2,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
     },
-    actionButtonTextSeatSet: {
-      color: colors.green.secondary,
-    },
-    actionButtonTextDisabled: {
-      color: colors.textSecondary,
-    },
-    detailPanelAnimatedContainer: {
-      overflow: "hidden",
-    },
-    detailPanel: {
-      height: "100%",
+    statusButtonText: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
+
+    ctaRow: { flexDirection: "row", gap: 8 },
+    shareButton: {
+      flexDirection: "row",
+      gap: 6,
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      borderRadius: 10,
-      padding: 10,
-      gap: 8,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      alignItems: "center",
+      justifyContent: "center",
       backgroundColor: colors.pillBackground,
     },
-    detailPanelTitle: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: colors.textSecondary,
-    },
-    detailPanelHeaderRow: {
+    shareButtonFull: { flex: 1 },
+    shareButtonText: { fontSize: 15, fontWeight: "700", color: colors.textSecondary },
+    ticketButton: {
+      flex: 1,
       flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
       gap: 8,
-    },
-    detailHeaderAction: {
-      flexDirection: "row",
+      borderRadius: 12,
+      paddingVertical: 14,
       alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 4,
-      paddingVertical: 2,
+      justifyContent: "center",
+      backgroundColor: "#1f9d54",
     },
-    detailHeaderActionText: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: colors.tint,
-    },
-    detailHeaderActionTextDisabled: {
-      color: colors.textSecondary,
-    },
-    detailSearchRow: {
+    ticketButtonText: { fontSize: 15, fontWeight: "800", color: "#ffffff" },
+    seatButton: {
       flexDirection: "row",
-      alignItems: "center",
       gap: 6,
-      borderRadius: 9,
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      paddingHorizontal: 9,
-      paddingVertical: 6,
-    },
-    detailSearchInput: {
-      flex: 1,
-      fontSize: 13,
-      color: colors.text,
-      paddingVertical: 0,
-    },
-    detailListContainer: {
-      flex: 1,
-      minHeight: 0,
-    },
-    detailListStateContainer: {
-      flex: 1,
+      backgroundColor: colors.pillBackground,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
       alignItems: "center",
       justifyContent: "center",
     },
-    detailScroll: {
-      flex: 1,
-    },
-    detailScrollContent: {
-      gap: 8,
-    },
-    detailEmptyText: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    groupPingSection: {
-      borderRadius: 9,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      padding: 8,
-      gap: 6,
-      maxHeight: 120,
-    },
-    groupPingHeaderRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-    },
-    groupPingSectionTitle: {
+    seatButtonSet: { borderColor: colors.green.secondary, backgroundColor: colors.green.primary },
+    seatButtonText: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
+    seatButtonTextSet: { color: colors.green.secondary },
+
+    invitedSection: { gap: 8 },
+    sectionLabel: {
       fontSize: 11,
       fontWeight: "700",
+      letterSpacing: 0.4,
+      textTransform: "uppercase",
       color: colors.textSecondary,
     },
-    groupPingEmptyText: {
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    groupPingScroll: {
-      flexGrow: 0,
-    },
-    groupPingScrollContent: {
-      gap: 6,
-    },
-    groupPingRow: {
+    invitedEmptyText: { fontSize: 13, color: colors.textSecondary },
+    invitedList: { gap: 4 },
+    invitedRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.background,
-      paddingHorizontal: 8,
-      paddingVertical: 6,
-    },
-    groupPingIdentity: {
-      flex: 1,
-      justifyContent: "center",
-      gap: 1,
-    },
-    groupPingNameRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-    },
-    groupPingName: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: colors.text,
-    },
-    groupPingMeta: {
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    pingRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-      borderRadius: 10,
+      gap: 7,
+      borderRadius: 9,
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.cardBackground,
       paddingHorizontal: 10,
       paddingVertical: 8,
     },
-    pingFriendIdentity: {
-      flex: 1,
-      justifyContent: "center",
+    invitedRowName: { flex: 1, fontSize: 13, fontWeight: "500", color: colors.text },
+    invitedRowStatus: { fontSize: 11, fontWeight: "600" },
+    uninviteButton: {
+      padding: 2,
+      borderRadius: 4,
     },
-    pingFriendName: {
-      fontSize: 13,
-      lineHeight: 18,
-      color: colors.text,
+
+    inviteToggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 11,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      backgroundColor: colors.blue.primary,
     },
-    pingButton: {
+    inviteToggleText: { flex: 1, fontSize: 14, fontWeight: "700", color: colors.blue.secondary },
+
+    invitePanel: { gap: 10, paddingTop: 2 },
+    inviteLoader: { alignItems: "center", paddingVertical: 20 },
+    inviteEmptyText: { fontSize: 13, color: colors.textSecondary, paddingVertical: 6 },
+    inviteList: { gap: 2 },
+    friendRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
       borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.tint,
-      paddingVertical: 2,
       paddingHorizontal: 8,
-      backgroundColor: colors.cardBackground,
+      paddingVertical: 11,
     },
-    pingButtonDisabled: {
-      borderColor: colors.divider,
-      backgroundColor: colors.pillBackground,
-    },
-    pingButtonText: {
-      fontSize: 11,
-      lineHeight: 14,
-      fontWeight: "700",
-      color: colors.tint,
-    },
-    pingButtonTextDisabled: {
-      color: colors.textSecondary,
-    },
-    visibilityHeaderRow: {
+    friendRowHighlighted: { backgroundColor: colors.blue.primary },
+    friendName: { flexShrink: 1, fontSize: 14, fontWeight: "500", color: colors.text },
+    friendNameMuted: { color: colors.textSecondary },
+    friendStatusText: { fontSize: 11, fontWeight: "700", color: colors.textSecondary },
+    inviteEndSpacer: { paddingTop: 16, alignItems: "center" },
+    inviteEndMark: { width: 28, height: 3, borderRadius: 2, backgroundColor: colors.divider },
+    inviteSearchRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-    },
-    visibilitySummary: {
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    visibilityActionsRow: {
-      flexDirection: "row",
-      gap: 8,
-    },
-    visibilityActionButton: {
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      paddingVertical: 6,
-      paddingHorizontal: 10,
-      backgroundColor: colors.cardBackground,
-    },
-    visibilityActionText: {
-      fontSize: 11,
-      fontWeight: "600",
-      color: colors.textSecondary,
-    },
-    visibilityGroupsSection: {
-      borderRadius: 9,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      padding: 8,
       gap: 6,
-      maxHeight: 110,
-    },
-    visibilityGroupsTitle: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: colors.textSecondary,
-    },
-    visibilityGroupsHeaderRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-    },
-    visibilityGroupsManageButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 6,
-      paddingVertical: 3,
-      borderRadius: 7,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.background,
-    },
-    visibilityGroupsManageButtonText: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: colors.tint,
-    },
-    visibilityGroupsEmptyText: {
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    visibilityGroupsScroll: {
-      flexGrow: 0,
-    },
-    visibilityGroupsScrollContent: {
-      gap: 6,
-    },
-    visibilityGroupRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.background,
-      paddingHorizontal: 8,
-      paddingVertical: 6,
-    },
-    visibilityGroupIdentity: {
-      flex: 1,
-      justifyContent: "center",
-      gap: 1,
-    },
-    visibilityGroupNameRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-    },
-    visibilityGroupName: {
-      fontSize: 12,
-      color: colors.text,
-      fontWeight: "600",
-    },
-    visibilityGroupMeta: {
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    visibilityRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
+      backgroundColor: colors.searchBackground,
       paddingHorizontal: 10,
       paddingVertical: 8,
     },
-    visibilityFriendIdentity: {
-      flex: 1,
-      justifyContent: "center",
-      gap: 1,
-    },
-    visibilityFriendName: {
-      fontSize: 13,
-      color: colors.text,
-    },
-    visibilityFriendMeta: {
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    seatEditorRow: {
-      flexDirection: "row",
-      gap: 8,
-    },
-    seatEditorField: {
-      flex: 1,
-      gap: 4,
-    },
-    seatFieldLabel: {
-      fontSize: 11,
-      color: colors.textSecondary,
-      fontWeight: "600",
-    },
-    seatInput: {
-      borderRadius: 9,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      paddingHorizontal: 9,
-      paddingVertical: 8,
-      fontSize: 14,
-      color: colors.text,
-    },
-    seatInputInvalid: {
-      borderColor: colors.red.secondary,
-    },
-    seatValidationErrorText: {
-      fontSize: 11,
-      color: colors.red.secondary,
-      marginTop: -2,
-    },
-    seatDialogButtonDisabled: {
-      borderColor: colors.divider,
-      backgroundColor: colors.pillBackground,
-    },
+    inviteSearchInput: { flex: 1, fontSize: 14, color: colors.text, paddingVertical: 0 },
+
     seatDialogBackdrop: {
       flex: 1,
       backgroundColor: "rgba(0, 0, 0, 0.28)",
       alignItems: "center",
       justifyContent: "center",
       paddingHorizontal: 20,
-    },
-    seatDialogBackdropPressable: {
-      ...StyleSheet.absoluteFillObject,
     },
     seatDialogCard: {
       width: "100%",
@@ -2161,9 +1239,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.cardBackground,
-      paddingHorizontal: 14,
-      paddingTop: 14,
-      paddingBottom: 12,
+      padding: 14,
       gap: 10,
       shadowColor: "#000",
       shadowOpacity: 0.2,
@@ -2171,53 +1247,28 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       shadowOffset: { width: 0, height: 6 },
       elevation: 9,
     },
-    seatDialogHeader: {
-      gap: 2,
-    },
-    seatDialogTitle: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    seatDialogSubtitle: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      lineHeight: 17,
-    },
-    seatDialogCurrentSeat: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    seatDialogActions: {
-      flexDirection: "row",
-      gap: 8,
-    },
-    seatDialogButton: {
+    seatDialogTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
+    seatEditorRow: { flexDirection: "row", gap: 8 },
+    seatInput: {
       flex: 1,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingHorizontal: 9,
+      paddingVertical: 8,
+      fontSize: 14,
+      color: colors.text,
+    },
+    seatInputInvalid: { borderColor: colors.red.secondary },
+    seatValidationErrorText: { fontSize: 11, color: colors.red.secondary, marginTop: -2 },
+    seatSaveButton: {
       minHeight: 38,
       borderRadius: 10,
-      borderWidth: 1,
       alignItems: "center",
       justifyContent: "center",
-      paddingHorizontal: 12,
-    },
-    seatDialogButtonPrimary: {
       backgroundColor: colors.tint,
-      borderColor: colors.tint,
     },
-    seatDialogButtonSecondary: {
-      backgroundColor: colors.cardBackground,
-      borderColor: colors.divider,
-    },
-    seatDialogButtonText: {
-      fontSize: 13,
-      fontWeight: "700",
-    },
-    seatDialogButtonTextPrimary: {
-      color: colors.pillActiveText,
-    },
-    seatDialogButtonTextSecondary: {
-      color: colors.textSecondary,
-    },
+    seatSaveButtonDisabled: { opacity: 0.5 },
+    seatSaveButtonText: { fontSize: 13, fontWeight: "700", color: colors.pillActiveText },
   });

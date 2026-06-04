@@ -18,8 +18,6 @@ import { DateTime } from "luxon";
 import { useIsFocused } from "@react-navigation/native";
 import {
   MeService,
-  ShowtimesService,
-  type GoingStatus,
   type ShowtimeLoggedIn,
   type ShowtimePingPublic,
 } from "shared";
@@ -29,7 +27,7 @@ import FilterPills from "@/components/filters/FilterPills";
 import TopBar from "@/components/layout/TopBar";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import ShowtimeActionModal from "@/components/showtimes/ShowtimeActionModal";
+import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
 
 type PingSortMode = "ping-date" | "showtime-date";
@@ -53,11 +51,10 @@ export default function PingsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const isFocused = useIsFocused();
+  const { openShowtimeModalForInvite } = useShowtimeModal();
   const [sortMode, setSortMode] = useState<PingSortMode>("ping-date");
   const [hiddenPingIds, setHiddenPingIds] = useState<Set<number>>(new Set());
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
-  const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeLoggedIn | null>(null);
-  const [selectedShowtimeMovieTitle, setSelectedShowtimeMovieTitle] = useState<string | null>(null);
   const backendSortBy = sortMode === "ping-date" ? "ping_created_at" : "showtime_datetime";
 
   const {
@@ -185,104 +182,6 @@ export default function PingsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused]);
 
-  const { mutate: updateShowtimeSelection, isPending: isUpdatingShowtimeSelection } = useMutation({
-    mutationFn: ({
-      showtimeId,
-      going,
-      seatRow,
-      seatNumber,
-      visibleFriendIds,
-      visibleGroupIds,
-    }: {
-      showtimeId: number;
-      going: GoingStatus;
-      seatRow?: string | null;
-      seatNumber?: string | null;
-      visibleFriendIds?: string[];
-      visibleGroupIds?: string[];
-    }) => {
-      const requestBody: {
-        going_status: GoingStatus;
-        seat_row?: string | null;
-        seat_number?: string | null;
-        visible_friend_ids?: string[];
-        visible_group_ids?: string[];
-      } = {
-        going_status: going,
-      };
-      if (seatRow !== undefined) {
-        requestBody.seat_row = seatRow;
-      }
-      if (seatNumber !== undefined) {
-        requestBody.seat_number = seatNumber;
-      }
-      if (visibleFriendIds !== undefined) {
-        requestBody.visible_friend_ids = visibleFriendIds;
-      }
-      if (visibleGroupIds !== undefined) {
-        requestBody.visible_group_ids = visibleGroupIds;
-      }
-      return ShowtimesService.updateShowtimeSelection({
-        showtimeId,
-        requestBody,
-      });
-    },
-    onSuccess: (updatedShowtime) => {
-      setSelectedShowtime((previous) =>
-        previous && previous.id === updatedShowtime.id ? updatedShowtime : previous
-      );
-    },
-    onError: (error) => {
-      console.error("Error updating showtime selection:", error);
-    },
-    onSettled: (_data, _error, variables) => {
-      if (variables) {
-        queryClient.invalidateQueries({
-          queryKey: ["showtimes", "visibility", variables.showtimeId],
-        });
-      }
-      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
-      queryClient.invalidateQueries({ queryKey: ["movie"] });
-      queryClient.invalidateQueries({ queryKey: ["movies"] });
-      queryClient.invalidateQueries({ queryKey: ["me", "showtimePings"] });
-    },
-  });
-
-  // Submit the selected going/interested/not-going status.
-  const handleShowtimeStatusUpdate = (
-    going: GoingStatus,
-    seat?: { seatRow: string | null; seatNumber: string | null },
-    visibility?: { visibleFriendIds: string[]; visibleGroupIds: string[] }
-  ) => {
-    if (!selectedShowtime || isUpdatingShowtimeSelection) return;
-    const nextSeatRow =
-      going === "GOING"
-        ? (seat?.seatRow ?? selectedShowtime.seat_row ?? null)
-        : null;
-    const nextSeatNumber =
-      going === "GOING"
-        ? (seat?.seatNumber ?? selectedShowtime.seat_number ?? null)
-        : null;
-    setSelectedShowtime((previous) =>
-      previous
-        ? {
-            ...previous,
-            going,
-            seat_row: nextSeatRow,
-            seat_number: nextSeatNumber,
-          }
-        : previous
-    );
-    updateShowtimeSelection({
-      showtimeId: selectedShowtime.id,
-      going,
-      seatRow: seat?.seatRow,
-      seatNumber: seat?.seatNumber,
-      visibleFriendIds: visibility?.visibleFriendIds,
-      visibleGroupIds: visibility?.visibleGroupIds,
-    });
-  };
-
   const dismissPingGroup = (pingIds: number[]) => {
     if (pingIds.length === 0) return;
     deletePingsMutation.mutate({ pingIds });
@@ -292,9 +191,12 @@ export default function PingsScreen() {
     router.push(`/movie/${card.showtime.movie.id}`);
   };
 
-  const handleOpenPingActions = (showtime: ShowtimeLoggedIn) => {
-    setSelectedShowtime(showtime);
-    setSelectedShowtimeMovieTitle(showtime.movie.title);
+  const handleOpenPingActions = (card: GroupedPingCard) => {
+    openShowtimeModalForInvite({
+      showtime: card.showtime,
+      senders: card.senders,
+      pingIds: card.pingIds,
+    });
   };
 
   const handleRefresh = () => {
@@ -327,17 +229,6 @@ export default function PingsScreen() {
           )
         }
         activeIds={["sort-mode"]}
-      />
-      <ShowtimeActionModal
-        visible={selectedShowtime !== null}
-        showtime={selectedShowtime}
-        movieTitle={selectedShowtimeMovieTitle ?? ""}
-        isUpdatingStatus={isUpdatingShowtimeSelection}
-        onUpdateStatus={handleShowtimeStatusUpdate}
-        onClose={() => {
-          setSelectedShowtime(null);
-          setSelectedShowtimeMovieTitle(null);
-        }}
       />
       <FlatList
         data={groupedPingCards}
@@ -378,8 +269,8 @@ export default function PingsScreen() {
             <View style={styles.cardWrapper}>
               <ShowtimeCard
                 showtime={item.showtime}
-                onPress={() => handleOpenPingMovie(item)}
-                onLongPress={handleOpenPingActions}
+                onPress={() => handleOpenPingActions(item)}
+                onLongPress={() => handleOpenPingMovie(item)}
               />
               <View style={styles.metaRow}>
                 <View style={styles.metaTextGroup}>

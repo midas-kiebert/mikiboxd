@@ -112,6 +112,26 @@ export function resolveNotificationRoute(data: unknown): Href | null {
   }
 }
 
+/**
+ * For showtime-related notifications, returns the showtime id that should be
+ * opened in the showtime modal in-place. Non-showtime notifications (or ones
+ * without a usable showtime id) return null — fall back to resolveNotificationRoute.
+ */
+export function getModalShowtimeIdFromNotification(data: unknown): number | null {
+  if (!isPushNotificationData(data) || typeof data.type !== "string") {
+    return null;
+  }
+  switch (data.type) {
+    case "showtime_ping":
+    case "showtime_match":
+    case "showtime_status_removed":
+    case "showtime_interest_reminder":
+      return parsePositiveInteger(data.showtimeId);
+    default:
+      return null;
+  }
+}
+
 export async function handleNotificationQuickAction(
   response: Notifications.NotificationResponse
 ): Promise<boolean> {

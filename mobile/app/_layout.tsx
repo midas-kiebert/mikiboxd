@@ -19,9 +19,11 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { PENDING_FRIEND_INVITE_RECEIVER_ID_KEY } from '@/constants/friend-invite';
 import { PENDING_SHOWTIME_PING_LINK_KEY } from '@/constants/ping-link';
+import { ShowtimeModalProvider, useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
 import {
   canRouteFromNotificationAction,
   configureNotificationCategories,
+  getModalShowtimeIdFromNotification,
   handleNotificationQuickAction,
   resolveNotificationRoute,
   registerPushTokenForCurrentDevice,
@@ -138,6 +140,8 @@ function RootLayourContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const { user } = useAuth();
   const userId = user?.id ? String(user.id) : undefined;
+  // Lets notification taps open the showtime modal in place instead of navigating.
+  const { openShowtimeModalById } = useShowtimeModal();
   // Keeps the previous token for dev logging without causing rerenders.
   const lastTokenRef = useRef<string | null>(null)
   // Prevent duplicate handling when the same notification response is replayed.
@@ -226,9 +230,17 @@ function RootLayourContent() {
       }
 
       if (canRouteFromNotificationAction(response.actionIdentifier)) {
-        const route = resolveNotificationRoute(response.notification.request.content.data)
-        if (route) {
-          router.push(route)
+        const data = response.notification.request.content.data
+        // Showtime notifications open the modal in place (no page-jumping);
+        // everything else still navigates via the resolved route.
+        const modalShowtimeId = getModalShowtimeIdFromNotification(data)
+        if (modalShowtimeId !== null) {
+          openShowtimeModalById(modalShowtimeId)
+        } else {
+          const route = resolveNotificationRoute(data)
+          if (route) {
+            router.push(route)
+          }
         }
       }
 
@@ -238,7 +250,7 @@ function RootLayourContent() {
         console.error('Error clearing last notification response:', error)
       }
     },
-    [router]
+    [router, openShowtimeModalById]
   )
 
   useEffect(() => {
@@ -372,7 +384,9 @@ export default function RootLayout() {
       <BottomSheetModalProvider>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider value={theme}>
-            <RootLayourContent />
+            <ShowtimeModalProvider>
+              <RootLayourContent />
+            </ShowtimeModalProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </BottomSheetModalProvider>

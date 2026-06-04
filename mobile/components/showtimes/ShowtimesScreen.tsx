@@ -1,23 +1,22 @@
 /**
  * Mobile showtimes feature component: Showtimes Screen.
  */
-import React, { useState } from "react";
-import { useMemo } from "react";
+import React from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from "react-native";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ShowtimesService, type GoingStatus, type ShowtimeLoggedIn } from "shared";
+import { type ShowtimeLoggedIn } from "shared";
+
+import { useRouter } from "expo-router";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { usePrefetchShowtimeVisibilityBatch } from "@/hooks/use-prefetch-showtime-visibility-batch";
+import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 import TopBar from "@/components/layout/TopBar";
 import SearchBar from "@/components/inputs/SearchBar";
 import FilterPills, {
   type FilterPillLongPressPosition,
 } from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
-import ShowtimeActionModal from "@/components/showtimes/ShowtimeActionModal";
 
 type ShowtimesListContentProps = {
   showtimes: ShowtimeLoggedIn[];
@@ -42,98 +41,10 @@ export function ShowtimesListContent({
   onRefresh,
   emptyText = "No showtimes found",
 }: ShowtimesListContentProps) {
+  const router = useRouter();
   const colors = useThemeColors();
   const styles = createStyles(colors);
-  const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeLoggedIn | null>(null);
-  const queryClient = useQueryClient();
-
-  const { mutate: updateShowtimeSelection, isPending: isUpdatingShowtimeSelection } = useMutation({
-    mutationFn: ({
-      showtimeId,
-      going,
-      seatRow,
-      seatNumber,
-      visibleFriendIds,
-      visibleGroupIds,
-    }: {
-      showtimeId: number;
-      going: GoingStatus;
-      seatRow?: string | null;
-      seatNumber?: string | null;
-      visibleFriendIds?: string[];
-      visibleGroupIds?: string[];
-    }) => {
-      const requestBody: {
-        going_status: GoingStatus;
-        seat_row?: string | null;
-        seat_number?: string | null;
-        visible_friend_ids?: string[];
-        visible_group_ids?: string[];
-      } = { going_status: going };
-      if (seatRow !== undefined) requestBody.seat_row = seatRow;
-      if (seatNumber !== undefined) requestBody.seat_number = seatNumber;
-      if (visibleFriendIds !== undefined) requestBody.visible_friend_ids = visibleFriendIds;
-      if (visibleGroupIds !== undefined) requestBody.visible_group_ids = visibleGroupIds;
-      return ShowtimesService.updateShowtimeSelection({ showtimeId, requestBody });
-    },
-    onSuccess: (updatedShowtime) => {
-      setSelectedShowtime((previous) =>
-        previous && previous.id === updatedShowtime.id ? updatedShowtime : previous
-      );
-    },
-    onError: (error) => {
-      console.error("Error updating showtime selection:", error);
-    },
-    onSettled: (_data, _error, variables) => {
-      if (variables) {
-        queryClient.invalidateQueries({
-          queryKey: ["showtimes", "visibility", variables.showtimeId],
-        });
-      }
-      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
-      queryClient.invalidateQueries({ queryKey: ["movie"] });
-      queryClient.invalidateQueries({ queryKey: ["movies"] });
-    },
-  });
-
-  const handleShowtimeStatusUpdate = (
-    going: GoingStatus,
-    seat?: { seatRow: string | null; seatNumber: string | null },
-    visibility?: { visibleFriendIds: string[]; visibleGroupIds: string[] }
-  ) => {
-    if (!selectedShowtime || isUpdatingShowtimeSelection) return;
-    const nextSeatRow =
-      going === "GOING" ? (seat?.seatRow ?? selectedShowtime.seat_row ?? null) : null;
-    const nextSeatNumber =
-      going === "GOING" ? (seat?.seatNumber ?? selectedShowtime.seat_number ?? null) : null;
-
-    setSelectedShowtime((previous) =>
-      previous
-        ? { ...previous, going, seat_row: nextSeatRow, seat_number: nextSeatNumber }
-        : previous
-    );
-    updateShowtimeSelection({
-      showtimeId: selectedShowtime.id,
-      going,
-      seatRow: seat?.seatRow,
-      seatNumber: seat?.seatNumber,
-      visibleFriendIds: visibility?.visibleFriendIds,
-      visibleGroupIds: visibility?.visibleGroupIds,
-    });
-  };
-
-  const visibilityPrefetchShowtimeIds = useMemo(
-    () =>
-      showtimes
-        .filter((showtime) => showtime.going !== "NOT_GOING")
-        .map((showtime) => showtime.id),
-    [showtimes]
-  );
-
-  usePrefetchShowtimeVisibilityBatch({
-    showtimeIds: visibilityPrefetchShowtimeIds,
-    enabled: showtimes.length > 0,
-  });
+  const { openShowtimeModal } = useShowtimeModal();
 
   const renderFooter = () => {
     if (!isFetchingNextPage) return null;
@@ -160,33 +71,27 @@ export function ShowtimesListContent({
   };
 
   return (
-    <>
-      <ShowtimeActionModal
-        visible={selectedShowtime !== null}
-        showtime={selectedShowtime}
-        movieTitle={selectedShowtime?.movie.title}
-        isUpdatingStatus={isUpdatingShowtimeSelection}
-        onUpdateStatus={handleShowtimeStatusUpdate}
-        onClose={() => setSelectedShowtime(null)}
-      />
-      <FlatList
-        data={showtimes}
-        renderItem={({ item }) => (
-          <ShowtimeCard showtime={item} onLongPress={(showtime) => setSelectedShowtime(showtime)} />
-        )}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={renderEmpty}
-        ListFooterComponent={renderFooter}
-        onEndReached={() => {
-          if (hasNextPage) onLoadMore();
-        }}
-        onEndReachedThreshold={2}
-        refreshing={isLoading}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      />
-    </>
+    <FlatList
+      data={showtimes}
+      renderItem={({ item }) => (
+        <ShowtimeCard
+          showtime={item}
+          onPress={(showtime) => openShowtimeModal(showtime)}
+          onLongPress={(showtime) => router.push(`/movie/${showtime.movie.id}`)}
+        />
+      )}
+      keyExtractor={(item) => item.id.toString()}
+      contentContainerStyle={styles.listContent}
+      showsVerticalScrollIndicator={false}
+      ListEmptyComponent={renderEmpty}
+      ListFooterComponent={renderFooter}
+      onEndReached={() => {
+        if (hasNextPage) onLoadMore();
+      }}
+      onEndReachedThreshold={2}
+      refreshing={isLoading}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    />
   );
 }
 

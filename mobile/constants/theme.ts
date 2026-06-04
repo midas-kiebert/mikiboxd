@@ -60,6 +60,10 @@ export const Colors = {
       primary: '#ffd1d1',
       secondary: '#8a1c1c',
     },
+    gray: {
+      primary: '#e2e2e2',
+      secondary: '#4a4a4a',
+    },
     cyan: {
       primary: '#d5f4ff',
       secondary: '#0a6f99',
@@ -122,6 +126,10 @@ export const Colors = {
     red: {
       primary: '#5a1c1c',
       secondary: '#ffb8b8',
+    },
+    gray: {
+      primary: '#3f4143',
+      secondary: '#d7d9db',
     },
     cyan: {
       primary: '#0f3f51',

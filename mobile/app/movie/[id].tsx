@@ -13,17 +13,17 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import type { GoingStatus, MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
-import { MoviesService, ShowtimesService } from "shared";
+import { MoviesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import { ThemedText } from "@/components/themed-text";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
-import ShowtimeActionModal from "@/components/showtimes/ShowtimeActionModal";
+import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 import CinemaPresetQuickPopover from "@/components/filters/CinemaPresetQuickPopover";
 import FilterPills, {
   type FilterPillLongPressPosition,
@@ -67,14 +67,13 @@ export default function MoviePage() {
   const queryClient = useQueryClient();
   // Safe-area inset values used to avoid notches/home indicators.
   const insets = useSafeAreaInsets();
+  const { openShowtimeModal } = useShowtimeModal();
   const { id, showtimeId } = useLocalSearchParams<{
     id: string;
     showtimeId?: string | string[];
   }>();
   // Tracks the selected showtime-status mode (all / interested / going).
   const [selectedFilter, setSelectedFilter] = useState<ShowtimeFilter>("all");
-  // Stores the showtime currently selected for status/ticket actions.
-  const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeInMovieLoggedIn | null>(null);
   // Controls visibility of the cinema-filter modal.
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [cinemaPresetPopoverVisible, setCinemaPresetPopoverVisible] = useState(false);
@@ -208,191 +207,6 @@ export default function MoviePage() {
     } finally {
       setRefreshing(false);
     }
-  };
-
-  // Update all relevant query caches so the status chip updates instantly across screens.
-  const updateShowtimeInCaches = (
-    showtimeId: number,
-    going: GoingStatus,
-    seatRow: string | null,
-    seatNumber: string | null
-  ) => {
-    queryClient.setQueriesData(
-      { queryKey: ["movie", movieId, "showtimes"] },
-      (oldData: unknown) => {
-        if (!oldData || typeof oldData !== "object" || !("pages" in oldData)) {
-          return oldData;
-        }
-        const data = oldData as { pages: ShowtimeInMovieLoggedIn[][]; pageParams: unknown[] };
-        return {
-          ...data,
-          pages: data.pages.map((page) =>
-            page.map((showtime) =>
-              showtime.id === showtimeId
-                ? { ...showtime, going, seat_row: seatRow, seat_number: seatNumber }
-                : showtime
-            )
-          ),
-        };
-      }
-    );
-
-    queryClient.setQueriesData({ queryKey: ["movie", movieId] }, (oldData: unknown) => {
-      if (!oldData || typeof oldData !== "object" || !("showtimes" in oldData)) {
-        return oldData;
-      }
-      const data = oldData as MovieLoggedIn;
-      return {
-        ...data,
-        showtimes: data.showtimes.map((showtime) =>
-          showtime.id === showtimeId
-            ? { ...showtime, going, seat_row: seatRow, seat_number: seatNumber }
-            : showtime
-        ),
-      };
-    });
-  };
-
-  const { mutate: updateShowtimeSelection, isPending: isUpdatingShowtimeSelection } = useMutation({
-    mutationFn: ({
-      showtimeId,
-      going,
-      seatRow,
-      seatNumber,
-      visibleFriendIds,
-      visibleGroupIds,
-    }: {
-      showtimeId: number;
-      going: GoingStatus;
-      seatRow?: string | null;
-      seatNumber?: string | null;
-      visibleFriendIds?: string[];
-      visibleGroupIds?: string[];
-    }) => {
-      const requestBody: {
-        going_status: GoingStatus;
-        seat_row?: string | null;
-        seat_number?: string | null;
-        visible_friend_ids?: string[];
-        visible_group_ids?: string[];
-      } = {
-        going_status: going,
-      };
-      if (seatRow !== undefined) {
-        requestBody.seat_row = seatRow;
-      }
-      if (seatNumber !== undefined) {
-        requestBody.seat_number = seatNumber;
-      }
-      if (visibleFriendIds !== undefined) {
-        requestBody.visible_friend_ids = visibleFriendIds;
-      }
-      if (visibleGroupIds !== undefined) {
-        requestBody.visible_group_ids = visibleGroupIds;
-      }
-      return ShowtimesService.updateShowtimeSelection({
-        showtimeId,
-        requestBody,
-      });
-    },
-    onMutate: async ({ showtimeId, going, seatRow, seatNumber }) => {
-      // Pause active requests so optimistic updates are not immediately overwritten.
-      await Promise.all([
-        queryClient.cancelQueries({ queryKey: ["movie", movieId, "showtimes"] }),
-        queryClient.cancelQueries({ queryKey: ["movie", movieId] }),
-      ]);
-
-      const previousMovieShowtimeQueries = queryClient.getQueriesData({
-        queryKey: ["movie", movieId, "showtimes"],
-      });
-      const previousMovieQueries = queryClient.getQueriesData({
-        queryKey: ["movie", movieId],
-      });
-      const previousSelectedShowtime = selectedShowtime;
-      const nextSeatRow =
-        going === "GOING"
-          ? (seatRow ?? previousSelectedShowtime?.seat_row ?? null)
-          : null;
-      const nextSeatNumber =
-        going === "GOING"
-          ? (seatNumber ?? previousSelectedShowtime?.seat_number ?? null)
-          : null;
-
-      // Optimistic update for immediate UI feedback.
-      updateShowtimeInCaches(showtimeId, going, nextSeatRow, nextSeatNumber);
-      setSelectedShowtime((previous) =>
-        previous
-          ? {
-              ...previous,
-              going,
-              seat_row: nextSeatRow,
-              seat_number: nextSeatNumber,
-            }
-          : previous
-      );
-
-      return {
-        previousMovieShowtimeQueries,
-        previousMovieQueries,
-        previousSelectedShowtime,
-      };
-    },
-    onError: (_error, _variables, context) => {
-      context?.previousMovieShowtimeQueries?.forEach(([queryKey, data]) => {
-        queryClient.setQueryData(queryKey, data);
-      });
-      context?.previousMovieQueries?.forEach(([queryKey, data]) => {
-        queryClient.setQueryData(queryKey, data);
-      });
-      setSelectedShowtime(context?.previousSelectedShowtime ?? null);
-    },
-    onSuccess: (updatedShowtime) => {
-      // Ensure optimistic state matches backend-confirmed value.
-      updateShowtimeInCaches(
-        updatedShowtime.id,
-        updatedShowtime.going,
-        updatedShowtime.seat_row ?? null,
-        updatedShowtime.seat_number ?? null
-      );
-      setSelectedShowtime((previous) =>
-        previous && previous.id === updatedShowtime.id
-          ? {
-              ...previous,
-              going: updatedShowtime.going,
-              seat_row: updatedShowtime.seat_row ?? null,
-              seat_number: updatedShowtime.seat_number ?? null,
-            }
-          : previous
-      );
-    },
-    onSettled: (_data, _error, variables) => {
-      if (variables) {
-        queryClient.invalidateQueries({
-          queryKey: ["showtimes", "visibility", variables.showtimeId],
-        });
-      }
-      queryClient.invalidateQueries({ queryKey: ["movie", movieId, "showtimes"] });
-      queryClient.invalidateQueries({ queryKey: ["movie", movieId] });
-      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
-      queryClient.invalidateQueries({ queryKey: ["movies"] });
-    },
-  });
-
-  // Submit the selected going/interested/not-going status.
-  const handleShowtimeStatusUpdate = (
-    going: GoingStatus,
-    seat?: { seatRow: string | null; seatNumber: string | null },
-    visibility?: { visibleFriendIds: string[]; visibleGroupIds: string[] }
-  ) => {
-    if (!selectedShowtime || isUpdatingShowtimeSelection) return;
-    updateShowtimeSelection({
-      showtimeId: selectedShowtime.id,
-      going,
-      seatRow: seat?.seatRow,
-      seatNumber: seat?.seatNumber,
-      visibleFriendIds: visibility?.visibleFriendIds,
-      visibleGroupIds: visibility?.visibleGroupIds,
-    });
   };
 
   const letterboxdSlug = movie?.letterboxd_slug?.trim() ?? "";
@@ -534,17 +348,18 @@ export default function MoviePage() {
     return active;
   }, [selectedFilter, selectedDays.length, selectedTimeRanges.length, isCinemaFilterActive]);
 
-  // Render/output using the state and derived values prepared above.
+  // Open the showtime modal once when arriving with a ?showtimeId= deep-link param.
+  const openedTargetRef = useRef<number | null>(null);
   useEffect(() => {
-    if (targetShowtimeId === null || showtimes.length === 0) return;
+    if (targetShowtimeId === null || !movie || showtimes.length === 0) return;
+    if (openedTargetRef.current === targetShowtimeId) return;
 
     const matchingShowtime = showtimes.find((showtime) => showtime.id === targetShowtimeId);
     if (!matchingShowtime) return;
 
-    setSelectedShowtime((previous) =>
-      previous?.id === matchingShowtime.id ? previous : matchingShowtime
-    );
-  }, [targetShowtimeId, showtimes]);
+    openedTargetRef.current = targetShowtimeId;
+    openShowtimeModal({ ...matchingShowtime, movie });
+  }, [targetShowtimeId, showtimes, movie, openShowtimeModal]);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -567,14 +382,6 @@ export default function MoviePage() {
           <IconSymbol size={20} name="chevron.left" color={colors.tint} />
         </TouchableOpacity>
       </View>
-      <ShowtimeActionModal
-        visible={selectedShowtime !== null}
-        showtime={selectedShowtime}
-        movieTitle={movie?.title ?? ""}
-        isUpdatingStatus={isUpdatingShowtimeSelection}
-        onUpdateStatus={handleShowtimeStatusUpdate}
-        onClose={() => setSelectedShowtime(null)}
-      />
       {isMovieLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.tint} />
@@ -599,7 +406,9 @@ export default function MoviePage() {
                         ? styles.showtimeCardGlowInterested
                         : undefined,
                   ]}
-                  onPress={() => setSelectedShowtime(item)}
+                  onPress={() => {
+                    if (movie) openShowtimeModal({ ...item, movie });
+                  }}
                   activeOpacity={0.85}
                 >
                   <View
@@ -617,7 +426,6 @@ export default function MoviePage() {
                       showFriends
                       alignCinemaRight
                       showDate={false}
-                      showVisibilityHint
                     />
                   </View>
                 </TouchableOpacity>

@@ -54,12 +54,6 @@ const EXPAND_LAYOUT_ANIMATION = {
   delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
 };
 
-type CombinedStatusOption = {
-  label: string;
-  filter: SharedTabShowtimeFilter;
-  audience: "including-friends" | "only-you" | null;
-};
-
 const DAY_PRESETS = [
   { token: "relative:today", label: "Today" },
   { token: "relative:tomorrow", label: "Tomorrow" },
@@ -71,16 +65,6 @@ const STATUS_OPTIONS_SIMPLE: { value: SharedTabShowtimeFilter; label: string }[]
   { value: "interested", label: "Interested" },
   { value: "going", label: "Going" },
 ];
-
-const STATUS_OPTIONS_COMBINED: CombinedStatusOption[] = [
-  { label: "Any", filter: "all", audience: null },
-  { label: "Interested (You)", filter: "interested", audience: "only-you" },
-  { label: "Interested (Friends)", filter: "interested", audience: "including-friends" },
-  { label: "Going (You)", filter: "going", audience: "only-you" },
-  { label: "Going (Friends)", filter: "going", audience: "including-friends" },
-];
-
-type ShowtimeAudience = "including-friends" | "only-you";
 
 export type FiltersModalProps = {
   visible: boolean;
@@ -95,8 +79,6 @@ export type FiltersModalProps = {
   selectedShowtimeFilter: SharedTabShowtimeFilter;
   setSelectedShowtimeFilter: (v: SharedTabShowtimeFilter) => void;
   showStatusFilter?: boolean;
-  selectedShowtimeAudience?: ShowtimeAudience;
-  setSelectedShowtimeAudience?: (v: ShowtimeAudience) => void;
   selectedDays: string[];
   setSelectedDays: (v: string[]) => void;
   selectedTimeRanges: string[];
@@ -120,8 +102,6 @@ export default function FiltersModal({
   selectedShowtimeFilter,
   setSelectedShowtimeFilter,
   showStatusFilter = false,
-  selectedShowtimeAudience = "including-friends",
-  setSelectedShowtimeAudience,
   selectedDays,
   setSelectedDays,
   selectedTimeRanges,
@@ -355,31 +335,15 @@ export default function FiltersModal({
               <>
                 <SectionLabel label="Filter By Status" colors={colors} />
                 <View style={styles.pillRow}>
-                  {setSelectedShowtimeAudience
-                    ? STATUS_OPTIONS_COMBINED.map((opt) => (
-                        <Pill
-                          key={`${opt.filter}-${opt.audience}`}
-                          label={opt.label}
-                          active={
-                            selectedShowtimeFilter === opt.filter &&
-                            (opt.audience === null || selectedShowtimeAudience === opt.audience)
-                          }
-                          onPress={() => {
-                            setSelectedShowtimeFilter(opt.filter);
-                            if (opt.audience) setSelectedShowtimeAudience(opt.audience);
-                          }}
-                          colors={colors}
-                        />
-                      ))
-                    : STATUS_OPTIONS_SIMPLE.map((opt) => (
-                        <Pill
-                          key={opt.value}
-                          label={opt.label}
-                          active={selectedShowtimeFilter === opt.value}
-                          onPress={() => setSelectedShowtimeFilter(opt.value)}
-                          colors={colors}
-                        />
-                      ))}
+                  {STATUS_OPTIONS_SIMPLE.map((opt) => (
+                    <Pill
+                      key={opt.value}
+                      label={opt.label}
+                      active={selectedShowtimeFilter === opt.value}
+                      onPress={() => setSelectedShowtimeFilter(opt.value)}
+                      colors={colors}
+                    />
+                  ))}
                 </View>
                 <Divider colors={colors} />
               </>

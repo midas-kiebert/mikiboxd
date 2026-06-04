@@ -9,7 +9,6 @@ import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { MeService } from 'shared';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
-import { useFetchMyShowtimes } from 'shared/hooks/useFetchMyShowtimes';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
@@ -37,8 +36,6 @@ import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { isCinemaSelectionDifferentFromPreferred } from '@/utils/cinema-selection';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 
-type AudienceFilter = 'including-friends' | 'only-you';
-
 export default function MainShowtimesScreen() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -55,9 +52,6 @@ export default function MainShowtimesScreen() {
     selectedShowtimeFilter,
     appliedShowtimeFilter,
     setSelectedShowtimeFilter,
-    selectedShowtimeAudience,
-    appliedShowtimeAudience,
-    setSelectedShowtimeAudience,
     watchlistOnly,
     appliedWatchlistOnly,
     setWatchlistOnly,
@@ -90,10 +84,6 @@ export default function MainShowtimesScreen() {
     () => resolveDaySelectionsForApi(selectedDays),
     [dayAnchorKey, selectedDays]
   );
-  const shouldShowAudienceToggle = selectedShowtimeFilter !== 'all';
-  const effectiveAudienceFilter: AudienceFilter = shouldShowAudienceToggle
-    ? appliedShowtimeAudience
-    : 'including-friends';
   const runtimeBounds = useMemo(
     () => getRuntimeBoundsFromSelections(selectedRuntimeRanges),
     [selectedRuntimeRanges]
@@ -119,20 +109,12 @@ export default function MainShowtimesScreen() {
     runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, effectiveAppliedWatchlistOnly,
   ]);
 
-  const mainShowtimesQuery = useFetchMainPageShowtimes({
+  const activeShowtimesQuery = useFetchMainPageShowtimes({
     limit: 20,
     snapshotTime,
     filters: showtimesFilters,
-    enabled: isFocused && !groupByMovie && effectiveAudienceFilter === 'including-friends',
+    enabled: isFocused && !groupByMovie,
   });
-  const myShowtimesQuery = useFetchMyShowtimes({
-    limit: 20,
-    snapshotTime,
-    filters: showtimesFilters,
-    enabled: isFocused && !groupByMovie && effectiveAudienceFilter === 'only-you',
-  });
-  const activeShowtimesQuery =
-    effectiveAudienceFilter === 'only-you' ? myShowtimesQuery : mainShowtimesQuery;
 
   // ─── Movies query (Group by Movie mode) ─────────────────────────────────────
   const movieFilters = useMemo<MovieFilters>(
@@ -179,8 +161,7 @@ export default function MainShowtimesScreen() {
 
   const isAppliedFilterTransitionPending =
     selectedShowtimeFilter !== appliedShowtimeFilter ||
-    effectiveWatchlistOnly !== effectiveAppliedWatchlistOnly ||
-    (shouldShowAudienceToggle && selectedShowtimeAudience !== appliedShowtimeAudience);
+    effectiveWatchlistOnly !== effectiveAppliedWatchlistOnly;
 
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
   const movies = useMemo(() => moviesData?.pages.flat() ?? [], [moviesData]);
@@ -205,10 +186,7 @@ export default function MainShowtimesScreen() {
       } else {
         await refreshInfiniteQueryWithFreshSnapshot({
           queryClient,
-          queryKey:
-            effectiveAudienceFilter === 'only-you'
-              ? ['showtimes', 'me', showtimesFilters]
-              : ['showtimes', 'main', showtimesFilters],
+          queryKey: ['showtimes', 'main', showtimesFilters],
           setSnapshotTime,
         });
       }
@@ -246,14 +224,14 @@ export default function MainShowtimesScreen() {
   const currentPresetFilters = useMemo<PageFilterPresetState>(
     () => ({
       selected_showtime_filter: selectedShowtimeFilter,
-      showtime_audience: shouldShowAudienceToggle ? selectedShowtimeAudience : 'including-friends',
+      showtime_audience: 'including-friends',
       watchlist_only: effectiveWatchlistOnly,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
       runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
     }),
     [
-      selectedShowtimeFilter, shouldShowAudienceToggle, selectedShowtimeAudience,
+      selectedShowtimeFilter,
       effectiveWatchlistOnly, selectedDays, selectedTimeRanges, selectedRuntimeRanges,
     ]
   );
@@ -261,7 +239,6 @@ export default function MainShowtimesScreen() {
   const handleApplyPreset = (preset: PageFilterPresetState) => {
     setIsFilterTransitionLoading(true);
     setSelectedShowtimeFilter(toSharedTabShowtimeFilter(preset.selected_showtime_filter));
-    setSelectedShowtimeAudience(preset.showtime_audience === "only-you" ? "only-you" : "including-friends");
     setWatchlistOnly(hasLetterboxdUsername && Boolean(preset.watchlist_only));
     setSelectedDays(preset.days ?? []);
     setSelectedTimeRanges(preset.time_ranges ?? []);
@@ -304,7 +281,6 @@ export default function MainShowtimesScreen() {
     onClearAll: () => {
       setIsFilterTransitionLoading(true);
       setSelectedShowtimeFilter('all');
-      setSelectedShowtimeAudience('including-friends');
       setWatchlistOnly(false);
       setGroupByMovie(false);
       setSelectedDays([]);
@@ -374,11 +350,7 @@ export default function MainShowtimesScreen() {
           }}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          emptyText={
-            effectiveAudienceFilter === 'only-you'
-              ? 'No showtimes in your agenda'
-              : 'No showtimes found'
-          }
+          emptyText="No showtimes found"
         />
       )}
     </SafeAreaView>

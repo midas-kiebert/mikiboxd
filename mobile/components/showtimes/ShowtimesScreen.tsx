@@ -104,13 +104,6 @@ type FilterOption<TId extends string = string> = {
   activeBorderColor?: string;
 };
 
-type AudienceToggleValue = "including-friends" | "only-you";
-
-type AudienceToggleOption = {
-  value: AudienceToggleValue;
-  onChange: (value: AudienceToggleValue) => void;
-};
-
 type ShowtimesScreenProps<TFilterId extends string = string> = {
   topBarTitle?: string;
   topBarTitleSuffix?: string;
@@ -133,7 +126,6 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
     id: TFilterId,
     position: FilterPillLongPressPosition
   ) => boolean | void;
-  audienceToggle?: AudienceToggleOption;
   // New slot: replaces FilterPills when provided
   filterRow?: React.ReactElement | null | false;
   emptyText?: string;
@@ -157,13 +149,11 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   activeFilterIds,
   onToggleFilter,
   onLongPressFilter,
-  audienceToggle,
   filterRow,
   emptyText = "No showtimes found",
 }: ShowtimesScreenProps<TFilterId>) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
-  const isOnlyYouAudienceActive = audienceToggle?.value === "only-you";
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -184,18 +174,6 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
           onSelect={onToggleFilter ?? (() => {})}
           onLongPressSelect={onLongPressFilter}
           activeIds={activeFilterIds ?? []}
-          compoundRightToggle={
-            audienceToggle
-              ? {
-                  anchorId: "showtime-filter",
-                  label: isOnlyYouAudienceActive ? "Only You" : "Including Friends",
-                  onPress: () =>
-                    audienceToggle.onChange(
-                      isOnlyYouAudienceActive ? "including-friends" : "only-you"
-                    ),
-                }
-              : undefined
-          }
         />
       )}
       <ShowtimesListContent

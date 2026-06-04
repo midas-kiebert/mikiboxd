@@ -80,7 +80,7 @@ export function resolveNotificationRoute(data: unknown): Href | null {
 
   switch (data.type) {
     case "showtime_ping":
-      return "/(tabs)/pings";
+      return "/(tabs)/agenda";
     case "showtime_match":
     case "showtime_status_removed":
     case "showtime_interest_reminder": {

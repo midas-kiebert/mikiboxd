@@ -356,7 +356,8 @@ Legend:
 - [ ] `useFetchMovies.ts` — Movie list with filters
 - [ ] `useFetchMovieShowtimes.ts` — Showtimes for a single movie
 - [ ] `useFetchMainPageShowtimes.tsx` — All showtimes for the main view
-- [ ] `useFetchMyShowtimes.ts` — Current user's selected showtimes
+- [ ] `useFetchMyShowtimes.ts` — Current user's selected showtimes (mobile now uses `useFetchAgenda.ts` instead; web may still use this)
+- [ ] `useFetchAgenda.ts` — Mobile agenda feed: going + interested + invited showtimes (GET /me/agenda)
 - [ ] `useFetchUserShowtimes.tsx` — Another user's showtimes
 - [ ] `useFetchCinemas.ts` — Cinema list
 - [ ] `useFetchSelectedCinemas.ts` — User's selected cinemas
@@ -369,7 +370,7 @@ Legend:
 - [ ] `useSessionDaySelections.ts` — Session-level day filter state
 - [ ] `useSessionTimeRangeSelections.ts` — Session-level time range state
 - [ ] `useSessionRuntimeRangeSelections.ts` — Session-level runtime range state
-- [ ] `useSessionShowtimeAudience.ts` — Session-level audience filter
+- [ ] `useSessionShowtimeAudience.ts` — Session-level audience filter (mobile no longer uses the Only You / Including Friends distinction; web may still use this)
 - [ ] `useSessionShowtimeFilter.ts` — Combined session filter state
 - [ ] `useSessionWatchlistOnly.ts` — Session-level watchlist toggle
 

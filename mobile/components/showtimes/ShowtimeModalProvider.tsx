@@ -191,14 +191,31 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["me", "showtimePings", "unseenCount"] });
       queryClient.invalidateQueries({ queryKey: ["me", "showtimePings"] });
+      // Refresh feeds so the showtime's embedded invited_by reflects the dismissal.
+      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
+      queryClient.invalidateQueries({ queryKey: ["movie"] });
     },
   });
 
+  // Always surface invite info: prefer an explicitly-passed invite (e.g. a ping
+  // deep link), otherwise derive it from the showtime's own invited_by data so
+  // the "X invited you" banner + blue tint show no matter where the modal opens.
+  const effectiveInvite = useMemo<ShowtimeInvite | null>(() => {
+    if (invite) return invite;
+    if (currentShowtime && (currentShowtime.invited_by?.length ?? 0) > 0) {
+      return {
+        senders: [...(currentShowtime.invited_by ?? [])],
+        pingIds: [...(currentShowtime.invite_ping_ids ?? [])],
+      };
+    }
+    return null;
+  }, [invite, currentShowtime]);
+
   const handleDismissInvite = useCallback(() => {
-    if (!invite || invite.pingIds.length === 0) return;
+    if (!effectiveInvite || effectiveInvite.pingIds.length === 0) return;
     setVisible(false);
-    dismissInvitePings({ pingIds: invite.pingIds });
-  }, [dismissInvitePings, invite]);
+    dismissInvitePings({ pingIds: effectiveInvite.pingIds });
+  }, [dismissInvitePings, effectiveInvite]);
 
   const value = useMemo<ShowtimeModalContextValue>(
     () => ({ openShowtimeModal, openShowtimeModalById, openShowtimeModalForInvite }),
@@ -212,7 +229,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
         visible={visible}
         showtime={currentShowtime}
         isLoadingShowtime={isLoadingById}
-        invite={invite}
+        invite={effectiveInvite}
         isUpdatingStatus={isUpdatingStatus}
         isDismissingInvite={isDismissingInvite}
         onUpdateStatus={handleUpdateStatus}

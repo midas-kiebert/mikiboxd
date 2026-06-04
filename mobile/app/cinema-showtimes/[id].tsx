@@ -1,13 +1,12 @@
 /**
  * Expo Router screen/module for cinema-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DateTime } from "luxon";
 import { useLocalSearchParams } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsFocused } from "@react-navigation/native";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
-import { useFetchMyShowtimes } from "shared/hooks/useFetchMyShowtimes";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import useAuth from "shared/hooks/useAuth";
 
@@ -39,7 +38,6 @@ const CINEMA_FILTER_IDS: ReadonlyArray<SharedTabFilterId> = [
 ];
 const CINEMA_FILTER_ID_SET = new Set<SharedTabFilterId>(CINEMA_FILTER_IDS);
 type CinemaShowtimesFilterId = (typeof CINEMA_FILTER_IDS)[number];
-type AudienceFilter = "including-friends" | "only-you";
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
@@ -61,12 +59,7 @@ export default function CinemaShowtimesScreen() {
   const routeCinemaName = useMemo(() => getRouteParam(name)?.trim() ?? "", [name]);
   const routeCityName = useMemo(() => getRouteParam(city)?.trim() ?? "", [city]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [audienceFilter, setAudienceFilter] = useState<AudienceFilter>("including-friends");
-  const [appliedAudienceFilter, setAppliedAudienceFilter] = useState<AudienceFilter>(
-    "including-friends"
-  );
   const [isFilterTransitionLoading, setIsFilterTransitionLoading] = useState(false);
-  const applyAudienceFilterFrameRef = useRef<number | null>(null);
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
   // Controls visibility of the day-filter modal.
@@ -111,10 +104,6 @@ export default function CinemaShowtimesScreen() {
     () => resolveDaySelectionsForApi(selectedDays),
     [dayAnchorKey, selectedDays]
   );
-  const shouldShowAudienceToggle = selectedShowtimeFilter !== "all";
-  const effectiveAudienceFilter: AudienceFilter = shouldShowAudienceToggle
-    ? appliedAudienceFilter
-    : "including-friends";
   const runtimeBounds = useMemo(
     () => getRuntimeBoundsFromSelections(selectedRuntimeRanges),
     [selectedRuntimeRanges]
@@ -204,20 +193,6 @@ export default function CinemaShowtimesScreen() {
   );
 
   // Data hooks keep this module synced with backend data and shared cache state.
-  const mainShowtimesQuery = useFetchMainPageShowtimes({
-    limit: 20,
-    snapshotTime,
-    filters: showtimesFilters,
-    enabled: isFocused && effectiveAudienceFilter === "including-friends",
-  });
-  const myShowtimesQuery = useFetchMyShowtimes({
-    limit: 20,
-    snapshotTime,
-    filters: showtimesFilters,
-    enabled: isFocused && effectiveAudienceFilter === "only-you",
-  });
-  const activeShowtimesQuery =
-    effectiveAudienceFilter === "only-you" ? myShowtimesQuery : mainShowtimesQuery;
   const {
     data,
     isLoading,
@@ -225,13 +200,15 @@ export default function CinemaShowtimesScreen() {
     isFetching,
     hasNextPage,
     fetchNextPage,
-  } = activeShowtimesQuery;
-  const isAudienceTransitionPending =
-    shouldShowAudienceToggle && audienceFilter !== appliedAudienceFilter;
+  } = useFetchMainPageShowtimes({
+    limit: 20,
+    snapshotTime,
+    filters: showtimesFilters,
+    enabled: isFocused,
+  });
   const isAppliedFilterTransitionPending =
     selectedShowtimeFilter !== appliedShowtimeFilter ||
-    effectiveWatchlistOnly !== effectiveAppliedWatchlistOnly ||
-    isAudienceTransitionPending;
+    effectiveWatchlistOnly !== effectiveAppliedWatchlistOnly;
 
   // Flatten/derive list data for rendering efficiency.
   const showtimes = useMemo(() => data?.pages.flat() ?? [], [data]);
@@ -240,26 +217,6 @@ export default function CinemaShowtimesScreen() {
   const startFilterTransitionLoading = () => {
     setIsFilterTransitionLoading(true);
   };
-
-  const applyAudienceFilter = (next: AudienceFilter) => {
-    setAudienceFilter(next);
-    if (applyAudienceFilterFrameRef.current !== null) {
-      cancelAnimationFrame(applyAudienceFilterFrameRef.current);
-    }
-    applyAudienceFilterFrameRef.current = requestAnimationFrame(() => {
-      applyAudienceFilterFrameRef.current = null;
-      setAppliedAudienceFilter(next);
-    });
-  };
-
-  useEffect(
-    () => () => {
-      if (applyAudienceFilterFrameRef.current !== null) {
-        cancelAnimationFrame(applyAudienceFilterFrameRef.current);
-      }
-    },
-    []
-  );
 
   useEffect(() => {
     if (!isFilterTransitionLoading) return;
@@ -277,10 +234,7 @@ export default function CinemaShowtimesScreen() {
     try {
       await refreshInfiniteQueryWithFreshSnapshot({
         queryClient,
-        queryKey:
-          effectiveAudienceFilter === "only-you"
-            ? ["showtimes", "me", showtimesFilters]
-            : ["showtimes", "main", showtimesFilters],
+        queryKey: ["showtimes", "main", showtimesFilters],
         setSnapshotTime,
       });
     } finally {
@@ -369,17 +323,6 @@ export default function CinemaShowtimesScreen() {
         activeFilterIds={activeFilterIds}
         onToggleFilter={handleToggleFilter}
         onLongPressFilter={handleLongPressFilter}
-        audienceToggle={
-          shouldShowAudienceToggle
-            ? {
-                value: audienceFilter,
-                onChange: (value) => {
-                  startFilterTransitionLoading();
-                  applyAudienceFilter(value);
-                },
-              }
-            : undefined
-        }
         emptyText="No showtimes for this cinema"
       />
       <DayQuickPopover

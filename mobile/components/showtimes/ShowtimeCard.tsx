@@ -53,12 +53,18 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const startTime = date.toFormat("HH:mm");
   const endDate = showtime.end_datetime ? DateTime.fromISO(showtime.end_datetime) : null;
   const endTime = endDate?.isValid ? endDate.toFormat("HH:mm") : null;
+  // Invited-only = you've been invited but haven't responded yet → blue.
+  // Going / interested take precedence over the invite tint.
+  const isInvitedOnly =
+    (showtime.invited_by?.length ?? 0) > 0 && showtime.going === "NOT_GOING";
   const cardStatusStyle =
     showtime.going === "GOING"
       ? styles.cardGoing
       : showtime.going === "INTERESTED"
         ? styles.cardInterested
-        : undefined;
+        : isInvitedOnly
+          ? styles.cardInvited
+          : undefined;
   const cardGlowStyle =
     showtime.going === "GOING"
       ? styles.cardGlowGoing
@@ -76,7 +82,9 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
       ? styles.datePillGoing
       : showtime.going === "INTERESTED"
         ? styles.datePillInterested
-        : undefined;
+        : isInvitedOnly
+          ? styles.datePillInvited
+          : undefined;
   const hasAudience =
     (showtime.friends_going?.length ?? 0) > 0 ||
     (showtime.friends_interested?.length ?? 0) > 0;
@@ -190,6 +198,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     cardInterested: {
       borderLeftColor: colors.orange.secondary,
     },
+    cardInvited: {
+      borderLeftColor: colors.blue.secondary,
+    },
     dateColumn: {
       width: 80,
       alignItems: "center",
@@ -204,6 +215,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     datePillInterested: {
       backgroundColor: colors.orange.primary,
+    },
+    datePillInvited: {
+      backgroundColor: colors.blue.primary,
     },
     datePill: {
       alignItems: "center",

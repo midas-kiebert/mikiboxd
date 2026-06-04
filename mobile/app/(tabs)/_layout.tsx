@@ -196,12 +196,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="pings"
+        name="agenda"
         options={{
-          title: 'Invites',
+          title: 'Agenda',
           tabBarIcon: ({ color }) => (
             <View style={styles.iconContainer}>
-              <IconSymbol size={28} name="bell.fill" color={color} />
+              <IconSymbol size={28} name="calendar" color={color} />
               {showPingBadge ? (
                 <View style={[styles.badge, { backgroundColor: palette.notificationBadge }]}>
                   <Text style={styles.badgeText}>{pingBadgeLabel}</Text>

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchFavoriteFilterPreset } from "shared/hooks/useFetchFavoriteFilterPreset";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { useSessionShowtimeAudience } from "shared/hooks/useSessionShowtimeAudience";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 import { useSessionDaySelections } from "shared/hooks/useSessionDaySelections";
 import { useSessionShowtimeFilter } from "shared/hooks/useSessionShowtimeFilter";
@@ -27,7 +26,6 @@ const EMPTY_RUNTIME_RANGES: string[] = [];
 const SESSION_CINEMA_SELECTIONS_KEY = ["session", "cinema_selections"] as const;
 const SESSION_DAY_SELECTIONS_KEY = ["session", "day_selections"] as const;
 const SESSION_SHOWTIME_FILTER_KEY = ["session", "showtime_filter"] as const;
-const SESSION_SHOWTIME_AUDIENCE_KEY = ["session", "showtime_audience"] as const;
 const SESSION_TIME_RANGE_SELECTIONS_KEY = ["session", "time_range_selections"] as const;
 const SESSION_RUNTIME_RANGE_SELECTIONS_KEY = [
   "session",
@@ -35,15 +33,10 @@ const SESSION_RUNTIME_RANGE_SELECTIONS_KEY = [
 ] as const;
 const SESSION_WATCHLIST_ONLY_KEY = ["session", "watchlist_only"] as const;
 
-type SharedShowtimeAudience = "including-friends" | "only-you";
-const toShowtimeAudience = (value: unknown): SharedShowtimeAudience =>
-  value === "only-you" ? "only-you" : "including-friends";
-
 export function useSharedTabFilters() {
   const queryClient = useQueryClient();
   const initializedFromFavoritesRef = useRef(false);
   const applyShowtimeFilterFrameRef = useRef<number | null>(null);
-  const applyShowtimeAudienceFrameRef = useRef<number | null>(null);
   const applyWatchlistOnlyFrameRef = useRef<number | null>(null);
 
   const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
@@ -56,8 +49,6 @@ export function useSharedTabFilters() {
     useSessionRuntimeRangeSelections();
   const { selection: sessionShowtimeFilter, setSelection: setSessionShowtimeFilter } =
     useSessionShowtimeFilter();
-  const { selection: sessionShowtimeAudience, setSelection: setSessionShowtimeAudience } =
-    useSessionShowtimeAudience();
   const { selection: sessionWatchlistOnly, setSelection: setSessionWatchlistOnly } =
     useSessionWatchlistOnly();
   const { selection: groupByMovie, setSelection: setGroupByMovie } =
@@ -68,16 +59,11 @@ export function useSharedTabFilters() {
   const favoriteCinemasQuery = useFetchSelectedCinemas();
 
   const initialShowtimeFilter = toSharedTabShowtimeFilter(sessionShowtimeFilter);
-  const initialShowtimeAudience = toShowtimeAudience(sessionShowtimeAudience);
   const initialWatchlistOnly = Boolean(sessionWatchlistOnly);
   const [selectedShowtimeFilter, setSelectedShowtimeFilterState] =
     useState<SharedTabShowtimeFilter>(initialShowtimeFilter);
   const [appliedShowtimeFilter, setAppliedShowtimeFilterState] =
     useState<SharedTabShowtimeFilter>(initialShowtimeFilter);
-  const [selectedShowtimeAudience, setSelectedShowtimeAudienceState] =
-    useState<SharedShowtimeAudience>(initialShowtimeAudience);
-  const [appliedShowtimeAudience, setAppliedShowtimeAudienceState] =
-    useState<SharedShowtimeAudience>(initialShowtimeAudience);
   const [watchlistOnly, setWatchlistOnlyState] = useState<boolean>(initialWatchlistOnly);
   const [appliedWatchlistOnly, setAppliedWatchlistOnlyState] = useState<boolean>(initialWatchlistOnly);
   const selectedDays = sessionDays ?? EMPTY_DAYS;
@@ -118,21 +104,6 @@ export function useSharedTabFilters() {
     [setSessionWatchlistOnly]
   );
 
-  const setSelectedShowtimeAudience = useCallback(
-    (next: SharedShowtimeAudience) => {
-      setSelectedShowtimeAudienceState(next);
-      if (applyShowtimeAudienceFrameRef.current !== null) {
-        cancelAnimationFrame(applyShowtimeAudienceFrameRef.current);
-      }
-      applyShowtimeAudienceFrameRef.current = requestAnimationFrame(() => {
-        applyShowtimeAudienceFrameRef.current = null;
-        setAppliedShowtimeAudienceState(next);
-        setSessionShowtimeAudience(next);
-      });
-    },
-    [setSessionShowtimeAudience]
-  );
-
   const setSelectedTimeRanges = useCallback(
     (next: string[]) => {
       setSessionTimeRanges(normalizeSingleTimeRangeSelection(next));
@@ -159,19 +130,10 @@ export function useSharedTabFilters() {
     setAppliedWatchlistOnlyState(normalized);
   }, [sessionWatchlistOnly]);
 
-  useEffect(() => {
-    const normalized = toShowtimeAudience(sessionShowtimeAudience);
-    setSelectedShowtimeAudienceState(normalized);
-    setAppliedShowtimeAudienceState(normalized);
-  }, [sessionShowtimeAudience]);
-
   useEffect(
     () => () => {
       if (applyShowtimeFilterFrameRef.current !== null) {
         cancelAnimationFrame(applyShowtimeFilterFrameRef.current);
-      }
-      if (applyShowtimeAudienceFrameRef.current !== null) {
-        cancelAnimationFrame(applyShowtimeAudienceFrameRef.current);
       }
       if (applyWatchlistOnlyFrameRef.current !== null) {
         cancelAnimationFrame(applyWatchlistOnlyFrameRef.current);
@@ -207,13 +169,6 @@ export function useSharedTabFilters() {
         setWatchlistOnly(Boolean(favoritePreset.filters.watchlist_only));
       }
 
-      const rawShowtimeAudience = queryClient.getQueryData<SharedShowtimeAudience>(
-        SESSION_SHOWTIME_AUDIENCE_KEY
-      );
-      if (rawShowtimeAudience === undefined) {
-        setSelectedShowtimeAudience(toShowtimeAudience(favoritePreset.filters.showtime_audience));
-      }
-
       const rawSessionDays = queryClient.getQueryData<string[]>(SESSION_DAY_SELECTIONS_KEY);
       if (rawSessionDays === undefined) {
         setSessionDays(favoritePreset.filters.days ?? []);
@@ -244,7 +199,6 @@ export function useSharedTabFilters() {
     setSessionCinemaIds,
     setSessionDays,
     setSelectedShowtimeFilter,
-    setSelectedShowtimeAudience,
     setSelectedTimeRanges,
     setSelectedRuntimeRanges,
     setWatchlistOnly,
@@ -254,9 +208,6 @@ export function useSharedTabFilters() {
     selectedShowtimeFilter,
     appliedShowtimeFilter,
     setSelectedShowtimeFilter,
-    selectedShowtimeAudience,
-    appliedShowtimeAudience,
-    setSelectedShowtimeAudience,
     watchlistOnly,
     appliedWatchlistOnly,
     setWatchlistOnly,

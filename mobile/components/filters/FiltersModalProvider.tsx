@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import { DateTime } from 'luxon';
 import { useQuery } from '@tanstack/react-query';
 import useAuth from 'shared/hooks/useAuth';
-import { MeService, MoviesService, ShowtimesService } from 'shared';
+import { MoviesService, ShowtimesService } from 'shared';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import FiltersModal from '@/components/filters/FiltersModal';
 import {
@@ -39,8 +39,6 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   const {
     selectedShowtimeFilter,
     setSelectedShowtimeFilter,
-    selectedShowtimeAudience,
-    setSelectedShowtimeAudience,
     watchlistOnly,
     setWatchlistOnly,
     groupByMovie,
@@ -61,13 +59,13 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   const currentPresetFilters = useMemo<PageFilterPresetState>(
     () => ({
       selected_showtime_filter: selectedShowtimeFilter,
-      showtime_audience: selectedShowtimeAudience,
+      showtime_audience: "including-friends",
       watchlist_only: effectiveWatchlistOnly,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
       runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
     }),
-    [selectedShowtimeFilter, selectedShowtimeAudience, effectiveWatchlistOnly, selectedDays, selectedTimeRanges, selectedRuntimeRanges]
+    [selectedShowtimeFilter, effectiveWatchlistOnly, selectedDays, selectedTimeRanges, selectedRuntimeRanges]
   );
 
   const dayAnchorKey =
@@ -82,14 +80,11 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     [selectedRuntimeRanges]
   );
 
-  const shouldShowAudienceToggle = selectedShowtimeFilter !== 'all';
-  const isMyShowtimes = shouldShowAudienceToggle && selectedShowtimeAudience === 'only-you';
   const isMovies = showGroupByMovie && groupByMovie;
 
-  // Debounce the query mode flags so rapid toggling doesn't thrash query enable/disable
+  // Debounce the query mode flag so rapid toggling doesn't thrash query enable/disable
   // on iOS, which can cause a native crash without JS logs.
   const debouncedIsMovies = useDebounced(isMovies, 150);
-  const debouncedIsMyShowtimes = useDebounced(isMyShowtimes, 150);
 
   const countFilters = useMemo(() => ({
     selectedCinemaIds: sessionCinemaIds ?? undefined,
@@ -104,14 +99,7 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   const { data: showtimesCount } = useQuery({
     queryKey: ['count', 'showtimes', 'main', countFilters],
     queryFn: () => ShowtimesService.countMainPageShowtimes(countFilters),
-    enabled: visible && !debouncedIsMyShowtimes && !debouncedIsMovies,
-    staleTime: 30_000,
-  });
-
-  const { data: myShowtimesCount } = useQuery({
-    queryKey: ['count', 'showtimes', 'me', countFilters],
-    queryFn: () => MeService.countMyShowtimes(countFilters),
-    enabled: visible && debouncedIsMyShowtimes && !debouncedIsMovies,
+    enabled: visible && !debouncedIsMovies,
     staleTime: 30_000,
   });
 
@@ -122,7 +110,7 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     staleTime: 30_000,
   });
 
-  const resultCount = isMovies ? moviesCount : isMyShowtimes ? myShowtimesCount : showtimesCount;
+  const resultCount = isMovies ? moviesCount : showtimesCount;
 
   const openFiltersModal = useCallback((config?: OpenConfig) => {
     if (config?.showGroupByMovie !== undefined) setShowGroupByMovieConfig(config.showGroupByMovie);
@@ -145,8 +133,6 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         selectedShowtimeFilter={selectedShowtimeFilter}
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}
         showStatusFilter
-        selectedShowtimeAudience={selectedShowtimeAudience}
-        setSelectedShowtimeAudience={setSelectedShowtimeAudience}
         selectedDays={selectedDays}
         setSelectedDays={setSelectedDays}
         selectedTimeRanges={selectedTimeRanges}

@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.core.config import settings
+from app.core.enums import GoingStatus
 from app.crud import friendship as friendship_crud
 from app.models.cinema_selection import CinemaSelection
 from app.models.friend_group import FriendGroup, FriendGroupMember
@@ -490,6 +491,9 @@ def test_showtime_pings_endpoints(
     assert pings[0]["showtime"]["movie"]["id"] == showtime.movie_id
     assert pings[0]["sender"]["id"] == str(sender.id)
     assert pings[0]["seen_at"] is None
+    # The nested showtime carries invite info for the receiver.
+    assert [u["id"] for u in pings[0]["showtime"]["invited_by"]] == [str(sender.id)]
+    assert pings[0]["showtime"]["invite_ping_ids"] == [ping.id]
 
     unseen_count_response = client.get(
         f"{settings.API_V1_STR}/me/pings/unseen-count",
@@ -510,6 +514,192 @@ def test_showtime_pings_endpoints(
     )
     assert unseen_count_after_mark_response.status_code == 200
     assert unseen_count_after_mark_response.json() == 0
+
+
+def test_get_my_agenda(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    receiver_id = _normal_user_id(db_transaction)
+    sender = user_factory()
+
+    going_showtime = showtime_factory()
+    interested_showtime = showtime_factory()
+    invited_showtime = showtime_factory()
+    unrelated_showtime = showtime_factory()
+    sender_id = sender.id
+    going_id = going_showtime.id
+    interested_id = interested_showtime.id
+    invited_id = invited_showtime.id
+    unrelated_id = unrelated_showtime.id
+
+    db_transaction.add(
+        ShowtimeSelection(
+            showtime_id=going_id,
+            user_id=receiver_id,
+            going_status=GoingStatus.GOING,
+        )
+    )
+    db_transaction.add(
+        ShowtimeSelection(
+            showtime_id=interested_id,
+            user_id=receiver_id,
+            going_status=GoingStatus.INTERESTED,
+        )
+    )
+    db_transaction.add(
+        ShowtimePing(
+            showtime_id=invited_id,
+            sender_id=sender_id,
+            receiver_id=receiver_id,
+            created_at=now_amsterdam_naive(),
+        )
+    )
+    db_transaction.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/me/agenda",
+        headers=normal_user_token_headers,
+    )
+    assert response.status_code == 200
+    agenda = response.json()
+    by_id = {item["id"]: item for item in agenda}
+
+    assert going_id in by_id
+    assert interested_id in by_id
+    assert invited_id in by_id
+    assert unrelated_id not in by_id
+
+    assert by_id[going_id]["going"] == "GOING"
+    assert by_id[interested_id]["going"] == "INTERESTED"
+
+    invited_item = by_id[invited_id]
+    assert invited_item["going"] == "NOT_GOING"
+    assert [u["id"] for u in invited_item["invited_by"]] == [str(sender_id)]
+    assert len(invited_item["invite_ping_ids"]) == 1
+
+    # Showtimes ordered by datetime ascending.
+    datetimes = [item["datetime"] for item in agenda]
+    assert datetimes == sorted(datetimes)
+
+
+def test_get_my_agenda_toggles(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    receiver_id = _normal_user_id(db_transaction)
+    sender = user_factory()
+
+    going_showtime = showtime_factory()
+    interested_showtime = showtime_factory()
+    invited_showtime = showtime_factory()
+    going_id = going_showtime.id
+    interested_id = interested_showtime.id
+    invited_id = invited_showtime.id
+
+    db_transaction.add(
+        ShowtimeSelection(
+            showtime_id=going_id,
+            user_id=receiver_id,
+            going_status=GoingStatus.GOING,
+        )
+    )
+    db_transaction.add(
+        ShowtimeSelection(
+            showtime_id=interested_id,
+            user_id=receiver_id,
+            going_status=GoingStatus.INTERESTED,
+        )
+    )
+    db_transaction.add(
+        ShowtimePing(
+            showtime_id=invited_id,
+            sender_id=sender.id,
+            receiver_id=receiver_id,
+            created_at=now_amsterdam_naive(),
+        )
+    )
+    db_transaction.commit()
+
+    # Hide interested → going + invited remain.
+    response = client.get(
+        f"{settings.API_V1_STR}/me/agenda",
+        headers=normal_user_token_headers,
+        params={"include_interested": False},
+    )
+    ids = {item["id"] for item in response.json()}
+    assert going_id in ids
+    assert invited_id in ids
+    assert interested_id not in ids
+
+    # Hide invites → going + interested remain.
+    response = client.get(
+        f"{settings.API_V1_STR}/me/agenda",
+        headers=normal_user_token_headers,
+        params={"include_invited": False},
+    )
+    ids = {item["id"] for item in response.json()}
+    assert going_id in ids
+    assert interested_id in ids
+    assert invited_id not in ids
+
+    # Hide both → only going remains.
+    response = client.get(
+        f"{settings.API_V1_STR}/me/agenda",
+        headers=normal_user_token_headers,
+        params={"include_interested": False, "include_invited": False},
+    )
+    ids = {item["id"] for item in response.json()}
+    assert ids == {going_id}
+
+
+def test_get_my_agenda_excludes_past_and_dismissed(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    receiver_id = _normal_user_id(db_transaction)
+    sender = user_factory()
+
+    past_showtime = showtime_factory(datetime=now_amsterdam_naive() - timedelta(days=2))
+    dismissed_invite_showtime = showtime_factory()
+    past_id = past_showtime.id
+    dismissed_id = dismissed_invite_showtime.id
+
+    db_transaction.add(
+        ShowtimeSelection(
+            showtime_id=past_id,
+            user_id=receiver_id,
+            going_status=GoingStatus.GOING,
+        )
+    )
+    db_transaction.add(
+        ShowtimePing(
+            showtime_id=dismissed_id,
+            sender_id=sender.id,
+            receiver_id=receiver_id,
+            created_at=now_amsterdam_naive(),
+            dismissed_at=now_amsterdam_naive(),
+        )
+    )
+    db_transaction.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/me/agenda",
+        headers=normal_user_token_headers,
+    )
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.json()}
+    assert past_id not in ids
+    assert dismissed_id not in ids
 
 
 def test_delete_showtime_ping_endpoint(

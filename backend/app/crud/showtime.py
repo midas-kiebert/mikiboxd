@@ -13,6 +13,7 @@ from app.inputs.movie import Filters
 from app.models.friendship import Friendship
 from app.models.movie import Movie
 from app.models.showtime import Showtime, ShowtimeCreate
+from app.models.showtime_ping import ShowtimePing
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
@@ -391,6 +392,51 @@ def get_main_page_showtimes(
     stmt = stmt.order_by(col(Showtime.datetime)).limit(limit).offset(offset)
     showtimes = list(session.exec(stmt).all())
     return showtimes
+
+
+def get_agenda_showtimes(
+    *,
+    session: Session,
+    user_id: UUID,
+    snapshot_time: datetime,
+    include_interested: bool,
+    include_invited: bool,
+    limit: int,
+    offset: int,
+) -> list[Showtime]:
+    """
+    Upcoming showtimes for the user's personal agenda: ones they are GOING to
+    (always), INTERESTED in (when ``include_interested``), or have an active
+    received invite for (when ``include_invited``). Ordered by datetime.
+    """
+    going_subquery = select(ShowtimeSelection.showtime_id).where(
+        col(ShowtimeSelection.user_id) == user_id,
+        col(ShowtimeSelection.going_status) == GoingStatus.GOING,
+    )
+    conditions = [col(Showtime.id).in_(going_subquery)]
+
+    if include_interested:
+        interested_subquery = select(ShowtimeSelection.showtime_id).where(
+            col(ShowtimeSelection.user_id) == user_id,
+            col(ShowtimeSelection.going_status) == GoingStatus.INTERESTED,
+        )
+        conditions.append(col(Showtime.id).in_(interested_subquery))
+
+    if include_invited:
+        invited_subquery = select(ShowtimePing.showtime_id).where(
+            col(ShowtimePing.receiver_id) == user_id,
+            col(ShowtimePing.dismissed_at).is_(None),
+        )
+        conditions.append(col(Showtime.id).in_(invited_subquery))
+
+    stmt = (
+        select(Showtime)
+        .where(col(Showtime.datetime) >= snapshot_time, or_(*conditions))
+        .order_by(col(Showtime.datetime))
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(session.exec(stmt).all())
 
 
 def count_main_page_showtimes(

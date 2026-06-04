@@ -36,6 +36,10 @@ class ShowtimeLoggedIn(ShowtimeBase):
     going: GoingStatus
     seat_row: str | None = None
     seat_number: str | None = None
+    # Unique senders of the current user's active (non-dismissed) received pings
+    # for this showtime, plus those pings' ids (used to dismiss the invite).
+    invited_by: Sequence["UserPublic"] = []
+    invite_ping_ids: Sequence[int] = []
 
 
 # For responses inside of a Movie model
@@ -47,3 +51,5 @@ class ShowtimeInMovieLoggedIn(ShowtimeBase):
     going: GoingStatus
     seat_row: str | None = None
     seat_number: str | None = None
+    invited_by: Sequence["UserPublic"] = []
+    invite_ping_ids: Sequence[int] = []

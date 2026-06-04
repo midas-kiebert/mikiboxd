@@ -24,6 +24,7 @@ from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
 from app.schemas.friend_group import FriendGroupCreate, FriendGroupPublic
 from app.schemas.push_token import PushTokenDelete, PushTokenRegister
+from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe, UserWithFriendStatus
@@ -134,6 +135,102 @@ def delete_filter_preset(
             detail="Filter preset not found",
         )
     return Message(message="Filter preset deleted successfully")
+
+
+@router.get("/saved-presets", response_model=list[SavedPresetPublic])
+def get_saved_presets(
+    session: SessionDep,
+    current_user: CurrentUser,
+    scope: FilterPresetScope = Query(...),
+) -> list[SavedPresetPublic]:
+    return me_service.list_saved_presets(
+        session=session,
+        user_id=current_user.id,
+        scope=scope,
+    )
+
+
+@router.post("/saved-presets", response_model=SavedPresetPublic)
+def create_saved_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    payload: SavedPresetCreate,
+) -> SavedPresetPublic:
+    if not payload.name.strip():
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Preset name cannot be empty",
+        )
+    return me_service.save_saved_preset(
+        session=session,
+        user_id=current_user.id,
+        payload=payload,
+    )
+
+
+@router.get("/saved-presets/favorite", response_model=SavedPresetPublic | None)
+def get_favorite_saved_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    scope: FilterPresetScope = Query(...),
+) -> SavedPresetPublic | None:
+    return me_service.get_favorite_saved_preset(
+        session=session,
+        user_id=current_user.id,
+        scope=scope,
+    )
+
+
+@router.put("/saved-presets/{preset_id}/favorite", response_model=SavedPresetPublic)
+def set_favorite_saved_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    preset_id: UUID,
+) -> SavedPresetPublic:
+    favorite = me_service.set_favorite_saved_preset(
+        session=session,
+        user_id=current_user.id,
+        preset_id=preset_id,
+    )
+    if favorite is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Saved preset not found",
+        )
+    return favorite
+
+
+@router.delete("/saved-presets/favorite", response_model=Message)
+def clear_favorite_saved_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    scope: FilterPresetScope = Query(...),
+) -> Message:
+    me_service.clear_favorite_saved_preset(
+        session=session,
+        user_id=current_user.id,
+        scope=scope,
+    )
+    return Message(message="Favorite saved preset cleared successfully")
+
+
+@router.delete("/saved-presets/{preset_id}", response_model=Message)
+def delete_saved_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    preset_id: UUID,
+) -> Message:
+    deleted = me_service.delete_saved_preset(
+        session=session,
+        user_id=current_user.id,
+        preset_id=preset_id,
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Saved preset not found",
+        )
+    return Message(message="Saved preset deleted successfully")
 
 
 @router.get("/cinema-presets", response_model=list[CinemaPresetPublic])

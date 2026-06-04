@@ -139,6 +139,26 @@ def get_received_showtime_pings(
     return list(session.exec(stmt).all())
 
 
+def get_received_pings_for_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    receiver_id: UUID,
+) -> list[tuple[ShowtimePing, User]]:
+    """Active (non-dismissed) received pings for a showtime, with sender, newest first."""
+    stmt = (
+        select(ShowtimePing, User)
+        .join(User, col(User.id) == col(ShowtimePing.sender_id))
+        .where(
+            ShowtimePing.showtime_id == showtime_id,
+            ShowtimePing.receiver_id == receiver_id,
+            col(ShowtimePing.dismissed_at).is_(None),
+        )
+        .order_by(col(ShowtimePing.created_at).desc())
+    )
+    return list(session.exec(stmt).all())  # type: ignore[return-value]
+
+
 def get_unseen_showtime_ping_count(
     *,
     session: Session,

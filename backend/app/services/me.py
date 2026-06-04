@@ -965,6 +965,35 @@ def get_received_showtime_pings(
     return result
 
 
+def get_agenda_showtimes(
+    *,
+    session: Session,
+    user_id: UUID,
+    snapshot_time: datetime,
+    include_interested: bool,
+    include_invited: bool,
+    limit: int,
+    offset: int,
+) -> list[ShowtimeLoggedIn]:
+    showtimes = showtimes_crud.get_agenda_showtimes(
+        session=session,
+        user_id=user_id,
+        snapshot_time=snapshot_time,
+        include_interested=include_interested,
+        include_invited=include_invited,
+        limit=limit,
+        offset=offset,
+    )
+    return [
+        showtime_converters.to_logged_in(
+            showtime=showtime,
+            session=session,
+            user_id=user_id,
+        )
+        for showtime in showtimes
+    ]
+
+
 def get_unseen_showtime_ping_count(
     *,
     session: Session,

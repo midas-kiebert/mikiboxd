@@ -37,6 +37,18 @@ import type {
   MeSetFavoriteFilterPresetResponse,
   MeDeleteFilterPresetData,
   MeDeleteFilterPresetResponse,
+  MeGetSavedPresetsData,
+  MeGetSavedPresetsResponse,
+  MeCreateSavedPresetData,
+  MeCreateSavedPresetResponse,
+  MeGetFavoriteSavedPresetData,
+  MeGetFavoriteSavedPresetResponse,
+  MeClearFavoriteSavedPresetData,
+  MeClearFavoriteSavedPresetResponse,
+  MeSetFavoriteSavedPresetData,
+  MeSetFavoriteSavedPresetResponse,
+  MeDeleteSavedPresetData,
+  MeDeleteSavedPresetResponse,
   MeGetCinemaPresetsResponse,
   MeCreateCinemaPresetData,
   MeCreateCinemaPresetResponse,
@@ -500,6 +512,137 @@ export class MeService {
     return __request(OpenAPI, {
       method: "DELETE",
       url: "/api/v1/me/filter-presets/{preset_id}",
+      path: {
+        preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Saved Presets
+   * @param data The data for the request.
+   * @param data.scope
+   * @returns SavedPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static getSavedPresets(
+    data: MeGetSavedPresetsData,
+  ): CancelablePromise<MeGetSavedPresetsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/saved-presets",
+      query: {
+        scope: data.scope,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Create Saved Preset
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns SavedPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static createSavedPreset(
+    data: MeCreateSavedPresetData,
+  ): CancelablePromise<MeCreateSavedPresetResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/saved-presets",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Favorite Saved Preset
+   * @param data The data for the request.
+   * @param data.scope
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static getFavoriteSavedPreset(
+    data: MeGetFavoriteSavedPresetData,
+  ): CancelablePromise<MeGetFavoriteSavedPresetResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/saved-presets/favorite",
+      query: {
+        scope: data.scope,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Clear Favorite Saved Preset
+   * @param data The data for the request.
+   * @param data.scope
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static clearFavoriteSavedPreset(
+    data: MeClearFavoriteSavedPresetData,
+  ): CancelablePromise<MeClearFavoriteSavedPresetResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/saved-presets/favorite",
+      query: {
+        scope: data.scope,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Set Favorite Saved Preset
+   * @param data The data for the request.
+   * @param data.presetId
+   * @returns SavedPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static setFavoriteSavedPreset(
+    data: MeSetFavoriteSavedPresetData,
+  ): CancelablePromise<MeSetFavoriteSavedPresetResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/me/saved-presets/{preset_id}/favorite",
+      path: {
+        preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Delete Saved Preset
+   * @param data The data for the request.
+   * @param data.presetId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static deleteSavedPreset(
+    data: MeDeleteSavedPresetData,
+  ): CancelablePromise<MeDeleteSavedPresetResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/saved-presets/{preset_id}",
       path: {
         preset_id: data.presetId,
       },

@@ -194,7 +194,9 @@ def test_delete_me_removes_user_and_related_rows(
     )
     assert (
         db_transaction.exec(
-            select(FriendGroupMember).where(FriendGroupMember.group_id == friend_group_id)
+            select(FriendGroupMember).where(
+                FriendGroupMember.group_id == friend_group_id
+            )
         ).one_or_none()
         is None
     )
@@ -234,7 +236,9 @@ def test_delete_push_token_for_current_user(
 ) -> None:
     current_user_id = _normal_user_id(db_transaction)
     test_token = f"delete-token-{current_user_id}"
-    db_transaction.add(PushToken(token=test_token, user_id=current_user_id, platform="android"))
+    db_transaction.add(
+        PushToken(token=test_token, user_id=current_user_id, platform="android")
+    )
     db_transaction.commit()
 
     response = client.request(
@@ -250,7 +254,9 @@ def test_delete_push_token_for_current_user(
     assert response.json()["message"] == "Push token deleted successfully"
 
     assert (
-        db_transaction.exec(select(PushToken).where(PushToken.token == test_token)).one_or_none()
+        db_transaction.exec(
+            select(PushToken).where(PushToken.token == test_token)
+        ).one_or_none()
         is None
     )
 
@@ -1174,6 +1180,191 @@ def test_filter_preset_can_be_marked_as_favorite(
     )
     assert favorite_after_clear.status_code == 200
     assert favorite_after_clear.json() is None
+
+
+def test_saved_presets_store_partial_fields_and_cinemas(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    # A days-only preset that also pins a cinema selection.
+    days_payload = {
+        "name": "Weekend at the Local",
+        "scope": "SHOWTIMES",
+        "included_fields": ["days", "cinemas"],
+        "filters": {
+            "selected_showtime_filter": "going",
+            "watchlist_only": True,
+            "days": ["2026-02-21", "2026-02-22"],
+            "time_ranges": ["18:00-21:59"],
+        },
+        "cinema_ids": [3, 1, 1, 2],
+    }
+    create = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json=days_payload,
+    )
+    assert create.status_code == 200
+    body = create.json()
+    assert body["included_fields"] == ["days", "cinemas"]
+    # cinema_ids are normalized (deduped + sorted).
+    assert body["cinema_ids"] == [1, 2, 3]
+    # The full filter snapshot is preserved; the frontend applies only the
+    # included dimensions.
+    assert body["filters"]["days"] == ["2026-02-21", "2026-02-22"]
+    assert body["filters"]["selected_showtime_filter"] == "going"
+    assert body["is_favorite"] is False
+
+    # Listing is scoped and returns no synthetic "Default" preset.
+    showtimes_list = client.get(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        params={"scope": "SHOWTIMES"},
+    )
+    assert showtimes_list.status_code == 200
+    presets = showtimes_list.json()
+    assert [preset["name"] for preset in presets] == ["Weekend at the Local"]
+
+    movies_list = client.get(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        params={"scope": "MOVIES"},
+    )
+    assert movies_list.status_code == 200
+    assert movies_list.json() == []
+
+
+def test_saved_preset_without_cinemas_field_drops_cinema_ids(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    payload = {
+        "name": "Just Status",
+        "scope": "SHOWTIMES",
+        "included_fields": ["selected_showtime_filter"],
+        "filters": {"selected_showtime_filter": "interested"},
+        # cinema_ids supplied but "cinemas" not included -> must be discarded.
+        "cinema_ids": [1, 2],
+    }
+    create = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json=payload,
+    )
+    assert create.status_code == 200
+    assert create.json()["cinema_ids"] is None
+
+
+def test_saved_preset_validation_errors(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    base = {
+        "name": "Bad",
+        "scope": "SHOWTIMES",
+        "filters": {},
+    }
+
+    # Empty included_fields is rejected.
+    empty = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={**base, "included_fields": []},
+    )
+    assert empty.status_code == 422
+
+    # Unknown token is rejected.
+    unknown = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={**base, "included_fields": ["not_a_real_field"]},
+    )
+    assert unknown.status_code == 422
+
+    # "cinemas" requires cinema_ids.
+    missing_cinemas = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={**base, "included_fields": ["cinemas"]},
+    )
+    assert missing_cinemas.status_code == 422
+
+
+def test_saved_preset_upsert_delete_and_favorite(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    first = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Quick",
+            "scope": "SHOWTIMES",
+            "included_fields": ["time_ranges"],
+            "filters": {"time_ranges": ["18:00-21:59"]},
+        },
+    )
+    assert first.status_code == 200
+    first_id = first.json()["id"]
+
+    # Same (scope, name) upserts the existing row.
+    upsert = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Quick",
+            "scope": "SHOWTIMES",
+            "included_fields": ["days"],
+            "filters": {"days": ["2026-03-01"]},
+        },
+    )
+    assert upsert.status_code == 200
+    assert upsert.json()["id"] == first_id
+    assert upsert.json()["included_fields"] == ["days"]
+
+    second = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Late",
+            "scope": "SHOWTIMES",
+            "included_fields": ["time_ranges"],
+            "filters": {"time_ranges": ["22:00-"]},
+            "is_favorite": True,
+        },
+    )
+    assert second.status_code == 200
+    second_id = second.json()["id"]
+    assert second.json()["is_favorite"] is True
+
+    favorite_get = client.get(
+        f"{settings.API_V1_STR}/me/saved-presets/favorite",
+        headers=normal_user_token_headers,
+        params={"scope": "SHOWTIMES"},
+    )
+    assert favorite_get.status_code == 200
+    assert favorite_get.json()["id"] == second_id
+
+    # Favoriting another preset clears the previous favorite within the scope.
+    refavorite = client.put(
+        f"{settings.API_V1_STR}/me/saved-presets/{first_id}/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert refavorite.status_code == 200
+    favorite_after = client.get(
+        f"{settings.API_V1_STR}/me/saved-presets/favorite",
+        headers=normal_user_token_headers,
+        params={"scope": "SHOWTIMES"},
+    )
+    assert favorite_after.json()["id"] == first_id
+
+    delete = client.delete(
+        f"{settings.API_V1_STR}/me/saved-presets/{first_id}",
+        headers=normal_user_token_headers,
+    )
+    assert delete.status_code == 200
+
+    missing_delete = client.delete(
+        f"{settings.API_V1_STR}/me/saved-presets/{first_id}",
+        headers=normal_user_token_headers,
+    )
+    assert missing_delete.status_code == 404
 
 
 def test_cinema_presets_and_favorite_cinema_selection(

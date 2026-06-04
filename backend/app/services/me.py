@@ -14,6 +14,7 @@ from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import filter_preset as filter_presets_crud
 from app.crud import friend_group as friend_groups_crud
 from app.crud import push_token as push_tokens_crud
+from app.crud import saved_preset as saved_presets_crud
 from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
@@ -28,11 +29,13 @@ from app.models.cinema_preset import CinemaPreset
 from app.models.filter_preset import FilterPreset
 from app.models.friend_group import FriendGroup
 from app.models.push_token import PushToken
+from app.models.saved_preset import SavedPreset
 from app.models.showtime import Showtime
 from app.models.user import User, UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
 from app.schemas.friend_group import FriendGroupCreate, FriendGroupPublic
+from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe
@@ -339,6 +342,164 @@ def clear_favorite_filter_preset(
     scope: FilterPresetScope,
 ) -> None:
     filter_presets_crud.clear_user_favorite_preset(
+        session=session,
+        user_id=user_id,
+        scope=scope,
+    )
+    session.commit()
+
+
+def _to_saved_preset_public(preset: SavedPreset) -> SavedPresetPublic:
+    return SavedPresetPublic.model_validate(
+        {
+            "id": preset.id,
+            "name": preset.name,
+            "scope": preset.scope,
+            "is_favorite": preset.is_favorite,
+            "included_fields": preset.included_fields,
+            "filters": preset.filters,
+            "cinema_ids": preset.cinema_ids,
+            "created_at": preset.created_at,
+            "updated_at": preset.updated_at,
+        }
+    )
+
+
+def list_saved_presets(
+    *,
+    session: Session,
+    user_id: UUID,
+    scope: FilterPresetScope,
+) -> list[SavedPresetPublic]:
+    presets = saved_presets_crud.list_user_presets(
+        session=session,
+        user_id=user_id,
+        scope=scope,
+    )
+    return [_to_saved_preset_public(preset) for preset in presets]
+
+
+def save_saved_preset(
+    *,
+    session: Session,
+    user_id: UUID,
+    payload: SavedPresetCreate,
+) -> SavedPresetPublic:
+    now = now_amsterdam_naive()
+    preset_name = payload.name.strip()
+    filters = payload.filters.model_dump(mode="json")
+    cinema_ids = list(payload.cinema_ids) if payload.cinema_ids is not None else None
+    should_set_favorite = payload.is_favorite is True
+    existing = saved_presets_crud.get_user_preset_by_name(
+        session=session,
+        user_id=user_id,
+        scope=payload.scope,
+        name=preset_name,
+    )
+
+    if should_set_favorite:
+        saved_presets_crud.clear_user_favorite_preset(
+            session=session,
+            user_id=user_id,
+            scope=payload.scope,
+        )
+
+    if existing is None:
+        preset = saved_presets_crud.create_preset(
+            session=session,
+            user_id=user_id,
+            name=preset_name,
+            scope=payload.scope,
+            included_fields=payload.included_fields,
+            filters=filters,
+            cinema_ids=cinema_ids,
+            is_favorite=should_set_favorite,
+            now=now,
+        )
+    else:
+        preset = saved_presets_crud.update_preset(
+            session=session,
+            preset=existing,
+            included_fields=payload.included_fields,
+            filters=filters,
+            cinema_ids=cinema_ids,
+            is_favorite=payload.is_favorite,
+            now=now,
+        )
+
+    session.commit()
+    return _to_saved_preset_public(preset)
+
+
+def delete_saved_preset(
+    *,
+    session: Session,
+    user_id: UUID,
+    preset_id: UUID,
+) -> bool:
+    deleted = saved_presets_crud.delete_user_preset(
+        session=session,
+        user_id=user_id,
+        preset_id=preset_id,
+    )
+    if deleted:
+        session.commit()
+    return deleted
+
+
+def get_favorite_saved_preset(
+    *,
+    session: Session,
+    user_id: UUID,
+    scope: FilterPresetScope,
+) -> SavedPresetPublic | None:
+    preset = saved_presets_crud.get_user_favorite_preset(
+        session=session,
+        user_id=user_id,
+        scope=scope,
+    )
+    if preset is None:
+        return None
+    return _to_saved_preset_public(preset)
+
+
+def set_favorite_saved_preset(
+    *,
+    session: Session,
+    user_id: UUID,
+    preset_id: UUID,
+) -> SavedPresetPublic | None:
+    now = now_amsterdam_naive()
+    preset = saved_presets_crud.get_user_preset_by_id(
+        session=session,
+        user_id=user_id,
+        preset_id=preset_id,
+    )
+    if preset is None:
+        return None
+
+    saved_presets_crud.clear_user_favorite_preset(
+        session=session,
+        user_id=user_id,
+        scope=preset.scope,
+    )
+    favorite = saved_presets_crud.set_preset_favorite(
+        session=session,
+        preset=preset,
+        is_favorite=True,
+        now=now,
+    )
+    session.commit()
+    return _to_saved_preset_public(favorite)
+
+
+def clear_favorite_saved_preset(
+    *,
+    session: Session,
+    user_id: UUID,
+    scope: FilterPresetScope,
+) -> None:
+    saved_presets_crud.clear_user_favorite_preset(
         session=session,
         user_id=user_id,
         scope=scope,

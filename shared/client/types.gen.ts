@@ -199,6 +199,27 @@ export type PushTokenRegister = {
   platform?: "ios" | "android" | "web" | null
 }
 
+export type SavedPresetCreate = {
+  name: string
+  scope: FilterPresetScope
+  included_fields: Array<string>
+  filters: FilterPresetFilters
+  cinema_ids?: Array<number> | null
+  is_favorite?: boolean | null
+}
+
+export type SavedPresetPublic = {
+  id: string
+  name: string
+  scope: FilterPresetScope
+  is_favorite: boolean
+  included_fields: Array<string>
+  filters: FilterPresetFilters
+  cinema_ids: Array<number> | null
+  created_at: string
+  updated_at: string
+}
+
 export type SentShowtimePingPublic = {
   id: number
   receiver_id: string
@@ -484,6 +505,42 @@ export type MeDeleteFilterPresetData = {
 }
 
 export type MeDeleteFilterPresetResponse = Message
+
+export type MeGetSavedPresetsData = {
+  scope: FilterPresetScope
+}
+
+export type MeGetSavedPresetsResponse = Array<SavedPresetPublic>
+
+export type MeCreateSavedPresetData = {
+  requestBody: SavedPresetCreate
+}
+
+export type MeCreateSavedPresetResponse = SavedPresetPublic
+
+export type MeGetFavoriteSavedPresetData = {
+  scope: FilterPresetScope
+}
+
+export type MeGetFavoriteSavedPresetResponse = SavedPresetPublic | null
+
+export type MeClearFavoriteSavedPresetData = {
+  scope: FilterPresetScope
+}
+
+export type MeClearFavoriteSavedPresetResponse = Message
+
+export type MeSetFavoriteSavedPresetData = {
+  presetId: string
+}
+
+export type MeSetFavoriteSavedPresetResponse = SavedPresetPublic
+
+export type MeDeleteSavedPresetData = {
+  presetId: string
+}
+
+export type MeDeleteSavedPresetResponse = Message
 
 export type MeGetCinemaPresetsResponse = Array<CinemaPresetPublic>
 

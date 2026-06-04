@@ -61,6 +61,8 @@ import type {
   MeCountMyShowtimesResponse,
   MeGetMyShowtimesData,
   MeGetMyShowtimesResponse,
+  MeGetMyAgendaData,
+  MeGetMyAgendaResponse,
   MeGetMyShowtimePingsData,
   MeGetMyShowtimePingsResponse,
   MeGetMyUnseenShowtimePingCountResponse,
@@ -808,6 +810,36 @@ export class MeService {
         selected_statuses: data.selectedStatuses,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get My Agenda
+   * @param data The data for the request.
+   * @param data.includeInterested
+   * @param data.includeInvited
+   * @param data.snapshotTime Only show showtimes after this moment
+   * @param data.limit
+   * @param data.offset
+   * @returns ShowtimeLoggedIn Successful Response
+   * @throws ApiError
+   */
+  public static getMyAgenda(
+    data: MeGetMyAgendaData = {},
+  ): CancelablePromise<MeGetMyAgendaResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/agenda",
+      query: {
+        include_interested: data.includeInterested,
+        include_invited: data.includeInvited,
+        snapshot_time: data.snapshotTime,
+        limit: data.limit,
+        offset: data.offset,
       },
       errors: {
         422: "Validation Error",

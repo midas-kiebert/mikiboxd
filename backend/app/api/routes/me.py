@@ -4,6 +4,7 @@ All routes are scoped to the authenticated user — they operate on the user's
 own data (profile, presets, cinemas, pings, friends, watchlist, push tokens).
 """
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -29,6 +30,7 @@ from app.schemas.user import UserMe, UserWithFriendStatus
 from app.services import me as me_service
 from app.services import users as users_service
 from app.services import watchlist as watchlist_service
+from app.utils import now_amsterdam_naive
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -393,6 +395,31 @@ def get_my_showtimes(
         limit=limit,
         offset=offset,
         filters=filters,
+    )
+
+
+@router.get("/agenda", response_model=list[ShowtimeLoggedIn])
+def get_my_agenda(
+    session: SessionDep,
+    current_user: CurrentUser,
+    include_interested: bool = Query(True),
+    include_invited: bool = Query(True),
+    snapshot_time: datetime | None = Query(
+        None, description="Only show showtimes after this moment"
+    ),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> list[ShowtimeLoggedIn]:
+    if snapshot_time is None:
+        snapshot_time = now_amsterdam_naive()
+    return me_service.get_agenda_showtimes(
+        session=session,
+        user_id=current_user.id,
+        snapshot_time=snapshot_time,
+        include_interested=include_interested,
+        include_invited=include_invited,
+        limit=limit,
+        offset=offset,
     )
 
 

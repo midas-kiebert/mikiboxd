@@ -7,6 +7,7 @@ from app.converters import movie as movie_converters
 from app.converters import user as user_converters
 from app.core.enums import GoingStatus
 from app.crud import showtime as showtime_crud
+from app.crud import showtime_ping as showtime_ping_crud
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
@@ -77,6 +78,30 @@ def _friends_for_showtime(
     return friends_going, friends_interested
 
 
+def _invite_info_for_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID,
+) -> tuple[list, list[int]]:
+    """Unique senders + ping ids of the user's active received pings for a showtime."""
+    pings = showtime_ping_crud.get_received_pings_for_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        receiver_id=user_id,
+    )
+    invited_by = []
+    invite_ping_ids: list[int] = []
+    seen_sender_ids: set[UUID] = set()
+    for ping, sender in pings:
+        if ping.id is not None:
+            invite_ping_ids.append(ping.id)
+        if sender.id not in seen_sender_ids:
+            seen_sender_ids.add(sender.id)
+            invited_by.append(user_converters.to_public(sender))
+    return invited_by, invite_ping_ids
+
+
 def to_logged_in(
     showtime: Showtime,
     *,
@@ -111,6 +136,11 @@ def to_logged_in(
     going, seat_row, seat_number = _selection_status_and_seat(
         selection=current_selection
     )
+    invited_by, invite_ping_ids = _invite_info_for_showtime(
+        session=session,
+        showtime_id=showtime.id,
+        user_id=user_id,
+    )
     movie = movie_converters.to_in_showtime(showtime.movie)
     cinema = cinema_converters.to_public(
         cinema=showtime.cinema,
@@ -125,6 +155,8 @@ def to_logged_in(
         seat_number=seat_number,
         movie=movie,
         cinema=cinema,
+        invited_by=invited_by,
+        invite_ping_ids=invite_ping_ids,
     )
 
 
@@ -161,6 +193,11 @@ def to_in_movie_logged_in(
     going, seat_row, seat_number = _selection_status_and_seat(
         selection=current_selection
     )
+    invited_by, invite_ping_ids = _invite_info_for_showtime(
+        session=session,
+        showtime_id=showtime.id,
+        user_id=user_id,
+    )
     cinema = cinema_converters.to_public(
         cinema=showtime.cinema,
     )
@@ -173,4 +210,6 @@ def to_in_movie_logged_in(
         seat_row=seat_row,
         seat_number=seat_number,
         cinema=cinema,
+        invited_by=invited_by,
+        invite_ping_ids=invite_ping_ids,
     )

@@ -4,20 +4,78 @@
  * to. Interested + invites can be toggled on/off; going is always shown.
  */
 import { useEffect, useMemo, useState } from "react";
-import { StyleSheet } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useIsFocused } from "@react-navigation/native";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { MeService } from "shared";
 import { useFetchAgenda } from "shared/hooks/useFetchAgenda";
 
 import TopBar from "@/components/layout/TopBar";
-import FilterPills from "@/components/filters/FilterPills";
+import { ThemedText } from "@/components/themed-text";
 import { ShowtimesListContent } from "@/components/showtimes/ShowtimesScreen";
+import { triggerLongPressHaptic } from "@/utils/long-press";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
 
-type AgendaToggleId = "interested" | "invites";
+type ThemeColors = typeof import("@/constants/theme").Colors.light;
+type StatusColor = ThemeColors["orange"];
+
+/**
+ * A pill toggle that matches the app's filter pills: filled with the category
+ * colour when on, a muted outline when off. The fill-vs-outline contrast (and
+ * the leading icon switching between its filled/outline form) signals on/off.
+ */
+function AgendaToggle({
+  label,
+  iconOn,
+  iconOff,
+  active,
+  accent,
+  onPress,
+  colors,
+  styles,
+}: {
+  label: string;
+  iconOn: React.ComponentProps<typeof MaterialIcons>["name"];
+  iconOff: React.ComponentProps<typeof MaterialIcons>["name"];
+  active: boolean;
+  accent: StatusColor;
+  onPress: () => void;
+  colors: ThemeColors;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: active }}
+      accessibilityLabel={`${active ? "Hide" : "Show"} ${label.toLowerCase()}`}
+      style={[
+        styles.toggle,
+        active
+          ? { backgroundColor: accent.primary, borderColor: accent.primary }
+          : { backgroundColor: colors.pillBackground, borderColor: colors.cardBorder },
+      ]}
+    >
+      <MaterialIcons
+        name={active ? iconOn : iconOff}
+        size={15}
+        color={active ? accent.secondary : colors.textSecondary}
+      />
+      <ThemedText
+        style={[
+          styles.toggleLabel,
+          { color: active ? accent.secondary : colors.textSecondary },
+        ]}
+      >
+        {label}
+      </ThemedText>
+    </TouchableOpacity>
+  );
+}
 
 export default function AgendaScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -79,34 +137,14 @@ export default function AgendaScreen() {
     }
   };
 
-  const toggleFilters = useMemo(
-    () => [
-      {
-        id: "interested" as const,
-        label: "Interested",
-        activeBackgroundColor: colors.orange.primary,
-        activeTextColor: colors.orange.secondary,
-      },
-      {
-        id: "invites" as const,
-        label: "Invites",
-        activeBackgroundColor: colors.blue.primary,
-        activeTextColor: colors.blue.secondary,
-      },
-    ],
-    [colors]
-  );
+  const toggleInterested = () => {
+    triggerLongPressHaptic();
+    setIncludeInterested((previous) => !previous);
+  };
 
-  const activeToggleIds = useMemo(() => {
-    const ids: AgendaToggleId[] = [];
-    if (includeInterested) ids.push("interested");
-    if (includeInvited) ids.push("invites");
-    return ids;
-  }, [includeInterested, includeInvited]);
-
-  const handleToggle = (id: AgendaToggleId) => {
-    if (id === "interested") setIncludeInterested((previous) => !previous);
-    else setIncludeInvited((previous) => !previous);
+  const toggleInvited = () => {
+    triggerLongPressHaptic();
+    setIncludeInvited((previous) => !previous);
   };
 
   const emptyText =
@@ -118,12 +156,28 @@ export default function AgendaScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <TopBar title="Agenda" />
-      <FilterPills<AgendaToggleId>
-        filters={toggleFilters}
-        selectedId=""
-        activeIds={activeToggleIds}
-        onSelect={handleToggle}
-      />
+      <View style={styles.toggleRow}>
+        <AgendaToggle
+          label="Interested"
+          iconOn="bookmark"
+          iconOff="bookmark-border"
+          active={includeInterested}
+          accent={colors.orange}
+          onPress={toggleInterested}
+          colors={colors}
+          styles={styles}
+        />
+        <AgendaToggle
+          label="Invites"
+          iconOn="mail"
+          iconOff="mail-outline"
+          active={includeInvited}
+          accent={colors.blue}
+          onPress={toggleInvited}
+          colors={colors}
+          styles={styles}
+        />
+      </View>
       <ShowtimesListContent
         showtimes={showtimes}
         isLoading={isLoading}
@@ -141,7 +195,29 @@ export default function AgendaScreen() {
   );
 }
 
-const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
+const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
+    toggleRow: {
+      flexDirection: "row",
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.divider,
+      backgroundColor: colors.background,
+    },
+    toggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 18,
+      borderWidth: 1,
+    },
+    toggleLabel: {
+      fontSize: 13,
+      fontWeight: "500",
+    },
   });

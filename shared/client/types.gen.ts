@@ -220,6 +220,8 @@ export type ShowtimeInMovieLoggedIn = {
   going: GoingStatus
   seat_row?: string | null
   seat_number?: string | null
+  invited_by?: Array<UserPublic>
+  invite_ping_ids?: Array<number>
 }
 
 export type ShowtimeLoggedIn = {
@@ -235,6 +237,8 @@ export type ShowtimeLoggedIn = {
   going: GoingStatus
   seat_row?: string | null
   seat_number?: string | null
+  invited_by?: Array<UserPublic>
+  invite_ping_ids?: Array<number>
 }
 
 export type ShowtimePingPublic = {
@@ -602,6 +606,19 @@ export type MeGetMyShowtimesData = {
 }
 
 export type MeGetMyShowtimesResponse = Array<ShowtimeLoggedIn>
+
+export type MeGetMyAgendaData = {
+  includeInterested?: boolean
+  includeInvited?: boolean
+  limit?: number
+  offset?: number
+  /**
+   * Only show showtimes after this moment
+   */
+  snapshotTime?: string | null
+}
+
+export type MeGetMyAgendaResponse = Array<ShowtimeLoggedIn>
 
 export type MeGetMyShowtimePingsData = {
   limit?: number

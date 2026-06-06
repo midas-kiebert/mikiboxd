@@ -83,6 +83,12 @@ import type {
   MeDeleteMyShowtimePingResponse,
   MeDismissMyShowtimePingData,
   MeDismissMyShowtimePingResponse,
+  MeGetMyNotificationsData,
+  MeGetMyNotificationsResponse,
+  MeGetMyUnseenNotificationCountResponse,
+  MeMarkMyNotificationsSeenResponse,
+  MeDismissMyNotificationData,
+  MeDismissMyNotificationResponse,
   MeSyncWatchlistResponse,
   MeGetFriendsResponse,
   MeGetSentFriendRequestsResponse,
@@ -1077,6 +1083,76 @@ export class MeService {
       url: "/api/v1/me/pings/{ping_id}/dismiss",
       path: {
         ping_id: data.pingId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get My Notifications
+   * @param data The data for the request.
+   * @param data.limit
+   * @param data.offset
+   * @returns NotificationFeedItem Successful Response
+   * @throws ApiError
+   */
+  public static getMyNotifications(
+    data: MeGetMyNotificationsData = {},
+  ): CancelablePromise<MeGetMyNotificationsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/notifications",
+      query: {
+        limit: data.limit,
+        offset: data.offset,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get My Unseen Notification Count
+   * @returns number Successful Response
+   * @throws ApiError
+   */
+  public static getMyUnseenNotificationCount(): CancelablePromise<MeGetMyUnseenNotificationCountResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/notifications/unseen-count",
+    })
+  }
+
+  /**
+   * Mark My Notifications Seen
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static markMyNotificationsSeen(): CancelablePromise<MeMarkMyNotificationsSeenResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/notifications/mark-seen",
+    })
+  }
+
+  /**
+   * Dismiss My Notification
+   * @param data The data for the request.
+   * @param data.notificationId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static dismissMyNotification(
+    data: MeDismissMyNotificationData,
+  ): CancelablePromise<MeDismissMyNotificationResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/notifications/{notification_id}",
+      path: {
+        notification_id: data.notificationId,
       },
       errors: {
         422: "Validation Error",

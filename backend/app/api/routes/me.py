@@ -23,6 +23,7 @@ from app.models.user import UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
 from app.schemas.friend_group import FriendGroupCreate, FriendGroupPublic
+from app.schemas.notification import NotificationFeedItem
 from app.schemas.push_token import PushTokenDelete, PushTokenRegister
 from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
 from app.schemas.showtime import ShowtimeLoggedIn
@@ -596,6 +597,63 @@ def dismiss_my_showtime_ping(
             detail="Showtime invite not found",
         )
     return Message(message="Showtime invite dismissed")
+
+
+@router.get("/notifications", response_model=list[NotificationFeedItem])
+def get_my_notifications(
+    session: SessionDep,
+    current_user: CurrentUser,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> list[NotificationFeedItem]:
+    return me_service.get_notification_feed(
+        session=session,
+        user_id=current_user.id,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/notifications/unseen-count", response_model=int)
+def get_my_unseen_notification_count(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> int:
+    return me_service.get_notifications_unseen_count(
+        session=session,
+        user_id=current_user.id,
+    )
+
+
+@router.post("/notifications/mark-seen", response_model=Message)
+def mark_my_notifications_seen(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Message:
+    me_service.mark_notifications_seen(
+        session=session,
+        user_id=current_user.id,
+    )
+    return Message(message="Notifications marked as seen")
+
+
+@router.delete("/notifications/{notification_id}", response_model=Message)
+def dismiss_my_notification(
+    session: SessionDep,
+    current_user: CurrentUser,
+    notification_id: int,
+) -> Message:
+    dismissed = me_service.dismiss_notification(
+        session=session,
+        user_id=current_user.id,
+        notification_id=notification_id,
+    )
+    if not dismissed:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Notification not found",
+        )
+    return Message(message="Notification dismissed")
 
 
 @router.put("/watchlist", response_model=Message)

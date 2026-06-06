@@ -76,3 +76,21 @@ class ShowtimePingSort(str, Enum):
 
     PING_CREATED_AT = "ping_created_at"  # Most recently sent pings first
     SHOWTIME_DATETIME = "showtime_datetime"  # Soonest showtime first
+
+
+@unique
+class NotificationType(str, Enum):
+    """Kind of event a stored notification-centre entry represents.
+
+    Only events that are not already persisted as their own actionable entity
+    live in the ``notification`` table — received invites are ``ShowtimePing``
+    rows and received friend requests are ``FriendRequest`` rows. See the
+    notification-centre feed for how the three sources are merged.
+    """
+
+    # A friend marked going/interested on a showtime you are also going to.
+    FRIEND_SHOWTIME_MATCH = "friend_showtime_match"
+    # Someone you invited responded by marking going/interested.
+    INVITE_RESPONSE = "invite_response"
+    # Someone accepted a friend request you sent.
+    FRIEND_REQUEST_ACCEPTED = "friend_request_accepted"

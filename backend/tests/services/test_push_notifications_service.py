@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from pytest_mock import MockerFixture
 
-from app.core.enums import GoingStatus, NotificationChannel
+from app.core.enums import GoingStatus, NotificationChannel, NotificationType
 from app.services import push_notifications
 from app.utils import now_amsterdam_naive
 
@@ -680,6 +680,305 @@ def test_send_interested_showtime_reminders_uses_email_channel(
     send_messages.assert_not_called()
     send_email.assert_called_once()
     session.commit.assert_called_once()
+
+
+def test_notify_friends_persists_match_notification(
+    mocker: MockerFixture,
+) -> None:
+    actor_id = uuid4()
+    recipient_id = uuid4()
+    session = mocker.MagicMock()
+    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    actor = mocker.MagicMock(display_name="Alex")
+    recipient = mocker.MagicMock(
+        id=recipient_id,
+        notify_on_friend_showtime_match=True,
+        notify_channel_friend_showtime_match=NotificationChannel.PUSH,
+    )
+
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        return_value=actor,
+    )
+    mocker.patch(
+        "app.services.push_notifications.showtime_crud.get_friends_with_showtime_selection",
+        return_value=[recipient],
+    )
+    mocker.patch(
+        "app.services.push_notifications.showtime_visibility_crud.is_showtime_visible_to_viewer_for_ids",
+        return_value=True,
+    )
+    mocker.patch(
+        "app.services.push_notifications.showtime_ping_crud.get_received_pings_for_showtime",
+        return_value=[],
+    )
+    notification_crud = mocker.patch(
+        "app.services.push_notifications.notification_crud"
+    )
+    mocker.patch(
+        "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
+        return_value=[],
+    )
+
+    push_notifications.notify_friends_on_showtime_selection(
+        session=session,
+        actor_id=actor_id,
+        showtime=showtime,
+        previous_status=GoingStatus.NOT_GOING,
+        going_status=GoingStatus.GOING,
+    )
+
+    notification_crud.upsert_notification.assert_called_once_with(
+        session=session,
+        user_id=recipient_id,
+        type=NotificationType.FRIEND_SHOWTIME_MATCH,
+        actor_id=actor_id,
+        showtime_id=showtime.id,
+        created_at=mocker.ANY,
+    )
+
+
+def test_notify_friends_skips_match_for_inviter(
+    mocker: MockerFixture,
+) -> None:
+    actor_id = uuid4()
+    recipient_id = uuid4()
+    session = mocker.MagicMock()
+    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    actor = mocker.MagicMock(display_name="Alex")
+    recipient = mocker.MagicMock(
+        id=recipient_id,
+        notify_on_friend_showtime_match=True,
+        notify_channel_friend_showtime_match=NotificationChannel.PUSH,
+    )
+
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        return_value=actor,
+    )
+    mocker.patch(
+        "app.services.push_notifications.showtime_crud.get_friends_with_showtime_selection",
+        return_value=[recipient],
+    )
+    mocker.patch(
+        "app.services.push_notifications.showtime_visibility_crud.is_showtime_visible_to_viewer_for_ids",
+        return_value=True,
+    )
+    # The recipient invited the actor, so they get an invite_response instead.
+    mocker.patch(
+        "app.services.push_notifications.showtime_ping_crud.get_received_pings_for_showtime",
+        return_value=[(mocker.MagicMock(), recipient)],
+    )
+    notification_crud = mocker.patch(
+        "app.services.push_notifications.notification_crud"
+    )
+    mocker.patch(
+        "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
+        return_value=[],
+    )
+
+    push_notifications.notify_friends_on_showtime_selection(
+        session=session,
+        actor_id=actor_id,
+        showtime=showtime,
+        previous_status=GoingStatus.NOT_GOING,
+        going_status=GoingStatus.GOING,
+    )
+
+    notification_crud.upsert_notification.assert_not_called()
+
+
+def test_notify_friends_deletes_notifications_on_removal(
+    mocker: MockerFixture,
+) -> None:
+    actor_id = uuid4()
+    session = mocker.MagicMock()
+    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    actor = mocker.MagicMock(display_name="Alex")
+
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        return_value=actor,
+    )
+    mocker.patch(
+        "app.services.push_notifications.showtime_crud.get_friends_with_showtime_selection",
+        return_value=[],
+    )
+    notification_crud = mocker.patch(
+        "app.services.push_notifications.notification_crud"
+    )
+
+    push_notifications.notify_friends_on_showtime_selection(
+        session=session,
+        actor_id=actor_id,
+        showtime=showtime,
+        previous_status=GoingStatus.GOING,
+        going_status=GoingStatus.NOT_GOING,
+    )
+
+    notification_crud.delete_showtime_notifications.assert_called_once_with(
+        session=session,
+        actor_id=actor_id,
+        showtime_id=showtime.id,
+        types=[
+            NotificationType.FRIEND_SHOWTIME_MATCH,
+            NotificationType.INVITE_RESPONSE,
+        ],
+    )
+    notification_crud.upsert_notification.assert_not_called()
+
+
+def test_notify_inviters_on_response_creates_invite_response(
+    mocker: MockerFixture,
+) -> None:
+    responder_id = uuid4()
+    inviter_id = uuid4()
+    session = mocker.MagicMock()
+    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    responder = mocker.MagicMock(display_name="Alex")
+    inviter = mocker.MagicMock(
+        id=inviter_id,
+        notify_on_invite_response=True,
+        notify_channel_invite_response=NotificationChannel.PUSH,
+    )
+
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        return_value=responder,
+    )
+    mocker.patch(
+        "app.services.push_notifications.showtime_ping_crud.get_received_pings_for_showtime",
+        return_value=[(mocker.MagicMock(), inviter)],
+    )
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_users_by_ids",
+        return_value=[inviter],
+    )
+    notification_crud = mocker.patch(
+        "app.services.push_notifications.notification_crud"
+    )
+    mocker.patch(
+        "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
+        return_value=[mocker.MagicMock(token="ExponentPushToken[abc]")],
+    )
+    send_messages = mocker.patch(
+        "app.services.push_notifications._send_expo_messages",
+        return_value=[{"status": "ok"}],
+    )
+    mocker.patch("app.services.push_notifications._handle_expo_results")
+
+    push_notifications.notify_inviters_on_response(
+        session=session,
+        responder_id=responder_id,
+        showtime=showtime,
+        new_status=GoingStatus.GOING,
+    )
+
+    notification_crud.delete_showtime_notifications.assert_called_once_with(
+        session=session,
+        actor_id=responder_id,
+        showtime_id=showtime.id,
+        types=[NotificationType.FRIEND_SHOWTIME_MATCH],
+        user_id=inviter_id,
+    )
+    notification_crud.upsert_notification.assert_called_once_with(
+        session=session,
+        user_id=inviter_id,
+        type=NotificationType.INVITE_RESPONSE,
+        actor_id=responder_id,
+        showtime_id=showtime.id,
+        created_at=mocker.ANY,
+    )
+    send_messages.assert_called_once()
+    sent_payload = send_messages.call_args.args[0]
+    assert sent_payload[0]["data"]["type"] == "invite_response"
+    assert sent_payload[0]["title"] == "Alex is going"
+
+
+def test_notify_inviters_on_response_skips_when_opted_out(
+    mocker: MockerFixture,
+) -> None:
+    responder_id = uuid4()
+    session = mocker.MagicMock()
+    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    responder = mocker.MagicMock(display_name="Alex")
+    inviter = mocker.MagicMock(
+        id=uuid4(),
+        notify_on_invite_response=False,
+        notify_channel_invite_response=NotificationChannel.PUSH,
+    )
+
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        return_value=responder,
+    )
+    mocker.patch(
+        "app.services.push_notifications.showtime_ping_crud.get_received_pings_for_showtime",
+        return_value=[(mocker.MagicMock(), inviter)],
+    )
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_users_by_ids",
+        return_value=[inviter],
+    )
+    notification_crud = mocker.patch(
+        "app.services.push_notifications.notification_crud"
+    )
+    send_messages = mocker.patch("app.services.push_notifications._send_expo_messages")
+
+    push_notifications.notify_inviters_on_response(
+        session=session,
+        responder_id=responder_id,
+        showtime=showtime,
+        new_status=GoingStatus.INTERESTED,
+    )
+
+    notification_crud.upsert_notification.assert_not_called()
+    send_messages.assert_not_called()
+
+
+def test_notify_user_on_friend_request_accepted_persists_notification(
+    mocker: MockerFixture,
+) -> None:
+    accepter_id = uuid4()
+    requester_id = uuid4()
+    session = mocker.MagicMock()
+    accepter = mocker.MagicMock(display_name="Alex")
+    requester = mocker.MagicMock(
+        notify_on_friend_requests=True,
+        notify_channel_friend_requests=NotificationChannel.PUSH,
+    )
+
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        side_effect=[accepter, requester],
+    )
+    notification_crud = mocker.patch(
+        "app.services.push_notifications.notification_crud"
+    )
+    mocker.patch(
+        "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
+        return_value=[mocker.MagicMock(token="ExponentPushToken[abc]")],
+    )
+    mocker.patch(
+        "app.services.push_notifications._send_expo_messages",
+        return_value=[{"status": "ok"}],
+    )
+    mocker.patch("app.services.push_notifications._handle_expo_results")
+
+    push_notifications.notify_user_on_friend_request_accepted(
+        session=session,
+        accepter_id=accepter_id,
+        requester_id=requester_id,
+    )
+
+    notification_crud.upsert_notification.assert_called_once_with(
+        session=session,
+        user_id=requester_id,
+        type=NotificationType.FRIEND_REQUEST_ACCEPTED,
+        actor_id=accepter_id,
+        showtime_id=None,
+        created_at=mocker.ANY,
+    )
 
 
 def test_handle_expo_results_removes_only_device_not_registered(

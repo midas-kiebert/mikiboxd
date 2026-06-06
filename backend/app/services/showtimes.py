@@ -268,6 +268,12 @@ def update_showtime_selection(
             previous_status=previous_status,
             going_status=going_status,
         )
+        push_notifications.notify_inviters_on_response(
+            session=session,
+            responder_id=user_id,
+            showtime=showtime,
+            new_status=going_status,
+        )
 
     return showtime_logged_in
 

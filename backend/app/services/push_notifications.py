@@ -9,9 +9,11 @@ import httpx
 from sqlmodel import Session
 
 from app.core.config import settings
-from app.core.enums import GoingStatus, NotificationChannel
+from app.core.enums import GoingStatus, NotificationChannel, NotificationType
+from app.crud import notification as notification_crud
 from app.crud import push_token as push_token_crud
 from app.crud import showtime as showtime_crud
+from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.mailer import EmailDeliveryError, send_email
@@ -144,6 +146,23 @@ def notify_friends_on_showtime_selection(
     if payload is None:
         return
 
+    notification_type = payload[2].get("type")
+
+    # When a friend backs out, their match/invite-response entries are no longer
+    # relevant — delete them so the centre shows neither "going" nor "no longer"
+    # (this also covers a select→deselect while the recipient was away).
+    if notification_type == "showtime_status_removed":
+        notification_crud.delete_showtime_notifications(
+            session=session,
+            actor_id=actor_id,
+            showtime_id=showtime.id,
+            types=[
+                NotificationType.FRIEND_SHOWTIME_MATCH,
+                NotificationType.INVITE_RESPONSE,
+            ],
+        )
+        session.commit()
+
     recipients = showtime_crud.get_friends_with_showtime_selection(
         session=session,
         showtime_id=showtime.id,
@@ -173,6 +192,32 @@ def notify_friends_on_showtime_selection(
     ]
     if not visible_recipients:
         return
+
+    # Persist a centre entry for each recipient who can see this selection.
+    # Recipients who invited the actor are skipped here — they receive the more
+    # specific invite_response entry from notify_inviters_on_response instead.
+    if notification_type == "showtime_match":
+        inviter_ids = {
+            sender.id
+            for _, sender in showtime_ping_crud.get_received_pings_for_showtime(
+                session=session,
+                showtime_id=showtime.id,
+                receiver_id=actor_id,
+            )
+        }
+        created_at = now_amsterdam_naive()
+        for recipient in visible_recipients:
+            if recipient.id in inviter_ids:
+                continue
+            notification_crud.upsert_notification(
+                session=session,
+                user_id=recipient.id,
+                type=NotificationType.FRIEND_SHOWTIME_MATCH,
+                actor_id=actor_id,
+                showtime_id=showtime.id,
+                created_at=created_at,
+            )
+        session.commit()
 
     title, body, data = payload
     push_recipient_ids = [
@@ -210,6 +255,115 @@ def notify_friends_on_showtime_selection(
                 results = _send_expo_messages(messages)
             except Exception:
                 logger.exception("Failed sending showtime status notifications")
+            else:
+                _handle_expo_results(
+                    session=session,
+                    tokens=[token.token for token in push_tokens],
+                    results=results,
+                )
+
+    for recipient in email_recipients:
+        _send_email_notification(
+            email_to=recipient.email,
+            subject=title,
+            body=body,
+        )
+
+
+def notify_inviters_on_response(
+    *,
+    session: Session,
+    responder_id: UUID,
+    showtime: Showtime,
+    new_status: GoingStatus,
+) -> None:
+    """Tell whoever invited ``responder`` that they marked going/interested.
+
+    A response supersedes any generic match entry for the same pair, so the
+    inviter sees one "they responded to your invite" item rather than two.
+    """
+    if new_status not in ACTIVE_SHOWTIME_STATUSES:
+        return
+
+    responder = user_crud.get_user_by_id(session=session, user_id=responder_id)
+    if responder is None:
+        return
+
+    received_pings = showtime_ping_crud.get_received_pings_for_showtime(
+        session=session,
+        showtime_id=showtime.id,
+        receiver_id=responder_id,
+    )
+    inviter_ids = {
+        sender.id for _, sender in received_pings if sender.id != responder_id
+    }
+    if not inviter_ids:
+        return
+
+    responder_name = responder.display_name or "A friend"
+    status_text = "going" if new_status == GoingStatus.GOING else "interested"
+    title = f"{responder_name} is {status_text}"
+    body = showtime.movie.title
+    data = {
+        "type": "invite_response",
+        "showtimeId": showtime.id,
+        "movieId": showtime.movie_id,
+        "actorId": str(responder_id),
+        "status": new_status.value,
+    }
+
+    created_at = now_amsterdam_naive()
+    inviters = user_crud.get_users_by_ids(session=session, user_ids=list(inviter_ids))
+
+    push_recipient_ids: list[UUID] = []
+    email_recipients = []
+    for inviter in inviters:
+        if not inviter.notify_on_invite_response:
+            continue
+        # Replace any generic match entry for this pair with the response entry.
+        notification_crud.delete_showtime_notifications(
+            session=session,
+            actor_id=responder_id,
+            showtime_id=showtime.id,
+            types=[NotificationType.FRIEND_SHOWTIME_MATCH],
+            user_id=inviter.id,
+        )
+        notification_crud.upsert_notification(
+            session=session,
+            user_id=inviter.id,
+            type=NotificationType.INVITE_RESPONSE,
+            actor_id=responder_id,
+            showtime_id=showtime.id,
+            created_at=created_at,
+        )
+        if inviter.notify_channel_invite_response == NotificationChannel.EMAIL:
+            email_recipients.append(inviter)
+        else:
+            push_recipient_ids.append(inviter.id)
+    session.commit()
+
+    if push_recipient_ids:
+        push_tokens = push_token_crud.get_push_tokens_for_users(
+            session=session,
+            user_ids=push_recipient_ids,
+        )
+        if push_tokens:
+            messages = [
+                {
+                    "to": token.token,
+                    "title": title,
+                    "body": body,
+                    "data": data,
+                    "priority": "high",
+                    "sound": "default",
+                    "channelId": ANDROID_PUSH_CHANNEL_ID,
+                }
+                for token in push_tokens
+            ]
+            try:
+                results = _send_expo_messages(messages)
+            except Exception:
+                logger.exception("Failed sending invite response notifications")
             else:
                 _handle_expo_results(
                     session=session,
@@ -297,6 +451,17 @@ def notify_user_on_friend_request_accepted(
     requester = user_crud.get_user_by_id(session=session, user_id=requester_id)
     if requester is None or not requester.notify_on_friend_requests:
         return
+
+    # Record a centre entry regardless of delivery channel (a decline records nothing).
+    notification_crud.upsert_notification(
+        session=session,
+        user_id=requester_id,
+        type=NotificationType.FRIEND_REQUEST_ACCEPTED,
+        actor_id=accepter_id,
+        showtime_id=None,
+        created_at=now_amsterdam_naive(),
+    )
+    session.commit()
 
     accepter_name = accepter.display_name or "Someone"
     subject = "Friend request accepted"

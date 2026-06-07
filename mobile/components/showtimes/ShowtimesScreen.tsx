@@ -10,7 +10,7 @@ import { useRouter } from "expo-router";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
+import { useShowtimeModal, type OpenOptions } from "@/components/showtimes/ShowtimeModalProvider";
 import TopBar from "@/components/layout/TopBar";
 import SearchBar from "@/components/inputs/SearchBar";
 import FilterPills, {
@@ -28,6 +28,7 @@ type ShowtimesListContentProps = {
   refreshing: boolean;
   onRefresh: () => void | Promise<void>;
   emptyText?: string;
+  openModalOptions?: OpenOptions;
 };
 
 export function ShowtimesListContent({
@@ -40,6 +41,7 @@ export function ShowtimesListContent({
   refreshing,
   onRefresh,
   emptyText = "No showtimes found",
+  openModalOptions,
 }: ShowtimesListContentProps) {
   const router = useRouter();
   const colors = useThemeColors();
@@ -76,7 +78,7 @@ export function ShowtimesListContent({
       renderItem={({ item }) => (
         <ShowtimeCard
           showtime={item}
-          onPress={(showtime) => openShowtimeModal(showtime)}
+          onPress={(showtime) => openShowtimeModal(showtime, openModalOptions)}
           onLongPress={(showtime) => router.push(`/movie/${showtime.movie.id}`)}
         />
       )}
@@ -128,11 +130,14 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   ) => boolean | void;
   // New slot: replaces FilterPills when provided
   filterRow?: React.ReactElement | null | false;
+  // New slot: replaces ShowtimesListContent when provided (e.g. for group-by-movies)
+  listContent?: React.ReactNode;
   emptyText?: string;
+  openModalOptions?: OpenOptions;
 };
 
 export default function ShowtimesScreen<TFilterId extends string = string>({
-  topBarTitle = "MIKINO",
+  topBarTitle = "MiKiNO",
   topBarTitleSuffix,
   topBarShowBackButton = false,
   showtimes,
@@ -150,7 +155,9 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   onToggleFilter,
   onLongPressFilter,
   filterRow,
+  listContent,
   emptyText = "No showtimes found",
+  openModalOptions,
 }: ShowtimesScreenProps<TFilterId>) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -176,17 +183,20 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
           activeIds={activeFilterIds ?? []}
         />
       )}
-      <ShowtimesListContent
-        showtimes={showtimes}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        isFetchingNextPage={isFetchingNextPage}
-        hasNextPage={hasNextPage}
-        onLoadMore={onLoadMore}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        emptyText={emptyText}
-      />
+      {listContent !== undefined ? listContent : (
+        <ShowtimesListContent
+          showtimes={showtimes}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          isFetchingNextPage={isFetchingNextPage}
+          hasNextPage={hasNextPage}
+          onLoadMore={onLoadMore}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          emptyText={emptyText}
+          openModalOptions={openModalOptions}
+        />
+      )}
     </SafeAreaView>
   );
 }

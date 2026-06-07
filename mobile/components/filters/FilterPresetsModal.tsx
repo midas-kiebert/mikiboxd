@@ -4,7 +4,6 @@ import {
   Alert,
   FlatList,
   Modal,
-  Platform,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -13,6 +12,8 @@ import {
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   MeService,
@@ -47,6 +48,7 @@ export type PageFilterPresetState = {
   days?: string[] | null;
   time_ranges?: string[] | null;
   runtime_ranges?: string[] | null;
+  group_by_movie?: boolean;
 };
 
 type FilterPresetsModalProps = {
@@ -180,6 +182,19 @@ export default function FilterPresetsModal({
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
+
+  const translateY = useSharedValue(0);
+  useEffect(() => {
+    if (visible) translateY.value = 0;
+  }, [visible, translateY]);
+  const panGesture = Gesture.Pan()
+    .runOnJS(true)
+    .onUpdate((e) => { if (e.translationY > 0) translateY.value = e.translationY; })
+    .onEnd((e) => {
+      if (e.translationY > 80 || e.velocityY > 800) onClose();
+      else translateY.value = withSpring(0, { damping: 20 });
+    });
+  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
 
   const [presetName, setPresetName] = useState("");
   const [presetError, setPresetError] = useState<string | null>(null);
@@ -413,7 +428,7 @@ export default function FilterPresetsModal({
                   {item.name}
                 </ThemedText>
               </View>
-              <ThemedText numberOfLines={1} style={styles.presetMeta}>
+              <ThemedText style={styles.presetMeta}>
                 {summary}
               </ThemedText>
             </View>
@@ -505,15 +520,23 @@ export default function FilterPresetsModal({
       animationType="slide"
       visible={visible}
       onRequestClose={onClose}
-      presentationStyle="pageSheet"
+      transparent
+      statusBarTranslucent
     >
-      <SafeAreaView style={styles.modalContainer} edges={["top", "bottom"]}>
-        <View style={styles.header}>
-          <ThemedText style={styles.title}>{getScopeLabel(scope)} Presets</ThemedText>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.8}>
-            <ThemedText style={styles.closeButtonText}>Close</ThemedText>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.modalWrapper}>
+        <Animated.View style={[styles.modalContainer, sheetStyle]}>
+          <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+            <GestureDetector gesture={panGesture}>
+              <View>
+                <View style={styles.dragHandleBar} />
+                <View style={styles.header}>
+                  <ThemedText style={styles.title}>{getScopeLabel(scope)} Presets</ThemedText>
+                  <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.8}>
+                    <ThemedText style={styles.closeButtonText}>Close</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </GestureDetector>
 
         <View style={styles.presetsContainer}>
           {isPresetsLoading ? (
@@ -674,20 +697,27 @@ export default function FilterPresetsModal({
             </View>
           </View>
         </Modal>
-      </SafeAreaView>
+          </SafeAreaView>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
 
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
+    modalWrapper: { flex: 1, justifyContent: "flex-end" },
+    dragHandleBar: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.textSecondary, opacity: 0.35, alignSelf: "center", marginTop: 10, marginBottom: 6 },
     modalContainer: {
-      flex: 1,
-      backgroundColor: colors.background,
+      height: "88%",
+      backgroundColor: colors.nestedModalBackground,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      overflow: "hidden",
     },
     header: {
       paddingHorizontal: 16,
-      paddingTop: Platform.OS === "ios" ? 20 : 12,
+      paddingTop: 12,
       paddingBottom: 12,
       flexDirection: "row",
       alignItems: "center",
@@ -821,7 +851,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     preferenceFooter: {
       borderTopWidth: 1,
       borderTopColor: colors.divider,
-      backgroundColor: colors.background,
+      backgroundColor: colors.nestedModalBackground,
       paddingHorizontal: 16,
       paddingTop: 10,
       paddingBottom: 10,

@@ -14,7 +14,7 @@ type TopBarProps = {
 };
 
 export default function TopBar({
-  title = "MIKINO",
+  title = "MiKiNO",
   titleSuffix,
   showBackButton = false,
 }: TopBarProps) {

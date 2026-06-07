@@ -29,6 +29,7 @@ export const normalizeFilters = (filters: PageFilterPresetState): PageFilterPres
   runtime_ranges: getSortedUniqueStrings(
     normalizeSingleRuntimeRangeSelection(filters.runtime_ranges ?? [])
   ),
+  group_by_movie: Boolean(filters.group_by_movie),
 });
 
 export const serializeFilters = (filters: PageFilterPresetState): string =>
@@ -44,5 +45,6 @@ export const normalizeFiltersForSave = (filters: PageFilterPresetState): FilterP
     days: normalized.days ?? null,
     time_ranges: normalized.time_ranges ?? null,
     runtime_ranges: normalized.runtime_ranges ?? null,
+    group_by_movie: normalized.group_by_movie ?? null,
   };
 };

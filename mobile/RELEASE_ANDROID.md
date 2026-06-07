@@ -63,10 +63,10 @@ Download the Android keystore and keep the `.jks` file plus its passwords/alias.
 `~/.gradle/gradle.properties`:
 
 ```properties
-MIKINO_UPLOAD_STORE_FILE=/absolute/path/to/upload-keystore.jks
-MIKINO_UPLOAD_STORE_PASSWORD=your-store-password
-MIKINO_UPLOAD_KEY_ALIAS=your-key-alias
-MIKINO_UPLOAD_KEY_PASSWORD=your-key-password
+MiKiNO_UPLOAD_STORE_FILE=/absolute/path/to/upload-keystore.jks
+MiKiNO_UPLOAD_STORE_PASSWORD=your-store-password
+MiKiNO_UPLOAD_KEY_ALIAS=your-key-alias
+MiKiNO_UPLOAD_KEY_PASSWORD=your-key-password
 ```
 
 3. Build locally from `mobile/`:
@@ -81,7 +81,7 @@ This runs Expo prebuild, then Gradle `bundleRelease`, and copies the final artif
 mobile/dist/aab/mobile-release-<timestamp>.aab
 ```
 
-If you do not configure the four `MIKINO_UPLOAD_*` values, the local release build
+If you do not configure the four `MiKiNO_UPLOAD_*` values, the local release build
 falls back to `debug.keystore`. That is useful for a smoke test, but it is not
 uploadable to the existing Play app.
 

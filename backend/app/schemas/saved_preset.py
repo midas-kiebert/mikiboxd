@@ -28,6 +28,7 @@ INCLUDABLE_FIELDS = frozenset(
         "days",
         "time_ranges",
         "runtime_ranges",
+        "group_by_movie",
         CINEMAS_FIELD,
     }
 )

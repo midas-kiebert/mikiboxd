@@ -33,6 +33,7 @@ type CinemaColorPalette = {
 type CinemaPillProps = {
   cinema: CinemaPublic;
   variant?: "compact" | "default";
+  disabledIfSameId?: number;
 };
 
 type VariantStyles = {
@@ -42,7 +43,7 @@ type VariantStyles = {
 
 const CINEMA_PILL_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
-export default function CinemaPill({ cinema, variant = "default" }: CinemaPillProps) {
+export default function CinemaPill({ cinema, variant = "default", disabledIfSameId }: CinemaPillProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
   const colors = useThemeColors();
@@ -83,7 +84,10 @@ export default function CinemaPill({ cinema, variant = "default" }: CinemaPillPr
   const cinemaBackground = cinemaPalette.primary;
   const cinemaText = cinemaPalette.secondary;
 
+  const isDisabled = disabledIfSameId !== undefined && cinema.id === disabledIfSameId;
+
   const handlePress = (event: GestureResponderEvent) => {
+    if (isDisabled) return;
     event.stopPropagation();
     router.push({
       pathname: "/cinema-showtimes/[id]",

@@ -189,20 +189,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flexDirection: "row",
       backgroundColor: colors.cardBackground,
       height: POSTER_HEIGHT,
-      borderLeftWidth: 3,
-      borderLeftColor: "transparent",
     },
-    cardGoing: {
-      borderLeftColor: colors.green.secondary,
-    },
-    cardInterested: {
-      borderLeftColor: colors.orange.secondary,
-    },
-    cardInvited: {
-      borderLeftColor: colors.blue.secondary,
-    },
+    cardGoing: {},
+    cardInterested: {},
+    cardInvited: {},
     dateColumn: {
-      width: 80,
+      flexShrink: 0,
       alignItems: "center",
       justifyContent: "center",
       paddingVertical: 8,
@@ -212,16 +204,21 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     dateColumnInterested: {},
     datePillGoing: {
       backgroundColor: colors.green.primary,
+      borderColor: colors.green.secondary,
     },
     datePillInterested: {
       backgroundColor: colors.orange.primary,
+      borderColor: colors.orange.secondary,
     },
     datePillInvited: {
       backgroundColor: colors.blue.primary,
+      borderColor: colors.blue.secondary,
     },
     datePill: {
       alignItems: "center",
       backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
       borderRadius: 8,
       paddingVertical: 6,
       paddingHorizontal: 10,

@@ -25,6 +25,7 @@ type FriendBadgesProps = {
   maxVisible?: number;
   maxRows?: number;
   style?: StyleProp<ViewStyle>;
+  disabledUserId?: string;
 };
 
 type FriendBadgeProps = {
@@ -37,6 +38,7 @@ type FriendBadgeProps = {
   styles: ReturnType<typeof createStyles>;
   variant: "compact" | "default";
   onMeasureWidth?: (badgeKey: string, width: number) => void;
+  disabledUserId?: string;
 };
 
 type VariantStyles = {
@@ -106,6 +108,7 @@ const FriendBadge = ({
   styles,
   variant,
   onMeasureWidth,
+  disabledUserId,
 }: FriendBadgeProps) => {
   const router = useRouter();
   const sizeStyles: VariantStyles =
@@ -124,6 +127,7 @@ const FriendBadge = ({
         };
 
   const handlePress = (event: GestureResponderEvent) => {
+    if (disabledUserId !== undefined && friendId === disabledUserId) return;
     event.stopPropagation();
     router.push(`/friend-showtimes/${friendId}`);
   };
@@ -169,6 +173,7 @@ export default function FriendBadges({
   maxVisible,
   maxRows,
   style,
+  disabledUserId,
 }: FriendBadgesProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
@@ -327,6 +332,7 @@ export default function FriendBadges({
           styles={styles}
           variant={variant}
           onMeasureWidth={handleMeasureBadgeWidth}
+          disabledUserId={disabledUserId}
         />
       ))}
       {hiddenCount > 0 ? (

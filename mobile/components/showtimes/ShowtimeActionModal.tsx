@@ -32,6 +32,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -97,6 +98,12 @@ type ShowtimeActionModalProps = {
   ) => void;
   onDismissInvite?: () => void;
   onClose: () => void;
+  /** Hides the poster tap and "All showtimes" button when already on the movie page. */
+  disableMovieNavigation?: boolean;
+  /** Disables the cinema pill navigation when already on that cinema's page. */
+  disabledCinemaId?: number;
+  /** Disables friend badge navigation for this user when already on their page. */
+  disabledUserId?: string;
 };
 
 // ─── Seat input helpers ───────────────────────────────────────────────────────
@@ -173,9 +180,13 @@ export default function ShowtimeActionModal({
   onUpdateStatus,
   onDismissInvite,
   onClose,
+  disableMovieNavigation = false,
+  disabledCinemaId,
+  disabledUserId,
 }: ShowtimeActionModalProps) {
   const { top: topInset, bottom: bottomInset } = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
+  const router = useRouter();
   // Generous trailing space so the invite section can always be scrolled to the
   // top, even after typing shrinks the friend list (so the view doesn't jump).
   const inviteScrollPadding = Math.round(windowHeight * 0.6);
@@ -389,6 +400,13 @@ export default function ShowtimeActionModal({
       await Linking.openURL(ticketLink);
     }
   };
+
+  const handleGoToMoviePage = () => {
+    if (!showtime) return;
+    bottomSheetModalRef.current?.close();
+    router.push(`/movie/${showtime.movie.id}`);
+  };
+
 
   const handleOpenSeatDialog = () => {
     if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) return;
@@ -616,7 +634,6 @@ export default function ShowtimeActionModal({
       handleComponent={null}
       backgroundStyle={styles.sheetBackground}
       topInset={topInset}
-      bottomInset={bottomInset}
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
@@ -625,7 +642,7 @@ export default function ShowtimeActionModal({
       <BottomSheetScrollView
         ref={scrollViewRef}
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 32 + bottomInset }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -661,14 +678,30 @@ export default function ShowtimeActionModal({
           <>
             {/* Header: poster + title + date + time·runtime + cinema badge */}
             <View style={styles.summaryRow}>
-              <Image
-                source={{ uri: showtime.movie.poster_link ?? undefined }}
-                style={styles.poster}
-              />
+              {disableMovieNavigation ? (
+                <Image
+                  source={{ uri: showtime.movie.poster_link ?? undefined }}
+                  style={styles.poster}
+                />
+              ) : (
+                <TouchableOpacity onPress={handleGoToMoviePage} activeOpacity={0.85}>
+                  <Image
+                    source={{ uri: showtime.movie.poster_link ?? undefined }}
+                    style={styles.poster}
+                  />
+                </TouchableOpacity>
+              )}
               <View style={styles.summaryInfo}>
                 <ThemedText style={styles.movieTitle} numberOfLines={3}>
                   {showtime.movie.title}
                 </ThemedText>
+                {showtime.movie.directors && showtime.movie.directors.length > 0 ? (
+                  <ThemedText style={styles.directorText} numberOfLines={1}>
+                    <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
+                    {showtime.movie.directors.join(", ")}
+                    {showtime.movie.release_year ? ` (${showtime.movie.release_year})` : null}
+                  </ThemedText>
+                ) : null}
                 {dateLabel ? (
                   <ThemedText style={styles.dateText}>{dateLabel}</ThemedText>
                 ) : null}
@@ -676,7 +709,7 @@ export default function ShowtimeActionModal({
                   <ThemedText style={styles.timeText}>{timeLabel}</ThemedText>
                 ) : null}
                 <View style={styles.cinemaBadgeRow}>
-                  <CinemaPill cinema={showtime.cinema} />
+                  <CinemaPill cinema={showtime.cinema} disabledIfSameId={disabledCinemaId} />
                 </View>
               </View>
               <TouchableOpacity
@@ -697,6 +730,7 @@ export default function ShowtimeActionModal({
                   friendsInterested={showtime.friends_interested}
                   variant="default"
                   maxVisible={30}
+                  disabledUserId={disabledUserId}
                 />
               ) : (
                 <ThemedText style={styles.audienceEmptyText}>
@@ -751,42 +785,47 @@ export default function ShowtimeActionModal({
             {/* Actions: Share + Get Ticket (+ Seat) */}
             <View style={styles.ctaRow}>
               <TouchableOpacity
-                style={[styles.shareButton, !hasTicketLink && styles.shareButtonFull]}
+                style={styles.ctaIconButton}
                 onPress={() => void handleSharePingLink()}
                 disabled={!currentUser?.id}
                 activeOpacity={0.85}
               >
-                <MaterialIcons name="share" size={18} color={colors.textSecondary} />
-                {!hasTicketLink ? (
-                  <ThemedText style={styles.shareButtonText}>Share</ThemedText>
-                ) : null}
+                <MaterialIcons name="share" size={20} color={colors.textSecondary} />
+                <ThemedText style={styles.ctaIconButtonText}>Share</ThemedText>
               </TouchableOpacity>
+              {!disableMovieNavigation ? (
+                <TouchableOpacity
+                  style={[styles.ctaIconButton, !hasTicketLink && styles.ticketButton]}
+                  onPress={handleGoToMoviePage}
+                  activeOpacity={0.85}
+                >
+                  <MaterialIcons name="format-list-bulleted" size={20} color={colors.textSecondary} />
+                  <ThemedText style={styles.ctaIconButtonText}>All showtimes</ThemedText>
+                </TouchableOpacity>
+              ) : null}
               {hasTicketLink ? (
                 <TouchableOpacity
-                  style={styles.ticketButton}
+                  style={[styles.ctaIconButton, styles.ticketButton]}
                   onPress={handleOpenTicketLink}
                   activeOpacity={0.85}
                 >
-                  <MaterialIcons name="local-activity" size={20} color="#ffffff" />
-                  <ThemedText style={styles.ticketButtonText}>Get Ticket</ThemedText>
+                  <MaterialIcons name="local-activity" size={20} color={colors.textSecondary} />
+                  <ThemedText style={styles.ctaIconButtonText}>Get ticket</ThemedText>
                 </TouchableOpacity>
               ) : null}
               {shouldShowSeatButton ? (
                 <TouchableOpacity
-                  style={[styles.seatButton, isSeatConfigured && styles.seatButtonSet]}
+                  style={[styles.ctaIconButton, isSeatConfigured && styles.seatButtonSet]}
                   onPress={handleOpenSeatDialog}
                   activeOpacity={0.85}
                 >
                   <MaterialIcons
                     name="event-seat"
-                    size={18}
+                    size={20}
                     color={isSeatConfigured ? colors.green.secondary : colors.textSecondary}
                   />
                   <ThemedText
-                    style={[
-                      styles.seatButtonText,
-                      isSeatConfigured && styles.seatButtonTextSet,
-                    ]}
+                    style={[styles.ctaIconButtonText, isSeatConfigured && styles.seatButtonTextSet]}
                     numberOfLines={1}
                   >
                     {seatLabel ? `Seat ${seatLabel}` : "Seat"}
@@ -1049,11 +1088,23 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 8,
       backgroundColor: colors.posterPlaceholder,
     },
-    summaryInfo: { flex: 1, gap: 3 },
+    summaryInfo: { flex: 1, gap: 1 },
     movieTitle: { fontSize: 19, fontWeight: "800", color: colors.text, paddingRight: 36 },
-    dateText: { fontSize: 12.5, fontWeight: "600", color: colors.text },
-    timeText: { fontSize: 12.5, color: colors.textSecondary },
-    cinemaBadgeRow: { flexDirection: "row", alignItems: "center", marginTop: 1 },
+    directorText: { fontSize: 10, color: colors.textSecondary, marginTop: -4 },
+    directorLabel: { fontSize: 9, fontWeight: "800", letterSpacing: 0.6, color: colors.textSecondary },
+    dateText: { fontSize: 12.5, fontWeight: "600", color: colors.text, marginTop: -4 },
+    timeText: { fontSize: 12.5, color: colors.textSecondary, marginTop: -4 },
+    cinemaBadgeRow: { flexDirection: "row", alignItems: "center" },
+    movieLinksRow: { flexDirection: "row", gap: 6, marginTop: 2 },
+    movieLinkChip: {
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 20,
+      backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+    },
+    movieLinkChipText: { fontSize: 11, fontWeight: "600", color: colors.textSecondary },
     closeButton: {
       position: "absolute",
       top: -10,
@@ -1100,7 +1151,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.pillBackground,
-      paddingVertical: 14,
+      paddingVertical: 10,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -1113,45 +1164,21 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     statusButtonText: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
 
     ctaRow: { flexDirection: "row", gap: 8 },
-    shareButton: {
-      flexDirection: "row",
-      gap: 6,
+    ctaIconButton: {
+      gap: 4,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      paddingVertical: 14,
-      paddingHorizontal: 16,
+      paddingTop: 11,
+      paddingBottom: 7,
+      paddingHorizontal: 14,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.cardBackground,
     },
-    shareButtonFull: { flex: 1 },
-    shareButtonText: { fontSize: 15, fontWeight: "700", color: colors.textSecondary },
-    ticketButton: {
-      flex: 1,
-      flexDirection: "row",
-      gap: 8,
-      borderRadius: 12,
-      paddingVertical: 14,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: "#1f9d54",
-    },
-    ticketButtonText: { fontSize: 15, fontWeight: "800", color: "#ffffff" },
-    seatButton: {
-      flexDirection: "row",
-      gap: 6,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.pillBackground,
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      alignItems: "center",
-      justifyContent: "center",
-    },
+    ctaIconButtonText: { fontSize: 11, fontWeight: "700", color: colors.textSecondary, textAlign: "center" },
+    ticketButton: { flex: 1 },
     seatButtonSet: { borderColor: colors.green.secondary, backgroundColor: colors.green.primary },
-    seatButtonText: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
     seatButtonTextSet: { color: colors.green.secondary },
 
     invitedSection: { gap: 8 },

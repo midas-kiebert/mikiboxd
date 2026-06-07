@@ -22,7 +22,6 @@ def list_user_presets(
             col(SavedPreset.scope) == scope,
         )
         .order_by(
-            col(SavedPreset.is_favorite).desc(),
             func.lower(col(SavedPreset.name)),
             col(SavedPreset.created_at),
         )

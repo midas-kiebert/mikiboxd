@@ -15,42 +15,29 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
-import type { GoingStatus, MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
+import type { MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
 import { MoviesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
-import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
+
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
-import CinemaPresetQuickPopover from "@/components/filters/CinemaPresetQuickPopover";
-import FilterPills, {
-  type FilterPillLongPressPosition,
-} from "@/components/filters/FilterPills";
-import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
-import DayFilterModal from "@/components/filters/DayFilterModal";
-import DayQuickPopover from "@/components/filters/DayQuickPopover";
-import TimeQuickPopover from "@/components/filters/TimeQuickPopover";
-import { formatDayPillLabel, resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
-import { formatTimePillLabel } from "@/components/filters/time-range-utils";
+import FiltersModal from "@/components/filters/FiltersModal";
+import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
+import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
+import { getSelectedStatusesFromShowtimeFilter } from "@/components/filters/shared-tab-filters";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { useSharedDayTimeFilters } from "@/hooks/useSharedDayTimeFilters";
-import { IconSymbol } from "@/components/ui/icon-symbol";
+import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
+import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selection";
+import { IconSymbol } from "@/components/ui/icon-symbol";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 
 const SHOWTIMES_PAGE_SIZE = 20;
-// Filter pill definitions rendered in the top filter row.
-const BASE_FILTERS = [
-  { id: "showtime-filter", label: "Any Status" },
-  { id: "cinemas", label: "Cinemas" },
-  { id: "days", label: "Any Day" },
-  { id: "times", label: "any time" },
-];
 
-type ShowtimeFilter = "all" | "going" | "interested";
 type MovieShowtimeSection = {
   key: string;
   title: string;
@@ -58,39 +45,40 @@ type MovieShowtimeSection = {
 };
 
 export default function MoviePage() {
-  // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
   const isFetchingMoreRef = useRef(false);
-  // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
-  // Safe-area inset values used to avoid notches/home indicators.
   const insets = useSafeAreaInsets();
   const { openShowtimeModal } = useShowtimeModal();
   const { id, showtimeId } = useLocalSearchParams<{
     id: string;
     showtimeId?: string | string[];
   }>();
-  // Tracks the selected showtime-status mode (all / interested / going).
-  const [selectedFilter, setSelectedFilter] = useState<ShowtimeFilter>("all");
-  // Controls visibility of the cinema-filter modal.
-  const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
-  const [cinemaPresetPopoverVisible, setCinemaPresetPopoverVisible] = useState(false);
-  const [cinemaPresetPopoverAnchor, setCinemaPresetPopoverAnchor] =
-    useState<FilterPillLongPressPosition | null>(null);
-  const [dayQuickPopoverVisible, setDayQuickPopoverVisible] = useState(false);
-  const [dayQuickPopoverAnchor, setDayQuickPopoverAnchor] =
-    useState<FilterPillLongPressPosition | null>(null);
-  const [timeQuickPopoverVisible, setTimeQuickPopoverVisible] = useState(false);
-  const [timeQuickPopoverAnchor, setTimeQuickPopoverAnchor] =
-    useState<FilterPillLongPressPosition | null>(null);
-  // Controls pull-to-refresh spinner visibility.
+
+  const [filtersModalVisible, setFiltersModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  // Controls visibility of the day-filter modal.
-  const [dayModalVisible, setDayModalVisible] = useState(false);
-  const { selectedDays, setSelectedDays, selectedTimeRanges, setSelectedTimeRanges } =
-    useSharedDayTimeFilters();
+
+  const {
+    selectedShowtimeFilter,
+    appliedShowtimeFilter,
+    setSelectedShowtimeFilter,
+    selectedDays,
+    setSelectedDays,
+    selectedTimeRanges,
+    setSelectedTimeRanges,
+    selectedRuntimeRanges,
+    setSelectedRuntimeRanges,
+    sessionCinemaIds,
+    setSessionCinemaIds,
+  } = useSharedTabFilters();
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  const isCinemaFilterActive = isCinemaSelectionDifferentFromPreferred({ sessionCinemaIds, preferredCinemaIds });
+
+  const movieId = useMemo(() => Number(id), [id]);
+  const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
+
   const dayAnchorKey =
     DateTime.now().setZone("Europe/Amsterdam").startOf("day").toISODate() ?? "";
   const resolvedApiDays = useMemo(
@@ -106,39 +94,20 @@ export default function MoviePage() {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }, [showtimeId]);
 
-  // Convert route param to numeric movie ID for API calls/query keys.
-  const movieId = useMemo(() => Number(id), [id]);
-  // Snapshot timestamp used to keep paginated API responses consistent.
-  const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
-  const { selections: sessionCinemaIds } = useSessionCinemaSelections();
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  const showtimesFilters = useMemo(() => ({
+    selectedCinemaIds: sessionCinemaIds,
+    days: resolvedApiDays,
+    timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
+    selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
+  }), [resolvedApiDays, appliedShowtimeFilter, selectedTimeRanges, sessionCinemaIds]);
 
-  // UI filter state is translated into backend filter params here.
-  const showtimesFilters = useMemo(() => {
-    const selectedStatuses: GoingStatus[] | undefined =
-      selectedFilter === "all"
-        ? undefined
-        : selectedFilter === "going"
-          ? ["GOING"]
-          : ["GOING", "INTERESTED"];
-
-    return {
-      selectedCinemaIds: sessionCinemaIds,
-      days: resolvedApiDays,
-      timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
-      selectedStatuses,
-    };
-  }, [resolvedApiDays, selectedFilter, selectedTimeRanges, sessionCinemaIds]);
-
-  // Data hooks keep this module synced with backend data and shared cache state.
   const { data: movie, isLoading: isMovieLoading, isError: isMovieError } = useQuery<MovieLoggedIn, Error>({
-    queryKey: ["movie", movieId, sessionCinemaIds ?? null],
+    queryKey: ["movie", movieId],
     queryFn: () =>
       MoviesService.readMovie({
         id: movieId,
         snapshotTime,
         showtimeLimit: 0,
-        selectedCinemaIds: sessionCinemaIds,
       }),
     enabled: Number.isFinite(movieId) && movieId > 0,
   });
@@ -157,7 +126,6 @@ export default function MoviePage() {
     filters: showtimesFilters,
   });
 
-  // Flatten/derive list data for rendering efficiency.
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
   const showtimeSections = useMemo<MovieShowtimeSection[]>(() => {
     const sectionMap = new Map<string, MovieShowtimeSection>();
@@ -184,7 +152,7 @@ export default function MoviePage() {
 
     return sectionOrder.map((key) => sectionMap.get(key)!).filter(Boolean);
   }, [showtimes]);
-  // Request the next page when the list nears the end.
+
   const handleEndReached = () => {
     if (!hasNextPage || isFetchingNextPage || isFetchingMoreRef.current) return;
     isFetchingMoreRef.current = true;
@@ -193,7 +161,6 @@ export default function MoviePage() {
     });
   };
 
-  // Refresh the current showtimes dataset and reset stale pagination.
   const handleRefresh = async () => {
     if (!Number.isFinite(movieId) || movieId <= 0) return;
     setRefreshing(true);
@@ -219,7 +186,7 @@ export default function MoviePage() {
   const letterboxdUrl = letterboxdSlug
     ? `https://letterboxd.com/film/${letterboxdSlug}`
     : letterboxdSearchUrl;
-  // Open the movie's Letterboxd page from the poster on the movie detail header.
+
   const handleOpenLetterboxd = async () => {
     if (!letterboxdUrl) return;
     try {
@@ -229,126 +196,6 @@ export default function MoviePage() {
     }
   };
 
-  // Handle filter pill presses and update active filter state.
-  const handleSelectFilter = (
-    filterId: string,
-    position?: FilterPillLongPressPosition
-  ) => {
-    if (filterId === "showtime-filter") {
-      // Tap cycles all -> interested -> going -> all for quick triaging.
-      setSelectedFilter((prev) =>
-        prev === "all" ? "interested" : prev === "interested" ? "going" : "all"
-      );
-      return;
-    }
-    if (filterId === "cinemas") {
-      setCinemaPresetPopoverAnchor(position ?? null);
-      setCinemaPresetPopoverVisible(true);
-      return;
-    }
-    if (filterId === "days") {
-      setDayQuickPopoverAnchor(position ?? null);
-      setDayQuickPopoverVisible(true);
-      return;
-    }
-    if (filterId === "times") {
-      setTimeQuickPopoverAnchor(position ?? null);
-      setTimeQuickPopoverVisible(true);
-      return;
-    }
-  };
-
-  const handleLongPressFilter = (
-    filterId: string,
-    position: FilterPillLongPressPosition
-  ) => {
-    if (filterId === "cinemas") {
-      setCinemaModalVisible(true);
-      return true;
-    }
-    if (filterId === "days") {
-      setDayModalVisible(true);
-      return true;
-    }
-    if (filterId === "times") {
-      setTimeQuickPopoverAnchor(position ?? null);
-      setTimeQuickPopoverVisible(true);
-      return true;
-    }
-    return false;
-  };
-
-  // Build the filter payload from current UI selections.
-  const pillFilters = useMemo(() => {
-    return BASE_FILTERS.map((filter) => {
-      if (filter.id === "showtime-filter") {
-        const label =
-          selectedFilter === "all"
-            ? "Any Status"
-            : selectedFilter === "going"
-              ? "Going"
-              : "Interested";
-        return {
-          ...filter,
-          label,
-          activeBackgroundColor:
-            selectedFilter === "going"
-              ? colors.green.primary
-              : selectedFilter === "interested"
-                ? colors.orange.primary
-                : undefined,
-          activeTextColor:
-            selectedFilter === "going"
-              ? colors.green.secondary
-              : selectedFilter === "interested"
-                ? colors.orange.secondary
-                : undefined,
-          activeBorderColor:
-            selectedFilter === "going"
-              ? colors.green.secondary
-              : selectedFilter === "interested"
-                ? colors.orange.secondary
-                : undefined,
-        };
-      }
-      if (filter.id === "days") {
-        return { ...filter, label: formatDayPillLabel(selectedDays) };
-      }
-      if (filter.id === "times") {
-        return { ...filter, label: formatTimePillLabel(selectedTimeRanges) };
-      }
-      return filter;
-    });
-  }, [colors, selectedDays, selectedFilter, selectedTimeRanges]);
-
-  const isCinemaFilterActive = useMemo(
-    () =>
-      isCinemaSelectionDifferentFromPreferred({
-        sessionCinemaIds,
-        preferredCinemaIds,
-      }),
-    [sessionCinemaIds, preferredCinemaIds]
-  );
-
-  // Compute which filter pills should render as active.
-  const activeFilterIds = useMemo(() => {
-    const active: string[] = [];
-    if (selectedFilter !== "all") {
-      active.push("showtime-filter");
-    }
-    if (selectedDays.length > 0) {
-      active.push("days");
-    }
-    if (selectedTimeRanges.length > 0) {
-      active.push("times");
-    }
-    if (isCinemaFilterActive) {
-      active.push("cinemas");
-    }
-    return active;
-  }, [selectedFilter, selectedDays.length, selectedTimeRanges.length, isCinemaFilterActive]);
-
-  // Open the showtime modal once when arriving with a ?showtimeId= deep-link param.
   const openedTargetRef = useRef<number | null>(null);
   useEffect(() => {
     if (targetShowtimeId === null || !movie || showtimes.length === 0) return;
@@ -358,7 +205,7 @@ export default function MoviePage() {
     if (!matchingShowtime) return;
 
     openedTargetRef.current = targetShowtimeId;
-    openShowtimeModal({ ...matchingShowtime, movie });
+    openShowtimeModal({ ...matchingShowtime, movie }, { openedFrom: { movieId } });
   }, [targetShowtimeId, showtimes, movie, openShowtimeModal]);
 
   return (
@@ -392,6 +239,65 @@ export default function MoviePage() {
         </View>
       ) : (
         <>
+          {/* Static movie header — stays fixed while showtimes scroll */}
+          <View style={styles.staticHeader}>
+            <TouchableOpacity
+              onPress={handleOpenLetterboxd}
+              activeOpacity={0.85}
+              disabled={!letterboxdUrl}
+            >
+              <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
+            </TouchableOpacity>
+            <View style={styles.summaryInfo}>
+              <ThemedText style={styles.movieTitle} numberOfLines={3}>
+                {movie.title}
+              </ThemedText>
+              {movie.original_title ? (
+                <ThemedText style={styles.originalTitle} numberOfLines={2}>{movie.original_title}</ThemedText>
+              ) : null}
+              {movie.directors && movie.directors.length > 0 ? (
+                <ThemedText style={styles.directorText} numberOfLines={2}>
+                  <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
+                  {movie.directors.join(", ")}
+                  {movie.release_year ? ` (${movie.release_year})` : null}
+                </ThemedText>
+              ) : movie.release_year ? (
+                <ThemedText style={styles.directorText}>{movie.release_year}</ThemedText>
+              ) : null}
+            </View>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.filterRow}>
+            <TouchableOpacity style={styles.filterBtn} onPress={() => setFiltersModalVisible(true)} activeOpacity={0.8}>
+              <MaterialIcons name="tune" size={14} color={colors.pillText} />
+              <ThemedText style={styles.filterBtnText}>Filters</ThemedText>
+            </TouchableOpacity>
+            <ActiveFilterChips
+              inline
+              groupByMovie={false}
+              setGroupByMovie={() => {}}
+              watchlistOnly={false}
+              setWatchlistOnly={() => {}}
+              selectedShowtimeFilter={selectedShowtimeFilter}
+              setSelectedShowtimeFilter={setSelectedShowtimeFilter}
+              showStatusFilter
+              selectedDays={selectedDays}
+              setSelectedDays={setSelectedDays}
+              selectedTimeRanges={selectedTimeRanges}
+              setSelectedTimeRanges={setSelectedTimeRanges}
+              selectedRuntimeRanges={[]}
+              setSelectedRuntimeRanges={() => {}}
+              cinemaChipLabel={isCinemaFilterActive ? `${sessionCinemaIds?.length ?? 0} cinemas` : null}
+              onClearCinemas={isCinemaFilterActive && preferredCinemaIds ? () => setSessionCinemaIds(preferredCinemaIds) : undefined}
+              onClearAll={() => {
+                setSelectedShowtimeFilter("all");
+                setSelectedDays([]);
+                setSelectedTimeRanges([]);
+                if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
+              }}
+            />
+          </View>
+          <View style={styles.divider} />
           <SectionList
             sections={showtimeSections}
             keyExtractor={(item) => item.id.toString()}
@@ -407,7 +313,7 @@ export default function MoviePage() {
                         : undefined,
                   ]}
                   onPress={() => {
-                    if (movie) openShowtimeModal({ ...item, movie });
+                    if (movie) openShowtimeModal({ ...item, movie }, { openedFrom: { movieId } });
                   }}
                   activeOpacity={0.85}
                 >
@@ -440,41 +346,6 @@ export default function MoviePage() {
             onRefresh={handleRefresh}
             onEndReached={handleEndReached}
             onEndReachedThreshold={0.4}
-            ListHeaderComponent={
-              <View style={styles.headerSection}>
-                <View style={styles.header}>
-                  <TouchableOpacity
-                    onPress={handleOpenLetterboxd}
-                    activeOpacity={0.85}
-                    disabled={!letterboxdUrl}
-                  >
-                    <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
-                  </TouchableOpacity>
-                  <View style={styles.headerInfo}>
-                    <ThemedText style={styles.title}>{movie.title}</ThemedText>
-                    {movie.original_title ? (
-                      <ThemedText style={styles.subtitle}>{movie.original_title}</ThemedText>
-                    ) : null}
-                    {movie.directors && movie.directors.length > 0 ? (
-                      <ThemedText style={styles.meta}>Directed by {movie.directors.join(", ")}</ThemedText>
-                    ) : null}
-                    {movie.release_year ? (
-                      <ThemedText style={styles.meta}>{movie.release_year}</ThemedText>
-                    ) : null}
-                  </View>
-                </View>
-                <ThemedText style={styles.sectionTitle}>Showtimes</ThemedText>
-                <View style={styles.filterPillsWrapper}>
-                  <FilterPills
-                    filters={pillFilters}
-                    selectedId=""
-                    onSelect={handleSelectFilter}
-                    onLongPressSelect={handleLongPressFilter}
-                    activeIds={activeFilterIds}
-                  />
-                </View>
-              </View>
-            }
             ListEmptyComponent={
               isShowtimesLoading ? (
                 <View style={styles.loadingContainer}>
@@ -494,40 +365,30 @@ export default function MoviePage() {
               ) : null
             }
           />
-          <CinemaFilterModal
-            visible={cinemaModalVisible}
-            onClose={() => setCinemaModalVisible(false)}
-          />
-          <CinemaPresetQuickPopover
-            visible={cinemaPresetPopoverVisible}
-            anchor={cinemaPresetPopoverAnchor}
-            onClose={() => setCinemaPresetPopoverVisible(false)}
-            onOpenModal={() => setCinemaModalVisible(true)}
-            maxPresets={6}
-          />
-          <DayQuickPopover
-            visible={dayQuickPopoverVisible}
-            anchor={dayQuickPopoverAnchor}
-            onClose={() => setDayQuickPopoverVisible(false)}
-            selectedDays={selectedDays}
-            onChange={setSelectedDays}
-            onOpenModal={() => setDayModalVisible(true)}
-          />
-          <TimeQuickPopover
-            visible={timeQuickPopoverVisible}
-            anchor={timeQuickPopoverAnchor}
-            onClose={() => setTimeQuickPopoverVisible(false)}
-            selectedTimeRanges={selectedTimeRanges}
-            onChange={setSelectedTimeRanges}
-          />
-          <DayFilterModal
-            visible={dayModalVisible}
-            onClose={() => setDayModalVisible(false)}
-            selectedDays={selectedDays}
-            onChange={setSelectedDays}
-          />
         </>
       )}
+      <FiltersModal
+        visible={filtersModalVisible}
+        onClose={() => setFiltersModalVisible(false)}
+        groupByMovie={false}
+        setGroupByMovie={() => {}}
+        showGroupByMovie={false}
+        watchlistOnly={false}
+        setWatchlistOnly={() => {}}
+        canUseWatchlistFilter={false}
+        selectedShowtimeFilter={selectedShowtimeFilter}
+        setSelectedShowtimeFilter={setSelectedShowtimeFilter}
+        showStatusFilter
+        showCinemas
+        showRuntime={false}
+        selectedDays={selectedDays}
+        setSelectedDays={setSelectedDays}
+        selectedTimeRanges={selectedTimeRanges}
+        setSelectedTimeRanges={setSelectedTimeRanges}
+        selectedRuntimeRanges={selectedRuntimeRanges}
+        setSelectedRuntimeRanges={setSelectedRuntimeRanges}
+        resultCount={showtimes.length}
+      />
     </SafeAreaView>
   );
 }
@@ -555,11 +416,37 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       padding: 16,
       gap: 16,
     },
-    headerSection: {
-      gap: 16,
+    staticHeader: {
+      flexDirection: "row",
+      gap: 14,
+      paddingHorizontal: 16,
+      paddingBottom: 16,
     },
-    filterPillsWrapper: {
-      marginHorizontal: -16,
+    divider: {
+      height: 1,
+      backgroundColor: colors.divider,
+      marginBottom: 0,
+    },
+    filterRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingLeft: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.background,
+    },
+    filterBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      borderRadius: 18,
+      backgroundColor: colors.pillBackground,
+    },
+    filterBtnText: {
+      fontSize: 13,
+      fontWeight: "500",
+      color: colors.pillText,
     },
     centered: {
       flex: 1,
@@ -574,38 +461,35 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     errorText: {
       color: colors.textSecondary,
     },
-    header: {
-      flexDirection: "row",
-      gap: 16,
-      alignItems: "flex-start",
-    },
     poster: {
-      width: 120,
-      height: 180,
+      width: 110,
+      height: 165,
       borderRadius: 8,
       backgroundColor: colors.posterPlaceholder,
     },
-    headerInfo: {
+    summaryInfo: {
       flex: 1,
-      gap: 6,
+      gap: 5,
     },
-    title: {
+    movieTitle: {
       fontSize: 22,
-      fontWeight: "700",
+      fontWeight: "800",
       color: colors.text,
     },
-    subtitle: {
-      fontSize: 14,
+    originalTitle: {
+      fontSize: 13,
       color: colors.textSecondary,
+      marginTop: -2,
     },
-    meta: {
+    directorText: {
       fontSize: 12,
       color: colors.textSecondary,
     },
-    sectionTitle: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: colors.text,
+    directorLabel: {
+      fontSize: 11,
+      fontWeight: "800",
+      letterSpacing: 0.6,
+      color: colors.textSecondary,
     },
     dateGroupHeader: {
       marginTop: -6,
@@ -644,216 +528,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       padding: 10,
       backgroundColor: colors.cardBackground,
       gap: 6,
-    },
-    statusModalBackdrop: {
-      flex: 1,
-      justifyContent: "center",
-      padding: 20,
-    },
-    statusModalBlur: {
-      ...StyleSheet.absoluteFillObject,
-    },
-    statusModalTint: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: "rgba(0, 0, 0, 0.06)",
-    },
-    statusModalDismissArea: {
-      ...StyleSheet.absoluteFillObject,
-    },
-    statusModalCard: {
-      backgroundColor: colors.cardBackground,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      padding: 14,
-      gap: 10,
-    },
-    statusModalTitle: {
-      fontSize: 18,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    statusModalSubtitle: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    ticketButton: {
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.tint,
-      backgroundColor: colors.cardBackground,
-      alignItems: "center",
-      paddingVertical: 9,
-      paddingHorizontal: 12,
-    },
-    ticketButtonDisabled: {
-      borderColor: colors.divider,
-      backgroundColor: colors.pillBackground,
-    },
-    ticketButtonText: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: colors.tint,
-    },
-    ticketButtonTextDisabled: {
-      color: colors.textSecondary,
-    },
-    statusButtons: {
-      gap: 8,
-      marginTop: 4,
-    },
-    statusButton: {
-      borderRadius: 10,
-      borderWidth: 1,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      alignItems: "center",
-    },
-    statusButtonGoing: {
-      backgroundColor: colors.green.primary,
-      borderColor: colors.green.secondary,
-    },
-    statusButtonInterested: {
-      backgroundColor: colors.orange.primary,
-      borderColor: colors.orange.secondary,
-    },
-    statusButtonNotGoing: {
-      backgroundColor: colors.red.primary,
-      borderColor: colors.red.secondary,
-    },
-    statusButtonActive: {
-      borderWidth: 3,
-      shadowColor: colors.text,
-      shadowOpacity: 0.28,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 3 },
-      elevation: 7,
-      transform: [{ scale: 1.02 }],
-    },
-    statusButtonText: {
-      fontSize: 14,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    statusButtonTextActive: {
-      fontWeight: "800",
-    },
-    statusCancelButton: {
-      alignItems: "center",
-      paddingTop: 2,
-    },
-    statusCancelText: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: colors.textSecondary,
-    },
-    pingToggleButton: {
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.tint,
-      backgroundColor: colors.cardBackground,
-      alignItems: "center",
-      paddingVertical: 9,
-      paddingHorizontal: 12,
-    },
-    pingToggleText: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: colors.tint,
-    },
-    pingList: {
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      borderRadius: 10,
-      padding: 10,
-      gap: 8,
-      backgroundColor: colors.pillBackground,
-    },
-    pingListHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    pingListTitle: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: colors.textSecondary,
-    },
-    pingListScroll: {
-      maxHeight: 240,
-    },
-    pingListContent: {
-      gap: 8,
-    },
-    pingListEmpty: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    pingRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 10,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      paddingHorizontal: 8,
-      paddingVertical: 7,
-    },
-    pingFriendIdentity: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    pingFriendAvatar: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.pillBackground,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    pingFriendAvatarText: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    pingFriendMeta: {
-      flex: 1,
-      gap: 2,
-    },
-    pingFriendName: {
-      flex: 1,
-      fontSize: 13,
-      color: colors.text,
-    },
-    pingFriendStatus: {
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    pingButton: {
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.tint,
-      paddingVertical: 5,
-      paddingHorizontal: 11,
-      backgroundColor: colors.cardBackground,
-    },
-    pingButtonDisabled: {
-      borderColor: colors.divider,
-      backgroundColor: colors.pillBackground,
-    },
-    pingButtonText: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: colors.tint,
-    },
-    pingButtonTextDisabled: {
-      color: colors.textSecondary,
     },
   });
 };

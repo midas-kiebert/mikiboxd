@@ -6,13 +6,14 @@
 import { Platform } from 'react-native';
 
 const tintColorLight = '#0a7ea4';
-const tintColorDark = '#04c24a';
+const tintColorDark = '#39b467';
 
 // App-wide color tokens consumed by themed UI helpers/components.
 export const Colors = {
   light: {
     text: '#11181C',
     background: '#fff',
+    nestedModalBackground: '#f5f5f5',
     tint: tintColorLight,
     icon: '#687076',
     tabIconDefault: '#687076',
@@ -41,8 +42,8 @@ export const Colors = {
       secondary: '#1f6b3a',
     },
     orange: {
-      primary: '#ffd9b5',
-      secondary: '#8a4a10',
+      primary: '#ffe0a0',
+      secondary: '#c26010',
     },
     yellow: {
       primary: '#fff1b8',
@@ -80,6 +81,7 @@ export const Colors = {
   dark: {
     text: '#ECEDEE',
     background: '#151718',
+    nestedModalBackground: '#1e2123',
     tint: tintColorDark,
     icon: '#9BA1A6',
     tabIconDefault: '#9BA1A6',
@@ -108,8 +110,8 @@ export const Colors = {
       secondary: '#bfe5c7',
     },
     orange: {
-      primary: '#6b3a12',
-      secondary: '#ffd1a6',
+      primary: '#714400',
+      secondary: '#ffcb80',
     },
     yellow: {
       primary: '#6b5a12',

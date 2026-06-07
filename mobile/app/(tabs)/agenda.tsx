@@ -11,6 +11,7 @@ import { useIsFocused } from "@react-navigation/native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { MeService } from "shared";
 import { useFetchAgenda } from "shared/hooks/useFetchAgenda";
+import { useFetchShowtimePings } from "shared/hooks/useFetchShowtimePings";
 
 import TopBar from "@/components/layout/TopBar";
 import { ThemedText } from "@/components/themed-text";
@@ -105,6 +106,13 @@ export default function AgendaScreen() {
 
   const showtimes = useMemo(() => data?.pages.flat() ?? [], [data]);
 
+  const { data: pendingPings } = useFetchShowtimePings({
+    limit: 1,
+    enabled: isFocused,
+    refetchIntervalMs: false,
+  });
+  const hasAnyInvites = (pendingPings?.length ?? 0) > 0;
+
   // Mark received invites as seen as soon as the agenda is viewed, clearing the badge.
   const markSeenMutation = useMutation({
     mutationFn: () => MeService.markMyShowtimePingsSeen(),
@@ -167,16 +175,18 @@ export default function AgendaScreen() {
           colors={colors}
           styles={styles}
         />
-        <AgendaToggle
-          label="Invites"
-          iconOn="mail"
-          iconOff="mail-outline"
-          active={includeInvited}
-          accent={colors.blue}
-          onPress={toggleInvited}
-          colors={colors}
-          styles={styles}
-        />
+        {hasAnyInvites ? (
+          <AgendaToggle
+            label="Invites"
+            iconOn="mail"
+            iconOff="mail-outline"
+            active={includeInvited}
+            accent={colors.blue}
+            onPress={toggleInvited}
+            colors={colors}
+            styles={styles}
+          />
+        ) : null}
       </View>
       <ShowtimesListContent
         showtimes={showtimes}

@@ -1,21 +1,25 @@
 /**
  * Mobile filter UI component: Cinema Filter Modal.
  */
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Modal,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   View,
-  type ListRenderItem,
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  BottomSheetModal,
+  BottomSheetScrollView,
+  BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
+} from "@gorhom/bottom-sheet";
+import { QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   MeService,
   type CinemaPresetCreate,
@@ -56,77 +60,44 @@ type CinemaSection = {
   showCity?: boolean;
 };
 
-type CinemaColorKey =
-  | "pink"
-  | "purple"
-  | "green"
-  | "orange"
-  | "yellow"
-  | "blue"
-  | "teal"
-  | "red"
-  | "cyan";
-
-type CinemaColorPalette = {
-  primary: string;
-  secondary: string;
-};
-
+type CinemaColorKey = "pink" | "purple" | "green" | "orange" | "yellow" | "blue" | "teal" | "red" | "cyan";
+type CinemaColorPalette = { primary: string; secondary: string };
 type CinemaModalPage = "selection" | "presets";
 
 const GROUPING_MINIMUM = 3;
+
 function groupCinemas(cinemas: CinemaPublic[]) {
   const groupedByCity = new Map<number, CityGroup>();
-
   cinemas.forEach((cinema) => {
     const existing = groupedByCity.get(cinema.city.id);
-    if (existing) {
-      existing.cinemas.push(cinema);
-      return;
-    }
-    groupedByCity.set(cinema.city.id, {
-      city: cinema.city,
-      cinemas: [cinema],
-    });
+    if (existing) { existing.cinemas.push(cinema); return; }
+    groupedByCity.set(cinema.city.id, { city: cinema.city, cinemas: [cinema] });
   });
-
-  const sortedGroups = Array.from(groupedByCity.values()).sort((a, b) =>
-    a.city.name.localeCompare(b.city.name)
-  );
-
-  sortedGroups.forEach((group) => {
-    group.cinemas.sort((a, b) => a.name.localeCompare(b.name));
-  });
-
+  const sortedGroups = Array.from(groupedByCity.values()).sort((a, b) => a.city.name.localeCompare(b.city.name));
+  sortedGroups.forEach((group) => { group.cinemas.sort((a, b) => a.name.localeCompare(b.name)); });
   const groupedCities: CityGroup[] = [];
   const ungrouped: CinemaPublic[] = [];
-
-  // Only larger cities get a dedicated group; small city lists are merged into "Other cinemas".
   sortedGroups.forEach((group) => {
-    if (group.cinemas.length >= GROUPING_MINIMUM) {
-      groupedCities.push(group);
-    } else {
-      ungrouped.push(...group.cinemas);
-    }
+    if (group.cinemas.length >= GROUPING_MINIMUM) { groupedCities.push(group); }
+    else { ungrouped.push(...group.cinemas); }
   });
-
   ungrouped.sort((a, b) => {
     const cityCompare = a.city.name.localeCompare(b.city.name);
     if (cityCompare !== 0) return cityCompare;
     return a.name.localeCompare(b.name);
   });
-
   return { groupedCities, ungrouped };
 }
 
-const sortCinemaIds = (cinemaIds: Iterable<number>) => Array.from(new Set(cinemaIds)).sort((a, b) => a - b);
-const serializeCinemaIds = (cinemaIds: Iterable<number>) => JSON.stringify(sortCinemaIds(cinemaIds));
+const sortCinemaIds = (cinemaIds: Iterable<number>) =>
+  Array.from(new Set(cinemaIds)).sort((a, b) => a - b);
+
+const serializeCinemaIds = (cinemaIds: Iterable<number>) =>
+  JSON.stringify(sortCinemaIds(cinemaIds));
 
 const setsMatch = (left: Set<number>, right: Set<number>) => {
   if (left.size !== right.size) return false;
-  for (const id of left) {
-    if (!right.has(id)) return false;
-  }
+  for (const id of left) { if (!right.has(id)) return false; }
   return true;
 };
 
@@ -141,13 +112,7 @@ type CinemaRowChipProps = {
 };
 
 const CinemaRowChip = memo(function CinemaRowChip({
-  cinema,
-  showCity,
-  selected,
-  accentColor,
-  checkColor,
-  styles,
-  onToggle,
+  cinema, showCity, selected, accentColor, checkColor, styles, onToggle,
 }: CinemaRowChipProps) {
   return (
     <TouchableOpacity
@@ -157,22 +122,11 @@ const CinemaRowChip = memo(function CinemaRowChip({
     >
       <View style={styles.cinemaInfo}>
         <View style={styles.cinemaNameRow}>
-          <ThemedText numberOfLines={1} style={styles.cinemaName}>
-            {cinema.name}
-          </ThemedText>
+          <ThemedText numberOfLines={1} style={styles.cinemaName}>{cinema.name}</ThemedText>
         </View>
-        {showCity ? (
-          <ThemedText numberOfLines={1} style={styles.cinemaCity}>
-            {cinema.city.name}
-          </ThemedText>
-        ) : null}
+        {showCity ? <ThemedText numberOfLines={1} style={styles.cinemaCity}>{cinema.city.name}</ThemedText> : null}
       </View>
-      <View
-        style={[
-          styles.checkbox,
-          selected && { borderColor: accentColor, backgroundColor: accentColor },
-        ]}
-      >
+      <View style={[styles.checkbox, selected && { borderColor: accentColor, backgroundColor: accentColor }]}>
         {selected ? <MaterialIcons name="check" size={11} color={checkColor} /> : null}
       </View>
     </TouchableOpacity>
@@ -181,21 +135,23 @@ const CinemaRowChip = memo(function CinemaRowChip({
 
 const getCinemaPalette = (
   colors: typeof import("@/constants/theme").Colors.light,
-  cinema: CinemaPublic
+  cinema: CinemaPublic,
 ) => {
   const cinemaColorKey = cinema.badge_bg_color as CinemaColorKey;
   const cinemaPalette = (colors as Record<CinemaColorKey, CinemaColorPalette>)[cinemaColorKey];
-  return {
-    accentColor: cinemaPalette?.secondary ?? colors.textSecondary,
-  };
+  return { accentColor: cinemaPalette?.secondary ?? colors.textSecondary };
 };
 
 export default function CinemaFilterModal({ visible, onClose, initialPage = "selection" }: CinemaFilterModalProps) {
-  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
+  const { top: topInset, bottom: bottomInset } = useSafeAreaInsets();
+
+  const bottomSheetModalRef = useRef<BottomSheetModal>(null);
+  const hasEverPresentedRef = useRef(false);
+  const closedByGorhomRef = useRef(false);
+  const snapPoints = useMemo(() => ["88%"], []);
 
   const [page, setPage] = useState<CinemaModalPage>("selection");
   const [presetName, setPresetName] = useState("");
@@ -204,22 +160,48 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
   const [saveAsFavorite, setSaveAsFavorite] = useState(false);
   const [presetOrderIds, setPresetOrderIds] = useState<readonly string[]>([]);
 
-  // Data hooks keep this module synced with backend data and shared cache state.
   const { data: cinemas } = useFetchCinemas();
   const { data: favoriteCinemaIds } = useFetchSelectedCinemas();
-  const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
-    useSessionCinemaSelections();
+  const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } = useSessionCinemaSelections();
 
   const selectedCinemas = useMemo(
     () => sessionCinemaIds ?? favoriteCinemaIds ?? [],
-    [sessionCinemaIds, favoriteCinemaIds]
+    [sessionCinemaIds, favoriteCinemaIds],
   );
   const [localSelectedCinemaSet, setLocalSelectedCinemaSet] = useState<Set<number>>(
-    () => new Set(selectedCinemas)
+    () => new Set(selectedCinemas),
   );
   const selectedCinemaSet = useMemo(() => new Set(selectedCinemas), [selectedCinemas]);
 
-  // Keep modal interactions local for instant UI feedback; commit to shared state on close.
+  // Refs so handleSheetChange can commit the latest selection without stale closure.
+  const localSelectedCinemaSetRef = useRef(localSelectedCinemaSet);
+  useEffect(() => { localSelectedCinemaSetRef.current = localSelectedCinemaSet; }, [localSelectedCinemaSet]);
+  const selectedCinemaSetRef = useRef(selectedCinemaSet);
+  useEffect(() => { selectedCinemaSetRef.current = selectedCinemaSet; }, [selectedCinemaSet]);
+
+  const handleSheetChange = useCallback((index: number) => {
+    if (index === -1) {
+      closedByGorhomRef.current = true;
+      const current = localSelectedCinemaSetRef.current;
+      const preferred = selectedCinemaSetRef.current;
+      if (!setsMatch(current, preferred)) {
+        setSessionCinemaIds(sortCinemaIds(current));
+      }
+      onClose();
+    }
+  }, [onClose, setSessionCinemaIds]);
+
+  // Drive the gorhom sheet imperatively from the controlled `visible` prop.
+  useEffect(() => {
+    if (visible) {
+      hasEverPresentedRef.current = true;
+      closedByGorhomRef.current = false;
+      bottomSheetModalRef.current?.present();
+    } else if (hasEverPresentedRef.current && !closedByGorhomRef.current) {
+      bottomSheetModalRef.current?.close();
+    }
+  }, [visible]);
+
   useEffect(() => {
     if (!visible) return;
     setLocalSelectedCinemaSet(new Set(selectedCinemas));
@@ -237,15 +219,6 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
     queryFn: () => MeService.getCinemaPresets(),
   });
 
-  const favoritePreset = useMemo(
-    () => presets.find((preset) => preset.is_favorite),
-    [presets]
-  );
-  const favoritePresetCinemaSet = useMemo(
-    () => new Set(favoritePreset?.cinema_ids ?? []),
-    [favoritePreset]
-  );
-
   useEffect(() => {
     if (!visible) return;
     let isMounted = true;
@@ -253,13 +226,11 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
       if (!isMounted) return;
       setPresetOrderIds(orderedIds);
     });
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, [visible]);
 
   const savePresetMutation = useMutation({
-    mutationFn: (requestBody: CinemaPresetCreate) => MeService.saveCinemaPreset({ requestBody }),
+    mutationFn: (requestBody: CinemaPresetCreate) => MeService.createCinemaPreset({ requestBody }),
     onSuccess: () => {
       setPresetError(null);
       setPresetName("");
@@ -289,38 +260,19 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
     },
   });
 
-  const selectedCount = localSelectedCinemaSet.size;
-  const hasFavoriteSelection = favoritePreset !== undefined;
-  const selectionMatchesFavorite =
-    hasFavoriteSelection && setsMatch(localSelectedCinemaSet, favoritePresetCinemaSet);
-  const favoriteStatus = hasFavoriteSelection
-    ? selectionMatchesFavorite
-      ? "Matches your favorite cinema preset."
-      : "Different from your favorite cinema preset."
-    : "No favorite cinema preset selected.";
-  const canUseFavorite = hasFavoriteSelection && !selectionMatchesFavorite;
-
-  const currentSelectionSignature = useMemo(
-    () => serializeCinemaIds(localSelectedCinemaSet),
-    [localSelectedCinemaSet]
-  );
   const orderedPresets = useMemo(
     () => sortCinemaPresetsByOrder(presets, presetOrderIds),
-    [presetOrderIds, presets]
+    [presetOrderIds, presets],
   );
   const presetsForRender = useMemo(
     () => (orderedPresets.length > 0 || presets.length === 0 ? orderedPresets : presets),
-    [orderedPresets, presets]
-  );
-  const selectionMatchesPreset = useMemo(
-    () => presets.some((preset) => serializeCinemaIds(preset.cinema_ids) === currentSelectionSignature),
-    [currentSelectionSignature, presets]
+    [orderedPresets, presets],
   );
 
   useEffect(() => {
     if (presetOrderIds.length === 0 || presets.length === 0) return;
-    const presetIdSet = new Set(presets.map((preset) => preset.id));
-    const trimmedOrder = presetOrderIds.filter((presetId) => presetIdSet.has(presetId));
+    const presetIdSet = new Set(presets.map((p) => p.id));
+    const trimmedOrder = presetOrderIds.filter((id) => presetIdSet.has(id));
     if (trimmedOrder.length === presetOrderIds.length) return;
     const normalizedOrder = sanitizeCinemaPresetOrderIds(trimmedOrder);
     setPresetOrderIds(normalizedOrder);
@@ -328,9 +280,7 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
   }, [presetOrderIds, presets]);
 
   const cinemaList = useMemo(() => cinemas ?? [], [cinemas]);
-
   const { groupedCities, ungrouped } = useMemo(() => groupCinemas(cinemaList), [cinemaList]);
-
   const cinemaSections = useMemo<CinemaSection[]>(
     () => [
       ...groupedCities.map((group) => ({
@@ -341,66 +291,50 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
         cityId: group.city.id,
       })),
       ...(ungrouped.length > 0
-        ? [
-            {
-              key: "other-cinemas",
-              title: "Other cinemas",
-              cinemas: ungrouped,
-              showCity: true,
-            },
-          ]
+        ? [{ key: "other-cinemas", title: "Other cinemas", cinemas: ungrouped, showCity: true }]
         : []),
     ],
-    [groupedCities, ungrouped]
+    [groupedCities, ungrouped],
   );
 
-  // Collect all cinema IDs for bulk select/deselect actions.
-  const allCinemaIds = useMemo(() => cinemaList.map((cinema) => cinema.id), [cinemaList]);
-  const allSelected =
-    allCinemaIds.length > 0 && allCinemaIds.every((id) => localSelectedCinemaSet.has(id));
+  const allCinemaIds = useMemo(() => cinemaList.map((c) => c.id), [cinemaList]);
+  const allSelected = allCinemaIds.length > 0 && allCinemaIds.every((id) => localSelectedCinemaSet.has(id));
+  const selectedCount = localSelectedCinemaSet.size;
+  const currentSelectionSignature = useMemo(
+    () => serializeCinemaIds(localSelectedCinemaSet),
+    [localSelectedCinemaSet],
+  );
+  const selectionMatchesPreset = useMemo(
+    () => presets.some((p) => serializeCinemaIds(p.cinema_ids) === currentSelectionSignature),
+    [currentSelectionSignature, presets],
+  );
 
   const accentColorByCinemaId = useMemo(
-    () =>
-      new Map(
-        cinemaList.map((cinema) => [cinema.id, getCinemaPalette(colors, cinema).accentColor] as const)
-      ),
-    [cinemaList, colors]
+    () => new Map(cinemaList.map((c) => [c.id, getCinemaPalette(colors, c).accentColor] as const)),
+    [cinemaList, colors],
   );
 
-  // Toggle a single cinema in this modal session.
   const handleToggle = useCallback((cinemaId: number) => {
     setLocalSelectedCinemaSet((current) => {
       const next = new Set(current);
-      if (next.has(cinemaId)) {
-        next.delete(cinemaId);
-      } else {
-        next.add(cinemaId);
-      }
+      if (next.has(cinemaId)) { next.delete(cinemaId); } else { next.add(cinemaId); }
       return next;
     });
   }, []);
 
-  // Toggle every cinema inside one city section.
-  const handleToggleCity = useCallback(
-    (cityId: number) => {
-      const cityCinemas = groupedCities.find((group) => group.city.id === cityId)?.cinemas || [];
-      if (cityCinemas.length === 0) return;
-      setLocalSelectedCinemaSet((current) => {
-        const next = new Set(current);
-        const cityCinemaIds = cityCinemas.map((cinema) => cinema.id);
-        const isAllSelected = cityCinemaIds.every((id) => next.has(id));
-        if (isAllSelected) {
-          cityCinemaIds.forEach((id) => next.delete(id));
-        } else {
-          cityCinemaIds.forEach((id) => next.add(id));
-        }
-        return next;
-      });
-    },
-    [groupedCities]
-  );
+  const handleToggleCity = useCallback((cityId: number) => {
+    const cityCinemas = groupedCities.find((g) => g.city.id === cityId)?.cinemas ?? [];
+    if (cityCinemas.length === 0) return;
+    setLocalSelectedCinemaSet((current) => {
+      const next = new Set(current);
+      const ids = cityCinemas.map((c) => c.id);
+      const isAllSelected = ids.every((id) => next.has(id));
+      if (isAllSelected) { ids.forEach((id) => next.delete(id)); }
+      else { ids.forEach((id) => next.add(id)); }
+      return next;
+    });
+  }, [groupedCities]);
 
-  // Toggle the entire list in one action.
   const handleToggleAll = useCallback(() => {
     setLocalSelectedCinemaSet((current) => {
       const isAllSelected = allCinemaIds.length > 0 && allCinemaIds.every((id) => current.has(id));
@@ -409,25 +343,45 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
     });
   }, [allCinemaIds]);
 
-  const handleUseFavorite = useCallback(() => {
-    if (!favoritePreset) return;
-    setLocalSelectedCinemaSet(new Set(favoritePreset.cinema_ids));
-  }, [favoritePreset]);
+  const handleApplyPreset = useCallback((preset: CinemaPresetPublic) => {
+    setLocalSelectedCinemaSet(new Set(preset.cinema_ids));
+  }, []);
 
-  const handleClose = useCallback(() => {
-    if (!setsMatch(localSelectedCinemaSet, selectedCinemaSet)) {
-      setSessionCinemaIds(sortCinemaIds(localSelectedCinemaSet));
-    }
-    onClose();
-  }, [localSelectedCinemaSet, onClose, selectedCinemaSet, setSessionCinemaIds]);
+  const handleDeletePreset = useCallback((preset: CinemaPresetPublic) => {
+    Alert.alert(
+      "Delete preset?",
+      `Are you sure you want to delete "${preset.name}"?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => deletePresetMutation.mutate(preset.id) },
+      ],
+      { cancelable: true },
+    );
+  }, [deletePresetMutation]);
+
+  const handleSetFavoritePreset = useCallback((preset: CinemaPresetPublic) => {
+    if (preset.is_favorite) return;
+    setFavoritePresetMutation.mutate(preset.id);
+  }, [setFavoritePresetMutation]);
+
+  const persistPresetOrder = useCallback((orderedIds: readonly string[]) => {
+    const normalizedOrder = sanitizeCinemaPresetOrderIds(orderedIds);
+    setPresetOrderIds(normalizedOrder);
+    saveCinemaPresetOrder(normalizedOrder).catch(() => undefined);
+  }, []);
+
+  const handleMovePreset = useCallback((fromIndex: number, toIndex: number) => {
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex || toIndex >= presetsForRender.length) return;
+    const reordered = [...presetsForRender];
+    const [moved] = reordered.splice(fromIndex, 1);
+    if (!moved) return;
+    reordered.splice(toIndex, 0, moved);
+    persistPresetOrder(reordered.map((p) => p.id));
+  }, [persistPresetOrder, presetsForRender]);
 
   const handleSavePreset = useCallback(() => {
     const trimmed = presetName.trim();
-    if (!trimmed) {
-      setPresetError("Enter a preset name.");
-      return;
-    }
-
+    if (!trimmed) { setPresetError("Enter a preset name."); return; }
     savePresetMutation.mutate({
       name: trimmed,
       cinema_ids: sortCinemaIds(localSelectedCinemaSet),
@@ -449,473 +403,415 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
     setPresetError(null);
   }, [savePresetMutation.isPending]);
 
-  const handleApplyPreset = useCallback((preset: CinemaPresetPublic) => {
-    setLocalSelectedCinemaSet(new Set(preset.cinema_ids));
-  }, []);
-
-  const handleDeletePreset = useCallback(
-    (preset: CinemaPresetPublic) => {
-      Alert.alert(
-        "Delete preset?",
-        `Are you sure you want to delete "${preset.name}"?`,
-        [
-          {
-            text: "Cancel",
-            style: "cancel",
-          },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: () => {
-              deletePresetMutation.mutate(preset.id);
-            },
-          },
-        ],
-        { cancelable: true }
-      );
-    },
-    [deletePresetMutation]
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.45} pressBehavior="close" />
+    ),
+    []
   );
 
-  const handleSetFavoritePreset = useCallback(
-    (preset: CinemaPresetPublic) => {
-      if (preset.is_favorite) return;
-      setFavoritePresetMutation.mutate(preset.id);
-    },
-    [setFavoritePresetMutation]
-  );
-
-  const persistPresetOrder = useCallback((orderedIds: readonly string[]) => {
-    const normalizedOrder = sanitizeCinemaPresetOrderIds(orderedIds);
-    setPresetOrderIds(normalizedOrder);
-    saveCinemaPresetOrder(normalizedOrder).catch(() => undefined);
-  }, []);
-
-  const handleReorderPresets = useCallback(
-    (reorderedPresets: readonly CinemaPresetPublic[]) => {
-      persistPresetOrder(reorderedPresets.map((preset) => preset.id));
-    },
-    [persistPresetOrder]
-  );
-
-  const handleMovePreset = useCallback(
-    (fromIndex: number, toIndex: number) => {
-      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex || toIndex >= presetsForRender.length) {
-        return;
-      }
-      const reorderedPresets = [...presetsForRender];
-      const [movedPreset] = reorderedPresets.splice(fromIndex, 1);
-      if (!movedPreset) return;
-      reorderedPresets.splice(toIndex, 0, movedPreset);
-      handleReorderPresets(reorderedPresets);
-    },
-    [handleReorderPresets, presetsForRender]
-  );
-
-  const renderCinemaSection: ListRenderItem<CinemaSection> = useCallback(
-    ({ item }) => {
-      const citySelected =
-        item.cityId !== undefined &&
-        item.cinemas.length > 0 &&
-        item.cinemas.every((cinema) => localSelectedCinemaSet.has(cinema.id));
-
-      return (
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <ThemedText style={styles.cityTitle}>{item.title}</ThemedText>
-              {item.meta ? <ThemedText style={styles.sectionMeta}>{item.meta}</ThemedText> : null}
-            </View>
-            {item.cityId !== undefined ? (
-              <TouchableOpacity
-                style={styles.toggleButton}
-                onPress={() => handleToggleCity(item.cityId!)}
-                activeOpacity={0.8}
-              >
-                <ThemedText style={styles.toggleButtonText}>
-                  {citySelected ? "Deselect all" : "Select all"}
-                </ThemedText>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          <View style={styles.cinemaList}>
-            {item.cinemas.map((cinema) => (
-              <CinemaRowChip
-                key={cinema.id}
-                cinema={cinema}
-                showCity={item.showCity === true}
-                selected={localSelectedCinemaSet.has(cinema.id)}
-                accentColor={accentColorByCinemaId.get(cinema.id) ?? colors.textSecondary}
-                checkColor={colors.pillActiveText}
-                styles={styles}
-                onToggle={handleToggle}
-              />
-            ))}
-          </View>
+  const renderHandle = useCallback(
+    () => (
+      <View>
+        <View style={styles.dragHandleBar} />
+        <View style={styles.header}>
+          {page === "presets" && (
+            <TouchableOpacity onPress={() => setPage("selection")} hitSlop={8} style={styles.backButton}>
+              <MaterialIcons name="arrow-back" size={20} color={colors.text} />
+            </TouchableOpacity>
+          )}
+          <ThemedText style={styles.title}>
+            {page === "presets" ? "Manage presets" : "Cinemas"}
+          </ThemedText>
+          <TouchableOpacity onPress={() => bottomSheetModalRef.current?.close()} hitSlop={8}>
+            <MaterialIcons name="close" size={22} color={colors.text} />
+          </TouchableOpacity>
         </View>
-      );
-    },
-    [
-      accentColorByCinemaId,
-      colors.pillActiveText,
-      colors.textSecondary,
-      handleToggle,
-      handleToggleCity,
-      localSelectedCinemaSet,
-      styles,
-    ]
-  );
-
-  const renderPreset: ListRenderItem<CinemaPresetPublic> = useCallback(
-    ({ item, index }) => {
-      const isCurrent = serializeCinemaIds(item.cinema_ids) === currentSelectionSignature;
-      const favoriteDisabled = item.is_favorite || setFavoritePresetMutation.isPending;
-      const deleteDisabled = deletePresetMutation.isPending;
-      const itemIndex = index ?? -1;
-      const canMoveUp = itemIndex > 0;
-      const canMoveDown = itemIndex >= 0 && itemIndex < presetsForRender.length - 1;
-
-      return (
-        <TouchableOpacity
-          style={[styles.presetCard, isCurrent && styles.presetCardCurrent]}
-          onPress={() => handleApplyPreset(item)}
-          activeOpacity={0.88}
-        >
-          <View style={styles.presetHeader}>
-            <View style={styles.presetTitleWrap}>
-              <View style={styles.presetNameRow}>
-                <ThemedText style={styles.presetName}>{item.name}</ThemedText>
-              </View>
-              <ThemedText style={styles.presetMeta}>
-                {item.cinema_ids.length} cinema{item.cinema_ids.length === 1 ? "" : "s"}
-              </ThemedText>
-            </View>
-
-            <View style={styles.presetHeaderActions}>
-              <TouchableOpacity
-                style={[
-                  styles.iconActionButton,
-                  item.is_favorite && styles.iconActionButtonFavorite,
-                  favoriteDisabled && !item.is_favorite && styles.iconActionButtonDisabled,
-                ]}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  handleSetFavoritePreset(item);
-                }}
-                activeOpacity={0.8}
-                disabled={favoriteDisabled}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              >
-                <MaterialIcons
-                  name={item.is_favorite ? "star" : "star-border"}
-                  size={16}
-                  color={item.is_favorite ? colors.yellow.secondary : colors.textSecondary}
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.iconActionButton, deleteDisabled && styles.iconActionButtonDisabled]}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  handleDeletePreset(item);
-                }}
-                activeOpacity={0.8}
-                disabled={deleteDisabled}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              >
-                <MaterialIcons name="delete-outline" size={16} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <View style={styles.reorderControls}>
-                <TouchableOpacity
-                  style={[styles.iconActionButton, !canMoveUp && styles.iconActionButtonDisabled]}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    if (canMoveUp) handleMovePreset(itemIndex, itemIndex - 1);
-                  }}
-                  activeOpacity={0.8}
-                  disabled={!canMoveUp}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <MaterialIcons name="keyboard-arrow-up" size={17} color={colors.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.iconActionButton, !canMoveDown && styles.iconActionButtonDisabled]}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    if (canMoveDown) handleMovePreset(itemIndex, itemIndex + 1);
-                  }}
-                  activeOpacity={0.8}
-                  disabled={!canMoveDown}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <MaterialIcons name="keyboard-arrow-down" size={17} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </TouchableOpacity>
-      );
-    },
-    [
-      colors.textSecondary,
-      colors.yellow.secondary,
-      currentSelectionSignature,
-      deletePresetMutation.isPending,
-      handleApplyPreset,
-      handleDeletePreset,
-      handleMovePreset,
-      handleSetFavoritePreset,
-      presetsForRender.length,
-      setFavoritePresetMutation.isPending,
-      styles,
-    ]
+      </View>
+    ),
+    [colors, styles, page]
   );
 
   const isLoadingSelection =
     cinemas === undefined || (sessionCinemaIds === undefined && favoriteCinemaIds === undefined);
 
-  // Render/output using the state and derived values prepared above.
   return (
-    <Modal
-      animationType="slide"
-      visible={visible}
-      onRequestClose={handleClose}
-      presentationStyle="pageSheet"
-    >
-      <SafeAreaView style={styles.modalContainer} edges={["top", "bottom"]}>
-        <View style={styles.header}>
-          <ThemedText style={styles.title}>Cinemas</ThemedText>
-          <TouchableOpacity onPress={handleClose} hitSlop={8}>
-            <MaterialIcons name="close" size={22} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-
-        {page === "selection" ? (
-            isLoadingSelection ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={colors.tint} />
-                <ThemedText style={styles.loadingText}>Loading cinemas...</ThemedText>
-              </View>
-            ) : (
-              <FlatList
-                style={styles.mainContent}
-                contentContainerStyle={styles.content}
-                data={cinemaSections}
-                keyExtractor={(item) => item.key}
-                renderItem={renderCinemaSection}
-                initialNumToRender={2}
-                maxToRenderPerBatch={2}
-                windowSize={5}
-                removeClippedSubviews
-                showsVerticalScrollIndicator={false}
-                ListHeaderComponent={
-                  <View style={[styles.sectionCard, styles.allCinemasSection]}>
-                    <View style={styles.sectionHeader}>
-                      <View>
-                        <ThemedText style={styles.sectionTitle}>All cinemas</ThemedText>
-                        <ThemedText style={styles.sectionMeta}>
-                          {selectedCount} of {allCinemaIds.length} selected
-                        </ThemedText>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.toggleButton}
-                        onPress={handleToggleAll}
-                        activeOpacity={0.8}
-                      >
-                        <ThemedText style={styles.toggleButtonText}>
-                          {allSelected ? "Deselect all" : "Select all"}
-                        </ThemedText>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                }
-                ItemSeparatorComponent={() => <View style={styles.sectionSeparator} />}
-              />
-            )
-          ) : (
-            <View style={styles.presetsContainer}>
+    <>
+      <BottomSheetModal
+        ref={bottomSheetModalRef}
+        snapPoints={snapPoints}
+        enablePanDownToClose
+        enableDismissOnClose={false}
+        animationConfigs={{ duration: 220 }}
+        backdropComponent={renderBackdrop}
+        handleComponent={renderHandle}
+        backgroundStyle={{ backgroundColor: colors.nestedModalBackground }}
+        topInset={topInset}
+        onChange={handleSheetChange}
+      >
+        {/* @gorhom/portal does not forward React context; re-provide QueryClient for hooks inside. */}
+        <QueryClientProvider client={queryClient}>
+          {isLoadingSelection ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.tint} />
+              <ThemedText style={styles.loadingText}>Loading cinemas...</ThemedText>
+            </View>
+          ) : page === "presets" ? (
+            /* ── Manage presets page ── */
+            <BottomSheetScrollView
+              contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               {isPresetsLoading ? (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />
-                  <ThemedText style={styles.loadingText}>Loading presets...</ThemedText>
+                </View>
+              ) : presetsForRender.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <ThemedText style={styles.emptyText}>No presets yet.</ThemedText>
                 </View>
               ) : (
-                <FlatList
-                  data={presetsForRender}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderPreset}
-                  style={styles.mainContent}
-                  contentContainerStyle={styles.content}
-                  ItemSeparatorComponent={() => <View style={styles.sectionSeparator} />}
-                  ListHeaderComponent={
-                    presetsForRender.length > 1 ? (
-                      <ThemedText style={styles.reorderHintText}>
-                        Use arrows to reorder presets.
-                      </ThemedText>
-                    ) : null
-                  }
-                  ListEmptyComponent={
-                    <View style={styles.emptyPresets}>
-                      <ThemedText style={styles.emptyPresetsText}>
-                        No cinema presets yet. Use Save as preset to create one.
-                      </ThemedText>
-                    </View>
-                  }
-                />
+                <>
+                  <ThemedText style={styles.hintText}>
+                    The starred preset is applied on startup. Use the arrows to reorder.
+                  </ThemedText>
+                  {presetsForRender.map((item, index) => {
+                    const isCurrent = serializeCinemaIds(item.cinema_ids) === currentSelectionSignature;
+                    const favoriteDisabled = item.is_favorite || setFavoritePresetMutation.isPending;
+                    const deleteDisabled = deletePresetMutation.isPending;
+                    const canMoveUp = index > 0;
+                    const canMoveDown = index < presetsForRender.length - 1;
+                    const n = item.cinema_ids.length;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[styles.manageRow, isCurrent && styles.manageRowCurrent]}
+                        onPress={() => { handleApplyPreset(item); setPage("selection"); }}
+                        activeOpacity={0.88}
+                      >
+                        <TouchableOpacity
+                          style={[styles.iconBtn, !canMoveUp && styles.iconBtnDisabled]}
+                          onPress={(e) => { e.stopPropagation(); if (canMoveUp) handleMovePreset(index, index - 1); }}
+                          disabled={!canMoveUp}
+                          activeOpacity={0.7}
+                          hitSlop={6}
+                        >
+                          <MaterialIcons name="keyboard-arrow-up" size={20} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.iconBtn, !canMoveDown && styles.iconBtnDisabled]}
+                          onPress={(e) => { e.stopPropagation(); if (canMoveDown) handleMovePreset(index, index + 1); }}
+                          disabled={!canMoveDown}
+                          activeOpacity={0.7}
+                          hitSlop={6}
+                        >
+                          <MaterialIcons name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                        <View style={styles.manageNameBlock}>
+                          <ThemedText style={styles.manageName} numberOfLines={1}>{item.name}</ThemedText>
+                          <ThemedText style={styles.manageMeta} numberOfLines={1}>
+                            {n} cinema{n === 1 ? "" : "s"}
+                          </ThemedText>
+                        </View>
+                        <TouchableOpacity
+                          style={[
+                            styles.iconBtn,
+                            item.is_favorite && styles.iconBtnFavorite,
+                            favoriteDisabled && !item.is_favorite && styles.iconBtnDisabled,
+                          ]}
+                          onPress={(e) => { e.stopPropagation(); handleSetFavoritePreset(item); }}
+                          activeOpacity={0.7}
+                          disabled={favoriteDisabled}
+                          hitSlop={6}
+                        >
+                          <MaterialIcons
+                            name={item.is_favorite ? "star" : "star-border"}
+                            size={18}
+                            color={item.is_favorite ? colors.yellow.secondary : colors.textSecondary}
+                          />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.iconBtn, deleteDisabled && styles.iconBtnDisabled]}
+                          onPress={(e) => { e.stopPropagation(); handleDeletePreset(item); }}
+                          activeOpacity={0.7}
+                          disabled={deleteDisabled}
+                          hitSlop={6}
+                        >
+                          <MaterialIcons name="delete-outline" size={18} color={colors.red.secondary} />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
               )}
-            </View>
-          )}
-          {page === "selection" && (
-            <View style={styles.preferenceFooter}>
-              <View style={styles.preferenceText}>
-                <ThemedText style={styles.preferenceTitle}>Session selection</ThemedText>
-                <ThemedText style={styles.preferenceSubtitle}>{favoriteStatus}</ThemedText>
-              </View>
-              <View style={styles.preferenceActions}>
+            </BottomSheetScrollView>
+          ) : (
+            /* ── Cinema selection page ── */
+            <BottomSheetScrollView
+              contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Presets section */}
+              <SectionLabel label="Presets" colors={colors} />
+              {presets.length > 0 && (
+                <View style={styles.presetGrid}>
+                  {presetsForRender.map((preset) => {
+                    const isActive = serializeCinemaIds(preset.cinema_ids) === currentSelectionSignature;
+                    const n = new Set(preset.cinema_ids).size;
+                    return (
+                      <TouchableOpacity
+                        key={preset.id}
+                        style={[styles.presetCard, isActive && styles.presetCardActive]}
+                        onPress={() => handleApplyPreset(preset)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={styles.presetCardRow}>
+                          <ThemedText
+                            style={[styles.presetCardName, isActive && styles.presetCardNameActive]}
+                            numberOfLines={2}
+                          >
+                            {preset.name}
+                          </ThemedText>
+                          {preset.is_favorite && (
+                            <MaterialIcons
+                              name="star"
+                              size={13}
+                              color={isActive ? colors.pillActiveText : colors.yellow.secondary}
+                            />
+                          )}
+                        </View>
+                        <ThemedText style={[styles.presetCardDesc, isActive && styles.presetCardDescActive]}>
+                          {n} cinema{n === 1 ? "" : "s"}
+                        </ThemedText>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              <View style={styles.presetActions}>
                 <TouchableOpacity
-                  style={[
-                    styles.preferenceButton,
-                    styles.preferenceButtonSubtle,
-                    styles.preferenceButtonGrow,
-                    !canUseFavorite && styles.preferenceButtonDisabled,
-                  ]}
-                  onPress={handleUseFavorite}
-                  activeOpacity={0.8}
-                  disabled={!canUseFavorite}
-                >
-                  <View style={styles.preferenceButtonInner}>
-                    <MaterialIcons name="history" size={16} color={colors.textSecondary} />
-                    <ThemedText style={[styles.preferenceButtonText, styles.preferenceButtonTextSubtle]}>
-                      Use favorite
-                    </ThemedText>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.preferenceButton,
-                    styles.preferenceButtonSubtle,
-                    styles.preferenceButtonGrow,
-                    selectionMatchesPreset && styles.preferenceButtonDisabled,
-                  ]}
+                  style={[styles.actionRow, selectionMatchesPreset && styles.actionRowDisabled]}
                   onPress={handleOpenSavePresetDialog}
                   activeOpacity={0.8}
                   disabled={selectionMatchesPreset}
                 >
-                  <View style={styles.preferenceButtonInner}>
-                    <MaterialIcons name="save" size={16} color={colors.textSecondary} />
-                    <ThemedText style={[styles.preferenceButtonText, styles.preferenceButtonTextSubtle]}>
-                      Save as preset
+                  <View style={styles.actionIcon}>
+                    <MaterialIcons name="bookmark-add" size={17} color={colors.tint} />
+                  </View>
+                  <View style={styles.actionTextBlock}>
+                    <ThemedText style={styles.actionTitle}>Save current selection</ThemedText>
+                    <ThemedText style={styles.actionSubtitle}>
+                      Save as a preset for quick access
                     </ThemedText>
                   </View>
+                  <MaterialIcons name="chevron-right" size={18} color={colors.textSecondary} />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.preferenceButton, styles.preferenceButtonSubtle, styles.preferenceButtonGrow]}
-                  onPress={() => setPage("presets")}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.preferenceButtonInner}>
-                    <MaterialIcons name="bookmark-border" size={16} color={colors.textSecondary} />
-                    <ThemedText style={[styles.preferenceButtonText, styles.preferenceButtonTextSubtle]}>
-                      Presets
-                    </ThemedText>
-                  </View>
+
+                {presets.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.actionRow}
+                    onPress={() => setPage("presets")}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.actionIcon}>
+                      <MaterialIcons name="tune" size={17} color={colors.tint} />
+                    </View>
+                    <View style={styles.actionTextBlock}>
+                      <ThemedText style={styles.actionTitle}>Manage presets</ThemedText>
+                      <ThemedText style={styles.actionSubtitle}>
+                        Reorder, delete or set a default
+                      </ThemedText>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <Divider colors={colors} />
+
+              {/* Cinema selection */}
+              <SectionLabel label="Select cinemas" colors={colors} />
+              <View style={styles.allCinemasRow}>
+                <ThemedText style={styles.selectionCount}>
+                  {selectedCount} of {allCinemaIds.length} selected
+                </ThemedText>
+                <TouchableOpacity style={styles.toggleButton} onPress={handleToggleAll} activeOpacity={0.8}>
+                  <ThemedText style={styles.toggleButtonText}>
+                    {allSelected ? "Deselect all" : "Select all"}
+                  </ThemedText>
                 </TouchableOpacity>
               </View>
-            </View>
-          )}
 
-        <Modal
-          transparent
-          visible={isSavePresetDialogVisible}
-          animationType="fade"
-          onRequestClose={handleCloseSavePresetDialog}
-        >
-          <View style={styles.dialogBackdrop}>
-            <TouchableOpacity
-              style={styles.dialogBackdropPressable}
-              activeOpacity={1}
-              onPress={handleCloseSavePresetDialog}
+              {cinemaSections.map((section) => {
+                const citySelected =
+                  section.cityId !== undefined &&
+                  section.cinemas.length > 0 &&
+                  section.cinemas.every((c) => localSelectedCinemaSet.has(c.id));
+                return (
+                  <View key={section.key} style={styles.sectionCard}>
+                    <View style={styles.sectionHeader}>
+                      <View>
+                        <ThemedText style={styles.cityTitle}>{section.title}</ThemedText>
+                        {section.meta ? (
+                          <ThemedText style={styles.sectionMeta}>{section.meta}</ThemedText>
+                        ) : null}
+                      </View>
+                      {section.cityId !== undefined ? (
+                        <TouchableOpacity
+                          style={styles.toggleButton}
+                          onPress={() => handleToggleCity(section.cityId!)}
+                          activeOpacity={0.8}
+                        >
+                          <ThemedText style={styles.toggleButtonText}>
+                            {citySelected ? "Deselect all" : "Select all"}
+                          </ThemedText>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    <View style={styles.cinemaList}>
+                      {section.cinemas.map((cinema) => (
+                        <CinemaRowChip
+                          key={cinema.id}
+                          cinema={cinema}
+                          showCity={section.showCity === true}
+                          selected={localSelectedCinemaSet.has(cinema.id)}
+                          accentColor={accentColorByCinemaId.get(cinema.id) ?? colors.textSecondary}
+                          checkColor={colors.pillActiveText}
+                          styles={styles}
+                          onToggle={handleToggle}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                );
+              })}
+
+              <View style={{ height: 20 }} />
+            </BottomSheetScrollView>
+          )}
+        </QueryClientProvider>
+      </BottomSheetModal>
+
+      <Modal
+        transparent
+        visible={isSavePresetDialogVisible}
+        animationType="fade"
+        onRequestClose={handleCloseSavePresetDialog}
+      >
+        <View style={styles.dialogBackdrop}>
+          <TouchableOpacity
+            style={styles.dialogBackdropPressable}
+            activeOpacity={1}
+            onPress={handleCloseSavePresetDialog}
+          />
+          <View style={styles.dialogCard}>
+            <View style={styles.dialogHeader}>
+              <ThemedText style={styles.dialogTitle}>Save as preset</ThemedText>
+              <ThemedText style={styles.dialogSubtitle}>
+                Save your current cinema selection to reuse it later.
+              </ThemedText>
+            </View>
+            <TextInput
+              value={presetName}
+              onChangeText={(value) => {
+                setPresetName(value);
+                if (presetError) setPresetError(null);
+              }}
+              placeholder="Cinema preset name"
+              placeholderTextColor={colors.textSecondary}
+              style={styles.dialogInput}
+              maxLength={80}
+              autoCapitalize="words"
+              autoCorrect={false}
+              autoFocus
             />
-            <View style={styles.dialogCard}>
-              <View style={styles.dialogHeader}>
-                <ThemedText style={styles.dialogTitle}>Save as preset</ThemedText>
-                <ThemedText style={styles.dialogSubtitle}>
-                  Save your current cinema selection to reuse it later.
+            <TouchableOpacity
+              style={styles.favoriteToggle}
+              onPress={() => setSaveAsFavorite((current) => !current)}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons
+                name={saveAsFavorite ? "check-box" : "check-box-outline-blank"}
+                size={20}
+                color={saveAsFavorite ? colors.tint : colors.textSecondary}
+              />
+              <View style={styles.favoriteToggleText}>
+                <ThemedText style={styles.favoriteToggleTitle}>Save as default preset</ThemedText>
+                <ThemedText style={styles.favoriteToggleSubtitle}>
+                  This marks the preset as your favorite.
                 </ThemedText>
               </View>
-              <TextInput
-                value={presetName}
-                onChangeText={(value) => {
-                  setPresetName(value);
-                  if (presetError) setPresetError(null);
-                }}
-                placeholder="Cinema preset name"
-                placeholderTextColor={colors.textSecondary}
-                style={styles.dialogInput}
-                maxLength={80}
-                autoCapitalize="words"
-                autoCorrect={false}
-                autoFocus
-              />
+            </TouchableOpacity>
+            {presetError ? (
+              <ThemedText style={styles.presetErrorText}>{presetError}</ThemedText>
+            ) : null}
+            <View style={styles.dialogActions}>
               <TouchableOpacity
-                style={styles.favoriteToggle}
-                onPress={() => setSaveAsFavorite((current) => !current)}
+                style={[styles.dialogButton, styles.dialogButtonSecondary]}
+                onPress={handleCloseSavePresetDialog}
                 activeOpacity={0.8}
+                disabled={savePresetMutation.isPending}
               >
-                <MaterialIcons
-                  name={saveAsFavorite ? "check-box" : "check-box-outline-blank"}
-                  size={20}
-                  color={saveAsFavorite ? colors.tint : colors.textSecondary}
-                />
-                <View style={styles.favoriteToggleText}>
-                  <ThemedText style={styles.favoriteToggleTitle}>Save as default preset</ThemedText>
-                  <ThemedText style={styles.favoriteToggleSubtitle}>
-                    This marks the preset as your favorite.
-                  </ThemedText>
-                </View>
+                <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextSecondary]}>
+                  Cancel
+                </ThemedText>
               </TouchableOpacity>
-              {presetError ? <ThemedText style={styles.presetErrorText}>{presetError}</ThemedText> : null}
-              <View style={styles.dialogActions}>
-                <TouchableOpacity
-                  style={[styles.dialogButton, styles.dialogButtonSecondary]}
-                  onPress={handleCloseSavePresetDialog}
-                  activeOpacity={0.8}
-                  disabled={savePresetMutation.isPending}
-                >
-                  <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextSecondary]}>
-                    Cancel
-                  </ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.dialogButton,
-                    styles.dialogButtonPrimary,
-                    (savePresetMutation.isPending || presetName.trim().length === 0) &&
-                      styles.dialogButtonDisabled,
-                  ]}
-                  onPress={handleSavePreset}
-                  activeOpacity={0.8}
-                  disabled={savePresetMutation.isPending || presetName.trim().length === 0}
-                >
-                  <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextPrimary]}>
-                    {savePresetMutation.isPending ? "Saving..." : "Save"}
-                  </ThemedText>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                style={[
+                  styles.dialogButton,
+                  styles.dialogButtonPrimary,
+                  (savePresetMutation.isPending || presetName.trim().length === 0) &&
+                    styles.dialogButtonDisabled,
+                ]}
+                onPress={handleSavePreset}
+                activeOpacity={0.8}
+                disabled={savePresetMutation.isPending || presetName.trim().length === 0}
+              >
+                <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextPrimary]}>
+                  {savePresetMutation.isPending ? "Saving..." : "Save"}
+                </ThemedText>
+              </TouchableOpacity>
             </View>
           </View>
-        </Modal>
-      </SafeAreaView>
-    </Modal>
+        </View>
+      </Modal>
+    </>
   );
+}
+
+function SectionLabel({ label, colors }: { label: string; colors: ReturnType<typeof useThemeColors> }) {
+  return (
+    <ThemedText style={{
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontWeight: "600",
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+      marginBottom: 7,
+    }}>
+      {label}
+    </ThemedText>
+  );
+}
+
+function Divider({ colors }: { colors: ReturnType<typeof useThemeColors> }) {
+  return <View style={{ height: 1, backgroundColor: colors.divider, marginVertical: 12 }} />;
 }
 
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
-    modalContainer: {
-      flex: 1,
-      backgroundColor: colors.background,
+    dragHandleBar: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.textSecondary,
+      opacity: 0.35,
+      alignSelf: "center",
+      marginTop: 10,
+      marginBottom: 6,
     },
     header: {
       paddingHorizontal: 20,
@@ -927,89 +823,63 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderBottomWidth: 1,
       borderBottomColor: colors.divider,
     },
-    title: {
-      fontSize: 17,
-      fontWeight: "700",
-    },
-    pageSwitcher: {
-      paddingHorizontal: 16,
+    backButton: { marginRight: 8 },
+    title: { fontSize: 17, fontWeight: "700", flex: 1 },
+    scrollContent: { paddingHorizontal: 20, paddingTop: 14 },
+    loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 40 },
+    loadingText: { fontSize: 14, color: colors.textSecondary },
+    // Presets grid
+    presetGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 },
+    presetCard: {
+      flexBasis: "47%",
+      flexGrow: 1,
+      paddingHorizontal: 12,
       paddingVertical: 10,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.divider,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: colors.divider,
+      backgroundColor: colors.cardBackground,
+      gap: 4,
+    },
+    presetCardActive: { borderColor: colors.tint, backgroundColor: colors.pillActiveBackground },
+    presetCardRow: { flexDirection: "row", alignItems: "flex-start", gap: 4 },
+    presetCardName: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.text },
+    presetCardNameActive: { color: colors.pillActiveText },
+    presetCardDesc: { fontSize: 11, color: colors.textSecondary },
+    presetCardDescActive: { color: colors.pillActiveText, opacity: 0.8 },
+    // Preset action rows
+    presetActions: { gap: 8 },
+    actionRow: {
       flexDirection: "row",
-      gap: 8,
-    },
-    pageButton: {
-      flex: 1,
-      minHeight: 38,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.divider,
-      backgroundColor: colors.cardBackground,
       alignItems: "center",
-      justifyContent: "center",
-    },
-    pageButtonActive: {
-      backgroundColor: colors.tint,
-      borderColor: colors.tint,
-    },
-    pageButtonText: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: colors.textSecondary,
-    },
-    pageButtonTextActive: {
-      color: colors.pillActiveText,
-    },
-    mainContent: {
-      flex: 1,
-    },
-    content: {
-      padding: 16,
-      paddingBottom: 20,
-    },
-    sectionSeparator: {
-      height: 14,
-    },
-    sectionCard: {
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.divider,
-      backgroundColor: colors.cardBackground,
-      padding: 12,
-    },
-    allCinemasSection: {
-      marginBottom: 10,
-    },
-    sectionMeta: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    loadingContainer: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
       gap: 12,
-      padding: 20,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      backgroundColor: colors.cardBackground,
     },
-    loadingText: {
-      fontSize: 14,
-      color: colors.textSecondary,
+    actionRowDisabled: { opacity: 0.5 },
+    actionIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.pillBackground,
     },
-    sectionHeader: {
+    actionTextBlock: { flex: 1 },
+    actionTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
+    actionSubtitle: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
+    // Cinema selection
+    allCinemasRow: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      marginBottom: 8,
+      marginBottom: 10,
     },
-    sectionTitle: {
-      fontSize: 16,
-      fontWeight: "700",
-    },
-    cityTitle: {
-      fontSize: 15,
-      fontWeight: "700",
-    },
+    selectionCount: { fontSize: 13, color: colors.textSecondary },
     toggleButton: {
       paddingHorizontal: 12,
       paddingVertical: 4,
@@ -1018,17 +888,24 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderColor: colors.divider,
       backgroundColor: colors.pillBackground,
     },
-    toggleButtonText: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: colors.textSecondary,
+    toggleButtonText: { fontSize: 12, fontWeight: "600", color: colors.textSecondary },
+    sectionCard: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      backgroundColor: colors.cardBackground,
+      padding: 12,
+      marginBottom: 10,
     },
-    cinemaList: {
+    sectionHeader: {
       flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 6,
-      marginTop: 6,
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 8,
     },
+    sectionMeta: { fontSize: 12, color: colors.textSecondary },
+    cityTitle: { fontSize: 15, fontWeight: "700" },
+    cinemaList: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
     cinemaRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -1043,25 +920,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
     },
-    cinemaRowSelected: {
-      backgroundColor: colors.pillBackground,
-    },
-    cinemaInfo: {
-      flexShrink: 1,
-      gap: 1,
-    },
-    cinemaNameRow: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    cinemaName: {
-      fontSize: 12,
-      fontWeight: "600",
-    },
-    cinemaCity: {
-      fontSize: 10,
-      color: colors.textSecondary,
-    },
+    cinemaRowSelected: { backgroundColor: colors.pillBackground },
+    cinemaInfo: { flexShrink: 1, gap: 1 },
+    cinemaNameRow: { flexDirection: "row", alignItems: "center" },
+    cinemaName: { fontSize: 12, fontWeight: "600" },
+    cinemaCity: { fontSize: 10, color: colors.textSecondary },
     checkbox: {
       width: 13,
       height: 13,
@@ -1072,176 +935,46 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "center",
       justifyContent: "center",
     },
-    presetsContainer: {
-      flex: 1,
-    },
-    presetErrorText: {
-      fontSize: 12,
-      color: colors.red.secondary,
-    },
-    presetCard: {
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      padding: 12,
-      gap: 10,
-    },
-    presetCardCurrent: {
-      borderColor: colors.green.secondary,
-      backgroundColor: colors.green.primary,
-    },
-    presetCardDragging: {
-      borderColor: colors.tint,
-      shadowColor: "#000",
-      shadowOpacity: 0.16,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 5 },
-      elevation: 6,
-    },
-    presetHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
-      gap: 8,
-    },
-    presetTitleWrap: {
-      flex: 1,
-      gap: 3,
-    },
-    presetNameRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      minWidth: 0,
-    },
-    presetName: {
-      fontSize: 14,
-      fontWeight: "700",
-      color: colors.text,
-      flex: 1,
-    },
-    presetMeta: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    presetHeaderActions: {
+    // Manage presets page
+    emptyContainer: { paddingVertical: 40, alignItems: "center", justifyContent: "center" },
+    emptyText: { fontSize: 14, color: colors.textSecondary, textAlign: "center" },
+    hintText: { fontSize: 12, color: colors.textSecondary, marginBottom: 8 },
+    manageRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-    },
-    iconActionButton: {
-      width: 28,
-      height: 28,
-      borderRadius: 9,
-      borderWidth: 1,
-      borderColor: colors.divider,
-      backgroundColor: colors.pillBackground,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    iconActionButtonFavorite: {
-      borderColor: colors.yellow.secondary,
-      backgroundColor: colors.yellow.primary,
-    },
-    iconActionButtonDisabled: {
-      opacity: 0.5,
-    },
-    reorderControls: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    reorderHintText: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginBottom: 10,
-    },
-    emptyPresets: {
-      paddingVertical: 40,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    emptyPresetsText: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      textAlign: "center",
-    },
-    preferenceFooter: {
-      borderTopWidth: 1,
-      borderTopColor: colors.divider,
-      backgroundColor: colors.background,
-      paddingHorizontal: 16,
-      paddingTop: 10,
-      paddingBottom: 10,
-      gap: 10,
-    },
-    preferenceText: {
-      gap: 3,
-    },
-    preferenceSubtitle: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    preferenceTitle: {
-      fontSize: 13,
-      fontWeight: "700",
-    },
-    preferenceActions: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      flexWrap: "nowrap",
-    },
-    preferenceButton: {
-      minHeight: 40,
-      paddingHorizontal: 12,
       borderRadius: 12,
       borderWidth: 1,
+      borderColor: colors.divider,
+      backgroundColor: colors.cardBackground,
+      paddingLeft: 12,
+      paddingRight: 8,
+      paddingVertical: 8,
+      marginBottom: 8,
+    },
+    manageRowCurrent: { borderColor: colors.tint, backgroundColor: colors.pillActiveBackground },
+    manageNameBlock: { flex: 1, gap: 2 },
+    manageName: { fontSize: 14, fontWeight: "600", color: colors.text },
+    manageMeta: { fontSize: 11, color: colors.textSecondary },
+    iconBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 9,
       alignItems: "center",
       justifyContent: "center",
+      backgroundColor: colors.pillBackground,
     },
-    preferenceButtonSubtle: {
-      backgroundColor: colors.cardBackground,
-      borderColor: colors.divider,
-    },
-    preferenceButtonPrimary: {
-      backgroundColor: colors.tint,
-      borderColor: colors.tint,
-    },
-    preferenceButtonGrow: {
-      flex: 1,
-    },
-    preferenceButtonDisabled: {
-      opacity: 0.5,
-    },
-    preferenceButtonInner: {
-      flexDirection: "row",
-      alignItems: "center",
-      columnGap: 6,
-    },
-    preferenceButtonText: {
-      fontSize: 12,
-      fontWeight: "600",
-    },
-    preferenceButtonTextPrimary: {
-      color: colors.pillActiveText,
-    },
-    preferenceButtonTextSubtle: {
-      color: colors.textSecondary,
-    },
-    preferenceButtonTextDisabled: {
-      color: colors.textSecondary,
-    },
+    iconBtnFavorite: { backgroundColor: colors.yellow.primary },
+    iconBtnDisabled: { opacity: 0.4 },
+    // Save preset dialog
+    presetErrorText: { fontSize: 12, color: colors.red.secondary },
     dialogBackdrop: {
       flex: 1,
       backgroundColor: "rgba(15, 18, 27, 0.55)",
       justifyContent: "center",
       paddingHorizontal: 20,
     },
-    dialogBackdropPressable: {
-      ...StyleSheet.absoluteFillObject,
-    },
+    dialogBackdropPressable: { ...StyleSheet.absoluteFillObject },
     dialogCard: {
       borderRadius: 16,
       borderWidth: 1,
@@ -1250,18 +983,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       padding: 16,
       gap: 12,
     },
-    dialogHeader: {
-      gap: 2,
-    },
-    dialogTitle: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    dialogSubtitle: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
+    dialogHeader: { gap: 2 },
+    dialogTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
+    dialogSubtitle: { fontSize: 12, color: colors.textSecondary },
     dialogInput: {
       borderWidth: 1,
       borderColor: colors.divider,
@@ -1273,31 +997,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 14,
       fontWeight: "500",
     },
-    favoriteToggle: {
-      flexDirection: "row",
-      alignItems: "center",
-      columnGap: 10,
-      paddingVertical: 2,
-    },
-    favoriteToggleText: {
-      flex: 1,
-      gap: 1,
-    },
-    favoriteToggleTitle: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    favoriteToggleSubtitle: {
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    dialogActions: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
-      gap: 8,
-      marginTop: 2,
-    },
+    favoriteToggle: { flexDirection: "row", alignItems: "center", columnGap: 10, paddingVertical: 2 },
+    favoriteToggleText: { flex: 1, gap: 1 },
+    favoriteToggleTitle: { fontSize: 13, fontWeight: "700", color: colors.text },
+    favoriteToggleSubtitle: { fontSize: 11, color: colors.textSecondary },
+    dialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 2 },
     dialogButton: {
       minHeight: 38,
       paddingHorizontal: 14,
@@ -1306,25 +1010,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "center",
       justifyContent: "center",
     },
-    dialogButtonPrimary: {
-      backgroundColor: colors.tint,
-      borderColor: colors.tint,
-    },
-    dialogButtonSecondary: {
-      backgroundColor: colors.cardBackground,
-      borderColor: colors.divider,
-    },
-    dialogButtonDisabled: {
-      opacity: 0.5,
-    },
-    dialogButtonText: {
-      fontSize: 12,
-      fontWeight: "700",
-    },
-    dialogButtonTextPrimary: {
-      color: colors.pillActiveText,
-    },
-    dialogButtonTextSecondary: {
-      color: colors.textSecondary,
-    },
+    dialogButtonPrimary: { backgroundColor: colors.tint, borderColor: colors.tint },
+    dialogButtonSecondary: { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+    dialogButtonDisabled: { opacity: 0.5 },
+    dialogButtonText: { fontSize: 12, fontWeight: "700" },
+    dialogButtonTextPrimary: { color: colors.pillActiveText },
+    dialogButtonTextSecondary: { color: colors.textSecondary },
   });

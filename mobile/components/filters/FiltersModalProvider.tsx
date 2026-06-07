@@ -10,22 +10,21 @@ import useAuth from 'shared/hooks/useAuth';
 import { MoviesService, ShowtimesService } from 'shared';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import FiltersModal from '@/components/filters/FiltersModal';
-import {
-  SHARED_TAB_FILTER_PRESET_SCOPE,
-  getSelectedStatusesFromShowtimeFilter,
-} from '@/components/filters/shared-tab-filters';
-import { type PageFilterPresetState } from '@/components/filters/FilterPresetsModal';
+import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
+import { getSelectedStatusesFromShowtimeFilter } from '@/components/filters/shared-tab-filters';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 
-type OpenConfig = { showGroupByMovie?: boolean };
+type OpenConfig = { showGroupByMovie?: boolean; showPresets?: boolean };
 
 type FiltersModalContextValue = {
   openFiltersModal: (config?: OpenConfig) => void;
+  openCinemaModal: () => void;
 };
 
 const FiltersModalContext = createContext<FiltersModalContextValue>({
   openFiltersModal: () => {},
+  openCinemaModal: () => {},
 });
 
 export function useFiltersModal() {
@@ -35,6 +34,8 @@ export function useFiltersModal() {
 export function FiltersModalProvider({ children }: { children: ReactNode }) {
   const [visible, setVisible] = useState(false);
   const [showGroupByMovie, setShowGroupByMovieConfig] = useState(false);
+  const [showPresets, setShowPresetsConfig] = useState(false);
+  const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
 
   const {
     selectedShowtimeFilter,
@@ -55,18 +56,6 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
-
-  const currentPresetFilters = useMemo<PageFilterPresetState>(
-    () => ({
-      selected_showtime_filter: selectedShowtimeFilter,
-      showtime_audience: "including-friends",
-      watchlist_only: effectiveWatchlistOnly,
-      days: selectedDays.length > 0 ? selectedDays : null,
-      time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
-      runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
-    }),
-    [selectedShowtimeFilter, effectiveWatchlistOnly, selectedDays, selectedTimeRanges, selectedRuntimeRanges]
-  );
 
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
@@ -114,19 +103,29 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
 
   const openFiltersModal = useCallback((config?: OpenConfig) => {
     if (config?.showGroupByMovie !== undefined) setShowGroupByMovieConfig(config.showGroupByMovie);
+    setShowPresetsConfig(config?.showPresets ?? false);
     setVisible(true);
   }, []);
 
+  const openCinemaModal = useCallback(() => {
+    setCinemaModalVisible(true);
+  }, []);
+
   return (
-    <FiltersModalContext.Provider value={{ openFiltersModal }}>
+    <FiltersModalContext.Provider value={{ openFiltersModal, openCinemaModal }}>
       {children}
+      <CinemaFilterModal
+        visible={cinemaModalVisible}
+        onClose={() => setCinemaModalVisible(false)}
+        initialPage="selection"
+      />
       <FiltersModal
         visible={visible}
         onClose={() => setVisible(false)}
-        scope={SHARED_TAB_FILTER_PRESET_SCOPE}
         groupByMovie={groupByMovie}
         setGroupByMovie={setGroupByMovie}
         showGroupByMovie={showGroupByMovie}
+        showPresets={showPresets}
         watchlistOnly={effectiveWatchlistOnly}
         setWatchlistOnly={setWatchlistOnly}
         canUseWatchlistFilter={hasLetterboxdUsername}
@@ -139,7 +138,6 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         setSelectedTimeRanges={setSelectedTimeRanges}
         selectedRuntimeRanges={selectedRuntimeRanges}
         setSelectedRuntimeRanges={setSelectedRuntimeRanges}
-        currentPresetFilters={currentPresetFilters}
         resultCount={resultCount}
       />
     </FiltersModalContext.Provider>

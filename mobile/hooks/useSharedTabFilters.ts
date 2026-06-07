@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchFavoriteFilterPreset } from "shared/hooks/useFetchFavoriteFilterPreset";
+import { useFetchFavoriteSavedPreset } from "shared/hooks/useFetchFavoriteSavedPreset";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 import { useSessionDaySelections } from "shared/hooks/useSessionDaySelections";
@@ -54,6 +55,9 @@ export function useSharedTabFilters() {
   const { selection: groupByMovie, setSelection: setGroupByMovie } =
     useSessionGroupByMovie();
   const favoriteFilterPresetQuery = useFetchFavoriteFilterPreset({
+    scope: SHARED_TAB_FILTER_PRESET_SCOPE,
+  });
+  const favoriteSavedPresetQuery = useFetchFavoriteSavedPreset({
     scope: SHARED_TAB_FILTER_PRESET_SCOPE,
   });
   const favoriteCinemasQuery = useFetchSelectedCinemas();
@@ -144,48 +148,68 @@ export function useSharedTabFilters() {
 
   useEffect(() => {
     if (initializedFromFavoritesRef.current) return;
-    if (!favoriteFilterPresetQuery.isFetched || !favoriteCinemasQuery.isFetched) return;
+    if (
+      !favoriteFilterPresetQuery.isFetched ||
+      !favoriteSavedPresetQuery.isFetched ||
+      !favoriteCinemasQuery.isFetched
+    )
+      return;
 
+    // The favorite preset is unique across the legacy and new systems. A legacy
+    // preset carries every filter dimension; a new saved preset carries only the
+    // dimensions it includes (and optionally a cinema selection).
+    const legacyFavorite = favoriteFilterPresetQuery.data;
+    const savedFavorite = favoriteSavedPresetQuery.data;
+    const savedIncludes = new Set(savedFavorite?.included_fields ?? []);
+    const filterSource = legacyFavorite ?? savedFavorite;
+    const appliesDimension = (dimension: string) =>
+      Boolean(legacyFavorite) || savedIncludes.has(dimension);
+
+    // Cinemas: a saved favorite that includes cinemas wins; otherwise fall back
+    // to the favorite cinema preset.
     const rawSessionCinemaIds = queryClient.getQueryData<number[]>(
       SESSION_CINEMA_SELECTIONS_KEY
     );
-    if (rawSessionCinemaIds === undefined && favoriteCinemasQuery.data !== undefined) {
-      setSessionCinemaIds(favoriteCinemasQuery.data);
+    if (rawSessionCinemaIds === undefined) {
+      if (savedFavorite && savedIncludes.has("cinemas") && savedFavorite.cinema_ids) {
+        setSessionCinemaIds(savedFavorite.cinema_ids);
+      } else if (favoriteCinemasQuery.data !== undefined) {
+        setSessionCinemaIds(favoriteCinemasQuery.data);
+      }
     }
 
-    const favoritePreset = favoriteFilterPresetQuery.data;
-    if (favoritePreset) {
+    if (filterSource) {
       const rawSessionShowtimeFilter = queryClient.getQueryData<SharedTabShowtimeFilter>(
         SESSION_SHOWTIME_FILTER_KEY
       );
-      if (rawSessionShowtimeFilter === undefined) {
+      if (appliesDimension("selected_showtime_filter") && rawSessionShowtimeFilter === undefined) {
         setSelectedShowtimeFilter(
-          toSharedTabShowtimeFilter(favoritePreset.filters.selected_showtime_filter)
+          toSharedTabShowtimeFilter(filterSource.filters.selected_showtime_filter)
         );
       }
 
       const rawWatchlistOnly = queryClient.getQueryData<boolean>(SESSION_WATCHLIST_ONLY_KEY);
-      if (rawWatchlistOnly === undefined) {
-        setWatchlistOnly(Boolean(favoritePreset.filters.watchlist_only));
+      if (appliesDimension("watchlist_only") && rawWatchlistOnly === undefined) {
+        setWatchlistOnly(Boolean(filterSource.filters.watchlist_only));
       }
 
       const rawSessionDays = queryClient.getQueryData<string[]>(SESSION_DAY_SELECTIONS_KEY);
-      if (rawSessionDays === undefined) {
-        setSessionDays(favoritePreset.filters.days ?? []);
+      if (appliesDimension("days") && rawSessionDays === undefined) {
+        setSessionDays(filterSource.filters.days ?? []);
       }
 
       const rawSessionTimeRanges = queryClient.getQueryData<string[]>(
         SESSION_TIME_RANGE_SELECTIONS_KEY
       );
-      if (rawSessionTimeRanges === undefined) {
-        setSelectedTimeRanges(favoritePreset.filters.time_ranges ?? []);
+      if (appliesDimension("time_ranges") && rawSessionTimeRanges === undefined) {
+        setSelectedTimeRanges(filterSource.filters.time_ranges ?? []);
       }
 
       const rawSessionRuntimeRanges = queryClient.getQueryData<string[]>(
         SESSION_RUNTIME_RANGE_SELECTIONS_KEY
       );
-      if (rawSessionRuntimeRanges === undefined) {
-        setSelectedRuntimeRanges(favoritePreset.filters.runtime_ranges ?? []);
+      if (appliesDimension("runtime_ranges") && rawSessionRuntimeRanges === undefined) {
+        setSelectedRuntimeRanges(filterSource.filters.runtime_ranges ?? []);
       }
     }
 
@@ -195,6 +219,8 @@ export function useSharedTabFilters() {
     favoriteCinemasQuery.isFetched,
     favoriteFilterPresetQuery.data,
     favoriteFilterPresetQuery.isFetched,
+    favoriteSavedPresetQuery.data,
+    favoriteSavedPresetQuery.isFetched,
     queryClient,
     setSessionCinemaIds,
     setSessionDays,

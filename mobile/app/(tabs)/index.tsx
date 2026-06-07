@@ -4,10 +4,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet } from 'react-native';
 import { DateTime } from 'luxon';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { MeService } from 'shared';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
@@ -23,17 +22,15 @@ import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import { ShowtimesListContent } from '@/components/showtimes/ShowtimesScreen';
 import MovieCard from '@/components/movies/MovieCard';
-import { type PageFilterPresetState } from '@/components/filters/FilterPresetsModal';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
+import { applyDisplayPreset, type DisplayPreset } from '@/components/filters/saved-presets';
 import {
   SHARED_TAB_FILTER_PRESET_SCOPE,
   getSelectedStatusesFromShowtimeFilter,
-  toSharedTabShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
-import { isCinemaSelectionDifferentFromPreferred } from '@/utils/cinema-selection';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 
 export default function MainShowtimesScreen() {
@@ -73,10 +70,6 @@ export default function MainShowtimesScreen() {
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
 
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
-  const { data: cinemaPresets = [] } = useQuery({
-    queryKey: ['cinema-presets'],
-    queryFn: () => MeService.getCinemaPresets(),
-  });
 
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
@@ -195,63 +188,22 @@ export default function MainShowtimesScreen() {
     }
   };
 
-  // ─── Filter pills helpers ────────────────────────────────────────────────────
-  const isCinemaFilterActive = useMemo(
-    () => isCinemaSelectionDifferentFromPreferred({ sessionCinemaIds, preferredCinemaIds }),
-    [sessionCinemaIds, preferredCinemaIds]
-  );
-
-  const activeFilterCount = [
-    selectedShowtimeFilter !== 'all',
-    effectiveWatchlistOnly,
-    groupByMovie,
-    selectedDays.length > 0,
-    selectedTimeRanges.length > 0,
-    selectedRuntimeRanges.length > 0,
-    isCinemaFilterActive,
-  ].filter(Boolean).length;
-
-  const cinemaChipLabel = useMemo(() => {
-    if (!isCinemaFilterActive) return null;
-    const ids = sessionCinemaIds ?? preferredCinemaIds ?? [];
-    const sig = JSON.stringify(Array.from(new Set(ids)).sort((a, b) => a - b));
-    const preset = cinemaPresets.find(
-      (p) => JSON.stringify(Array.from(new Set(p.cinema_ids)).sort((a, b) => a - b)) === sig
-    );
-    return preset?.name ?? `${ids.length} cinemas`;
-  }, [isCinemaFilterActive, sessionCinemaIds, preferredCinemaIds, cinemaPresets]);
-
-  const currentPresetFilters = useMemo<PageFilterPresetState>(
-    () => ({
-      selected_showtime_filter: selectedShowtimeFilter,
-      showtime_audience: 'including-friends',
-      watchlist_only: effectiveWatchlistOnly,
-      days: selectedDays.length > 0 ? selectedDays : null,
-      time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
-      runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
-    }),
-    [
-      selectedShowtimeFilter,
-      effectiveWatchlistOnly, selectedDays, selectedTimeRanges, selectedRuntimeRanges,
-    ]
-  );
-
-  const handleApplyPreset = (preset: PageFilterPresetState) => {
+  const handleApplyPreset = (preset: DisplayPreset) => {
     setIsFilterTransitionLoading(true);
-    setSelectedShowtimeFilter(toSharedTabShowtimeFilter(preset.selected_showtime_filter));
-    setWatchlistOnly(hasLetterboxdUsername && Boolean(preset.watchlist_only));
-    setSelectedDays(preset.days ?? []);
-    setSelectedTimeRanges(preset.time_ranges ?? []);
-    setSelectedRuntimeRanges(preset.runtime_ranges ?? []);
+    applyDisplayPreset(preset, {
+      hasLetterboxdUsername,
+      setSelectedShowtimeFilter,
+      setWatchlistOnly,
+      setSelectedDays,
+      setSelectedTimeRanges,
+      setSelectedRuntimeRanges,
+      setSessionCinemaIds,
+    });
   };
 
   const filtersRowProps = {
     scope: SHARED_TAB_FILTER_PRESET_SCOPE,
-    activeFilterCount,
-    currentPresetFilters,
-    groupByMovie,
-    isModalOpen: false,
-    onOpenModal: () => openFiltersModal({ showGroupByMovie: true }),
+    onOpenModal: () => openFiltersModal({ showGroupByMovie: true, showPresets: true }),
     onApplyPreset: handleApplyPreset,
   };
 
@@ -273,11 +225,7 @@ export default function MainShowtimesScreen() {
     setSelectedTimeRanges,
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
-    cinemaChipLabel,
-    onClearCinemas:
-      isCinemaFilterActive && preferredCinemaIds
-        ? () => setSessionCinemaIds(preferredCinemaIds)
-        : undefined,
+    onOpenFilters: () => openFiltersModal({ showGroupByMovie: true, showPresets: true }),
     onClearAll: () => {
       setIsFilterTransitionLoading(true);
       setSelectedShowtimeFilter('all');

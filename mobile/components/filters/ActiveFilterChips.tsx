@@ -1,10 +1,11 @@
 /**
  * Mobile filter UI component: Active Filter Chips.
  * A scrollable row of chips for every currently-active filter dimension.
- * Each chip has an × that removes only that filter.
+ * Regular chips have an × that removes only that filter.
+ * The cinema chip is always present, has no ×, and opens a preset dropdown.
  */
 import { useMemo, useRef, useState } from "react";
-import { FlatList, StyleSheet, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
@@ -13,6 +14,7 @@ import { getDaySelectionLabel } from "@/components/filters/day-filter-utils";
 import { getPresetForRange } from "@/components/filters/time-filter-presets";
 import { formatTimeRangeChipLabel, formatRuntimeRangeChipLabel } from "@/components/filters/time-range-utils";
 import { type SharedTabShowtimeFilter } from "@/components/filters/shared-tab-filters";
+import CinemaFilterChip from "@/components/filters/CinemaFilterChip";
 
 type ActiveFilterChipsProps = {
   groupByMovie: boolean;
@@ -29,10 +31,11 @@ type ActiveFilterChipsProps = {
   setSelectedTimeRanges: (v: string[]) => void;
   selectedRuntimeRanges: string[];
   setSelectedRuntimeRanges: (v: string[]) => void;
-  // Cinema chip label (e.g. preset name or "N cinemas")
-  cinemaChipLabel?: string | null;
-  onClearCinemas?: () => void;
+  /** When provided, the cinema chip is always rendered and opens the filters modal. */
+  onOpenFilters?: () => void;
   onClearAll?: () => void;
+  /** Render inline (no bottom border, no background) with a leading vertical divider. */
+  inline?: boolean;
 };
 
 type Chip = {
@@ -68,9 +71,9 @@ export default function ActiveFilterChips({
   setSelectedTimeRanges,
   selectedRuntimeRanges,
   setSelectedRuntimeRanges,
-  cinemaChipLabel,
-  onClearCinemas,
+  onOpenFilters,
   onClearAll,
+  inline = false,
 }: ActiveFilterChipsProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -108,14 +111,6 @@ export default function ActiveFilterChips({
       });
     }
 
-    if (cinemaChipLabel && onClearCinemas) {
-      result.push({
-        key: "cinemas",
-        label: cinemaChipLabel,
-        onRemove: onClearCinemas,
-      });
-    }
-
     for (const day of selectedDays) {
       result.push({
         key: `day-${day}`,
@@ -150,23 +145,22 @@ export default function ActiveFilterChips({
     canUseWatchlistFilter,
     selectedShowtimeFilter,
     showStatusFilter,
-    cinemaChipLabel,
     selectedDays,
     selectedTimeRanges,
     selectedRuntimeRanges,
   ]);
 
-  if (chips.length === 0) return null;
+  // Don't render if there's nothing to show (no cinema chip and no filter chips)
+  if (!onOpenFilters && chips.length === 0) return null;
 
   return (
-    <View style={styles.container}>
+    <View style={inline ? styles.inlineContainer : styles.container}>
+      {inline && <View style={styles.inlineLeadDivider} />}
       <View style={styles.list}>
-        <FlatList
-          data={chips}
-          keyExtractor={(item) => item.key}
+        <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={inline ? styles.inlineContent : styles.content}
           scrollEventThrottle={16}
           onLayout={(e) => {
             containerW.current = e.nativeEvent.layout.width;
@@ -180,8 +174,11 @@ export default function ActiveFilterChips({
             const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
             setHasMoreRight(contentOffset.x + layoutMeasurement.width < contentSize.width - 2);
           }}
-          renderItem={({ item }) => (
+        >
+          {onOpenFilters && <CinemaFilterChip onOpenFilters={onOpenFilters} />}
+          {chips.map((item) => (
             <TouchableOpacity
+              key={item.key}
               style={styles.chip}
               onPress={item.onRemove}
               activeOpacity={0.75}
@@ -191,19 +188,19 @@ export default function ActiveFilterChips({
               </ThemedText>
               <MaterialIcons name="close" size={12} color={colors.pillText} />
             </TouchableOpacity>
-          )}
-        />
+          ))}
+        </ScrollView>
         {hasMoreRight && (
           <View style={styles.scrollFadeRight} pointerEvents="none">
             <MaterialIcons name="chevron-right" size={16} color={colors.textSecondary} />
           </View>
         )}
       </View>
-      {onClearAll && (
+      {onClearAll && chips.length > 0 && (
         <>
           <View style={styles.clearSeparator} />
           <TouchableOpacity onPress={onClearAll} style={styles.clearBtn}>
-            <ThemedText style={styles.clearText}>Clear filters</ThemedText>
+            <MaterialIcons name="close" size={18} color={colors.tint} />
           </TouchableOpacity>
         </>
       )}
@@ -219,6 +216,25 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       backgroundColor: colors.background,
       borderBottomWidth: 1,
       borderBottomColor: colors.divider,
+    },
+    inlineContainer: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    inlineLeadDivider: {
+      width: 1,
+      height: 16,
+      alignSelf: "center",
+      marginHorizontal: 10,
+      backgroundColor: colors.divider,
+    },
+    inlineContent: {
+      paddingLeft: 0,
+      paddingRight: 8,
+      paddingVertical: 7,
+      gap: 8,
+      alignItems: "center",
     },
     list: {
       flex: 1,
@@ -248,11 +264,6 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
     clearBtn: {
       paddingHorizontal: 14,
       paddingVertical: 10,
-    },
-    clearText: {
-      fontSize: 13,
-      color: colors.tint,
-      fontWeight: "500",
     },
     chip: {
       flexDirection: "row",

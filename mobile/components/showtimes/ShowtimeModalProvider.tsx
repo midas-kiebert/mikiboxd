@@ -25,7 +25,10 @@ import {
 
 import ShowtimeActionModal, { type ShowtimeInvite } from "@/components/showtimes/ShowtimeActionModal";
 
-type OpenOptions = { invite?: ShowtimeInvite | null };
+export type OpenOptions = {
+  invite?: ShowtimeInvite | null;
+  openedFrom?: { movieId?: number; cinemaId?: number; userId?: string };
+};
 
 type ShowtimeModalContextValue = {
   openShowtimeModal: (showtime: ShowtimeLoggedIn, options?: OpenOptions) => void;
@@ -52,6 +55,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
   const [visible, setVisible] = useState(false);
   const [currentShowtime, setCurrentShowtime] = useState<ShowtimeLoggedIn | null>(null);
   const [invite, setInvite] = useState<ShowtimeInvite | null>(null);
+  const [openedFrom, setOpenedFrom] = useState<OpenOptions["openedFrom"]>(undefined);
   const [isLoadingById, setIsLoadingById] = useState(false);
   // Guards against a slow getShowtimeById resolving after a newer open superseded it.
   const openRequestIdRef = useRef(0);
@@ -60,6 +64,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
     (showtime: ShowtimeLoggedIn, options?: OpenOptions) => {
       openRequestIdRef.current += 1;
       setInvite(options?.invite ?? null);
+      setOpenedFrom(options?.openedFrom);
       setCurrentShowtime(showtime);
       setIsLoadingById(false);
       setVisible(true);
@@ -71,6 +76,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
     (showtimeId: number, options?: OpenOptions) => {
       const requestId = ++openRequestIdRef.current;
       setInvite(options?.invite ?? null);
+      setOpenedFrom(options?.openedFrom);
       setCurrentShowtime(null);
       setIsLoadingById(true);
       setVisible(true);
@@ -235,6 +241,9 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
         onUpdateStatus={handleUpdateStatus}
         onDismissInvite={handleDismissInvite}
         onClose={() => setVisible(false)}
+        disableMovieNavigation={openedFrom?.movieId !== undefined}
+        disabledCinemaId={openedFrom?.cinemaId}
+        disabledUserId={openedFrom?.userId}
       />
     </ShowtimeModalContext.Provider>
   );

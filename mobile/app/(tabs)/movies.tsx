@@ -11,12 +11,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
-import { MeService } from 'shared';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
 import { DateTime } from 'luxon';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import TopBar from '@/components/layout/TopBar';
@@ -24,8 +23,8 @@ import SearchBar from '@/components/inputs/SearchBar';
 import FiltersRow from '@/components/filters/FiltersRow';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
-import { type PageFilterPresetState } from '@/components/filters/FilterPresetsModal';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
+import { applyDisplayPreset, type DisplayPreset } from '@/components/filters/saved-presets';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 import {
   SHARED_TAB_FILTER_PRESET_SCOPE,
@@ -35,7 +34,6 @@ import {
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import MovieCard from '@/components/movies/MovieCard';
-import { isCinemaSelectionDifferentFromPreferred } from '@/utils/cinema-selection';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 
 export default function MovieScreen() {
@@ -83,10 +81,6 @@ export default function MovieScreen() {
   );
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
-  const { data: cinemaPresets = [] } = useQuery({
-    queryKey: ['cinema-presets'],
-    queryFn: () => MeService.getCinemaPresets(),
-  });
 
   useEffect(() => {
     if (hasLetterboxdUsername || !watchlistOnly) return;
@@ -113,24 +107,6 @@ export default function MovieScreen() {
       runtimeBounds.runtimeMax,
       sessionCinemaIds,
       selectedShowtimeFilter,
-    ]
-  );
-
-  const currentPresetFilters = useMemo<PageFilterPresetState>(
-    () => ({
-      selected_showtime_filter: selectedShowtimeFilter,
-      showtime_audience: 'including-friends',
-      watchlist_only: effectiveWatchlistOnly,
-      days: selectedDays.length > 0 ? selectedDays : null,
-      time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
-      runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
-    }),
-    [
-      selectedShowtimeFilter,
-      effectiveWatchlistOnly,
-      selectedDays,
-      selectedTimeRanges,
-      selectedRuntimeRanges,
     ]
   );
 
@@ -178,40 +154,16 @@ export default function MovieScreen() {
     );
   };
 
-  const isCinemaFilterActive = useMemo(
-    () => isCinemaSelectionDifferentFromPreferred({ sessionCinemaIds, preferredCinemaIds }),
-    [sessionCinemaIds, preferredCinemaIds]
-  );
-
-  const activeFilterCount = [
-    selectedShowtimeFilter !== 'all',
-    effectiveWatchlistOnly,
-    groupByMovie,
-    selectedDays.length > 0,
-    selectedTimeRanges.length > 0,
-    selectedRuntimeRanges.length > 0,
-    isCinemaFilterActive,
-  ].filter(Boolean).length;
-
-  // Cinema chip label for ActiveFilterChips
-  const cinemaChipLabel = useMemo(() => {
-    if (!isCinemaFilterActive) return null;
-    const ids = sessionCinemaIds ?? preferredCinemaIds ?? [];
-    const sig = JSON.stringify(Array.from(new Set(ids)).sort((a, b) => a - b));
-    const preset = cinemaPresets.find(
-      (p) => JSON.stringify(Array.from(new Set(p.cinema_ids)).sort((a, b) => a - b)) === sig
-    );
-    return preset?.name ?? `${ids.length} cinemas`;
-  }, [isCinemaFilterActive, sessionCinemaIds, preferredCinemaIds, cinemaPresets]);
-
-  const handleApplyPreset = (preset: PageFilterPresetState) => {
-    if (preset.selected_showtime_filter !== undefined) {
-      setSelectedShowtimeFilter(toSharedTabShowtimeFilter(preset.selected_showtime_filter));
-    }
-    setWatchlistOnly(hasLetterboxdUsername && Boolean(preset.watchlist_only));
-    setSelectedDays(preset.days ?? []);
-    setSelectedTimeRanges(preset.time_ranges ?? []);
-    setSelectedRuntimeRanges(preset.runtime_ranges ?? []);
+  const handleApplyPreset = (preset: DisplayPreset) => {
+    applyDisplayPreset(preset, {
+      hasLetterboxdUsername,
+      setSelectedShowtimeFilter,
+      setWatchlistOnly,
+      setSelectedDays,
+      setSelectedTimeRanges,
+      setSelectedRuntimeRanges,
+      setSessionCinemaIds,
+    });
   };
 
 
@@ -221,10 +173,6 @@ export default function MovieScreen() {
       <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search movies" />
       <FiltersRow
         scope={SHARED_TAB_FILTER_PRESET_SCOPE}
-        activeFilterCount={activeFilterCount}
-        currentPresetFilters={currentPresetFilters}
-        groupByMovie={groupByMovie}
-        isModalOpen={false}
         onOpenModal={() => openFiltersModal({ showGroupByMovie: false })}
         onApplyPreset={handleApplyPreset}
       />
@@ -243,12 +191,7 @@ export default function MovieScreen() {
         setSelectedTimeRanges={setSelectedTimeRanges}
         selectedRuntimeRanges={selectedRuntimeRanges}
         setSelectedRuntimeRanges={setSelectedRuntimeRanges}
-        cinemaChipLabel={cinemaChipLabel}
-        onClearCinemas={
-          isCinemaFilterActive && preferredCinemaIds
-            ? () => setSessionCinemaIds(preferredCinemaIds)
-            : undefined
-        }
+        onOpenFilters={() => openFiltersModal({ showGroupByMovie: false })}
         onClearAll={() => {
           setSelectedShowtimeFilter(toSharedTabShowtimeFilter('all'));
           setWatchlistOnly(false);

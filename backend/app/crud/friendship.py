@@ -1,9 +1,10 @@
 from uuid import UUID
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.models.friendship import FriendRequest, Friendship
+from app.models.user import User
 
 
 def create_friendship(
@@ -92,6 +93,25 @@ def create_friend_request(
     session.flush()
 
     return friend_request
+
+
+def get_received_friend_requests_with_sender(
+    *,
+    session: Session,
+    receiver_id: UUID,
+    limit: int,
+    offset: int,
+) -> list[tuple[FriendRequest, User]]:
+    """Received friend requests with their sender, newest first (for the feed)."""
+    stmt = (
+        select(FriendRequest, User)
+        .join(User, col(User.id) == col(FriendRequest.sender_id))
+        .where(FriendRequest.receiver_id == receiver_id)
+        .order_by(col(FriendRequest.created_at).desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(session.exec(stmt).all())  # type: ignore[return-value]
 
 
 def has_sent_friend_request(

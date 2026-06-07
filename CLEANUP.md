@@ -67,6 +67,7 @@ Legend:
 - [x] `showtime.py` — Individual screening (datetime, cinema, movie, ticket link)
 - [x] `showtime_selection.py` — User's going/interested status on a showtime
 - [x] `showtime_ping.py` — Notification sent to a friend about a showtime
+- [x] `notification.py` — Notification-centre entry (match / invite-response / request-accepted)
 - [x] `showtime_visibility.py` — Visibility settings (who can see your going status)
 - [x] `showtime_source_presence.py` — Tracks which scraper provided a showtime
 - [x] `scrape_run.py` — Metadata about each scraping execution
@@ -92,6 +93,7 @@ Legend:
 - [ ] `movie.py` — Movie response shape (with watchlist status, friend data)
 - [ ] `showtime.py` — Showtime response shape (with selections, visibility)
 - [ ] `showtime_ping.py` — Ping response shape
+- [x] `notification.py` — Merged notification-centre feed item shape
 - [ ] `showtime_visibility.py` — Visibility settings response shape
 - [ ] `cinema_preset.py` — Cinema preset response shape
 - [ ] `filter_preset.py` — Filter preset response shape
@@ -112,6 +114,7 @@ Legend:
 - [ ] `showtime.py` — Showtime queries, upserts, reconciliation ⚠️ Large (518 LOC)
 - [ ] `showtime_visibility.py` — Visibility calculation via SQL joins ⚠️ Large (604 LOC)
 - [ ] `showtime_ping.py` — Ping queries and creation
+- [x] `notification.py` — Notification-centre row queries (upsert, feed, decay)
 - [ ] `friendship.py` — Friend request and friendship queries
 - [ ] `friend_group.py` — Friend group CRUD
 - [ ] `cinema.py` — Cinema queries

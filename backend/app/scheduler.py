@@ -52,6 +52,24 @@ def _send_interested_showtime_reminders() -> None:
         logger.exception("Failed to run interested-showtime reminder job")
 
 
+def _purge_stale_notifications() -> None:
+    """Decay notification-centre entries (dismissed or older than the max age).
+
+    Runs daily. Only logs when at least one row was removed. Errors are caught so
+    a single failure does not stop the scheduler.
+    """
+    from app.api.deps import get_db_context
+    from app.services import me as me_service
+
+    try:
+        with get_db_context() as session:
+            deleted_count = me_service.purge_stale_notifications(session=session)
+        if deleted_count > 0:
+            logger.info("Purged %s stale notifications", deleted_count)
+    except Exception:
+        logger.exception("Failed to run notification purge job")
+
+
 if __name__ == "__main__":
     scheduler = BlockingScheduler()
     scheduler.add_job(
@@ -63,5 +81,10 @@ if __name__ == "__main__":
         func=_send_interested_showtime_reminders,
         trigger=CronTrigger(minute="*/15", timezone=_TIMEZONE),
         id="interested_showtime_reminders",
+    )
+    scheduler.add_job(
+        func=_purge_stale_notifications,
+        trigger=CronTrigger(hour=4, minute=0, timezone=_TIMEZONE),
+        id="purge_stale_notifications",
     )
     scheduler.start()

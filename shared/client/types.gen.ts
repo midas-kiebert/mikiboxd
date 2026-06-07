@@ -190,6 +190,38 @@ export type NewPassword = {
  */
 export type NotificationChannel = "push" | "email"
 
+/**
+ * One merged, time-sorted entry in the notification centre.
+ *
+ * The three sources (the ``notification`` table, received ``ShowtimePing``
+ * rows, received ``FriendRequest`` rows) are normalised into this shape so the
+ * client renders a single feed. ``source`` + ``id`` identify the underlying
+ * row for actions.
+ */
+export type NotificationFeedItem = {
+  source: "notification" | "ping" | "friend_request"
+  id: string
+  type:
+    | "friend_showtime_match"
+    | "showtime_invite"
+    | "invite_response"
+    | "friend_request_received"
+    | "friend_request_accepted"
+  created_at: string
+  seen_at: string | null
+  actor: UserPublic | null
+  showtime: ShowtimeLoggedIn | null
+}
+
+export type source = "notification" | "ping" | "friend_request"
+
+export type type =
+  | "friend_showtime_match"
+  | "showtime_invite"
+  | "invite_response"
+  | "friend_request_received"
+  | "friend_request_accepted"
+
 export type PushTokenDelete = {
   token: string
 }
@@ -355,10 +387,12 @@ export type UserMe = {
   notify_on_friend_showtime_match: boolean
   notify_on_friend_requests: boolean
   notify_on_showtime_ping: boolean
+  notify_on_invite_response: boolean
   notify_on_interest_reminder: boolean
   notify_channel_friend_showtime_match: NotificationChannel
   notify_channel_friend_requests: NotificationChannel
   notify_channel_showtime_ping: NotificationChannel
+  notify_channel_invite_response: NotificationChannel
   notify_channel_interest_reminder: NotificationChannel
   letterboxd_username: string | null
 }
@@ -385,10 +419,12 @@ export type UserUpdate = {
   notify_on_friend_showtime_match?: boolean | null
   notify_on_friend_requests?: boolean | null
   notify_on_showtime_ping?: boolean | null
+  notify_on_invite_response?: boolean | null
   notify_on_interest_reminder?: boolean | null
   notify_channel_friend_showtime_match?: NotificationChannel | null
   notify_channel_friend_requests?: NotificationChannel | null
   notify_channel_showtime_ping?: NotificationChannel | null
+  notify_channel_invite_response?: NotificationChannel | null
   notify_channel_interest_reminder?: NotificationChannel | null
   password?: string | null
 }
@@ -700,6 +736,23 @@ export type MeDismissMyShowtimePingData = {
 }
 
 export type MeDismissMyShowtimePingResponse = Message
+
+export type MeGetMyNotificationsData = {
+  limit?: number
+  offset?: number
+}
+
+export type MeGetMyNotificationsResponse = Array<NotificationFeedItem>
+
+export type MeGetMyUnseenNotificationCountResponse = number
+
+export type MeMarkMyNotificationsSeenResponse = Message
+
+export type MeDismissMyNotificationData = {
+  notificationId: number
+}
+
+export type MeDismissMyNotificationResponse = Message
 
 export type MeSyncWatchlistResponse = Message
 

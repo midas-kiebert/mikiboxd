@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from logging import getLogger
 from uuid import UUID
 
@@ -8,11 +8,13 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
-from app.core.enums import FilterPresetScope, ShowtimePingSort
+from app.core.enums import FilterPresetScope, NotificationType, ShowtimePingSort
 from app.crud import cinema as cinemas_crud
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import filter_preset as filter_presets_crud
 from app.crud import friend_group as friend_groups_crud
+from app.crud import friendship as friendship_crud
+from app.crud import notification as notification_crud
 from app.crud import push_token as push_tokens_crud
 from app.crud import saved_preset as saved_presets_crud
 from app.crud import showtime as showtimes_crud
@@ -35,6 +37,7 @@ from app.models.user import User, UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
 from app.schemas.friend_group import FriendGroupCreate, FriendGroupPublic
+from app.schemas.notification import NotificationFeedItem
 from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
@@ -43,6 +46,16 @@ from app.utils import now_amsterdam_naive
 from app.validators.username import is_valid_username
 
 logger = getLogger(__name__)
+
+# Notification-centre entries older than this (or already dismissed) are purged.
+NOTIFICATION_MAX_AGE = timedelta(days=30)
+
+# Maps stored notification types to the strings the client feed expects.
+_NOTIFICATION_FEED_TYPES = {
+    NotificationType.FRIEND_SHOWTIME_MATCH: "friend_showtime_match",
+    NotificationType.INVITE_RESPONSE: "invite_response",
+    NotificationType.FRIEND_REQUEST_ACCEPTED: "friend_request_accepted",
+}
 
 DEFAULT_FILTER_PRESET_IDS = {
     FilterPresetScope.SHOWTIMES: UUID("00000000-0000-0000-0000-000000000001"),
@@ -1259,3 +1272,180 @@ def _prune_past_showtime_pings(
     )
     if deleted_count > 0:
         session.commit()
+
+
+def _prune_notification_sources(*, session: Session, user_id: UUID) -> None:
+    """Drop notifications and invites whose showtime has already started."""
+    now = now_amsterdam_naive()
+    notifications_pruned = notification_crud.delete_past_showtime_notifications(
+        session=session,
+        user_id=user_id,
+        now=now,
+    )
+    pings_pruned = showtime_ping_crud.delete_received_past_showtime_pings(
+        session=session,
+        receiver_id=user_id,
+        now=now,
+    )
+    if notifications_pruned or pings_pruned:
+        session.commit()
+
+
+def get_notification_feed(
+    *,
+    session: Session,
+    user_id: UUID,
+    limit: int,
+    offset: int,
+) -> list[NotificationFeedItem]:
+    """Merge the three notification sources into one time-sorted feed."""
+    _prune_notification_sources(session=session, user_id=user_id)
+
+    # Over-fetch each source so the merged-then-sliced page is correct.
+    fetch_count = limit + offset
+
+    user_cache: dict[UUID, User | None] = {}
+    showtime_public_cache: dict[int, ShowtimeLoggedIn | None] = {}
+
+    def resolve_user(uid: UUID) -> User | None:
+        if uid not in user_cache:
+            user_cache[uid] = users_crud.get_user_by_id(session=session, user_id=uid)
+        return user_cache[uid]
+
+    def resolve_showtime_public(sid: int) -> ShowtimeLoggedIn | None:
+        if sid not in showtime_public_cache:
+            showtime = showtimes_crud.get_showtime_by_id(
+                session=session, showtime_id=sid
+            )
+            showtime_public_cache[sid] = (
+                showtime_converters.to_logged_in(
+                    showtime=showtime, session=session, user_id=user_id
+                )
+                if showtime is not None
+                else None
+            )
+        return showtime_public_cache[sid]
+
+    items: list[NotificationFeedItem] = []
+
+    for notification in notification_crud.get_feed_notifications(
+        session=session, user_id=user_id, limit=fetch_count, offset=0
+    ):
+        if notification.id is None:
+            continue
+        showtime_public = (
+            resolve_showtime_public(notification.showtime_id)
+            if notification.showtime_id is not None
+            else None
+        )
+        if notification.showtime_id is not None and showtime_public is None:
+            continue
+        actor = (
+            resolve_user(notification.actor_id)
+            if notification.actor_id is not None
+            else None
+        )
+        items.append(
+            NotificationFeedItem(
+                source="notification",
+                id=str(notification.id),
+                type=_NOTIFICATION_FEED_TYPES[notification.type],
+                created_at=notification.created_at,
+                seen_at=notification.seen_at,
+                actor=user_converters.to_public(actor) if actor else None,
+                showtime=showtime_public,
+            )
+        )
+
+    for ping in showtime_ping_crud.get_received_showtime_pings(
+        session=session,
+        receiver_id=user_id,
+        sort_by=ShowtimePingSort.PING_CREATED_AT,
+        limit=fetch_count,
+        offset=0,
+    ):
+        if ping.id is None:
+            continue
+        sender = resolve_user(ping.sender_id)
+        showtime_public = resolve_showtime_public(ping.showtime_id)
+        if sender is None or showtime_public is None:
+            continue
+        items.append(
+            NotificationFeedItem(
+                source="ping",
+                id=str(ping.id),
+                type="showtime_invite",
+                created_at=ping.created_at,
+                seen_at=ping.seen_at,
+                actor=user_converters.to_public(sender),
+                showtime=showtime_public,
+            )
+        )
+
+    for request, sender in friendship_crud.get_received_friend_requests_with_sender(
+        session=session, receiver_id=user_id, limit=fetch_count, offset=0
+    ):
+        items.append(
+            NotificationFeedItem(
+                source="friend_request",
+                id=str(request.sender_id),
+                type="friend_request_received",
+                created_at=request.created_at,
+                seen_at=None,
+                actor=user_converters.to_public(sender),
+                showtime=None,
+            )
+        )
+
+    items.sort(key=lambda item: item.created_at, reverse=True)
+    return items[offset : offset + limit]
+
+
+def get_notifications_unseen_count(*, session: Session, user_id: UUID) -> int:
+    """Bell badge: unseen new-table notifications plus unseen invites."""
+    _prune_notification_sources(session=session, user_id=user_id)
+    return notification_crud.get_unseen_count(
+        session=session, user_id=user_id
+    ) + showtime_ping_crud.get_unseen_showtime_ping_count(
+        session=session, receiver_id=user_id
+    )
+
+
+def mark_notifications_seen(*, session: Session, user_id: UUID) -> None:
+    """Clear the bell badge: mark notifications and invites seen."""
+    _prune_notification_sources(session=session, user_id=user_id)
+    now = now_amsterdam_naive()
+    notification_crud.mark_seen(session=session, user_id=user_id, seen_at=now)
+    showtime_ping_crud.mark_received_showtime_pings_seen(
+        session=session, receiver_id=user_id, seen_at=now
+    )
+    session.commit()
+
+
+def dismiss_notification(
+    *,
+    session: Session,
+    user_id: UUID,
+    notification_id: int,
+) -> bool:
+    dismissed = notification_crud.dismiss(
+        session=session,
+        notification_id=notification_id,
+        user_id=user_id,
+        dismissed_at=now_amsterdam_naive(),
+    )
+    if dismissed:
+        session.commit()
+    return dismissed
+
+
+def purge_stale_notifications(*, session: Session) -> int:
+    """Decay job: delete dismissed or aged-out notification rows (all users)."""
+    deleted = notification_crud.delete_stale_notifications(
+        session=session,
+        now=now_amsterdam_naive(),
+        max_age=NOTIFICATION_MAX_AGE,
+    )
+    if deleted:
+        session.commit()
+    return deleted

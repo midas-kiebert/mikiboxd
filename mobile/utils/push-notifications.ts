@@ -83,6 +83,7 @@ export function resolveNotificationRoute(data: unknown): Href | null {
       return "/(tabs)/agenda";
     case "showtime_match":
     case "showtime_status_removed":
+    case "invite_response":
     case "showtime_interest_reminder": {
       const movieId = parsePositiveInteger(data.movieId);
       const showtimeId = parsePositiveInteger(data.showtimeId);
@@ -125,6 +126,7 @@ export function getModalShowtimeIdFromNotification(data: unknown): number | null
     case "showtime_ping":
     case "showtime_match":
     case "showtime_status_removed":
+    case "invite_response":
     case "showtime_interest_reminder":
       return parsePositiveInteger(data.showtimeId);
     default:

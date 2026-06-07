@@ -20,6 +20,7 @@ import { Colors } from '@/constants/theme';
 import { PENDING_FRIEND_INVITE_RECEIVER_ID_KEY } from '@/constants/friend-invite';
 import { PENDING_SHOWTIME_PING_LINK_KEY } from '@/constants/ping-link';
 import { ShowtimeModalProvider, useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
+import { NotificationCenterProvider } from '@/components/notifications/NotificationCenterProvider';
 import {
   canRouteFromNotificationAction,
   configureNotificationCategories,
@@ -385,7 +386,9 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <ThemeProvider value={theme}>
             <ShowtimeModalProvider>
-              <RootLayourContent />
+              <NotificationCenterProvider>
+                <RootLayourContent />
+              </NotificationCenterProvider>
             </ShowtimeModalProvider>
           </ThemeProvider>
         </QueryClientProvider>

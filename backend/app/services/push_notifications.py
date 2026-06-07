@@ -294,7 +294,9 @@ def notify_inviters_on_response(
         showtime_id=showtime.id,
         receiver_id=responder_id,
     )
-    inviter_ids = {sender.id for _, sender in received_pings if sender.id != responder_id}
+    inviter_ids = {
+        sender.id for _, sender in received_pings if sender.id != responder_id
+    }
     if not inviter_ids:
         return
 

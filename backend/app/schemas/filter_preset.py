@@ -36,6 +36,7 @@ class FilterPresetFilters(SQLModel):
     days: list[str] | None = None
     time_ranges: list[str] | None = None
     runtime_ranges: list[str] | None = None
+    group_by_movie: bool | None = None
 
     @field_validator("days")
     @classmethod

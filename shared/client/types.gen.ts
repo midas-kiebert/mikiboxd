@@ -86,6 +86,7 @@ export type FilterPresetFilters = {
   days?: Array<string> | null
   time_ranges?: Array<string> | null
   runtime_ranges?: Array<string> | null
+  group_by_movie?: boolean | null
 }
 
 export type showtime_audience = "including-friends" | "only-you"

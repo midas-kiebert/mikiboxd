@@ -11,12 +11,7 @@ import {
   View,
 } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
-import {
-  BottomSheetModal,
-  BottomSheetScrollView,
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,10 +32,12 @@ import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selectio
 import SavePresetDialog from "@/components/filters/SavePresetDialog";
 import ManagePresetsModal from "@/components/filters/ManagePresetsModal";
 import SavedPresetChips from "@/components/filters/SavedPresetChips";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 import { applyDisplayPreset, type DisplayPreset } from "@/components/filters/saved-presets";
 import TimeRangeSliderInline from "@/components/filters/TimeRangeSliderInline";
 import RuntimeRangeSliderInline from "@/components/filters/RuntimeRangeSliderInline";
 import DayFilterModal from "@/components/filters/DayFilterModal";
+import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
 
 const DAY_PRESETS = [
@@ -69,6 +66,8 @@ export type FiltersModalProps = {
   setSelectedShowtimeFilter: (v: SharedTabShowtimeFilter) => void;
   showStatusFilter?: boolean;
   showCinemas?: boolean;
+  /** Override the cinema modal opener (for pages rendered outside FiltersModalProvider). */
+  onOpenCinemaModal?: () => void;
   showRuntime?: boolean;
   selectedDays: string[];
   setSelectedDays: (v: string[]) => void;
@@ -93,6 +92,7 @@ export default function FiltersModal({
   setSelectedShowtimeFilter,
   showStatusFilter = false,
   showCinemas = true,
+  onOpenCinemaModal,
   showRuntime = true,
   selectedDays,
   setSelectedDays,
@@ -103,77 +103,32 @@ export default function FiltersModal({
   resultCount,
 }: FiltersModalProps) {
   const colors = useThemeColors();
-  const { top: topInset, bottom: bottomInset } = useSafeAreaInsets();
+  const { bottom: bottomInset } = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
-  const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const scrollViewRef = useRef<any>(null);
-  const snapPoints = useMemo(() => ["88%"], []);
-
-  const { openCinemaModal } = useFiltersModal();
+  const { openCinemaModal: providerOpenCinemaModal } = useFiltersModal();
+  const openCinemaModal = onOpenCinemaModal ?? providerOpenCinemaModal;
   const [dayModalVisible, setDayModalVisible] = useState(false);
-
-  // Drive the gorhom sheet imperatively from the controlled `visible` prop.
-  // Rules:
-  //  - present() on open (always safe)
-  //  - close() (not dismiss()) on programmatic close — keeps content mounted so next open is instant
-  //  - never call close()/dismiss() when gorhom already closed the sheet (would corrupt statusRef)
-  const hasEverPresentedRef = useRef(false);
-  const closedByGorhomRef = useRef(false);
 
   // contentMounted: false on first open (shows spinner while content renders),
   // then permanently true so subsequent opens show content immediately.
   const [contentMounted, setContentMounted] = useState(false);
   const contentMountedRef = useRef(false);
 
-  const handleSheetChange = useCallback((index: number) => {
-    if (index === -1) {
-      closedByGorhomRef.current = true;
-      onClose();
-    }
-  }, [onClose]);
-
   useEffect(() => {
-    if (visible) {
-      hasEverPresentedRef.current = true;
-      closedByGorhomRef.current = false;
-      bottomSheetModalRef.current?.present();
-      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
-      if (!contentMountedRef.current) {
-        // Defer heavy content render until after the sheet has mounted with the spinner
-        // and the slide-up animation is underway. setTimeout(50) fires in a separate
-        // React batch from gorhom's setState({ mount: true }), so the spinner actually
-        // renders first. Nested RAFs fire in the same batch and get skipped by React 18.
-        setTimeout(() => {
-          contentMountedRef.current = true;
-          setContentMounted(true);
-        }, 50);
-      }
-    } else if (hasEverPresentedRef.current && !closedByGorhomRef.current) {
-      bottomSheetModalRef.current?.close();
+    if (!visible) return;
+    scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+    if (!contentMountedRef.current) {
+      // Defer heavy content render until after the sheet has mounted with the spinner
+      // and the slide-up animation is underway. setTimeout(50) fires in a separate
+      // React batch so the spinner actually renders first.
+      setTimeout(() => {
+        contentMountedRef.current = true;
+        setContentMounted(true);
+      }, 50);
     }
   }, [visible]);
-
-
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.45} pressBehavior="close" />
-    ),
-    []
-  );
-
-  const renderHandle = useCallback(
-    () => (
-      <View style={styles.header}>
-        <ThemedText style={styles.headerTitle}>Filters</ThemedText>
-        <TouchableOpacity onPress={() => bottomSheetModalRef.current?.close()} hitSlop={8}>
-          <MaterialIcons name="close" size={22} color={colors.text} />
-        </TouchableOpacity>
-      </View>
-    ),
-    [colors, styles]
-  );
-
 
   const [hasMoreDayRight, setHasMoreDayRight] = useState(false);
   const dayScrollContentW = useRef(0);
@@ -270,18 +225,7 @@ export default function FiltersModal({
 
   return (
     <>
-      <BottomSheetModal
-        ref={bottomSheetModalRef}
-        snapPoints={snapPoints}
-        enablePanDownToClose
-        enableDismissOnClose={false}
-        animationConfigs={{ duration: 220 }}
-        backdropComponent={renderBackdrop}
-        handleComponent={renderHandle}
-        backgroundStyle={{ backgroundColor: colors.background }}
-        topInset={topInset}
-        onChange={handleSheetChange}
-      >
+      <AppBottomSheet visible={visible} onClose={onClose} title="Filters">
         {/* @gorhom/portal (used by the bottom sheet) does not forward React
             context, so re-provide the QueryClient for hooks rendered inside. */}
         <QueryClientProvider client={queryClient}>
@@ -312,7 +256,7 @@ export default function FiltersModal({
                         <TouchableOpacity
                           key={preset.id}
                           style={[styles.cinemaPresetCard, isActive && styles.cinemaPresetCardActive]}
-                          onPress={() => setSessionCinemaIds(Array.from(preset.cinema_ids))}
+                          onPress={() => { triggerSelectionHaptic(); setSessionCinemaIds(Array.from(preset.cinema_ids)); }}
                           activeOpacity={0.75}
                         >
                           <View style={styles.cinemaPresetCardRow}>
@@ -338,7 +282,7 @@ export default function FiltersModal({
                     })}
                   </View>
                 )}
-                <TouchableOpacity style={styles.cinemaOpenRow} onPress={openCinemaModal} activeOpacity={0.8}>
+                <TouchableOpacity style={styles.cinemaOpenRow} onPress={() => { triggerSelectionHaptic(); openCinemaModal(); }} activeOpacity={0.8}>
                   <View style={styles.cinemaOpenIcon}>
                     <MaterialIcons name="movie" size={17} color={colors.tint} />
                   </View>
@@ -520,7 +464,7 @@ export default function FiltersModal({
 
             <TouchableOpacity
               style={styles.viewResultsButton}
-              onPress={() => bottomSheetModalRef.current?.close()}
+              onPress={onClose}
               activeOpacity={0.85}
             >
               {resultCount !== undefined ? (
@@ -534,7 +478,7 @@ export default function FiltersModal({
           </>)}
         </BottomSheetScrollView>
         </QueryClientProvider>
-      </BottomSheetModal>
+      </AppBottomSheet>
       {/* DayFilterModal is internal so day changes stay pending until FiltersModal closes */}
       <DayFilterModal
         visible={dayModalVisible}
@@ -614,17 +558,6 @@ function Pill({ label, active, onPress, colors, style, isFavorite }: { label: st
 
 const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
   StyleSheet.create({
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 20,
-      paddingTop: 16,
-      paddingBottom: 10,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.divider,
-    },
-    headerTitle: { fontSize: 17, fontWeight: "700", flex: 1 },
     scroll: { flex: 1 },
     scrollContent: { paddingHorizontal: 20, paddingTop: 14 },
 

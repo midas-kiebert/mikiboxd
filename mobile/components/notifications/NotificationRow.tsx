@@ -26,18 +26,24 @@ type NotificationRowProps = {
 const actorName = (item: NotificationFeedItem): string =>
   item.actor?.display_name?.trim() || "A friend";
 
-const movieTitle = (item: NotificationFeedItem): string | null =>
-  item.showtime?.movie.title ?? null;
-
 // The feed item doesn't carry the going/interested status directly, so derive it
 // from the showtime's friend lists (the actor appears in one of them).
 const actorStatus = (item: NotificationFeedItem): "going" | "interested" | null => {
   const actorId = item.actor?.id;
   const showtime = item.showtime;
   if (!actorId || !showtime) return null;
-  if (showtime.friends_going?.some((user) => user.id === actorId)) return "going";
-  if (showtime.friends_interested?.some((user) => user.id === actorId)) return "interested";
+  if (showtime.friends_going?.some((u) => u.id === actorId)) return "going";
+  if (showtime.friends_interested?.some((u) => u.id === actorId)) return "interested";
   return null;
+};
+
+const formatShowtimeSubtitle = (item: NotificationFeedItem, prefix?: string): string | null => {
+  const showtime = item.showtime;
+  if (!showtime) return prefix ?? null;
+  const dt = DateTime.fromISO(showtime.datetime);
+  const dateTime = dt.isValid ? `${dt.toFormat("ccc, LLL d")} · ${dt.toFormat("HH:mm")}` : null;
+  const parts = [prefix, dateTime, showtime.cinema.name].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : null;
 };
 
 type Presentation = {
@@ -49,22 +55,32 @@ type Presentation = {
 
 const buildPresentation = (item: NotificationFeedItem, colors: ThemeColors): Presentation => {
   const name = actorName(item);
-  const movie = movieTitle(item);
+  const movie = item.showtime?.movie.title ?? null;
   const status = actorStatus(item);
-  const statusText = status === "interested" ? "is interested" : "is going";
+  const statusVerb = status === "going" ? "is going to" : "is interested in";
 
   switch (item.type) {
     case "friend_showtime_match":
-      return { icon: "groups", accent: colors.teal, title: `${name} ${statusText}`, subtitle: movie };
+      return {
+        icon: "groups",
+        accent: colors.teal,
+        title: movie ? `${name} ${statusVerb} ${movie}` : `${name} ${statusVerb === "is going to" ? "is going" : "is interested"}`,
+        subtitle: formatShowtimeSubtitle(item),
+      };
     case "invite_response":
       return {
         icon: "mark-email-read",
         accent: colors.blue,
-        title: `${name} ${statusText}`,
-        subtitle: movie ? `Replied to your invite · ${movie}` : "Replied to your invite",
+        title: movie ? `${name} ${statusVerb} ${movie}` : `${name} ${statusVerb === "is going to" ? "is going" : "is interested"}`,
+        subtitle: formatShowtimeSubtitle(item, "Replied to your invite"),
       };
     case "showtime_invite":
-      return { icon: "mail", accent: colors.blue, title: `${name} invited you`, subtitle: movie };
+      return {
+        icon: "mail",
+        accent: colors.blue,
+        title: movie ? `${name} invited you to ${movie}` : `${name} invited you`,
+        subtitle: formatShowtimeSubtitle(item),
+      };
     case "friend_request_received":
       return {
         icon: "person-add",

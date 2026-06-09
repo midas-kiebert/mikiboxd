@@ -11,8 +11,9 @@ import {
   View,
   Linking,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import type { MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
@@ -23,18 +24,20 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
+import { ListEndFooter } from "@/components/showtimes/ShowtimesScreen";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 import FiltersModal from "@/components/filters/FiltersModal";
+import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
 import { getSelectedStatusesFromShowtimeFilter } from "@/components/filters/shared-tab-filters";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selection";
-import { IconSymbol } from "@/components/ui/icon-symbol";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
+import { useDeferredMount } from "@/utils/use-deferred-mount";
 
 const SHOWTIMES_PAGE_SIZE = 20;
 
@@ -44,20 +47,89 @@ type MovieShowtimeSection = {
   data: ShowtimeInMovieLoggedIn[];
 };
 
+type MovieStyles = ReturnType<typeof createStyles>;
+
+type MovieContentProps = {
+  id: string;
+  showtimeId?: string | string[];
+};
+
+/**
+ * Lightweight route shell. Renders only the header + skeleton on the first
+ * frame so the native push animation can start immediately, then mounts the
+ * data-fetching MovieContent after the transition's interactions settle.
+ * Without this split, Android waits for MovieContent's expensive first render
+ * (filter hooks + queries) to commit before it begins the slide.
+ */
 export default function MoviePage() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
-  const isFetchingMoreRef = useRef(false);
-  const queryClient = useQueryClient();
-  const insets = useSafeAreaInsets();
-  const { openShowtimeModal } = useShowtimeModal();
   const { id, showtimeId } = useLocalSearchParams<{
     id: string;
     showtimeId?: string | string[];
   }>();
 
+  const contentReady = useDeferredMount(`movie:${id}`);
+
+  return (
+    <TopSafeAreaView style={styles.container}>
+      <View style={styles.compactHeader}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          onPress={() => router.back()}
+          style={styles.compactBackButton}
+          hitSlop={8}
+          activeOpacity={0.6}
+        >
+          <MaterialIcons name="arrow-back" size={22} color={colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+      {contentReady ? (
+        <MovieContent id={id} showtimeId={showtimeId} />
+      ) : (
+        <MovieSkeleton styles={styles} />
+      )}
+    </TopSafeAreaView>
+  );
+}
+
+function MovieSkeleton({ styles }: { styles: MovieStyles }) {
+  return (
+    <>
+      <View style={styles.staticHeader}>
+        <View style={[styles.poster, styles.skeletonBone]} />
+        <View style={styles.summaryInfo}>
+          <View style={[styles.skeletonBone, { height: 24, width: "75%", borderRadius: 5 }]} />
+          <View style={[styles.skeletonBone, { height: 13, width: "50%", borderRadius: 4, marginTop: 6 }]} />
+          <View style={[styles.skeletonBone, { height: 12, width: "65%", borderRadius: 4, marginTop: 4 }]} />
+        </View>
+      </View>
+      <View style={styles.divider} />
+      <View style={styles.filterRow}>
+        <View style={[styles.skeletonBone, { height: 32, width: 88, borderRadius: 18 }]} />
+      </View>
+      <View style={styles.divider} />
+      <View style={styles.skeletonList}>
+        {[0, 1, 2].map((i) => (
+          <View key={i} style={[styles.skeletonBone, styles.skeletonCard]} />
+        ))}
+      </View>
+    </>
+  );
+}
+
+function MovieContent({ id, showtimeId }: MovieContentProps) {
+  const colors = useThemeColors();
+  const styles = createStyles(colors);
+  const isFetchingMoreRef = useRef(false);
+  const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
+  const { openShowtimeModal } = useShowtimeModal();
+
   const [filtersModalVisible, setFiltersModalVisible] = useState(false);
+  const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const {
@@ -74,7 +146,6 @@ export default function MoviePage() {
     setSessionCinemaIds,
   } = useSharedTabFilters();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
-  const isCinemaFilterActive = isCinemaSelectionDifferentFromPreferred({ sessionCinemaIds, preferredCinemaIds });
 
   const movieId = useMemo(() => Number(id), [id]);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
@@ -209,30 +280,9 @@ export default function MoviePage() {
   }, [targetShowtimeId, showtimes, movie, openShowtimeModal]);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <Stack.Screen
-        options={{
-          headerShown: false,
-          animation: "none",
-          contentStyle: { backgroundColor: colors.background },
-        }}
-      />
-      <View style={styles.compactHeader}>
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          onPress={() => router.back()}
-          style={styles.compactBackButton}
-          hitSlop={8}
-          activeOpacity={0.75}
-        >
-          <IconSymbol size={20} name="chevron.left" color={colors.tint} />
-        </TouchableOpacity>
-      </View>
+    <>
       {isMovieLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.tint} />
-        </View>
+        <MovieSkeleton styles={styles} />
       ) : isMovieError || !movie ? (
         <View style={styles.centered}>
           <ThemedText style={styles.errorText}>Could not load movie.</ThemedText>
@@ -268,12 +318,14 @@ export default function MoviePage() {
           </View>
           <View style={styles.divider} />
           <View style={styles.filterRow}>
-            <TouchableOpacity style={styles.filterBtn} onPress={() => setFiltersModalVisible(true)} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.filterBtn} onPress={() => { triggerSelectionHaptic(); setFiltersModalVisible(true); }} activeOpacity={0.8}>
               <MaterialIcons name="tune" size={14} color={colors.pillText} />
               <ThemedText style={styles.filterBtnText}>Filters</ThemedText>
             </TouchableOpacity>
             <ActiveFilterChips
               inline
+              onOpenFilters={() => { triggerSelectionHaptic(); setFiltersModalVisible(true); }}
+              onOpenCinemaModal={() => setCinemaModalVisible(true)}
               groupByMovie={false}
               setGroupByMovie={() => {}}
               watchlistOnly={false}
@@ -287,8 +339,6 @@ export default function MoviePage() {
               setSelectedTimeRanges={setSelectedTimeRanges}
               selectedRuntimeRanges={[]}
               setSelectedRuntimeRanges={() => {}}
-              cinemaChipLabel={isCinemaFilterActive ? `${sessionCinemaIds?.length ?? 0} cinemas` : null}
-              onClearCinemas={isCinemaFilterActive && preferredCinemaIds ? () => setSessionCinemaIds(preferredCinemaIds) : undefined}
               onClearAll={() => {
                 setSelectedShowtimeFilter("all");
                 setSelectedDays([]);
@@ -362,6 +412,8 @@ export default function MoviePage() {
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="small" color={colors.tint} />
                 </View>
+              ) : !hasNextPage && !isShowtimesLoading && showtimes.length > 0 ? (
+                <ListEndFooter label="No more showtimes" />
               ) : null
             }
           />
@@ -380,6 +432,7 @@ export default function MoviePage() {
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}
         showStatusFilter
         showCinemas
+        onOpenCinemaModal={() => setCinemaModalVisible(true)}
         showRuntime={false}
         selectedDays={selectedDays}
         setSelectedDays={setSelectedDays}
@@ -389,7 +442,11 @@ export default function MoviePage() {
         setSelectedRuntimeRanges={setSelectedRuntimeRanges}
         resultCount={showtimes.length}
       />
-    </SafeAreaView>
+      <CinemaFilterModal
+        visible={cinemaModalVisible}
+        onClose={() => setCinemaModalVisible(false)}
+      />
+    </>
   );
 }
 
@@ -401,16 +458,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.background,
     },
     compactHeader: {
-      height: 30,
-      paddingHorizontal: 8,
+      height: 48,
+      paddingHorizontal: 16,
       justifyContent: "center",
       backgroundColor: colors.background,
     },
     compactBackButton: {
-      alignItems: "center",
-      justifyContent: "center",
-      width: 28,
-      height: 28,
+      alignSelf: "flex-start",
     },
     content: {
       padding: 16,
@@ -431,7 +485,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flexDirection: "row",
       alignItems: "center",
       paddingLeft: 16,
-      paddingVertical: 10,
+      paddingVertical: 8,
       backgroundColor: colors.background,
     },
     filterBtn: {
@@ -510,6 +564,17 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     showtimeCardGlow: {
       borderRadius: 10,
       backgroundColor: colors.cardBackground,
+    },
+    skeletonBone: {
+      backgroundColor: colors.posterPlaceholder,
+    },
+    skeletonList: {
+      padding: 16,
+      gap: 12,
+    },
+    skeletonCard: {
+      height: 72,
+      borderRadius: 10,
     },
     showtimeCardGlowGoing: glowStyles.going,
     showtimeCardGlowInterested: glowStyles.interested,

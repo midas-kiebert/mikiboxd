@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+} from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MeService, type FilterPresetScope } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
+import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { type PageFilterPresetState } from "@/components/filters/FilterPresetsModal";
 import {
@@ -50,6 +52,7 @@ export default function SavePresetDialog({
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
+  const { bottom: bottomInset } = useSafeAreaInsets();
 
   const summaries = useMemo(
     () =>
@@ -68,10 +71,14 @@ export default function SavePresetDialog({
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [included, setIncluded] = useState<Set<PresetDimension>>(new Set());
+  // Uncontrolled input (no `value` prop): avoids React's reconciliation forcing
+  // the value back onto the native input and swallowing fast keystrokes.
+  const nameInputRef = useRef<{ clear: () => void } | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     setName("");
+    nameInputRef.current?.clear();
     setSaveAsDefault(false);
     setError(null);
     setIncluded(
@@ -129,155 +136,125 @@ export default function SavePresetDialog({
   const showCinemaWarning = saveAsDefault && included.has("cinemas");
 
   return (
-    <Modal
-      transparent
-      statusBarTranslucent
+    <AppBottomSheet
       visible={visible}
-      animationType="fade"
-      onRequestClose={() => { if (!isPending) onClose(); }}
+      onClose={onClose}
+      onBack={isPending ? undefined : onClose}
+      title="Save filter preset"
+      backgroundColor={colors.nestedModalBackground}
+      enablePanDownToClose={!isPending}
+      backdropPressBehavior={isPending ? "none" : "close"}
+      keyboardBehavior="extend"
     >
-      {/* Tappable dim backdrop — sits behind everything */}
-      <TouchableOpacity
-        style={[StyleSheet.absoluteFill, styles.backdrop]}
-        activeOpacity={1}
-        onPress={() => { if (!isPending) onClose(); }}
-      />
+      <BottomSheetScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset + 16 }]}>
+        <View style={styles.header}>
+          <ThemedText style={styles.subtitle}>
+            Check the filters to include. Applying the preset later only changes the checked ones — everything else stays as-is.
+          </ThemedText>
+        </View>
 
-      {/* KAV only wraps the card, shifts it above keyboard without resizing the backdrop */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.kav}
-        pointerEvents="box-none"
-      >
-        <View style={styles.card}>
-          <View style={styles.header}>
-            <ThemedText style={styles.title}>Save filter preset</ThemedText>
-            <ThemedText style={styles.subtitle}>
-              Check the filters to include. Applying the preset later only changes the checked ones — everything else stays as-is.
+        <BottomSheetTextInput
+          ref={nameInputRef as never}
+          onChangeText={(value) => { setName(value); if (error) setError(null); }}
+          placeholder="Preset name"
+          placeholderTextColor={colors.textSecondary}
+          style={styles.input}
+          maxLength={80}
+          autoCapitalize="words"
+          autoCorrect={false}
+          autoFocus
+        />
+
+        <View style={styles.pillGrid}>
+          {summaries.map((row) => {
+            const isChecked = included.has(row.dimension);
+            return (
+              <TouchableOpacity
+                key={row.dimension}
+                style={[styles.pill, isChecked && styles.pillChecked]}
+                onPress={() => toggle(row.dimension)}
+                activeOpacity={0.75}
+              >
+                <MaterialIcons
+                  name={isChecked ? "check-box" : "check-box-outline-blank"}
+                  size={16}
+                  color={isChecked ? colors.tint : colors.textSecondary}
+                />
+                <View style={styles.pillTextBlock}>
+                  <ThemedText style={[styles.pillLabel, isChecked && styles.pillLabelChecked]}>
+                    {row.title}
+                  </ThemedText>
+                  <ThemedText style={styles.pillValue} numberOfLines={1}>
+                    {row.valueLabel}
+                  </ThemedText>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity
+          style={styles.defaultRow}
+          onPress={() => setSaveAsDefault((v) => !v)}
+          activeOpacity={0.8}
+        >
+          <MaterialIcons
+            name={saveAsDefault ? "check-box" : "check-box-outline-blank"}
+            size={18}
+            color={saveAsDefault ? colors.tint : colors.textSecondary}
+          />
+          <View style={styles.defaultText}>
+            <ThemedText style={styles.defaultLabel}>Set as default</ThemedText>
+            <ThemedText style={styles.defaultSub}>
+              These filters will be selected by default when you open the app.
             </ThemedText>
           </View>
+        </TouchableOpacity>
 
-          <TextInput
-            value={name}
-            onChangeText={(value) => { setName(value); if (error) setError(null); }}
-            placeholder="Preset name"
-            placeholderTextColor={colors.textSecondary}
-            style={styles.input}
-            maxLength={80}
-            autoCapitalize="words"
-            autoCorrect={false}
-            autoFocus
-          />
-
-          {/* Compact pill grid — one pill per dimension */}
-          <View style={styles.pillGrid}>
-            {summaries.map((row) => {
-              const isChecked = included.has(row.dimension);
-              return (
-                <TouchableOpacity
-                  key={row.dimension}
-                  style={[styles.pill, isChecked && styles.pillChecked]}
-                  onPress={() => toggle(row.dimension)}
-                  activeOpacity={0.75}
-                >
-                  <MaterialIcons
-                    name={isChecked ? "check-box" : "check-box-outline-blank"}
-                    size={16}
-                    color={isChecked ? colors.tint : colors.textSecondary}
-                  />
-                  <View style={styles.pillTextBlock}>
-                    <ThemedText style={[styles.pillLabel, isChecked && styles.pillLabelChecked]}>
-                      {row.title}
-                    </ThemedText>
-                    <ThemedText style={styles.pillValue} numberOfLines={1}>
-                      {row.valueLabel}
-                    </ThemedText>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+        {showCinemaWarning && (
+          <View style={styles.warning}>
+            <MaterialIcons name="info-outline" size={13} color={colors.yellow.secondary} />
+            <ThemedText style={styles.warningText}>
+              Setting a preset with cinema selections as default will override your default cinema selection. You will still revert to your default cinema selection when you clear your filters.
+            </ThemedText>
           </View>
+        )}
 
+        {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
+
+        <View style={styles.actions}>
           <TouchableOpacity
-            style={styles.defaultRow}
-            onPress={() => setSaveAsDefault((v) => !v)}
+            style={[styles.btn, styles.btnSecondary]}
+            onPress={onClose}
             activeOpacity={0.8}
+            disabled={isPending}
           >
-            <MaterialIcons
-              name={saveAsDefault ? "check-box" : "check-box-outline-blank"}
-              size={18}
-              color={saveAsDefault ? colors.tint : colors.textSecondary}
-            />
-            <View style={styles.defaultText}>
-              <ThemedText style={styles.defaultLabel}>Set as default</ThemedText>
-              <ThemedText style={styles.defaultSub}>
-                These filters will be selected by default when you open the app.
-              </ThemedText>
-            </View>
+            <ThemedText style={[styles.btnText, styles.btnTextSecondary]}>Cancel</ThemedText>
           </TouchableOpacity>
-
-          {showCinemaWarning && (
-            <View style={styles.warning}>
-              <MaterialIcons name="info-outline" size={13} color={colors.yellow.secondary} />
-              <ThemedText style={styles.warningText}>
-                Setting a preset with cinema selections as default will override your default cinema selection. You will still revert to your default cinema selection when you clear your filters.
-              </ThemedText>
-            </View>
-          )}
-
-          {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
-
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnSecondary]}
-              onPress={onClose}
-              activeOpacity={0.8}
-              disabled={isPending}
-            >
-              <ThemedText style={[styles.btnText, styles.btnTextSecondary]}>Cancel</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnPrimary, !canSave && styles.btnDisabled]}
-              onPress={handleSave}
-              activeOpacity={0.8}
-              disabled={!canSave}
-            >
-              <ThemedText style={[styles.btnText, styles.btnTextPrimary]}>
-                {isPending ? "Saving…" : "Save"}
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={[styles.btn, styles.btnPrimary, !canSave && styles.btnDisabled]}
+            onPress={handleSave}
+            activeOpacity={0.8}
+            disabled={!canSave}
+          >
+            <ThemedText style={[styles.btnText, styles.btnTextPrimary]}>
+              {isPending ? "Saving…" : "Save"}
+            </ThemedText>
+          </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      </BottomSheetScrollView>
+    </AppBottomSheet>
   );
 }
 
 const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
   StyleSheet.create({
-    backdrop: {
-      backgroundColor: "rgba(0,0,0,0.45)",
-    },
-    kav: {
-      flex: 1,
-      justifyContent: "center",
-      paddingHorizontal: 20,
-    },
-    card: {
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.background,
-      padding: 16,
+    content: {
+      paddingHorizontal: 16,
+      paddingTop: 8,
       gap: 12,
-      shadowColor: "#000",
-      shadowOpacity: 0.2,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 9,
     },
     header: { gap: 4 },
-    title: { fontSize: 15, fontWeight: "700", color: colors.text },
     subtitle: { fontSize: 11, color: colors.textSecondary, lineHeight: 16 },
     input: {
       borderWidth: 1,

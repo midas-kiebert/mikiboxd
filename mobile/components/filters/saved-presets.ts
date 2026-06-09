@@ -317,7 +317,7 @@ export const summarizeCurrentSelections = (args: {
 
   rows.push({
     dimension: "time_ranges",
-    title: "Time of day",
+    title: "Time",
     valueLabel: formatTimePillLabel(timeRanges),
     active: timeRanges.length > 0,
   });

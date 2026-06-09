@@ -3,19 +3,17 @@
  */
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  FlatList,
-  Modal,
   Platform,
   StyleSheet,
   TouchableOpacity,
   View,
   type ListRenderItem,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import { DateTime } from "luxon";
 
 import { ThemedText } from "@/components/themed-text";
+import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import {
   AMSTERDAM_ZONE,
   RELATIVE_DAY_OPTIONS,
@@ -289,20 +287,13 @@ export default function DayFilterModal({
   );
 
   return (
-    <Modal
-      animationType="slide"
+    <AppBottomSheet
       visible={visible}
-      onRequestClose={handleClose}
-      presentationStyle="pageSheet"
+      onClose={handleClose}
+      onBack={onClose}
+      title="Days"
     >
-      <SafeAreaView style={styles.modalContainer} edges={["top", "bottom"]}>
-        <View style={styles.header}>
-          <ThemedText style={styles.title}>Days</ThemedText>
-          <TouchableOpacity onPress={handleClose} hitSlop={8}>
-            <MaterialIcons name="close" size={22} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-        <FlatList
+        <BottomSheetFlatList
         style={styles.mainContent}
         contentContainerStyle={styles.content}
         data={calendarMonths}
@@ -373,31 +364,12 @@ export default function DayFilterModal({
           </ThemedText>
         </TouchableOpacity>
         </View>
-      </SafeAreaView>
-    </Modal>
+    </AppBottomSheet>
   );
 }
 
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
-    modalContainer: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingTop: Platform.OS === "ios" ? 20 : 12,
-      paddingBottom: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.divider,
-    },
-    title: {
-      fontSize: 17,
-      fontWeight: "700",
-    },
     mainContent: {
       flex: 1,
     },

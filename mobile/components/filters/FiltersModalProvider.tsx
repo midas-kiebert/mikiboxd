@@ -111,17 +111,23 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     setCinemaModalVisible(true);
   }, []);
 
+  const handleCloseCinemaModal = useCallback(() => setCinemaModalVisible(false), []);
+  const handleCloseFiltersModal = useCallback(() => setVisible(false), []);
+  // Only show the back button (→ step back to Filters) when Filters is also open.
+  const cinemaModalBack = visible ? handleCloseCinemaModal : undefined;
+
   return (
     <FiltersModalContext.Provider value={{ openFiltersModal, openCinemaModal }}>
       {children}
       <CinemaFilterModal
         visible={cinemaModalVisible}
-        onClose={() => setCinemaModalVisible(false)}
+        onClose={handleCloseCinemaModal}
+        onBack={cinemaModalBack}
         initialPage="selection"
       />
       <FiltersModal
         visible={visible}
-        onClose={() => setVisible(false)}
+        onClose={handleCloseFiltersModal}
         groupByMovie={groupByMovie}
         setGroupByMovie={setGroupByMovie}
         showGroupByMovie={showGroupByMovie}

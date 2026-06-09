@@ -3,14 +3,22 @@
  */
 import { Alert, Linking, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
 import { useEffect, useState } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import {
+  CINEVILLE_DIGITS_LENGTH,
+  CINEVILLE_PREFIX,
+  deleteCinevilleCard,
+  loadCinevilleCardDigits,
+  saveCinevilleCardDigits,
+} from '@/utils/cineville-card';
 
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import TopBar from '@/components/layout/TopBar';
+import { type ThemePreference, useThemePreference } from '@/utils/theme-preference';
 import useAuth from 'shared/hooks/useAuth';
 import {
   MeService,
@@ -108,6 +116,7 @@ export default function SettingsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  const [themePreference, setThemePreference] = useThemePreference();
   // Router instance used for in-app navigation actions.
   const router = useRouter();
   // React Query client used for cache updates and invalidation.
@@ -144,6 +153,9 @@ export default function SettingsScreen() {
     useState<NotificationChannelPreferenceKey | null>(null);
   // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  // Cineville card number (9 digits only, CP$ prefix is added automatically).
+  const [cinevilleDigits, setCinevilleDigits] = useState('');
+  const [isSavingCineville, setIsSavingCineville] = useState(false);
 
   // Populate editable form state once user data has loaded.
   useEffect(() => {
@@ -159,6 +171,13 @@ export default function SettingsScreen() {
     setNotificationPreferences(buildNotificationPreferencesState(user));
     setNotificationChannels(buildNotificationChannelsState(user));
   }, [user]);
+
+  // Load the saved Cineville card digits from device storage.
+  useEffect(() => {
+    loadCinevilleCardDigits()
+      .then((digits) => setCinevilleDigits(digits ?? ''))
+      .catch(() => {});
+  }, []);
 
   // Read the current OS-level notification permission status for friendly UI feedback.
   useEffect(() => {
@@ -422,6 +441,27 @@ export default function SettingsScreen() {
   };
 
 
+  const handleSaveCinevilleCard = async () => {
+    const trimmed = cinevilleDigits.trim();
+    if (trimmed && !/^\d{9}$/.test(trimmed)) {
+      Alert.alert('Invalid card number', `Card number must be exactly ${CINEVILLE_DIGITS_LENGTH} digits.`);
+      return;
+    }
+    try {
+      setIsSavingCineville(true);
+      if (trimmed) {
+        await saveCinevilleCardDigits(trimmed);
+      } else {
+        await deleteCinevilleCard();
+      }
+      Alert.alert('Saved', trimmed ? 'Cineville card saved on this device.' : 'Cineville card removed.');
+    } catch {
+      Alert.alert('Error', 'Could not save Cineville card.');
+    } finally {
+      setIsSavingCineville(false);
+    }
+  };
+
   const isProfileSaving = profileMutation.isPending;
   const isPasswordSaving = passwordMutation.isPending;
   const isUpdatingNotifications = notificationPreferenceMutation.isPending;
@@ -469,7 +509,7 @@ export default function SettingsScreen() {
 
   // Render/output using the state and derived values prepared above.
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <TopSafeAreaView style={styles.container}>
       <TopBar title="Settings" />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.section}>
@@ -564,7 +604,64 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Appearance</ThemedText>
           <View style={styles.card}>
-            <ThemedText style={styles.helperText}>Appearance follows your system setting.</ThemedText>
+            <View style={styles.appearanceRow}>
+              {(['light', 'dark', 'system'] as ThemePreference[]).map((option, index, arr) => (
+                <TouchableOpacity
+                  key={option}
+                  style={[
+                    styles.appearanceOption,
+                    index === 0 && styles.appearanceOptionLeft,
+                    index === arr.length - 1 && styles.appearanceOptionRight,
+                    themePreference === option && styles.appearanceOptionActive,
+                  ]}
+                  onPress={() => setThemePreference(option)}
+                  activeOpacity={0.8}
+                >
+                  <ThemedText
+                    style={[
+                      styles.appearanceOptionText,
+                      themePreference === option && styles.appearanceOptionTextActive,
+                    ]}
+                  >
+                    {option === 'light' ? 'Light' : option === 'dark' ? 'Dark' : 'System'}
+                  </ThemedText>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Cineville</ThemedText>
+          <View style={styles.card}>
+            <ThemedText style={styles.helperText}>
+              Your Cineville card number is stored only on this device and never shared. It will be copied into your clipboard when you press a ticket link.
+            </ThemedText>
+            <ThemedText style={styles.label}>Card number</ThemedText>
+            <View style={styles.cinevilleInputRow}>
+              <View style={styles.cinevillePrefix}>
+                <ThemedText style={styles.cinevillePrefixText}>{CINEVILLE_PREFIX}</ThemedText>
+              </View>
+              <TextInput
+                style={[styles.input, styles.cinevilleInput]}
+                value={cinevilleDigits}
+                onChangeText={(value) => setCinevilleDigits(value.replace(/\D/g, '').slice(0, CINEVILLE_DIGITS_LENGTH))}
+                placeholder="000000000"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="number-pad"
+                maxLength={CINEVILLE_DIGITS_LENGTH}
+                autoCorrect={false}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.primaryButton, isSavingCineville && styles.buttonDisabled]}
+              onPress={() => void handleSaveCinevilleCard()}
+              disabled={isSavingCineville}
+            >
+              <ThemedText style={styles.primaryButtonText}>
+                {isSavingCineville ? 'Saving...' : 'Save card'}
+              </ThemedText>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -696,7 +793,7 @@ export default function SettingsScreen() {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </TopSafeAreaView>
   );
 }
 
@@ -852,6 +949,60 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.textSecondary,
     },
     notificationChannelOptionTextActive: {
+      color: '#ffffff',
+    },
+    cinevilleInputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 0,
+    },
+    cinevillePrefix: {
+      borderWidth: 1,
+      borderRightWidth: 0,
+      borderColor: colors.cardBorder,
+      borderTopLeftRadius: 8,
+      borderBottomLeftRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 10,
+      backgroundColor: colors.pillBackground,
+      justifyContent: 'center',
+    },
+    cinevillePrefixText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.textSecondary,
+    },
+    cinevilleInput: {
+      flex: 1,
+      borderTopLeftRadius: 0,
+      borderBottomLeftRadius: 0,
+    },
+    appearanceRow: {
+      flexDirection: 'row' as const,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      borderRadius: 999,
+      backgroundColor: colors.pillBackground,
+      padding: 2,
+    },
+    appearanceOption: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      borderRadius: 999,
+    },
+    appearanceOptionLeft: {},
+    appearanceOptionRight: {},
+    appearanceOptionActive: {
+      backgroundColor: colors.tint,
+    },
+    appearanceOptionText: {
+      fontSize: 13,
+      fontWeight: '700' as const,
+      color: colors.textSecondary,
+    },
+    appearanceOptionTextActive: {
       color: '#ffffff',
     },
   });

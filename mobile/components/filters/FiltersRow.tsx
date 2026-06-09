@@ -15,6 +15,7 @@ import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import SavedPresetChips from "@/components/filters/SavedPresetChips";
 import { type DisplayPreset } from "@/components/filters/saved-presets";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 
 export type FiltersRowProps = {
   scope: FilterPresetScope;
@@ -31,7 +32,10 @@ export default function FiltersRow({ scope, onOpenModal, onApplyPreset }: Filter
       {/* Pinned Filters button — never scrolls away */}
       <TouchableOpacity
         style={[styles.pill, styles.filtersPill]}
-        onPress={onOpenModal}
+        onPress={() => {
+          triggerSelectionHaptic();
+          onOpenModal();
+        }}
         activeOpacity={0.8}
       >
         <View style={styles.pillContent}>

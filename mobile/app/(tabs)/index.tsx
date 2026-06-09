@@ -11,7 +11,7 @@ import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtime
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
@@ -20,7 +20,7 @@ import SearchBar from '@/components/inputs/SearchBar';
 import FiltersRow from '@/components/filters/FiltersRow';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
-import { ShowtimesListContent } from '@/components/showtimes/ShowtimesScreen';
+import { ShowtimesListContent, ListEndFooter } from '@/components/showtimes/ShowtimesScreen';
 import MovieCard from '@/components/movies/MovieCard';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
@@ -197,6 +197,7 @@ export default function MainShowtimesScreen() {
       setSelectedDays,
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
+      setGroupByMovie,
       setSessionCinemaIds,
     });
   };
@@ -254,7 +255,7 @@ export default function MainShowtimesScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <TopSafeAreaView style={styles.container}>
       <TopBar />
       <SearchBar
         value={searchQuery}
@@ -278,6 +279,8 @@ export default function MainShowtimesScreen() {
               <ThemedView style={styles.footerLoader}>
                 <ActivityIndicator size="large" color={colors.tint} />
               </ThemedView>
+            ) : !moviesHasNextPage && !moviesLoading && !moviesFetching && movies.length > 0 ? (
+              <ListEndFooter label="No more movies" />
             ) : null
           }
           onEndReached={() => {
@@ -301,7 +304,7 @@ export default function MainShowtimesScreen() {
           emptyText="No showtimes found"
         />
       )}
-    </SafeAreaView>
+    </TopSafeAreaView>
   );
 }
 

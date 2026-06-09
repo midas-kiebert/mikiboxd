@@ -2,27 +2,20 @@
  * Full-screen sheet for managing saved presets: favorite (applied on startup),
  * reorder, and delete. Opened from the Filters modal's Presets section.
  */
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { type FilterPresetScope } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
+import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { describeDisplayPreset, type DisplayPreset } from "@/components/filters/saved-presets";
 import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
@@ -42,29 +35,6 @@ export default function ManagePresetsModal({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { presets, isLoading, remove, setFavorite, move } = useDisplayPresets(scope);
 
-  const translateY = useSharedValue(0);
-
-  useEffect(() => {
-    if (visible) translateY.value = 0;
-  }, [visible, translateY]);
-
-  const panGesture = Gesture.Pan()
-    .runOnJS(true)
-    .onUpdate((e) => {
-      if (e.translationY > 0) translateY.value = e.translationY;
-    })
-    .onEnd((e) => {
-      if (e.translationY > 80 || e.velocityY > 800) {
-        onClose();
-      } else {
-        translateY.value = withSpring(0, { damping: 20 });
-      }
-    });
-
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
-
   const favoriteHasCinemas = presets.some(
     (p) => p.isFavorite && p.includedFields.includes("cinemas")
   );
@@ -82,28 +52,13 @@ export default function ManagePresetsModal({
   };
 
   return (
-    <Modal
+    <AppBottomSheet
       visible={visible}
-      animationType="slide"
-      transparent
-      statusBarTranslucent
-      onRequestClose={onClose}
+      onClose={onClose}
+      onBack={onClose}
+      title="Manage presets"
+      backgroundColor={colors.nestedModalBackground}
     >
-      <View style={styles.wrapper}>
-        <Animated.View style={[styles.sheet, sheetStyle]}>
-          <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-            <GestureDetector gesture={panGesture}>
-              <View>
-                <View style={styles.dragHandleBar} />
-                <View style={styles.header}>
-                  <ThemedText style={styles.title}>Manage presets</ThemedText>
-                  <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.8}>
-                    <ThemedText style={styles.closeText}>Done</ThemedText>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </GestureDetector>
-
         {isLoading ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={colors.tint} />
@@ -115,7 +70,7 @@ export default function ManagePresetsModal({
             </ThemedText>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+          <BottomSheetScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
             <ThemedText style={styles.hintText}>
               The starred preset is applied on startup. Use the arrows to reorder.
             </ThemedText>
@@ -185,37 +140,14 @@ export default function ManagePresetsModal({
                 </View>
               );
             })}
-          </ScrollView>
+          </BottomSheetScrollView>
         )}
-          </SafeAreaView>
-        </Animated.View>
-      </View>
-    </Modal>
+    </AppBottomSheet>
   );
 }
 
 const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
   StyleSheet.create({
-    wrapper: { flex: 1, justifyContent: "flex-end" },
-    sheet: { height: "88%", backgroundColor: colors.nestedModalBackground, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: "hidden" },
-    dragHandleBar: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.textSecondary, opacity: 0.35, alignSelf: "center", marginTop: 10, marginBottom: 6 },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.divider,
-    },
-    title: { fontSize: 18, fontWeight: "700" },
-    closeBtn: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
-      backgroundColor: colors.pillBackground,
-    },
-    closeText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
     center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
     empty: { fontSize: 14, color: colors.textSecondary, textAlign: "center", lineHeight: 20 },
     list: { padding: 16, gap: 8 },

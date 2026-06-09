@@ -10,7 +10,11 @@ import {
   describeDisplayPreset,
   type DisplayPreset,
 } from "@/components/filters/saved-presets";
+
+/** Placeholder pill widths shown while presets load (chips variant). */
+const SKELETON_CHIP_WIDTHS = [78, 96, 64];
 import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type SavedPresetChipsProps = {
   scope: FilterPresetScope;
@@ -28,6 +32,11 @@ export default function SavedPresetChips({
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { presets, isLoading, remove } = useDisplayPresets(scope);
+
+  const handleApply = (preset: DisplayPreset) => {
+    triggerSelectionHaptic();
+    onApply(preset);
+  };
 
   const confirmDelete = (preset: DisplayPreset) => {
     Alert.alert(
@@ -51,7 +60,7 @@ export default function SavedPresetChips({
             <TouchableOpacity
               key={`${preset.source}-${preset.id}`}
               style={styles.card}
-              onPress={() => onApply(preset)}
+              onPress={() => handleApply(preset)}
               onLongPress={() => confirmDelete(preset)}
               delayLongPress={300}
               activeOpacity={0.75}
@@ -77,7 +86,7 @@ export default function SavedPresetChips({
   }
 
   // chips variant — horizontal scroll
-  return <ChipsScroll presets={presets} isLoading={isLoading} onApply={onApply} onLongPress={confirmDelete} styles={styles} colors={colors} />;
+  return <ChipsScroll presets={presets} isLoading={isLoading} onApply={handleApply} onLongPress={confirmDelete} styles={styles} colors={colors} />;
 }
 
 function ChipsScroll({
@@ -120,6 +129,11 @@ function ChipsScroll({
           setHasMoreRight(contentOffset.x + layoutMeasurement.width < contentSize.width - 2);
         }}
       >
+        {isLoading &&
+          presets.length === 0 &&
+          SKELETON_CHIP_WIDTHS.map((width, i) => (
+            <View key={`skeleton-${i}`} style={[styles.chipSkeleton, { width }]} />
+          ))}
         {presets.map((preset) => (
           <TouchableOpacity
             key={`${preset.source}-${preset.id}`}
@@ -174,7 +188,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
     cardDesc: { fontSize: 10, color: colors.textSecondary, lineHeight: 13 },
     // chips variant
     chipsWrapper: { flex: 1, position: "relative" },
-    chipsContent: { gap: 8, alignItems: "center" },
+    chipsContent: { gap: 8, alignItems: "center", paddingRight: 16 },
     scrollFadeRight: {
       position: "absolute",
       right: 0,
@@ -194,5 +208,10 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       backgroundColor: colors.pillBackground,
     },
     chipText: { fontSize: 13, fontWeight: "500", color: colors.pillText },
+    chipSkeleton: {
+      height: 30,
+      borderRadius: 18,
+      backgroundColor: colors.posterPlaceholder,
+    },
     hintText: { fontSize: 12, color: colors.textSecondary },
   });

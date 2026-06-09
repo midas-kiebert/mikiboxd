@@ -2,7 +2,9 @@
  * Expo Router root layout. It wires global providers, auth-based redirects, and app-wide API config.
  */
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { useRouter, useSegments, usePathname, withLayoutContext } from 'expo-router';
+import { createStackNavigator, TransitionPresets, TransitionSpecs } from '@react-navigation/stack';
+import { Appearance, Easing } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { OpenAPI } from 'shared';
@@ -11,14 +13,24 @@ import { storage, setStorage } from 'shared/storage';
 import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
 import * as SystemUI from 'expo-system-ui';
+import * as SplashScreen from 'expo-splash-screen';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
-import { PENDING_FRIEND_INVITE_RECEIVER_ID_KEY } from '@/constants/friend-invite';
-import { PENDING_SHOWTIME_PING_LINK_KEY } from '@/constants/ping-link';
+import { loadThemePreference, useThemePreference } from '@/utils/theme-preference';
+import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
+import AppSplash from '@/components/layout/AppSplash';
+import { SHARED_TAB_FILTER_PRESET_SCOPE } from '@/components/filters/shared-tab-filters';
+import {
+  displayPresetOrderQueryKey,
+  displayPresetsQueryKey,
+  fetchDisplayPresets,
+  loadDisplayPresetOrder,
+} from '@/components/filters/saved-presets';
 import { ShowtimeModalProvider, useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
 import { NotificationCenterProvider } from '@/components/notifications/NotificationCenterProvider';
 import {
@@ -30,7 +42,7 @@ import {
   registerPushTokenForCurrentDevice,
 } from '@/utils/push-notifications';
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import axios, { AxiosRequestTransformer } from 'axios'
 import * as qs from 'qs'
 import useAuth from 'shared/hooks/useAuth';
@@ -38,6 +50,15 @@ import useAuth from 'shared/hooks/useAuth';
 export const unstable_settings = {
   anchor: '(tabs)',
 };
+
+// JavaScript-driven stack (react-navigation's classic Stack) instead of the
+// native stack. The native stack on Android drops the leaving screen's content
+// a frame before its exit animation runs, producing a blank-then-slide flash on
+// back (react-native-screens #489). The JS stack runs the iOS-style card slide
+// and the previous-screen parallax entirely in JS/Reanimated, so content is
+// never cleared early — no blank, identical on iOS and Android.
+const { Navigator: JsStackNavigator } = createStackNavigator();
+const JsStack = withLayoutContext(JsStackNavigator);
 
 setStorage({
   // Route shared storage calls through SecureStore on native devices.
@@ -116,6 +137,13 @@ if (__DEV__ && !apiLoggingEnabled) {
 
 const queryClient = new QueryClient();
 
+// Keep the native splash up until the app shell is stable (see RootLayourContent).
+void SplashScreen.preventAutoHideAsync();
+
+// Tracked so the splash can wait for the saved theme before revealing the UI,
+// avoiding a dark→light (or vice-versa) recolour flash on launch.
+const themePreferenceReady = loadThemePreference();
+
 // Default foreground notification behavior for this app.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -131,6 +159,7 @@ Notifications.setNotificationHandler({
 function RootLayourContent() {
   // Current route segments let us detect whether the user is in a protected area.
   const segments = useSegments();
+  const pathname = usePathname();
   // Router instance used for in-app navigation actions.
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -139,6 +168,13 @@ function RootLayourContent() {
   const [isChecking, setIsChecking] = useState(true)
   // Tracks whether a valid access token exists.
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  // Splash gating: theme loaded, critical caches warmed, and whether the
+  // branded overlay is still mounted.
+  const [themeReady, setThemeReady] = useState(false)
+  const [warmupDone, setWarmupDone] = useState(false)
+  const [splashVisible, setSplashVisible] = useState(true)
+  const queryClient = useQueryClient();
+  const hasHiddenNativeSplashRef = useRef(false)
   const { user } = useAuth();
   const userId = user?.id ? String(user.id) : undefined;
   // Lets notification taps open the showtime modal in place instead of navigating.
@@ -166,9 +202,56 @@ function RootLayourContent() {
   }, [])
 
   useEffect(() => {
+    // Pre-load detail route modules so first navigation to each is instant.
+    void import('./movie/[id]');
+    void import('./friend-showtimes/[id]');
+    void import('./cinema-showtimes/[id]');
+  }, []);
+
+  useEffect(() => {
     // Initial blocking auth check before routing users.
     checkAuth(true)
   }, [checkAuth])
+
+  useEffect(() => {
+    // Resolve the saved theme before we reveal the UI (see themePreferenceReady).
+    let active = true;
+    void themePreferenceReady.finally(() => {
+      if (active) setThemeReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [])
+
+  useEffect(() => {
+    // Warm the caches the shell renders from (preset chips) so it appears fully
+    // populated rather than streaming in. Bounded by a timeout so a slow network
+    // never delays launch — the chips fall back to their own skeletons.
+    if (isChecking) return;
+    if (!isAuthenticated) {
+      setWarmupDone(true);
+      return;
+    }
+    let cancelled = false;
+    const warm = Promise.allSettled([
+      queryClient.prefetchQuery({
+        queryKey: displayPresetsQueryKey(SHARED_TAB_FILTER_PRESET_SCOPE),
+        queryFn: () => fetchDisplayPresets(SHARED_TAB_FILTER_PRESET_SCOPE),
+      }),
+      queryClient.prefetchQuery({
+        queryKey: displayPresetOrderQueryKey(SHARED_TAB_FILTER_PRESET_SCOPE),
+        queryFn: () => loadDisplayPresetOrder(SHARED_TAB_FILTER_PRESET_SCOPE),
+      }),
+    ]);
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
+    void Promise.race([warm, timeout]).then(() => {
+      if (!cancelled) setWarmupDone(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isChecking, isAuthenticated, queryClient])
 
   useEffect(() => {
     if (isChecking) return
@@ -188,33 +271,17 @@ function RootLayourContent() {
     if (!isAuthenticated && inAuthGroup) {
       // User is not authenticated but trying to access protected routes
       console.log('Redirecting to login because user is not authenticated')
-      if (rootSegment === 'add-friend') {
-        const receiverIdSegment = segmentPath[1]
-        if (typeof receiverIdSegment === 'string' && receiverIdSegment.length > 0) {
-          void storage.setItem(PENDING_FRIEND_INVITE_RECEIVER_ID_KEY, receiverIdSegment)
-        }
-      }
-      if (rootSegment === 'ping') {
-        const showtimeIdSegment = segmentPath[1]
-        const senderSegment = segmentPath[2]
-        if (
-          typeof showtimeIdSegment === 'string' &&
-          showtimeIdSegment.length > 0 &&
-          typeof senderSegment === 'string' &&
-          senderSegment.length > 0
-        ) {
-          void storage.setItem(
-            PENDING_SHOWTIME_PING_LINK_KEY,
-            JSON.stringify({ showtimeId: showtimeIdSegment, sender: senderSegment })
-          )
-        }
+      // Remember the deep link (everything except the plain tabs home) so the
+      // login flow can resume it after the user signs in.
+      if (rootSegment !== '(tabs)') {
+        void storage.setItem(PENDING_DEEP_LINK_PATH_KEY, pathname)
       }
       router.replace('/login')
     } else if (isAuthenticated && !inAuthGroup) {
       console.log('Redirecting to home because user is authenticated')
       router.replace('/(tabs)')
     }
-  }, [isAuthenticated, router, segments, isChecking])
+  }, [isAuthenticated, router, segments, pathname, isChecking])
 
   const handleNotificationResponse = useCallback(
     async (response: Notifications.NotificationResponse) => {
@@ -295,58 +362,64 @@ function RootLayourContent() {
     }
   }, [isAuthenticated, userId])
 
-  if (isChecking) {
-    // Avoid flashing protected screens before auth status is known.
-    return <View style={{ flex: 1, backgroundColor: palette.background }} />;
-  }
+  // Reveal the app only once the shell is stable: theme resolved, auth known,
+  // and critical caches warmed. The branded overlay covers everything until then.
+  const appReady = themeReady && !isChecking && warmupDone;
+
   return (
-    <>
-      <Stack
+    <View style={{ flex: 1, backgroundColor: palette.background }}>
+      {!isChecking && (
+        <>
+      <JsStack
         screenOptions={{
-          contentStyle: { backgroundColor: palette.background },
+          headerShown: false,
+          // iOS-style card slide with the previous-screen parallax, run in JS so
+          // there's no Android native-stack blank flash on back. Applies to all
+          // pushed screens; the anchored (tabs) root has no entry transition.
+          ...TransitionPresets.SlideFromRightIOS,
+          // The incoming screen mounts fresh on push; the JS-driven slide starts
+          // instantly while its content is still painting, so a same-coloured card
+          // would slide in "empty" and the content would pop in at the end. A short
+          // delay on the open lets React paint the screen's skeleton before the card
+          // begins moving, so you see it slide in fully formed (WhatsApp-style). The
+          // close keeps the default iOS spring — both screens are already painted.
+          transitionSpec: {
+            open: {
+              animation: 'timing',
+              config: { duration: 300, delay: 48, easing: Easing.out(Easing.poly(4)) },
+            },
+            close: TransitionSpecs.TransitionIOSSpec,
+          },
+          cardStyle: { backgroundColor: palette.background },
         }}
       >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="movie/[id]"
-          options={{
-            headerShown: false,
-            animation: 'none',
-            contentStyle: { backgroundColor: palette.background },
-          }}
+        <JsStack.Screen name="(tabs)" />
+        <JsStack.Screen name="movie/[id]" />
+        <JsStack.Screen name="friend-showtimes/[id]" />
+        <JsStack.Screen name="cinema-showtimes/[id]" />
+        <JsStack.Screen name="add-friend/[receiverId]" />
+        <JsStack.Screen name="ping/[showtimeId]/[sender]" />
+        <JsStack.Screen
+          name="modal"
+          options={{ presentation: 'modal', title: 'Modal', ...TransitionPresets.ModalSlideFromBottomIOS }}
         />
-        <Stack.Screen
-          name="friend-showtimes/[id]"
-          options={{
-            headerShown: false,
-            contentStyle: { backgroundColor: palette.background },
-          }}
-        />
-        <Stack.Screen
-          name="cinema-showtimes/[id]"
-          options={{
-            headerShown: false,
-            contentStyle: { backgroundColor: palette.background },
-          }}
-        />
-        <Stack.Screen
-          name="add-friend/[receiverId]"
-          options={{
-            headerShown: false,
-            contentStyle: { backgroundColor: palette.background },
-          }}
-        />
-        <Stack.Screen
-          name="ping/[showtimeId]/[sender]"
-          options={{
-            headerShown: false,
-            contentStyle: { backgroundColor: palette.background },
-          }}
-        />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
+      </JsStack>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-    </>
+        </>
+      )}
+      {splashVisible && (
+        <AppSplash
+          active={!appReady}
+          onHidden={() => setSplashVisible(false)}
+          onReady={() => {
+            if (hasHiddenNativeSplashRef.current) return;
+            hasHiddenNativeSplashRef.current = true;
+            // Our overlay is now painted on top — hand off from the native splash.
+            void SplashScreen.hideAsync().catch(() => {});
+          }}
+        />
+      )}
+    </View>
   )
 }
 
@@ -361,6 +434,7 @@ export default function RootLayout() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   // Theme mode selects the matching React Navigation theme object.
   const colorScheme = useColorScheme();
+  const [themePreference] = useThemePreference();
   const palette = Colors[colorScheme ?? 'light'];
   const baseTheme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
   const theme = {
@@ -379,20 +453,36 @@ export default function RootLayout() {
     void SystemUI.setBackgroundColorAsync(palette.background);
   }, [palette.background]);
 
+  useEffect(() => {
+    // Push the chosen theme down to the native layer so OS-rendered widgets
+    // (default-color ActivityIndicators, action sheets, the keyboard, text
+    // carets, RefreshControl, etc.) follow the app's theme instead of the
+    // device's system appearance. Without this, forcing dark mode on a
+    // light-mode device leaves those widgets rendering in light mode (a dark,
+    // near-invisible spinner on a dark background). `null` restores following
+    // the system when the user picks "system".
+    Appearance.setColorScheme(themePreference === 'system' ? null : themePreference);
+  }, [themePreference]);
+
   // Render/output using the state and derived values prepared above.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <BottomSheetModalProvider>
-        <QueryClientProvider client={queryClient}>
-          <ThemeProvider value={theme}>
-            <ShowtimeModalProvider>
-              <NotificationCenterProvider>
-                <RootLayourContent />
-              </NotificationCenterProvider>
-            </ShowtimeModalProvider>
-          </ThemeProvider>
-        </QueryClientProvider>
-      </BottomSheetModalProvider>
+      {/* initialWindowMetrics provides safe-area insets synchronously on the very
+          first frame, so screens don't render at inset 0 and then jump into place
+          (a visible flash on tab switches). */}
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <BottomSheetModalProvider>
+          <QueryClientProvider client={queryClient}>
+            <ThemeProvider value={theme}>
+              <ShowtimeModalProvider>
+                <NotificationCenterProvider>
+                  <RootLayourContent />
+                </NotificationCenterProvider>
+              </ShowtimeModalProvider>
+            </ThemeProvider>
+          </QueryClientProvider>
+        </BottomSheetModalProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

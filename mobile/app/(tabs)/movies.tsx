@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
@@ -163,12 +163,13 @@ export default function MovieScreen() {
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
       setSessionCinemaIds,
+      setGroupByMovie,
     });
   };
 
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <TopSafeAreaView style={styles.container}>
       <TopBar />
       <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search movies" />
       <FiltersRow
@@ -216,7 +217,7 @@ export default function MovieScreen() {
         onEndReachedThreshold={2}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       />
-    </SafeAreaView>
+    </TopSafeAreaView>
   );
 }
 

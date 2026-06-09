@@ -10,15 +10,22 @@ import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelecti
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type CinemaFilterChipProps = {
   /** Opens the full Filters modal. */
   onOpenFilters: () => void;
+  /**
+   * Opens the cinema selection modal. Defaults to the FiltersModalProvider's
+   * cinema modal (used on the tab screens). Pages rendered outside that provider
+   * (movie / friend agenda) pass their own local cinema modal opener.
+   */
+  onOpenCinemaModal?: () => void;
 };
 
 const DROPDOWN_WIDTH = 252;
 
-export default function CinemaFilterChip({ onOpenFilters }: CinemaFilterChipProps) {
+export default function CinemaFilterChip({ onOpenFilters, onOpenCinemaModal }: CinemaFilterChipProps) {
   const colors = useThemeColors();
   const { openCinemaModal } = useFiltersModal();
   const styles = createStyles(colors);
@@ -81,6 +88,7 @@ export default function CinemaFilterChip({ onOpenFilters }: CinemaFilterChipProp
   };
 
   const openDropdown = () => {
+    triggerSelectionHaptic();
     // measure() gives pageX/pageY (absolute screen coords) + dimensions.
     // More reliable than measureInWindow inside a ScrollView on Android.
     chipRef.current?.measure(
@@ -97,13 +105,15 @@ export default function CinemaFilterChip({ onOpenFilters }: CinemaFilterChipProp
   const closeDropdown = () => setDropdownVisible(false);
 
   const applyPreset = (ids: readonly number[]) => {
+    triggerSelectionHaptic();
     setSessionCinemaIds(Array.from(ids));
     closeDropdown();
   };
 
   const handleOpenFilters = () => {
+    triggerSelectionHaptic();
     closeDropdown();
-    openCinemaModal();
+    (onOpenCinemaModal ?? openCinemaModal)();
   };
 
   return (

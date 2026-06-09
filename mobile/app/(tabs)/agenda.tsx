@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useIsFocused } from "@react-navigation/native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -119,6 +119,8 @@ export default function AgendaScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["me", "showtimePings", "unseenCount"] });
       queryClient.invalidateQueries({ queryKey: ["me", "showtimePings"] });
+      // The bell badge counts unseen invites too, so refresh it to stay linked.
+      queryClient.invalidateQueries({ queryKey: ["me", "notifications", "unseenCount"] });
     },
     onError: (error) => {
       console.error("Error marking showtime invites as seen:", error);
@@ -162,7 +164,7 @@ export default function AgendaScreen() {
 
   // Render/output using the state and derived values prepared above.
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <TopSafeAreaView style={styles.container}>
       <TopBar title="Agenda" />
       <View style={styles.toggleRow}>
         <AgendaToggle
@@ -201,7 +203,7 @@ export default function AgendaScreen() {
         onRefresh={handleRefresh}
         emptyText={emptyText}
       />
-    </SafeAreaView>
+    </TopSafeAreaView>
   );
 }
 

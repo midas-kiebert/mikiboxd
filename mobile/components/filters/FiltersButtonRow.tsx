@@ -9,6 +9,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type Props = {
   onPress: () => void;
@@ -19,9 +20,14 @@ export default function FiltersButtonRow({ onPress, rightSlot }: Props) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
 
+  const handlePress = () => {
+    triggerSelectionHaptic();
+    onPress();
+  };
+
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.pill} onPress={onPress} activeOpacity={0.8}>
+      <TouchableOpacity style={styles.pill} onPress={handlePress} activeOpacity={0.8}>
         <View style={styles.pillContent}>
           <MaterialIcons name="tune" size={14} color={colors.pillText} />
           <ThemedText style={styles.pillText}>Filters</ThemedText>

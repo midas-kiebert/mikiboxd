@@ -11,9 +11,11 @@ import { useFetchUserShowtimes } from 'shared/hooks/useFetchUserShowtimes';
 import useAuth from 'shared/hooks/useAuth';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
-import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
+import ShowtimesScreen, { ListEndFooter, ShowtimesScreenSkeleton } from '@/components/showtimes/ShowtimesScreen';
+import { useDeferredMount } from '@/utils/use-deferred-mount';
 import FiltersButtonRow from '@/components/filters/FiltersButtonRow';
 import FiltersModal from '@/components/filters/FiltersModal';
+import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import ShowtimeCard from '@/components/showtimes/ShowtimeCard';
 import { useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
@@ -21,6 +23,7 @@ import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-util
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
+import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 import { triggerLongPressHaptic } from '@/utils/long-press';
 
@@ -44,18 +47,27 @@ type MovieSection = {
 };
 
 export default function FriendShowtimesScreen() {
+  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const ready = useDeferredMount(`friend:${Array.isArray(id) ? id[0] : id}`);
+  if (!ready) {
+    return <ShowtimesScreenSkeleton topBarTitle="Agenda" topBarShowBackButton />;
+  }
+  return <FriendShowtimesContent id={id} />;
+}
+
+function FriendShowtimesContent({ id }: { id?: string | string[] }) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
   const { openShowtimeModal } = useShowtimeModal();
   const { user } = useAuth();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
-  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const userId = useMemo(() => getRouteParam(id), [id]);
   const [searchQuery, setSearchQuery] = useState('');
   // Independent toggle: not inherited from shared state (own thing per user visit).
   const [includeInterested, setIncludeInterested] = useState(true);
   const [filtersModalVisible, setFiltersModalVisible] = useState(false);
+  const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
@@ -69,7 +81,11 @@ export default function FriendShowtimesScreen() {
     setSelectedDays,
     selectedTimeRanges: sharedSelectedTimeRanges,
     setSelectedTimeRanges,
+    sessionCinemaIds,
+    setSessionCinemaIds,
   } = useSharedTabFilters();
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  const effectiveCinemaIds = sessionCinemaIds ?? preferredCinemaIds;
 
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
@@ -104,11 +120,13 @@ export default function FriendShowtimesScreen() {
   const showtimesFilters = useMemo(() => ({
     query: searchQuery || undefined,
     days: resolvedApiDays,
+    selectedCinemaIds: effectiveCinemaIds ?? undefined,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
     selectedStatuses: (includeInterested ? ['GOING', 'INTERESTED'] : ['GOING']) as GoingStatus[],
     watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
   }), [
     effectiveAppliedWatchlistOnly,
+    effectiveCinemaIds,
     includeInterested,
     resolvedApiDays,
     searchQuery,
@@ -171,6 +189,7 @@ export default function FriendShowtimesScreen() {
     setGroupByMovie(false);
     setSelectedDays([]);
     setSelectedTimeRanges([]);
+    if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
   };
 
   const interestedToggle = (
@@ -236,6 +255,8 @@ export default function FriendShowtimesScreen() {
           <View style={styles.footerLoader}>
             <ActivityIndicator size="small" color={colors.tint} />
           </View>
+        ) : !hasNextPage && !isLoading && !isFetching && showtimes.length > 0 ? (
+          <ListEndFooter label="No more showtimes" />
         ) : null
       }
       onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
@@ -266,6 +287,8 @@ export default function FriendShowtimesScreen() {
               rightSlot={interestedToggle}
             />
             <ActiveFilterChips
+              onOpenFilters={() => setFiltersModalVisible(true)}
+              onOpenCinemaModal={() => setCinemaModalVisible(true)}
               groupByMovie={groupByMovie}
               setGroupByMovie={setGroupByMovie}
               watchlistOnly={effectiveWatchlistOnly}
@@ -300,7 +323,8 @@ export default function FriendShowtimesScreen() {
         selectedShowtimeFilter="all"
         setSelectedShowtimeFilter={() => {}}
         showStatusFilter={false}
-        showCinemas={false}
+        showCinemas
+        onOpenCinemaModal={() => setCinemaModalVisible(true)}
         showRuntime={false}
         selectedDays={selectedDays}
         setSelectedDays={setSelectedDays}
@@ -309,6 +333,10 @@ export default function FriendShowtimesScreen() {
         selectedRuntimeRanges={[]}
         setSelectedRuntimeRanges={() => {}}
         resultCount={groupByMovie ? movieSections.length : showtimes.length}
+      />
+      <CinemaFilterModal
+        visible={cinemaModalVisible}
+        onClose={() => setCinemaModalVisible(false)}
       />
     </>
   );
@@ -352,6 +380,8 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       fontWeight: '700',
     },
     movieSectionContent: {
+      paddingTop: 12,
+      paddingHorizontal: 16,
       paddingBottom: 16,
     },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },

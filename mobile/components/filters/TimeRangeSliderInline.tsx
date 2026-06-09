@@ -10,6 +10,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatTimePillLabel, normalizeSingleTimeRangeSelection } from "@/components/filters/time-range-utils";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 
 // ─── Range constants (same as TimeQuickPopover) ───────────────────────────────
 const RANGE_BASE_MINUTES = 9 * 60 + 30;
@@ -131,6 +132,7 @@ export default function TimeRangeSliderInline({ selectedTimeRanges, onChange }: 
       endSlotRef.current = next;
       setEndSlot(next);
     }
+    triggerSelectionHaptic();
   }, []);
 
   const startPercent = (startSlot / RANGE_SLOT_COUNT) * 100;
@@ -169,7 +171,6 @@ export default function TimeRangeSliderInline({ selectedTimeRanges, onChange }: 
       activeBoundaryRef.current = null;
       setActiveBoundary(null);
     }),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   [pickBoundary, setBoundarySlot, slotFromPageX, onChange]);
 
   const tap = useMemo(() => Gesture.Tap()
@@ -181,7 +182,6 @@ export default function TimeRangeSliderInline({ selectedTimeRanges, onChange }: 
       setBoundarySlot(b, slot);
       onChange(buildRanges(startSlotRef.current, endSlotRef.current));
     }),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   [pickBoundary, setBoundarySlot, slotFromPageX, onChange]);
 
   const gesture = useMemo(() => Gesture.Race(pan, tap), [pan, tap]);

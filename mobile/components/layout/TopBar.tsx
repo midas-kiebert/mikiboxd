@@ -7,7 +7,6 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useFetchNotificationUnseenCount } from "shared/hooks/useFetchNotificationUnseenCount";
 
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useNotificationCenter } from "@/components/notifications/NotificationCenterProvider";
 
 type TopBarProps = {
@@ -46,9 +45,9 @@ export default function TopBar({
           onPress={() => router.back()}
           style={styles.backButton}
           hitSlop={8}
-          activeOpacity={0.75}
+          activeOpacity={0.6}
         >
-          <IconSymbol size={20} name="chevron.left" color={colors.tint} />
+          <MaterialIcons name="arrow-back" size={22} color={colors.textSecondary} />
         </TouchableOpacity>
       ) : null}
       <View style={styles.titleRow}>

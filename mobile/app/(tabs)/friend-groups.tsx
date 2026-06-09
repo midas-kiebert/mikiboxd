@@ -11,7 +11,7 @@ import {
   type ListRenderItem,
 } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MeService,
@@ -104,7 +104,7 @@ export default function FriendGroupsScreen({
   const trimmedGroupName = groupName.trim();
 
   const saveGroupMutation = useMutation({
-    mutationFn: (requestBody: FriendGroupCreate) => MeService.saveFriendGroup({ requestBody }),
+    mutationFn: (requestBody: FriendGroupCreate) => MeService.createFriendGroup({ requestBody }),
     onSuccess: (savedGroup) => {
       setGroupError(null);
       setGroupName('');
@@ -486,10 +486,10 @@ export default function FriendGroupsScreen({
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <TopSafeAreaView style={styles.container}>
       <TopBar title="Friend Groups" showBackButton />
       {content}
-    </SafeAreaView>
+    </TopSafeAreaView>
   );
 }
 

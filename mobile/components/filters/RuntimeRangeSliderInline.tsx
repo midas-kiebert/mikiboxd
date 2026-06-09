@@ -9,6 +9,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 import {
   RUNTIME_MAX_MINUTES,
   RUNTIME_MIN_MINUTES,
@@ -125,6 +126,7 @@ export default function RuntimeRangeSliderInline({ selectedRuntimeRanges, onChan
       endSlotRef.current = next;
       setEndSlot(next);
     }
+    triggerSelectionHaptic();
   }, []);
 
   const startPercent = (startSlot / RANGE_SLOT_COUNT) * 100;
@@ -163,7 +165,6 @@ export default function RuntimeRangeSliderInline({ selectedRuntimeRanges, onChan
       activeBoundaryRef.current = null;
       setActiveBoundary(null);
     }),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   [pickBoundary, setBoundarySlot, slotFromPageX, onChange]);
 
   const tap = useMemo(() => Gesture.Tap()
@@ -175,7 +176,6 @@ export default function RuntimeRangeSliderInline({ selectedRuntimeRanges, onChan
       setBoundarySlot(b, slot);
       onChange(buildRanges(startSlotRef.current, endSlotRef.current));
     }),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   [pickBoundary, setBoundarySlot, slotFromPageX, onChange]);
 
   const gesture = useMemo(() => Gesture.Race(pan, tap), [pan, tap]);

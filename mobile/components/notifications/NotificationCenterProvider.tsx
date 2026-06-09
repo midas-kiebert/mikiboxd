@@ -49,7 +49,10 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
   const { mutate: markSeen } = useMutation({
     mutationFn: () => MeService.markMyNotificationsSeen(),
     onSuccess: () => {
+      // The backend marks notifications AND showtime invites seen, so refresh
+      // every badge source — bell, agenda invite badge — to keep them linked.
       queryClient.invalidateQueries({ queryKey: ["me", "notifications", "unseenCount"] });
+      queryClient.invalidateQueries({ queryKey: ["me", "showtimePings", "unseenCount"] });
       invalidateFeed();
     },
     onError: (error) => {

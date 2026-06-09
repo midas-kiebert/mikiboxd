@@ -29,6 +29,7 @@ import {
   TextInput,
   TouchableOpacity,
   UIManager,
+  useColorScheme,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -62,6 +63,9 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 import { formatSeatLabel } from "@/utils/seat-label";
 import { buildShowtimePingUrl } from "@/constants/ping-link";
+import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
+import * as Clipboard from "expo-clipboard";
+import { buildCinevilleCardNumber, loadCinevilleCardDigits } from "@/utils/cineville-card";
 
 // LayoutAnimation needs an explicit opt-in on Android (on by default on iOS).
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -374,6 +378,8 @@ export default function ShowtimeActionModal({
       : hasInvite
         ? colors.blue
         : null;
+  const colorScheme = useColorScheme();
+  const tintOpacity = colorScheme === "dark" ? 0.45 : 0.8;
 
   useEffect(() => {
     if (shouldShowSeatButton || !isSeatDialogVisible) return;
@@ -382,11 +388,13 @@ export default function ShowtimeActionModal({
 
   const handleStatusPress = (going: GoingStatus) => {
     if (!showtime || isUpdatingStatus) return;
+    triggerSelectionHaptic();
     onUpdateStatus(going);
   };
 
   const handleNotGoingPress = () => {
     if (notGoingActsAsDismiss) {
+      triggerSelectionHaptic();
       onDismissInvite?.();
       return;
     }
@@ -396,6 +404,12 @@ export default function ShowtimeActionModal({
   const handleOpenTicketLink = async () => {
     const ticketLink = showtime?.ticket_link;
     if (!ticketLink) return;
+    if (showtime?.cinema?.cineville) {
+      const digits = await loadCinevilleCardDigits();
+      if (digits) {
+        await Clipboard.setStringAsync(buildCinevilleCardNumber(digits));
+      }
+    }
     if (await Linking.canOpenURL(ticketLink)) {
       await Linking.openURL(ticketLink);
     }
@@ -430,6 +444,7 @@ export default function ShowtimeActionModal({
 
   const handlePingFriend = (friendId: string) => {
     if (!showtime || isPingingFriend) return;
+    triggerImpactHaptic();
     pingFriendForShowtime({ showtimeId: showtime.id, friendId });
     // Use the native clear() instead of resetting the controlled value — this
     // avoids React's reconciliation pass forcing value="" onto the input, which
@@ -475,7 +490,7 @@ export default function ShowtimeActionModal({
     const cinemaLabel = showtime.cinema?.name?.trim() || "the cinema";
     try {
       await Share.share({
-        message: `Come see ${showtime.movie.title} at ${dateTimeLabel} in ${cinemaLabel}`,
+        message: `Come see ${showtime.movie.title} at ${dateTimeLabel} in ${cinemaLabel}\n${pingUrl}`,
         url: pingUrl,
       });
     } catch {
@@ -650,9 +665,9 @@ export default function ShowtimeActionModal({
         {tintPalette ? (
           <LinearGradient
             pointerEvents="none"
-            colors={[tintPalette.primary, tintPalette.primary, "transparent"]}
+            colors={[tintPalette.primary, tintPalette.primary, colors.background + "00"]}
             locations={[0, 0.25, 1]}
-            style={styles.topTint}
+            style={[styles.topTint, { opacity: tintOpacity }]}
           />
         ) : null}
 
@@ -731,6 +746,7 @@ export default function ShowtimeActionModal({
                   variant="default"
                   maxVisible={30}
                   disabledUserId={disabledUserId}
+                  onNavigate={() => bottomSheetModalRef.current?.close()}
                 />
               ) : (
                 <ThemedText style={styles.audienceEmptyText}>
@@ -1071,7 +1087,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       left: 0,
       right: 0,
       height: 190,
-      opacity: 0.45,
       borderTopLeftRadius: 16,
       borderTopRightRadius: 16,
     },

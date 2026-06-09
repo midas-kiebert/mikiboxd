@@ -13,12 +13,7 @@ import {
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  BottomSheetModal,
-  BottomSheetScrollView,
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   MeService,
@@ -39,10 +34,13 @@ import {
   sortCinemaPresetsByOrder,
 } from "@/components/filters/cinema-preset-order";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import AppBottomSheet from "@/components/sheets/AppBottomSheet";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type CinemaFilterModalProps = {
   visible: boolean;
   onClose: () => void;
+  onBack?: () => void;
   initialPage?: CinemaModalPage;
 };
 
@@ -142,19 +140,16 @@ const getCinemaPalette = (
   return { accentColor: cinemaPalette?.secondary ?? colors.textSecondary };
 };
 
-export default function CinemaFilterModal({ visible, onClose, initialPage = "selection" }: CinemaFilterModalProps) {
+export default function CinemaFilterModal({ visible, onClose, onBack, initialPage = "selection" }: CinemaFilterModalProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
-  const { top: topInset, bottom: bottomInset } = useSafeAreaInsets();
-
-  const bottomSheetModalRef = useRef<BottomSheetModal>(null);
-  const hasEverPresentedRef = useRef(false);
-  const closedByGorhomRef = useRef(false);
-  const snapPoints = useMemo(() => ["88%"], []);
+  const { bottom: bottomInset } = useSafeAreaInsets();
 
   const [page, setPage] = useState<CinemaModalPage>("selection");
   const [presetName, setPresetName] = useState("");
+  // Uncontrolled input (no `value` prop) to avoid swallowing fast keystrokes.
+  const presetNameInputRef = useRef<TextInput>(null);
   const [presetError, setPresetError] = useState<string | null>(null);
   const [isSavePresetDialogVisible, setIsSavePresetDialogVisible] = useState(false);
   const [saveAsFavorite, setSaveAsFavorite] = useState(false);
@@ -179,34 +174,40 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
   const selectedCinemaSetRef = useRef(selectedCinemaSet);
   useEffect(() => { selectedCinemaSetRef.current = selectedCinemaSet; }, [selectedCinemaSet]);
 
-  const handleSheetChange = useCallback((index: number) => {
-    if (index === -1) {
-      closedByGorhomRef.current = true;
-      const current = localSelectedCinemaSetRef.current;
-      const preferred = selectedCinemaSetRef.current;
-      if (!setsMatch(current, preferred)) {
-        setSessionCinemaIds(sortCinemaIds(current));
-      }
-      onClose();
+  // Commit the pending selection (if changed) when the sheet closes.
+  const handleClose = useCallback(() => {
+    const current = localSelectedCinemaSetRef.current;
+    const preferred = selectedCinemaSetRef.current;
+    if (!setsMatch(current, preferred)) {
+      setSessionCinemaIds(sortCinemaIds(current));
     }
+    onClose();
   }, [onClose, setSessionCinemaIds]);
 
-  // Drive the gorhom sheet imperatively from the controlled `visible` prop.
-  useEffect(() => {
-    if (visible) {
-      hasEverPresentedRef.current = true;
-      closedByGorhomRef.current = false;
-      bottomSheetModalRef.current?.present();
-    } else if (hasEverPresentedRef.current && !closedByGorhomRef.current) {
-      bottomSheetModalRef.current?.close();
+  // Header back button: step back from the presets page, else return to the
+  // parent sheet (when opened nested), else nothing (root selection page).
+  const headerBack =
+    page === "presets" ? () => setPage("selection") : onBack;
+
+  const handleAndroidBack = useCallback(() => {
+    if (page === "presets") {
+      setPage("selection");
+      return true;
     }
-  }, [visible]);
+    if (onBack) {
+      onBack();
+      return true;
+    }
+    handleClose();
+    return true;
+  }, [page, onBack, handleClose]);
 
   useEffect(() => {
     if (!visible) return;
     setLocalSelectedCinemaSet(new Set(selectedCinemas));
     setPresetError(null);
     setPresetName("");
+    presetNameInputRef.current?.clear();
     setIsSavePresetDialogVisible(false);
     setSaveAsFavorite(false);
     setPage(initialPage);
@@ -234,6 +235,7 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
     onSuccess: () => {
       setPresetError(null);
       setPresetName("");
+      presetNameInputRef.current?.clear();
       setSaveAsFavorite(false);
       setIsSavePresetDialogVisible(false);
       queryClient.invalidateQueries({ queryKey: presetsQueryKey });
@@ -344,6 +346,7 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
   }, [allCinemaIds]);
 
   const handleApplyPreset = useCallback((preset: CinemaPresetPublic) => {
+    triggerSelectionHaptic();
     setLocalSelectedCinemaSet(new Set(preset.cinema_ids));
   }, []);
 
@@ -392,6 +395,7 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
   const handleOpenSavePresetDialog = useCallback(() => {
     if (selectionMatchesPreset) return;
     setPresetName("");
+    presetNameInputRef.current?.clear();
     setPresetError(null);
     setSaveAsFavorite(false);
     setIsSavePresetDialogVisible(true);
@@ -403,51 +407,18 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
     setPresetError(null);
   }, [savePresetMutation.isPending]);
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.45} pressBehavior="close" />
-    ),
-    []
-  );
-
-  const renderHandle = useCallback(
-    () => (
-      <View>
-        <View style={styles.dragHandleBar} />
-        <View style={styles.header}>
-          {page === "presets" && (
-            <TouchableOpacity onPress={() => setPage("selection")} hitSlop={8} style={styles.backButton}>
-              <MaterialIcons name="arrow-back" size={20} color={colors.text} />
-            </TouchableOpacity>
-          )}
-          <ThemedText style={styles.title}>
-            {page === "presets" ? "Manage presets" : "Cinemas"}
-          </ThemedText>
-          <TouchableOpacity onPress={() => bottomSheetModalRef.current?.close()} hitSlop={8}>
-            <MaterialIcons name="close" size={22} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-      </View>
-    ),
-    [colors, styles, page]
-  );
-
   const isLoadingSelection =
     cinemas === undefined || (sessionCinemaIds === undefined && favoriteCinemaIds === undefined);
 
   return (
     <>
-      <BottomSheetModal
-        ref={bottomSheetModalRef}
-        snapPoints={snapPoints}
-        enablePanDownToClose
-        enableDismissOnClose={false}
-        animationConfigs={{ duration: 220 }}
-        backdropComponent={renderBackdrop}
-        handleComponent={renderHandle}
-        backgroundStyle={{ backgroundColor: colors.nestedModalBackground }}
-        topInset={topInset}
-        onChange={handleSheetChange}
+      <AppBottomSheet
+        visible={visible}
+        onClose={handleClose}
+        onBack={headerBack}
+        handleAndroidBack={handleAndroidBack}
+        title={page === "presets" ? "Manage presets" : "Cinemas"}
+        backgroundColor={colors.nestedModalBackground}
       >
         {/* @gorhom/portal does not forward React context; re-provide QueryClient for hooks inside. */}
         <QueryClientProvider client={queryClient}>
@@ -477,7 +448,6 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
                     The starred preset is applied on startup. Use the arrows to reorder.
                   </ThemedText>
                   {presetsForRender.map((item, index) => {
-                    const isCurrent = serializeCinemaIds(item.cinema_ids) === currentSelectionSignature;
                     const favoriteDisabled = item.is_favorite || setFavoritePresetMutation.isPending;
                     const deleteDisabled = deletePresetMutation.isPending;
                     const canMoveUp = index > 0;
@@ -486,7 +456,7 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
                     return (
                       <TouchableOpacity
                         key={item.id}
-                        style={[styles.manageRow, isCurrent && styles.manageRowCurrent]}
+                        style={styles.manageRow}
                         onPress={() => { handleApplyPreset(item); setPage("selection"); }}
                         activeOpacity={0.88}
                       >
@@ -693,7 +663,7 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
             </BottomSheetScrollView>
           )}
         </QueryClientProvider>
-      </BottomSheetModal>
+      </AppBottomSheet>
 
       <Modal
         transparent
@@ -715,7 +685,7 @@ export default function CinemaFilterModal({ visible, onClose, initialPage = "sel
               </ThemedText>
             </View>
             <TextInput
-              value={presetName}
+              ref={presetNameInputRef}
               onChangeText={(value) => {
                 setPresetName(value);
                 if (presetError) setPresetError(null);
@@ -803,28 +773,6 @@ function Divider({ colors }: { colors: ReturnType<typeof useThemeColors> }) {
 
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
-    dragHandleBar: {
-      width: 36,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: colors.textSecondary,
-      opacity: 0.35,
-      alignSelf: "center",
-      marginTop: 10,
-      marginBottom: 6,
-    },
-    header: {
-      paddingHorizontal: 20,
-      paddingTop: 16,
-      paddingBottom: 10,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      borderBottomWidth: 1,
-      borderBottomColor: colors.divider,
-    },
-    backButton: { marginRight: 8 },
-    title: { fontSize: 17, fontWeight: "700", flex: 1 },
     scrollContent: { paddingHorizontal: 20, paddingTop: 14 },
     loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 40 },
     loadingText: { fontSize: 14, color: colors.textSecondary },
@@ -952,7 +900,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingVertical: 8,
       marginBottom: 8,
     },
-    manageRowCurrent: { borderColor: colors.tint, backgroundColor: colors.pillActiveBackground },
+    manageRowCurrent: { borderColor: colors.tint, borderWidth: 1.5 },
     manageNameBlock: { flex: 1, gap: 2 },
     manageName: { fontSize: 14, fontWeight: "600", color: colors.text },
     manageMeta: { fontSize: 11, color: colors.textSecondary },

@@ -33,6 +33,8 @@ type ActiveFilterChipsProps = {
   setSelectedRuntimeRanges: (v: string[]) => void;
   /** When provided, the cinema chip is always rendered and opens the filters modal. */
   onOpenFilters?: () => void;
+  /** Optional override for the cinema chip's "select cinemas" action (used outside the tab provider). */
+  onOpenCinemaModal?: () => void;
   onClearAll?: () => void;
   /** Render inline (no bottom border, no background) with a leading vertical divider. */
   inline?: boolean;
@@ -72,6 +74,7 @@ export default function ActiveFilterChips({
   selectedRuntimeRanges,
   setSelectedRuntimeRanges,
   onOpenFilters,
+  onOpenCinemaModal,
   onClearAll,
   inline = false,
 }: ActiveFilterChipsProps) {
@@ -175,7 +178,9 @@ export default function ActiveFilterChips({
             setHasMoreRight(contentOffset.x + layoutMeasurement.width < contentSize.width - 2);
           }}
         >
-          {onOpenFilters && <CinemaFilterChip onOpenFilters={onOpenFilters} />}
+          {onOpenFilters && (
+            <CinemaFilterChip onOpenFilters={onOpenFilters} onOpenCinemaModal={onOpenCinemaModal} />
+          )}
           {chips.map((item) => (
             <TouchableOpacity
               key={item.key}

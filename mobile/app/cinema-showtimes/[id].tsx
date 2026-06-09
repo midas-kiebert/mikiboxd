@@ -12,7 +12,8 @@ import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchMovies } from "shared/hooks/useFetchMovies";
 import useAuth from "shared/hooks/useAuth";
 
-import ShowtimesScreen from "@/components/showtimes/ShowtimesScreen";
+import ShowtimesScreen, { ShowtimesScreenSkeleton } from "@/components/showtimes/ShowtimesScreen";
+import { useDeferredMount } from "@/utils/use-deferred-mount";
 import FiltersButtonRow from "@/components/filters/FiltersButtonRow";
 import FiltersModal from "@/components/filters/FiltersModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
@@ -35,6 +36,27 @@ const getRouteParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 
 export default function CinemaShowtimesScreen() {
+  const { name, city } = useLocalSearchParams<{
+    name?: string | string[];
+    city?: string | string[];
+  }>();
+  const cinemaKey = `cinema:${Array.isArray(name) ? name[0] : name}:${Array.isArray(city) ? city[0] : city}`;
+  const ready = useDeferredMount(cinemaKey);
+  if (!ready) {
+    const routeCinemaName = getRouteParam(name)?.trim() ?? "";
+    const routeCityName = getRouteParam(city)?.trim() ?? "";
+    return (
+      <ShowtimesScreenSkeleton
+        topBarTitle={routeCinemaName || "Cinema"}
+        topBarTitleSuffix={routeCityName ? `(${routeCityName})` : undefined}
+        topBarShowBackButton
+      />
+    );
+  }
+  return <CinemaShowtimesContent />;
+}
+
+function CinemaShowtimesContent() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();

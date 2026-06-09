@@ -33,6 +33,7 @@ const SESSION_RUNTIME_RANGE_SELECTIONS_KEY = [
   "runtime_range_selections",
 ] as const;
 const SESSION_WATCHLIST_ONLY_KEY = ["session", "watchlist_only"] as const;
+const SESSION_GROUP_BY_MOVIE_KEY = ["session", "group_by_movie"] as const;
 
 export function useSharedTabFilters() {
   const queryClient = useQueryClient();
@@ -211,6 +212,13 @@ export function useSharedTabFilters() {
       if (appliesDimension("runtime_ranges") && rawSessionRuntimeRanges === undefined) {
         setSelectedRuntimeRanges(filterSource.filters.runtime_ranges ?? []);
       }
+
+      const rawGroupByMovie = queryClient.getQueryData<boolean>(
+        SESSION_GROUP_BY_MOVIE_KEY
+      );
+      if (appliesDimension("group_by_movie") && rawGroupByMovie === undefined) {
+        setGroupByMovie(Boolean(filterSource.filters.group_by_movie));
+      }
     }
 
     initializedFromFavoritesRef.current = true;
@@ -227,6 +235,7 @@ export function useSharedTabFilters() {
     setSelectedShowtimeFilter,
     setSelectedTimeRanges,
     setSelectedRuntimeRanges,
+    setGroupByMovie,
     setWatchlistOnly,
   ]);
 

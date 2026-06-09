@@ -3,7 +3,7 @@
  */
 import React from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { type ShowtimeLoggedIn } from "shared";
 
 import { useRouter } from "expo-router";
@@ -17,6 +17,14 @@ import FilterPills, {
   type FilterPillLongPressPosition,
 } from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
+
+/**
+ * Rendered at the bottom of any paginated list once all pages are loaded.
+ * Intentionally just empty scroll space — no end-of-list marker.
+ */
+export function ListEndFooter(_props: { label?: string }) {
+  return <View style={{ height: 64 }} />;
+}
 
 type ShowtimesListContentProps = {
   showtimes: ShowtimeLoggedIn[];
@@ -49,19 +57,28 @@ export function ShowtimesListContent({
   const { openShowtimeModal } = useShowtimeModal();
 
   const renderFooter = () => {
-    if (!isFetchingNextPage) return null;
-    return (
-      <View style={styles.footerLoader}>
-        <ActivityIndicator size="large" color={colors.tint} />
-      </View>
-    );
+    if (isFetchingNextPage) {
+      return (
+        <View style={styles.footerLoader}>
+          <ActivityIndicator size="large" color={colors.tint} />
+        </View>
+      );
+    }
+    if (!hasNextPage && !isLoading && !isFetching && showtimes.length > 0) {
+      return <ListEndFooter label="No more showtimes" />;
+    }
+    return null;
   };
 
   const renderEmpty = () => {
     if (isLoading || isFetching) {
+      // Skeleton cards (rather than a lone spinner) so the list keeps its shape
+      // while data loads instead of popping in.
       return (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.tint} />
+        <View>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <View key={i} style={[styles.skeletonBone, styles.skeletonCard]} />
+          ))}
         </View>
       );
     }
@@ -73,27 +90,29 @@ export function ShowtimesListContent({
   };
 
   return (
-    <FlatList
-      data={showtimes}
-      renderItem={({ item }) => (
-        <ShowtimeCard
-          showtime={item}
-          onPress={(showtime) => openShowtimeModal(showtime, openModalOptions)}
-          onLongPress={(showtime) => router.push(`/movie/${showtime.movie.id}`)}
-        />
-      )}
-      keyExtractor={(item) => item.id.toString()}
-      contentContainerStyle={styles.listContent}
-      showsVerticalScrollIndicator={false}
-      ListEmptyComponent={renderEmpty}
-      ListFooterComponent={renderFooter}
-      onEndReached={() => {
-        if (hasNextPage) onLoadMore();
-      }}
-      onEndReachedThreshold={2}
-      refreshing={isLoading}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    />
+    <View style={styles.container}>
+      <FlatList
+        data={showtimes}
+        renderItem={({ item }) => (
+          <ShowtimeCard
+            showtime={item}
+            onPress={(showtime) => openShowtimeModal(showtime, openModalOptions)}
+            onLongPress={(showtime) => router.push(`/movie/${showtime.movie.id}`)}
+          />
+        )}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={renderEmpty}
+        ListFooterComponent={renderFooter}
+        onEndReached={() => {
+          if (hasNextPage) onLoadMore();
+        }}
+        onEndReachedThreshold={2}
+        refreshing={isLoading}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      />
+    </View>
   );
 }
 
@@ -163,7 +182,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   const styles = createStyles(colors);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <TopSafeAreaView style={styles.container}>
       <TopBar
         title={topBarTitle}
         titleSuffix={topBarTitleSuffix}
@@ -183,7 +202,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
           activeIds={activeFilterIds ?? []}
         />
       )}
-      {listContent !== undefined ? listContent : (
+      {listContent !== undefined ? <>{listContent}</> : (
         <ShowtimesListContent
           showtimes={showtimes}
           isLoading={isLoading}
@@ -197,7 +216,46 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
           openModalOptions={openModalOptions}
         />
       )}
-    </SafeAreaView>
+    </TopSafeAreaView>
+  );
+}
+
+/**
+ * Lightweight placeholder rendered on a screen's first frame so the native push
+ * animation can start immediately, before the real (data-fetching) screen mounts.
+ * Mirrors the ShowtimesScreen layout: top bar, search, filter row, list of cards.
+ */
+export function ShowtimesScreenSkeleton({
+  topBarTitle = "MiKiNO",
+  topBarTitleSuffix,
+  topBarShowBackButton = false,
+}: {
+  topBarTitle?: string;
+  topBarTitleSuffix?: string;
+  topBarShowBackButton?: boolean;
+}) {
+  const colors = useThemeColors();
+  const styles = createStyles(colors);
+  return (
+    <TopSafeAreaView style={styles.container}>
+      <TopBar
+        title={topBarTitle}
+        titleSuffix={topBarTitleSuffix}
+        showBackButton={topBarShowBackButton}
+      />
+      <View style={styles.skeletonSearch}>
+        <View style={styles.skeletonSearchBar} />
+      </View>
+      <View style={styles.skeletonFilterRow}>
+        <View style={[styles.skeletonBone, { height: 32, width: 90, borderRadius: 18 }]} />
+        <View style={[styles.skeletonBone, { height: 32, width: 72, borderRadius: 18 }]} />
+      </View>
+      <View style={styles.listContent}>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <View key={i} style={[styles.skeletonBone, styles.skeletonCard]} />
+        ))}
+      </View>
+    </TopSafeAreaView>
   );
 }
 
@@ -208,7 +266,32 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.background,
     },
     listContent: {
-      paddingTop: 4,
+      paddingTop: 12,
+      paddingHorizontal: 16,
+    },
+    skeletonBone: {
+      backgroundColor: colors.posterPlaceholder,
+    },
+    skeletonSearch: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      backgroundColor: colors.background,
+    },
+    skeletonSearchBar: {
+      height: 48,
+      borderRadius: 12,
+      backgroundColor: colors.searchBackground,
+    },
+    skeletonFilterRow: {
+      flexDirection: "row",
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+    },
+    skeletonCard: {
+      height: 112,
+      borderRadius: 12,
+      marginBottom: 16,
     },
     footerLoader: {
       paddingVertical: 20,

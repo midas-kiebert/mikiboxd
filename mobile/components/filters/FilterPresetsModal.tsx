@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -40,6 +40,7 @@ import {
 } from "@/components/filters/runtime-range-utils";
 import { getPresetForRange } from "@/components/filters/time-filter-presets";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 
 export type PageFilterPresetState = {
   selected_showtime_filter?: "all" | "interested" | "going" | null;
@@ -69,7 +70,7 @@ const getSortedUniqueStrings = (values?: string[] | null): string[] | null => {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 };
 
-const normalizeFilters = (filters: PageFilterPresetState): PageFilterPresetState => ({
+const normalizeFilters = (filters: PageFilterPresetState | FilterPresetFilters): PageFilterPresetState => ({
   selected_showtime_filter:
     filters.selected_showtime_filter === "all" ||
     filters.selected_showtime_filter === "interested" ||
@@ -86,6 +87,7 @@ const normalizeFilters = (filters: PageFilterPresetState): PageFilterPresetState
   runtime_ranges: getSortedUniqueStrings(
     normalizeSingleRuntimeRangeSelection(filters.runtime_ranges ?? [])
   ),
+  group_by_movie: Boolean(filters.group_by_movie),
 });
 
 const serializeFilters = (filters: PageFilterPresetState) => JSON.stringify(normalizeFilters(filters));
@@ -100,6 +102,7 @@ const toPresetBodyFilters = (filters: PageFilterPresetState): FilterPresetFilter
     days: normalized.days ?? null,
     time_ranges: normalized.time_ranges ?? null,
     runtime_ranges: normalized.runtime_ranges ?? null,
+    group_by_movie: Boolean(normalized.group_by_movie),
   };
 };
 
@@ -197,6 +200,8 @@ export default function FilterPresetsModal({
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
 
   const [presetName, setPresetName] = useState("");
+  // Uncontrolled input (no `value` prop) to avoid swallowing fast keystrokes.
+  const presetNameInputRef = useRef<TextInput>(null);
   const [presetError, setPresetError] = useState<string | null>(null);
   const [isSavePresetDialogVisible, setIsSavePresetDialogVisible] = useState(false);
   const [saveAsFavorite, setSaveAsFavorite] = useState(false);
@@ -205,6 +210,7 @@ export default function FilterPresetsModal({
   useEffect(() => {
     if (!visible) return;
     setPresetName("");
+    presetNameInputRef.current?.clear();
     setPresetError(null);
     setSaveAsFavorite(false);
     setIsSavePresetDialogVisible(false);
@@ -269,10 +275,11 @@ export default function FilterPresetsModal({
   }, [presetOrderIds, presets, scope]);
 
   const savePresetMutation = useMutation({
-    mutationFn: (requestBody: FilterPresetCreate) => MeService.saveFilterPreset({ requestBody }),
+    mutationFn: (requestBody: FilterPresetCreate) => MeService.createFilterPreset({ requestBody }),
     onSuccess: () => {
       setPresetError(null);
       setPresetName("");
+      presetNameInputRef.current?.clear();
       setSaveAsFavorite(false);
       setIsSavePresetDialogVisible(false);
       queryClient.invalidateQueries({ queryKey: presetsQueryKey });
@@ -301,6 +308,7 @@ export default function FilterPresetsModal({
 
   const handleApplyPreset = useCallback(
     (preset: FilterPresetPublic) => {
+      triggerSelectionHaptic();
       onApply(normalizeFilters(preset.filters));
     },
     [onApply]
@@ -377,6 +385,7 @@ export default function FilterPresetsModal({
   const handleOpenSavePresetDialog = useCallback(() => {
     if (selectionMatchesPreset) return;
     setPresetName("");
+    presetNameInputRef.current?.clear();
     setPresetError(null);
     setSaveAsFavorite(false);
     setIsSavePresetDialogVisible(true);
@@ -406,7 +415,6 @@ export default function FilterPresetsModal({
   const renderPreset: ListRenderItem<FilterPresetPublic> = useCallback(
     ({ item, index }) => {
       const normalizedItemFilters = normalizeFilters(item.filters);
-      const isCurrent = serializeFilters(normalizedItemFilters) === currentFilterSignature;
       const summary = getPresetSummary(scope, normalizedItemFilters);
       const isDefaultPreset = item.is_default;
       const favoriteDisabled = item.is_favorite || setFavoritePresetMutation.isPending;
@@ -417,7 +425,7 @@ export default function FilterPresetsModal({
 
       return (
         <TouchableOpacity
-          style={[styles.presetCard, isCurrent && styles.presetCardCurrent]}
+          style={styles.presetCard}
           onPress={() => handleApplyPreset(item)}
           activeOpacity={0.88}
         >
@@ -502,7 +510,6 @@ export default function FilterPresetsModal({
     [
       colors.textSecondary,
       colors.yellow.secondary,
-      currentFilterSignature,
       deletePresetMutation.isPending,
       handleApplyPreset,
       handleDeletePreset,
@@ -636,7 +643,7 @@ export default function FilterPresetsModal({
                 </ThemedText>
               </View>
               <TextInput
-                value={presetName}
+                ref={presetNameInputRef}
                 onChangeText={(value) => {
                   setPresetName(value);
                   if (presetError) setPresetError(null);
@@ -777,8 +784,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 10,
     },
     presetCardCurrent: {
-      borderColor: colors.green.secondary,
-      backgroundColor: colors.green.primary,
+      borderColor: colors.tint,
+      borderWidth: 1.5,
     },
     presetHeader: {
       flexDirection: "row",

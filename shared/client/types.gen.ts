@@ -18,6 +18,7 @@ export type CinemaPresetCreate = {
 export type CinemaPresetPublic = {
   id: string
   name: string
+  is_default: boolean
   cinema_ids: Array<number>
   is_favorite: boolean
   created_at: string

@@ -1,6 +1,7 @@
 const fs = require("fs")
 const path = require("path")
 const { withAndroidManifest } = require("expo/config-plugins")
+const withIosFromRightBackAnim = require("./plugins/with-ios-from-right-back-anim")
 
 function resolvePathFromProjectRoot(filePath) {
   if (!filePath) return undefined
@@ -69,7 +70,9 @@ module.exports = ({ config }) => {
     },
   }
 
-  return withAndroidManifest(baseConfig, (manifestConfig) => {
+  const configWithBackAnim = withIosFromRightBackAnim(baseConfig)
+
+  return withAndroidManifest(configWithBackAnim, (manifestConfig) => {
     const manifest = manifestConfig.modResults.manifest
     const permissions = manifest["uses-permission"] || []
 

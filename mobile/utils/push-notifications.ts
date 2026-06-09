@@ -80,9 +80,10 @@ export function resolveNotificationRoute(data: unknown): Href | null {
 
   switch (data.type) {
     case "showtime_ping":
-      return "/(tabs)/pings";
+      return "/(tabs)/agenda";
     case "showtime_match":
     case "showtime_status_removed":
+    case "invite_response":
     case "showtime_interest_reminder": {
       const movieId = parsePositiveInteger(data.movieId);
       const showtimeId = parsePositiveInteger(data.showtimeId);
@@ -107,6 +108,27 @@ export function resolveNotificationRoute(data: unknown): Href | null {
       };
     case "friend_request_accepted":
       return { pathname: "/(tabs)/friends", params: { tab: "friends" } };
+    default:
+      return null;
+  }
+}
+
+/**
+ * For showtime-related notifications, returns the showtime id that should be
+ * opened in the showtime modal in-place. Non-showtime notifications (or ones
+ * without a usable showtime id) return null — fall back to resolveNotificationRoute.
+ */
+export function getModalShowtimeIdFromNotification(data: unknown): number | null {
+  if (!isPushNotificationData(data) || typeof data.type !== "string") {
+    return null;
+  }
+  switch (data.type) {
+    case "showtime_ping":
+    case "showtime_match":
+    case "showtime_status_removed":
+    case "invite_response":
+    case "showtime_interest_reminder":
+      return parsePositiveInteger(data.showtimeId);
     default:
       return null;
   }

@@ -1,18 +1,21 @@
-/**
- * Custom mobile hook for Use color scheme.
- */
 import { Appearance, useColorScheme as useRNColorScheme } from 'react-native';
+import { useThemePreference } from '@/utils/theme-preference';
 
 type Scheme = 'light' | 'dark';
 
-let lastKnownScheme: Scheme = Appearance.getColorScheme() ?? 'light';
+let lastKnownSystemScheme: Scheme = Appearance.getColorScheme() ?? 'dark';
 
 // Keep theme selection stable when React Native briefly reports `null` during transitions.
+// Respects the user's explicit preference (light/dark/system).
 export function useColorScheme(): Scheme {
-  const scheme = useRNColorScheme();
-  if (scheme === 'light' || scheme === 'dark') {
-    lastKnownScheme = scheme;
-    return scheme;
+  const systemScheme = useRNColorScheme();
+  const [preference] = useThemePreference();
+
+  if (systemScheme === 'light' || systemScheme === 'dark') {
+    lastKnownSystemScheme = systemScheme;
   }
-  return lastKnownScheme;
+
+  if (preference === 'light') return 'light';
+  if (preference === 'dark') return 'dark';
+  return lastKnownSystemScheme;
 }

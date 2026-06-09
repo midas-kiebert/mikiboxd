@@ -18,8 +18,7 @@ import type { Body_login_login_access_token as AccessToken } from 'shared'
 import { storage } from 'shared/storage'
 import { useThemeColors } from '@/hooks/use-theme-color'
 import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications'
-import { PENDING_FRIEND_INVITE_RECEIVER_ID_KEY } from '@/constants/friend-invite'
-import { PENDING_SHOWTIME_PING_LINK_KEY } from '@/constants/ping-link'
+import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link'
 
 export default function LoginScreen() {
     // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -63,34 +62,15 @@ export default function LoginScreen() {
             } catch (notificationError) {
                 console.error('Error initializing push notifications after login:', notificationError)
             }
-            const pendingFriendReceiverId = await storage.getItem(PENDING_FRIEND_INVITE_RECEIVER_ID_KEY)
-            if (pendingFriendReceiverId) {
-                await storage.removeItem(PENDING_FRIEND_INVITE_RECEIVER_ID_KEY)
-                router.replace(`/add-friend/${encodeURIComponent(pendingFriendReceiverId)}`)
+            // Resume any deep link the user opened while logged out. Navigating to
+            // the stored path re-mounts the target screen, which re-runs its own
+            // side effects (e.g. /ping registers the invite, /add-friend sends the
+            // request), so no special-casing per route is needed here.
+            const pendingDeepLinkPath = await storage.getItem(PENDING_DEEP_LINK_PATH_KEY)
+            if (pendingDeepLinkPath) {
+                await storage.removeItem(PENDING_DEEP_LINK_PATH_KEY)
+                router.replace(pendingDeepLinkPath as never)
                 return
-            }
-            const pendingShowtimePingLink = await storage.getItem(PENDING_SHOWTIME_PING_LINK_KEY)
-            if (pendingShowtimePingLink) {
-                await storage.removeItem(PENDING_SHOWTIME_PING_LINK_KEY)
-                try {
-                    const parsed = JSON.parse(pendingShowtimePingLink) as {
-                        showtimeId?: unknown
-                        sender?: unknown
-                    }
-                    if (
-                        typeof parsed?.showtimeId === 'string' &&
-                        parsed.showtimeId.length > 0 &&
-                        typeof parsed?.sender === 'string' &&
-                        parsed.sender.length > 0
-                    ) {
-                        router.replace(
-                            (`/ping/${encodeURIComponent(parsed.showtimeId)}/${encodeURIComponent(parsed.sender)}` as never)
-                        )
-                        return
-                    }
-                } catch {
-                    // Ignore malformed stored payload and continue to default route.
-                }
             }
             router.replace('/(tabs)')
             console.log("loginMutation successful")

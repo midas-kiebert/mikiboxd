@@ -2,35 +2,33 @@
  * Expo Router screen/module for friend-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { ActivityIndicator, Image, RefreshControl, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { DateTime } from 'luxon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { UsersService, type GoingStatus } from 'shared';
+import { UsersService, type GoingStatus, type ShowtimeLoggedIn } from 'shared';
 import { useFetchUserShowtimes } from 'shared/hooks/useFetchUserShowtimes';
-import { useSessionShowtimeFilter } from 'shared/hooks/useSessionShowtimeFilter';
 import useAuth from 'shared/hooks/useAuth';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
-import ShowtimesScreen from '@/components/showtimes/ShowtimesScreen';
-import DayFilterModal from '@/components/filters/DayFilterModal';
-import DayQuickPopover from '@/components/filters/DayQuickPopover';
-import { type FilterPillLongPressPosition } from '@/components/filters/FilterPills';
-import TimeQuickPopover from '@/components/filters/TimeQuickPopover';
-import { formatDayPillLabel, resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
-import { formatTimePillLabel } from '@/components/filters/time-range-utils';
-import { useSharedDayTimeFilters } from '@/hooks/useSharedDayTimeFilters';
+import ShowtimesScreen, { ListEndFooter, ShowtimesScreenSkeleton } from '@/components/showtimes/ShowtimesScreen';
+import { useDeferredMount } from '@/utils/use-deferred-mount';
+import FiltersButtonRow from '@/components/filters/FiltersButtonRow';
+import FiltersModal from '@/components/filters/FiltersModal';
+import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
+import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
+import ShowtimeCard from '@/components/showtimes/ShowtimeCard';
+import { useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
+import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
+import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
+import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
+import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
+import { triggerLongPressHaptic } from '@/utils/long-press';
 
-// Filter pill definitions rendered in the top filter row.
-const BASE_FILTERS = [
-  { id: 'showtime-filter', label: 'Interested' },
-  { id: 'watchlist-only', label: 'Watchlist Only' },
-  { id: 'days', label: 'Any Day' },
-  { id: 'times', label: 'any time' },
-] as const;
-
-type FriendAgendaFilterId = (typeof BASE_FILTERS)[number]['id'];
-type FriendShowtimeFilter = 'interested' | 'going';
+const EMPTY_DAYS: string[] = [];
+const EMPTY_TIME_RANGES: string[] = [];
 
 const getRouteParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
@@ -41,34 +39,59 @@ const getFriendTitle = (displayName: string | null | undefined) => {
   return 'Agenda';
 };
 
+type MovieSection = {
+  key: string;
+  title: string;
+  posterLink: string | null | undefined;
+  data: ShowtimeLoggedIn[];
+};
+
 export default function FriendShowtimesScreen() {
-  // Read flow: local state and data hooks first, then handlers, then the JSX screen.
+  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const ready = useDeferredMount(`friend:${Array.isArray(id) ? id[0] : id}`);
+  if (!ready) {
+    return <ShowtimesScreenSkeleton topBarTitle="Agenda" topBarShowBackButton />;
+  }
+  return <FriendShowtimesContent id={id} />;
+}
+
+function FriendShowtimesContent({ id }: { id?: string | string[] }) {
   const colors = useThemeColors();
+  const styles = createStyles(colors);
+  const router = useRouter();
+  const { openShowtimeModal } = useShowtimeModal();
   const { user } = useAuth();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
-  const { selection: sharedShowtimeFilter } = useSessionShowtimeFilter();
-  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const userId = useMemo(() => getRouteParam(id), [id]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedShowtimeFilter, setSelectedShowtimeFilter] = useState<FriendShowtimeFilter>(() =>
-    sharedShowtimeFilter === 'going' ? 'going' : 'interested'
-  );
-  // Tracks which filter pills are toggled on (multi-select).
-  const [activeFilterIds, setActiveFilterIds] = useState<FriendAgendaFilterId[]>([]);
-  // Controls pull-to-refresh spinner visibility.
+  // Independent toggle: not inherited from shared state (own thing per user visit).
+  const [includeInterested, setIncludeInterested] = useState(true);
+  const [filtersModalVisible, setFiltersModalVisible] = useState(false);
+  const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  // Controls visibility of the day-filter modal.
-  const [dayModalVisible, setDayModalVisible] = useState(false);
-  const [dayQuickPopoverVisible, setDayQuickPopoverVisible] = useState(false);
-  const [dayQuickPopoverAnchor, setDayQuickPopoverAnchor] =
-    useState<FilterPillLongPressPosition | null>(null);
-  const [timeQuickPopoverVisible, setTimeQuickPopoverVisible] = useState(false);
-  const [timeQuickPopoverAnchor, setTimeQuickPopoverAnchor] =
-    useState<FilterPillLongPressPosition | null>(null);
-  const { selectedDays, setSelectedDays, selectedTimeRanges, setSelectedTimeRanges } =
-    useSharedDayTimeFilters();
-  // Snapshot timestamp used to keep paginated API responses consistent.
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
+
+  const {
+    watchlistOnly,
+    appliedWatchlistOnly,
+    setWatchlistOnly,
+    groupByMovie,
+    setGroupByMovie,
+    selectedDays: sharedSelectedDays,
+    setSelectedDays,
+    selectedTimeRanges: sharedSelectedTimeRanges,
+    setSelectedTimeRanges,
+    sessionCinemaIds,
+    setSessionCinemaIds,
+  } = useSharedTabFilters();
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  const effectiveCinemaIds = sessionCinemaIds ?? preferredCinemaIds;
+
+  const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
+  const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
+  const selectedDays = sharedSelectedDays ?? EMPTY_DAYS;
+  const selectedTimeRanges = sharedSelectedTimeRanges ?? EMPTY_TIME_RANGES;
+
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
   const resolvedApiDays = useMemo(
@@ -77,16 +100,12 @@ export default function FriendShowtimesScreen() {
   );
 
   useEffect(() => {
-    if (hasLetterboxdUsername) return;
-    setActiveFilterIds((current) =>
-      current.filter((filterId) => filterId !== 'watchlist-only')
-    );
-  }, [hasLetterboxdUsername]);
+    if (hasLetterboxdUsername || !watchlistOnly) return;
+    setWatchlistOnly(false);
+  }, [hasLetterboxdUsername, setWatchlistOnly, watchlistOnly]);
 
-  // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
 
-  // Data hooks keep this module synced with backend data and shared cache state.
   const { data: friend } = useQuery({
     queryKey: ['user', userId],
     enabled: !!userId,
@@ -98,30 +117,22 @@ export default function FriendShowtimesScreen() {
     [friend]
   );
 
-  // Build the filter payload from current UI selections.
-  const showtimesFilters = useMemo(() => {
-    const selectedStatuses: GoingStatus[] =
-      selectedShowtimeFilter === 'going' ? ['GOING'] : ['GOING', 'INTERESTED'];
-    const watchlistOnly =
-      hasLetterboxdUsername && activeFilterIds.includes('watchlist-only');
-
-    return {
-      query: searchQuery || undefined,
-      days: resolvedApiDays,
-      timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
-      selectedStatuses,
-      watchlistOnly: watchlistOnly ? true : undefined,
-    };
-  }, [
-    activeFilterIds,
-    hasLetterboxdUsername,
+  const showtimesFilters = useMemo(() => ({
+    query: searchQuery || undefined,
+    days: resolvedApiDays,
+    selectedCinemaIds: effectiveCinemaIds ?? undefined,
+    timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
+    selectedStatuses: (includeInterested ? ['GOING', 'INTERESTED'] : ['GOING']) as GoingStatus[],
+    watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
+  }), [
+    effectiveAppliedWatchlistOnly,
+    effectiveCinemaIds,
+    includeInterested,
     resolvedApiDays,
     searchQuery,
-    selectedShowtimeFilter,
     selectedTimeRanges,
   ]);
 
-  // Data hooks keep this module synced with backend data and shared cache state.
   const {
     data,
     isLoading,
@@ -137,10 +148,22 @@ export default function FriendShowtimesScreen() {
     enabled: !!userId,
   });
 
-  // Flatten/derive list data for rendering efficiency.
   const showtimes = useMemo(() => data?.pages.flat() ?? [], [data]);
 
-  // Refresh the current dataset and reset any stale pagination state.
+  // Client-side grouping by movie for the "group by movies" view.
+  const movieSections = useMemo<MovieSection[]>(() => {
+    if (!groupByMovie) return [];
+    const map = new Map<number, MovieSection>();
+    for (const showtime of showtimes) {
+      const movie = showtime.movie;
+      if (!map.has(movie.id)) {
+        map.set(movie.id, { key: String(movie.id), title: movie.title, posterLink: movie.poster_link, data: [] });
+      }
+      map.get(movie.id)!.data.push(showtime);
+    }
+    return Array.from(map.values());
+  }, [showtimes, groupByMovie]);
+
   const handleRefresh = async () => {
     if (!userId) return;
     setRefreshing(true);
@@ -155,104 +178,93 @@ export default function FriendShowtimesScreen() {
     }
   };
 
-  // Request the next page when the list nears the end.
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
   };
 
-  // Handle filter pill presses and update active filter state.
-  const handleToggleFilter = (
-    filterId: FriendAgendaFilterId,
-    position?: FilterPillLongPressPosition
-  ) => {
-    if (filterId === 'showtime-filter') {
-      setSelectedShowtimeFilter((current) => (current === 'going' ? 'interested' : 'going'));
-      return;
-    }
-    if (filterId === 'days') {
-      setDayQuickPopoverAnchor(position ?? null);
-      setDayQuickPopoverVisible(true);
-      return;
-    }
-    if (filterId === 'times') {
-      setTimeQuickPopoverAnchor(position ?? null);
-      setTimeQuickPopoverVisible(true);
-      return;
-    }
-    if (filterId === 'watchlist-only' && !hasLetterboxdUsername) {
-      return;
-    }
-    setActiveFilterIds((prev) => {
-      const isActive = prev.includes(filterId);
-      return isActive ? prev.filter((idValue) => idValue !== filterId) : [...prev, filterId];
-    });
+  const handleClearAll = () => {
+    setWatchlistOnly(false);
+    setGroupByMovie(false);
+    setSelectedDays([]);
+    setSelectedTimeRanges([]);
+    if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
   };
 
-  const handleLongPressFilter = (
-    filterId: FriendAgendaFilterId,
-    position: FilterPillLongPressPosition
-  ) => {
-    if (filterId === 'days') {
-      setDayModalVisible(true);
-      return true;
-    }
-    if (filterId === 'times') {
-      setTimeQuickPopoverAnchor(position ?? null);
-      setTimeQuickPopoverVisible(true);
-      return true;
-    }
-    return false;
-  };
-
-  const pillFilters = useMemo(
-    () =>
-      (hasLetterboxdUsername
-        ? BASE_FILTERS
-        : BASE_FILTERS.filter((filter) => filter.id !== 'watchlist-only')
-      ).map((filter) =>
-        filter.id === 'showtime-filter'
-          ? {
-              ...filter,
-              label: selectedShowtimeFilter === 'going' ? 'Going' : 'Interested',
-              activeBackgroundColor:
-                selectedShowtimeFilter === 'going' ? colors.green.primary : colors.orange.primary,
-              activeTextColor:
-                selectedShowtimeFilter === 'going'
-                  ? colors.green.secondary
-                  : colors.orange.secondary,
-              activeBorderColor:
-                selectedShowtimeFilter === 'going'
-                  ? colors.green.secondary
-                  : colors.orange.secondary,
-            }
-          : filter.id === 'days'
-          ? { ...filter, label: formatDayPillLabel(selectedDays) }
-          : filter.id === 'times'
-            ? { ...filter, label: formatTimePillLabel(selectedTimeRanges) }
-            : filter
-      ),
-    [colors, hasLetterboxdUsername, selectedDays, selectedShowtimeFilter, selectedTimeRanges]
+  const interestedToggle = (
+    <TouchableOpacity
+      onPress={() => { triggerLongPressHaptic(); setIncludeInterested((v) => !v); }}
+      activeOpacity={0.7}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: includeInterested }}
+      accessibilityLabel={`${includeInterested ? 'Hide' : 'Show'} interested`}
+      style={[
+        styles.toggle,
+        includeInterested
+          ? { backgroundColor: colors.orange.primary, borderColor: colors.orange.primary }
+          : { backgroundColor: colors.pillBackground, borderColor: colors.cardBorder },
+      ]}
+    >
+      <MaterialIcons
+        name={includeInterested ? 'bookmark' : 'bookmark-border'}
+        size={15}
+        color={includeInterested ? colors.orange.secondary : colors.textSecondary}
+      />
+      <ThemedText style={[styles.toggleLabel, { color: includeInterested ? colors.orange.secondary : colors.textSecondary }]}>
+        Interested
+      </ThemedText>
+    </TouchableOpacity>
   );
 
-  const highlightedFilterIds = useMemo(() => {
-    const active: FriendAgendaFilterId[] = [
-      'showtime-filter',
-      ...(hasLetterboxdUsername
-        ? activeFilterIds
-        : activeFilterIds.filter((filterId) => filterId !== 'watchlist-only')),
-    ];
-    if (selectedDays.length > 0) {
-      active.push('days');
-    }
-    if (selectedTimeRanges.length > 0) {
-      active.push('times');
-    }
-    return active;
-  }, [activeFilterIds, hasLetterboxdUsername, selectedDays.length, selectedTimeRanges.length]);
+  const moviesContent = groupByMovie ? (
+    <SectionList
+      style={styles.flex}
+      sections={movieSections}
+      keyExtractor={(item) => item.id.toString()}
+      renderSectionHeader={({ section }) => (
+        <View style={styles.movieSectionHeader}>
+          {section.posterLink ? (
+            <Image source={{ uri: section.posterLink }} style={styles.movieSectionPoster} />
+          ) : null}
+          <ThemedText style={styles.movieSectionTitle} numberOfLines={2}>{section.title}</ThemedText>
+        </View>
+      )}
+      renderItem={({ item }) => (
+        <ShowtimeCard
+          showtime={item}
+          onPress={(st) => openShowtimeModal(st, { openedFrom: { userId: userId ?? undefined } })}
+          onLongPress={(st) => router.push(`/movie/${st.movie.id}`)}
+        />
+      )}
+      contentContainerStyle={styles.movieSectionContent}
+      showsVerticalScrollIndicator={false}
+      ListEmptyComponent={
+        isLoading || isFetching ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color={colors.tint} />
+          </View>
+        ) : (
+          <View style={styles.centerContainer}>
+            <ThemedText style={styles.emptyText}>No showtimes in this agenda</ThemedText>
+          </View>
+        )
+      }
+      ListFooterComponent={
+        isFetchingNextPage ? (
+          <View style={styles.footerLoader}>
+            <ActivityIndicator size="small" color={colors.tint} />
+          </View>
+        ) : !hasNextPage && !isLoading && !isFetching && showtimes.length > 0 ? (
+          <ListEndFooter label="No more showtimes" />
+        ) : null
+      }
+      onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
+      onEndReachedThreshold={2}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+    />
+  ) : undefined;
 
-  // Render/output using the state and derived values prepared above.
   return (
     <>
       <ShowtimesScreen
@@ -268,33 +280,111 @@ export default function FriendShowtimesScreen() {
         onRefresh={handleRefresh}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        filters={pillFilters}
-        activeFilterIds={highlightedFilterIds}
-        onToggleFilter={handleToggleFilter}
-        onLongPressFilter={handleLongPressFilter}
+        filterRow={
+          <>
+            <FiltersButtonRow
+              onPress={() => setFiltersModalVisible(true)}
+              rightSlot={interestedToggle}
+            />
+            <ActiveFilterChips
+              onOpenFilters={() => setFiltersModalVisible(true)}
+              onOpenCinemaModal={() => setCinemaModalVisible(true)}
+              groupByMovie={groupByMovie}
+              setGroupByMovie={setGroupByMovie}
+              watchlistOnly={effectiveWatchlistOnly}
+              setWatchlistOnly={setWatchlistOnly}
+              canUseWatchlistFilter={hasLetterboxdUsername}
+              selectedShowtimeFilter="all"
+              setSelectedShowtimeFilter={() => {}}
+              showStatusFilter={false}
+              selectedDays={selectedDays}
+              setSelectedDays={setSelectedDays}
+              selectedTimeRanges={selectedTimeRanges}
+              setSelectedTimeRanges={setSelectedTimeRanges}
+              selectedRuntimeRanges={[]}
+              setSelectedRuntimeRanges={() => {}}
+              onClearAll={handleClearAll}
+            />
+          </>
+        }
+        listContent={moviesContent}
         emptyText="No showtimes in this agenda"
+        openModalOptions={{ openedFrom: { userId: userId ?? undefined } }}
       />
-      <DayQuickPopover
-        visible={dayQuickPopoverVisible}
-        anchor={dayQuickPopoverAnchor}
-        onClose={() => setDayQuickPopoverVisible(false)}
+      <FiltersModal
+        visible={filtersModalVisible}
+        onClose={() => setFiltersModalVisible(false)}
+        groupByMovie={groupByMovie}
+        setGroupByMovie={setGroupByMovie}
+        showGroupByMovie
+        watchlistOnly={effectiveWatchlistOnly}
+        setWatchlistOnly={setWatchlistOnly}
+        canUseWatchlistFilter={hasLetterboxdUsername}
+        selectedShowtimeFilter="all"
+        setSelectedShowtimeFilter={() => {}}
+        showStatusFilter={false}
+        showCinemas
+        onOpenCinemaModal={() => setCinemaModalVisible(true)}
+        showRuntime={false}
         selectedDays={selectedDays}
-        onChange={setSelectedDays}
-        onOpenModal={() => setDayModalVisible(true)}
-      />
-      <TimeQuickPopover
-        visible={timeQuickPopoverVisible}
-        anchor={timeQuickPopoverAnchor}
-        onClose={() => setTimeQuickPopoverVisible(false)}
+        setSelectedDays={setSelectedDays}
         selectedTimeRanges={selectedTimeRanges}
-        onChange={setSelectedTimeRanges}
+        setSelectedTimeRanges={setSelectedTimeRanges}
+        selectedRuntimeRanges={[]}
+        setSelectedRuntimeRanges={() => {}}
+        resultCount={groupByMovie ? movieSections.length : showtimes.length}
       />
-      <DayFilterModal
-        visible={dayModalVisible}
-        onClose={() => setDayModalVisible(false)}
-        selectedDays={selectedDays}
-        onChange={setSelectedDays}
+      <CinemaFilterModal
+        visible={cinemaModalVisible}
+        onClose={() => setCinemaModalVisible(false)}
       />
     </>
   );
 }
+
+const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
+  StyleSheet.create({
+    flex: { flex: 1 },
+    toggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 18,
+      borderWidth: 1,
+    },
+    toggleLabel: {
+      fontSize: 13,
+      fontWeight: '500',
+    },
+    movieSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.divider,
+    },
+    movieSectionPoster: {
+      width: 36,
+      height: 54,
+      borderRadius: 4,
+      backgroundColor: colors.posterPlaceholder,
+    },
+    movieSectionTitle: {
+      flex: 1,
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    movieSectionContent: {
+      paddingTop: 12,
+      paddingHorizontal: 16,
+      paddingBottom: 16,
+    },
+    centerContainer: { paddingVertical: 40, alignItems: 'center' },
+    emptyText: { fontSize: 16, color: colors.textSecondary },
+    footerLoader: { paddingVertical: 20, alignItems: 'center' },
+  });

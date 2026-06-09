@@ -1,45 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { OpenAPI } from "shared";
-import { storage } from "shared/storage";
-import { useQueryClient } from "@tanstack/react-query";
+/**
+ * Showtime invite deep-link handler (mikino.nl/ping/{showtimeId}/{sender}).
+ *
+ * Instead of showing its own page, it lands the user on the home tab and opens the
+ * showtime modal in place — no page-jumping. The invite is registered in the
+ * background (best effort) so it also appears in the Invites list.
+ */
+import { useEffect, useMemo, useRef } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { ShowtimesService } from "shared";
 
-import TopBar from "@/components/layout/TopBar";
-import { ThemedText } from "@/components/themed-text";
-import { useThemeColors } from "@/hooks/use-theme-color";
-
-type RequestState = "loading" | "error";
-
-type ErrorBody = {
-  detail?: unknown;
-};
-
-function getErrorDetail(body: unknown, status: number) {
-  if (
-    body &&
-    typeof body === "object" &&
-    "detail" in body &&
-    typeof (body as ErrorBody).detail === "string"
-  ) {
-    return (body as ErrorBody).detail as string;
-  }
-  return `Could not process invite link (${status}).`;
-}
+import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 
 export default function PingLinkScreen() {
-  const colors = useThemeColors();
-  const styles = createStyles(colors);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { openShowtimeModalById } = useShowtimeModal();
   const { showtimeId, sender } = useLocalSearchParams<{
     showtimeId?: string | string[];
     sender?: string | string[];
   }>();
-  const [state, setState] = useState<RequestState>("loading");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const hasAttemptedRef = useRef(false);
+  const handledRef = useRef(false);
 
   const normalizedShowtimeId = useMemo(() => {
     const value = Array.isArray(showtimeId) ? showtimeId[0] : showtimeId;
@@ -53,123 +34,33 @@ export default function PingLinkScreen() {
   }, [sender]);
 
   useEffect(() => {
-    if (hasAttemptedRef.current) return;
-    hasAttemptedRef.current = true;
+    if (handledRef.current) return;
+    handledRef.current = true;
 
-    if (normalizedShowtimeId === null || normalizedSender.length === 0) {
-      setErrorMessage("Invalid invite link.");
-      setState("error");
-      return;
+    // Land on home immediately; the modal opens over it (no intermediate page).
+    router.replace("/(tabs)");
+    if (normalizedShowtimeId === null) return;
+
+    openShowtimeModalById(normalizedShowtimeId);
+
+    // Register the invite in the background so it also shows up in the Invites list.
+    if (normalizedSender.length > 0) {
+      void (async () => {
+        try {
+          await ShowtimesService.receivePingFromLink({
+            showtimeId: normalizedShowtimeId,
+            senderIdentifier: normalizedSender,
+          });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["me", "showtimePings"] }),
+            queryClient.invalidateQueries({ queryKey: ["me", "showtimePings", "unseenCount"] }),
+          ]);
+        } catch (error) {
+          console.error("Error registering invite from link:", error);
+        }
+      })();
     }
+  }, [normalizedSender, normalizedShowtimeId, openShowtimeModalById, queryClient, router]);
 
-    const handleLink = async () => {
-      try {
-        const token = await storage.getItem("access_token");
-        if (!token) {
-          throw new Error("You need to log in before opening this invite link.");
-        }
-
-        const response = await fetch(
-          `${OpenAPI.BASE}/api/v1/showtimes/${normalizedShowtimeId}/ping-link/${encodeURIComponent(
-            normalizedSender
-          )}`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: "application/json",
-            },
-          }
-        );
-
-        const body = (await response.json().catch(() => null)) as unknown;
-        if (!response.ok) {
-          throw new Error(getErrorDetail(body, response.status));
-        }
-
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["me", "showtimePings"] }),
-          queryClient.invalidateQueries({ queryKey: ["me", "showtimePings", "unseenCount"] }),
-        ]);
-        router.replace("/(tabs)/pings");
-      } catch (error) {
-        const message =
-          error instanceof Error && error.message
-            ? error.message
-            : "Could not process invite link.";
-        setErrorMessage(message);
-        setState("error");
-      }
-    };
-
-    void handleLink();
-  }, [normalizedSender, normalizedShowtimeId, queryClient, router]);
-
-  return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <TopBar title="Invite Link" showBackButton />
-      <View style={styles.content}>
-        {state === "loading" ? (
-          <>
-            <ActivityIndicator size="large" color={colors.tint} />
-            <ThemedText style={styles.helperText}>Opening invite...</ThemedText>
-          </>
-        ) : (
-          <>
-            <ThemedText style={styles.errorTitle}>Could not open invite</ThemedText>
-            <ThemedText style={styles.helperText}>{errorMessage ?? "Try again later."}</ThemedText>
-            <TouchableOpacity
-              style={styles.primaryButton}
-              activeOpacity={0.8}
-              onPress={() => router.replace("/(tabs)/pings")}
-            >
-              <ThemedText style={styles.primaryButtonText}>Open Invites</ThemedText>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-    </SafeAreaView>
-  );
+  return null;
 }
-
-const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    content: {
-      flex: 1,
-      paddingHorizontal: 24,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 12,
-    },
-    errorTitle: {
-      fontSize: 22,
-      fontWeight: "700",
-      color: colors.red.secondary,
-      textAlign: "center",
-    },
-    helperText: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      textAlign: "center",
-    },
-    primaryButton: {
-      marginTop: 12,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.tint,
-      backgroundColor: colors.tint,
-      paddingVertical: 11,
-      paddingHorizontal: 16,
-      minWidth: 170,
-      alignItems: "center",
-    },
-    primaryButtonText: {
-      color: colors.pillActiveText,
-      fontSize: 14,
-      fontWeight: "700",
-    },
-  });

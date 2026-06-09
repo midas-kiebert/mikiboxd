@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchFavoriteFilterPreset } from "shared/hooks/useFetchFavoriteFilterPreset";
+import { useFetchFavoriteSavedPreset } from "shared/hooks/useFetchFavoriteSavedPreset";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { useSessionShowtimeAudience } from "shared/hooks/useSessionShowtimeAudience";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 import { useSessionDaySelections } from "shared/hooks/useSessionDaySelections";
 import { useSessionShowtimeFilter } from "shared/hooks/useSessionShowtimeFilter";
 import { useSessionTimeRangeSelections } from "shared/hooks/useSessionTimeRangeSelections";
 import { useSessionRuntimeRangeSelections } from "shared/hooks/useSessionRuntimeRangeSelections";
 import { useSessionWatchlistOnly } from "shared/hooks/useSessionWatchlistOnly";
+import { useSessionGroupByMovie } from "shared/hooks/useSessionGroupByMovie";
 
 import {
   normalizeSingleRuntimeRangeSelection,
@@ -26,23 +27,18 @@ const EMPTY_RUNTIME_RANGES: string[] = [];
 const SESSION_CINEMA_SELECTIONS_KEY = ["session", "cinema_selections"] as const;
 const SESSION_DAY_SELECTIONS_KEY = ["session", "day_selections"] as const;
 const SESSION_SHOWTIME_FILTER_KEY = ["session", "showtime_filter"] as const;
-const SESSION_SHOWTIME_AUDIENCE_KEY = ["session", "showtime_audience"] as const;
 const SESSION_TIME_RANGE_SELECTIONS_KEY = ["session", "time_range_selections"] as const;
 const SESSION_RUNTIME_RANGE_SELECTIONS_KEY = [
   "session",
   "runtime_range_selections",
 ] as const;
 const SESSION_WATCHLIST_ONLY_KEY = ["session", "watchlist_only"] as const;
-
-type SharedShowtimeAudience = "including-friends" | "only-you";
-const toShowtimeAudience = (value: unknown): SharedShowtimeAudience =>
-  value === "only-you" ? "only-you" : "including-friends";
+const SESSION_GROUP_BY_MOVIE_KEY = ["session", "group_by_movie"] as const;
 
 export function useSharedTabFilters() {
   const queryClient = useQueryClient();
   const initializedFromFavoritesRef = useRef(false);
   const applyShowtimeFilterFrameRef = useRef<number | null>(null);
-  const applyShowtimeAudienceFrameRef = useRef<number | null>(null);
   const applyWatchlistOnlyFrameRef = useRef<number | null>(null);
 
   const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
@@ -55,26 +51,24 @@ export function useSharedTabFilters() {
     useSessionRuntimeRangeSelections();
   const { selection: sessionShowtimeFilter, setSelection: setSessionShowtimeFilter } =
     useSessionShowtimeFilter();
-  const { selection: sessionShowtimeAudience, setSelection: setSessionShowtimeAudience } =
-    useSessionShowtimeAudience();
   const { selection: sessionWatchlistOnly, setSelection: setSessionWatchlistOnly } =
     useSessionWatchlistOnly();
+  const { selection: groupByMovie, setSelection: setGroupByMovie } =
+    useSessionGroupByMovie();
   const favoriteFilterPresetQuery = useFetchFavoriteFilterPreset({
+    scope: SHARED_TAB_FILTER_PRESET_SCOPE,
+  });
+  const favoriteSavedPresetQuery = useFetchFavoriteSavedPreset({
     scope: SHARED_TAB_FILTER_PRESET_SCOPE,
   });
   const favoriteCinemasQuery = useFetchSelectedCinemas();
 
   const initialShowtimeFilter = toSharedTabShowtimeFilter(sessionShowtimeFilter);
-  const initialShowtimeAudience = toShowtimeAudience(sessionShowtimeAudience);
   const initialWatchlistOnly = Boolean(sessionWatchlistOnly);
   const [selectedShowtimeFilter, setSelectedShowtimeFilterState] =
     useState<SharedTabShowtimeFilter>(initialShowtimeFilter);
   const [appliedShowtimeFilter, setAppliedShowtimeFilterState] =
     useState<SharedTabShowtimeFilter>(initialShowtimeFilter);
-  const [selectedShowtimeAudience, setSelectedShowtimeAudienceState] =
-    useState<SharedShowtimeAudience>(initialShowtimeAudience);
-  const [appliedShowtimeAudience, setAppliedShowtimeAudienceState] =
-    useState<SharedShowtimeAudience>(initialShowtimeAudience);
   const [watchlistOnly, setWatchlistOnlyState] = useState<boolean>(initialWatchlistOnly);
   const [appliedWatchlistOnly, setAppliedWatchlistOnlyState] = useState<boolean>(initialWatchlistOnly);
   const selectedDays = sessionDays ?? EMPTY_DAYS;
@@ -115,21 +109,6 @@ export function useSharedTabFilters() {
     [setSessionWatchlistOnly]
   );
 
-  const setSelectedShowtimeAudience = useCallback(
-    (next: SharedShowtimeAudience) => {
-      setSelectedShowtimeAudienceState(next);
-      if (applyShowtimeAudienceFrameRef.current !== null) {
-        cancelAnimationFrame(applyShowtimeAudienceFrameRef.current);
-      }
-      applyShowtimeAudienceFrameRef.current = requestAnimationFrame(() => {
-        applyShowtimeAudienceFrameRef.current = null;
-        setAppliedShowtimeAudienceState(next);
-        setSessionShowtimeAudience(next);
-      });
-    },
-    [setSessionShowtimeAudience]
-  );
-
   const setSelectedTimeRanges = useCallback(
     (next: string[]) => {
       setSessionTimeRanges(normalizeSingleTimeRangeSelection(next));
@@ -156,19 +135,10 @@ export function useSharedTabFilters() {
     setAppliedWatchlistOnlyState(normalized);
   }, [sessionWatchlistOnly]);
 
-  useEffect(() => {
-    const normalized = toShowtimeAudience(sessionShowtimeAudience);
-    setSelectedShowtimeAudienceState(normalized);
-    setAppliedShowtimeAudienceState(normalized);
-  }, [sessionShowtimeAudience]);
-
   useEffect(
     () => () => {
       if (applyShowtimeFilterFrameRef.current !== null) {
         cancelAnimationFrame(applyShowtimeFilterFrameRef.current);
-      }
-      if (applyShowtimeAudienceFrameRef.current !== null) {
-        cancelAnimationFrame(applyShowtimeAudienceFrameRef.current);
       }
       if (applyWatchlistOnlyFrameRef.current !== null) {
         cancelAnimationFrame(applyWatchlistOnlyFrameRef.current);
@@ -179,55 +149,75 @@ export function useSharedTabFilters() {
 
   useEffect(() => {
     if (initializedFromFavoritesRef.current) return;
-    if (!favoriteFilterPresetQuery.isFetched || !favoriteCinemasQuery.isFetched) return;
+    if (
+      !favoriteFilterPresetQuery.isFetched ||
+      !favoriteSavedPresetQuery.isFetched ||
+      !favoriteCinemasQuery.isFetched
+    )
+      return;
 
+    // The favorite preset is unique across the legacy and new systems. A legacy
+    // preset carries every filter dimension; a new saved preset carries only the
+    // dimensions it includes (and optionally a cinema selection).
+    const legacyFavorite = favoriteFilterPresetQuery.data;
+    const savedFavorite = favoriteSavedPresetQuery.data;
+    const savedIncludes = new Set(savedFavorite?.included_fields ?? []);
+    const filterSource = legacyFavorite ?? savedFavorite;
+    const appliesDimension = (dimension: string) =>
+      Boolean(legacyFavorite) || savedIncludes.has(dimension);
+
+    // Cinemas: a saved favorite that includes cinemas wins; otherwise fall back
+    // to the favorite cinema preset.
     const rawSessionCinemaIds = queryClient.getQueryData<number[]>(
       SESSION_CINEMA_SELECTIONS_KEY
     );
-    if (rawSessionCinemaIds === undefined && favoriteCinemasQuery.data !== undefined) {
-      setSessionCinemaIds(favoriteCinemasQuery.data);
+    if (rawSessionCinemaIds === undefined) {
+      if (savedFavorite && savedIncludes.has("cinemas") && savedFavorite.cinema_ids) {
+        setSessionCinemaIds(savedFavorite.cinema_ids);
+      } else if (favoriteCinemasQuery.data !== undefined) {
+        setSessionCinemaIds(favoriteCinemasQuery.data);
+      }
     }
 
-    const favoritePreset = favoriteFilterPresetQuery.data;
-    if (favoritePreset) {
+    if (filterSource) {
       const rawSessionShowtimeFilter = queryClient.getQueryData<SharedTabShowtimeFilter>(
         SESSION_SHOWTIME_FILTER_KEY
       );
-      if (rawSessionShowtimeFilter === undefined) {
+      if (appliesDimension("selected_showtime_filter") && rawSessionShowtimeFilter === undefined) {
         setSelectedShowtimeFilter(
-          toSharedTabShowtimeFilter(favoritePreset.filters.selected_showtime_filter)
+          toSharedTabShowtimeFilter(filterSource.filters.selected_showtime_filter)
         );
       }
 
       const rawWatchlistOnly = queryClient.getQueryData<boolean>(SESSION_WATCHLIST_ONLY_KEY);
-      if (rawWatchlistOnly === undefined) {
-        setWatchlistOnly(Boolean(favoritePreset.filters.watchlist_only));
-      }
-
-      const rawShowtimeAudience = queryClient.getQueryData<SharedShowtimeAudience>(
-        SESSION_SHOWTIME_AUDIENCE_KEY
-      );
-      if (rawShowtimeAudience === undefined) {
-        setSelectedShowtimeAudience(toShowtimeAudience(favoritePreset.filters.showtime_audience));
+      if (appliesDimension("watchlist_only") && rawWatchlistOnly === undefined) {
+        setWatchlistOnly(Boolean(filterSource.filters.watchlist_only));
       }
 
       const rawSessionDays = queryClient.getQueryData<string[]>(SESSION_DAY_SELECTIONS_KEY);
-      if (rawSessionDays === undefined) {
-        setSessionDays(favoritePreset.filters.days ?? []);
+      if (appliesDimension("days") && rawSessionDays === undefined) {
+        setSessionDays(filterSource.filters.days ?? []);
       }
 
       const rawSessionTimeRanges = queryClient.getQueryData<string[]>(
         SESSION_TIME_RANGE_SELECTIONS_KEY
       );
-      if (rawSessionTimeRanges === undefined) {
-        setSelectedTimeRanges(favoritePreset.filters.time_ranges ?? []);
+      if (appliesDimension("time_ranges") && rawSessionTimeRanges === undefined) {
+        setSelectedTimeRanges(filterSource.filters.time_ranges ?? []);
       }
 
       const rawSessionRuntimeRanges = queryClient.getQueryData<string[]>(
         SESSION_RUNTIME_RANGE_SELECTIONS_KEY
       );
-      if (rawSessionRuntimeRanges === undefined) {
-        setSelectedRuntimeRanges(favoritePreset.filters.runtime_ranges ?? []);
+      if (appliesDimension("runtime_ranges") && rawSessionRuntimeRanges === undefined) {
+        setSelectedRuntimeRanges(filterSource.filters.runtime_ranges ?? []);
+      }
+
+      const rawGroupByMovie = queryClient.getQueryData<boolean>(
+        SESSION_GROUP_BY_MOVIE_KEY
+      );
+      if (appliesDimension("group_by_movie") && rawGroupByMovie === undefined) {
+        setGroupByMovie(Boolean(filterSource.filters.group_by_movie));
       }
     }
 
@@ -237,13 +227,15 @@ export function useSharedTabFilters() {
     favoriteCinemasQuery.isFetched,
     favoriteFilterPresetQuery.data,
     favoriteFilterPresetQuery.isFetched,
+    favoriteSavedPresetQuery.data,
+    favoriteSavedPresetQuery.isFetched,
     queryClient,
     setSessionCinemaIds,
     setSessionDays,
     setSelectedShowtimeFilter,
-    setSelectedShowtimeAudience,
     setSelectedTimeRanges,
     setSelectedRuntimeRanges,
+    setGroupByMovie,
     setWatchlistOnly,
   ]);
 
@@ -251,9 +243,6 @@ export function useSharedTabFilters() {
     selectedShowtimeFilter,
     appliedShowtimeFilter,
     setSelectedShowtimeFilter,
-    selectedShowtimeAudience,
-    appliedShowtimeAudience,
-    setSelectedShowtimeAudience,
     watchlistOnly,
     appliedWatchlistOnly,
     setWatchlistOnly,
@@ -265,5 +254,7 @@ export function useSharedTabFilters() {
     setSelectedTimeRanges,
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
+    groupByMovie,
+    setGroupByMovie,
   };
 }

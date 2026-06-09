@@ -21,6 +21,7 @@ import {
   clearPushTokenRegistrationState,
   registerPushTokenForCurrentDevice,
 } from '@/utils/push-notifications';
+import { FiltersModalProvider } from '@/components/filters/FiltersModalProvider';
 
 const NOTIFICATION_PERMISSION_PROMPTED_KEY = 'mobile.notifications.permission_prompted_v3';
 const NOTIFICATION_PREFS_INITIALIZED_KEY = 'mobile.notifications.preferences_initialized_v1';
@@ -166,6 +167,7 @@ export default function TabLayout() {
 
   // Render/output using the state and derived values prepared above.
   return (
+    <FiltersModalProvider>
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: palette.tint,
@@ -183,8 +185,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="movies"
         options={{
-          title: 'Movies',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="film.fill" color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -195,12 +196,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="pings"
+        name="agenda"
         options={{
-          title: 'Invites',
+          title: 'Agenda',
           tabBarIcon: ({ color }) => (
             <View style={styles.iconContainer}>
-              <IconSymbol size={28} name="bell.fill" color={color} />
+              <IconSymbol size={28} name="calendar" color={color} />
               {showPingBadge ? (
                 <View style={[styles.badge, { backgroundColor: palette.notificationBadge }]}>
                   <Text style={styles.badgeText}>{pingBadgeLabel}</Text>
@@ -234,6 +235,7 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </FiltersModalProvider>
   );
 }
 

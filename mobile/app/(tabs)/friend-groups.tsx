@@ -11,7 +11,7 @@ import {
   type ListRenderItem,
 } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MeService,
@@ -47,7 +47,6 @@ export default function FriendGroupsScreen({
   const [selectedFriendIds, setSelectedFriendIds] = useState<Set<string>>(new Set());
   const [groupName, setGroupName] = useState('');
   const [groupError, setGroupError] = useState<string | null>(null);
-  const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [isSaveDialogVisible, setIsSaveDialogVisible] = useState(false);
 
   const groupsQueryKey = useMemo(() => ['friend-groups'] as const, []);
@@ -105,11 +104,10 @@ export default function FriendGroupsScreen({
   const trimmedGroupName = groupName.trim();
 
   const saveGroupMutation = useMutation({
-    mutationFn: (requestBody: FriendGroupCreate) => MeService.saveFriendGroup({ requestBody }),
+    mutationFn: (requestBody: FriendGroupCreate) => MeService.createFriendGroup({ requestBody }),
     onSuccess: (savedGroup) => {
       setGroupError(null);
       setGroupName('');
-      setSaveAsDefault(false);
       setIsSaveDialogVisible(false);
       setSelectedFriendIds(new Set(savedGroup.friend_ids));
       setPage('groups');
@@ -220,7 +218,6 @@ export default function FriendGroupsScreen({
   const handleOpenSaveDialog = useCallback(() => {
     setGroupName('');
     setGroupError(null);
-    setSaveAsDefault(false);
     setIsSaveDialogVisible(true);
   }, []);
 
@@ -244,12 +241,11 @@ export default function FriendGroupsScreen({
     saveGroupMutation.mutate({
       name: trimmedGroupName,
       friend_ids: normalizedSelectedFriendIds,
-      is_favorite: saveAsDefault,
+      is_favorite: false,
     });
   }, [
     duplicateMembersGroup,
     normalizedSelectedFriendIds,
-    saveAsDefault,
     saveGroupMutation,
     trimmedGroupName,
   ]);
@@ -449,18 +445,6 @@ export default function FriendGroupsScreen({
               autoCapitalize="words"
               autoCorrect={false}
             />
-            <TouchableOpacity
-              style={styles.defaultToggleRow}
-              onPress={() => setSaveAsDefault((current) => !current)}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons
-                name={saveAsDefault ? 'check-box' : 'check-box-outline-blank'}
-                size={18}
-                color={saveAsDefault ? colors.tint : colors.textSecondary}
-              />
-              <ThemedText style={styles.defaultToggleText}>Set as default visibility group</ThemedText>
-            </TouchableOpacity>
             {groupError || duplicateMembersGroup ? (
               <ThemedText style={styles.dialogErrorText}>
                 {groupError ?? 'A group with the same members already exists.'}
@@ -502,10 +486,10 @@ export default function FriendGroupsScreen({
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <TopSafeAreaView style={styles.container}>
       <TopBar title="Friend Groups" showBackButton />
       {content}
-    </SafeAreaView>
+    </TopSafeAreaView>
   );
 }
 
@@ -707,16 +691,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       paddingVertical: 9,
       fontSize: 14,
       color: colors.text,
-    },
-    defaultToggleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    defaultToggleText: {
-      flex: 1,
-      fontSize: 13,
-      color: colors.textSecondary,
     },
     dialogErrorText: {
       fontSize: 12,

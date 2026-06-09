@@ -31,7 +31,7 @@ export default function ParallaxScrollView({
   // Current theme mode decides which header background color to use.
   const colorScheme = useColorScheme() ?? 'light';
   // Animated ref lets Reanimated track this ScrollView directly.
-  const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  const scrollRef = useAnimatedRef<any>();
   // Shared value that updates with the current vertical scroll offset.
   const scrollOffset = useScrollOffset(scrollRef);
   // Header transform interpolates scroll offset into translate/scale values.

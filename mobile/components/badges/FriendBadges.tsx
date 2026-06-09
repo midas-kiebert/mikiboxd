@@ -25,6 +25,9 @@ type FriendBadgesProps = {
   maxVisible?: number;
   maxRows?: number;
   style?: StyleProp<ViewStyle>;
+  disabledUserId?: string;
+  /** Called right before navigating to a friend's page (e.g. to close an open sheet first). */
+  onNavigate?: () => void;
 };
 
 type FriendBadgeProps = {
@@ -37,6 +40,8 @@ type FriendBadgeProps = {
   styles: ReturnType<typeof createStyles>;
   variant: "compact" | "default";
   onMeasureWidth?: (badgeKey: string, width: number) => void;
+  disabledUserId?: string;
+  onNavigate?: () => void;
 };
 
 type VariantStyles = {
@@ -106,6 +111,8 @@ const FriendBadge = ({
   styles,
   variant,
   onMeasureWidth,
+  disabledUserId,
+  onNavigate,
 }: FriendBadgeProps) => {
   const router = useRouter();
   const sizeStyles: VariantStyles =
@@ -124,7 +131,9 @@ const FriendBadge = ({
         };
 
   const handlePress = (event: GestureResponderEvent) => {
+    if (disabledUserId !== undefined && friendId === disabledUserId) return;
     event.stopPropagation();
+    onNavigate?.();
     router.push(`/friend-showtimes/${friendId}`);
   };
 
@@ -169,6 +178,8 @@ export default function FriendBadges({
   maxVisible,
   maxRows,
   style,
+  disabledUserId,
+  onNavigate,
 }: FriendBadgesProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
@@ -327,6 +338,8 @@ export default function FriendBadges({
           styles={styles}
           variant={variant}
           onMeasureWidth={handleMeasureBadgeWidth}
+          disabledUserId={disabledUserId}
+          onNavigate={onNavigate}
         />
       ))}
       {hiddenCount > 0 ? (

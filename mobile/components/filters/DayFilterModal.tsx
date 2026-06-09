@@ -3,18 +3,17 @@
  */
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  FlatList,
-  Modal,
   Platform,
   StyleSheet,
   TouchableOpacity,
   View,
   type ListRenderItem,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import { DateTime } from "luxon";
 
 import { ThemedText } from "@/components/themed-text";
+import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import {
   AMSTERDAM_ZONE,
   RELATIVE_DAY_OPTIONS,
@@ -75,15 +74,12 @@ function buildCalendarMonths(startIso: string): CalendarMonth[] {
   return Array.from(groupedByMonth.entries()).map(([monthKey, monthDays]) => {
     const firstDay = DateTime.fromISO(monthDays[0], { zone: AMSTERDAM_ZONE });
     const monthLabel = firstDay.toFormat("LLLL yyyy");
-    const leadingEmpty = firstDay.weekday - 1; // Monday-based calendar
+    const leadingEmpty = firstDay.weekday - 1;
     const cells: (CalendarDay | null)[] = Array.from({ length: leadingEmpty }, () => null);
 
     monthDays.forEach((iso) => {
       const date = DateTime.fromISO(iso, { zone: AMSTERDAM_ZONE });
-      cells.push({
-        iso,
-        label: date.toFormat("d"),
-      });
+      cells.push({ iso, label: date.toFormat("d") });
     });
 
     const trailingEmpty = (7 - (cells.length % 7)) % 7;
@@ -91,11 +87,7 @@ function buildCalendarMonths(startIso: string): CalendarMonth[] {
       cells.push(null);
     }
 
-    return {
-      key: monthKey,
-      label: monthLabel,
-      cells,
-    };
+    return { key: monthKey, label: monthLabel, cells };
   });
 }
 
@@ -146,12 +138,7 @@ type DayCellProps = {
   styles: DayModalStyles;
 };
 
-const DayCell = memo(function DayCell({
-  cell,
-  isSelected,
-  onToggleDay,
-  styles,
-}: DayCellProps) {
+const DayCell = memo(function DayCell({ cell, isSelected, onToggleDay, styles }: DayCellProps) {
   if (!cell) {
     return <View style={styles.dayCellPlaceholder} />;
   }
@@ -159,10 +146,7 @@ const DayCell = memo(function DayCell({
   return (
     <View key={cell.iso} style={styles.dayCellWrapper}>
       <TouchableOpacity
-        style={[
-          styles.dayCell,
-          isSelected && styles.dayCellSelected,
-        ]}
+        style={[styles.dayCell, isSelected && styles.dayCellSelected]}
         onPress={() => onToggleDay(cell.iso)}
         activeOpacity={0.8}
       >
@@ -218,7 +202,6 @@ export default function DayFilterModal({
   selectedDays,
   onChange,
 }: DayFilterModalProps) {
-  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [localSelectedDaySet, setLocalSelectedDaySet] = useState<Set<string>>(
@@ -227,13 +210,11 @@ export default function DayFilterModal({
 
   const todayKey = DateTime.now().setZone(AMSTERDAM_ZONE).startOf("day").toISODate() ?? "";
 
-  // Build/selectable calendar month sections once per "today" key change.
   const calendarMonths = useMemo(() => {
     if (!todayKey) return [];
     return buildCalendarMonths(todayKey);
   }, [todayKey]);
 
-  // Start each modal session with current external selection.
   useEffect(() => {
     if (!visible) return;
     setLocalSelectedDaySet(new Set(canonicalizeDaySelections(selectedDays) ?? []));
@@ -244,9 +225,7 @@ export default function DayFilterModal({
     const today = DateTime.fromISO(todayKey, { zone: AMSTERDAM_ZONE });
     const isoSelections = new Set<string>();
     localSelectedDaySet.forEach((value) => {
-      if (isIsoDaySelection(value)) {
-        isoSelections.add(value);
-      }
+      if (isIsoDaySelection(value)) isoSelections.add(value);
     });
     RELATIVE_DAY_OPTIONS.forEach((option) => {
       if (!localSelectedDaySet.has(option.token)) return;
@@ -259,7 +238,6 @@ export default function DayFilterModal({
   const relativeTokenByIsoDay = useMemo(() => {
     const byIsoDay = new Map<string, string>();
     if (!todayKey) return byIsoDay;
-
     const today = DateTime.fromISO(todayKey, { zone: AMSTERDAM_ZONE });
     RELATIVE_DAY_OPTIONS.forEach((option) => {
       const iso = today.plus({ days: option.offset }).toISODate();
@@ -269,21 +247,15 @@ export default function DayFilterModal({
     return byIsoDay;
   }, [todayKey]);
 
-  // Toggle the selection/state tied to the tapped UI element.
   const handleToggleDay = useCallback((day: string) => {
     setLocalSelectedDaySet((current) => {
       const next = new Set(current);
-
       const linkedRelativeToken = relativeTokenByIsoDay.get(day);
       const isSelected =
-        next.has(day) ||
-        (linkedRelativeToken !== undefined && next.has(linkedRelativeToken));
-
+        next.has(day) || (linkedRelativeToken !== undefined && next.has(linkedRelativeToken));
       if (isSelected) {
         next.delete(day);
-        if (linkedRelativeToken !== undefined) {
-          next.delete(linkedRelativeToken);
-        }
+        if (linkedRelativeToken !== undefined) next.delete(linkedRelativeToken);
       } else {
         next.add(day);
       }
@@ -291,7 +263,6 @@ export default function DayFilterModal({
     });
   }, [relativeTokenByIsoDay]);
 
-  // Clear all selected day filters in one action.
   const handleClear = useCallback(() => setLocalSelectedDaySet(new Set()), []);
 
   const handleClose = useCallback(() => {
@@ -315,135 +286,90 @@ export default function DayFilterModal({
     [handleToggleDay, selectedCalendarDaySet, styles]
   );
 
-  // Render/output using the state and derived values prepared above.
   return (
-    <Modal
-      animationType="slide"
+    <AppBottomSheet
       visible={visible}
-      onRequestClose={handleClose}
-      presentationStyle="pageSheet"
+      onClose={handleClose}
+      onBack={onClose}
+      title="Days"
     >
-      <SafeAreaView style={styles.modalContainer} edges={["top", "bottom"]}>
-        <View style={styles.header}>
-          <ThemedText style={styles.title}>Days</ThemedText>
-          <ThemedText style={styles.subtitle}>
-            {localSelectedDaySet.size > 0
-              ? `${localSelectedDaySet.size} day${localSelectedDaySet.size === 1 ? "" : "s"} selected`
-              : "Select one or more days for showtimes"}
-          </ThemedText>
-        </View>
-
-        <FlatList
-          style={styles.mainContent}
-          contentContainerStyle={styles.content}
-          data={calendarMonths}
-          keyExtractor={(item) => item.key}
-          renderItem={renderMonth}
-          ListHeaderComponent={
-            <View style={styles.shortcutSections}>
-              <View style={styles.shortcutSection}>
-                <ThemedText style={styles.shortcutSectionTitle}>Relative Days</ThemedText>
-                <ThemedText style={styles.shortcutSectionSubtitle}>
-                  These stay relative when saved in presets.
-                </ThemedText>
-                <View style={styles.shortcutChipWrap}>
-                  {RELATIVE_DAY_OPTIONS.map((option) => (
-                    <DayShortcutChip
-                      key={option.token}
-                      label={option.label}
-                      selected={localSelectedDaySet.has(option.token)}
-                      onPress={() => handleToggleDay(option.token)}
-                      styles={styles}
-                    />
-                  ))}
-                </View>
-              </View>
-              <View style={styles.shortcutSection}>
-                <ThemedText style={styles.shortcutSectionTitle}>Days of Week</ThemedText>
-                <View style={styles.weekdayShortcutChipWrap}>
-                  {WEEKDAY_DAY_OPTIONS.map((option) => (
-                    <DayShortcutChip
-                      key={option.token}
-                      label={option.shortLabel}
-                      selected={localSelectedDaySet.has(option.token)}
-                      onPress={() => handleToggleDay(option.token)}
-                      compact
-                      styles={styles}
-                    />
-                  ))}
-                </View>
+        <BottomSheetFlatList
+        style={styles.mainContent}
+        contentContainerStyle={styles.content}
+        data={calendarMonths}
+        keyExtractor={(item) => item.key}
+        renderItem={renderMonth}
+        ListHeaderComponent={
+          <View style={styles.shortcutSections}>
+            <View style={styles.shortcutSection}>
+              <ThemedText style={styles.shortcutSectionTitle}>Relative Days</ThemedText>
+              <ThemedText style={styles.shortcutSectionSubtitle}>
+                These stay relative when saved in presets.
+              </ThemedText>
+              <View style={styles.shortcutChipWrap}>
+                {RELATIVE_DAY_OPTIONS.map((option) => (
+                  <DayShortcutChip
+                    key={option.token}
+                    label={option.label}
+                    selected={localSelectedDaySet.has(option.token)}
+                    onPress={() => handleToggleDay(option.token)}
+                    styles={styles}
+                  />
+                ))}
               </View>
             </View>
-          }
-          ListHeaderComponentStyle={styles.shortcutHeader}
-          initialNumToRender={2}
-          maxToRenderPerBatch={2}
-          windowSize={5}
-          removeClippedSubviews
-          showsVerticalScrollIndicator={false}
-        />
-
-        <View style={styles.footer}>
-          <View style={styles.footerActions}>
-            <TouchableOpacity
-              style={[
-                styles.footerButton,
-                styles.footerButtonSubtle,
-                localSelectedDaySet.size === 0 && styles.footerButtonDisabled,
-              ]}
-              onPress={handleClear}
-              activeOpacity={0.8}
-              disabled={localSelectedDaySet.size === 0}
-            >
-              <ThemedText
-                style={[
-                  styles.footerButtonText,
-                  styles.footerButtonTextSubtle,
-                  localSelectedDaySet.size === 0 && styles.footerButtonTextDisabled,
-                ]}
-              >
-                Clear
-              </ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.footerButton, styles.footerButtonPrimary]}
-              onPress={handleClose}
-              activeOpacity={0.8}
-            >
-              <ThemedText style={[styles.footerButtonText, styles.footerButtonTextPrimary]}>
-                Close
-              </ThemedText>
-            </TouchableOpacity>
+            <View style={styles.shortcutSection}>
+              <ThemedText style={styles.shortcutSectionTitle}>Days of Week</ThemedText>
+              <View style={styles.weekdayShortcutChipWrap}>
+                {WEEKDAY_DAY_OPTIONS.map((option) => (
+                  <DayShortcutChip
+                    key={option.token}
+                    label={option.shortLabel}
+                    selected={localSelectedDaySet.has(option.token)}
+                    onPress={() => handleToggleDay(option.token)}
+                    compact
+                    styles={styles}
+                  />
+                ))}
+              </View>
+            </View>
           </View>
+        }
+        ListHeaderComponentStyle={styles.shortcutHeader}
+        initialNumToRender={2}
+        maxToRenderPerBatch={2}
+        windowSize={5}
+        removeClippedSubviews
+        showsVerticalScrollIndicator={false}
+      />
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[
+            styles.footerButton,
+            styles.footerButtonSubtle,
+            localSelectedDaySet.size === 0 && styles.footerButtonDisabled,
+          ]}
+          onPress={handleClear}
+          activeOpacity={0.8}
+          disabled={localSelectedDaySet.size === 0}
+        >
+          <ThemedText
+            style={[
+              styles.footerButtonText,
+              styles.footerButtonTextSubtle,
+              localSelectedDaySet.size === 0 && styles.footerButtonTextDisabled,
+            ]}
+          >
+            Clear
+          </ThemedText>
+        </TouchableOpacity>
         </View>
-      </SafeAreaView>
-    </Modal>
+    </AppBottomSheet>
   );
 }
 
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
-    modalContainer: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    header: {
-      paddingHorizontal: 16,
-      paddingTop: Platform.OS === "ios" ? 20 : 12,
-      paddingBottom: 12,
-      gap: 2,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.divider,
-    },
-    title: {
-      fontSize: 18,
-      fontWeight: "700",
-    },
-    subtitle: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginTop: 2,
-    },
     mainContent: {
       flex: 1,
     },
@@ -591,12 +517,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingTop: 10,
       paddingBottom: 10,
     },
-    footerActions: {
-      flexDirection: "row",
-      gap: 8,
-    },
     footerButton: {
-      flex: 1,
       minHeight: 42,
       borderRadius: 12,
       borderWidth: 1,
@@ -607,10 +528,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.cardBackground,
       borderColor: colors.divider,
     },
-    footerButtonPrimary: {
-      backgroundColor: colors.tint,
-      borderColor: colors.tint,
-    },
     footerButtonDisabled: {
       opacity: 0.5,
     },
@@ -620,9 +537,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     footerButtonTextSubtle: {
       color: colors.textSecondary,
-    },
-    footerButtonTextPrimary: {
-      color: colors.pillActiveText,
     },
     footerButtonTextDisabled: {
       color: colors.textSecondary,

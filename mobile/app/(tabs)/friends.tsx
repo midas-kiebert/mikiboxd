@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MeService } from 'shared';
 import { useFetchUsers } from 'shared/hooks/useFetchUsers';
@@ -205,7 +205,7 @@ export default function FriendsScreen() {
 
   // Render/output using the state and derived values prepared above.
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <TopSafeAreaView style={styles.container}>
       <TopBar title="Friends" />
       <FilterPills
         filters={tabs}
@@ -359,7 +359,7 @@ export default function FriendsScreen() {
           ) : null}
         </ScrollView>
       )}
-    </SafeAreaView>
+    </TopSafeAreaView>
   );
 }
 

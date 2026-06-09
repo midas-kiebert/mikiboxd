@@ -1,4 +1,4 @@
-import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
+import { useInfiniteQuery, keepPreviousData, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { MoviesService, MoviesReadMovieShowtimesResponse } from "../client";
 import { ApiError } from "../client";
 import type { GoingStatus } from "../client";
@@ -75,6 +75,7 @@ export function useFetchMovieShowtimes(
         },
         getNextPageParam: (lastPage, allPages) =>
             lastPage.length === limit ? allPages.length * limit : undefined,
+        placeholderData: keepPreviousData,
         staleTime: 0,
         gcTime: 5 * 60 * 1000,
     });

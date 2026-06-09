@@ -1,23 +1,120 @@
 /**
  * Mobile showtimes feature component: Showtimes Screen.
  */
-import { useState } from "react";
-import { useMemo } from "react";
+import React from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from "react-native";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { ShowtimesService, type GoingStatus, type ShowtimeLoggedIn } from "shared";
+import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
+import { type ShowtimeLoggedIn } from "shared";
+
+import { useRouter } from "expo-router";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { usePrefetchShowtimeVisibilityBatch } from "@/hooks/use-prefetch-showtime-visibility-batch";
+import { useShowtimeModal, type OpenOptions } from "@/components/showtimes/ShowtimeModalProvider";
 import TopBar from "@/components/layout/TopBar";
 import SearchBar from "@/components/inputs/SearchBar";
 import FilterPills, {
   type FilterPillLongPressPosition,
 } from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
-import ShowtimeActionModal from "@/components/showtimes/ShowtimeActionModal";
+
+/**
+ * Rendered at the bottom of any paginated list once all pages are loaded.
+ * Intentionally just empty scroll space — no end-of-list marker.
+ */
+export function ListEndFooter(_props: { label?: string }) {
+  return <View style={{ height: 64 }} />;
+}
+
+type ShowtimesListContentProps = {
+  showtimes: ShowtimeLoggedIn[];
+  isLoading: boolean;
+  isFetching: boolean;
+  isFetchingNextPage: boolean;
+  hasNextPage?: boolean;
+  onLoadMore: () => void;
+  refreshing: boolean;
+  onRefresh: () => void | Promise<void>;
+  emptyText?: string;
+  openModalOptions?: OpenOptions;
+};
+
+export function ShowtimesListContent({
+  showtimes,
+  isLoading,
+  isFetching,
+  isFetchingNextPage,
+  hasNextPage,
+  onLoadMore,
+  refreshing,
+  onRefresh,
+  emptyText = "No showtimes found",
+  openModalOptions,
+}: ShowtimesListContentProps) {
+  const router = useRouter();
+  const colors = useThemeColors();
+  const styles = createStyles(colors);
+  const { openShowtimeModal } = useShowtimeModal();
+
+  const renderFooter = () => {
+    if (isFetchingNextPage) {
+      return (
+        <View style={styles.footerLoader}>
+          <ActivityIndicator size="large" color={colors.tint} />
+        </View>
+      );
+    }
+    if (!hasNextPage && !isLoading && !isFetching && showtimes.length > 0) {
+      return <ListEndFooter label="No more showtimes" />;
+    }
+    return null;
+  };
+
+  const renderEmpty = () => {
+    if (isLoading || isFetching) {
+      // Skeleton cards (rather than a lone spinner) so the list keeps its shape
+      // while data loads instead of popping in.
+      return (
+        <View>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <View key={i} style={[styles.skeletonBone, styles.skeletonCard]} />
+          ))}
+        </View>
+      );
+    }
+    return (
+      <View style={styles.centerContainer}>
+        <ThemedText style={styles.emptyText}>{emptyText}</ThemedText>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <FlatList
+        data={showtimes}
+        renderItem={({ item }) => (
+          <ShowtimeCard
+            showtime={item}
+            onPress={(showtime) => openShowtimeModal(showtime, openModalOptions)}
+            onLongPress={(showtime) => router.push(`/movie/${showtime.movie.id}`)}
+          />
+        )}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={renderEmpty}
+        ListFooterComponent={renderFooter}
+        onEndReached={() => {
+          if (hasNextPage) onLoadMore();
+        }}
+        onEndReachedThreshold={2}
+        refreshing={isLoading}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      />
+    </View>
+  );
+}
 
 type FilterOption<TId extends string = string> = {
   id: TId;
@@ -26,13 +123,6 @@ type FilterOption<TId extends string = string> = {
   activeBackgroundColor?: string;
   activeTextColor?: string;
   activeBorderColor?: string;
-};
-
-type AudienceToggleValue = "including-friends" | "only-you";
-
-type AudienceToggleOption = {
-  value: AudienceToggleValue;
-  onChange: (value: AudienceToggleValue) => void;
 };
 
 type ShowtimesScreenProps<TFilterId extends string = string> = {
@@ -49,19 +139,24 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   onRefresh: () => void;
   searchQuery: string;
   onSearchChange: (value: string) => void;
-  filters: ReadonlyArray<FilterOption<TFilterId>>;
-  activeFilterIds: ReadonlyArray<TFilterId>;
-  onToggleFilter: (id: TFilterId, position?: FilterPillLongPressPosition) => void;
+  // Legacy pill-based filters — omit when using filterRow slot instead
+  filters?: ReadonlyArray<FilterOption<TFilterId>>;
+  activeFilterIds?: ReadonlyArray<TFilterId>;
+  onToggleFilter?: (id: TFilterId, position?: FilterPillLongPressPosition) => void;
   onLongPressFilter?: (
     id: TFilterId,
     position: FilterPillLongPressPosition
   ) => boolean | void;
-  audienceToggle?: AudienceToggleOption;
+  // New slot: replaces FilterPills when provided
+  filterRow?: React.ReactElement | null | false;
+  // New slot: replaces ShowtimesListContent when provided (e.g. for group-by-movies)
+  listContent?: React.ReactNode;
   emptyText?: string;
+  openModalOptions?: OpenOptions;
 };
 
 export default function ShowtimesScreen<TFilterId extends string = string>({
-  topBarTitle = "MIKINO",
+  topBarTitle = "MiKiNO",
   topBarTitleSuffix,
   topBarShowBackButton = false,
   showtimes,
@@ -78,214 +173,89 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   activeFilterIds,
   onToggleFilter,
   onLongPressFilter,
-  audienceToggle,
+  filterRow,
+  listContent,
   emptyText = "No showtimes found",
+  openModalOptions,
 }: ShowtimesScreenProps<TFilterId>) {
-  // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
-  const [selectedShowtime, setSelectedShowtime] = useState<ShowtimeLoggedIn | null>(null);
-  // React Query client used for cache updates and invalidation.
-  const queryClient = useQueryClient();
 
-  const { mutate: updateShowtimeSelection, isPending: isUpdatingShowtimeSelection } = useMutation({
-    mutationFn: ({
-      showtimeId,
-      going,
-      seatRow,
-      seatNumber,
-      visibleFriendIds,
-      visibleGroupIds,
-    }: {
-      showtimeId: number;
-      going: GoingStatus;
-      seatRow?: string | null;
-      seatNumber?: string | null;
-      visibleFriendIds?: string[];
-      visibleGroupIds?: string[];
-    }) => {
-      const requestBody: {
-        going_status: GoingStatus;
-        seat_row?: string | null;
-        seat_number?: string | null;
-        visible_friend_ids?: string[];
-        visible_group_ids?: string[];
-      } = {
-        going_status: going,
-      };
-      if (seatRow !== undefined) {
-        requestBody.seat_row = seatRow;
-      }
-      if (seatNumber !== undefined) {
-        requestBody.seat_number = seatNumber;
-      }
-      if (visibleFriendIds !== undefined) {
-        requestBody.visible_friend_ids = visibleFriendIds;
-      }
-      if (visibleGroupIds !== undefined) {
-        requestBody.visible_group_ids = visibleGroupIds;
-      }
-      return ShowtimesService.updateShowtimeSelection({
-        showtimeId,
-        requestBody,
-      });
-    },
-    onSuccess: (updatedShowtime) => {
-      setSelectedShowtime((previous) =>
-        previous && previous.id === updatedShowtime.id ? updatedShowtime : previous
-      );
-    },
-    onError: (error) => {
-      console.error("Error updating showtime selection:", error);
-    },
-    onSettled: (_data, _error, variables) => {
-      if (variables) {
-        queryClient.invalidateQueries({
-          queryKey: ["showtimes", "visibility", variables.showtimeId],
-        });
-      }
-      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
-      queryClient.invalidateQueries({ queryKey: ["movie"] });
-      queryClient.invalidateQueries({ queryKey: ["movies"] });
-    },
-  });
-
-  // Submit the selected going/interested/not-going status.
-  const handleShowtimeStatusUpdate = (
-    going: GoingStatus,
-    seat?: { seatRow: string | null; seatNumber: string | null },
-    visibility?: { visibleFriendIds: string[]; visibleGroupIds: string[] }
-  ) => {
-    if (!selectedShowtime || isUpdatingShowtimeSelection) return;
-    const nextSeatRow =
-      going === "GOING"
-        ? (seat?.seatRow ?? selectedShowtime.seat_row ?? null)
-        : null;
-    const nextSeatNumber =
-      going === "GOING"
-        ? (seat?.seatNumber ?? selectedShowtime.seat_number ?? null)
-        : null;
-
-    setSelectedShowtime((previous) =>
-      previous
-        ? {
-            ...previous,
-            going,
-            seat_row: nextSeatRow,
-            seat_number: nextSeatNumber,
-          }
-        : previous
-    );
-    updateShowtimeSelection({
-      showtimeId: selectedShowtime.id,
-      going,
-      seatRow: seat?.seatRow,
-      seatNumber: seat?.seatNumber,
-      visibleFriendIds: visibility?.visibleFriendIds,
-      visibleGroupIds: visibility?.visibleGroupIds,
-    });
-  };
-
-  const isOnlyYouAudienceActive = audienceToggle?.value === "only-you";
-  const visibilityPrefetchShowtimeIds = useMemo(
-    () =>
-      showtimes
-        .filter((showtime) => showtime.going !== "NOT_GOING")
-        .map((showtime) => showtime.id),
-    [showtimes]
-  );
-
-  usePrefetchShowtimeVisibilityBatch({
-    showtimeIds: visibilityPrefetchShowtimeIds,
-    enabled: showtimes.length > 0,
-  });
-
-  // Render infinite-scroll loading feedback at the bottom of the list.
-  const renderFooter = () => {
-    if (!isFetchingNextPage) return null;
-    return (
-      <View style={styles.footerLoader}>
-        <ActivityIndicator size="large" color={colors.tint} />
-      </View>
-    );
-  };
-
-  // Render the empty/loading state when list data is unavailable.
-  const renderEmpty = () => {
-    if (isLoading || isFetching) {
-      return (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.tint} />
-        </View>
-      );
-    }
-    return (
-      <View style={styles.centerContainer}>
-        <ThemedText style={styles.emptyText}>{emptyText}</ThemedText>
-      </View>
-    );
-  };
-
-  // Render/output using the state and derived values prepared above.
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <TopSafeAreaView style={styles.container}>
       <TopBar
         title={topBarTitle}
         titleSuffix={topBarTitleSuffix}
         showBackButton={topBarShowBackButton}
-      />
-      <ShowtimeActionModal
-        visible={selectedShowtime !== null}
-        showtime={selectedShowtime}
-        movieTitle={selectedShowtime?.movie.title}
-        isUpdatingStatus={isUpdatingShowtimeSelection}
-        onUpdateStatus={handleShowtimeStatusUpdate}
-        onClose={() => setSelectedShowtime(null)}
       />
       <SearchBar
         value={searchQuery}
         onChangeText={onSearchChange}
         placeholder="Search showtimes"
       />
-      <FilterPills
-        filters={filters}
-        selectedId=""
-        onSelect={onToggleFilter}
-        onLongPressSelect={onLongPressFilter}
-        activeIds={activeFilterIds}
-        compoundRightToggle={
-          audienceToggle
-            ? {
-                anchorId: "showtime-filter",
-                label: isOnlyYouAudienceActive ? "Only You" : "Including Friends",
-                onPress: () =>
-                  audienceToggle.onChange(
-                    isOnlyYouAudienceActive ? "including-friends" : "only-you"
-                  ),
-              }
-            : undefined
-        }
+      {filterRow ?? (
+        <FilterPills
+          filters={filters ?? []}
+          selectedId=""
+          onSelect={onToggleFilter ?? (() => {})}
+          onLongPressSelect={onLongPressFilter}
+          activeIds={activeFilterIds ?? []}
+        />
+      )}
+      {listContent !== undefined ? <>{listContent}</> : (
+        <ShowtimesListContent
+          showtimes={showtimes}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          isFetchingNextPage={isFetchingNextPage}
+          hasNextPage={hasNextPage}
+          onLoadMore={onLoadMore}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          emptyText={emptyText}
+          openModalOptions={openModalOptions}
+        />
+      )}
+    </TopSafeAreaView>
+  );
+}
+
+/**
+ * Lightweight placeholder rendered on a screen's first frame so the native push
+ * animation can start immediately, before the real (data-fetching) screen mounts.
+ * Mirrors the ShowtimesScreen layout: top bar, search, filter row, list of cards.
+ */
+export function ShowtimesScreenSkeleton({
+  topBarTitle = "MiKiNO",
+  topBarTitleSuffix,
+  topBarShowBackButton = false,
+}: {
+  topBarTitle?: string;
+  topBarTitleSuffix?: string;
+  topBarShowBackButton?: boolean;
+}) {
+  const colors = useThemeColors();
+  const styles = createStyles(colors);
+  return (
+    <TopSafeAreaView style={styles.container}>
+      <TopBar
+        title={topBarTitle}
+        titleSuffix={topBarTitleSuffix}
+        showBackButton={topBarShowBackButton}
       />
-      <FlatList
-        data={showtimes}
-        renderItem={({ item }) => (
-          <ShowtimeCard showtime={item} onLongPress={(showtime) => setSelectedShowtime(showtime)} />
-        )}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={renderEmpty}
-        ListFooterComponent={renderFooter}
-        onEndReached={() => {
-          if (hasNextPage) {
-            onLoadMore();
-          }
-        }}
-        onEndReachedThreshold={2}
-        refreshing={isLoading}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      />
-    </SafeAreaView>
+      <View style={styles.skeletonSearch}>
+        <View style={styles.skeletonSearchBar} />
+      </View>
+      <View style={styles.skeletonFilterRow}>
+        <View style={[styles.skeletonBone, { height: 32, width: 90, borderRadius: 18 }]} />
+        <View style={[styles.skeletonBone, { height: 32, width: 72, borderRadius: 18 }]} />
+      </View>
+      <View style={styles.listContent}>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <View key={i} style={[styles.skeletonBone, styles.skeletonCard]} />
+        ))}
+      </View>
+    </TopSafeAreaView>
   );
 }
 
@@ -296,7 +266,32 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.background,
     },
     listContent: {
-      padding: 16,
+      paddingTop: 12,
+      paddingHorizontal: 16,
+    },
+    skeletonBone: {
+      backgroundColor: colors.posterPlaceholder,
+    },
+    skeletonSearch: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      backgroundColor: colors.background,
+    },
+    skeletonSearchBar: {
+      height: 48,
+      borderRadius: 12,
+      backgroundColor: colors.searchBackground,
+    },
+    skeletonFilterRow: {
+      flexDirection: "row",
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+    },
+    skeletonCard: {
+      height: 112,
+      borderRadius: 12,
+      marginBottom: 16,
     },
     footerLoader: {
       paddingVertical: 20,

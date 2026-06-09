@@ -5,7 +5,6 @@ import { Image, Platform, StyleSheet, TouchableOpacity, View } from "react-nativ
 import { useMemo, useRef, useState } from "react";
 import { DateTime } from "luxon";
 import { useRouter } from "expo-router";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { ShowtimeLoggedIn } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
@@ -13,7 +12,6 @@ import CinemaPill from "@/components/badges/CinemaPill";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { useShowtimeVisibilityIndicator } from "@/hooks/use-showtime-visibility-indicator";
 import {
   GLOBAL_LONG_PRESS_DELAY_MS,
   triggerLongPressHaptic,
@@ -29,7 +27,6 @@ const POSTER_HEIGHT = 112;
 const COMPACT_BADGE_ROW_HEIGHT = 14;
 const COMPACT_BADGE_ROW_GAP = 2;
 const COMPACT_BADGE_TOP_PADDING = 2;
-const VISIBILITY_HINT_RESERVED_HEIGHT = 10;
 const MAX_COMPACT_BADGE_ROWS = 4;
 
 const getCompactBadgeRowsForHeight = (height: number) => {
@@ -56,12 +53,18 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const startTime = date.toFormat("HH:mm");
   const endDate = showtime.end_datetime ? DateTime.fromISO(showtime.end_datetime) : null;
   const endTime = endDate?.isValid ? endDate.toFormat("HH:mm") : null;
+  // Invited-only = you've been invited but haven't responded yet → blue.
+  // Going / interested take precedence over the invite tint.
+  const isInvitedOnly =
+    (showtime.invited_by?.length ?? 0) > 0 && showtime.going === "NOT_GOING";
   const cardStatusStyle =
     showtime.going === "GOING"
       ? styles.cardGoing
       : showtime.going === "INTERESTED"
         ? styles.cardInterested
-        : undefined;
+        : isInvitedOnly
+          ? styles.cardInvited
+          : undefined;
   const cardGlowStyle =
     showtime.going === "GOING"
       ? styles.cardGlowGoing
@@ -73,26 +76,16 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
       ? styles.dateColumnGoing
       : showtime.going === "INTERESTED"
         ? styles.dateColumnInterested
-        : undefined;
+        : isInvitedOnly
+          ? styles.dateColumnInvited
+          : undefined;
   const hasAudience =
     (showtime.friends_going?.length ?? 0) > 0 ||
     (showtime.friends_interested?.length ?? 0) > 0;
-  const hasSelectedStatusForVisibility =
-    showtime.going === "GOING" || showtime.going === "INTERESTED";
-  const visibilityIndicator = useShowtimeVisibilityIndicator({
-    showtimeId: showtime.id,
-    enabled: hasSelectedStatusForVisibility,
-  });
-  const hasVisibilityHint =
-    hasSelectedStatusForVisibility && visibilityIndicator !== null;
   const responsiveBadgeRows = useMemo(() => {
     if (!hasAudience) return undefined;
-    return getCompactBadgeRowsForHeight(
-      friendBadgeAreaHeight -
-        COMPACT_BADGE_TOP_PADDING -
-        (hasVisibilityHint ? VISIBILITY_HINT_RESERVED_HEIGHT : 0)
-    );
-  }, [friendBadgeAreaHeight, hasAudience, hasVisibilityHint]);
+    return getCompactBadgeRowsForHeight(friendBadgeAreaHeight - COMPACT_BADGE_TOP_PADDING);
+  }, [friendBadgeAreaHeight, hasAudience]);
 
   // Handle press behavior for this module.
   const handlePress = () => {
@@ -167,15 +160,6 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
               variant="compact"
               maxRows={responsiveBadgeRows}
             />
-            {hasSelectedStatusForVisibility && visibilityIndicator?.kind === "none" ? (
-              <View style={styles.visibilityHintIcon}>
-                <MaterialCommunityIcons name="incognito" size={9} color={colors.textSecondary} />
-              </View>
-            ) : hasSelectedStatusForVisibility && visibilityIndicator?.kind === "label" ? (
-              <ThemedText style={styles.visibilityHintText} numberOfLines={1}>
-                {visibilityIndicator.label}
-              </ThemedText>
-            ) : null}
           </View>
         </View>
       </TouchableOpacity>
@@ -210,6 +194,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderColor: colors.orange.secondary,
       backgroundColor: colors.orange.primary,
     },
+    cardInvited: {
+      borderColor: colors.blue.secondary,
+      backgroundColor: colors.blue.primary,
+    },
     dateColumn: {
       width: 74,
       alignItems: "center",
@@ -227,6 +215,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     dateColumnInterested: {
       backgroundColor: colors.orange.primary,
       borderRightColor: colors.orange.secondary,
+    },
+    dateColumnInvited: {
+      backgroundColor: colors.blue.primary,
+      borderRightColor: colors.blue.secondary,
     },
     weekday: {
       fontSize: 13,
@@ -298,21 +290,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       overflow: "hidden",
       paddingTop: COMPACT_BADGE_TOP_PADDING,
       position: "relative",
-    },
-    visibilityHintText: {
-      position: "absolute",
-      right: 0,
-      bottom: 0,
-      fontSize: 8,
-      lineHeight: 9,
-      color: colors.textSecondary,
-      maxWidth: 84,
-      textAlign: "right",
-    },
-    visibilityHintIcon: {
-      position: "absolute",
-      right: 0,
-      bottom: 0,
     },
   });
 };

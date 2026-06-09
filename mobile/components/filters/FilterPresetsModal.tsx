@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   Modal,
-  Platform,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -13,6 +12,8 @@ import {
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   MeService,
@@ -39,6 +40,7 @@ import {
 } from "@/components/filters/runtime-range-utils";
 import { getPresetForRange } from "@/components/filters/time-filter-presets";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 
 export type PageFilterPresetState = {
   selected_showtime_filter?: "all" | "interested" | "going" | null;
@@ -47,6 +49,7 @@ export type PageFilterPresetState = {
   days?: string[] | null;
   time_ranges?: string[] | null;
   runtime_ranges?: string[] | null;
+  group_by_movie?: boolean;
 };
 
 type FilterPresetsModalProps = {
@@ -67,7 +70,7 @@ const getSortedUniqueStrings = (values?: string[] | null): string[] | null => {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 };
 
-const normalizeFilters = (filters: PageFilterPresetState): PageFilterPresetState => ({
+const normalizeFilters = (filters: PageFilterPresetState | FilterPresetFilters): PageFilterPresetState => ({
   selected_showtime_filter:
     filters.selected_showtime_filter === "all" ||
     filters.selected_showtime_filter === "interested" ||
@@ -84,6 +87,7 @@ const normalizeFilters = (filters: PageFilterPresetState): PageFilterPresetState
   runtime_ranges: getSortedUniqueStrings(
     normalizeSingleRuntimeRangeSelection(filters.runtime_ranges ?? [])
   ),
+  group_by_movie: Boolean(filters.group_by_movie),
 });
 
 const serializeFilters = (filters: PageFilterPresetState) => JSON.stringify(normalizeFilters(filters));
@@ -98,6 +102,7 @@ const toPresetBodyFilters = (filters: PageFilterPresetState): FilterPresetFilter
     days: normalized.days ?? null,
     time_ranges: normalized.time_ranges ?? null,
     runtime_ranges: normalized.runtime_ranges ?? null,
+    group_by_movie: Boolean(normalized.group_by_movie),
   };
 };
 
@@ -181,7 +186,22 @@ export default function FilterPresetsModal({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
 
+  const translateY = useSharedValue(0);
+  useEffect(() => {
+    if (visible) translateY.value = 0;
+  }, [visible, translateY]);
+  const panGesture = Gesture.Pan()
+    .runOnJS(true)
+    .onUpdate((e) => { if (e.translationY > 0) translateY.value = e.translationY; })
+    .onEnd((e) => {
+      if (e.translationY > 80 || e.velocityY > 800) onClose();
+      else translateY.value = withSpring(0, { damping: 20 });
+    });
+  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
+
   const [presetName, setPresetName] = useState("");
+  // Uncontrolled input (no `value` prop) to avoid swallowing fast keystrokes.
+  const presetNameInputRef = useRef<TextInput>(null);
   const [presetError, setPresetError] = useState<string | null>(null);
   const [isSavePresetDialogVisible, setIsSavePresetDialogVisible] = useState(false);
   const [saveAsFavorite, setSaveAsFavorite] = useState(false);
@@ -190,6 +210,7 @@ export default function FilterPresetsModal({
   useEffect(() => {
     if (!visible) return;
     setPresetName("");
+    presetNameInputRef.current?.clear();
     setPresetError(null);
     setSaveAsFavorite(false);
     setIsSavePresetDialogVisible(false);
@@ -254,10 +275,11 @@ export default function FilterPresetsModal({
   }, [presetOrderIds, presets, scope]);
 
   const savePresetMutation = useMutation({
-    mutationFn: (requestBody: FilterPresetCreate) => MeService.saveFilterPreset({ requestBody }),
+    mutationFn: (requestBody: FilterPresetCreate) => MeService.createFilterPreset({ requestBody }),
     onSuccess: () => {
       setPresetError(null);
       setPresetName("");
+      presetNameInputRef.current?.clear();
       setSaveAsFavorite(false);
       setIsSavePresetDialogVisible(false);
       queryClient.invalidateQueries({ queryKey: presetsQueryKey });
@@ -286,6 +308,7 @@ export default function FilterPresetsModal({
 
   const handleApplyPreset = useCallback(
     (preset: FilterPresetPublic) => {
+      triggerSelectionHaptic();
       onApply(normalizeFilters(preset.filters));
     },
     [onApply]
@@ -362,6 +385,7 @@ export default function FilterPresetsModal({
   const handleOpenSavePresetDialog = useCallback(() => {
     if (selectionMatchesPreset) return;
     setPresetName("");
+    presetNameInputRef.current?.clear();
     setPresetError(null);
     setSaveAsFavorite(false);
     setIsSavePresetDialogVisible(true);
@@ -391,7 +415,6 @@ export default function FilterPresetsModal({
   const renderPreset: ListRenderItem<FilterPresetPublic> = useCallback(
     ({ item, index }) => {
       const normalizedItemFilters = normalizeFilters(item.filters);
-      const isCurrent = serializeFilters(normalizedItemFilters) === currentFilterSignature;
       const summary = getPresetSummary(scope, normalizedItemFilters);
       const isDefaultPreset = item.is_default;
       const favoriteDisabled = item.is_favorite || setFavoritePresetMutation.isPending;
@@ -402,7 +425,7 @@ export default function FilterPresetsModal({
 
       return (
         <TouchableOpacity
-          style={[styles.presetCard, isCurrent && styles.presetCardCurrent]}
+          style={styles.presetCard}
           onPress={() => handleApplyPreset(item)}
           activeOpacity={0.88}
         >
@@ -413,7 +436,7 @@ export default function FilterPresetsModal({
                   {item.name}
                 </ThemedText>
               </View>
-              <ThemedText numberOfLines={1} style={styles.presetMeta}>
+              <ThemedText style={styles.presetMeta}>
                 {summary}
               </ThemedText>
             </View>
@@ -487,7 +510,6 @@ export default function FilterPresetsModal({
     [
       colors.textSecondary,
       colors.yellow.secondary,
-      currentFilterSignature,
       deletePresetMutation.isPending,
       handleApplyPreset,
       handleDeletePreset,
@@ -505,15 +527,23 @@ export default function FilterPresetsModal({
       animationType="slide"
       visible={visible}
       onRequestClose={onClose}
-      presentationStyle="pageSheet"
+      transparent
+      statusBarTranslucent
     >
-      <SafeAreaView style={styles.modalContainer} edges={["top", "bottom"]}>
-        <View style={styles.header}>
-          <ThemedText style={styles.title}>{getScopeLabel(scope)} Presets</ThemedText>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.8}>
-            <ThemedText style={styles.closeButtonText}>Close</ThemedText>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.modalWrapper}>
+        <Animated.View style={[styles.modalContainer, sheetStyle]}>
+          <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+            <GestureDetector gesture={panGesture}>
+              <View>
+                <View style={styles.dragHandleBar} />
+                <View style={styles.header}>
+                  <ThemedText style={styles.title}>{getScopeLabel(scope)} Presets</ThemedText>
+                  <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.8}>
+                    <ThemedText style={styles.closeButtonText}>Close</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </GestureDetector>
 
         <View style={styles.presetsContainer}>
           {isPresetsLoading ? (
@@ -613,7 +643,7 @@ export default function FilterPresetsModal({
                 </ThemedText>
               </View>
               <TextInput
-                value={presetName}
+                ref={presetNameInputRef}
                 onChangeText={(value) => {
                   setPresetName(value);
                   if (presetError) setPresetError(null);
@@ -674,20 +704,27 @@ export default function FilterPresetsModal({
             </View>
           </View>
         </Modal>
-      </SafeAreaView>
+          </SafeAreaView>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
 
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
+    modalWrapper: { flex: 1, justifyContent: "flex-end" },
+    dragHandleBar: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.textSecondary, opacity: 0.35, alignSelf: "center", marginTop: 10, marginBottom: 6 },
     modalContainer: {
-      flex: 1,
-      backgroundColor: colors.background,
+      height: "88%",
+      backgroundColor: colors.nestedModalBackground,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      overflow: "hidden",
     },
     header: {
       paddingHorizontal: 16,
-      paddingTop: Platform.OS === "ios" ? 20 : 12,
+      paddingTop: 12,
       paddingBottom: 12,
       flexDirection: "row",
       alignItems: "center",
@@ -747,8 +784,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 10,
     },
     presetCardCurrent: {
-      borderColor: colors.green.secondary,
-      backgroundColor: colors.green.primary,
+      borderColor: colors.tint,
+      borderWidth: 1.5,
     },
     presetHeader: {
       flexDirection: "row",
@@ -821,7 +858,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     preferenceFooter: {
       borderTopWidth: 1,
       borderTopColor: colors.divider,
-      backgroundColor: colors.background,
+      backgroundColor: colors.nestedModalBackground,
       paddingHorizontal: 16,
       paddingTop: 10,
       paddingBottom: 10,

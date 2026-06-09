@@ -42,6 +42,7 @@ import {
 } from "@/components/filters/time-range-utils";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type FilterPresetQuickPopoverProps = {
   visible: boolean;
@@ -89,6 +90,7 @@ const normalizeFilters = (
     days: canonicalizeDaySelections(filters.days),
     time_ranges: normalizeSingleTimeRangeSelection(filters.time_ranges ?? []),
     runtime_ranges: normalizeSingleRuntimeRangeSelection(filters.runtime_ranges ?? []),
+    group_by_movie: Boolean(filters.group_by_movie),
   };
 };
 
@@ -107,6 +109,7 @@ const toPresetBodyFilters = (
     days: normalized.days ?? null,
     time_ranges: normalized.time_ranges ?? null,
     runtime_ranges: normalized.runtime_ranges ?? null,
+    group_by_movie: Boolean(normalized.group_by_movie),
   };
 };
 
@@ -172,6 +175,8 @@ export default function FilterPresetQuickPopover({
   const [modalRootTop, setModalRootTop] = useState(0);
   const queryClient = useQueryClient();
   const [presetName, setPresetName] = useState("");
+  // Uncontrolled input (no `value` prop) to avoid swallowing fast keystrokes.
+  const presetNameInputRef = useRef<TextInput>(null);
   const [presetError, setPresetError] = useState<string | null>(null);
   const [isSavePresetDialogVisible, setIsSavePresetDialogVisible] = useState(false);
   const [saveAsFavorite, setSaveAsFavorite] = useState(false);
@@ -186,6 +191,7 @@ export default function FilterPresetQuickPopover({
     if (visible) return;
     setIsSavePresetDialogVisible(false);
     setPresetName("");
+    presetNameInputRef.current?.clear();
     setPresetError(null);
     setSaveAsFavorite(false);
   }, [visible]);
@@ -227,10 +233,11 @@ export default function FilterPresetQuickPopover({
   });
   const presetsQueryKey = useMemo(() => ["filter-presets", scope] as const, [scope]);
   const savePresetMutation = useMutation({
-    mutationFn: (requestBody: FilterPresetCreate) => MeService.saveFilterPreset({ requestBody }),
+    mutationFn: (requestBody: FilterPresetCreate) => MeService.createFilterPreset({ requestBody }),
     onSuccess: () => {
       setPresetError(null);
       setPresetName("");
+      presetNameInputRef.current?.clear();
       setSaveAsFavorite(false);
       setIsSavePresetDialogVisible(false);
       queryClient.invalidateQueries({ queryKey: presetsQueryKey });
@@ -340,43 +347,8 @@ export default function FilterPresetQuickPopover({
     [cardOpenProgress]
   );
 
-  useEffect(() => {
-    if (!__DEV__ || !visible) return;
-    console.log("[FilterPresetQuickPopover] layout", {
-      anchorPageX: anchor?.pageX ?? null,
-      anchorPageY: anchor?.pageY ?? null,
-      modalRootTop,
-      anchorY,
-      screenWidth,
-      screenHeight,
-      cardTop,
-      cardLeft,
-      estimatedCardHeight,
-      cardBottom,
-      arrowLeftRaw,
-      arrowLeft,
-      arrowCenterX,
-      arrowTipY,
-    });
-  }, [
-    anchor?.pageX,
-    anchor?.pageY,
-    anchorY,
-    arrowCenterX,
-    arrowLeft,
-    arrowLeftRaw,
-    arrowTipY,
-    cardBottom,
-    cardLeft,
-    cardTop,
-    estimatedCardHeight,
-    modalRootTop,
-    screenHeight,
-    screenWidth,
-    visible,
-  ]);
-
   const handleApplyPreset = (preset: FilterPresetPublic) => {
+    triggerSelectionHaptic();
     onApply(normalizeFilters(preset.filters));
     onClose();
   };
@@ -389,6 +361,7 @@ export default function FilterPresetQuickPopover({
   const handleOpenSavePresetDialog = () => {
     if (!canSaveCurrent) return;
     setPresetName("");
+    presetNameInputRef.current?.clear();
     setPresetError(null);
     setSaveAsFavorite(false);
     setIsSavePresetDialogVisible(true);
@@ -584,7 +557,7 @@ export default function FilterPresetQuickPopover({
                 </ThemedText>
               </View>
               <TextInput
-                value={presetName}
+                ref={presetNameInputRef}
                 onChangeText={handleChangePresetName}
                 placeholder="Filter preset name"
                 placeholderTextColor={colors.textSecondary}

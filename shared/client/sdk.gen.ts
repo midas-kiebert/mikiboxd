@@ -17,8 +17,6 @@ import type {
   FriendsRemoveFriendResponse,
   LoginLoginAccessTokenData,
   LoginLoginAccessTokenResponse,
-  LoginRefreshAccessTokenData,
-  LoginRefreshAccessTokenResponse,
   LoginRecoverPasswordData,
   LoginRecoverPasswordResponse,
   LoginResetPasswordData,
@@ -278,13 +276,11 @@ export class FriendsService {
 export class LoginService {
   /**
    * Login Access Token
-   * Authenticate a user and return a JWT access + refresh token pair.
+   * Authenticate a user and return a JWT access token.
    *
    * Uses OAuth2 password flow — credentials are submitted as form data.
-   * The access token should be included in subsequent requests as:
-   * Authorization: Bearer <access_token>
-   * The refresh token is exchanged at POST /login/refresh-token when the access
-   * token expires.
+   * The returned token should be included in subsequent requests as:
+   * Authorization: Bearer <token>
    * @param data The data for the request.
    * @param data.formData
    * @returns Token Successful Response
@@ -298,32 +294,6 @@ export class LoginService {
       url: "/api/v1/login/access-token",
       formData: data.formData,
       mediaType: "application/x-www-form-urlencoded",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Refresh Access Token
-   * Exchange a valid refresh token for a fresh access + refresh token pair.
-   *
-   * The refresh token is rotated on every call (sliding window). Returns 401 if
-   * the refresh token is missing, expired, tampered with, the wrong token type,
-   * or the user no longer exists / is inactive.
-   * @param data The data for the request.
-   * @param data.requestBody
-   * @returns Token Successful Response
-   * @throws ApiError
-   */
-  public static refreshAccessToken(
-    data: LoginRefreshAccessTokenData,
-  ): CancelablePromise<LoginRefreshAccessTokenResponse> {
-    return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/login/refresh-token",
-      body: data.requestBody,
-      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },

@@ -54,6 +54,7 @@ const useAuth = (onLoginSuccess?: () => void, onLogout?: () => void): AuthHook =
       formData: data,
     })
     await storage.setItem("access_token", response.access_token)
+    await storage.setItem("refresh_token", response.refresh_token)
     setIsAuthenticated(true)
   }
 
@@ -70,6 +71,7 @@ const useAuth = (onLoginSuccess?: () => void, onLogout?: () => void): AuthHook =
 
   const logout = async () => {
     await storage.removeItem("access_token")
+    await storage.removeItem("refresh_token")
     setIsAuthenticated(false)
     queryClient.clear()
     if (onLogout) onLogout()

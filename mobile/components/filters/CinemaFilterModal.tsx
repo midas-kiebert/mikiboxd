@@ -156,7 +156,7 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
   const [presetOrderIds, setPresetOrderIds] = useState<readonly string[]>([]);
 
   const { data: cinemas } = useFetchCinemas();
-  const { data: favoriteCinemaIds } = useFetchSelectedCinemas();
+  const { data: favoriteCinemaIds, isLoading: isFavoritesLoading } = useFetchSelectedCinemas();
   const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } = useSessionCinemaSelections();
 
   const selectedCinemas = useMemo(
@@ -407,8 +407,13 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     setPresetError(null);
   }, [savePresetMutation.isPending]);
 
+  // Block only while the cinema list is unavailable or the favourites query is
+  // still in-flight. Once favourites settles — even on error (e.g. a rejected
+  // token or a network blip) — fall through with an empty selection instead of
+  // spinning forever.
   const isLoadingSelection =
-    cinemas === undefined || (sessionCinemaIds === undefined && favoriteCinemaIds === undefined);
+    cinemas === undefined ||
+    (sessionCinemaIds === undefined && favoriteCinemaIds === undefined && isFavoritesLoading);
 
   return (
     <>

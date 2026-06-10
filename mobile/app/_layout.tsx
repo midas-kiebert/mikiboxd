@@ -7,7 +7,7 @@ import { createStackNavigator, TransitionPresets, TransitionSpecs } from '@react
 import { Appearance, Easing } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-import { OpenAPI } from 'shared';
+import { ApiError, OpenAPI } from 'shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage, setStorage } from 'shared/storage';
 import * as SecureStore from 'expo-secure-store';
@@ -42,7 +42,7 @@ import {
   registerPushTokenForCurrentDevice,
 } from '@/utils/push-notifications';
 
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import axios, { AxiosRequestTransformer } from 'axios'
 import * as qs from 'qs'
 import useAuth from 'shared/hooks/useAuth';
@@ -135,7 +135,21 @@ if (__DEV__ && !apiLoggingEnabled) {
   });
 }
 
-const queryClient = new QueryClient();
+// When the backend rejects our stored token (401), the session is dead — the
+// token is invalid/expired (or was issued by a different backend). Clear it and
+// let the component-level redirect send the user back to login, rather than
+// leaving them stuck on a blank screen that re-fires 401s forever.
+let onUnauthorized: (() => void) | null = null;
+const handleUnauthorized = (error: unknown) => {
+  if (!(error instanceof ApiError) || error.status !== 401) return;
+  void storage.removeItem('access_token');
+  onUnauthorized?.();
+};
+
+const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: handleUnauthorized }),
+  mutationCache: new MutationCache({ onError: handleUnauthorized }),
+});
 
 // Keep the native splash up until the app shell is stable (see RootLayourContent).
 void SplashScreen.preventAutoHideAsync();
@@ -212,6 +226,19 @@ function RootLayourContent() {
     // Initial blocking auth check before routing users.
     checkAuth(true)
   }, [checkAuth])
+
+  useEffect(() => {
+    // Let the query/mutation caches force a logout when the API returns 401
+    // (the stored token has been removed by then). Flipping auth state here
+    // triggers the redirect-to-login effect below.
+    onUnauthorized = () => {
+      lastTokenRef.current = null
+      setIsAuthenticated(false)
+    }
+    return () => {
+      onUnauthorized = null
+    }
+  }, [])
 
   useEffect(() => {
     // Resolve the saved theme before we reveal the UI (see themePreferenceReady).

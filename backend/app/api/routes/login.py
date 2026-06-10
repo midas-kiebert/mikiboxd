@@ -12,27 +12,44 @@ from app.api.deps import SessionDep
 from app.core.config import settings
 from app.core.security import (
     create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
     generate_password_reset_token,
     get_password_hash,
     verify_password_reset_token,
 )
 from app.crud import user as users_crud
 from app.mailer import EmailDeliveryError, generate_reset_password_email, send_email
-from app.models.auth_schemas import Message, NewPassword, Token
+from app.models.auth_schemas import Message, NewPassword, RefreshTokenRequest, Token
+from app.models.user import User
 
 router = APIRouter(tags=["login"])
 logger = logging.getLogger(__name__)
+
+
+def _build_token(user_id: object) -> Token:
+    """Issue a fresh access + refresh token pair for the given user ID."""
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    refresh_token_expires = timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+    return Token(
+        access_token=create_access_token(user_id, expires_delta=access_token_expires),
+        refresh_token=create_refresh_token(
+            user_id, expires_delta=refresh_token_expires
+        ),
+    )
 
 
 @router.post("/login/access-token")
 def login_access_token(
     session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ) -> Token:
-    """Authenticate a user and return a JWT access token.
+    """Authenticate a user and return a JWT access + refresh token pair.
 
     Uses OAuth2 password flow — credentials are submitted as form data.
-    The returned token should be included in subsequent requests as:
-        Authorization: Bearer <token>
+    The access token should be included in subsequent requests as:
+        Authorization: Bearer <access_token>
+    The refresh token is exchanged at POST /login/refresh-token when the access
+    token expires.
     """
     user = users_crud.authenticate(
         session=session, email=form_data.username, password=form_data.password
@@ -47,10 +64,28 @@ def login_access_token(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Inactive user",
         )
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    return Token(
-        access_token=create_access_token(user.id, expires_delta=access_token_expires)
+    return _build_token(user.id)
+
+
+@router.post("/login/refresh-token")
+def refresh_access_token(session: SessionDep, body: RefreshTokenRequest) -> Token:
+    """Exchange a valid refresh token for a fresh access + refresh token pair.
+
+    The refresh token is rotated on every call (sliding window). Returns 401 if
+    the refresh token is missing, expired, tampered with, the wrong token type,
+    or the user no longer exists / is inactive.
+    """
+    invalid_token = HTTPException(
+        status_code=http_status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate refresh token",
     )
+    user_id = decode_refresh_token(body.refresh_token)
+    if user_id is None:
+        raise invalid_token
+    user = session.get(User, user_id)
+    if not user or not user.is_active:
+        raise invalid_token
+    return _build_token(user.id)
 
 
 @router.post("/password-recovery/{email}")

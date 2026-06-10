@@ -24,18 +24,27 @@ class Message(SQLModel):
     message: str
 
 
-# JSON payload containing access token
+# JSON payload containing the access token and its refresh token
 class Token(SQLModel):
     access_token: str
+    refresh_token: str
     token_type: str = Field(
         default="bearer", description="Type of the token, usually 'bearer'"
     )
+
+
+# Request body for exchanging a refresh token for a fresh access token
+class RefreshTokenRequest(SQLModel):
+    refresh_token: str
 
 
 # Contents of JWT token
 class TokenPayload(SQLModel):
     sub: str | None = Field(
         default=None, description="Subject of the token, usually the user ID"
+    )
+    type: str | None = Field(
+        default=None, description="Token type: 'access' or 'refresh'"
     )
 
 

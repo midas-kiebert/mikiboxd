@@ -48,8 +48,37 @@ def create_access_token(subject: str | Any, expires_delta: timedelta) -> str:
         future requests via the Authorization: Bearer header.
     """
     expire = datetime.now(timezone.utc) + expires_delta
-    to_encode = {"exp": expire, "sub": str(subject)}
+    to_encode = {"exp": expire, "sub": str(subject), "type": "access"}
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
+
+
+def create_refresh_token(subject: str | Any, expires_delta: timedelta) -> str:
+    """Create a signed, long-lived JWT refresh token for the given subject.
+
+    Refresh tokens are exchanged at POST /login/refresh-token for a fresh access
+    token. They carry a ``type: "refresh"`` claim so they cannot be used as an
+    access token on protected endpoints (see ``decode_refresh_token`` and
+    ``get_current_user``).
+    """
+    expire = datetime.now(timezone.utc) + expires_delta
+    to_encode = {"exp": expire, "sub": str(subject), "type": "refresh"}
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_refresh_token(token: str) -> str | None:
+    """Validate a refresh token and return its subject (the user ID).
+
+    Returns None if the token is missing, expired, tampered with, or is not a
+    refresh token (e.g. an access token submitted to the refresh endpoint).
+    """
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.exceptions.InvalidTokenError:
+        return None
+    if payload.get("type") != "refresh":
+        return None
+    sub = payload.get("sub")
+    return str(sub) if sub is not None else None
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

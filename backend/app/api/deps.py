@@ -108,6 +108,15 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
             detail="Could not validate credentials",
         )
 
+    # Refresh tokens may only be exchanged at /login/refresh-token, never used as
+    # bearer credentials. (Older access tokens predate the "type" claim and have
+    # type=None, so they remain valid until they expire.)
+    if token_data.type == "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+
     user = session.get(User, token_data.sub)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

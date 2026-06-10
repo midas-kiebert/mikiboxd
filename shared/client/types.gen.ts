@@ -232,6 +232,10 @@ export type PushTokenRegister = {
   platform?: "ios" | "android" | "web" | null
 }
 
+export type RefreshTokenRequest = {
+  refresh_token: string
+}
+
 export type SavedPresetCreate = {
   name: string
   scope: FilterPresetScope
@@ -365,6 +369,7 @@ export type TmdbCacheOverrideResponse = {
 
 export type Token = {
   access_token: string
+  refresh_token: string
   /**
    * Type of the token, usually 'bearer'
    */
@@ -484,6 +489,12 @@ export type LoginLoginAccessTokenData = {
 }
 
 export type LoginLoginAccessTokenResponse = Token
+
+export type LoginRefreshAccessTokenData = {
+  requestBody: RefreshTokenRequest
+}
+
+export type LoginRefreshAccessTokenResponse = Token
 
 export type LoginRecoverPasswordData = {
   email: string

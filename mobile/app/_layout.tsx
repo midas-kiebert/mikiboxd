@@ -22,6 +22,7 @@ import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { loadThemePreference, useThemePreference } from '@/utils/theme-preference';
+import { installAuthRefreshInterceptor } from '@/utils/auth-refresh';
 import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
 import AppSplash from '@/components/layout/AppSplash';
 import { SHARED_TAB_FILTER_PRESET_SCOPE } from '@/components/filters/shared-tab-filters';
@@ -145,6 +146,12 @@ const handleUnauthorized = (error: unknown) => {
   void storage.removeItem('access_token');
   onUnauthorized?.();
 };
+
+// Before a 401 becomes a logout, try to transparently refresh the access token.
+// Only a failed refresh falls through to handleUnauthorized above.
+installAuthRefreshInterceptor(() => {
+  onUnauthorized?.();
+});
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({ onError: handleUnauthorized }),

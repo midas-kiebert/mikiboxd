@@ -93,11 +93,15 @@ class Settings(BaseSettings):
     # In production, set this to a stable secret via the environment.
     SECRET_KEY: str = secrets.token_urlsafe(32)
 
-    # TODO: Reduce this once refresh tokens are implemented. Long-lived access
-    # tokens are a security risk — a stolen token stays valid for 90 days.
-    # The proper fix is short-lived access tokens (e.g. 15 min) paired with a
-    # longer-lived refresh token that issues new access tokens.
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 90  # 90 days
+    # Short-lived access tokens limit the damage of a stolen token. Clients use
+    # a long-lived refresh token (below) to silently mint new access tokens via
+    # POST /login/refresh-token, so users are not forced to re-login.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # 30 minutes
+
+    # Refresh tokens are long-lived and re-issued on every refresh (sliding
+    # window), so an actively-used client effectively never logs out; an idle
+    # client only re-authenticates after this window lapses.
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 90  # 90 days
 
     # How long password-reset links stay valid
     EMAIL_RESET_TOKEN_EXPIRE_HOURS: int = 48

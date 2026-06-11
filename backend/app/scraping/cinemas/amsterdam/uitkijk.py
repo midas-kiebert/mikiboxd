@@ -1,6 +1,5 @@
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 from re import sub
 
 import requests
@@ -19,6 +18,7 @@ from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_services
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_services
+from app.utils import to_amsterdam_time
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -116,8 +116,7 @@ class UitkijkScraper(BaseCinemaScraper):
             movie = movie_cache.get(show.slug)
             if movie is None:
                 continue
-            dt = datetime.strptime(show.start_date, "%Y-%m-%dT%H:%M:%S.%fZ")
-            start_datetime = dt.replace(tzinfo=None)
+            start_datetime = to_amsterdam_time(show.start_date)
             showtimes.append(
                 ShowtimeCreate(
                     movie_id=movie.id,

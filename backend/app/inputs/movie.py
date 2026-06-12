@@ -19,6 +19,7 @@ class Filters(BaseModel):
     query: str | None = None
     snapshot_time: datetime
     watchlist_only: bool = False
+    hide_watched: bool = False
     selected_cinema_ids: list[int] | None = None
     days: list[date] | None = None
     time_ranges: list[TimeRange] | None = None
@@ -53,6 +54,7 @@ def get_filters(
         Query(description="Only show showtimes after this moment"),
     ] = None,
     watchlist_only: Annotated[bool, Query()] = False,
+    hide_watched: Annotated[bool, Query()] = False,
     selected_cinema_ids: Annotated[
         list[int] | None,
         Query(description="Filter showtimes to only these cinema IDs"),
@@ -118,6 +120,7 @@ def get_filters(
         query=query,
         snapshot_time=snapshot_time,
         watchlist_only=watchlist_only,
+        hide_watched=hide_watched,
         selected_cinema_ids=selected_cinema_ids,
         days=days,
         time_ranges=time_ranges or None,

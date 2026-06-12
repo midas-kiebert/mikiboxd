@@ -83,6 +83,7 @@ export type FilterPresetFilters = {
   selected_showtime_filter?: "all" | "interested" | "going" | null
   showtime_audience?: "including-friends" | "only-you"
   watchlist_only?: boolean
+  hide_watched?: boolean
   days?: Array<string> | null
   time_ranges?: Array<string> | null
   runtime_ranges?: Array<string> | null
@@ -646,6 +647,7 @@ export type MeUpdatePasswordMeResponse = Message
 
 export type MeCountMyShowtimesData = {
   days?: Array<string> | null
+  hideWatched?: boolean
   query?: string | null
   /**
    * Maximum movie runtime in minutes
@@ -679,6 +681,7 @@ export type MeCountMyShowtimesResponse = number
 
 export type MeGetMyShowtimesData = {
   days?: Array<string> | null
+  hideWatched?: boolean
   limit?: number
   offset?: number
   query?: string | null
@@ -768,6 +771,8 @@ export type MeDismissMyNotificationResponse = Message
 
 export type MeSyncWatchlistResponse = Message
 
+export type MeSyncWatchedResponse = Message
+
 export type MeGetFriendsResponse = Array<UserWithFriendStatus>
 
 export type MeGetSentFriendRequestsResponse = Array<UserWithFriendStatus>
@@ -796,6 +801,7 @@ export type MeDeletePushTokenResponse = Message
 
 export type MoviesCountMoviesData = {
   days?: Array<string> | null
+  hideWatched?: boolean
   query?: string | null
   /**
    * Maximum movie runtime in minutes
@@ -829,6 +835,7 @@ export type MoviesCountMoviesResponse = number
 
 export type MoviesReadMoviesData = {
   days?: Array<string> | null
+  hideWatched?: boolean
   limit?: number
   offset?: number
   query?: string | null
@@ -865,6 +872,7 @@ export type MoviesReadMoviesResponse = Array<MovieSummaryLoggedIn>
 
 export type MoviesReadMovieShowtimesData = {
   days?: Array<string> | null
+  hideWatched?: boolean
   id: number
   limit?: number
   offset?: number
@@ -901,6 +909,7 @@ export type MoviesReadMovieShowtimesResponse = Array<ShowtimeInMovieLoggedIn>
 
 export type MoviesReadMovieData = {
   days?: Array<string> | null
+  hideWatched?: boolean
   id: number
   query?: string | null
   /**
@@ -1004,6 +1013,7 @@ export type ShowtimesUpdateShowtimeVisibilityResponse = ShowtimeVisibilityPublic
 
 export type ShowtimesCountMainPageShowtimesData = {
   days?: Array<string> | null
+  hideWatched?: boolean
   query?: string | null
   /**
    * Maximum movie runtime in minutes
@@ -1037,6 +1047,7 @@ export type ShowtimesCountMainPageShowtimesResponse = number
 
 export type ShowtimesGetMainPageShowtimesData = {
   days?: Array<string> | null
+  hideWatched?: boolean
   limit?: number
   offset?: number
   query?: string | null
@@ -1098,6 +1109,7 @@ export type UsersGetUserResponse = UserPublic
 
 export type UsersGetUserSelectedShowtimesData = {
   days?: Array<string> | null
+  hideWatched?: boolean
   limit?: number
   offset?: number
   query?: string | null

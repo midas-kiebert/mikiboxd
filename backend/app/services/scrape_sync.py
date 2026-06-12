@@ -10,6 +10,7 @@ from app.models.scrape_run import ScrapeRun, ScrapeRunStatus
 from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
 from app.models.user import User
+from app.models.watched_selection import WatchedSelection
 from app.models.watchlist_selection import WatchlistSelection
 from app.utils import now_amsterdam_naive
 
@@ -47,10 +48,12 @@ def _orphaned_letterboxd_usernames_stmt():
         col(User.letterboxd_username).is_not(None)
     )
     used_by_watchlist = select(WatchlistSelection.letterboxd_username)
+    used_by_watched = select(WatchedSelection.letterboxd_username)
 
     return select(Letterboxd.letterboxd_username).where(
         col(Letterboxd.letterboxd_username).not_in(used_by_users),
         col(Letterboxd.letterboxd_username).not_in(used_by_watchlist),
+        col(Letterboxd.letterboxd_username).not_in(used_by_watched),
     )
 
 
@@ -79,6 +82,24 @@ def cleanup_letterboxd_data(
             col(Letterboxd.last_watchlist_sync) < cutoff,
         )
         .values(last_watchlist_sync=None)
+    )
+
+    stale_watched_timestamp_count_stmt = (
+        select(func.count())
+        .select_from(Letterboxd)
+        .where(
+            col(Letterboxd.last_watched_sync).is_not(None),
+            col(Letterboxd.last_watched_sync) < cutoff,
+        )
+    )
+    stale_timestamp_count += int(session.exec(stale_watched_timestamp_count_stmt).one())
+    session.execute(
+        update(Letterboxd)
+        .where(
+            col(Letterboxd.last_watched_sync).is_not(None),
+            col(Letterboxd.last_watched_sync) < cutoff,
+        )
+        .values(last_watched_sync=None)
     )
 
     orphaned_usernames = _orphaned_letterboxd_usernames_stmt()

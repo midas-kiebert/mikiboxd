@@ -15,6 +15,7 @@ from app.models.cinema import Cinema
 from app.models.movie import Movie
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.models.user import User
+from app.models.watched_selection import WatchedSelection
 from app.models.watchlist_selection import WatchlistSelection
 from app.utils import now_amsterdam_naive
 
@@ -368,6 +369,7 @@ def test_get_main_page_showtimes_applies_cinema_day_time_query_and_watchlist_fil
     db_transaction.add(
         WatchlistSelection(
             letterboxd_username=user.letterboxd_username,
+            letterboxd_slug=movie_match.letterboxd_slug,
             movie_id=movie_match.id,
         )
     )
@@ -390,6 +392,83 @@ def test_get_main_page_showtimes_applies_cinema_day_time_query_and_watchlist_fil
     )
 
     assert showtimes == [showtime_match]
+
+
+def test_get_main_page_showtimes_hide_watched_filter(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+):
+    user = user_factory()
+
+    movie_watched = movie_factory()
+    movie_unwatched = movie_factory()
+
+    showtime_watched = showtime_factory(movie=movie_watched)
+    showtime_unwatched = showtime_factory(movie=movie_unwatched)
+
+    db_transaction.add(
+        WatchedSelection(
+            letterboxd_username=user.letterboxd_username,
+            letterboxd_slug=movie_watched.letterboxd_slug,
+            movie_id=movie_watched.id,
+        )
+    )
+    db_transaction.flush()
+
+    showtimes = showtime_crud.get_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            hide_watched=True,
+        ),
+        letterboxd_username=user.letterboxd_username,
+    )
+
+    assert showtimes == [showtime_unwatched]
+    assert showtime_watched not in showtimes
+
+
+def test_count_main_page_showtimes_hide_watched_filter(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+):
+    user = user_factory()
+
+    movie_watched = movie_factory()
+    movie_unwatched = movie_factory()
+
+    showtime_factory(movie=movie_watched)
+    showtime_factory(movie=movie_unwatched)
+
+    db_transaction.add(
+        WatchedSelection(
+            letterboxd_username=user.letterboxd_username,
+            letterboxd_slug=movie_watched.letterboxd_slug,
+            movie_id=movie_watched.id,
+        )
+    )
+    db_transaction.flush()
+
+    count = showtime_crud.count_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            hide_watched=True,
+        ),
+        letterboxd_username=user.letterboxd_username,
+    )
+
+    assert count == 1
 
 
 def test_get_main_page_showtimes_day_filter_uses_four_hour_day_bucket(

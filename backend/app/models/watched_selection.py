@@ -1,9 +1,9 @@
-"""Watchlist selection — movies on a Letterboxd user's watchlist."""
+"""Watched selection — movies a Letterboxd user has marked as watched."""
 
 from sqlmodel import Field, SQLModel
 
 
-class WatchlistSelection(SQLModel, table=True):
+class WatchedSelection(SQLModel, table=True):
     letterboxd_username: str = Field(
         foreign_key="letterboxd.letterboxd_username", primary_key=True
     )

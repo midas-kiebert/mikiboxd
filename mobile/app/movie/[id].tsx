@@ -330,6 +330,8 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
               setGroupByMovie={() => {}}
               watchlistOnly={false}
               setWatchlistOnly={() => {}}
+              hideWatched={false}
+              setHideWatched={() => {}}
               selectedShowtimeFilter={selectedShowtimeFilter}
               setSelectedShowtimeFilter={setSelectedShowtimeFilter}
               showStatusFilter
@@ -427,6 +429,8 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
         showGroupByMovie={false}
         watchlistOnly={false}
         setWatchlistOnly={() => {}}
+        hideWatched={false}
+        setHideWatched={() => {}}
         canUseWatchlistFilter={false}
         selectedShowtimeFilter={selectedShowtimeFilter}
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}

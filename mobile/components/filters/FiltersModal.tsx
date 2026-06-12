@@ -61,6 +61,8 @@ export type FiltersModalProps = {
   showPresets?: boolean;
   watchlistOnly: boolean;
   setWatchlistOnly: (v: boolean) => void;
+  hideWatched: boolean;
+  setHideWatched: (v: boolean) => void;
   canUseWatchlistFilter?: boolean;
   selectedShowtimeFilter: SharedTabShowtimeFilter;
   setSelectedShowtimeFilter: (v: SharedTabShowtimeFilter) => void;
@@ -87,6 +89,8 @@ export default function FiltersModal({
   showPresets = false,
   watchlistOnly,
   setWatchlistOnly,
+  hideWatched,
+  setHideWatched,
   canUseWatchlistFilter = false,
   selectedShowtimeFilter,
   setSelectedShowtimeFilter,
@@ -183,6 +187,7 @@ export default function FiltersModal({
       selected_showtime_filter: selectedShowtimeFilter,
       showtime_audience: "including-friends",
       watchlist_only: watchlistOnly,
+      hide_watched: hideWatched,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
       runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
@@ -191,6 +196,7 @@ export default function FiltersModal({
     [
       selectedShowtimeFilter,
       watchlistOnly,
+      hideWatched,
       selectedDays,
       selectedTimeRanges,
       selectedRuntimeRanges,
@@ -204,6 +210,7 @@ export default function FiltersModal({
         hasLetterboxdUsername: canUseWatchlistFilter,
         setSelectedShowtimeFilter,
         setWatchlistOnly,
+        setHideWatched,
         setSelectedDays,
         setSelectedTimeRanges,
         setSelectedRuntimeRanges,
@@ -215,6 +222,7 @@ export default function FiltersModal({
       canUseWatchlistFilter,
       setSelectedShowtimeFilter,
       setWatchlistOnly,
+      setHideWatched,
       setSelectedDays,
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
@@ -334,6 +342,9 @@ export default function FiltersModal({
                 <View style={styles.pillRow}>
                   <Pill label="All movies" active={!watchlistOnly} onPress={() => setWatchlistOnly(false)} colors={colors} />
                   <Pill label="Watchlisted only" active={watchlistOnly} onPress={() => setWatchlistOnly(true)} colors={colors} />
+                </View>
+                <View style={styles.pillRow}>
+                  <Pill label="Hide watched" active={hideWatched} onPress={() => setHideWatched(!hideWatched)} colors={colors} />
                 </View>
                 <Divider colors={colors} />
               </>

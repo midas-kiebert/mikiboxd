@@ -81,6 +81,9 @@ function CinemaShowtimesContent() {
     watchlistOnly,
     appliedWatchlistOnly,
     setWatchlistOnly,
+    hideWatched,
+    appliedHideWatched,
+    setHideWatched,
     groupByMovie,
     setGroupByMovie,
     selectedDays: sharedSelectedDays,
@@ -95,6 +98,8 @@ function CinemaShowtimesContent() {
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
+  const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
+  const effectiveAppliedHideWatched = hasLetterboxdUsername ? appliedHideWatched : false;
   const selectedDays = sharedSelectedDays ?? EMPTY_DAYS;
   const selectedTimeRanges = sharedSelectedTimeRanges ?? EMPTY_TIME_RANGES;
   const selectedRuntimeRanges = sharedSelectedRuntimeRanges ?? EMPTY_RUNTIME_RANGES;
@@ -116,6 +121,11 @@ function CinemaShowtimesContent() {
     setWatchlistOnly(false);
   }, [hasLetterboxdUsername, setWatchlistOnly, watchlistOnly]);
 
+  useEffect(() => {
+    if (hasLetterboxdUsername || !hideWatched) return;
+    setHideWatched(false);
+  }, [hasLetterboxdUsername, setHideWatched, hideWatched]);
+
   const cinemaFromList = useMemo(
     () => cinemas?.find((cinemaValue) => cinemaValue.id === cinemaId),
     [cinemaId, cinemas]
@@ -134,6 +144,7 @@ function CinemaShowtimesContent() {
     runtimeMax: runtimeBounds.runtimeMax,
     selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
     watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
+    hideWatched: effectiveAppliedHideWatched ? true : undefined,
   }), [
     cinemaId,
     searchQuery,
@@ -143,6 +154,7 @@ function CinemaShowtimesContent() {
     runtimeBounds.runtimeMin,
     runtimeBounds.runtimeMax,
     effectiveAppliedWatchlistOnly,
+    effectiveAppliedHideWatched,
   ]);
 
   const {
@@ -171,6 +183,7 @@ function CinemaShowtimesContent() {
     runtimeMax: runtimeBounds.runtimeMax,
     selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
     watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
+    hideWatched: effectiveAppliedHideWatched ? true : undefined,
   }), [
     cinemaId,
     searchQuery,
@@ -180,6 +193,7 @@ function CinemaShowtimesContent() {
     runtimeBounds.runtimeMin,
     runtimeBounds.runtimeMax,
     effectiveAppliedWatchlistOnly,
+    effectiveAppliedHideWatched,
   ]);
 
   const {
@@ -229,6 +243,7 @@ function CinemaShowtimesContent() {
   const handleClearAll = () => {
     setSelectedShowtimeFilter("all");
     setWatchlistOnly(false);
+    setHideWatched(false);
     setGroupByMovie(false);
     setSelectedDays([]);
     setSelectedTimeRanges([]);
@@ -300,6 +315,8 @@ function CinemaShowtimesContent() {
               setGroupByMovie={setGroupByMovie}
               watchlistOnly={effectiveWatchlistOnly}
               setWatchlistOnly={setWatchlistOnly}
+              hideWatched={effectiveHideWatched}
+              setHideWatched={setHideWatched}
               canUseWatchlistFilter={hasLetterboxdUsername}
               selectedShowtimeFilter={selectedShowtimeFilter}
               setSelectedShowtimeFilter={setSelectedShowtimeFilter}
@@ -326,6 +343,8 @@ function CinemaShowtimesContent() {
         showGroupByMovie
         watchlistOnly={effectiveWatchlistOnly}
         setWatchlistOnly={setWatchlistOnly}
+        hideWatched={effectiveHideWatched}
+        setHideWatched={setHideWatched}
         canUseWatchlistFilter={hasLetterboxdUsername}
         selectedShowtimeFilter={selectedShowtimeFilter}
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}

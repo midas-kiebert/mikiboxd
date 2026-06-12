@@ -11,6 +11,7 @@ type ShowtimesFilters = {
     runtimeMin?: number;
     runtimeMax?: number;
     watchlistOnly?: boolean;
+    hideWatched?: boolean;
     selectedStatuses?: GoingStatus[];
 };
 

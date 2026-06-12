@@ -265,7 +265,11 @@ def test_cleanup_letterboxd_data_removes_orphans_and_clears_stale_syncs(
     )
     movie = movie_factory()
     db_transaction.add(
-        WatchlistSelection(letterboxd_username=watchlist_username, movie_id=movie.id)
+        WatchlistSelection(
+            letterboxd_username=watchlist_username,
+            letterboxd_slug=movie.letterboxd_slug,
+            movie_id=movie.id,
+        )
     )
 
     db_transaction.flush()

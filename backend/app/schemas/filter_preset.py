@@ -33,6 +33,7 @@ class FilterPresetFilters(SQLModel):
     selected_showtime_filter: Literal["all", "interested", "going"] | None = None
     showtime_audience: Literal["including-friends", "only-you"] = "including-friends"
     watchlist_only: bool = False
+    hide_watched: bool = False
     days: list[str] | None = None
     time_ranges: list[str] | None = None
     runtime_ranges: list[str] | None = None

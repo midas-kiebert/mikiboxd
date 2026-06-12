@@ -52,6 +52,9 @@ export default function MovieScreen() {
     watchlistOnly,
     appliedWatchlistOnly,
     setWatchlistOnly,
+    hideWatched,
+    appliedHideWatched,
+    setHideWatched,
     groupByMovie,
     setGroupByMovie,
     sessionCinemaIds,
@@ -68,6 +71,8 @@ export default function MovieScreen() {
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
+  const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
+  const effectiveAppliedHideWatched = hasLetterboxdUsername ? appliedHideWatched : false;
 
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
@@ -87,10 +92,16 @@ export default function MovieScreen() {
     setWatchlistOnly(false);
   }, [hasLetterboxdUsername, setWatchlistOnly, watchlistOnly]);
 
+  useEffect(() => {
+    if (hasLetterboxdUsername || !hideWatched) return;
+    setHideWatched(false);
+  }, [hasLetterboxdUsername, setHideWatched, hideWatched]);
+
   const movieFilters = useMemo<MovieFilters>(
     () => ({
       query: searchQuery,
       watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
+      hideWatched: effectiveAppliedHideWatched ? true : undefined,
       days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       runtimeMin: runtimeBounds.runtimeMin,
@@ -101,6 +112,7 @@ export default function MovieScreen() {
     [
       searchQuery,
       effectiveAppliedWatchlistOnly,
+      effectiveAppliedHideWatched,
       resolvedApiDays,
       selectedTimeRanges,
       runtimeBounds.runtimeMin,
@@ -159,6 +171,7 @@ export default function MovieScreen() {
       hasLetterboxdUsername,
       setSelectedShowtimeFilter,
       setWatchlistOnly,
+      setHideWatched,
       setSelectedDays,
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
@@ -182,6 +195,8 @@ export default function MovieScreen() {
         setGroupByMovie={setGroupByMovie}
         watchlistOnly={effectiveWatchlistOnly}
         setWatchlistOnly={setWatchlistOnly}
+        hideWatched={effectiveHideWatched}
+        setHideWatched={setHideWatched}
         canUseWatchlistFilter={hasLetterboxdUsername}
         selectedShowtimeFilter={selectedShowtimeFilter}
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}
@@ -196,6 +211,7 @@ export default function MovieScreen() {
         onClearAll={() => {
           setSelectedShowtimeFilter(toSharedTabShowtimeFilter('all'));
           setWatchlistOnly(false);
+          setHideWatched(false);
           setSelectedDays([]);
           setSelectedTimeRanges([]);
           setSelectedRuntimeRanges([]);

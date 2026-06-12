@@ -31,6 +31,7 @@ from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe, UserWithFriendStatus
 from app.services import me as me_service
 from app.services import users as users_service
+from app.services import watched as watched_service
 from app.services import watchlist as watchlist_service
 from app.utils import now_amsterdam_naive
 
@@ -663,6 +664,15 @@ def sync_watchlist(
 ) -> Message:
     watchlist_service.sync_watchlist(session=session, user_id=current_user.id)
     return Message(message="Watchlist synced successfully")
+
+
+@router.put("/watched", response_model=Message)
+def sync_watched(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Message:
+    watched_service.sync_watched(session=session, user_id=current_user.id)
+    return Message(message="Watched list synced successfully")
 
 
 @router.get("/friends", response_model=list[UserWithFriendStatus])

@@ -9,6 +9,7 @@ import { useSessionShowtimeFilter } from "shared/hooks/useSessionShowtimeFilter"
 import { useSessionTimeRangeSelections } from "shared/hooks/useSessionTimeRangeSelections";
 import { useSessionRuntimeRangeSelections } from "shared/hooks/useSessionRuntimeRangeSelections";
 import { useSessionWatchlistOnly } from "shared/hooks/useSessionWatchlistOnly";
+import { useSessionHideWatched } from "shared/hooks/useSessionHideWatched";
 import { useSessionGroupByMovie } from "shared/hooks/useSessionGroupByMovie";
 
 import {
@@ -33,6 +34,7 @@ const SESSION_RUNTIME_RANGE_SELECTIONS_KEY = [
   "runtime_range_selections",
 ] as const;
 const SESSION_WATCHLIST_ONLY_KEY = ["session", "watchlist_only"] as const;
+const SESSION_HIDE_WATCHED_KEY = ["session", "hide_watched"] as const;
 const SESSION_GROUP_BY_MOVIE_KEY = ["session", "group_by_movie"] as const;
 
 export function useSharedTabFilters() {
@@ -40,6 +42,7 @@ export function useSharedTabFilters() {
   const initializedFromFavoritesRef = useRef(false);
   const applyShowtimeFilterFrameRef = useRef<number | null>(null);
   const applyWatchlistOnlyFrameRef = useRef<number | null>(null);
+  const applyHideWatchedFrameRef = useRef<number | null>(null);
 
   const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
     useSessionCinemaSelections();
@@ -53,6 +56,8 @@ export function useSharedTabFilters() {
     useSessionShowtimeFilter();
   const { selection: sessionWatchlistOnly, setSelection: setSessionWatchlistOnly } =
     useSessionWatchlistOnly();
+  const { selection: sessionHideWatched, setSelection: setSessionHideWatched } =
+    useSessionHideWatched();
   const { selection: groupByMovie, setSelection: setGroupByMovie } =
     useSessionGroupByMovie();
   const favoriteFilterPresetQuery = useFetchFavoriteFilterPreset({
@@ -65,12 +70,15 @@ export function useSharedTabFilters() {
 
   const initialShowtimeFilter = toSharedTabShowtimeFilter(sessionShowtimeFilter);
   const initialWatchlistOnly = Boolean(sessionWatchlistOnly);
+  const initialHideWatched = Boolean(sessionHideWatched);
   const [selectedShowtimeFilter, setSelectedShowtimeFilterState] =
     useState<SharedTabShowtimeFilter>(initialShowtimeFilter);
   const [appliedShowtimeFilter, setAppliedShowtimeFilterState] =
     useState<SharedTabShowtimeFilter>(initialShowtimeFilter);
   const [watchlistOnly, setWatchlistOnlyState] = useState<boolean>(initialWatchlistOnly);
   const [appliedWatchlistOnly, setAppliedWatchlistOnlyState] = useState<boolean>(initialWatchlistOnly);
+  const [hideWatched, setHideWatchedState] = useState<boolean>(initialHideWatched);
+  const [appliedHideWatched, setAppliedHideWatchedState] = useState<boolean>(initialHideWatched);
   const selectedDays = sessionDays ?? EMPTY_DAYS;
   const selectedTimeRanges = normalizeSingleTimeRangeSelection(sessionTimeRanges ?? EMPTY_TIME_RANGES);
   const selectedRuntimeRanges = normalizeSingleRuntimeRangeSelection(
@@ -109,6 +117,22 @@ export function useSharedTabFilters() {
     [setSessionWatchlistOnly]
   );
 
+  const setHideWatched = useCallback(
+    (next: boolean) => {
+      // Update pill visuals immediately, defer cache+query-facing state by one frame.
+      setHideWatchedState(next);
+      if (applyHideWatchedFrameRef.current !== null) {
+        cancelAnimationFrame(applyHideWatchedFrameRef.current);
+      }
+      applyHideWatchedFrameRef.current = requestAnimationFrame(() => {
+        applyHideWatchedFrameRef.current = null;
+        setAppliedHideWatchedState(next);
+        setSessionHideWatched(next);
+      });
+    },
+    [setSessionHideWatched]
+  );
+
   const setSelectedTimeRanges = useCallback(
     (next: string[]) => {
       setSessionTimeRanges(normalizeSingleTimeRangeSelection(next));
@@ -135,6 +159,12 @@ export function useSharedTabFilters() {
     setAppliedWatchlistOnlyState(normalized);
   }, [sessionWatchlistOnly]);
 
+  useEffect(() => {
+    const normalized = Boolean(sessionHideWatched);
+    setHideWatchedState(normalized);
+    setAppliedHideWatchedState(normalized);
+  }, [sessionHideWatched]);
+
   useEffect(
     () => () => {
       if (applyShowtimeFilterFrameRef.current !== null) {
@@ -142,6 +172,9 @@ export function useSharedTabFilters() {
       }
       if (applyWatchlistOnlyFrameRef.current !== null) {
         cancelAnimationFrame(applyWatchlistOnlyFrameRef.current);
+      }
+      if (applyHideWatchedFrameRef.current !== null) {
+        cancelAnimationFrame(applyHideWatchedFrameRef.current);
       }
     },
     []
@@ -194,6 +227,11 @@ export function useSharedTabFilters() {
         setWatchlistOnly(Boolean(filterSource.filters.watchlist_only));
       }
 
+      const rawHideWatched = queryClient.getQueryData<boolean>(SESSION_HIDE_WATCHED_KEY);
+      if (appliesDimension("hide_watched") && rawHideWatched === undefined) {
+        setHideWatched(Boolean(filterSource.filters.hide_watched));
+      }
+
       const rawSessionDays = queryClient.getQueryData<string[]>(SESSION_DAY_SELECTIONS_KEY);
       if (appliesDimension("days") && rawSessionDays === undefined) {
         setSessionDays(filterSource.filters.days ?? []);
@@ -237,6 +275,7 @@ export function useSharedTabFilters() {
     setSelectedRuntimeRanges,
     setGroupByMovie,
     setWatchlistOnly,
+    setHideWatched,
   ]);
 
   return {
@@ -246,6 +285,9 @@ export function useSharedTabFilters() {
     watchlistOnly,
     appliedWatchlistOnly,
     setWatchlistOnly,
+    hideWatched,
+    appliedHideWatched,
+    setHideWatched,
     sessionCinemaIds,
     setSessionCinemaIds,
     selectedDays,

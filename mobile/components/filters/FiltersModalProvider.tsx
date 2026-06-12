@@ -42,6 +42,8 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     setSelectedShowtimeFilter,
     watchlistOnly,
     setWatchlistOnly,
+    hideWatched,
+    setHideWatched,
     groupByMovie,
     setGroupByMovie,
     sessionCinemaIds,
@@ -56,6 +58,7 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
+  const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
 
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
@@ -82,8 +85,9 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     runtimeMin: runtimeBounds.runtimeMin,
     runtimeMax: runtimeBounds.runtimeMax,
     watchlistOnly: effectiveWatchlistOnly || undefined,
+    hideWatched: effectiveHideWatched || undefined,
     selectedStatuses: getSelectedStatusesFromShowtimeFilter(selectedShowtimeFilter),
-  }), [sessionCinemaIds, resolvedApiDays, selectedTimeRanges, runtimeBounds, effectiveWatchlistOnly, selectedShowtimeFilter]);
+  }), [sessionCinemaIds, resolvedApiDays, selectedTimeRanges, runtimeBounds, effectiveWatchlistOnly, effectiveHideWatched, selectedShowtimeFilter]);
 
   const { data: showtimesCount } = useQuery({
     queryKey: ['count', 'showtimes', 'main', countFilters],
@@ -134,6 +138,8 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         showPresets={showPresets}
         watchlistOnly={effectiveWatchlistOnly}
         setWatchlistOnly={setWatchlistOnly}
+        hideWatched={effectiveHideWatched}
+        setHideWatched={setHideWatched}
         canUseWatchlistFilter={hasLetterboxdUsername}
         selectedShowtimeFilter={selectedShowtimeFilter}
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}

@@ -1017,7 +1017,7 @@ def get_main_page_showtimes(
             )
 
     letterboxd_username = None
-    if filters.watchlist_only:
+    if filters.watchlist_only or filters.hide_watched:
         letterboxd_username = user_crud.get_letterboxd_username(
             session=session,
             user_id=current_user_id,
@@ -1058,7 +1058,7 @@ def count_main_page_showtimes(
             )
 
     letterboxd_username = None
-    if filters.watchlist_only:
+    if filters.watchlist_only or filters.hide_watched:
         letterboxd_username = user_crud.get_letterboxd_username(
             session=session,
             user_id=current_user_id,

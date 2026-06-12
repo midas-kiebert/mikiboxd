@@ -52,6 +52,9 @@ export default function MainShowtimesScreen() {
     watchlistOnly,
     appliedWatchlistOnly,
     setWatchlistOnly,
+    hideWatched,
+    appliedHideWatched,
+    setHideWatched,
     groupByMovie,
     setGroupByMovie,
     sessionCinemaIds,
@@ -68,6 +71,8 @@ export default function MainShowtimesScreen() {
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
+  const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
+  const effectiveAppliedHideWatched = hasLetterboxdUsername ? appliedHideWatched : false;
 
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
 
@@ -87,6 +92,11 @@ export default function MainShowtimesScreen() {
     setWatchlistOnly(false);
   }, [hasLetterboxdUsername, setWatchlistOnly, watchlistOnly]);
 
+  useEffect(() => {
+    if (hasLetterboxdUsername || !hideWatched) return;
+    setHideWatched(false);
+  }, [hasLetterboxdUsername, setHideWatched, hideWatched]);
+
   // ─── Showtimes query ────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({
     query: searchQuery || undefined,
@@ -97,9 +107,11 @@ export default function MainShowtimesScreen() {
     runtimeMax: runtimeBounds.runtimeMax,
     selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
     watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
+    hideWatched: effectiveAppliedHideWatched ? true : undefined,
   }), [
     searchQuery, appliedShowtimeFilter, resolvedApiDays, selectedTimeRanges,
     runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, effectiveAppliedWatchlistOnly,
+    effectiveAppliedHideWatched,
   ]);
 
   const activeShowtimesQuery = useFetchMainPageShowtimes({
@@ -114,6 +126,7 @@ export default function MainShowtimesScreen() {
     () => ({
       query: searchQuery,
       watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
+      hideWatched: effectiveAppliedHideWatched ? true : undefined,
       days: resolvedApiDays,
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       runtimeMin: runtimeBounds.runtimeMin,
@@ -122,7 +135,7 @@ export default function MainShowtimesScreen() {
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
     }),
     [
-      searchQuery, effectiveAppliedWatchlistOnly, resolvedApiDays, selectedTimeRanges,
+      searchQuery, effectiveAppliedWatchlistOnly, effectiveAppliedHideWatched, resolvedApiDays, selectedTimeRanges,
       runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, appliedShowtimeFilter,
     ]
   );
@@ -154,7 +167,8 @@ export default function MainShowtimesScreen() {
 
   const isAppliedFilterTransitionPending =
     selectedShowtimeFilter !== appliedShowtimeFilter ||
-    effectiveWatchlistOnly !== effectiveAppliedWatchlistOnly;
+    effectiveWatchlistOnly !== effectiveAppliedWatchlistOnly ||
+    effectiveHideWatched !== effectiveAppliedHideWatched;
 
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
   const movies = useMemo(() => moviesData?.pages.flat() ?? [], [moviesData]);
@@ -194,6 +208,7 @@ export default function MainShowtimesScreen() {
       hasLetterboxdUsername,
       setSelectedShowtimeFilter,
       setWatchlistOnly,
+      setHideWatched,
       setSelectedDays,
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
@@ -213,6 +228,8 @@ export default function MainShowtimesScreen() {
     setGroupByMovie,
     watchlistOnly: effectiveWatchlistOnly,
     setWatchlistOnly: (v: boolean) => { setIsFilterTransitionLoading(true); setWatchlistOnly(v); },
+    hideWatched: effectiveHideWatched,
+    setHideWatched: (v: boolean) => { setIsFilterTransitionLoading(true); setHideWatched(v); },
     canUseWatchlistFilter: hasLetterboxdUsername,
     selectedShowtimeFilter,
     setSelectedShowtimeFilter: (v: typeof selectedShowtimeFilter) => {
@@ -231,6 +248,7 @@ export default function MainShowtimesScreen() {
       setIsFilterTransitionLoading(true);
       setSelectedShowtimeFilter('all');
       setWatchlistOnly(false);
+      setHideWatched(false);
       setGroupByMovie(false);
       setSelectedDays([]);
       setSelectedTimeRanges([]);

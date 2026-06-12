@@ -24,6 +24,7 @@ export const normalizeFilters = (filters: PageFilterPresetState): PageFilterPres
       ? filters.showtime_audience
       : "including-friends",
   watchlist_only: Boolean(filters.watchlist_only),
+  hide_watched: Boolean(filters.hide_watched),
   days: canonicalizeDaySelections(filters.days),
   time_ranges: getSortedUniqueStrings(filters.time_ranges),
   runtime_ranges: getSortedUniqueStrings(
@@ -42,6 +43,7 @@ export const normalizeFiltersForSave = (filters: PageFilterPresetState): FilterP
     showtime_audience:
       normalized.showtime_audience === "only-you" ? "only-you" : "including-friends",
     watchlist_only: Boolean(normalized.watchlist_only),
+    hide_watched: Boolean(normalized.hide_watched),
     days: normalized.days ?? null,
     time_ranges: normalized.time_ranges ?? null,
     runtime_ranges: normalized.runtime_ranges ?? null,

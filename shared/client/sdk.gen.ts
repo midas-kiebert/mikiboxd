@@ -92,6 +92,7 @@ import type {
   MeDismissMyNotificationData,
   MeDismissMyNotificationResponse,
   MeSyncWatchlistResponse,
+  MeSyncWatchedResponse,
   MeGetFriendsResponse,
   MeGetSentFriendRequestsResponse,
   MeGetReceivedFriendRequestsResponse,
@@ -918,6 +919,7 @@ export class MeService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.hideWatched
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
@@ -938,6 +940,7 @@ export class MeService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        hide_watched: data.hideWatched,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
@@ -960,6 +963,7 @@ export class MeService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.hideWatched
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
@@ -982,6 +986,7 @@ export class MeService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        hide_watched: data.hideWatched,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
@@ -1203,6 +1208,18 @@ export class MeService {
   }
 
   /**
+   * Sync Watched
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static syncWatched(): CancelablePromise<MeSyncWatchedResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/me/watched",
+    })
+  }
+
+  /**
    * Get Friends
    * @returns UserWithFriendStatus Successful Response
    * @throws ApiError
@@ -1321,6 +1338,7 @@ export class MoviesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.hideWatched
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
@@ -1341,6 +1359,7 @@ export class MoviesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        hide_watched: data.hideWatched,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
@@ -1364,6 +1383,7 @@ export class MoviesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.hideWatched
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
@@ -1387,6 +1407,7 @@ export class MoviesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        hide_watched: data.hideWatched,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
@@ -1410,6 +1431,7 @@ export class MoviesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.hideWatched
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
@@ -1435,6 +1457,7 @@ export class MoviesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        hide_watched: data.hideWatched,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
@@ -1457,6 +1480,7 @@ export class MoviesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.hideWatched
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
@@ -1481,6 +1505,7 @@ export class MoviesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        hide_watched: data.hideWatched,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
@@ -1737,6 +1762,7 @@ export class ShowtimesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.hideWatched
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
@@ -1757,6 +1783,7 @@ export class ShowtimesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        hide_watched: data.hideWatched,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
@@ -1779,6 +1806,7 @@ export class ShowtimesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.hideWatched
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
@@ -1801,6 +1829,7 @@ export class ShowtimesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        hide_watched: data.hideWatched,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
@@ -1918,6 +1947,7 @@ export class UsersService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.hideWatched
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
@@ -1943,6 +1973,7 @@ export class UsersService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        hide_watched: data.hideWatched,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,

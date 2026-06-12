@@ -21,6 +21,8 @@ type ActiveFilterChipsProps = {
   setGroupByMovie: (v: boolean) => void;
   watchlistOnly: boolean;
   setWatchlistOnly: (v: boolean) => void;
+  hideWatched: boolean;
+  setHideWatched: (v: boolean) => void;
   canUseWatchlistFilter?: boolean;
   selectedShowtimeFilter: SharedTabShowtimeFilter;
   setSelectedShowtimeFilter: (v: SharedTabShowtimeFilter) => void;
@@ -63,6 +65,8 @@ export default function ActiveFilterChips({
   setGroupByMovie,
   watchlistOnly,
   setWatchlistOnly,
+  hideWatched,
+  setHideWatched,
   canUseWatchlistFilter = false,
   selectedShowtimeFilter,
   setSelectedShowtimeFilter,
@@ -114,6 +118,14 @@ export default function ActiveFilterChips({
       });
     }
 
+    if (canUseWatchlistFilter && hideWatched) {
+      result.push({
+        key: "hide-watched",
+        label: "Hide watched",
+        onRemove: () => setHideWatched(false),
+      });
+    }
+
     for (const day of selectedDays) {
       result.push({
         key: `day-${day}`,
@@ -145,6 +157,7 @@ export default function ActiveFilterChips({
   }, [
     groupByMovie,
     watchlistOnly,
+    hideWatched,
     canUseWatchlistFilter,
     selectedShowtimeFilter,
     showStatusFilter,

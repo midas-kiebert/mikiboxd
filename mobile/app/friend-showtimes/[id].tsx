@@ -75,6 +75,9 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     watchlistOnly,
     appliedWatchlistOnly,
     setWatchlistOnly,
+    hideWatched,
+    appliedHideWatched,
+    setHideWatched,
     groupByMovie,
     setGroupByMovie,
     selectedDays: sharedSelectedDays,
@@ -89,6 +92,8 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
 
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
+  const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
+  const effectiveAppliedHideWatched = hasLetterboxdUsername ? appliedHideWatched : false;
   const selectedDays = sharedSelectedDays ?? EMPTY_DAYS;
   const selectedTimeRanges = sharedSelectedTimeRanges ?? EMPTY_TIME_RANGES;
 
@@ -103,6 +108,11 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     if (hasLetterboxdUsername || !watchlistOnly) return;
     setWatchlistOnly(false);
   }, [hasLetterboxdUsername, setWatchlistOnly, watchlistOnly]);
+
+  useEffect(() => {
+    if (hasLetterboxdUsername || !hideWatched) return;
+    setHideWatched(false);
+  }, [hasLetterboxdUsername, setHideWatched, hideWatched]);
 
   const queryClient = useQueryClient();
 
@@ -124,8 +134,10 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
     selectedStatuses: (includeInterested ? ['GOING', 'INTERESTED'] : ['GOING']) as GoingStatus[],
     watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
+    hideWatched: effectiveAppliedHideWatched ? true : undefined,
   }), [
     effectiveAppliedWatchlistOnly,
+    effectiveAppliedHideWatched,
     effectiveCinemaIds,
     includeInterested,
     resolvedApiDays,
@@ -186,6 +198,7 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
 
   const handleClearAll = () => {
     setWatchlistOnly(false);
+    setHideWatched(false);
     setGroupByMovie(false);
     setSelectedDays([]);
     setSelectedTimeRanges([]);
@@ -293,6 +306,8 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
               setGroupByMovie={setGroupByMovie}
               watchlistOnly={effectiveWatchlistOnly}
               setWatchlistOnly={setWatchlistOnly}
+              hideWatched={effectiveHideWatched}
+              setHideWatched={setHideWatched}
               canUseWatchlistFilter={hasLetterboxdUsername}
               selectedShowtimeFilter="all"
               setSelectedShowtimeFilter={() => {}}
@@ -319,6 +334,8 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         showGroupByMovie
         watchlistOnly={effectiveWatchlistOnly}
         setWatchlistOnly={setWatchlistOnly}
+        hideWatched={effectiveHideWatched}
+        setHideWatched={setHideWatched}
         canUseWatchlistFilter={hasLetterboxdUsername}
         selectedShowtimeFilter="all"
         setSelectedShowtimeFilter={() => {}}

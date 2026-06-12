@@ -25,6 +25,7 @@ INCLUDABLE_FIELDS = frozenset(
         "selected_showtime_filter",
         "showtime_audience",
         "watchlist_only",
+        "hide_watched",
         "days",
         "time_ranges",
         "runtime_ranges",

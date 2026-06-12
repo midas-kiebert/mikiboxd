@@ -31,6 +31,7 @@ import { formatRuntimePillLabel } from "@/components/filters/runtime-range-utils
 export type PresetDimension =
   | "selected_showtime_filter"
   | "watchlist_only"
+  | "hide_watched"
   | "days"
   | "time_ranges"
   | "runtime_ranges"
@@ -41,6 +42,7 @@ export type PresetDimension =
 export const FILTER_DIMENSIONS: PresetDimension[] = [
   "selected_showtime_filter",
   "watchlist_only",
+  "hide_watched",
   "days",
   "time_ranges",
   "runtime_ranges",
@@ -109,6 +111,7 @@ export type PresetApplySetters = {
   hasLetterboxdUsername: boolean;
   setSelectedShowtimeFilter: (value: SharedTabShowtimeFilter) => void;
   setWatchlistOnly: (value: boolean) => void;
+  setHideWatched: (value: boolean) => void;
   setSelectedDays: (value: string[]) => void;
   setSelectedTimeRanges: (value: string[]) => void;
   setSelectedRuntimeRanges: (value: string[]) => void;
@@ -133,6 +136,11 @@ export const applyDisplayPreset = (
   if (included.has("watchlist_only")) {
     setters.setWatchlistOnly(
       setters.hasLetterboxdUsername && Boolean(preset.filters.watchlist_only)
+    );
+  }
+  if (included.has("hide_watched")) {
+    setters.setHideWatched(
+      setters.hasLetterboxdUsername && Boolean(preset.filters.hide_watched)
     );
   }
   if (included.has("days")) {
@@ -306,6 +314,13 @@ export const summarizeCurrentSelections = (args: {
       valueLabel: currentFilters.watchlist_only ? "Watchlisted only" : "All movies",
       active: Boolean(currentFilters.watchlist_only),
     });
+
+    rows.push({
+      dimension: "hide_watched",
+      title: "Hide watched",
+      valueLabel: currentFilters.hide_watched ? "Hidden" : "Shown",
+      active: Boolean(currentFilters.hide_watched),
+    });
   }
 
   rows.push({
@@ -367,6 +382,9 @@ export const describeDisplayPreset = (preset: DisplayPreset): string => {
   }
   if (included.has("watchlist_only")) {
     parts.push(f.watchlist_only ? "Watchlisted" : "All movies");
+  }
+  if (included.has("hide_watched") && f.hide_watched) {
+    parts.push("Hide watched");
   }
   if (included.has("days")) {
     parts.push(formatDayPillLabel(f.days ?? []));

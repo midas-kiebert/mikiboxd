@@ -150,7 +150,7 @@ def get_movie_showtimes(
         raise MovieNotFoundError(movie_id)
 
     letterboxd_username = None
-    if filters.watchlist_only:
+    if filters.watchlist_only or filters.hide_watched:
         letterboxd_username = users_crud.get_letterboxd_username(
             session=session,
             user_id=current_user,

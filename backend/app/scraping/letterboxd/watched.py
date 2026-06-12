@@ -8,7 +8,9 @@ from .utils import get_page_async
 from .watchlist import extract_slugs_from_page
 
 
-async def get_watched_page_async(session: ClientSession, username: str, page_num: int = 1):
+async def get_watched_page_async(
+    session: ClientSession, username: str, page_num: int = 1
+):
     """
     Asynchronously fetches a specific "films watched" page for a user.
     Returns a BeautifulSoup object if successful, None otherwise.

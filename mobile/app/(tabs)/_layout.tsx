@@ -62,6 +62,14 @@ export default function TabLayout() {
         isSyncingWatchlistRef.current = true;
         await MeService.syncWatchlist();
 
+        try {
+          await MeService.syncWatched();
+        } catch (error) {
+          if (!(error instanceof ApiError && error.status === 429)) {
+            console.error('Error syncing watched list:', error);
+          }
+        }
+
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['movies'] }),
           queryClient.invalidateQueries({ queryKey: ['movie'] }),

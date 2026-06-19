@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from app.exceptions import scraper_exceptions
 
 from . import logger
-from .utils import get_page_async
+from .utils import fetch_page_with_diagnostics, get_page_async
 
 
 async def get_watchlist_page_async(
@@ -19,7 +19,12 @@ async def get_watchlist_page_async(
     """
     url = f"https://letterboxd.com/{username}/watchlist/page/{page_num}/"
     try:
-        page = await get_page_async(session=session, url=url)
+        if page_num == 1:
+            page = await fetch_page_with_diagnostics(
+                session, url, context="watchlist"
+            )
+        else:
+            page = await get_page_async(session=session, url=url)
         if not page:
             logger.error(f"Failed to fetch page {page_num} for user {username}")
             return None

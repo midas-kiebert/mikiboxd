@@ -193,9 +193,9 @@ def notify_friends_on_showtime_selection(
     if not visible_recipients:
         return
 
-    # Persist a centre entry for each recipient who can see this selection.
-    # Recipients who invited the actor are skipped here — they receive the more
-    # specific invite_response entry from notify_inviters_on_response instead.
+    # Recipients who invited the actor receive the more specific invite_response
+    # notification (push, email, and centre entry) from notify_inviters_on_response
+    # instead. Drop them here so a single response never fires two notifications.
     if notification_type == "showtime_match":
         inviter_ids = {
             sender.id
@@ -205,10 +205,15 @@ def notify_friends_on_showtime_selection(
                 receiver_id=actor_id,
             )
         }
+        visible_recipients = [
+            user for user in visible_recipients if user.id not in inviter_ids
+        ]
+        if not visible_recipients:
+            return
+
+        # Persist a centre entry for each recipient who can see this selection.
         created_at = now_amsterdam_naive()
         for recipient in visible_recipients:
-            if recipient.id in inviter_ids:
-                continue
             notification_crud.upsert_notification(
                 session=session,
                 user_id=recipient.id,

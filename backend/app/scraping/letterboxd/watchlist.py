@@ -20,9 +20,7 @@ async def get_watchlist_page_async(
     url = f"https://letterboxd.com/{username}/watchlist/page/{page_num}/"
     try:
         if page_num == 1:
-            page = await fetch_page_with_diagnostics(
-                session, url, context="watchlist"
-            )
+            page = await fetch_page_with_diagnostics(session, url, context="watchlist")
         else:
             page = await get_page_async(session=session, url=url)
         if not page:

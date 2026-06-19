@@ -18,9 +18,7 @@ async def get_watched_page_async(
     url = f"https://letterboxd.com/{username}/films/page/{page_num}/"
     try:
         if page_num == 1:
-            page = await fetch_page_with_diagnostics(
-                session, url, context="watched"
-            )
+            page = await fetch_page_with_diagnostics(session, url, context="watched")
         else:
             page = await get_page_async(session=session, url=url)
         if not page:

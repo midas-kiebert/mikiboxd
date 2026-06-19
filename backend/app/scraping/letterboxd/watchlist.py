@@ -19,11 +19,7 @@ async def get_watchlist_page_async(
     """
     url = f"https://letterboxd.com/{username}/watchlist/page/{page_num}/"
     try:
-        page = await get_page_async(
-            session=session,
-            url=url,
-            diagnostics_context="watchlist" if page_num == 1 else None,
-        )
+        page = await get_page_async(session=session, url=url)
         if not page:
             logger.error(f"Failed to fetch page {page_num} for user {username}")
             return None

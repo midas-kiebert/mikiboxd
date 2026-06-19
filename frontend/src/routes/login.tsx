@@ -85,10 +85,7 @@ function Login() {
           alignSelf="center"
           mb={4}
         />
-        <Field
-          invalid={!!errors.username}
-          errorText={errors.username?.message || !!error}
-        >
+        <Field invalid={!!errors.username} errorText={errors.username?.message}>
           <InputGroup w="100%" startElement={<FiMail />}>
             <Input
               id="username"
@@ -108,6 +105,11 @@ function Login() {
           placeholder="Password"
           errors={errors}
         />
+        {error && (
+          <Text color="red.500" fontSize="sm" textAlign="center">
+            {error}
+          </Text>
+        )}
         <RouterLink to="/recover-password" className="main-link">
           Forgot Password?
         </RouterLink>

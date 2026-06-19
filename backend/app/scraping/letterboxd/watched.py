@@ -81,7 +81,9 @@ async def get_watched_async(username: str) -> list[str]:
         # response must not silently truncate the result (mirrors the watchlist
         # scraper, which reads the page count up front).
         tasks = [
-            get_watched_page_async(session=session, username=username, page_num=page_num)
+            get_watched_page_async(
+                session=session, username=username, page_num=page_num
+            )
             for page_num in range(2, total_pages + 1)
         ]
         pages = await asyncio.gather(*tasks)

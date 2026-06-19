@@ -71,6 +71,7 @@ export default function SavePresetDialog({
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [included, setIncluded] = useState<Set<PresetDimension>>(new Set());
+  const [partialOpen, setPartialOpen] = useState(false);
   // Uncontrolled input (no `value` prop): avoids React's reconciliation forcing
   // the value back onto the native input and swallowing fast keystrokes.
   const nameInputRef = useRef<{ clear: () => void } | null>(null);
@@ -81,9 +82,8 @@ export default function SavePresetDialog({
     nameInputRef.current?.clear();
     setSaveAsDefault(false);
     setError(null);
-    setIncluded(
-      new Set(summaries.filter((row) => row.active).map((row) => row.dimension))
-    );
+    setPartialOpen(false);
+    setIncluded(new Set(summaries.map((row) => row.dimension)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -149,7 +149,7 @@ export default function SavePresetDialog({
       <BottomSheetScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset + 16 }]}>
         <View style={styles.header}>
           <ThemedText style={styles.subtitle}>
-            Check the filters to include. Applying the preset later only changes the checked ones — everything else stays as-is.
+            Saves all your current filters. Applying it later sets every filter to match this preset.
           </ThemedText>
         </View>
 
@@ -165,32 +165,59 @@ export default function SavePresetDialog({
           autoFocus
         />
 
-        <View style={styles.pillGrid}>
-          {summaries.map((row) => {
-            const isChecked = included.has(row.dimension);
-            return (
-              <TouchableOpacity
-                key={row.dimension}
-                style={[styles.pill, isChecked && styles.pillChecked]}
-                onPress={() => toggle(row.dimension)}
-                activeOpacity={0.75}
-              >
-                <MaterialIcons
-                  name={isChecked ? "check-box" : "check-box-outline-blank"}
-                  size={16}
-                  color={isChecked ? colors.tint : colors.textSecondary}
-                />
-                <View style={styles.pillTextBlock}>
-                  <ThemedText style={[styles.pillLabel, isChecked && styles.pillLabelChecked]}>
-                    {row.title}
-                  </ThemedText>
-                  <ThemedText style={styles.pillValue} numberOfLines={1}>
-                    {row.valueLabel}
-                  </ThemedText>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.partial}>
+          <TouchableOpacity
+            style={styles.partialHeader}
+            onPress={() => setPartialOpen((v) => !v)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.partialHeaderText}>
+              <ThemedText style={styles.partialLabel}>Partial filters</ThemedText>
+              <ThemedText style={styles.partialSub}>
+                Choose which filters this preset controls.
+              </ThemedText>
+            </View>
+            <MaterialIcons
+              name={partialOpen ? "expand-less" : "expand-more"}
+              size={22}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          {partialOpen && (
+            <>
+              <ThemedText style={styles.partialHint}>
+                By default the preset saves every filter. Uncheck a filter to leave it untouched. When you apply the preset later, only the checked filters change and the rest stay as they are.
+              </ThemedText>
+              <View style={styles.pillGrid}>
+                {summaries.map((row) => {
+                  const isChecked = included.has(row.dimension);
+                  return (
+                    <TouchableOpacity
+                      key={row.dimension}
+                      style={[styles.pill, isChecked && styles.pillChecked]}
+                      onPress={() => toggle(row.dimension)}
+                      activeOpacity={0.75}
+                    >
+                      <MaterialIcons
+                        name={isChecked ? "check-box" : "check-box-outline-blank"}
+                        size={16}
+                        color={isChecked ? colors.tint : colors.textSecondary}
+                      />
+                      <View style={styles.pillTextBlock}>
+                        <ThemedText style={[styles.pillLabel, isChecked && styles.pillLabelChecked]}>
+                          {row.title}
+                        </ThemedText>
+                        <ThemedText style={styles.pillValue} numberOfLines={1}>
+                          {row.valueLabel}
+                        </ThemedText>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
         </View>
 
         <TouchableOpacity
@@ -215,7 +242,7 @@ export default function SavePresetDialog({
           <View style={styles.warning}>
             <MaterialIcons name="info-outline" size={13} color={colors.yellow.secondary} />
             <ThemedText style={styles.warningText}>
-              Setting a preset with cinema selections as default will override your default cinema selection. You will still revert to your default cinema selection when you clear your filters.
+              Setting a preset with cinema selections as default will override your default cinema selection. You will still revert to your default cinema selection when you clear your filters. It is recommended to uncheck "Cinemas" in dropdown above.
             </ThemedText>
           </View>
         )}
@@ -267,6 +294,24 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       fontSize: 14,
       fontWeight: "500",
     },
+    partial: {
+      borderWidth: 1,
+      borderColor: colors.divider,
+      borderRadius: 10,
+      backgroundColor: colors.cardBackground,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      gap: 10,
+    },
+    partialHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    partialHeaderText: { flex: 1, gap: 2 },
+    partialLabel: { fontSize: 13, fontWeight: "600", color: colors.text },
+    partialSub: { fontSize: 11, color: colors.textSecondary, lineHeight: 15 },
+    partialHint: { fontSize: 11, color: colors.textSecondary, lineHeight: 16 },
     pillGrid: {
       flexDirection: "row",
       flexWrap: "wrap",

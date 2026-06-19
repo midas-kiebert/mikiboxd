@@ -68,12 +68,22 @@ const MoviesPage = () => {
     },
   })
 
-  // Sync watchlist once on initial mount so server watchlist state is current.
+  // Watched syncs independently of the watchlist: a throttled (429) watchlist
+  // sync must not prevent the watched list from refreshing.
+  const { mutate: fetchWatched } = useMutation({
+    mutationFn: () => MeService.syncWatched(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["movies"] })
+    },
+  })
+
+  // Sync watchlist and watched once on initial mount so server state is current.
   const hasFetched = useRef(false)
 
   useEffect(() => {
     if (hasFetched.current) return
     fetchWatchlist()
+    fetchWatched()
     hasFetched.current = true
   }, [])
 

@@ -60,7 +60,14 @@ export default function TabLayout() {
 
       try {
         isSyncingWatchlistRef.current = true;
-        await MeService.syncWatchlist();
+
+        try {
+          await MeService.syncWatchlist();
+        } catch (error) {
+          if (!(error instanceof ApiError && error.status === 429)) {
+            console.error('Error syncing watchlist:', error);
+          }
+        }
 
         try {
           await MeService.syncWatched();
@@ -75,11 +82,6 @@ export default function TabLayout() {
           queryClient.invalidateQueries({ queryKey: ['movie'] }),
           queryClient.invalidateQueries({ queryKey: ['showtimes'] }),
         ]);
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 429) {
-          return;
-        }
-        console.error('Error syncing watchlist:', error);
       } finally {
         isSyncingWatchlistRef.current = false;
       }

@@ -41,7 +41,7 @@ const useAuth = (onLoginSuccess?: () => void, onLogout?: () => void): AuthHook =
       if (onLoginSuccess) onLoginSuccess()
     },
     onError: (err: ApiError) => {
-      handleError(err)
+      setError(handleError(err))
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
@@ -65,7 +65,7 @@ const useAuth = (onLoginSuccess?: () => void, onLogout?: () => void): AuthHook =
       if (onLoginSuccess) onLoginSuccess()
     },
     onError: (err: ApiError) => {
-      handleError(err)
+      setError(handleError(err))
     },
   })
 

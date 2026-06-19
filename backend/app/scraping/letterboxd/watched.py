@@ -20,7 +20,7 @@ async def get_watched_page_async(
         page = await get_page_async(
             session=session,
             url=url,
-            diagnostics_context="watched" if page_num == 1 else None,
+            diagnostics_context=f"watched p{page_num}",
         )
         if not page:
             logger.error(f"Failed to fetch watched page {page_num} for user {username}")
@@ -50,9 +50,23 @@ async def get_watched_async(username: str) -> list[str]:
                 session=session, username=username, page_num=page_num
             )
             if not page:
+                logger.warning(
+                    "Watched scrape for %s stopped at page %s (fetch failed); "
+                    "%s slugs so far.",
+                    username,
+                    page_num,
+                    len(all_slugs),
+                )
                 break
             slugs = extract_slugs_from_page(page=page)
             if not slugs:
+                logger.warning(
+                    "Watched scrape for %s stopped at page %s (page returned 0 "
+                    "poster slugs); %s slugs so far.",
+                    username,
+                    page_num,
+                    len(all_slugs),
+                )
                 break
             all_slugs.update(slugs)
             page_num += 1

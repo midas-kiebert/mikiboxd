@@ -4,7 +4,7 @@ from time import perf_counter
 from aiohttp import ClientSession
 
 from . import logger
-from .utils import fetch_page_with_diagnostics, get_page_async
+from .utils import get_page_async
 from .watchlist import extract_slugs_from_page
 
 
@@ -17,10 +17,11 @@ async def get_watched_page_async(
     """
     url = f"https://letterboxd.com/{username}/films/page/{page_num}/"
     try:
-        if page_num == 1:
-            page = await fetch_page_with_diagnostics(session, url, context="watched")
-        else:
-            page = await get_page_async(session=session, url=url)
+        page = await get_page_async(
+            session=session,
+            url=url,
+            diagnostics_context="watched" if page_num == 1 else None,
+        )
         if not page:
             logger.error(f"Failed to fetch watched page {page_num} for user {username}")
             return None

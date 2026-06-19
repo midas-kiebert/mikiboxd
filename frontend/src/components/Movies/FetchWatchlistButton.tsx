@@ -19,14 +19,28 @@ const FetchWatchlistButton = () => {
     },
   })
 
-  useEffect(() => fetchWatchlist(), [])
+  // Watched syncs independently of the watchlist: a throttled (429) watchlist
+  // sync must not prevent the watched list from refreshing.
+  const { mutate: fetchWatched } = useMutation({
+    mutationFn: () => MeService.syncWatched(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["movies"] })
+    },
+  })
+
+  const syncAll = () => {
+    fetchWatchlist()
+    fetchWatched()
+  }
+
+  useEffect(() => syncAll(), [])
 
   // Render/output using the state and derived values prepared above.
   return (
     <Button
       loading={isPending}
       loadingText="Syncing watchlist..."
-      onClick={() => fetchWatchlist()}
+      onClick={() => syncAll()}
       minW={"180px"}
     >
       <FaSync style={{ marginRight: "8px" }} />

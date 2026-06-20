@@ -64,3 +64,10 @@ def init_db(session: Session) -> None:
         user_crud.create_user(session=session, user_create=user_in)
 
     session.commit()
+
+    # Seed the curated Letterboxd lists from configs/letterboxd_lists.yaml.
+    # Idempotent: existing lists are left untouched. Films are populated lazily
+    # on the list's first sync, not here (no scraping at seed time).
+    from app.services.letterboxd_lists import seed_curated_lists
+
+    seed_curated_lists(session=session)

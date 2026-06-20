@@ -1,0 +1,76 @@
+name: Deploy to Staging
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev
+
+jobs:
+  deploy:
+    runs-on:
+      - self-hosted
+      - staging
+    env:
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Generate .env for Docker Compose
+        run: |
+          cat <<EOF > .env
+          PROJECT_NAME="MiKiNO (staging)"
+          ENVIRONMENT=staging
+          DOMAIN=staging.mikino.nl
+          STACK_NAME=mikiboxd-staging
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          FIRST_SUPERUSER=admin@example.com
+          FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
+          EMAILS_FROM_EMAIL=${{ secrets.EMAILS_FROM_EMAIL }}
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          POSTGRES_SERVER=db
+          POSTGRES_PORT=5432
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
+          TMDB_KEY=${{ secrets.TMDB_KEY }}
+          FRONTEND_HOST=https://dashboard.staging.mikino.nl
+          POSTGRES_TESTING_SERVER=db
+          POSTGRES_TESTING_POST=5432
+          POSTGRES_TESTING_DB=app_test
+          POSTGRES_TESTING_USER=postgres
+          POSTGRES_TESTINGPASSWORD=changethis
+          DOCKER_IMAGE_BACKEND=backend
+          DOCKER_IMAGE_FRONTEND=frontend
+          BACKEND_CORS_ORIGINS="https://staging.mikino.nl,https://www.staging.mikino.nl,https://api.staging.mikino.nl,https://dashboard.staging.mikino.nl"
+          SMTP_HOST=${{ secrets.SMTP_HOST }}
+          SMTP_USER=${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+          SMTP_TLS=True
+          SMTP_SSL=False
+          SMTP_PORT=587
+          # SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+          EOF
+      - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging build
+      - name: Start staging database
+        run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach db
+      - name: Wait for staging database to be healthy
+        run: |
+          for i in $(seq 1 30); do
+            if [ "$(docker inspect -f '{{.State.Health.Status}}' mikiboxd-staging-db-1)" = "healthy" ]; then
+              echo "staging db healthy"; exit 0
+            fi
+            echo "waiting for staging db... ($i)"; sleep 2
+          done
+          echo "staging db did not become healthy" >&2; exit 1
+      - name: Copy production database into staging
+        run: |
+          docker exec mikiboxd-db-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+            --clean --if-exists --no-owner --no-privileges \
+            | docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+      - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach
+      - name: Dump prestart logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml --project-name mikiboxd-staging logs prestart backend --no-color --tail 200

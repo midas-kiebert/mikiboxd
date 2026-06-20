@@ -114,7 +114,8 @@ axios.defaults.transformRequest = [
 ]
 
 // OpenAPI.BASE = "http://192.168.1.121:8000";
-OpenAPI.BASE = "https://api.mikino.nl";
+// In dev (`pnpm start`) talk to the staging API/DB; release builds use production.
+OpenAPI.BASE = __DEV__ ? "https://api.staging.mikino.nl" : "https://api.mikino.nl";
 
 // Attach bearer token from secure storage to every generated client request.
 OpenAPI.TOKEN = async () => {

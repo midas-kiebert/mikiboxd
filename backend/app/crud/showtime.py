@@ -11,6 +11,7 @@ from app.core.enums import GoingStatus
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.inputs.movie import Filters
 from app.models.friendship import Friendship
+from app.models.letterboxd_list import LetterboxdListFilm
 from app.models.movie import Movie
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.models.showtime_ping import ShowtimePing
@@ -94,6 +95,18 @@ def watched_movie_ids_subquery(letterboxd_username: str):
     return select(col(WatchedSelection.movie_id)).where(
         col(WatchedSelection.letterboxd_username) == letterboxd_username,
         col(WatchedSelection.movie_id).is_not(None),
+    )
+
+
+def list_movie_ids_subquery(list_ids: Sequence[UUID]):
+    """Movie ids that appear on any of the given Letterboxd lists.
+
+    Films whose slug we couldn't match to a catalog movie have a NULL
+    ``movie_id`` and are excluded.
+    """
+    return select(col(LetterboxdListFilm.movie_id)).where(
+        col(LetterboxdListFilm.list_id).in_(list_ids),
+        col(LetterboxdListFilm.movie_id).is_not(None),
     )
 
 
@@ -381,6 +394,11 @@ def get_main_page_showtimes(
             )
         )
 
+    if filters.list_ids:
+        stmt = stmt.where(
+            col(Showtime.movie_id).in_(list_movie_ids_subquery(filters.list_ids))
+        )
+
     if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
         visible_row = aliased(ShowtimeVisibilityEffective)
         stmt = (
@@ -519,6 +537,11 @@ def count_main_page_showtimes(
             col(Showtime.movie_id).not_in(
                 watched_movie_ids_subquery(letterboxd_username)
             )
+        )
+
+    if filters.list_ids:
+        stmt = stmt.where(
+            col(Showtime.movie_id).in_(list_movie_ids_subquery(filters.list_ids))
         )
 
     if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:

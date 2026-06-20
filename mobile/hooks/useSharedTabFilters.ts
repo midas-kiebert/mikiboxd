@@ -11,6 +11,7 @@ import { useSessionRuntimeRangeSelections } from "shared/hooks/useSessionRuntime
 import { useSessionWatchlistOnly } from "shared/hooks/useSessionWatchlistOnly";
 import { useSessionHideWatched } from "shared/hooks/useSessionHideWatched";
 import { useSessionGroupByMovie } from "shared/hooks/useSessionGroupByMovie";
+import { useSessionSelectedListIds } from "shared/hooks/useSessionSelectedListIds";
 
 import {
   normalizeSingleRuntimeRangeSelection,
@@ -25,6 +26,7 @@ import { normalizeSingleTimeRangeSelection } from "@/components/filters/time-ran
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
 const EMPTY_RUNTIME_RANGES: string[] = [];
+const EMPTY_LIST_IDS: string[] = [];
 const SESSION_CINEMA_SELECTIONS_KEY = ["session", "cinema_selections"] as const;
 const SESSION_DAY_SELECTIONS_KEY = ["session", "day_selections"] as const;
 const SESSION_SHOWTIME_FILTER_KEY = ["session", "showtime_filter"] as const;
@@ -60,6 +62,8 @@ export function useSharedTabFilters() {
     useSessionHideWatched();
   const { selection: groupByMovie, setSelection: setGroupByMovie } =
     useSessionGroupByMovie();
+  const { selections: sessionListIds, setSelections: setSessionListIds } =
+    useSessionSelectedListIds();
   const favoriteFilterPresetQuery = useFetchFavoriteFilterPreset({
     scope: SHARED_TAB_FILTER_PRESET_SCOPE,
   });
@@ -84,6 +88,7 @@ export function useSharedTabFilters() {
   const selectedRuntimeRanges = normalizeSingleRuntimeRangeSelection(
     sessionRuntimeRanges ?? EMPTY_RUNTIME_RANGES
   );
+  const selectedListIds = sessionListIds ?? EMPTY_LIST_IDS;
 
   const setSelectedShowtimeFilter = useCallback(
     (next: SharedTabShowtimeFilter) => {
@@ -296,6 +301,8 @@ export function useSharedTabFilters() {
     setSelectedTimeRanges,
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
+    selectedListIds,
+    setSelectedListIds: setSessionListIds,
     groupByMovie,
     setGroupByMovie,
   };

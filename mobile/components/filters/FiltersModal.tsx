@@ -37,6 +37,7 @@ import { applyDisplayPreset, type DisplayPreset } from "@/components/filters/sav
 import TimeRangeSliderInline from "@/components/filters/TimeRangeSliderInline";
 import RuntimeRangeSliderInline from "@/components/filters/RuntimeRangeSliderInline";
 import DayFilterModal from "@/components/filters/DayFilterModal";
+import FilterMoviesSection from "@/components/filters/FilterMoviesSection";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
 
@@ -77,6 +78,9 @@ export type FiltersModalProps = {
   setSelectedTimeRanges: (v: string[]) => void;
   selectedRuntimeRanges: string[];
   setSelectedRuntimeRanges: (v: string[]) => void;
+  selectedListIds?: string[];
+  setSelectedListIds?: (v: string[]) => void;
+  showLists?: boolean;
   resultCount?: number;
 };
 
@@ -104,6 +108,9 @@ export default function FiltersModal({
   setSelectedTimeRanges,
   selectedRuntimeRanges,
   setSelectedRuntimeRanges,
+  selectedListIds = [],
+  setSelectedListIds = () => {},
+  showLists = false,
   resultCount,
 }: FiltersModalProps) {
   const colors = useThemeColors();
@@ -335,19 +342,35 @@ export default function FiltersModal({
               </>
             )}
 
-            {/* Watchlist */}
-            {canUseWatchlistFilter && (
+            {/* Filter movies (watchlist / watched / Letterboxd lists) */}
+            {showLists ? (
               <>
-                <SectionLabel label="Watchlist" colors={colors} />
-                <View style={styles.pillRow}>
-                  <Pill label="All movies" active={!watchlistOnly} onPress={() => setWatchlistOnly(false)} colors={colors} />
-                  <Pill label="Watchlisted only" active={watchlistOnly} onPress={() => setWatchlistOnly(true)} colors={colors} />
-                </View>
-                <View style={styles.pillRow}>
-                  <Pill label="Hide watched" active={hideWatched} onPress={() => setHideWatched(!hideWatched)} colors={colors} />
-                </View>
+                <FilterMoviesSection
+                  colors={colors}
+                  canUseWatchlistFilter={canUseWatchlistFilter}
+                  watchlistOnly={watchlistOnly}
+                  setWatchlistOnly={setWatchlistOnly}
+                  hideWatched={hideWatched}
+                  setHideWatched={setHideWatched}
+                  selectedListIds={selectedListIds}
+                  setSelectedListIds={setSelectedListIds}
+                />
                 <Divider colors={colors} />
               </>
+            ) : (
+              canUseWatchlistFilter && (
+                <>
+                  <SectionLabel label="Watchlist" colors={colors} />
+                  <View style={styles.pillRow}>
+                    <Pill label="All movies" active={!watchlistOnly} onPress={() => setWatchlistOnly(false)} colors={colors} />
+                    <Pill label="Watchlisted only" active={watchlistOnly} onPress={() => setWatchlistOnly(true)} colors={colors} />
+                  </View>
+                  <View style={styles.pillRow}>
+                    <Pill label="Hide watched" active={hideWatched} onPress={() => setHideWatched(!hideWatched)} colors={colors} />
+                  </View>
+                  <Divider colors={colors} />
+                </>
+              )
             )}
 
             {/* Days */}

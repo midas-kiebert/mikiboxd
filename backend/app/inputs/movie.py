@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, time
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import HTTPException, Query
 from pydantic import BaseModel
@@ -26,6 +27,7 @@ class Filters(BaseModel):
     runtime_min: int | None = None
     runtime_max: int | None = None
     selected_statuses: list[GoingStatus] | None = None
+    list_ids: list[UUID] | None = None
 
 
 def parse_time_ranges(value: str) -> TimeRange:
@@ -78,6 +80,13 @@ def get_filters(
             description="Filter by selection statuses (GOING/INTERESTED)",
         ),
     ] = None,
+    selected_list_ids: Annotated[
+        list[UUID] | None,
+        Query(
+            alias="selected_list_ids",
+            description="Only show movies on any of these Letterboxd lists",
+        ),
+    ] = None,
     runtime_min: Annotated[
         int | None,
         Query(
@@ -127,4 +136,5 @@ def get_filters(
         runtime_min=runtime_min,
         runtime_max=runtime_max,
         selected_statuses=selected_statuses,
+        list_ids=selected_list_ids,
     )

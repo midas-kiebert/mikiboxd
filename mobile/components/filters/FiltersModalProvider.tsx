@@ -53,6 +53,8 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     setSelectedTimeRanges,
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
+    selectedListIds,
+    setSelectedListIds,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -87,7 +89,8 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     watchlistOnly: effectiveWatchlistOnly || undefined,
     hideWatched: effectiveHideWatched || undefined,
     selectedStatuses: getSelectedStatusesFromShowtimeFilter(selectedShowtimeFilter),
-  }), [sessionCinemaIds, resolvedApiDays, selectedTimeRanges, runtimeBounds, effectiveWatchlistOnly, effectiveHideWatched, selectedShowtimeFilter]);
+    selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
+  }), [sessionCinemaIds, resolvedApiDays, selectedTimeRanges, runtimeBounds, effectiveWatchlistOnly, effectiveHideWatched, selectedShowtimeFilter, selectedListIds]);
 
   const { data: showtimesCount } = useQuery({
     queryKey: ['count', 'showtimes', 'main', countFilters],
@@ -150,6 +153,9 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         setSelectedTimeRanges={setSelectedTimeRanges}
         selectedRuntimeRanges={selectedRuntimeRanges}
         setSelectedRuntimeRanges={setSelectedRuntimeRanges}
+        selectedListIds={selectedListIds}
+        setSelectedListIds={setSelectedListIds}
+        showLists
         resultCount={resultCount}
       />
     </FiltersModalContext.Provider>

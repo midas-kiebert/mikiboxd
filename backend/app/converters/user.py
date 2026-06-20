@@ -52,6 +52,12 @@ def to_me(user: User) -> UserMe:
         notify_channel_invite_response=user.notify_channel_invite_response,
         notify_channel_interest_reminder=user.notify_channel_interest_reminder,
         letterboxd_username=user.letterboxd_username,
+        watchlist_last_synced=(
+            user.letterboxd.last_watchlist_sync if user.letterboxd else None
+        ),
+        watched_last_synced=(
+            user.letterboxd.last_watched_sync if user.letterboxd else None
+        ),
     )
 
 

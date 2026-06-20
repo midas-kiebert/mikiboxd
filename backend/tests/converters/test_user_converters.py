@@ -1,7 +1,29 @@
+from collections.abc import Callable
+from datetime import datetime
+
+from app.converters import user as user_converters
+from app.models.user import User
+
 # from pytest_mock import MockerFixture
 
 # from app.converters import user as user_converters
 # from app.schemas.user import UserWithFriendStatus, UserWithShowtimesPublic
+
+
+def test_to_me_exposes_letterboxd_sync_timestamps(
+    *,
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    assert user.letterboxd is not None
+    synced_at = datetime(2026, 6, 1, 12, 0)
+    user.letterboxd.last_watchlist_sync = synced_at
+    user.letterboxd.last_watched_sync = None
+
+    me = user_converters.to_me(user)
+
+    assert me.watchlist_last_synced == synced_at
+    assert me.watched_last_synced is None
 
 
 # def test_to_with_friend_status(

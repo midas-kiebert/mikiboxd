@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -40,6 +41,8 @@ class UserMe(UserPublic):
     notify_channel_invite_response: NotificationChannel
     notify_channel_interest_reminder: NotificationChannel
     letterboxd_username: str | None
+    watchlist_last_synced: datetime | None = None
+    watched_last_synced: datetime | None = None
 
 
 class UserWithFriendStatus(UserPublic):

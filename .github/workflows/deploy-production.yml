@@ -1,31 +1,57 @@
 name: Deploy to Production
 
 on:
-  release:
-    types:
-      - published
+  workflow_dispatch:
+  push:
+    branches:
+      - master
 
 jobs:
   deploy:
-    if: false # disabled
     runs-on:
       - self-hosted
       - production
-    env:
-      ENVIRONMENT: production
-      DOMAIN: ${{ secrets.DOMAIN_PRODUCTION }}
-      STACK_NAME: ${{ secrets.STACK_NAME_PRODUCTION }}
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      FIRST_SUPERUSER: ${{ secrets.FIRST_SUPERUSER }}
-      FIRST_SUPERUSER_PASSWORD: ${{ secrets.FIRST_SUPERUSER_PASSWORD }}
-      SMTP_HOST: ${{ secrets.SMTP_HOST }}
-      SMTP_USER: ${{ secrets.SMTP_USER }}
-      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-      EMAILS_FROM_EMAIL: ${{ secrets.EMAILS_FROM_EMAIL }}
-      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - run: docker compose -f docker-compose.yml --project-name ${{ secrets.STACK_NAME_PRODUCTION }} build
-      - run: docker compose -f docker-compose.yml --project-name ${{ secrets.STACK_NAME_PRODUCTION }} up -d
+      - name: Generate .env for Docker Compose
+        run: |
+          cat <<EOF > .env
+          PROJECT_NAME="MiKiNO"
+          ENVIRONMENT=production
+          DOMAIN=mikino.nl
+          STACK_NAME=mikiboxd
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          FIRST_SUPERUSER=admin@example.com
+          FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
+          EMAILS_FROM_EMAIL=${{ secrets.EMAILS_FROM_EMAIL }}
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          POSTGRES_SERVER=db
+          POSTGRES_PORT=5432
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
+          TMDB_KEY=${{ secrets.TMDB_KEY }}
+          FRONTEND_HOST=https://dashboard.mikino.nl
+          POSTGRES_TESTING_SERVER=db
+          POSTGRES_TESTING_POST=5432
+          POSTGRES_TESTING_DB=app_test
+          POSTGRES_TESTING_USER=postgres
+          POSTGRES_TESTINGPASSWORD=changethis
+          DOCKER_IMAGE_BACKEND=backend
+          DOCKER_IMAGE_FRONTEND=frontend
+          BACKEND_CORS_ORIGINS="https://mikino.nl,https://www.mikino.nl,https://api.mikino.nl"
+          SMTP_HOST=${{ secrets.SMTP_HOST }}
+          SMTP_USER=${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+          SMTP_TLS=True
+          SMTP_SSL=False
+          SMTP_PORT=587
+          # SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+          EOF
+      - run: docker compose -f docker-compose.yml --project-name mikiboxd build
+      - run: docker compose -f docker-compose.yml --project-name mikiboxd up --detach
+      - name: Dump prestart logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml --project-name mikiboxd logs prestart backend --no-color --tail 200

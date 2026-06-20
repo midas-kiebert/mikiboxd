@@ -104,7 +104,8 @@ def test_scrape_list_collects_all_pages(mocker: MockerFixture):
     )
     page_2 = BeautifulSoup(_poster_grid(["c"]), "lxml")
 
-    async def fake_get_page(_session, url, *_args, **_kwargs):
+    async def fake_get_page(*_args, **kwargs):
+        url = kwargs["url"]
         return page_1 if url.rstrip("/").endswith("best-of") else page_2
 
     mocker.patch.object(lists_scraper, "get_page_async", side_effect=fake_get_page)

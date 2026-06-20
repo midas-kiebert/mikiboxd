@@ -19,15 +19,21 @@ class TimeRange(BaseModel):
 class Filters(BaseModel):
     query: str | None = None
     snapshot_time: datetime
-    watchlist_only: bool = False
-    hide_watched: bool = False
+    # Movie-set filters combine as: keep a movie when it is in the UNION of every
+    # "include" set (watchlist / watched / included lists) — if any include is
+    # active — and in NONE of the "exclude" sets.
+    watchlist_only: bool = False  # include: only watchlisted movies
+    watchlist_exclude: bool = False  # exclude: hide watchlisted movies
+    hide_watched: bool = False  # exclude: hide watched movies
+    watched_only: bool = False  # include: only watched movies
+    list_ids: list[UUID] | None = None  # include: movies on any of these lists
+    exclude_list_ids: list[UUID] | None = None  # exclude: movies on these lists
     selected_cinema_ids: list[int] | None = None
     days: list[date] | None = None
     time_ranges: list[TimeRange] | None = None
     runtime_min: int | None = None
     runtime_max: int | None = None
     selected_statuses: list[GoingStatus] | None = None
-    list_ids: list[UUID] | None = None
 
 
 def parse_time_ranges(value: str) -> TimeRange:
@@ -56,7 +62,9 @@ def get_filters(
         Query(description="Only show showtimes after this moment"),
     ] = None,
     watchlist_only: Annotated[bool, Query()] = False,
+    watchlist_exclude: Annotated[bool, Query()] = False,
     hide_watched: Annotated[bool, Query()] = False,
+    watched_only: Annotated[bool, Query()] = False,
     selected_cinema_ids: Annotated[
         list[int] | None,
         Query(description="Filter showtimes to only these cinema IDs"),
@@ -85,6 +93,13 @@ def get_filters(
         Query(
             alias="selected_list_ids",
             description="Only show movies on any of these Letterboxd lists",
+        ),
+    ] = None,
+    exclude_list_ids: Annotated[
+        list[UUID] | None,
+        Query(
+            alias="exclude_list_ids",
+            description="Hide movies on any of these Letterboxd lists",
         ),
     ] = None,
     runtime_min: Annotated[
@@ -129,7 +144,9 @@ def get_filters(
         query=query,
         snapshot_time=snapshot_time,
         watchlist_only=watchlist_only,
+        watchlist_exclude=watchlist_exclude,
         hide_watched=hide_watched,
+        watched_only=watched_only,
         selected_cinema_ids=selected_cinema_ids,
         days=days,
         time_ranges=time_ranges or None,
@@ -137,4 +154,5 @@ def get_filters(
         runtime_max=runtime_max,
         selected_statuses=selected_statuses,
         list_ids=selected_list_ids,
+        exclude_list_ids=exclude_list_ids,
     )

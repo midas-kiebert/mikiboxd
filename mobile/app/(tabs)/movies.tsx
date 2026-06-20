@@ -66,6 +66,9 @@ export default function MovieScreen() {
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
     selectedListIds,
+    excludeListIds,
+    watchlistExclude,
+    watchedOnly,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -74,6 +77,8 @@ export default function MovieScreen() {
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
   const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
   const effectiveAppliedHideWatched = hasLetterboxdUsername ? appliedHideWatched : false;
+  const effectiveWatchlistExclude = hasLetterboxdUsername ? watchlistExclude : false;
+  const effectiveWatchedOnly = hasLetterboxdUsername ? watchedOnly : false;
 
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
@@ -109,15 +114,21 @@ export default function MovieScreen() {
       runtimeMax: runtimeBounds.runtimeMax,
       selectedCinemaIds: sessionCinemaIds,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(selectedShowtimeFilter),
+      watchlistExclude: effectiveWatchlistExclude ? true : undefined,
+      watchedOnly: effectiveWatchedOnly ? true : undefined,
       selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
+      excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
     }),
     [
       searchQuery,
       effectiveAppliedWatchlistOnly,
       effectiveAppliedHideWatched,
+      effectiveWatchlistExclude,
+      effectiveWatchedOnly,
       resolvedApiDays,
       selectedTimeRanges,
       selectedListIds,
+      excludeListIds,
       runtimeBounds.runtimeMin,
       runtimeBounds.runtimeMax,
       sessionCinemaIds,

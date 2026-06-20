@@ -926,13 +926,16 @@ export class MeService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.watchlistExclude
    * @param data.hideWatched
+   * @param data.watchedOnly
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
+   * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns number Successful Response
@@ -948,13 +951,16 @@ export class MeService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        watchlist_exclude: data.watchlistExclude,
         hide_watched: data.hideWatched,
+        watched_only: data.watchedOnly,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         selected_list_ids: data.selectedListIds,
+        exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -972,13 +978,16 @@ export class MeService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.watchlistExclude
    * @param data.hideWatched
+   * @param data.watchedOnly
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
+   * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeLoggedIn Successful Response
@@ -996,13 +1005,16 @@ export class MeService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        watchlist_exclude: data.watchlistExclude,
         hide_watched: data.hideWatched,
+        watched_only: data.watchedOnly,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         selected_list_ids: data.selectedListIds,
+        exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1426,13 +1438,16 @@ export class MoviesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.watchlistExclude
    * @param data.hideWatched
+   * @param data.watchedOnly
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
+   * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns number Successful Response
@@ -1448,13 +1463,16 @@ export class MoviesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        watchlist_exclude: data.watchlistExclude,
         hide_watched: data.hideWatched,
+        watched_only: data.watchedOnly,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         selected_list_ids: data.selectedListIds,
+        exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1473,13 +1491,16 @@ export class MoviesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.watchlistExclude
    * @param data.hideWatched
+   * @param data.watchedOnly
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
+   * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns MovieSummaryLoggedIn Successful Response
@@ -1498,13 +1519,16 @@ export class MoviesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        watchlist_exclude: data.watchlistExclude,
         hide_watched: data.hideWatched,
+        watched_only: data.watchedOnly,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         selected_list_ids: data.selectedListIds,
+        exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1523,13 +1547,16 @@ export class MoviesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.watchlistExclude
    * @param data.hideWatched
+   * @param data.watchedOnly
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
+   * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeInMovieLoggedIn Successful Response
@@ -1550,13 +1577,16 @@ export class MoviesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        watchlist_exclude: data.watchlistExclude,
         hide_watched: data.hideWatched,
+        watched_only: data.watchedOnly,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         selected_list_ids: data.selectedListIds,
+        exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1574,13 +1604,16 @@ export class MoviesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.watchlistExclude
    * @param data.hideWatched
+   * @param data.watchedOnly
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
+   * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns MovieLoggedIn Successful Response
@@ -1600,13 +1633,16 @@ export class MoviesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        watchlist_exclude: data.watchlistExclude,
         hide_watched: data.hideWatched,
+        watched_only: data.watchedOnly,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         selected_list_ids: data.selectedListIds,
+        exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1858,13 +1894,16 @@ export class ShowtimesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.watchlistExclude
    * @param data.hideWatched
+   * @param data.watchedOnly
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
+   * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns number Successful Response
@@ -1880,13 +1919,16 @@ export class ShowtimesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        watchlist_exclude: data.watchlistExclude,
         hide_watched: data.hideWatched,
+        watched_only: data.watchedOnly,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         selected_list_ids: data.selectedListIds,
+        exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1904,13 +1946,16 @@ export class ShowtimesService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.watchlistExclude
    * @param data.hideWatched
+   * @param data.watchedOnly
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
+   * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeLoggedIn Successful Response
@@ -1928,13 +1973,16 @@ export class ShowtimesService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        watchlist_exclude: data.watchlistExclude,
         hide_watched: data.hideWatched,
+        watched_only: data.watchedOnly,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         selected_list_ids: data.selectedListIds,
+        exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -2047,13 +2095,16 @@ export class UsersService {
    * @param data.query
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
+   * @param data.watchlistExclude
    * @param data.hideWatched
+   * @param data.watchedOnly
    * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
    * @param data.days
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
+   * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeLoggedIn Successful Response
@@ -2074,13 +2125,16 @@ export class UsersService {
         query: data.query,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
+        watchlist_exclude: data.watchlistExclude,
         hide_watched: data.hideWatched,
+        watched_only: data.watchedOnly,
         selected_cinema_ids: data.selectedCinemaIds,
         days: data.days,
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         selected_list_ids: data.selectedListIds,
+        exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },

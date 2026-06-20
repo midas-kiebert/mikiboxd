@@ -10,8 +10,10 @@ import * as Notifications from 'expo-notifications';
 import { ApiError, MeService } from 'shared';
 import { useFetchReceivedRequests } from 'shared/hooks/useFetchReceivedRequests';
 import { useFetchUnseenShowtimePingCount } from 'shared/hooks/useFetchUnseenShowtimePingCount';
+import { useFetchLetterboxdLists } from 'shared/hooks/useLetterboxdLists';
 import useAuth from 'shared/hooks/useAuth';
 import { storage } from 'shared/storage';
+import { DateTime } from 'luxon';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -42,6 +44,8 @@ export default function TabLayout() {
     enabled: !!user,
     refetchIntervalMs: 15000,
   });
+  const { data: letterboxdLists } = useFetchLetterboxdLists(!!user);
+  const isSyncingListsRef = useRef(false);
   // Friends tab badge shows pending received requests, capped at "99+".
   const receivedCount = receivedRequests?.length ?? 0;
   const showFriendRequestsBadge = receivedCount > 0;
@@ -97,6 +101,47 @@ export default function TabLayout() {
       appStateSubscription.remove();
     };
   }, [queryClient, user]);
+
+  // Refresh custom (non-curated) Letterboxd lists weekly, but only lazily: when
+  // the user opens the app and a list hasn't been synced in over a week. Curated
+  // lists are kept fresh server-side, so they are skipped here. The backend also
+  // throttles, so an over-eager call is a cheap no-op.
+  useEffect(() => {
+    if (!user || !letterboxdLists) return;
+
+    const staleCustomLists = letterboxdLists.filter(
+      (list) =>
+        !list.is_curated &&
+        (!list.last_synced ||
+          DateTime.now().diff(DateTime.fromISO(list.last_synced), 'days').days >= 7)
+    );
+    if (staleCustomLists.length === 0) return;
+
+    const syncStaleLists = async () => {
+      if (isSyncingListsRef.current) return;
+      try {
+        isSyncingListsRef.current = true;
+        for (const list of staleCustomLists) {
+          try {
+            await MeService.syncLetterboxdList({ listId: list.id });
+          } catch (error) {
+            if (!(error instanceof ApiError && error.status === 429)) {
+              console.error('Error syncing Letterboxd list:', error);
+            }
+          }
+        }
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['me', 'letterboxd-lists'] }),
+          queryClient.invalidateQueries({ queryKey: ['movies'] }),
+          queryClient.invalidateQueries({ queryKey: ['showtimes'] }),
+        ]);
+      } finally {
+        isSyncingListsRef.current = false;
+      }
+    };
+
+    void syncStaleLists();
+  }, [queryClient, user, letterboxdLists]);
 
   // Ask for notification permission right after login (when user context is available).
   useEffect(() => {

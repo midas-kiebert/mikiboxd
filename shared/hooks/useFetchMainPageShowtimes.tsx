@@ -11,9 +11,12 @@ type ShowtimesFilters = {
     runtimeMin?: number;
     runtimeMax?: number;
     watchlistOnly?: boolean;
+    watchlistExclude?: boolean;
     hideWatched?: boolean;
+    watchedOnly?: boolean;
     selectedStatuses?: GoingStatus[];
     selectedListIds?: string[];
+    excludeListIds?: string[];
 };
 
 type useFetchMainPageShowtimesProps = {

@@ -6,7 +6,9 @@ import { DateTime } from "luxon";
 export type MovieFilters = {
     query?: string;
     watchlistOnly?: boolean;
+    watchlistExclude?: boolean;
     hideWatched?: boolean;
+    watchedOnly?: boolean;
     days?: string[];
     selectedCinemaIds?: number[];
     timeRanges?: string[];
@@ -14,6 +16,7 @@ export type MovieFilters = {
     runtimeMax?: number;
     selectedStatuses?: GoingStatus[];
     selectedListIds?: string[];
+    excludeListIds?: string[];
 };
 
 type useFetchMoviesProps = {

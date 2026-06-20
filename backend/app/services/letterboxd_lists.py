@@ -175,6 +175,28 @@ def sync_list(
     return letterboxd_list
 
 
+def sync_curated_lists(*, session: Session) -> int:
+    """Re-sync every curated list, ignoring the per-list freshness throttle.
+
+    Intended for the weekly scheduler: curated lists are shared by all users, so
+    we keep them fresh server-side. Custom lists are refreshed lazily when their
+    owner opens the app, so they are intentionally skipped here. A failure on one
+    list is logged and does not stop the others.
+    """
+    synced = 0
+    for letterboxd_list in lists_crud.get_curated_lists(session=session):
+        try:
+            sync_list(session=session, list_id=letterboxd_list.id, force=True)
+            synced += 1
+        except Exception:
+            logger.exception(
+                "Failed to sync curated Letterboxd list %s/%s",
+                letterboxd_list.owner,
+                letterboxd_list.list_slug,
+            )
+    return synced
+
+
 def to_public(
     *, session: Session, letterboxd_list: LetterboxdList
 ) -> LetterboxdListPublic:

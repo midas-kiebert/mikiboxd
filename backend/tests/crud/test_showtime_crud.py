@@ -525,6 +525,99 @@ def test_get_main_page_showtimes_filters_by_list_ids(
     assert count == 1
 
 
+def test_get_main_page_showtimes_excludes_by_list_ids(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+):
+    user = user_factory()
+
+    movie_on_list = movie_factory()
+    movie_off_list = movie_factory()
+    showtime_factory(movie=movie_on_list)
+    showtime_off_list = showtime_factory(movie=movie_off_list)
+
+    lb_list = LetterboxdList(owner="official", list_slug="top-500")
+    db_transaction.add(lb_list)
+    db_transaction.flush()
+    db_transaction.add(
+        LetterboxdListFilm(
+            list_id=lb_list.id,
+            letterboxd_slug=movie_on_list.letterboxd_slug,
+            movie_id=movie_on_list.id,
+        )
+    )
+    db_transaction.flush()
+
+    showtimes = showtime_crud.get_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            exclude_list_ids=[lb_list.id],
+        ),
+        letterboxd_username=user.letterboxd_username,
+    )
+
+    assert showtimes == [showtime_off_list]
+
+
+def test_get_main_page_showtimes_unions_watchlist_and_list_includes(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+):
+    """include watchlist + include list keeps movies on EITHER (union)."""
+    user = user_factory()
+
+    movie_watchlisted = movie_factory()
+    movie_on_list = movie_factory()
+    movie_neither = movie_factory()
+    st_watchlisted = showtime_factory(movie=movie_watchlisted)
+    st_on_list = showtime_factory(movie=movie_on_list)
+    showtime_factory(movie=movie_neither)
+
+    db_transaction.add(
+        WatchlistSelection(
+            letterboxd_username=user.letterboxd_username,
+            letterboxd_slug=movie_watchlisted.letterboxd_slug,
+            movie_id=movie_watchlisted.id,
+        )
+    )
+    lb_list = LetterboxdList(owner="official", list_slug="top-500")
+    db_transaction.add(lb_list)
+    db_transaction.flush()
+    db_transaction.add(
+        LetterboxdListFilm(
+            list_id=lb_list.id,
+            letterboxd_slug=movie_on_list.letterboxd_slug,
+            movie_id=movie_on_list.id,
+        )
+    )
+    db_transaction.flush()
+
+    showtimes = showtime_crud.get_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            watchlist_only=True,
+            list_ids=[lb_list.id],
+        ),
+        letterboxd_username=user.letterboxd_username,
+    )
+
+    assert {s.id for s in showtimes} == {st_watchlisted.id, st_on_list.id}
+
+
 def test_get_main_page_showtimes_day_filter_uses_four_hour_day_bucket(
     *,
     db_transaction: Session,

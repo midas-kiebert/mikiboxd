@@ -12,6 +12,9 @@ import { useSessionWatchlistOnly } from "shared/hooks/useSessionWatchlistOnly";
 import { useSessionHideWatched } from "shared/hooks/useSessionHideWatched";
 import { useSessionGroupByMovie } from "shared/hooks/useSessionGroupByMovie";
 import { useSessionSelectedListIds } from "shared/hooks/useSessionSelectedListIds";
+import { useSessionExcludeListIds } from "shared/hooks/useSessionExcludeListIds";
+import { useSessionWatchlistExclude } from "shared/hooks/useSessionWatchlistExclude";
+import { useSessionWatchedOnly } from "shared/hooks/useSessionWatchedOnly";
 
 import {
   normalizeSingleRuntimeRangeSelection,
@@ -64,6 +67,12 @@ export function useSharedTabFilters() {
     useSessionGroupByMovie();
   const { selections: sessionListIds, setSelections: setSessionListIds } =
     useSessionSelectedListIds();
+  const { selections: sessionExcludeListIds, setSelections: setSessionExcludeListIds } =
+    useSessionExcludeListIds();
+  const { selection: watchlistExclude, setSelection: setWatchlistExclude } =
+    useSessionWatchlistExclude();
+  const { selection: watchedOnly, setSelection: setWatchedOnly } =
+    useSessionWatchedOnly();
   const favoriteFilterPresetQuery = useFetchFavoriteFilterPreset({
     scope: SHARED_TAB_FILTER_PRESET_SCOPE,
   });
@@ -89,6 +98,7 @@ export function useSharedTabFilters() {
     sessionRuntimeRanges ?? EMPTY_RUNTIME_RANGES
   );
   const selectedListIds = sessionListIds ?? EMPTY_LIST_IDS;
+  const excludeListIds = sessionExcludeListIds ?? EMPTY_LIST_IDS;
 
   const setSelectedShowtimeFilter = useCallback(
     (next: SharedTabShowtimeFilter) => {
@@ -303,6 +313,12 @@ export function useSharedTabFilters() {
     setSelectedRuntimeRanges,
     selectedListIds,
     setSelectedListIds: setSessionListIds,
+    excludeListIds,
+    setExcludeListIds: setSessionExcludeListIds,
+    watchlistExclude,
+    setWatchlistExclude,
+    watchedOnly,
+    setWatchedOnly,
     groupByMovie,
     setGroupByMovie,
   };

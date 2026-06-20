@@ -748,6 +748,7 @@ export class MeService {
    * Count My Showtimes
    * @param data The data for the request.
    * @param data.query
+   * @param data.searchField Which attribute `query` is matched against
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
    * @param data.watchlistExclude
@@ -773,6 +774,7 @@ export class MeService {
       url: "/api/v1/me/showtimes/count",
       query: {
         query: data.query,
+        search_field: data.searchField,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
         watchlist_exclude: data.watchlistExclude,
@@ -800,6 +802,7 @@ export class MeService {
    * @param data.limit
    * @param data.offset
    * @param data.query
+   * @param data.searchField Which attribute `query` is matched against
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
    * @param data.watchlistExclude
@@ -827,6 +830,7 @@ export class MeService {
         limit: data.limit,
         offset: data.offset,
         query: data.query,
+        search_field: data.searchField,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
         watchlist_exclude: data.watchlistExclude,
@@ -1260,6 +1264,7 @@ export class MoviesService {
    * Count Movies
    * @param data The data for the request.
    * @param data.query
+   * @param data.searchField Which attribute `query` is matched against
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
    * @param data.watchlistExclude
@@ -1285,6 +1290,7 @@ export class MoviesService {
       url: "/api/v1/movies/count",
       query: {
         query: data.query,
+        search_field: data.searchField,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
         watchlist_exclude: data.watchlistExclude,
@@ -1313,6 +1319,7 @@ export class MoviesService {
    * @param data.limit
    * @param data.showtimeLimit
    * @param data.query
+   * @param data.searchField Which attribute `query` is matched against
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
    * @param data.watchlistExclude
@@ -1341,6 +1348,7 @@ export class MoviesService {
         limit: data.limit,
         showtime_limit: data.showtimeLimit,
         query: data.query,
+        search_field: data.searchField,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
         watchlist_exclude: data.watchlistExclude,
@@ -1369,6 +1377,7 @@ export class MoviesService {
    * @param data.limit
    * @param data.offset
    * @param data.query
+   * @param data.searchField Which attribute `query` is matched against
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
    * @param data.watchlistExclude
@@ -1399,6 +1408,7 @@ export class MoviesService {
         limit: data.limit,
         offset: data.offset,
         query: data.query,
+        search_field: data.searchField,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
         watchlist_exclude: data.watchlistExclude,
@@ -1426,6 +1436,7 @@ export class MoviesService {
    * @param data.id
    * @param data.showtimeLimit
    * @param data.query
+   * @param data.searchField Which attribute `query` is matched against
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
    * @param data.watchlistExclude
@@ -1455,6 +1466,7 @@ export class MoviesService {
       query: {
         showtime_limit: data.showtimeLimit,
         query: data.query,
+        search_field: data.searchField,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
         watchlist_exclude: data.watchlistExclude,
@@ -1716,6 +1728,7 @@ export class ShowtimesService {
    * Count Main Page Showtimes
    * @param data The data for the request.
    * @param data.query
+   * @param data.searchField Which attribute `query` is matched against
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
    * @param data.watchlistExclude
@@ -1741,6 +1754,7 @@ export class ShowtimesService {
       url: "/api/v1/showtimes/count",
       query: {
         query: data.query,
+        search_field: data.searchField,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
         watchlist_exclude: data.watchlistExclude,
@@ -1768,6 +1782,7 @@ export class ShowtimesService {
    * @param data.limit
    * @param data.offset
    * @param data.query
+   * @param data.searchField Which attribute `query` is matched against
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
    * @param data.watchlistExclude
@@ -1795,6 +1810,7 @@ export class ShowtimesService {
         limit: data.limit,
         offset: data.offset,
         query: data.query,
+        search_field: data.searchField,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
         watchlist_exclude: data.watchlistExclude,
@@ -1917,6 +1933,7 @@ export class UsersService {
    * @param data.limit
    * @param data.offset
    * @param data.query
+   * @param data.searchField Which attribute `query` is matched against
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.watchlistOnly
    * @param data.watchlistExclude
@@ -1947,6 +1964,7 @@ export class UsersService {
         limit: data.limit,
         offset: data.offset,
         query: data.query,
+        search_field: data.searchField,
         snapshot_time: data.snapshotTime,
         watchlist_only: data.watchlistOnly,
         watchlist_exclude: data.watchlistExclude,

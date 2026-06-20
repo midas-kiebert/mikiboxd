@@ -1,10 +1,11 @@
 import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { MoviesService, MoviesReadMoviesResponse } from "../client";
-import type { GoingStatus } from "../client";
+import type { GoingStatus, SearchField } from "../client";
 import { DateTime } from "luxon";
 
 export type MovieFilters = {
     query?: string;
+    searchField?: SearchField;
     watchlistOnly?: boolean;
     watchlistExclude?: boolean;
     hideWatched?: boolean;

@@ -9,6 +9,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
+import type { SearchField } from 'shared/client';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
@@ -37,6 +38,7 @@ export default function MainShowtimesScreen() {
   const styles = createStyles(colors);
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchField, setSearchField] = useState<SearchField>('title');
   const [isFilterTransitionLoading, setIsFilterTransitionLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { openFiltersModal } = useFiltersModal();
@@ -109,6 +111,7 @@ export default function MainShowtimesScreen() {
   // ─── Showtimes query ────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({
     query: searchQuery || undefined,
+    searchField,
     selectedCinemaIds: sessionCinemaIds,
     days: resolvedApiDays,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
@@ -122,7 +125,7 @@ export default function MainShowtimesScreen() {
     selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
     excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
   }), [
-    searchQuery, appliedShowtimeFilter, resolvedApiDays, selectedTimeRanges,
+    searchQuery, searchField, appliedShowtimeFilter, resolvedApiDays, selectedTimeRanges,
     runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, effectiveAppliedWatchlistOnly,
     effectiveAppliedHideWatched, selectedListIds, excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly,
   ]);
@@ -138,6 +141,7 @@ export default function MainShowtimesScreen() {
   const movieFilters = useMemo<MovieFilters>(
     () => ({
       query: searchQuery,
+      searchField,
       watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
       hideWatched: effectiveAppliedHideWatched ? true : undefined,
       days: resolvedApiDays,
@@ -152,7 +156,7 @@ export default function MainShowtimesScreen() {
       excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
     }),
     [
-      searchQuery, effectiveAppliedWatchlistOnly, effectiveAppliedHideWatched, resolvedApiDays, selectedTimeRanges,
+      searchQuery, searchField, effectiveAppliedWatchlistOnly, effectiveAppliedHideWatched, resolvedApiDays, selectedTimeRanges,
       runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, appliedShowtimeFilter, selectedListIds,
       excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly,
     ]
@@ -251,8 +255,12 @@ export default function MainShowtimesScreen() {
     setGroupByMovie,
     watchlistOnly: effectiveWatchlistOnly,
     setWatchlistOnly: (v: boolean) => { setIsFilterTransitionLoading(true); setWatchlistOnly(v); },
+    watchlistExclude: effectiveWatchlistExclude,
+    setWatchlistExclude: (v: boolean) => { setIsFilterTransitionLoading(true); setWatchlistExclude(v); },
     hideWatched: effectiveHideWatched,
     setHideWatched: (v: boolean) => { setIsFilterTransitionLoading(true); setHideWatched(v); },
+    watchedOnly: effectiveWatchedOnly,
+    setWatchedOnly: (v: boolean) => { setIsFilterTransitionLoading(true); setWatchedOnly(v); },
     canUseWatchlistFilter: hasLetterboxdUsername,
     selectedShowtimeFilter,
     setSelectedShowtimeFilter: (v: typeof selectedShowtimeFilter) => {
@@ -266,16 +274,24 @@ export default function MainShowtimesScreen() {
     setSelectedTimeRanges,
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
+    selectedListIds,
+    setSelectedListIds,
+    excludeListIds,
+    setExcludeListIds,
     onOpenFilters: () => openFiltersModal({ showGroupByMovie: true, showPresets: true }),
     onClearAll: () => {
       setIsFilterTransitionLoading(true);
       setSelectedShowtimeFilter('all');
       setWatchlistOnly(false);
+      setWatchlistExclude(false);
       setHideWatched(false);
+      setWatchedOnly(false);
       setGroupByMovie(false);
       setSelectedDays([]);
       setSelectedTimeRanges([]);
       setSelectedRuntimeRanges([]);
+      setSelectedListIds([]);
+      setExcludeListIds([]);
       if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
     },
   };
@@ -301,7 +317,8 @@ export default function MainShowtimesScreen() {
       <SearchBar
         value={searchQuery}
         onChangeText={setSearchQuery}
-        placeholder={groupByMovie ? 'Search movies' : 'Search showtimes'}
+        searchField={searchField}
+        onChangeSearchField={setSearchField}
       />
       <FiltersRow {...filtersRowProps} />
       <ActiveFilterChips {...activeChipsProps} />

@@ -19,6 +19,7 @@ class MovieBase(SQLModel):
     poster_link: str | None = None
     letterboxd_slug: str | None = None
     directors: list[str] | None = Field(sa_column=Column(ARRAY(String)), default=None)
+    cast: list[str] | None = Field(sa_column=Column(ARRAY(String)), default=None)
     release_year: int | None = None
     duration: int | None = None
     languages: list[str] | None = Field(sa_column=Column(ARRAY(String)), default=None)
@@ -36,6 +37,7 @@ class MovieUpdate(SQLModel):
     letterboxd_slug: str | None = None
     duration: int | None = None
     languages: list[str] | None = None
+    cast: list[str] | None = None
     tmdb_last_enriched_at: datetime | None = None
 
 

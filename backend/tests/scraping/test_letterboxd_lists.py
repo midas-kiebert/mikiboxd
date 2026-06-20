@@ -76,6 +76,38 @@ def test_resolve_rejects_unknown_host():
         resolve_list_url("https://example.com/foo/list/bar/")
 
 
+def test_resolve_rejects_lookalike_host():
+    # A loose endswith("letterboxd.com") check would wrongly accept this.
+    with pytest.raises(InvalidListUrl):
+        resolve_list_url("https://evilletterboxd.com/owner/list/slug/")
+
+
+def test_resolve_ignores_userinfo_host_spoof():
+    # The real host is evil.com; the userinfo must not be mistaken for the host.
+    with pytest.raises(InvalidListUrl):
+        resolve_list_url("https://letterboxd.com@evil.com/owner/list/slug/")
+
+
+def test_resolve_rejects_non_http_scheme():
+    with pytest.raises(InvalidListUrl):
+        resolve_list_url("file:///etc/passwd")
+
+
+def test_resolve_rejects_unsafe_path_segments():
+    with pytest.raises(InvalidListUrl):
+        resolve_list_url("https://letterboxd.com/..%2f..%2fadmin/list/slug/")
+
+
+def test_resolve_shortlink_must_resolve_to_letterboxd(mocker: MockerFixture):
+    mocker.patch.object(
+        lists_scraper,
+        "_resolve_shortlink",
+        return_value="https://evilletterboxd.com/owner/list/slug/",
+    )
+    with pytest.raises(InvalidListUrl):
+        resolve_list_url("https://boxd.it/FO39U")
+
+
 def test_extract_list_title():
     page = BeautifulSoup(LIST_HEADER_HTML, "lxml")
     assert extract_list_title(page) == "Letterboxd's Top 500 Films"

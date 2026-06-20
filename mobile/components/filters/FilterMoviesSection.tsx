@@ -12,7 +12,7 @@
  * manual refresh is only offered when something is more than a day old.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { DateTime } from "luxon";
 import { useQueryClient } from "@tanstack/react-query";
@@ -144,11 +144,25 @@ export default function FilterMoviesSection({
     syncList.mutate(id, { onSettled: () => setSyncingId(null) });
   };
 
-  const handleRemoveList = (id: string) => {
-    triggerSelectionHaptic();
-    setSelectedListIds(selectedListIds.filter((x) => x !== id));
-    setExcludeListIds(excludeListIds.filter((x) => x !== id));
-    removeList.mutate(id);
+  const handleRemoveList = (list: LetterboxdListPublic) => {
+    Alert.alert(
+      "Remove list?",
+      `Remove "${list.title ?? list.list_slug}" from your lists?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => {
+            triggerSelectionHaptic();
+            setSelectedListIds(selectedListIds.filter((x) => x !== list.id));
+            setExcludeListIds(excludeListIds.filter((x) => x !== list.id));
+            removeList.mutate(list.id);
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   const refreshWatch = (
@@ -223,7 +237,7 @@ export default function FilterMoviesSection({
           onChangeMode={(m) => setListMode(list.id, m)}
           syncing={syncingId === list.id}
           onSync={() => handleSyncList(list.id)}
-          onRemove={() => handleRemoveList(list.id)}
+          onRemove={() => handleRemoveList(list)}
           colors={colors}
         />
       ))}

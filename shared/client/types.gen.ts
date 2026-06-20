@@ -125,6 +125,7 @@ export type MovieInShowtime = {
   poster_link?: string | null
   letterboxd_slug?: string | null
   directors?: Array<string> | null
+  cast?: Array<string> | null
   release_year?: number | null
   duration?: number | null
   languages?: Array<string> | null
@@ -137,6 +138,7 @@ export type MovieLoggedIn = {
   poster_link?: string | null
   letterboxd_slug?: string | null
   directors?: Array<string> | null
+  cast?: Array<string> | null
   release_year?: number | null
   duration?: number | null
   languages?: Array<string> | null
@@ -150,6 +152,7 @@ export type MovieSummaryLoggedIn = {
   poster_link?: string | null
   letterboxd_slug?: string | null
   directors?: Array<string> | null
+  cast?: Array<string> | null
   release_year?: number | null
   duration?: number | null
   languages?: Array<string> | null
@@ -252,6 +255,14 @@ export type SavedPresetPublic = {
   created_at: string
   updated_at: string
 }
+
+/**
+ * Which attribute the movie search ``query`` is matched against.
+ *
+ * TITLE also matches ``original_title``; the others match arrays/related
+ * tables rather than a single Movie column — see ``apply_search_filter``.
+ */
+export type SearchField = "title" | "director" | "actor" | "cinema" | "friend"
 
 export type SentShowtimePingPublic = {
   id: number
@@ -611,6 +622,10 @@ export type MeCountMyShowtimesData = {
    */
   runtimeMin?: number | null
   /**
+   * Which attribute `query` is matched against
+   */
+  searchField?: SearchField
+  /**
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
@@ -656,6 +671,10 @@ export type MeGetMyShowtimesData = {
    * Minimum movie runtime in minutes
    */
   runtimeMin?: number | null
+  /**
+   * Which attribute `query` is matched against
+   */
+  searchField?: SearchField
   /**
    * Filter showtimes to only these cinema IDs
    */
@@ -805,6 +824,10 @@ export type MoviesCountMoviesData = {
    */
   runtimeMin?: number | null
   /**
+   * Which attribute `query` is matched against
+   */
+  searchField?: SearchField
+  /**
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
@@ -850,6 +873,10 @@ export type MoviesReadMoviesData = {
    * Minimum movie runtime in minutes
    */
   runtimeMin?: number | null
+  /**
+   * Which attribute `query` is matched against
+   */
+  searchField?: SearchField
   /**
    * Filter showtimes to only these cinema IDs
    */
@@ -899,6 +926,10 @@ export type MoviesReadMovieShowtimesData = {
    */
   runtimeMin?: number | null
   /**
+   * Which attribute `query` is matched against
+   */
+  searchField?: SearchField
+  /**
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
@@ -943,6 +974,10 @@ export type MoviesReadMovieData = {
    * Minimum movie runtime in minutes
    */
   runtimeMin?: number | null
+  /**
+   * Which attribute `query` is matched against
+   */
+  searchField?: SearchField
   /**
    * Filter showtimes to only these cinema IDs
    */
@@ -1057,6 +1092,10 @@ export type ShowtimesCountMainPageShowtimesData = {
    */
   runtimeMin?: number | null
   /**
+   * Which attribute `query` is matched against
+   */
+  searchField?: SearchField
+  /**
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
@@ -1102,6 +1141,10 @@ export type ShowtimesGetMainPageShowtimesData = {
    * Minimum movie runtime in minutes
    */
   runtimeMin?: number | null
+  /**
+   * Which attribute `query` is matched against
+   */
+  searchField?: SearchField
   /**
    * Filter showtimes to only these cinema IDs
    */
@@ -1174,6 +1217,10 @@ export type UsersGetUserSelectedShowtimesData = {
    * Minimum movie runtime in minutes
    */
   runtimeMin?: number | null
+  /**
+   * Which attribute `query` is matched against
+   */
+  searchField?: SearchField
   /**
    * Filter showtimes to only these cinema IDs
    */

@@ -21,6 +21,7 @@ def _tmdb_details(*, runtime_minutes: int | None) -> SimpleNamespace:
     return SimpleNamespace(
         title="Runtime Fallback Film",
         directors=["Julie Ng"],
+        cast_names=["Some Actor"],
         release_year=2025,
         runtime_minutes=runtime_minutes,
         spoken_languages=["nl"],

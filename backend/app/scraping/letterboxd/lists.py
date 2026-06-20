@@ -12,6 +12,7 @@ pages, so we reuse :func:`extract_slugs_from_page` and
 """
 
 import asyncio
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from time import perf_counter
@@ -29,9 +30,23 @@ from .utils import HEADERS, get_page_async
 from .watched import extract_total_pages
 from .watchlist import extract_slugs_from_page
 
-LETTERBOXD_HOST_SUFFIX = "letterboxd.com"
+LETTERBOXD_HOST = "letterboxd.com"
 BOXD_SHORTLINK_HOST = "boxd.it"
+ALLOWED_SCHEMES = ("http", "https")
+# Letterboxd usernames and list slugs are restricted to these characters. We
+# validate the path segments before interpolating them into a fetch URL so a
+# crafted URL can't smuggle in path traversal, query strings or other hosts.
+SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9_-]+$")
 REDIRECT_RESOLVE_TIMEOUT = 15.0
+
+
+def _is_letterboxd_host(host: str) -> bool:
+    """True only for ``letterboxd.com`` itself or a real subdomain of it.
+
+    A plain ``endswith`` check would also accept lookalike domains such as
+    ``evilletterboxd.com``, so we require an exact match or a ``.`` delimiter.
+    """
+    return host == LETTERBOXD_HOST or host.endswith(f".{LETTERBOXD_HOST}")
 
 
 @dataclass(frozen=True)
@@ -61,7 +76,10 @@ def _ref_from_letterboxd_path(path: str, *, shortcode: str | None = None) -> Lis
     # Expected: <owner>/list/<list-slug>[/page/N][/...]
     if len(parts) < 3 or parts[1] != "list":
         raise InvalidListUrl(f"Not a Letterboxd list path: /{path}")
-    return ListRef(owner=parts[0], list_slug=parts[2], boxd_shortcode=shortcode)
+    owner, list_slug = parts[0], parts[2]
+    if not SAFE_SEGMENT.match(owner) or not SAFE_SEGMENT.match(list_slug):
+        raise InvalidListUrl(f"Unsafe owner/list slug in path: /{path}")
+    return ListRef(owner=owner, list_slug=list_slug, boxd_shortcode=shortcode)
 
 
 def resolve_list_url(raw_url: str) -> ListRef:
@@ -78,21 +96,24 @@ def resolve_list_url(raw_url: str) -> ListRef:
         candidate = f"https://{candidate}"
 
     parsed = urlparse(candidate)
-    host = parsed.netloc.lower().removeprefix("www.")
+    if parsed.scheme not in ALLOWED_SCHEMES:
+        raise InvalidListUrl(f"Unsupported URL scheme: {parsed.scheme}")
+    # ``hostname`` strips any ``user:pass@`` userinfo and ``:port``, so a URL
+    # like ``https://letterboxd.com@evil.com/...`` is judged on its real host.
+    host = (parsed.hostname or "").lower().removeprefix("www.")
 
     if host == BOXD_SHORTLINK_HOST:
         shortcode = parsed.path.strip("/").split("/")[0] or None
         resolved = _resolve_shortlink(candidate)
-        resolved_parsed = urlparse(resolved)
-        resolved_host = resolved_parsed.netloc.lower().removeprefix("www.")
-        if not resolved_host.endswith(LETTERBOXD_HOST_SUFFIX):
+        resolved_host = (urlparse(resolved).hostname or "").lower().removeprefix("www.")
+        if not _is_letterboxd_host(resolved_host):
             raise InvalidListUrl(
                 f"Shortlink {raw_url} did not resolve to a Letterboxd list "
                 f"(got {resolved})"
             )
-        return _ref_from_letterboxd_path(resolved_parsed.path, shortcode=shortcode)
+        return _ref_from_letterboxd_path(urlparse(resolved).path, shortcode=shortcode)
 
-    if host.endswith(LETTERBOXD_HOST_SUFFIX):
+    if _is_letterboxd_host(host):
         return _ref_from_letterboxd_path(parsed.path)
 
     raise InvalidListUrl(f"Unsupported list host: {host}")

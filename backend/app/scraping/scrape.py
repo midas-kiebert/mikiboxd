@@ -421,11 +421,13 @@ async def _process_cineville_movie_async(
         tmdb_directors = (
             tmdb_details.directors if tmdb_details is not None else list(directors)
         )
+        tmdb_cast = tmdb_details.cast_names if tmdb_details is not None else None
         movie = MovieCreate(
             title=tmdb_title,
             id=tmdb_id,
             letterboxd_slug=None,
             directors=tmdb_directors if tmdb_directors else None,
+            cast=tmdb_cast if tmdb_cast else None,
             release_year=(
                 tmdb_details.release_year if tmdb_details is not None else None
             ),

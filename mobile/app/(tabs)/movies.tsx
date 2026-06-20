@@ -12,6 +12,7 @@ import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
+import type { SearchField } from 'shared/client';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
 import { DateTime } from 'luxon';
@@ -40,6 +41,7 @@ export default function MovieScreen() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchField, setSearchField] = useState<SearchField>('title');
   const [refreshing, setRefreshing] = useState(false);
   const { openFiltersModal } = useFiltersModal();
   const isFocused = useIsFocused();
@@ -109,6 +111,7 @@ export default function MovieScreen() {
   const movieFilters = useMemo<MovieFilters>(
     () => ({
       query: searchQuery,
+      searchField,
       watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
       hideWatched: effectiveAppliedHideWatched ? true : undefined,
       days: resolvedApiDays,
@@ -124,6 +127,7 @@ export default function MovieScreen() {
     }),
     [
       searchQuery,
+      searchField,
       effectiveAppliedWatchlistOnly,
       effectiveAppliedHideWatched,
       effectiveWatchlistExclude,
@@ -207,7 +211,12 @@ export default function MovieScreen() {
   return (
     <TopSafeAreaView style={styles.container}>
       <TopBar />
-      <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search movies" />
+      <SearchBar
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        searchField={searchField}
+        onChangeSearchField={setSearchField}
+      />
       <FiltersRow
         onOpenModal={() => openFiltersModal({ showGroupByMovie: false })}
         onApplyPreset={handleApplyPreset}
@@ -217,8 +226,12 @@ export default function MovieScreen() {
         setGroupByMovie={setGroupByMovie}
         watchlistOnly={effectiveWatchlistOnly}
         setWatchlistOnly={setWatchlistOnly}
+        watchlistExclude={effectiveWatchlistExclude}
+        setWatchlistExclude={setWatchlistExclude}
         hideWatched={effectiveHideWatched}
         setHideWatched={setHideWatched}
+        watchedOnly={effectiveWatchedOnly}
+        setWatchedOnly={setWatchedOnly}
         canUseWatchlistFilter={hasLetterboxdUsername}
         selectedShowtimeFilter={selectedShowtimeFilter}
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}
@@ -229,14 +242,22 @@ export default function MovieScreen() {
         setSelectedTimeRanges={setSelectedTimeRanges}
         selectedRuntimeRanges={selectedRuntimeRanges}
         setSelectedRuntimeRanges={setSelectedRuntimeRanges}
+        selectedListIds={selectedListIds}
+        setSelectedListIds={setSelectedListIds}
+        excludeListIds={excludeListIds}
+        setExcludeListIds={setExcludeListIds}
         onOpenFilters={() => openFiltersModal({ showGroupByMovie: false })}
         onClearAll={() => {
           setSelectedShowtimeFilter(toSharedTabShowtimeFilter('all'));
           setWatchlistOnly(false);
+          setWatchlistExclude(false);
           setHideWatched(false);
+          setWatchedOnly(false);
           setSelectedDays([]);
           setSelectedTimeRanges([]);
           setSelectedRuntimeRanges([]);
+          setSelectedListIds([]);
+          setExcludeListIds([]);
           if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
         }}
       />

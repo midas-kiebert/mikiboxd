@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException, Query
 from pydantic import BaseModel
 
-from app.core.enums import GoingStatus, TimeOfDay
+from app.core.enums import GoingStatus, SearchField, TimeOfDay
 from app.utils import now_amsterdam_naive
 
 
@@ -18,6 +18,7 @@ class TimeRange(BaseModel):
 
 class Filters(BaseModel):
     query: str | None = None
+    search_field: SearchField = SearchField.TITLE
     snapshot_time: datetime
     # Movie-set filters combine as: keep a movie when it is in the UNION of every
     # "include" set (watchlist / watched / included lists) — if any include is
@@ -57,6 +58,10 @@ def time_range_from_time_of_day(value: TimeOfDay) -> TimeRange:
 
 def get_filters(
     query: Annotated[str | None, Query()] = None,
+    search_field: Annotated[
+        SearchField,
+        Query(description="Which attribute `query` is matched against"),
+    ] = SearchField.TITLE,
     snapshot_time: Annotated[
         datetime | None,
         Query(description="Only show showtimes after this moment"),
@@ -142,6 +147,7 @@ def get_filters(
 
     return Filters(
         query=query,
+        search_field=search_field,
         snapshot_time=snapshot_time,
         watchlist_only=watchlist_only,
         watchlist_exclude=watchlist_exclude,

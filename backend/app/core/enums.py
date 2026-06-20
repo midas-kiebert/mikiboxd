@@ -55,6 +55,21 @@ class TimeOfDay(str, Enum):
 
 
 @unique
+class SearchField(str, Enum):
+    """Which attribute the movie search ``query`` is matched against.
+
+    TITLE also matches ``original_title``; the others match arrays/related
+    tables rather than a single Movie column — see ``apply_search_filter``.
+    """
+
+    TITLE = "title"
+    DIRECTOR = "director"
+    ACTOR = "actor"
+    CINEMA = "cinema"
+    FRIEND = "friend"
+
+
+@unique
 class NotificationChannel(str, Enum):
     """The delivery mechanism for a notification sent to a user."""
 

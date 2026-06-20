@@ -6,12 +6,13 @@ from psycopg.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
-from app.core.enums import GoingStatus
+from app.core.enums import GoingStatus, SearchField
 from app.crud import friendship as friendship_crud
 from app.crud import movie as movie_crud
 from app.crud import showtime as showtime_crud
 from app.crud import user as user_crud
 from app.inputs.movie import Filters
+from app.models.cinema import Cinema
 from app.models.movie import Movie, MovieCreate, MovieUpdate
 from app.models.showtime import Showtime
 from app.models.user import User
@@ -571,6 +572,211 @@ def test_get_showtimes_for_movie_hide_watched_filter(
     )
 
     assert showtime_watched not in showtimes
+
+
+def test_get_movies_query_is_diacritics_insensitive(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    movie = movie_factory(title="München", directors=[])
+    other = movie_factory(title="Some Other Film", directors=[])
+    showtime_factory(movie=movie)
+    showtime_factory(movie=other)
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="munchen",
+        ),
+    )
+
+    assert {m.id for m in movies} == {movie.id}
+
+
+def test_get_movies_exact_title_match_ranked_first(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    movie_substring = movie_factory(title="Madagascar", directors=[])
+    movie_exact = movie_factory(title="M", directors=[])
+
+    # The substring match's showtime is earlier, so without ranking it would
+    # sort first by min(showtime.datetime) — ranking must override that.
+    showtime_factory(movie=movie_substring, datetime=now_amsterdam_naive() + timedelta(hours=1))
+    showtime_factory(movie=movie_exact, datetime=now_amsterdam_naive() + timedelta(hours=2))
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="M",
+        ),
+    )
+
+    assert [m.id for m in movies] == [movie_exact.id, movie_substring.id]
+
+
+def test_get_movies_search_field_director(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    movie_match = movie_factory(title="A Film", directors=["Greta Gerwig"])
+    movie_other = movie_factory(title="B Film", directors=["Someone Else"])
+    showtime_factory(movie=movie_match)
+    showtime_factory(movie=movie_other)
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="gerwig",
+            search_field=SearchField.DIRECTOR,
+        ),
+    )
+
+    assert {m.id for m in movies} == {movie_match.id}
+
+
+def test_get_movies_search_field_actor(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    movie_match = movie_factory(
+        title="A Film", directors=[], cast=["Timothée Chalamet"]
+    )
+    movie_other = movie_factory(title="B Film", directors=[], cast=["Someone Else"])
+    showtime_factory(movie=movie_match)
+    showtime_factory(movie=movie_other)
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="chalamet",
+            search_field=SearchField.ACTOR,
+        ),
+    )
+
+    assert {m.id for m in movies} == {movie_match.id}
+
+
+def test_get_movies_search_field_cinema(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    cinema_factory: Callable[..., Cinema],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    cinema_match = cinema_factory(name="The Grand Picture House")
+    cinema_other = cinema_factory(name="Plaza")
+    movie_match = movie_factory(title="A Film", directors=[])
+    movie_other = movie_factory(title="B Film", directors=[])
+    showtime_factory(movie=movie_match, cinema=cinema_match)
+    showtime_factory(movie=movie_other, cinema=cinema_other)
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="grand",
+            search_field=SearchField.CINEMA,
+        ),
+    )
+
+    assert {m.id for m in movies} == {movie_match.id}
+
+
+def test_get_movies_search_field_friend(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    friend = user_factory(display_name="Alice Wonderland")
+    stranger = user_factory(display_name="Bob Builder")
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=user.id, friend_id=friend.id
+    )
+
+    movie_match = movie_factory(title="A Film", directors=[])
+    movie_other = movie_factory(title="B Film", directors=[])
+    showtime_match = showtime_factory(movie=movie_match)
+    showtime_other = showtime_factory(movie=movie_other)
+
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_match.id,
+        user_id=friend.id,
+        going_status=GoingStatus.INTERESTED,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_other.id,
+        user_id=stranger.id,
+        going_status=GoingStatus.GOING,
+    )
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=user.id,
+        cinema_ids=[showtime_match.cinema_id, showtime_other.cinema_id],
+    )
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="alice",
+            search_field=SearchField.FRIEND,
+        ),
+    )
+
+    assert {m.id for m in movies} == {movie_match.id}
 
 
 def test_get_showtimes_for_movie_shows_showtimes_for_card_when_watchlist_only(

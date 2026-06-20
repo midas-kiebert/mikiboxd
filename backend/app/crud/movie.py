@@ -1,16 +1,17 @@
 from datetime import datetime, time, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, false, func, select
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_
 
-from app.core.enums import GoingStatus
+from app.core.enums import GoingStatus, SearchField
 from app.crud.movie_set_filters import apply_movie_set_filters
 from app.inputs.movie import Filters
 from app.models.cinema import Cinema
 from app.models.cinema_selection import CinemaSelection
+from app.models.friendship import Friendship
 from app.models.movie import Movie, MovieCreate, MovieUpdate
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
@@ -324,6 +325,107 @@ def get_cinemas_for_movie(
     return cinemas
 
 
+def _unaccent_ilike(column, query: str) -> ColumnElement[bool]:
+    pattern = f"%{query}%"
+    return func.unaccent(column).ilike(func.unaccent(pattern))
+
+
+def _title_search_clause(query: str) -> ColumnElement[bool]:
+    return _unaccent_ilike(col(Movie.title), query) | _unaccent_ilike(
+        col(Movie.original_title), query
+    )
+
+
+def _array_search_clause(column, query: str) -> ColumnElement[bool]:
+    # Arrays (directors/cast) are matched by joining them into a single string and
+    # ILIKE-ing it — simpler than unnest() and good enough for substring search.
+    return _unaccent_ilike(func.array_to_string(column, ","), query)
+
+
+def _matching_cinema_ids_subquery(query: str):
+    pattern = f"%{query}%"
+    return (
+        select(Cinema.id)
+        .where(func.unaccent(col(Cinema.name)).ilike(func.unaccent(pattern)))
+        .scalar_subquery()
+    )
+
+
+def _matching_friend_ids(
+    *, session: Session, current_user_id: UUID, query: str
+) -> list[UUID]:
+    stmt = (
+        select(Friendship.friend_id)
+        .join(User, col(User.id) == col(Friendship.friend_id))
+        .where(
+            col(Friendship.user_id) == current_user_id,
+            _unaccent_ilike(col(User.display_name), query),
+        )
+    )
+    return list(session.execute(stmt).scalars().all())
+
+
+def apply_search_filter(
+    stmt,
+    *,
+    filters: Filters,
+    session: Session,
+    current_user_id: UUID | None,
+):
+    """Apply `filters.query` against whichever field `filters.search_field` selects.
+
+    Callers must have already joined `Showtime` (and `Movie`, when search_field
+    is TITLE/DIRECTOR/ACTOR) onto `stmt` before calling this.
+    """
+    if not filters.query:
+        return stmt
+
+    if filters.search_field == SearchField.TITLE:
+        return stmt.where(_title_search_clause(filters.query))
+
+    if filters.search_field == SearchField.DIRECTOR:
+        return stmt.where(_array_search_clause(col(Movie.directors), filters.query))
+
+    if filters.search_field == SearchField.ACTOR:
+        return stmt.where(_array_search_clause(col(Movie.cast), filters.query))
+
+    if filters.search_field == SearchField.CINEMA:
+        return stmt.where(
+            col(Showtime.cinema_id).in_(_matching_cinema_ids_subquery(filters.query))
+        )
+
+    # SearchField.FRIEND
+    if current_user_id is None:
+        return stmt.where(false())
+
+    friend_ids = _matching_friend_ids(
+        session=session, current_user_id=current_user_id, query=filters.query
+    )
+    if not friend_ids:
+        return stmt.where(false())
+
+    friend_selection = aliased(ShowtimeSelection)
+    friend_visibility = aliased(ShowtimeVisibilityEffective)
+    return (
+        stmt.join(
+            friend_selection,
+            col(friend_selection.showtime_id) == col(Showtime.id),
+        )
+        .join(
+            friend_visibility,
+            (col(friend_visibility.owner_id) == col(friend_selection.user_id))
+            & (col(friend_visibility.showtime_id) == col(Showtime.id))
+            & (col(friend_visibility.viewer_id) == current_user_id),
+        )
+        .where(
+            col(friend_selection.user_id).in_(friend_ids),
+            col(friend_selection.going_status).in_(
+                [GoingStatus.GOING, GoingStatus.INTERESTED]
+            ),
+        )
+    )
+
+
 def get_friends_for_movie(
     *,
     session: Session,
@@ -405,18 +507,21 @@ def get_showtimes_for_movie(
             )
         )
 
-    if (
-        filters.query
-        or filters.runtime_min is not None
-        or filters.runtime_max is not None
+    needs_movie_join = (
+        filters.runtime_min is not None or filters.runtime_max is not None
+    )
+    if filters.query and filters.search_field in (
+        SearchField.TITLE,
+        SearchField.DIRECTOR,
+        SearchField.ACTOR,
     ):
+        needs_movie_join = True
+    if needs_movie_join:
         stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
 
-    if filters.query:
-        pattern = f"%{filters.query}%"
-        stmt = stmt.where(
-            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
-        )
+    stmt = apply_search_filter(
+        stmt, filters=filters, session=session, current_user_id=current_user_id
+    )
 
     if filters.runtime_min is not None:
         stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
@@ -537,11 +642,9 @@ def get_movies(
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
         stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
 
-    if filters.query:
-        pattern = f"%{filters.query}%"
-        stmt = stmt.where(
-            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
-        )
+    stmt = apply_search_filter(
+        stmt, filters=filters, session=session, current_user_id=current_user_id
+    )
 
     if filters.runtime_min is not None:
         stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
@@ -600,11 +703,28 @@ def get_movies(
             )
         )
 
+    order_terms: list[ColumnElement] = []
+    if filters.query and filters.search_field == SearchField.TITLE:
+        normalized_query = filters.query.strip().lower()
+        order_terms.append(
+            case(
+                (
+                    func.unaccent(func.lower(col(Movie.title)))
+                    == func.unaccent(normalized_query),
+                    0,
+                ),
+                (
+                    func.unaccent(func.lower(col(Movie.original_title)))
+                    == func.unaccent(normalized_query),
+                    0,
+                ),
+                else_=1,
+            )
+        )
+    order_terms.append(func.min(Showtime.datetime))
+
     stmt = (
-        stmt.group_by(col(Movie.id))
-        .order_by(func.min(Showtime.datetime))
-        .limit(limit)
-        .offset(offset)
+        stmt.group_by(col(Movie.id)).order_by(*order_terms).limit(limit).offset(offset)
     )
 
     result = session.execute(stmt)
@@ -629,11 +749,9 @@ def count_movies(
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
         stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
 
-    if filters.query:
-        pattern = f"%{filters.query}%"
-        stmt = stmt.where(
-            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
-        )
+    stmt = apply_search_filter(
+        stmt, filters=filters, session=session, current_user_id=current_user_id
+    )
 
     if filters.runtime_min is not None:
         stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)

@@ -75,15 +75,23 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     watchlistOnly,
     appliedWatchlistOnly,
     setWatchlistOnly,
+    watchlistExclude,
+    setWatchlistExclude,
     hideWatched,
     appliedHideWatched,
     setHideWatched,
+    watchedOnly,
+    setWatchedOnly,
     groupByMovie,
     setGroupByMovie,
     selectedDays: sharedSelectedDays,
     setSelectedDays,
     selectedTimeRanges: sharedSelectedTimeRanges,
     setSelectedTimeRanges,
+    selectedListIds,
+    setSelectedListIds,
+    excludeListIds,
+    setExcludeListIds,
     sessionCinemaIds,
     setSessionCinemaIds,
   } = useSharedTabFilters();
@@ -92,8 +100,10 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
 
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
+  const effectiveWatchlistExclude = hasLetterboxdUsername ? watchlistExclude : false;
   const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
   const effectiveAppliedHideWatched = hasLetterboxdUsername ? appliedHideWatched : false;
+  const effectiveWatchedOnly = hasLetterboxdUsername ? watchedOnly : false;
   const selectedDays = sharedSelectedDays ?? EMPTY_DAYS;
   const selectedTimeRanges = sharedSelectedTimeRanges ?? EMPTY_TIME_RANGES;
 
@@ -134,10 +144,18 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
     selectedStatuses: (includeInterested ? ['GOING', 'INTERESTED'] : ['GOING']) as GoingStatus[],
     watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
+    watchlistExclude: effectiveWatchlistExclude ? true : undefined,
     hideWatched: effectiveAppliedHideWatched ? true : undefined,
+    watchedOnly: effectiveWatchedOnly ? true : undefined,
+    selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
+    excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
   }), [
     effectiveAppliedWatchlistOnly,
+    effectiveWatchlistExclude,
     effectiveAppliedHideWatched,
+    effectiveWatchedOnly,
+    selectedListIds,
+    excludeListIds,
     effectiveCinemaIds,
     includeInterested,
     resolvedApiDays,
@@ -198,10 +216,14 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
 
   const handleClearAll = () => {
     setWatchlistOnly(false);
+    setWatchlistExclude(false);
     setHideWatched(false);
+    setWatchedOnly(false);
     setGroupByMovie(false);
     setSelectedDays([]);
     setSelectedTimeRanges([]);
+    setSelectedListIds([]);
+    setExcludeListIds([]);
     if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
   };
 
@@ -306,8 +328,12 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
               setGroupByMovie={setGroupByMovie}
               watchlistOnly={effectiveWatchlistOnly}
               setWatchlistOnly={setWatchlistOnly}
+              watchlistExclude={effectiveWatchlistExclude}
+              setWatchlistExclude={setWatchlistExclude}
               hideWatched={effectiveHideWatched}
               setHideWatched={setHideWatched}
+              watchedOnly={effectiveWatchedOnly}
+              setWatchedOnly={setWatchedOnly}
               canUseWatchlistFilter={hasLetterboxdUsername}
               selectedShowtimeFilter="all"
               setSelectedShowtimeFilter={() => {}}
@@ -318,6 +344,10 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
               setSelectedTimeRanges={setSelectedTimeRanges}
               selectedRuntimeRanges={[]}
               setSelectedRuntimeRanges={() => {}}
+              selectedListIds={selectedListIds}
+              setSelectedListIds={setSelectedListIds}
+              excludeListIds={excludeListIds}
+              setExcludeListIds={setExcludeListIds}
               onClearAll={handleClearAll}
             />
           </>
@@ -334,8 +364,12 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         showGroupByMovie
         watchlistOnly={effectiveWatchlistOnly}
         setWatchlistOnly={setWatchlistOnly}
+        watchlistExclude={effectiveWatchlistExclude}
+        setWatchlistExclude={setWatchlistExclude}
         hideWatched={effectiveHideWatched}
         setHideWatched={setHideWatched}
+        watchedOnly={effectiveWatchedOnly}
+        setWatchedOnly={setWatchedOnly}
         canUseWatchlistFilter={hasLetterboxdUsername}
         selectedShowtimeFilter="all"
         setSelectedShowtimeFilter={() => {}}
@@ -349,6 +383,11 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         setSelectedTimeRanges={setSelectedTimeRanges}
         selectedRuntimeRanges={[]}
         setSelectedRuntimeRanges={() => {}}
+        selectedListIds={selectedListIds}
+        setSelectedListIds={setSelectedListIds}
+        excludeListIds={excludeListIds}
+        setExcludeListIds={setExcludeListIds}
+        showLists
         resultCount={groupByMovie ? movieSections.length : showtimes.length}
       />
       <CinemaFilterModal

@@ -424,14 +424,21 @@ def get_showtimes_for_movie(
     if filters.runtime_max is not None:
         stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
 
-    stmt, force_empty = apply_movie_set_filters(
-        stmt,
-        movie_id_col=col(Showtime.movie_id),
-        filters=filters,
-        letterboxd_username=letterboxd_username,
-    )
-    if force_empty:
-        return []
+    # Movie-set filters (watchlist / watched / lists) only apply when a username is
+    # supplied. Callers building grouped movie *cards* (to_summary_logged_in) do not
+    # pass one — those cards must always show the movie's own showtimes, since the
+    # movie already qualified via the list-level query. Without this guard the
+    # "include requested but no username" path would force an empty result and the
+    # card would render no showtimes.
+    if letterboxd_username is not None:
+        stmt, force_empty = apply_movie_set_filters(
+            stmt,
+            movie_id_col=col(Showtime.movie_id),
+            filters=filters,
+            letterboxd_username=letterboxd_username,
+        )
+        if force_empty:
+            return []
 
     if (
         current_user_id is not None

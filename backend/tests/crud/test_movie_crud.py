@@ -573,6 +573,37 @@ def test_get_showtimes_for_movie_hide_watched_filter(
     assert showtime_watched not in showtimes
 
 
+def test_get_showtimes_for_movie_shows_showtimes_for_card_when_watchlist_only(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    """A grouped movie card must still show its own showtimes under watchlist-only.
+
+    Cards call get_showtimes_for_movie WITHOUT a letterboxd_username (the movie has
+    already qualified via the list-level query), so the movie-set filters must be
+    skipped rather than forcing an empty result.
+    """
+    user = user_factory()
+    movie = movie_factory()
+    showtime = showtime_factory(movie=movie)
+
+    showtimes = movie_crud.get_showtimes_for_movie(
+        session=db_transaction,
+        movie_id=movie.id,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            watchlist_only=True,
+        ),
+        current_user_id=user.id,
+        # no letterboxd_username — mirrors the grouped-movie card path
+    )
+
+    assert showtime in showtimes
+
+
 # def test_get_showtimes_for_movie(
 #     *,
 #     db_transaction: Session,

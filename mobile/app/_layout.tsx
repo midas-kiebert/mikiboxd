@@ -7,7 +7,7 @@ import { createStackNavigator, TransitionPresets, TransitionSpecs } from '@react
 import { Appearance, Easing } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-import { ApiError, OpenAPI } from 'shared';
+import { ApiError, OpenAPI, installAuthRefreshInterceptor } from 'shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage, setStorage } from 'shared/storage';
 import * as SecureStore from 'expo-secure-store';
@@ -22,7 +22,6 @@ import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { loadThemePreference, useThemePreference } from '@/utils/theme-preference';
-import { installAuthRefreshInterceptor } from '@/utils/auth-refresh';
 import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
 import AppSplash from '@/components/layout/AppSplash';
 import { SHARED_TAB_FILTER_PRESET_SCOPE } from '@/components/filters/shared-tab-filters';

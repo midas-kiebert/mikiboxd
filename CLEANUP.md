@@ -385,6 +385,7 @@ Legend:
 - [ ] `types.ts` — Shared TypeScript types across web and mobile
 - [ ] `utils.ts` — Shared utility functions
 - [ ] `client/` — Auto-generated OpenAPI client (do not edit manually)
+- [ ] `authRefresh.ts` — Axios interceptor: transparently refreshes the access token on 401 (moved from `mobile/utils/auth-refresh.ts` so web shares it too)
 
 ---
 
@@ -418,7 +419,7 @@ Legend:
 
 - [ ] Error handling: are all services using domain exceptions consistently?
 - [ ] Logging: is Loguru used consistently throughout?
-- [ ] Auth: plan for refresh tokens (access token currently 90 days)
+- [x] Auth: refresh tokens implemented (30 min access / 90 day refresh); both web and mobile now auto-refresh via `shared/authRefresh.ts`
 - [ ] Test coverage: reach 80%+ on services and CRUD
 - [ ] Frontend tests: set up Vitest + React Testing Library
 - [ ] API rate limiting: evaluate adding slowapi

@@ -14,9 +14,9 @@
  */
 import axios from 'axios';
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { OpenAPI } from 'shared';
-import type { Token } from 'shared';
-import { storage } from 'shared/storage';
+import { OpenAPI } from './client';
+import type { Token } from './client';
+import { storage } from './storage';
 
 const REFRESH_PATH = '/api/v1/login/refresh-token';
 

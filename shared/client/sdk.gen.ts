@@ -932,6 +932,7 @@ export class MeService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns number Successful Response
@@ -953,6 +954,7 @@ export class MeService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        selected_list_ids: data.selectedListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -976,6 +978,7 @@ export class MeService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeLoggedIn Successful Response
@@ -999,6 +1002,7 @@ export class MeService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        selected_list_ids: data.selectedListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1428,6 +1432,7 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns number Successful Response
@@ -1449,6 +1454,7 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        selected_list_ids: data.selectedListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1473,6 +1479,7 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns MovieSummaryLoggedIn Successful Response
@@ -1497,6 +1504,7 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        selected_list_ids: data.selectedListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1521,6 +1529,7 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeInMovieLoggedIn Successful Response
@@ -1547,6 +1556,7 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        selected_list_ids: data.selectedListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1570,6 +1580,7 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns MovieLoggedIn Successful Response
@@ -1595,6 +1606,7 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        selected_list_ids: data.selectedListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1852,6 +1864,7 @@ export class ShowtimesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns number Successful Response
@@ -1873,6 +1886,7 @@ export class ShowtimesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        selected_list_ids: data.selectedListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -1896,6 +1910,7 @@ export class ShowtimesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeLoggedIn Successful Response
@@ -1919,6 +1934,7 @@ export class ShowtimesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        selected_list_ids: data.selectedListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },
@@ -2037,6 +2053,7 @@ export class UsersService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @returns ShowtimeLoggedIn Successful Response
@@ -2063,6 +2080,7 @@ export class UsersService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        selected_list_ids: data.selectedListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
       },

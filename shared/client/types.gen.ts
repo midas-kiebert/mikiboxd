@@ -418,6 +418,8 @@ export type UserMe = {
   notify_channel_invite_response: NotificationChannel
   notify_channel_interest_reminder: NotificationChannel
   letterboxd_username: string | null
+  watchlist_last_synced?: string | null
+  watched_last_synced?: string | null
 }
 
 export type UserPublic = {
@@ -678,6 +680,10 @@ export type MeCountMyShowtimesData = {
    */
   selectedCinemaIds?: Array<number> | null
   /**
+   * Only show movies on any of these Letterboxd lists
+   */
+  selectedListIds?: Array<string> | null
+  /**
    * Filter by selection statuses (GOING/INTERESTED)
    */
   selectedStatuses?: Array<GoingStatus> | null
@@ -713,6 +719,10 @@ export type MeGetMyShowtimesData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Only show movies on any of these Letterboxd lists
+   */
+  selectedListIds?: Array<string> | null
   /**
    * Filter by selection statuses (GOING/INTERESTED)
    */
@@ -852,6 +862,10 @@ export type MoviesCountMoviesData = {
    */
   selectedCinemaIds?: Array<number> | null
   /**
+   * Only show movies on any of these Letterboxd lists
+   */
+  selectedListIds?: Array<string> | null
+  /**
    * Filter by selection statuses (GOING/INTERESTED)
    */
   selectedStatuses?: Array<GoingStatus> | null
@@ -887,6 +901,10 @@ export type MoviesReadMoviesData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Only show movies on any of these Letterboxd lists
+   */
+  selectedListIds?: Array<string> | null
   /**
    * Filter by selection statuses (GOING/INTERESTED)
    */
@@ -926,6 +944,10 @@ export type MoviesReadMovieShowtimesData = {
    */
   selectedCinemaIds?: Array<number> | null
   /**
+   * Only show movies on any of these Letterboxd lists
+   */
+  selectedListIds?: Array<string> | null
+  /**
    * Filter by selection statuses (GOING/INTERESTED)
    */
   selectedStatuses?: Array<GoingStatus> | null
@@ -960,6 +982,10 @@ export type MoviesReadMovieData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Only show movies on any of these Letterboxd lists
+   */
+  selectedListIds?: Array<string> | null
   /**
    * Filter by selection statuses (GOING/INTERESTED)
    */
@@ -1064,6 +1090,10 @@ export type ShowtimesCountMainPageShowtimesData = {
    */
   selectedCinemaIds?: Array<number> | null
   /**
+   * Only show movies on any of these Letterboxd lists
+   */
+  selectedListIds?: Array<string> | null
+  /**
    * Filter by selection statuses (GOING/INTERESTED)
    */
   selectedStatuses?: Array<GoingStatus> | null
@@ -1099,6 +1129,10 @@ export type ShowtimesGetMainPageShowtimesData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Only show movies on any of these Letterboxd lists
+   */
+  selectedListIds?: Array<string> | null
   /**
    * Filter by selection statuses (GOING/INTERESTED)
    */
@@ -1161,6 +1195,10 @@ export type UsersGetUserSelectedShowtimesData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Only show movies on any of these Letterboxd lists
+   */
+  selectedListIds?: Array<string> | null
   /**
    * Filter by selection statuses (GOING/INTERESTED)
    */

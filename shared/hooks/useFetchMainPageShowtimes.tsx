@@ -13,6 +13,7 @@ type ShowtimesFilters = {
     watchlistOnly?: boolean;
     hideWatched?: boolean;
     selectedStatuses?: GoingStatus[];
+    selectedListIds?: string[];
 };
 
 type useFetchMainPageShowtimesProps = {

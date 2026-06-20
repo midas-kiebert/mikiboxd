@@ -13,6 +13,7 @@ export type MovieFilters = {
     runtimeMin?: number;
     runtimeMax?: number;
     selectedStatuses?: GoingStatus[];
+    selectedListIds?: string[];
 };
 
 type useFetchMoviesProps = {

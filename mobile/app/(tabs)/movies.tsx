@@ -65,6 +65,7 @@ export default function MovieScreen() {
     setSelectedTimeRanges,
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
+    selectedListIds,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -108,6 +109,7 @@ export default function MovieScreen() {
       runtimeMax: runtimeBounds.runtimeMax,
       selectedCinemaIds: sessionCinemaIds,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(selectedShowtimeFilter),
+      selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
     }),
     [
       searchQuery,
@@ -115,6 +117,7 @@ export default function MovieScreen() {
       effectiveAppliedHideWatched,
       resolvedApiDays,
       selectedTimeRanges,
+      selectedListIds,
       runtimeBounds.runtimeMin,
       runtimeBounds.runtimeMax,
       sessionCinemaIds,

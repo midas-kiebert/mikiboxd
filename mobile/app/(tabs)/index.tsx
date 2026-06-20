@@ -65,6 +65,7 @@ export default function MainShowtimesScreen() {
     setSelectedTimeRanges,
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
+    selectedListIds,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -108,10 +109,11 @@ export default function MainShowtimesScreen() {
     selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
     watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
     hideWatched: effectiveAppliedHideWatched ? true : undefined,
+    selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
   }), [
     searchQuery, appliedShowtimeFilter, resolvedApiDays, selectedTimeRanges,
     runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, effectiveAppliedWatchlistOnly,
-    effectiveAppliedHideWatched,
+    effectiveAppliedHideWatched, selectedListIds,
   ]);
 
   const activeShowtimesQuery = useFetchMainPageShowtimes({
@@ -133,10 +135,11 @@ export default function MainShowtimesScreen() {
       runtimeMax: runtimeBounds.runtimeMax,
       selectedCinemaIds: sessionCinemaIds,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
+      selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
     }),
     [
       searchQuery, effectiveAppliedWatchlistOnly, effectiveAppliedHideWatched, resolvedApiDays, selectedTimeRanges,
-      runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, appliedShowtimeFilter,
+      runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, appliedShowtimeFilter, selectedListIds,
     ]
   );
   const moviesQuery = useFetchMovies({

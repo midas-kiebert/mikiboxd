@@ -12,6 +12,7 @@ from app.crud import showtime as showtime_crud
 from app.crud import user as user_crud
 from app.inputs.movie import Filters, TimeRange
 from app.models.cinema import Cinema
+from app.models.letterboxd_list import LetterboxdList, LetterboxdListFilm
 from app.models.movie import Movie
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.models.user import User
@@ -468,6 +469,59 @@ def test_count_main_page_showtimes_hide_watched_filter(
         letterboxd_username=user.letterboxd_username,
     )
 
+    assert count == 1
+
+
+def test_get_main_page_showtimes_filters_by_list_ids(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+):
+    user = user_factory()
+
+    movie_on_list = movie_factory()
+    movie_off_list = movie_factory()
+    showtime_on_list = showtime_factory(movie=movie_on_list)
+    showtime_off_list = showtime_factory(movie=movie_off_list)
+
+    lb_list = LetterboxdList(owner="official", list_slug="top-500")
+    db_transaction.add(lb_list)
+    db_transaction.flush()
+    db_transaction.add(
+        LetterboxdListFilm(
+            list_id=lb_list.id,
+            letterboxd_slug=movie_on_list.letterboxd_slug,
+            movie_id=movie_on_list.id,
+        )
+    )
+    db_transaction.flush()
+
+    showtimes = showtime_crud.get_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            list_ids=[lb_list.id],
+        ),
+        letterboxd_username=user.letterboxd_username,
+    )
+
+    assert showtimes == [showtime_on_list]
+    assert showtime_off_list not in showtimes
+
+    count = showtime_crud.count_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            list_ids=[lb_list.id],
+        ),
+        letterboxd_username=user.letterboxd_username,
+    )
     assert count == 1
 
 

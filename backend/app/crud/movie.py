@@ -10,6 +10,7 @@ from app.core.enums import GoingStatus
 from app.inputs.movie import Filters
 from app.models.cinema import Cinema
 from app.models.cinema_selection import CinemaSelection
+from app.models.letterboxd_list import LetterboxdListFilm
 from app.models.movie import Movie, MovieCreate, MovieUpdate
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
@@ -119,6 +120,18 @@ def watched_movie_ids_subquery(letterboxd_username: str):
     return select(col(WatchedSelection.movie_id)).where(
         col(WatchedSelection.letterboxd_username) == letterboxd_username,
         col(WatchedSelection.movie_id).is_not(None),
+    )
+
+
+def list_movie_ids_subquery(list_ids: list[UUID]):
+    """Movie ids that appear on any of the given Letterboxd lists.
+
+    Films whose slug we couldn't match to a catalog movie have a NULL
+    ``movie_id`` and are excluded.
+    """
+    return select(col(LetterboxdListFilm.movie_id)).where(
+        col(LetterboxdListFilm.list_id).in_(list_ids),
+        col(LetterboxdListFilm.movie_id).is_not(None),
     )
 
 
@@ -565,6 +578,9 @@ def get_movies(
             col(Movie.id).not_in(watched_movie_ids_subquery(letterboxd_username))
         )
 
+    if filters.list_ids:
+        stmt = stmt.where(col(Movie.id).in_(list_movie_ids_subquery(filters.list_ids)))
+
     if filters.days is not None and len(filters.days) > 0:
         stmt = stmt.where(
             day_bucket_date_clause(col(Showtime.datetime)).in_(filters.days)
@@ -657,6 +673,9 @@ def count_movies(
         stmt = stmt.where(
             col(Movie.id).not_in(watched_movie_ids_subquery(letterboxd_username))
         )
+
+    if filters.list_ids:
+        stmt = stmt.where(col(Movie.id).in_(list_movie_ids_subquery(filters.list_ids)))
 
     if filters.days is not None and len(filters.days) > 0:
         stmt = stmt.where(

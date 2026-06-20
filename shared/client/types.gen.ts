@@ -134,6 +134,22 @@ export type HTTPValidationError = {
   detail?: Array<ValidationError>
 }
 
+export type LetterboxdListCreate = {
+  url: string
+}
+
+export type LetterboxdListPublic = {
+  id: string
+  owner: string
+  list_slug: string
+  title: string | null
+  url: string
+  is_curated: boolean
+  last_updated_on_letterboxd: string | null
+  last_synced: string | null
+  film_count: number
+}
+
 export type Message = {
   message: string
 }
@@ -772,6 +788,26 @@ export type MeDismissMyNotificationResponse = Message
 export type MeSyncWatchlistResponse = Message
 
 export type MeSyncWatchedResponse = Message
+
+export type MeGetLetterboxdListsResponse = Array<LetterboxdListPublic>
+
+export type MeAddLetterboxdListData = {
+  requestBody: LetterboxdListCreate
+}
+
+export type MeAddLetterboxdListResponse = LetterboxdListPublic
+
+export type MeSyncLetterboxdListData = {
+  listId: string
+}
+
+export type MeSyncLetterboxdListResponse = LetterboxdListPublic
+
+export type MeRemoveLetterboxdListData = {
+  listId: string
+}
+
+export type MeRemoveLetterboxdListResponse = Message
 
 export type MeGetFriendsResponse = Array<UserWithFriendStatus>
 

@@ -93,6 +93,13 @@ import type {
   MeDismissMyNotificationResponse,
   MeSyncWatchlistResponse,
   MeSyncWatchedResponse,
+  MeGetLetterboxdListsResponse,
+  MeAddLetterboxdListData,
+  MeAddLetterboxdListResponse,
+  MeSyncLetterboxdListData,
+  MeSyncLetterboxdListResponse,
+  MeRemoveLetterboxdListData,
+  MeRemoveLetterboxdListResponse,
   MeGetFriendsResponse,
   MeGetSentFriendRequestsResponse,
   MeGetReceivedFriendRequestsResponse,
@@ -1216,6 +1223,83 @@ export class MeService {
     return __request(OpenAPI, {
       method: "PUT",
       url: "/api/v1/me/watched",
+    })
+  }
+
+  /**
+   * Get Letterboxd Lists
+   * @returns LetterboxdListPublic Successful Response
+   * @throws ApiError
+   */
+  public static getLetterboxdLists(): CancelablePromise<MeGetLetterboxdListsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/letterboxd-lists",
+    })
+  }
+
+  /**
+   * Add Letterboxd List
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns LetterboxdListPublic Successful Response
+   * @throws ApiError
+   */
+  public static addLetterboxdList(
+    data: MeAddLetterboxdListData,
+  ): CancelablePromise<MeAddLetterboxdListResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/letterboxd-lists",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Sync Letterboxd List
+   * @param data The data for the request.
+   * @param data.listId
+   * @returns LetterboxdListPublic Successful Response
+   * @throws ApiError
+   */
+  public static syncLetterboxdList(
+    data: MeSyncLetterboxdListData,
+  ): CancelablePromise<MeSyncLetterboxdListResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/me/letterboxd-lists/{list_id}/sync",
+      path: {
+        list_id: data.listId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Remove Letterboxd List
+   * @param data The data for the request.
+   * @param data.listId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static removeLetterboxdList(
+    data: MeRemoveLetterboxdListData,
+  ): CancelablePromise<MeRemoveLetterboxdListResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/letterboxd-lists/{list_id}",
+      path: {
+        list_id: data.listId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
     })
   }
 

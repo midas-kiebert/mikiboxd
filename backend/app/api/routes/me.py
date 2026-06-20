@@ -23,12 +23,17 @@ from app.models.user import UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
 from app.schemas.friend_group import FriendGroupCreate, FriendGroupPublic
+from app.schemas.letterboxd_list import (
+    LetterboxdListCreate,
+    LetterboxdListPublic,
+)
 from app.schemas.notification import NotificationFeedItem
 from app.schemas.push_token import PushTokenDelete, PushTokenRegister
 from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe, UserWithFriendStatus
+from app.services import letterboxd_lists as letterboxd_lists_service
 from app.services import me as me_service
 from app.services import users as users_service
 from app.services import watched as watched_service
@@ -673,6 +678,52 @@ def sync_watched(
 ) -> Message:
     watched_service.sync_watched(session=session, user_id=current_user.id)
     return Message(message="Watched list synced successfully")
+
+
+@router.get("/letterboxd-lists", response_model=list[LetterboxdListPublic])
+def get_letterboxd_lists(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> list[LetterboxdListPublic]:
+    return letterboxd_lists_service.list_available_lists(
+        session=session, user_id=current_user.id
+    )
+
+
+@router.post("/letterboxd-lists", response_model=LetterboxdListPublic)
+def add_letterboxd_list(
+    body: LetterboxdListCreate,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> LetterboxdListPublic:
+    letterboxd_list = letterboxd_lists_service.add_list_for_user(
+        session=session, user_id=current_user.id, raw_url=body.url
+    )
+    return letterboxd_lists_service.to_public(
+        session=session, letterboxd_list=letterboxd_list
+    )
+
+
+@router.put("/letterboxd-lists/{list_id}/sync", response_model=LetterboxdListPublic)
+def sync_letterboxd_list(list_id: UUID, session: SessionDep) -> LetterboxdListPublic:
+    letterboxd_list = letterboxd_lists_service.sync_list(
+        session=session, list_id=list_id
+    )
+    return letterboxd_lists_service.to_public(
+        session=session, letterboxd_list=letterboxd_list
+    )
+
+
+@router.delete("/letterboxd-lists/{list_id}", response_model=Message)
+def remove_letterboxd_list(
+    list_id: UUID,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Message:
+    letterboxd_lists_service.remove_list_for_user(
+        session=session, user_id=current_user.id, list_id=list_id
+    )
+    return Message(message="List removed successfully")
 
 
 @router.get("/friends", response_model=list[UserWithFriendStatus])

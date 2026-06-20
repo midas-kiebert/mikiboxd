@@ -52,6 +52,25 @@ def _send_interested_showtime_reminders() -> None:
         logger.exception("Failed to run interested-showtime reminder job")
 
 
+def _sync_curated_letterboxd_lists() -> None:
+    """Re-sync the curated Letterboxd lists (e.g. the Top 500).
+
+    Runs weekly. Curated lists are shared across users, so they are kept fresh
+    server-side; custom lists refresh lazily when their owner opens the app.
+    Errors are caught so a single failure does not stop the scheduler.
+    """
+    from app.api.deps import get_db_context
+    from app.services import letterboxd_lists as letterboxd_lists_service
+
+    try:
+        with get_db_context() as session:
+            synced_count = letterboxd_lists_service.sync_curated_lists(session=session)
+        if synced_count > 0:
+            logger.info("Synced %s curated Letterboxd lists", synced_count)
+    except Exception:
+        logger.exception("Failed to run curated Letterboxd list sync job")
+
+
 def _purge_stale_notifications() -> None:
     """Decay notification-centre entries (dismissed or older than the max age).
 
@@ -86,5 +105,10 @@ if __name__ == "__main__":
         func=_purge_stale_notifications,
         trigger=CronTrigger(hour=4, minute=0, timezone=_TIMEZONE),
         id="purge_stale_notifications",
+    )
+    scheduler.add_job(
+        func=_sync_curated_letterboxd_lists,
+        trigger=CronTrigger(day_of_week="mon", hour=5, minute=0, timezone=_TIMEZONE),
+        id="sync_curated_letterboxd_lists",
     )
     scheduler.start()

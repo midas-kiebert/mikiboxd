@@ -665,6 +665,10 @@ export type MeUpdatePasswordMeResponse = Message
 
 export type MeCountMyShowtimesData = {
   days?: Array<string> | null
+  /**
+   * Hide movies on any of these Letterboxd lists
+   */
+  excludeListIds?: Array<string> | null
   hideWatched?: boolean
   query?: string | null
   /**
@@ -696,6 +700,8 @@ export type MeCountMyShowtimesData = {
    * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    */
   timesOfDay?: Array<TimeOfDay> | null
+  watchedOnly?: boolean
+  watchlistExclude?: boolean
   watchlistOnly?: boolean
 }
 
@@ -703,6 +709,10 @@ export type MeCountMyShowtimesResponse = number
 
 export type MeGetMyShowtimesData = {
   days?: Array<string> | null
+  /**
+   * Hide movies on any of these Letterboxd lists
+   */
+  excludeListIds?: Array<string> | null
   hideWatched?: boolean
   limit?: number
   offset?: number
@@ -736,6 +746,8 @@ export type MeGetMyShowtimesData = {
    * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    */
   timesOfDay?: Array<TimeOfDay> | null
+  watchedOnly?: boolean
+  watchlistExclude?: boolean
   watchlistOnly?: boolean
 }
 
@@ -847,6 +859,10 @@ export type MeDeletePushTokenResponse = Message
 
 export type MoviesCountMoviesData = {
   days?: Array<string> | null
+  /**
+   * Hide movies on any of these Letterboxd lists
+   */
+  excludeListIds?: Array<string> | null
   hideWatched?: boolean
   query?: string | null
   /**
@@ -878,6 +894,8 @@ export type MoviesCountMoviesData = {
    * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    */
   timesOfDay?: Array<TimeOfDay> | null
+  watchedOnly?: boolean
+  watchlistExclude?: boolean
   watchlistOnly?: boolean
 }
 
@@ -885,6 +903,10 @@ export type MoviesCountMoviesResponse = number
 
 export type MoviesReadMoviesData = {
   days?: Array<string> | null
+  /**
+   * Hide movies on any of these Letterboxd lists
+   */
+  excludeListIds?: Array<string> | null
   hideWatched?: boolean
   limit?: number
   offset?: number
@@ -919,6 +941,8 @@ export type MoviesReadMoviesData = {
    * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    */
   timesOfDay?: Array<TimeOfDay> | null
+  watchedOnly?: boolean
+  watchlistExclude?: boolean
   watchlistOnly?: boolean
 }
 
@@ -926,6 +950,10 @@ export type MoviesReadMoviesResponse = Array<MovieSummaryLoggedIn>
 
 export type MoviesReadMovieShowtimesData = {
   days?: Array<string> | null
+  /**
+   * Hide movies on any of these Letterboxd lists
+   */
+  excludeListIds?: Array<string> | null
   hideWatched?: boolean
   id: number
   limit?: number
@@ -960,6 +988,8 @@ export type MoviesReadMovieShowtimesData = {
    * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    */
   timesOfDay?: Array<TimeOfDay> | null
+  watchedOnly?: boolean
+  watchlistExclude?: boolean
   watchlistOnly?: boolean
 }
 
@@ -967,6 +997,10 @@ export type MoviesReadMovieShowtimesResponse = Array<ShowtimeInMovieLoggedIn>
 
 export type MoviesReadMovieData = {
   days?: Array<string> | null
+  /**
+   * Hide movies on any of these Letterboxd lists
+   */
+  excludeListIds?: Array<string> | null
   hideWatched?: boolean
   id: number
   query?: string | null
@@ -1000,6 +1034,8 @@ export type MoviesReadMovieData = {
    * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    */
   timesOfDay?: Array<TimeOfDay> | null
+  watchedOnly?: boolean
+  watchlistExclude?: boolean
   watchlistOnly?: boolean
 }
 
@@ -1075,6 +1111,10 @@ export type ShowtimesUpdateShowtimeVisibilityResponse = ShowtimeVisibilityPublic
 
 export type ShowtimesCountMainPageShowtimesData = {
   days?: Array<string> | null
+  /**
+   * Hide movies on any of these Letterboxd lists
+   */
+  excludeListIds?: Array<string> | null
   hideWatched?: boolean
   query?: string | null
   /**
@@ -1106,6 +1146,8 @@ export type ShowtimesCountMainPageShowtimesData = {
    * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    */
   timesOfDay?: Array<TimeOfDay> | null
+  watchedOnly?: boolean
+  watchlistExclude?: boolean
   watchlistOnly?: boolean
 }
 
@@ -1113,6 +1155,10 @@ export type ShowtimesCountMainPageShowtimesResponse = number
 
 export type ShowtimesGetMainPageShowtimesData = {
   days?: Array<string> | null
+  /**
+   * Hide movies on any of these Letterboxd lists
+   */
+  excludeListIds?: Array<string> | null
   hideWatched?: boolean
   limit?: number
   offset?: number
@@ -1146,6 +1192,8 @@ export type ShowtimesGetMainPageShowtimesData = {
    * Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    */
   timesOfDay?: Array<TimeOfDay> | null
+  watchedOnly?: boolean
+  watchlistExclude?: boolean
   watchlistOnly?: boolean
 }
 
@@ -1179,6 +1227,10 @@ export type UsersGetUserResponse = UserPublic
 
 export type UsersGetUserSelectedShowtimesData = {
   days?: Array<string> | null
+  /**
+   * Hide movies on any of these Letterboxd lists
+   */
+  excludeListIds?: Array<string> | null
   hideWatched?: boolean
   limit?: number
   offset?: number
@@ -1213,6 +1265,8 @@ export type UsersGetUserSelectedShowtimesData = {
    */
   timesOfDay?: Array<TimeOfDay> | null
   userId: string
+  watchedOnly?: boolean
+  watchlistExclude?: boolean
   watchlistOnly?: boolean
 }
 

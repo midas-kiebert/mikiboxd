@@ -7,17 +7,15 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_
 
 from app.core.enums import GoingStatus
+from app.crud.movie_set_filters import apply_movie_set_filters
 from app.inputs.movie import Filters
 from app.models.cinema import Cinema
 from app.models.cinema_selection import CinemaSelection
-from app.models.letterboxd_list import LetterboxdListFilm
 from app.models.movie import Movie, MovieCreate, MovieUpdate
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
-from app.models.watched_selection import WatchedSelection
-from app.models.watchlist_selection import WatchlistSelection
 
 DAY_BUCKET_CUTOFF = time(4, 0)
 DAY_BUCKET_OFFSET = timedelta(
@@ -114,25 +112,6 @@ def time_range_clause(
 def day_bucket_date_clause(datetime_column):
     # Shift by the configured day-bucket cutoff so post-midnight slots stay on the prior day.
     return func.date(datetime_column - DAY_BUCKET_OFFSET)
-
-
-def watched_movie_ids_subquery(letterboxd_username: str):
-    return select(col(WatchedSelection.movie_id)).where(
-        col(WatchedSelection.letterboxd_username) == letterboxd_username,
-        col(WatchedSelection.movie_id).is_not(None),
-    )
-
-
-def list_movie_ids_subquery(list_ids: list[UUID]):
-    """Movie ids that appear on any of the given Letterboxd lists.
-
-    Films whose slug we couldn't match to a catalog movie have a NULL
-    ``movie_id`` and are excluded.
-    """
-    return select(col(LetterboxdListFilm.movie_id)).where(
-        col(LetterboxdListFilm.list_id).in_(list_ids),
-        col(LetterboxdListFilm.movie_id).is_not(None),
-    )
 
 
 def get_movie_by_id(*, session: Session, id: int) -> Movie | None:
@@ -428,7 +407,6 @@ def get_showtimes_for_movie(
 
     if (
         filters.query
-        or filters.watchlist_only
         or filters.runtime_min is not None
         or filters.runtime_max is not None
     ):
@@ -446,18 +424,14 @@ def get_showtimes_for_movie(
     if filters.runtime_max is not None:
         stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
 
-    if filters.watchlist_only and letterboxd_username is not None:
-        stmt = stmt.join(
-            WatchlistSelection,
-            col(WatchlistSelection.movie_id) == col(Showtime.movie_id),
-        ).where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
-
-    if filters.hide_watched and letterboxd_username is not None:
-        stmt = stmt.where(
-            col(Showtime.movie_id).not_in(
-                watched_movie_ids_subquery(letterboxd_username)
-            )
-        )
+    stmt, force_empty = apply_movie_set_filters(
+        stmt,
+        movie_id_col=col(Showtime.movie_id),
+        filters=filters,
+        letterboxd_username=letterboxd_username,
+    )
+    if force_empty:
+        return []
 
     if (
         current_user_id is not None
@@ -568,18 +542,14 @@ def get_movies(
     if filters.runtime_max is not None:
         stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
 
-    if filters.watchlist_only:
-        stmt = stmt.join(
-            WatchlistSelection, col(WatchlistSelection.movie_id) == Movie.id
-        ).where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
-
-    if filters.hide_watched and letterboxd_username is not None:
-        stmt = stmt.where(
-            col(Movie.id).not_in(watched_movie_ids_subquery(letterboxd_username))
-        )
-
-    if filters.list_ids:
-        stmt = stmt.where(col(Movie.id).in_(list_movie_ids_subquery(filters.list_ids)))
+    stmt, force_empty = apply_movie_set_filters(
+        stmt,
+        movie_id_col=col(Movie.id),
+        filters=filters,
+        letterboxd_username=letterboxd_username,
+    )
+    if force_empty:
+        return []
 
     if filters.days is not None and len(filters.days) > 0:
         stmt = stmt.where(
@@ -664,18 +634,14 @@ def count_movies(
     if filters.runtime_max is not None:
         stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
 
-    if filters.watchlist_only:
-        stmt = stmt.join(
-            WatchlistSelection, col(WatchlistSelection.movie_id) == Movie.id
-        ).where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
-
-    if filters.hide_watched and letterboxd_username is not None:
-        stmt = stmt.where(
-            col(Movie.id).not_in(watched_movie_ids_subquery(letterboxd_username))
-        )
-
-    if filters.list_ids:
-        stmt = stmt.where(col(Movie.id).in_(list_movie_ids_subquery(filters.list_ids)))
+    stmt, force_empty = apply_movie_set_filters(
+        stmt,
+        movie_id_col=col(Movie.id),
+        filters=filters,
+        letterboxd_username=letterboxd_username,
+    )
+    if force_empty:
+        return 0
 
     if filters.days is not None and len(filters.days) > 0:
         stmt = stmt.where(

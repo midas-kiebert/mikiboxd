@@ -80,6 +80,12 @@ export type FiltersModalProps = {
   setSelectedRuntimeRanges: (v: string[]) => void;
   selectedListIds?: string[];
   setSelectedListIds?: (v: string[]) => void;
+  excludeListIds?: string[];
+  setExcludeListIds?: (v: string[]) => void;
+  watchlistExclude?: boolean;
+  setWatchlistExclude?: (v: boolean) => void;
+  watchedOnly?: boolean;
+  setWatchedOnly?: (v: boolean) => void;
   showLists?: boolean;
   resultCount?: number;
 };
@@ -110,6 +116,12 @@ export default function FiltersModal({
   setSelectedRuntimeRanges,
   selectedListIds = [],
   setSelectedListIds = () => {},
+  excludeListIds = [],
+  setExcludeListIds = () => {},
+  watchlistExclude = false,
+  setWatchlistExclude = () => {},
+  watchedOnly = false,
+  setWatchedOnly = () => {},
   showLists = false,
   resultCount,
 }: FiltersModalProps) {
@@ -350,10 +362,16 @@ export default function FiltersModal({
                   canUseWatchlistFilter={canUseWatchlistFilter}
                   watchlistOnly={watchlistOnly}
                   setWatchlistOnly={setWatchlistOnly}
+                  watchlistExclude={watchlistExclude}
+                  setWatchlistExclude={setWatchlistExclude}
                   hideWatched={hideWatched}
                   setHideWatched={setHideWatched}
+                  watchedOnly={watchedOnly}
+                  setWatchedOnly={setWatchedOnly}
                   selectedListIds={selectedListIds}
                   setSelectedListIds={setSelectedListIds}
+                  excludeListIds={excludeListIds}
+                  setExcludeListIds={setExcludeListIds}
                 />
                 <Divider colors={colors} />
               </>

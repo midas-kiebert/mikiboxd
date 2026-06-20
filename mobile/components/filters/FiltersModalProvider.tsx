@@ -55,12 +55,20 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     setSelectedRuntimeRanges,
     selectedListIds,
     setSelectedListIds,
+    excludeListIds,
+    setExcludeListIds,
+    watchlistExclude,
+    setWatchlistExclude,
+    watchedOnly,
+    setWatchedOnly,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
+  const effectiveWatchlistExclude = hasLetterboxdUsername ? watchlistExclude : false;
+  const effectiveWatchedOnly = hasLetterboxdUsername ? watchedOnly : false;
 
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
@@ -88,9 +96,12 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     runtimeMax: runtimeBounds.runtimeMax,
     watchlistOnly: effectiveWatchlistOnly || undefined,
     hideWatched: effectiveHideWatched || undefined,
+    watchlistExclude: effectiveWatchlistExclude || undefined,
+    watchedOnly: effectiveWatchedOnly || undefined,
     selectedStatuses: getSelectedStatusesFromShowtimeFilter(selectedShowtimeFilter),
     selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
-  }), [sessionCinemaIds, resolvedApiDays, selectedTimeRanges, runtimeBounds, effectiveWatchlistOnly, effectiveHideWatched, selectedShowtimeFilter, selectedListIds]);
+    excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
+  }), [sessionCinemaIds, resolvedApiDays, selectedTimeRanges, runtimeBounds, effectiveWatchlistOnly, effectiveHideWatched, effectiveWatchlistExclude, effectiveWatchedOnly, selectedShowtimeFilter, selectedListIds, excludeListIds]);
 
   const { data: showtimesCount } = useQuery({
     queryKey: ['count', 'showtimes', 'main', countFilters],
@@ -155,6 +166,12 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         setSelectedRuntimeRanges={setSelectedRuntimeRanges}
         selectedListIds={selectedListIds}
         setSelectedListIds={setSelectedListIds}
+        excludeListIds={excludeListIds}
+        setExcludeListIds={setExcludeListIds}
+        watchlistExclude={effectiveWatchlistExclude}
+        setWatchlistExclude={setWatchlistExclude}
+        watchedOnly={effectiveWatchedOnly}
+        setWatchedOnly={setWatchedOnly}
         showLists
         resultCount={resultCount}
       />

@@ -1,12 +1,17 @@
 /**
  * "Filter movies" section of the Filters modal.
  *
- * Groups every movie-set filter in one place: the Letterboxd watchlist /
- * watched toggles and the Letterboxd *lists* (curated ones such as the
- * Letterboxd Top 500, plus custom lists the user pastes in). Each option shows
- * when its underlying Letterboxd data was last synced.
+ * Every movie-set filter lives here as a card you can set to Include or Exclude:
+ * the Letterboxd watchlist / watched, plus Letterboxd *lists* (curated ones such
+ * as the Top 500, and custom lists pasted in by the user). Includes combine as a
+ * union and excludes are subtracted, so you can e.g. include Watchlist + Top 500
+ * while excluding Watched. Each card shows when its data was last synced.
+ *
+ * Syncing: watchlist/watched refresh automatically on app open; curated lists
+ * refresh weekly server-side; custom lists refresh on app open when stale. A
+ * manual refresh is only offered when something is more than a day old.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { DateTime } from "luxon";
@@ -23,22 +28,34 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type Colors = ReturnType<typeof useThemeColors>;
+type ItemMode = "off" | "include" | "exclude";
 
 type Props = {
   colors: Colors;
   canUseWatchlistFilter: boolean;
   watchlistOnly: boolean;
   setWatchlistOnly: (v: boolean) => void;
+  watchlistExclude: boolean;
+  setWatchlistExclude: (v: boolean) => void;
   hideWatched: boolean;
   setHideWatched: (v: boolean) => void;
+  watchedOnly: boolean;
+  setWatchedOnly: (v: boolean) => void;
   selectedListIds: string[];
   setSelectedListIds: (v: string[]) => void;
+  excludeListIds: string[];
+  setExcludeListIds: (v: string[]) => void;
 };
+
+function daysSince(iso: string | null | undefined): number {
+  if (!iso) return Number.POSITIVE_INFINITY;
+  return DateTime.now().diff(DateTime.fromISO(iso), "days").days;
+}
 
 function formatSynced(iso: string | null | undefined): string {
   if (!iso) return "Not synced yet";
   const relative = DateTime.fromISO(iso).toRelative({ style: "short" });
-  return relative ? `Synced ${relative}` : "Synced";
+  return relative ? `Synced ${relative}` : "Synced just now";
 }
 
 export default function FilterMoviesSection({
@@ -46,10 +63,16 @@ export default function FilterMoviesSection({
   canUseWatchlistFilter,
   watchlistOnly,
   setWatchlistOnly,
+  watchlistExclude,
+  setWatchlistExclude,
   hideWatched,
   setHideWatched,
+  watchedOnly,
+  setWatchedOnly,
   selectedListIds,
   setSelectedListIds,
+  excludeListIds,
+  setExcludeListIds,
 }: Props) {
   const styles = createStyles(colors);
   const queryClient = useQueryClient();
@@ -63,18 +86,52 @@ export default function FilterMoviesSection({
   const [watchlistSyncing, setWatchlistSyncing] = useState(false);
   const [watchedSyncing, setWatchedSyncing] = useState(false);
 
+  // Re-render periodically so the "Synced … ago" labels stay current.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const curatedLists = lists.filter((l) => l.is_curated);
   const customLists = lists.filter((l) => !l.is_curated);
 
-  const toggleList = (id: string) => {
+  // ─── Mode helpers ───────────────────────────────────────────────────────────
+  const watchlistMode: ItemMode = watchlistOnly
+    ? "include"
+    : watchlistExclude
+      ? "exclude"
+      : "off";
+  const setWatchlistMode = (mode: ItemMode) => {
     triggerSelectionHaptic();
-    if (selectedListIds.includes(id)) {
-      setSelectedListIds(selectedListIds.filter((x) => x !== id));
-    } else {
-      setSelectedListIds([...selectedListIds, id]);
-    }
+    setWatchlistOnly(mode === "include");
+    setWatchlistExclude(mode === "exclude");
   };
 
+  const watchedMode: ItemMode = watchedOnly ? "include" : hideWatched ? "exclude" : "off";
+  const setWatchedMode = (mode: ItemMode) => {
+    triggerSelectionHaptic();
+    setWatchedOnly(mode === "include");
+    setHideWatched(mode === "exclude");
+  };
+
+  const listMode = (id: string): ItemMode =>
+    selectedListIds.includes(id)
+      ? "include"
+      : excludeListIds.includes(id)
+        ? "exclude"
+        : "off";
+  const setListMode = (id: string, mode: ItemMode) => {
+    triggerSelectionHaptic();
+    setSelectedListIds(
+      selectedListIds.filter((x) => x !== id).concat(mode === "include" ? [id] : [])
+    );
+    setExcludeListIds(
+      excludeListIds.filter((x) => x !== id).concat(mode === "exclude" ? [id] : [])
+    );
+  };
+
+  // ─── Actions ────────────────────────────────────────────────────────────────
   const handleAdd = () => {
     const url = newUrl.trim();
     if (!url || addList.isPending) return;
@@ -89,32 +146,20 @@ export default function FilterMoviesSection({
 
   const handleRemoveList = (id: string) => {
     triggerSelectionHaptic();
-    if (selectedListIds.includes(id)) {
-      setSelectedListIds(selectedListIds.filter((x) => x !== id));
-    }
+    setSelectedListIds(selectedListIds.filter((x) => x !== id));
+    setExcludeListIds(excludeListIds.filter((x) => x !== id));
     removeList.mutate(id);
   };
 
-  const syncWatchlist = () => {
-    if (watchlistSyncing) return;
-    setWatchlistSyncing(true);
-    MeService.syncWatchlist()
+  const refreshWatch = (
+    fn: () => Promise<unknown>,
+    setBusy: (b: boolean) => void
+  ) => {
+    setBusy(true);
+    fn()
       .catch(() => {})
       .finally(() => {
-        setWatchlistSyncing(false);
-        queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-        queryClient.invalidateQueries({ queryKey: ["showtimes"] });
-        queryClient.invalidateQueries({ queryKey: ["movies"] });
-      });
-  };
-
-  const syncWatched = () => {
-    if (watchedSyncing) return;
-    setWatchedSyncing(true);
-    MeService.syncWatched()
-      .catch(() => {})
-      .finally(() => {
-        setWatchedSyncing(false);
+        setBusy(false);
         queryClient.invalidateQueries({ queryKey: ["currentUser"] });
         queryClient.invalidateQueries({ queryKey: ["showtimes"] });
         queryClient.invalidateQueries({ queryKey: ["movies"] });
@@ -127,23 +172,24 @@ export default function FilterMoviesSection({
 
       {canUseWatchlistFilter && (
         <>
-          <View style={styles.pillRow}>
-            <Pill label="All movies" active={!watchlistOnly} onPress={() => setWatchlistOnly(false)} colors={colors} />
-            <Pill label="Watchlisted only" active={watchlistOnly} onPress={() => setWatchlistOnly(true)} colors={colors} />
-            <Pill label="Hide watched" active={hideWatched} onPress={() => setHideWatched(!hideWatched)} colors={colors} />
-          </View>
-          <SyncStatusRow
-            label="Watchlist"
-            iso={user?.watchlist_last_synced}
+          <FilterItemCard
+            title="Watchlist"
+            subtitle={formatSynced(user?.watchlist_last_synced)}
+            mode={watchlistMode}
+            onChangeMode={setWatchlistMode}
+            stale={daysSince(user?.watchlist_last_synced) >= 1}
             syncing={watchlistSyncing}
-            onSync={syncWatchlist}
+            onSync={() => refreshWatch(() => MeService.syncWatchlist(), setWatchlistSyncing)}
             colors={colors}
           />
-          <SyncStatusRow
-            label="Watched"
-            iso={user?.watched_last_synced}
+          <FilterItemCard
+            title="Watched"
+            subtitle={formatSynced(user?.watched_last_synced)}
+            mode={watchedMode}
+            onChangeMode={setWatchedMode}
+            stale={daysSince(user?.watched_last_synced) >= 1}
             syncing={watchedSyncing}
-            onSync={syncWatched}
+            onSync={() => refreshWatch(() => MeService.syncWatched(), setWatchedSyncing)}
             colors={colors}
           />
         </>
@@ -155,11 +201,13 @@ export default function FilterMoviesSection({
         <ActivityIndicator color={colors.tint} style={{ marginVertical: 8 }} />
       ) : (
         curatedLists.map((list) => (
-          <ListCard
+          <ListItemCard
             key={list.id}
             list={list}
-            selected={selectedListIds.includes(list.id)}
-            onToggle={() => toggleList(list.id)}
+            mode={listMode(list.id)}
+            onChangeMode={(m) => setListMode(list.id, m)}
+            syncing={syncingId === list.id}
+            onSync={() => handleSyncList(list.id)}
             colors={colors}
           />
         ))
@@ -168,13 +216,13 @@ export default function FilterMoviesSection({
       {/* Custom lists */}
       <MiniLabel label="Your lists" colors={colors} />
       {customLists.map((list) => (
-        <ListCard
+        <ListItemCard
           key={list.id}
           list={list}
-          selected={selectedListIds.includes(list.id)}
-          onToggle={() => toggleList(list.id)}
-          onSync={() => handleSyncList(list.id)}
+          mode={listMode(list.id)}
+          onChangeMode={(m) => setListMode(list.id, m)}
           syncing={syncingId === list.id}
+          onSync={() => handleSyncList(list.id)}
           onRemove={() => handleRemoveList(list.id)}
           colors={colors}
         />
@@ -185,7 +233,7 @@ export default function FilterMoviesSection({
         </ThemedText>
       )}
 
-      {/* Add list */}
+      {/* Add a list */}
       <View style={styles.addRow}>
         <TextInput
           style={styles.addInput}
@@ -223,83 +271,165 @@ export default function FilterMoviesSection({
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function ListCard({
+function ListItemCard({
   list,
-  selected,
-  onToggle,
+  mode,
+  onChangeMode,
   onSync,
   syncing,
   onRemove,
   colors,
 }: {
   list: LetterboxdListPublic;
-  selected: boolean;
-  onToggle: () => void;
-  onSync?: () => void;
+  mode: ItemMode;
+  onChangeMode: (mode: ItemMode) => void;
+  onSync: () => void;
+  syncing: boolean;
+  onRemove?: () => void;
+  colors: Colors;
+}) {
+  const subtitle = `${list.film_count} film${list.film_count === 1 ? "" : "s"} · ${formatSynced(list.last_synced)}`;
+  return (
+    <FilterItemCard
+      title={list.title ?? list.list_slug}
+      subtitle={subtitle}
+      mode={mode}
+      onChangeMode={onChangeMode}
+      stale={daysSince(list.last_synced) >= 1}
+      syncing={syncing}
+      onSync={onSync}
+      onRemove={onRemove}
+      colors={colors}
+    />
+  );
+}
+
+function FilterItemCard({
+  title,
+  subtitle,
+  mode,
+  onChangeMode,
+  stale,
+  syncing,
+  onSync,
+  onRemove,
+  colors,
+}: {
+  title: string;
+  subtitle: string;
+  mode: ItemMode;
+  onChangeMode: (mode: ItemMode) => void;
+  stale?: boolean;
   syncing?: boolean;
+  onSync?: () => void;
   onRemove?: () => void;
   colors: Colors;
 }) {
   const styles = createStyles(colors);
+  const active = mode !== "off";
   return (
-    <View style={[styles.listCard, selected && styles.listCardActive]}>
-      <TouchableOpacity style={styles.listCardMain} onPress={onToggle} activeOpacity={0.8}>
-        <MaterialIcons
-          name={selected ? "check-circle" : "radio-button-unchecked"}
-          size={20}
-          color={selected ? colors.tint : colors.textSecondary}
-        />
-        <View style={styles.listCardTextBlock}>
-          <ThemedText style={styles.listCardTitle} numberOfLines={1}>
-            {list.title ?? list.list_slug}
+    <View style={[styles.card, active && styles.cardActive]}>
+      <View style={styles.cardTop}>
+        <View style={styles.cardTextBlock}>
+          <ThemedText style={styles.cardTitle} numberOfLines={1}>
+            {title}
           </ThemedText>
-          <ThemedText style={styles.listCardSubtitle} numberOfLines={1}>
-            {list.film_count} film{list.film_count === 1 ? "" : "s"} · {formatSynced(list.last_synced)}
-          </ThemedText>
+          <View style={styles.cardSubtitleRow}>
+            <ThemedText style={styles.cardSubtitle} numberOfLines={1}>
+              {subtitle}
+            </ThemedText>
+            {onSync && (stale || syncing) && (
+              <TouchableOpacity onPress={onSync} disabled={syncing} hitSlop={8} activeOpacity={0.7}>
+                {syncing ? (
+                  <ActivityIndicator size="small" color={colors.textSecondary} />
+                ) : (
+                  <MaterialIcons name="sync" size={14} color={colors.tint} />
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </TouchableOpacity>
-      {onSync && (
-        <TouchableOpacity style={styles.listCardAction} onPress={onSync} disabled={syncing} activeOpacity={0.7}>
-          {syncing ? (
-            <ActivityIndicator size="small" color={colors.textSecondary} />
-          ) : (
-            <MaterialIcons name="sync" size={18} color={colors.textSecondary} />
-          )}
-        </TouchableOpacity>
-      )}
-      {onRemove && (
-        <TouchableOpacity style={styles.listCardAction} onPress={onRemove} activeOpacity={0.7}>
-          <MaterialIcons name="close" size={18} color={colors.red.secondary} />
-        </TouchableOpacity>
-      )}
+        {onRemove && (
+          <TouchableOpacity onPress={onRemove} hitSlop={8} activeOpacity={0.7} style={styles.removeButton}>
+            <MaterialIcons name="close" size={18} color={colors.red.secondary} />
+          </TouchableOpacity>
+        )}
+      </View>
+      <IncludeExcludeToggle mode={mode} onChange={onChangeMode} colors={colors} />
     </View>
   );
 }
 
-function SyncStatusRow({
-  label,
-  iso,
-  syncing,
-  onSync,
+function IncludeExcludeToggle({
+  mode,
+  onChange,
   colors,
 }: {
-  label: string;
-  iso: string | null | undefined;
-  syncing: boolean;
-  onSync: () => void;
+  mode: ItemMode;
+  onChange: (mode: ItemMode) => void;
   colors: Colors;
 }) {
   const styles = createStyles(colors);
   return (
-    <TouchableOpacity style={styles.syncStatusRow} onPress={onSync} disabled={syncing} activeOpacity={0.7}>
-      <ThemedText style={styles.syncStatusText}>
-        {label} · {formatSynced(iso)}
+    <View style={styles.toggleRow}>
+      <Segment
+        label="Include"
+        icon="add"
+        active={mode === "include"}
+        bg={colors.green.primary}
+        fg={colors.green.secondary}
+        onPress={() => onChange(mode === "include" ? "off" : "include")}
+        colors={colors}
+      />
+      <Segment
+        label="Exclude"
+        icon="block"
+        active={mode === "exclude"}
+        bg={colors.red.primary}
+        fg={colors.red.secondary}
+        onPress={() => onChange(mode === "exclude" ? "off" : "exclude")}
+        colors={colors}
+      />
+    </View>
+  );
+}
+
+function Segment({
+  label,
+  icon,
+  active,
+  bg,
+  fg,
+  onPress,
+  colors,
+}: {
+  label: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
+  active: boolean;
+  bg: string;
+  fg: string;
+  onPress: () => void;
+  colors: Colors;
+}) {
+  return (
+    <TouchableOpacity
+      style={{
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 4,
+        paddingVertical: 7,
+        borderRadius: 10,
+        backgroundColor: active ? bg : colors.pillBackground,
+      }}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <MaterialIcons name={icon} size={14} color={active ? fg : colors.pillText} />
+      <ThemedText style={{ fontSize: 12, fontWeight: "600", color: active ? fg : colors.pillText }}>
+        {label}
       </ThemedText>
-      {syncing ? (
-        <ActivityIndicator size="small" color={colors.textSecondary} />
-      ) : (
-        <MaterialIcons name="sync" size={14} color={colors.textSecondary} />
-      )}
     </TouchableOpacity>
   );
 }
@@ -329,75 +459,26 @@ function MiniLabel({ label, colors }: { label: string; colors: Colors }) {
   );
 }
 
-function Pill({
-  label,
-  active,
-  onPress,
-  colors,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  colors: Colors;
-}) {
-  return (
-    <TouchableOpacity
-      style={{
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 16,
-        backgroundColor: active ? colors.pillActiveBackground : colors.pillBackground,
-        marginRight: 7,
-        marginBottom: 7,
-      }}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      <ThemedText style={{ fontSize: 13, fontWeight: "500", color: active ? colors.pillActiveText : colors.pillText }}>
-        {label}
-      </ThemedText>
-    </TouchableOpacity>
-  );
-}
-
 const createStyles = (colors: Colors) =>
   StyleSheet.create({
-    pillRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center" },
-    syncStatusRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingVertical: 4,
-    },
-    syncStatusText: { fontSize: 12, color: colors.textSecondary },
-    listCard: {
-      flexDirection: "row",
-      alignItems: "center",
+    card: {
       borderRadius: 12,
       borderWidth: 1.5,
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
-      marginBottom: 8,
-      paddingRight: 4,
-    },
-    listCardActive: { borderColor: colors.tint },
-    listCardMain: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
       paddingHorizontal: 12,
       paddingVertical: 10,
+      marginBottom: 8,
+      gap: 8,
     },
-    listCardTextBlock: { flex: 1 },
-    listCardTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
-    listCardSubtitle: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
-    listCardAction: {
-      width: 36,
-      height: 36,
-      alignItems: "center",
-      justifyContent: "center",
-    },
+    cardActive: { borderColor: colors.tint },
+    cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+    cardTextBlock: { flex: 1 },
+    cardTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
+    cardSubtitleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 1 },
+    cardSubtitle: { fontSize: 12, color: colors.textSecondary, flexShrink: 1 },
+    removeButton: { padding: 2 },
+    toggleRow: { flexDirection: "row", gap: 6 },
     emptyHint: { fontSize: 12, color: colors.textSecondary, marginBottom: 8 },
     addRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
     addInput: {

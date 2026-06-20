@@ -66,6 +66,9 @@ export default function MainShowtimesScreen() {
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
     selectedListIds,
+    excludeListIds,
+    watchlistExclude,
+    watchedOnly,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -74,6 +77,8 @@ export default function MainShowtimesScreen() {
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
   const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
   const effectiveAppliedHideWatched = hasLetterboxdUsername ? appliedHideWatched : false;
+  const effectiveWatchlistExclude = hasLetterboxdUsername ? watchlistExclude : false;
+  const effectiveWatchedOnly = hasLetterboxdUsername ? watchedOnly : false;
 
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
 
@@ -108,12 +113,15 @@ export default function MainShowtimesScreen() {
     runtimeMax: runtimeBounds.runtimeMax,
     selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
     watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
+    watchlistExclude: effectiveWatchlistExclude ? true : undefined,
     hideWatched: effectiveAppliedHideWatched ? true : undefined,
+    watchedOnly: effectiveWatchedOnly ? true : undefined,
     selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
+    excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
   }), [
     searchQuery, appliedShowtimeFilter, resolvedApiDays, selectedTimeRanges,
     runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, effectiveAppliedWatchlistOnly,
-    effectiveAppliedHideWatched, selectedListIds,
+    effectiveAppliedHideWatched, selectedListIds, excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly,
   ]);
 
   const activeShowtimesQuery = useFetchMainPageShowtimes({
@@ -135,11 +143,15 @@ export default function MainShowtimesScreen() {
       runtimeMax: runtimeBounds.runtimeMax,
       selectedCinemaIds: sessionCinemaIds,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
+      watchlistExclude: effectiveWatchlistExclude ? true : undefined,
+      watchedOnly: effectiveWatchedOnly ? true : undefined,
       selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
+      excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
     }),
     [
       searchQuery, effectiveAppliedWatchlistOnly, effectiveAppliedHideWatched, resolvedApiDays, selectedTimeRanges,
       runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, appliedShowtimeFilter, selectedListIds,
+      excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly,
     ]
   );
   const moviesQuery = useFetchMovies({

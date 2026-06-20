@@ -2,8 +2,6 @@ import { useMemo, useRef, useState } from "react";
 import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { type FilterPresetScope } from "shared";
-
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import {
@@ -17,21 +15,18 @@ import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type SavedPresetChipsProps = {
-  scope: FilterPresetScope;
   onApply: (preset: DisplayPreset) => void;
   /** "cards" = wrapping card grid (FiltersModal). "chips" = horizontal scroll pills (top bar). */
   variant?: "cards" | "chips";
 };
-;
 
 export default function SavedPresetChips({
-  scope,
   onApply,
   variant = "cards",
 }: SavedPresetChipsProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { presets, isLoading, remove } = useDisplayPresets(scope);
+  const { presets, isLoading, remove } = useDisplayPresets();
 
   const handleApply = (preset: DisplayPreset) => {
     triggerSelectionHaptic();
@@ -58,7 +53,7 @@ export default function SavedPresetChips({
           const description = describeDisplayPreset(preset);
           return (
             <TouchableOpacity
-              key={`${preset.source}-${preset.id}`}
+              key={preset.id}
               style={styles.card}
               onPress={() => handleApply(preset)}
               onLongPress={() => confirmDelete(preset)}
@@ -136,7 +131,7 @@ function ChipsScroll({
           ))}
         {presets.map((preset) => (
           <TouchableOpacity
-            key={`${preset.source}-${preset.id}`}
+            key={preset.id}
             style={styles.chip}
             onPress={() => onApply(preset)}
             onLongPress={() => onLongPress(preset)}

@@ -27,7 +27,6 @@ import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-util
 import { applyDisplayPreset, type DisplayPreset } from '@/components/filters/saved-presets';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 import {
-  SHARED_TAB_FILTER_PRESET_SCOPE,
   getSelectedStatusesFromShowtimeFilter,
   toSharedTabShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
@@ -66,9 +65,13 @@ export default function MovieScreen() {
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
     selectedListIds,
+    setSelectedListIds,
     excludeListIds,
+    setExcludeListIds,
     watchlistExclude,
+    setWatchlistExclude,
     watchedOnly,
+    setWatchedOnly,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -185,12 +188,18 @@ export default function MovieScreen() {
       hasLetterboxdUsername,
       setSelectedShowtimeFilter,
       setWatchlistOnly,
+      setWatchlistExclude,
       setHideWatched,
+      setWatchedOnly,
       setSelectedDays,
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
       setSessionCinemaIds,
       setGroupByMovie,
+      selectedListIds,
+      excludeListIds,
+      setSelectedListIds,
+      setExcludeListIds,
     });
   };
 
@@ -200,7 +209,6 @@ export default function MovieScreen() {
       <TopBar />
       <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search movies" />
       <FiltersRow
-        scope={SHARED_TAB_FILTER_PRESET_SCOPE}
         onOpenModal={() => openFiltersModal({ showGroupByMovie: false })}
         onApplyPreset={handleApplyPreset}
       />

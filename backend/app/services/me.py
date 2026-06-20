@@ -8,10 +8,9 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
-from app.core.enums import FilterPresetScope, NotificationType, ShowtimePingSort
+from app.core.enums import NotificationType, ShowtimePingSort
 from app.crud import cinema as cinemas_crud
 from app.crud import cinema_preset as cinema_presets_crud
-from app.crud import filter_preset as filter_presets_crud
 from app.crud import friend_group as friend_groups_crud
 from app.crud import friendship as friendship_crud
 from app.crud import notification as notification_crud
@@ -28,14 +27,12 @@ from app.exceptions.user_exceptions import (
     InvalidUsername,
 )
 from app.models.cinema_preset import CinemaPreset
-from app.models.filter_preset import FilterPreset
 from app.models.friend_group import FriendGroup
 from app.models.push_token import PushToken
 from app.models.saved_preset import SavedPreset
 from app.models.showtime import Showtime
 from app.models.user import User, UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
-from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
 from app.schemas.friend_group import FriendGroupCreate, FriendGroupPublic
 from app.schemas.notification import NotificationFeedItem
 from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
@@ -57,35 +54,8 @@ _NOTIFICATION_FEED_TYPES = {
     NotificationType.FRIEND_REQUEST_ACCEPTED: "friend_request_accepted",
 }
 
-DEFAULT_FILTER_PRESET_IDS = {
-    FilterPresetScope.SHOWTIMES: UUID("00000000-0000-0000-0000-000000000001"),
-    FilterPresetScope.MOVIES: UUID("00000000-0000-0000-0000-000000000002"),
-}
 DEFAULT_CINEMA_PRESET_ID = UUID("00000000-0000-0000-0000-000000000003")
 DEFAULT_CINEMA_PRESET_NAME = "All Cinemas"
-
-
-def _build_default_filter_preset(scope: FilterPresetScope) -> FilterPresetPublic:
-    now = now_amsterdam_naive()
-    return FilterPresetPublic.model_validate(
-        {
-            "id": DEFAULT_FILTER_PRESET_IDS[scope],
-            "name": "Default",
-            "scope": scope,
-            "is_default": True,
-            "is_favorite": False,
-            "filters": {
-                "selected_showtime_filter": "all",
-                "showtime_audience": "including-friends",
-                "watchlist_only": False,
-                "days": None,
-                "time_ranges": None,
-                "runtime_ranges": None,
-            },
-            "created_at": now,
-            "updated_at": now,
-        }
-    )
 
 
 def update_me(
@@ -203,173 +173,13 @@ def delete_push_token_for_user(
     return True
 
 
-def _to_filter_preset_public(preset: FilterPreset) -> FilterPresetPublic:
-    return FilterPresetPublic.model_validate(
-        {
-            "id": preset.id,
-            "name": preset.name,
-            "scope": preset.scope,
-            "is_default": preset.is_default,
-            "is_favorite": preset.is_favorite,
-            "filters": preset.filters,
-            "created_at": preset.created_at,
-            "updated_at": preset.updated_at,
-        }
-    )
-
-
-def list_filter_presets(
-    *,
-    session: Session,
-    user_id: UUID,
-    scope: FilterPresetScope,
-) -> list[FilterPresetPublic]:
-    presets = filter_presets_crud.get_visible_presets(
-        session=session,
-        user_id=user_id,
-        scope=scope,
-    )
-    public_presets = [_to_filter_preset_public(preset) for preset in presets]
-    has_named_default = any(
-        preset.is_default and preset.name.strip().lower() == "default"
-        for preset in public_presets
-    )
-    if not has_named_default:
-        public_presets.insert(0, _build_default_filter_preset(scope))
-    return public_presets
-
-
-def save_filter_preset(
-    *,
-    session: Session,
-    user_id: UUID,
-    payload: FilterPresetCreate,
-) -> FilterPresetPublic:
-    now = now_amsterdam_naive()
-    preset_name = payload.name.strip()
-    filters = payload.filters.model_dump(mode="json")
-    should_set_favorite = payload.is_favorite is True
-    existing = filter_presets_crud.get_user_preset_by_name(
-        session=session,
-        user_id=user_id,
-        scope=payload.scope,
-        name=preset_name,
-    )
-
-    if should_set_favorite:
-        filter_presets_crud.clear_user_favorite_preset(
-            session=session,
-            user_id=user_id,
-            scope=payload.scope,
-        )
-
-    if existing is None:
-        preset = filter_presets_crud.create_preset(
-            session=session,
-            user_id=user_id,
-            name=preset_name,
-            scope=payload.scope,
-            filters=filters,
-            is_favorite=should_set_favorite,
-            now=now,
-        )
-    else:
-        preset = filter_presets_crud.update_preset(
-            session=session,
-            preset=existing,
-            filters=filters,
-            is_favorite=payload.is_favorite,
-            now=now,
-        )
-
-    session.commit()
-    return _to_filter_preset_public(preset)
-
-
-def delete_filter_preset(
-    *,
-    session: Session,
-    user_id: UUID,
-    preset_id: UUID,
-) -> bool:
-    deleted = filter_presets_crud.delete_user_preset(
-        session=session,
-        user_id=user_id,
-        preset_id=preset_id,
-    )
-    if deleted:
-        session.commit()
-    return deleted
-
-
-def get_favorite_filter_preset(
-    *,
-    session: Session,
-    user_id: UUID,
-    scope: FilterPresetScope,
-) -> FilterPresetPublic | None:
-    preset = filter_presets_crud.get_user_favorite_preset(
-        session=session,
-        user_id=user_id,
-        scope=scope,
-    )
-    if preset is None:
-        return None
-    return _to_filter_preset_public(preset)
-
-
-def set_favorite_filter_preset(
-    *,
-    session: Session,
-    user_id: UUID,
-    preset_id: UUID,
-) -> FilterPresetPublic | None:
-    now = now_amsterdam_naive()
-    preset = filter_presets_crud.get_user_preset_by_id(
-        session=session,
-        user_id=user_id,
-        preset_id=preset_id,
-    )
-    if preset is None:
-        return None
-
-    filter_presets_crud.clear_user_favorite_preset(
-        session=session,
-        user_id=user_id,
-        scope=preset.scope,
-    )
-    favorite = filter_presets_crud.set_preset_favorite(
-        session=session,
-        preset=preset,
-        is_favorite=True,
-        now=now,
-    )
-    session.commit()
-    return _to_filter_preset_public(favorite)
-
-
-def clear_favorite_filter_preset(
-    *,
-    session: Session,
-    user_id: UUID,
-    scope: FilterPresetScope,
-) -> None:
-    filter_presets_crud.clear_user_favorite_preset(
-        session=session,
-        user_id=user_id,
-        scope=scope,
-    )
-    session.commit()
-
-
 def _to_saved_preset_public(preset: SavedPreset) -> SavedPresetPublic:
     return SavedPresetPublic.model_validate(
         {
             "id": preset.id,
             "name": preset.name,
-            "scope": preset.scope,
             "is_favorite": preset.is_favorite,
-            "included_fields": preset.included_fields,
+            "untouched_fields": preset.untouched_fields,
             "filters": preset.filters,
             "cinema_ids": preset.cinema_ids,
             "created_at": preset.created_at,
@@ -382,12 +192,10 @@ def list_saved_presets(
     *,
     session: Session,
     user_id: UUID,
-    scope: FilterPresetScope,
 ) -> list[SavedPresetPublic]:
     presets = saved_presets_crud.list_user_presets(
         session=session,
         user_id=user_id,
-        scope=scope,
     )
     return [_to_saved_preset_public(preset) for preset in presets]
 
@@ -406,7 +214,6 @@ def save_saved_preset(
     existing = saved_presets_crud.get_user_preset_by_name(
         session=session,
         user_id=user_id,
-        scope=payload.scope,
         name=preset_name,
     )
 
@@ -414,7 +221,6 @@ def save_saved_preset(
         saved_presets_crud.clear_user_favorite_preset(
             session=session,
             user_id=user_id,
-            scope=payload.scope,
         )
 
     if existing is None:
@@ -422,8 +228,7 @@ def save_saved_preset(
             session=session,
             user_id=user_id,
             name=preset_name,
-            scope=payload.scope,
-            included_fields=payload.included_fields,
+            untouched_fields=payload.untouched_fields,
             filters=filters,
             cinema_ids=cinema_ids,
             is_favorite=should_set_favorite,
@@ -433,7 +238,7 @@ def save_saved_preset(
         preset = saved_presets_crud.update_preset(
             session=session,
             preset=existing,
-            included_fields=payload.included_fields,
+            untouched_fields=payload.untouched_fields,
             filters=filters,
             cinema_ids=cinema_ids,
             is_favorite=payload.is_favorite,
@@ -464,12 +269,10 @@ def get_favorite_saved_preset(
     *,
     session: Session,
     user_id: UUID,
-    scope: FilterPresetScope,
 ) -> SavedPresetPublic | None:
     preset = saved_presets_crud.get_user_favorite_preset(
         session=session,
         user_id=user_id,
-        scope=scope,
     )
     if preset is None:
         return None
@@ -494,7 +297,6 @@ def set_favorite_saved_preset(
     saved_presets_crud.clear_user_favorite_preset(
         session=session,
         user_id=user_id,
-        scope=preset.scope,
     )
     favorite = saved_presets_crud.set_preset_favorite(
         session=session,
@@ -510,12 +312,10 @@ def clear_favorite_saved_preset(
     *,
     session: Session,
     user_id: UUID,
-    scope: FilterPresetScope,
 ) -> None:
     saved_presets_crud.clear_user_favorite_preset(
         session=session,
         user_id=user_id,
-        scope=scope,
     )
     session.commit()
 

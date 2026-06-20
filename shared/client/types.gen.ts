@@ -72,42 +72,6 @@ export type CityPublic = {
   id: number
 }
 
-export type FilterPresetCreate = {
-  name: string
-  scope: FilterPresetScope
-  filters: FilterPresetFilters
-  is_favorite?: boolean | null
-}
-
-export type FilterPresetFilters = {
-  selected_showtime_filter?: "all" | "interested" | "going" | null
-  showtime_audience?: "including-friends" | "only-you"
-  watchlist_only?: boolean
-  hide_watched?: boolean
-  days?: Array<string> | null
-  time_ranges?: Array<string> | null
-  runtime_ranges?: Array<string> | null
-  group_by_movie?: boolean | null
-}
-
-export type showtime_audience = "including-friends" | "only-you"
-
-export type FilterPresetPublic = {
-  id: string
-  name: string
-  scope: FilterPresetScope
-  is_default: boolean
-  is_favorite: boolean
-  filters: FilterPresetFilters
-  created_at: string
-  updated_at: string
-}
-
-/**
- * Whether a saved filter preset applies to the movies list or showtimes list.
- */
-export type FilterPresetScope = "SHOWTIMES" | "MOVIES"
-
 export type FriendGroupCreate = {
   name: string
   friend_ids?: Array<string>
@@ -255,20 +219,35 @@ export type RefreshTokenRequest = {
 
 export type SavedPresetCreate = {
   name: string
-  scope: FilterPresetScope
-  included_fields: Array<string>
-  filters: FilterPresetFilters
+  untouched_fields?: Array<string>
+  filters: SavedPresetFilters
   cinema_ids?: Array<number> | null
   is_favorite?: boolean | null
 }
 
+export type SavedPresetFilters = {
+  selected_showtime_filter?: "all" | "interested" | "going" | null
+  showtime_audience?: "including-friends" | "only-you"
+  watchlist_only?: boolean
+  watchlist_exclude?: boolean
+  hide_watched?: boolean
+  watched_only?: boolean
+  selected_list_ids?: Array<string> | null
+  exclude_list_ids?: Array<string> | null
+  days?: Array<string> | null
+  time_ranges?: Array<string> | null
+  runtime_ranges?: Array<string> | null
+  group_by_movie?: boolean | null
+}
+
+export type showtime_audience = "including-friends" | "only-you"
+
 export type SavedPresetPublic = {
   id: string
   name: string
-  scope: FilterPresetScope
   is_favorite: boolean
-  included_fields: Array<string>
-  filters: FilterPresetFilters
+  untouched_fields: Array<string>
+  filters: SavedPresetFilters
   cinema_ids: Array<number> | null
   created_at: string
   updated_at: string
@@ -537,46 +516,6 @@ export type MeUpdateUserMeData = {
 
 export type MeUpdateUserMeResponse = UserMe
 
-export type MeGetFilterPresetsData = {
-  scope: FilterPresetScope
-}
-
-export type MeGetFilterPresetsResponse = Array<FilterPresetPublic>
-
-export type MeCreateFilterPresetData = {
-  requestBody: FilterPresetCreate
-}
-
-export type MeCreateFilterPresetResponse = FilterPresetPublic
-
-export type MeGetFavoriteFilterPresetData = {
-  scope: FilterPresetScope
-}
-
-export type MeGetFavoriteFilterPresetResponse = FilterPresetPublic | null
-
-export type MeClearFavoriteFilterPresetData = {
-  scope: FilterPresetScope
-}
-
-export type MeClearFavoriteFilterPresetResponse = Message
-
-export type MeSetFavoriteFilterPresetData = {
-  presetId: string
-}
-
-export type MeSetFavoriteFilterPresetResponse = FilterPresetPublic
-
-export type MeDeleteFilterPresetData = {
-  presetId: string
-}
-
-export type MeDeleteFilterPresetResponse = Message
-
-export type MeGetSavedPresetsData = {
-  scope: FilterPresetScope
-}
-
 export type MeGetSavedPresetsResponse = Array<SavedPresetPublic>
 
 export type MeCreateSavedPresetData = {
@@ -585,15 +524,7 @@ export type MeCreateSavedPresetData = {
 
 export type MeCreateSavedPresetResponse = SavedPresetPublic
 
-export type MeGetFavoriteSavedPresetData = {
-  scope: FilterPresetScope
-}
-
 export type MeGetFavoriteSavedPresetResponse = SavedPresetPublic | null
-
-export type MeClearFavoriteSavedPresetData = {
-  scope: FilterPresetScope
-}
 
 export type MeClearFavoriteSavedPresetResponse = Message
 

@@ -23,11 +23,8 @@ import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelecti
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
-import {
-  SHARED_TAB_FILTER_PRESET_SCOPE,
-  type SharedTabShowtimeFilter,
-} from "@/components/filters/shared-tab-filters";
-import { type PageFilterPresetState } from "@/components/filters/FilterPresetsModal";
+import { type SharedTabShowtimeFilter } from "@/components/filters/shared-tab-filters";
+import { type PageFilterPresetState } from "@/components/filters/filter-preset-utils";
 import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selection";
 import SavePresetDialog from "@/components/filters/SavePresetDialog";
 import ManagePresetsModal from "@/components/filters/ManagePresetsModal";
@@ -206,7 +203,11 @@ export default function FiltersModal({
       selected_showtime_filter: selectedShowtimeFilter,
       showtime_audience: "including-friends",
       watchlist_only: watchlistOnly,
+      watchlist_exclude: watchlistExclude,
       hide_watched: hideWatched,
+      watched_only: watchedOnly,
+      selected_list_ids: selectedListIds.length > 0 ? selectedListIds : null,
+      exclude_list_ids: excludeListIds.length > 0 ? excludeListIds : null,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
       runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
@@ -215,7 +216,11 @@ export default function FiltersModal({
     [
       selectedShowtimeFilter,
       watchlistOnly,
+      watchlistExclude,
       hideWatched,
+      watchedOnly,
+      selectedListIds,
+      excludeListIds,
       selectedDays,
       selectedTimeRanges,
       selectedRuntimeRanges,
@@ -229,24 +234,36 @@ export default function FiltersModal({
         hasLetterboxdUsername: canUseWatchlistFilter,
         setSelectedShowtimeFilter,
         setWatchlistOnly,
+        setWatchlistExclude,
         setHideWatched,
+        setWatchedOnly,
         setSelectedDays,
         setSelectedTimeRanges,
         setSelectedRuntimeRanges,
         setGroupByMovie,
         setSessionCinemaIds,
+        selectedListIds,
+        excludeListIds,
+        setSelectedListIds,
+        setExcludeListIds,
       });
     },
     [
       canUseWatchlistFilter,
       setSelectedShowtimeFilter,
       setWatchlistOnly,
+      setWatchlistExclude,
       setHideWatched,
+      setWatchedOnly,
       setSelectedDays,
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
       setGroupByMovie,
       setSessionCinemaIds,
+      selectedListIds,
+      excludeListIds,
+      setSelectedListIds,
+      setExcludeListIds,
     ]
   );
 
@@ -476,11 +493,7 @@ export default function FiltersModal({
               <>
                 <Divider colors={colors} />
                 <SectionLabel label="Presets" colors={colors} />
-                <SavedPresetChips
-                  scope={SHARED_TAB_FILTER_PRESET_SCOPE}
-                  onApply={handleApplyPreset}
-                  variant="cards"
-                />
+                <SavedPresetChips onApply={handleApplyPreset} variant="cards" />
                 <View style={styles.presetActionsColumn}>
                   <TouchableOpacity
                     style={styles.cinemaOpenRow}
@@ -541,7 +554,6 @@ export default function FiltersModal({
       <SavePresetDialog
         visible={savePresetVisible}
         onClose={() => setSavePresetVisible(false)}
-        scope={SHARED_TAB_FILTER_PRESET_SCOPE}
         currentFilters={currentFilters}
         cinemaIds={sortedEffectiveIds}
         cinemaLabel={cinemaLabel}
@@ -553,7 +565,6 @@ export default function FiltersModal({
       <ManagePresetsModal
         visible={managePresetsVisible}
         onClose={() => setManagePresetsVisible(false)}
-        scope={SHARED_TAB_FILTER_PRESET_SCOPE}
       />
     </>
   );

@@ -15,13 +15,12 @@ from app.api.deps import (
     SessionDep,
 )
 from app.converters import user as user_converters
-from app.core.enums import FilterPresetScope, ShowtimePingSort
+from app.core.enums import ShowtimePingSort
 from app.core.security import get_password_hash, verify_password
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
-from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
 from app.schemas.friend_group import FriendGroupCreate, FriendGroupPublic
 from app.schemas.letterboxd_list import (
     LetterboxdListCreate,
@@ -48,112 +47,14 @@ def get_current_user(current_user: CurrentUser) -> UserMe:
     return user_converters.to_me(current_user)
 
 
-@router.get("/filter-presets", response_model=list[FilterPresetPublic])
-def get_filter_presets(
-    session: SessionDep,
-    current_user: CurrentUser,
-    scope: FilterPresetScope = Query(...),
-) -> list[FilterPresetPublic]:
-    return me_service.list_filter_presets(
-        session=session,
-        user_id=current_user.id,
-        scope=scope,
-    )
-
-
-@router.post("/filter-presets", response_model=FilterPresetPublic)
-def create_filter_preset(
-    session: SessionDep,
-    current_user: CurrentUser,
-    payload: FilterPresetCreate,
-) -> FilterPresetPublic:
-    if not payload.name.strip():
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Preset name cannot be empty",
-        )
-    return me_service.save_filter_preset(
-        session=session,
-        user_id=current_user.id,
-        payload=payload,
-    )
-
-
-@router.get("/filter-presets/favorite", response_model=FilterPresetPublic | None)
-def get_favorite_filter_preset(
-    session: SessionDep,
-    current_user: CurrentUser,
-    scope: FilterPresetScope = Query(...),
-) -> FilterPresetPublic | None:
-    return me_service.get_favorite_filter_preset(
-        session=session,
-        user_id=current_user.id,
-        scope=scope,
-    )
-
-
-@router.put("/filter-presets/{preset_id}/favorite", response_model=FilterPresetPublic)
-def set_favorite_filter_preset(
-    session: SessionDep,
-    current_user: CurrentUser,
-    preset_id: UUID,
-) -> FilterPresetPublic:
-    favorite = me_service.set_favorite_filter_preset(
-        session=session,
-        user_id=current_user.id,
-        preset_id=preset_id,
-    )
-    if favorite is None:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail="Filter preset not found",
-        )
-    return favorite
-
-
-@router.delete("/filter-presets/favorite", response_model=Message)
-def clear_favorite_filter_preset(
-    session: SessionDep,
-    current_user: CurrentUser,
-    scope: FilterPresetScope = Query(...),
-) -> Message:
-    me_service.clear_favorite_filter_preset(
-        session=session,
-        user_id=current_user.id,
-        scope=scope,
-    )
-    return Message(message="Favorite filter preset cleared successfully")
-
-
-@router.delete("/filter-presets/{preset_id}", response_model=Message)
-def delete_filter_preset(
-    session: SessionDep,
-    current_user: CurrentUser,
-    preset_id: UUID,
-) -> Message:
-    deleted = me_service.delete_filter_preset(
-        session=session,
-        user_id=current_user.id,
-        preset_id=preset_id,
-    )
-    if not deleted:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail="Filter preset not found",
-        )
-    return Message(message="Filter preset deleted successfully")
-
-
 @router.get("/saved-presets", response_model=list[SavedPresetPublic])
 def get_saved_presets(
     session: SessionDep,
     current_user: CurrentUser,
-    scope: FilterPresetScope = Query(...),
 ) -> list[SavedPresetPublic]:
     return me_service.list_saved_presets(
         session=session,
         user_id=current_user.id,
-        scope=scope,
     )
 
 
@@ -179,12 +80,10 @@ def create_saved_preset(
 def get_favorite_saved_preset(
     session: SessionDep,
     current_user: CurrentUser,
-    scope: FilterPresetScope = Query(...),
 ) -> SavedPresetPublic | None:
     return me_service.get_favorite_saved_preset(
         session=session,
         user_id=current_user.id,
-        scope=scope,
     )
 
 
@@ -211,12 +110,10 @@ def set_favorite_saved_preset(
 def clear_favorite_saved_preset(
     session: SessionDep,
     current_user: CurrentUser,
-    scope: FilterPresetScope = Query(...),
 ) -> Message:
     me_service.clear_favorite_saved_preset(
         session=session,
         user_id=current_user.id,
-        scope=scope,
     )
     return Message(message="Favorite saved preset cleared successfully")
 

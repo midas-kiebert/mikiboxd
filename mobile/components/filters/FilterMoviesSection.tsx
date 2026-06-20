@@ -11,8 +11,8 @@
  * refresh weekly server-side; custom lists refresh on app open when stale. A
  * manual refresh is only offered when something is more than a day old.
  */
-import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { DateTime } from "luxon";
 import { useQueryClient } from "@tanstack/react-query";
@@ -326,9 +326,15 @@ function FilterItemCard({
   colors: Colors;
 }) {
   const styles = createStyles(colors);
-  const active = mode !== "off";
+  const { mode: displayMode, change } = useOptimisticMode(mode, onChangeMode);
+  const borderColor =
+    displayMode === "include"
+      ? colors.green.secondary
+      : displayMode === "exclude"
+        ? colors.red.secondary
+        : colors.divider;
   return (
-    <View style={[styles.card, active && styles.cardActive]}>
+    <View style={[styles.card, { borderColor }]}>
       <View style={styles.cardTop}>
         <View style={styles.cardTextBlock}>
           <ThemedText style={styles.cardTitle} numberOfLines={1}>
@@ -355,9 +361,45 @@ function FilterItemCard({
           </TouchableOpacity>
         )}
       </View>
-      <IncludeExcludeToggle mode={mode} onChange={onChangeMode} colors={colors} />
+      <IncludeExcludeToggle mode={displayMode} onChange={change} colors={colors} />
     </View>
   );
+}
+
+/**
+ * Optimistic mode for a filter card. The green/red fill repaints on the same
+ * frame as the tap; the real `onChange` — which re-filters the entire movie
+ * list — is deferred by one frame so the colour never waits on that work. Once
+ * the incoming prop catches up to our optimistic value, we drop the override.
+ */
+function useOptimisticMode(mode: ItemMode, onChange: (mode: ItemMode) => void) {
+  const [optimistic, setOptimistic] = useState<ItemMode | null>(null);
+  const frameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (optimistic !== null && mode === optimistic) setOptimistic(null);
+  }, [mode, optimistic]);
+
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    },
+    []
+  );
+
+  const change = useCallback(
+    (next: ItemMode) => {
+      setOptimistic(next);
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
+        onChange(next);
+      });
+    },
+    [onChange]
+  );
+
+  return { mode: optimistic ?? mode, change };
 }
 
 function IncludeExcludeToggle({
@@ -373,20 +415,20 @@ function IncludeExcludeToggle({
   return (
     <View style={styles.toggleRow}>
       <Segment
-        label="Include"
-        icon="add"
+        label="Show"
+        icon="visibility"
         active={mode === "include"}
-        bg={colors.green.primary}
-        fg={colors.green.secondary}
+        activeBg={colors.green.primary}
+        activeFg={colors.green.secondary}
         onPress={() => onChange(mode === "include" ? "off" : "include")}
         colors={colors}
       />
       <Segment
-        label="Exclude"
-        icon="block"
+        label="Hide"
+        icon="visibility-off"
         active={mode === "exclude"}
-        bg={colors.red.primary}
-        fg={colors.red.secondary}
+        activeBg={colors.red.primary}
+        activeFg={colors.red.secondary}
         onPress={() => onChange(mode === "exclude" ? "off" : "exclude")}
         colors={colors}
       />
@@ -398,39 +440,36 @@ function Segment({
   label,
   icon,
   active,
-  bg,
-  fg,
+  activeBg,
+  activeFg,
   onPress,
   colors,
 }: {
   label: string;
   icon: keyof typeof MaterialIcons.glyphMap;
   active: boolean;
-  bg: string;
-  fg: string;
+  activeBg: string;
+  activeFg: string;
   onPress: () => void;
   colors: Colors;
 }) {
+  const styles = createStyles(colors);
+  const fg = active ? activeFg : colors.pillText;
   return (
-    <TouchableOpacity
-      style={{
-        flex: 1,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 4,
-        paddingVertical: 7,
-        borderRadius: 10,
-        backgroundColor: active ? bg : colors.pillBackground,
-      }}
+    <Pressable
+      // `pressed` updates synchronously on touch-down, so the segment dims
+      // instantly even while the movie list re-filters in the background.
+      style={({ pressed }) => [
+        styles.segment,
+        { backgroundColor: active ? activeBg : colors.pillBackground },
+        pressed && styles.segmentPressed,
+      ]}
+      android_ripple={{ color: fg }}
       onPress={onPress}
-      activeOpacity={0.8}
     >
-      <MaterialIcons name={icon} size={14} color={active ? fg : colors.pillText} />
-      <ThemedText style={{ fontSize: 12, fontWeight: "600", color: active ? fg : colors.pillText }}>
-        {label}
-      </ThemedText>
-    </TouchableOpacity>
+      <MaterialIcons name={icon} size={15} color={fg} />
+      <ThemedText style={[styles.segmentLabel, { color: fg }]}>{label}</ThemedText>
+    </Pressable>
   );
 }
 
@@ -471,7 +510,6 @@ const createStyles = (colors: Colors) =>
       marginBottom: 8,
       gap: 8,
     },
-    cardActive: { borderColor: colors.tint },
     cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
     cardTextBlock: { flex: 1 },
     cardTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
@@ -479,6 +517,18 @@ const createStyles = (colors: Colors) =>
     cardSubtitle: { fontSize: 12, color: colors.textSecondary, flexShrink: 1 },
     removeButton: { padding: 2 },
     toggleRow: { flexDirection: "row", gap: 6 },
+    segment: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      paddingVertical: 8,
+      borderRadius: 10,
+      overflow: "hidden",
+    },
+    segmentPressed: { opacity: 0.55 },
+    segmentLabel: { fontSize: 12.5, fontWeight: "700" },
     emptyHint: { fontSize: 12, color: colors.textSecondary, marginBottom: 8 },
     addRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
     addInput: {

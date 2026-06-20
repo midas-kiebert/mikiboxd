@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useFetchFavoriteFilterPreset } from "shared/hooks/useFetchFavoriteFilterPreset";
 import { useFetchFavoriteSavedPreset } from "shared/hooks/useFetchFavoriteSavedPreset";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
@@ -20,10 +19,10 @@ import {
   normalizeSingleRuntimeRangeSelection,
 } from "@/components/filters/runtime-range-utils";
 import {
-  SHARED_TAB_FILTER_PRESET_SCOPE,
   toSharedTabShowtimeFilter,
   type SharedTabShowtimeFilter,
 } from "@/components/filters/shared-tab-filters";
+import { listDimension } from "@/components/filters/saved-presets";
 import { normalizeSingleTimeRangeSelection } from "@/components/filters/time-range-utils";
 
 const EMPTY_DAYS: string[] = [];
@@ -40,6 +39,10 @@ const SESSION_RUNTIME_RANGE_SELECTIONS_KEY = [
 ] as const;
 const SESSION_WATCHLIST_ONLY_KEY = ["session", "watchlist_only"] as const;
 const SESSION_HIDE_WATCHED_KEY = ["session", "hide_watched"] as const;
+const SESSION_WATCHLIST_EXCLUDE_KEY = ["session", "watchlist_exclude"] as const;
+const SESSION_WATCHED_ONLY_KEY = ["session", "watched_only"] as const;
+const SESSION_SELECTED_LIST_IDS_KEY = ["session", "selected_list_ids"] as const;
+const SESSION_EXCLUDE_LIST_IDS_KEY = ["session", "exclude_list_ids"] as const;
 const SESSION_GROUP_BY_MOVIE_KEY = ["session", "group_by_movie"] as const;
 
 export function useSharedTabFilters() {
@@ -73,12 +76,7 @@ export function useSharedTabFilters() {
     useSessionWatchlistExclude();
   const { selection: watchedOnly, setSelection: setWatchedOnly } =
     useSessionWatchedOnly();
-  const favoriteFilterPresetQuery = useFetchFavoriteFilterPreset({
-    scope: SHARED_TAB_FILTER_PRESET_SCOPE,
-  });
-  const favoriteSavedPresetQuery = useFetchFavoriteSavedPreset({
-    scope: SHARED_TAB_FILTER_PRESET_SCOPE,
-  });
+  const favoriteSavedPresetQuery = useFetchFavoriteSavedPreset();
   const favoriteCinemasQuery = useFetchSelectedCinemas();
 
   const initialShowtimeFilter = toSharedTabShowtimeFilter(sessionShowtimeFilter);
@@ -197,30 +195,22 @@ export function useSharedTabFilters() {
 
   useEffect(() => {
     if (initializedFromFavoritesRef.current) return;
-    if (
-      !favoriteFilterPresetQuery.isFetched ||
-      !favoriteSavedPresetQuery.isFetched ||
-      !favoriteCinemasQuery.isFetched
-    )
-      return;
+    if (!favoriteSavedPresetQuery.isFetched || !favoriteCinemasQuery.isFetched) return;
 
-    // The favorite preset is unique across the legacy and new systems. A legacy
-    // preset carries every filter dimension; a new saved preset carries only the
-    // dimensions it includes (and optionally a cinema selection).
-    const legacyFavorite = favoriteFilterPresetQuery.data;
     const savedFavorite = favoriteSavedPresetQuery.data;
-    const savedIncludes = new Set(savedFavorite?.included_fields ?? []);
-    const filterSource = legacyFavorite ?? savedFavorite;
-    const appliesDimension = (dimension: string) =>
-      Boolean(legacyFavorite) || savedIncludes.has(dimension);
+    const savedUntouched = new Set(savedFavorite?.untouched_fields ?? []);
+    const filterSource = savedFavorite;
+    // Opt-out model: a saved preset controls every dimension except the ones it
+    // left untouched.
+    const appliesDimension = (dimension: string) => !savedUntouched.has(dimension);
 
-    // Cinemas: a saved favorite that includes cinemas wins; otherwise fall back
-    // to the favorite cinema preset.
+    // Cinemas are opt-in: a saved favorite that carries a selection wins;
+    // otherwise fall back to the favorite cinema preset.
     const rawSessionCinemaIds = queryClient.getQueryData<number[]>(
       SESSION_CINEMA_SELECTIONS_KEY
     );
     if (rawSessionCinemaIds === undefined) {
-      if (savedFavorite && savedIncludes.has("cinemas") && savedFavorite.cinema_ids) {
+      if (savedFavorite && savedFavorite.cinema_ids) {
         setSessionCinemaIds(savedFavorite.cinema_ids);
       } else if (favoriteCinemasQuery.data !== undefined) {
         setSessionCinemaIds(favoriteCinemasQuery.data);
@@ -242,9 +232,46 @@ export function useSharedTabFilters() {
         setWatchlistOnly(Boolean(filterSource.filters.watchlist_only));
       }
 
+      const rawWatchlistExclude = queryClient.getQueryData<boolean>(
+        SESSION_WATCHLIST_EXCLUDE_KEY
+      );
+      if (appliesDimension("watchlist_only") && rawWatchlistExclude === undefined) {
+        setWatchlistExclude(Boolean(filterSource.filters.watchlist_exclude));
+      }
+
       const rawHideWatched = queryClient.getQueryData<boolean>(SESSION_HIDE_WATCHED_KEY);
       if (appliesDimension("hide_watched") && rawHideWatched === undefined) {
         setHideWatched(Boolean(filterSource.filters.hide_watched));
+      }
+
+      const rawWatchedOnly = queryClient.getQueryData<boolean>(SESSION_WATCHED_ONLY_KEY);
+      if (appliesDimension("hide_watched") && rawWatchedOnly === undefined) {
+        setWatchedOnly(Boolean(filterSource.filters.watched_only));
+      }
+
+      // Lists: apply the favorite's stored membership for every controlled list.
+      // A legacy favorite controls all lists (clears them); lists left untouched
+      // keep their (cold-start empty) default.
+      const rawSelectedListIds = queryClient.getQueryData<string[]>(
+        SESSION_SELECTED_LIST_IDS_KEY
+      );
+      if (rawSelectedListIds === undefined) {
+        setSessionListIds(
+          (filterSource.filters.selected_list_ids ?? []).filter((id) =>
+            appliesDimension(listDimension(id))
+          )
+        );
+      }
+
+      const rawExcludeListIds = queryClient.getQueryData<string[]>(
+        SESSION_EXCLUDE_LIST_IDS_KEY
+      );
+      if (rawExcludeListIds === undefined) {
+        setSessionExcludeListIds(
+          (filterSource.filters.exclude_list_ids ?? []).filter((id) =>
+            appliesDimension(listDimension(id))
+          )
+        );
       }
 
       const rawSessionDays = queryClient.getQueryData<string[]>(SESSION_DAY_SELECTIONS_KEY);
@@ -278,8 +305,6 @@ export function useSharedTabFilters() {
   }, [
     favoriteCinemasQuery.data,
     favoriteCinemasQuery.isFetched,
-    favoriteFilterPresetQuery.data,
-    favoriteFilterPresetQuery.isFetched,
     favoriteSavedPresetQuery.data,
     favoriteSavedPresetQuery.isFetched,
     queryClient,
@@ -290,7 +315,11 @@ export function useSharedTabFilters() {
     setSelectedRuntimeRanges,
     setGroupByMovie,
     setWatchlistOnly,
+    setWatchlistExclude,
     setHideWatched,
+    setWatchedOnly,
+    setSessionListIds,
+    setSessionExcludeListIds,
   ]);
 
   return {

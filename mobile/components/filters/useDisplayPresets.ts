@@ -1,11 +1,10 @@
 /**
- * Shared data hook for saved presets (merged new + legacy), with the persisted
- * manual order applied. Used by both the preset chips and the manage modal so
+ * Shared data hook for saved presets, with the persisted manual order
+ * applied. Used by both the preset chips and the manage modal so
  * order/favorite/delete stay in sync via the query cache.
  */
 import { useCallback, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type FilterPresetScope } from "shared";
 
 import {
   deleteDisplayPreset,
@@ -20,17 +19,17 @@ import {
   type DisplayPreset,
 } from "@/components/filters/saved-presets";
 
-export function useDisplayPresets(scope: FilterPresetScope) {
+export function useDisplayPresets() {
   const queryClient = useQueryClient();
 
   const { data: rawPresets = [], isLoading } = useQuery({
-    queryKey: displayPresetsQueryKey(scope),
-    queryFn: () => fetchDisplayPresets(scope),
+    queryKey: displayPresetsQueryKey,
+    queryFn: () => fetchDisplayPresets(),
   });
 
   const { data: order = [] } = useQuery({
-    queryKey: displayPresetOrderQueryKey(scope),
-    queryFn: () => loadDisplayPresetOrder(scope),
+    queryKey: displayPresetOrderQueryKey,
+    queryFn: () => loadDisplayPresetOrder(),
     staleTime: Infinity,
   });
 
@@ -40,10 +39,9 @@ export function useDisplayPresets(scope: FilterPresetScope) {
   );
 
   const invalidatePresets = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: displayPresetsQueryKey(scope) });
-    queryClient.invalidateQueries({ queryKey: ["user", "favorite_filter_preset", scope] });
-    queryClient.invalidateQueries({ queryKey: ["user", "favorite_saved_preset", scope] });
-  }, [queryClient, scope]);
+    queryClient.invalidateQueries({ queryKey: displayPresetsQueryKey });
+    queryClient.invalidateQueries({ queryKey: ["user", "favorite_saved_preset"] });
+  }, [queryClient]);
 
   const removeMutation = useMutation({
     mutationFn: (preset: DisplayPreset) => deleteDisplayPreset(preset),
@@ -52,11 +50,11 @@ export function useDisplayPresets(scope: FilterPresetScope) {
 
   const favoriteMutation = useMutation({
     mutationFn: ({ preset, makeFavorite }: { preset: DisplayPreset; makeFavorite: boolean }) =>
-      setDisplayPresetFavorite(preset, scope, makeFavorite),
-    // Optimistically reflect the new favorite (single per scope) for instant feedback.
+      setDisplayPresetFavorite(preset, makeFavorite),
+    // Optimistically reflect the new favorite (single favorite overall) for instant feedback.
     onMutate: ({ preset, makeFavorite }) => {
       const key = presetKey(preset);
-      queryClient.setQueryData<DisplayPreset[]>(displayPresetsQueryKey(scope), (old) =>
+      queryClient.setQueryData<DisplayPreset[]>(displayPresetsQueryKey, (old) =>
         old?.map((p) => ({
           ...p,
           isFavorite: presetKey(p) === key ? makeFavorite : false,
@@ -69,10 +67,10 @@ export function useDisplayPresets(scope: FilterPresetScope) {
   const reorder = useCallback(
     (orderedPresets: readonly DisplayPreset[]) => {
       const keys = orderedPresets.map(presetKey);
-      queryClient.setQueryData(displayPresetOrderQueryKey(scope), keys);
-      saveDisplayPresetOrder(scope, keys).catch(() => undefined);
+      queryClient.setQueryData(displayPresetOrderQueryKey, keys);
+      saveDisplayPresetOrder(keys).catch(() => undefined);
     },
-    [queryClient, scope]
+    [queryClient]
   );
 
   const move = useCallback(

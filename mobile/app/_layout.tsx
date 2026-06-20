@@ -24,7 +24,6 @@ import { Colors } from '@/constants/theme';
 import { loadThemePreference, useThemePreference } from '@/utils/theme-preference';
 import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
 import AppSplash from '@/components/layout/AppSplash';
-import { SHARED_TAB_FILTER_PRESET_SCOPE } from '@/components/filters/shared-tab-filters';
 import {
   displayPresetOrderQueryKey,
   displayPresetsQueryKey,
@@ -270,12 +269,12 @@ function RootLayourContent() {
     let cancelled = false;
     const warm = Promise.allSettled([
       queryClient.prefetchQuery({
-        queryKey: displayPresetsQueryKey(SHARED_TAB_FILTER_PRESET_SCOPE),
-        queryFn: () => fetchDisplayPresets(SHARED_TAB_FILTER_PRESET_SCOPE),
+        queryKey: displayPresetsQueryKey,
+        queryFn: () => fetchDisplayPresets(),
       }),
       queryClient.prefetchQuery({
-        queryKey: displayPresetOrderQueryKey(SHARED_TAB_FILTER_PRESET_SCOPE),
-        queryFn: () => loadDisplayPresetOrder(SHARED_TAB_FILTER_PRESET_SCOPE),
+        queryKey: displayPresetOrderQueryKey,
+        queryFn: () => loadDisplayPresetOrder(),
       }),
     ]);
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));

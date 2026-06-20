@@ -5,7 +5,6 @@ from uuid import UUID
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
-from app.core.enums import FilterPresetScope
 from app.models.saved_preset import SavedPreset
 
 
@@ -13,14 +12,10 @@ def list_user_presets(
     *,
     session: Session,
     user_id: UUID,
-    scope: FilterPresetScope,
 ) -> list[SavedPreset]:
     stmt = (
         select(SavedPreset)
-        .where(
-            col(SavedPreset.owner_user_id) == user_id,
-            col(SavedPreset.scope) == scope,
-        )
+        .where(col(SavedPreset.owner_user_id) == user_id)
         .order_by(
             col(SavedPreset.is_favorite).desc(),
             func.lower(col(SavedPreset.name)),
@@ -34,12 +29,10 @@ def get_user_preset_by_name(
     *,
     session: Session,
     user_id: UUID,
-    scope: FilterPresetScope,
     name: str,
 ) -> SavedPreset | None:
     stmt = select(SavedPreset).where(
         col(SavedPreset.owner_user_id) == user_id,
-        col(SavedPreset.scope) == scope,
         col(SavedPreset.name) == name,
     )
     return session.exec(stmt).one_or_none()
@@ -62,11 +55,9 @@ def get_user_favorite_preset(
     *,
     session: Session,
     user_id: UUID,
-    scope: FilterPresetScope,
 ) -> SavedPreset | None:
     stmt = select(SavedPreset).where(
         col(SavedPreset.owner_user_id) == user_id,
-        col(SavedPreset.scope) == scope,
         col(SavedPreset.is_favorite).is_(True),
     )
     return session.exec(stmt).one_or_none()
@@ -77,8 +68,7 @@ def create_preset(
     session: Session,
     user_id: UUID,
     name: str,
-    scope: FilterPresetScope,
-    included_fields: list[str],
+    untouched_fields: list[str],
     filters: dict[str, Any],
     cinema_ids: list[int] | None,
     is_favorite: bool,
@@ -87,9 +77,8 @@ def create_preset(
     preset = SavedPreset(
         owner_user_id=user_id,
         name=name,
-        scope=scope,
         is_favorite=is_favorite,
-        included_fields=included_fields,
+        untouched_fields=untouched_fields,
         filters=filters,
         cinema_ids=cinema_ids,
         created_at=now,
@@ -104,13 +93,13 @@ def update_preset(
     *,
     session: Session,
     preset: SavedPreset,
-    included_fields: list[str],
+    untouched_fields: list[str],
     filters: dict[str, Any],
     cinema_ids: list[int] | None,
     is_favorite: bool | None,
     now: datetime,
 ) -> SavedPreset:
-    preset.included_fields = included_fields
+    preset.untouched_fields = untouched_fields
     preset.filters = filters
     preset.cinema_ids = cinema_ids
     if is_favorite is not None:
@@ -125,11 +114,9 @@ def clear_user_favorite_preset(
     *,
     session: Session,
     user_id: UUID,
-    scope: FilterPresetScope,
 ) -> None:
     stmt = select(SavedPreset).where(
         col(SavedPreset.owner_user_id) == user_id,
-        col(SavedPreset.scope) == scope,
         col(SavedPreset.is_favorite).is_(True),
     )
     presets = list(session.exec(stmt).all())

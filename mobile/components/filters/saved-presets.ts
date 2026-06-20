@@ -3,23 +3,21 @@
  * can also pin a cinema selection.
  *
  * A saved preset stores only the dimensions the user chose to include
- * (`includedFields`); applying one sets just those and leaves every other
- * active filter unchanged. Legacy filter presets (full-replacement, no cinema)
- * are surfaced alongside the new ones so existing presets keep working — they
- * are treated as "all filter fields included, no cinema".
+ * (`untouchedFields` is the opt-out list); applying one sets just the
+ * controlled dimensions and leaves everything else unchanged.
  */
 import {
   MeService,
-  type FilterPresetFilters,
-  type FilterPresetPublic,
-  type FilterPresetScope,
   type SavedPresetCreate,
+  type SavedPresetFilters,
   type SavedPresetPublic,
 } from "shared";
 import { storage } from "shared/storage";
 
-import { normalizeFiltersForSave } from "@/components/filters/filter-preset-utils";
-import { type PageFilterPresetState } from "@/components/filters/FilterPresetsModal";
+import {
+  normalizeFiltersForSave,
+  type PageFilterPresetState,
+} from "@/components/filters/filter-preset-utils";
 import {
   toSharedTabShowtimeFilter,
   type SharedTabShowtimeFilter,
@@ -27,6 +25,9 @@ import {
 import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
 import { formatTimePillLabel } from "@/components/filters/time-range-utils";
 import { formatRuntimePillLabel } from "@/components/filters/runtime-range-utils";
+
+/** A per-list dimension token, e.g. `list:<uuid>`. */
+export type PresetListDimension = `list:${string}`;
 
 export type PresetDimension =
   | "selected_showtime_filter"
@@ -36,10 +37,26 @@ export type PresetDimension =
   | "time_ranges"
   | "runtime_ranges"
   | "group_by_movie"
-  | "cinemas";
+  | "cinemas"
+  | PresetListDimension;
 
-/** Filter dimensions a legacy preset implicitly carries (everything but cinemas). */
-export const FILTER_DIMENSIONS: PresetDimension[] = [
+const LIST_DIMENSION_PREFIX = "list:";
+
+export const listDimension = (id: string): PresetListDimension =>
+  `${LIST_DIMENSION_PREFIX}${id}`;
+
+export const isListDimension = (value: string): value is PresetListDimension =>
+  value.startsWith(LIST_DIMENSION_PREFIX);
+
+export const listIdFromDimension = (value: PresetListDimension): string =>
+  value.slice(LIST_DIMENSION_PREFIX.length);
+
+/**
+ * The non-list, non-cinema dimensions a preset can opt out of controlling. A
+ * preset controls (clears + sets) every one of these unless it appears in the
+ * preset's `untouchedFields`.
+ */
+export const CONTROLLABLE_FILTER_DIMENSIONS: PresetDimension[] = [
   "selected_showtime_filter",
   "watchlist_only",
   "hide_watched",
@@ -49,167 +66,164 @@ export const FILTER_DIMENSIONS: PresetDimension[] = [
   "group_by_movie",
 ];
 
-const ALL_DIMENSIONS: PresetDimension[] = [...FILTER_DIMENSIONS, "cinemas"];
+/** Tokens valid inside `untouchedFields`: filter dimensions + per-list tokens. */
+const isUntouchedToken = (value: string): value is PresetDimension =>
+  (CONTROLLABLE_FILTER_DIMENSIONS as string[]).includes(value) ||
+  isListDimension(value);
 
-const isPresetDimension = (value: string): value is PresetDimension =>
-  (ALL_DIMENSIONS as string[]).includes(value);
-
-/** Unified in-app shape for a preset, whichever backend it came from. */
+/** Unified in-app shape for a saved preset. */
 export type DisplayPreset = {
-  source: "legacy" | "saved";
   id: string;
   name: string;
   isFavorite: boolean;
-  includedFields: PresetDimension[];
-  filters: FilterPresetFilters;
+  /** Dimensions the preset leaves as-is on apply; everything else is controlled. */
+  untouchedFields: PresetDimension[];
+  filters: SavedPresetFilters;
   cinemaIds: number[] | null;
 };
 
-const legacyToDisplay = (preset: FilterPresetPublic): DisplayPreset => ({
-  source: "legacy",
-  id: preset.id,
-  name: preset.name,
-  isFavorite: preset.is_favorite,
-  includedFields: [...FILTER_DIMENSIONS],
-  filters: preset.filters,
-  cinemaIds: null,
-});
-
 const savedToDisplay = (preset: SavedPresetPublic): DisplayPreset => ({
-  source: "saved",
   id: preset.id,
   name: preset.name,
   isFavorite: preset.is_favorite,
-  includedFields: preset.included_fields.filter(isPresetDimension),
+  untouchedFields: preset.untouched_fields.filter(isUntouchedToken),
   filters: preset.filters,
   cinemaIds: preset.cinema_ids ?? null,
 });
 
-export const displayPresetsQueryKey = (scope: FilterPresetScope) =>
-  ["display-presets", scope] as const;
+export const displayPresetsQueryKey = ["display-presets"] as const;
 
-/**
- * Fetch the user's new saved presets and legacy filter presets for a scope and
- * merge them into a single list (saved first, then legacy). The synthetic
- * "Default" legacy preset (which represents "no filters") is dropped.
- */
-export const fetchDisplayPresets = async (
-  scope: FilterPresetScope
-): Promise<DisplayPreset[]> => {
-  const [saved, legacy] = await Promise.all([
-    MeService.getSavedPresets({ scope }).catch(() => [] as SavedPresetPublic[]),
-    MeService.getFilterPresets({ scope }).catch(() => [] as FilterPresetPublic[]),
-  ]);
-  const savedDisplays = saved.map(savedToDisplay);
-  const legacyDisplays = legacy
-    .filter((preset) => !preset.is_default)
-    .map(legacyToDisplay);
-  return [...savedDisplays, ...legacyDisplays];
+/** Fetch the user's saved presets. */
+export const fetchDisplayPresets = async (): Promise<DisplayPreset[]> => {
+  const saved = await MeService.getSavedPresets();
+  return saved.map(savedToDisplay);
 };
 
 export type PresetApplySetters = {
   hasLetterboxdUsername: boolean;
   setSelectedShowtimeFilter: (value: SharedTabShowtimeFilter) => void;
   setWatchlistOnly: (value: boolean) => void;
+  setWatchlistExclude: (value: boolean) => void;
   setHideWatched: (value: boolean) => void;
+  setWatchedOnly: (value: boolean) => void;
   setSelectedDays: (value: string[]) => void;
   setSelectedTimeRanges: (value: string[]) => void;
   setSelectedRuntimeRanges: (value: string[]) => void;
   setGroupByMovie: (value: boolean) => void;
   setSessionCinemaIds: (value: number[]) => void;
+  // Current list selections, needed to preserve lists the preset leaves as-is.
+  selectedListIds: readonly string[];
+  excludeListIds: readonly string[];
+  setSelectedListIds: (value: string[]) => void;
+  setExcludeListIds: (value: string[]) => void;
 };
 
+const dedupe = (values: Iterable<string>): string[] => Array.from(new Set(values));
+
 /**
- * Apply a preset additively: set only the dimensions it includes, leaving every
- * other active filter untouched.
+ * Apply a preset: control (clear + set) every dimension except the ones the
+ * preset leaves as-is (`untouchedFields`). Cinemas are opt-in — only touched
+ * when the preset carries a selection.
  */
 export const applyDisplayPreset = (
   preset: DisplayPreset,
   setters: PresetApplySetters
 ): void => {
-  const included = new Set(preset.includedFields);
-  if (included.has("selected_showtime_filter")) {
+  const untouched = new Set(preset.untouchedFields);
+  const controls = (dimension: PresetDimension) => !untouched.has(dimension);
+  const { filters } = preset;
+  const { hasLetterboxdUsername } = setters;
+
+  if (controls("selected_showtime_filter")) {
     setters.setSelectedShowtimeFilter(
-      toSharedTabShowtimeFilter(preset.filters.selected_showtime_filter)
+      toSharedTabShowtimeFilter(filters.selected_showtime_filter)
     );
   }
-  if (included.has("watchlist_only")) {
+  if (controls("watchlist_only")) {
     setters.setWatchlistOnly(
-      setters.hasLetterboxdUsername && Boolean(preset.filters.watchlist_only)
+      setters.hasLetterboxdUsername && Boolean(filters.watchlist_only)
+    );
+    setters.setWatchlistExclude(
+      setters.hasLetterboxdUsername && Boolean(filters.watchlist_exclude)
     );
   }
-  if (included.has("hide_watched")) {
+  if (controls("hide_watched")) {
     setters.setHideWatched(
-      setters.hasLetterboxdUsername && Boolean(preset.filters.hide_watched)
+      setters.hasLetterboxdUsername && Boolean(filters.hide_watched)
+    );
+    setters.setWatchedOnly(
+      setters.hasLetterboxdUsername && Boolean(filters.watched_only)
     );
   }
-  if (included.has("days")) {
-    setters.setSelectedDays(preset.filters.days ?? []);
+  if (controls("days")) {
+    setters.setSelectedDays(filters.days ?? []);
   }
-  if (included.has("time_ranges")) {
-    setters.setSelectedTimeRanges(preset.filters.time_ranges ?? []);
+  if (controls("time_ranges")) {
+    setters.setSelectedTimeRanges(filters.time_ranges ?? []);
   }
-  if (included.has("runtime_ranges")) {
-    setters.setSelectedRuntimeRanges(preset.filters.runtime_ranges ?? []);
+  if (controls("runtime_ranges")) {
+    setters.setSelectedRuntimeRanges(filters.runtime_ranges ?? []);
   }
-  if (included.has("group_by_movie")) {
-    setters.setGroupByMovie(Boolean(preset.filters.group_by_movie));
+  if (controls("group_by_movie")) {
+    setters.setGroupByMovie(Boolean(filters.group_by_movie));
   }
-  if (included.has("cinemas") && preset.cinemaIds) {
+  // Cinemas: opt-in. Only ever applied when the preset carries a selection.
+  if (preset.cinemaIds) {
     setters.setSessionCinemaIds(preset.cinemaIds);
+  }
+
+  // Lists: keep current ids the preset leaves as-is, then apply the stored ids
+  // for every controlled list. Lists with no stored entry (incl. lists added
+  // after the preset was saved) end up off.
+  if (hasLetterboxdUsername) {
+    const keepListId = (id: string) => untouched.has(listDimension(id));
+    const applyStored = (ids: readonly string[]) =>
+      ids.filter((id) => controls(listDimension(id)));
+    setters.setSelectedListIds(
+      dedupe([
+        ...setters.selectedListIds.filter(keepListId),
+        ...applyStored(filters.selected_list_ids ?? []),
+      ])
+    );
+    setters.setExcludeListIds(
+      dedupe([
+        ...setters.excludeListIds.filter(keepListId),
+        ...applyStored(filters.exclude_list_ids ?? []),
+      ])
+    );
   }
 };
 
 export const deleteDisplayPreset = (preset: DisplayPreset): Promise<unknown> =>
-  preset.source === "saved"
-    ? MeService.deleteSavedPreset({ presetId: preset.id })
-    : MeService.deleteFilterPreset({ presetId: preset.id });
+  MeService.deleteSavedPreset({ presetId: preset.id });
 
-/** Stable identity across both backends (ids are per-table). */
-export const presetKey = (preset: Pick<DisplayPreset, "source" | "id">) =>
-  `${preset.source}:${preset.id}`;
+/** Stable identity for ordering/keying. */
+export const presetKey = (preset: Pick<DisplayPreset, "id">) => preset.id;
 
 /**
- * Set or clear the single favorite preset for a scope. Favorite is unique
- * across both backends (the legacy and the new one), so the favorite in the
- * other system is cleared. Marking a preset favorite is what makes it apply on
- * startup (see useSharedTabFilters).
+ * Set or clear the favorite preset. Marking a preset favorite is what makes
+ * it apply on startup (see useSharedTabFilters).
  */
 export const setDisplayPresetFavorite = async (
   preset: DisplayPreset,
-  scope: FilterPresetScope,
   makeFavorite: boolean
 ): Promise<void> => {
   if (!makeFavorite) {
-    await Promise.all([
-      MeService.clearFavoriteSavedPreset({ scope }),
-      MeService.clearFavoriteFilterPreset({ scope }),
-    ]);
+    await MeService.clearFavoriteSavedPreset();
     return;
   }
-  if (preset.source === "saved") {
-    await MeService.setFavoriteSavedPreset({ presetId: preset.id });
-    await MeService.clearFavoriteFilterPreset({ scope });
-  } else {
-    await MeService.setFavoriteFilterPreset({ presetId: preset.id });
-    await MeService.clearFavoriteSavedPreset({ scope });
-  }
+  await MeService.setFavoriteSavedPreset({ presetId: preset.id });
 };
 
 // ─── Manual ordering (persisted locally, shared by chips + manage modal) ──────
 
-const ORDER_STORAGE_PREFIX = "display_preset_order_v1";
-const orderStorageKey = (scope: FilterPresetScope) =>
-  `${ORDER_STORAGE_PREFIX}_${scope.toLowerCase()}`;
+const ORDER_STORAGE_KEY = "display_preset_order_v1";
 
-export const displayPresetOrderQueryKey = (scope: FilterPresetScope) =>
-  ["display-preset-order", scope] as const;
+export const displayPresetOrderQueryKey = ["display-preset-order"] as const;
 
-export const loadDisplayPresetOrder = async (
-  scope: FilterPresetScope
-): Promise<string[]> => {
+export const loadDisplayPresetOrder = async (): Promise<string[]> => {
   try {
-    const raw = await storage.getItem(orderStorageKey(scope));
+    const raw = await storage.getItem(ORDER_STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -221,11 +235,8 @@ export const loadDisplayPresetOrder = async (
   }
 };
 
-export const saveDisplayPresetOrder = async (
-  scope: FilterPresetScope,
-  keys: readonly string[]
-): Promise<void> => {
-  await storage.setItem(orderStorageKey(scope), JSON.stringify(Array.from(new Set(keys))));
+export const saveDisplayPresetOrder = async (keys: readonly string[]): Promise<void> => {
+  await storage.setItem(ORDER_STORAGE_KEY, JSON.stringify(Array.from(new Set(keys))));
 };
 
 /** Sort by the persisted manual order; anything unordered keeps its fetch order. */
@@ -248,22 +259,19 @@ export const sortDisplayPresetsByOrder = (
 
 export const buildSavedPresetCreate = (args: {
   name: string;
-  scope: FilterPresetScope;
   isFavorite: boolean;
-  includedFields: PresetDimension[];
+  /** Dimensions the user opted to leave as-is (must exclude `cinemas`). */
+  untouchedFields: PresetDimension[];
+  includeCinemas: boolean;
   currentFilters: PageFilterPresetState;
   cinemaIds: number[];
-}): SavedPresetCreate => {
-  const includeCinemas = args.includedFields.includes("cinemas");
-  return {
-    name: args.name,
-    scope: args.scope,
-    included_fields: args.includedFields,
-    filters: normalizeFiltersForSave(args.currentFilters),
-    cinema_ids: includeCinemas ? args.cinemaIds : null,
-    is_favorite: args.isFavorite,
-  };
-};
+}): SavedPresetCreate => ({
+  name: args.name,
+  untouched_fields: args.untouchedFields,
+  filters: normalizeFiltersForSave(args.currentFilters),
+  cinema_ids: args.includeCinemas ? args.cinemaIds : null,
+  is_favorite: args.isFavorite,
+});
 
 /** One row in the "save preset" prompt: a dimension the user can include. */
 export type DimensionSummary = {
@@ -273,16 +281,23 @@ export type DimensionSummary = {
   active: boolean;
 };
 
+/** A list shown as its own selector row in the save prompt. */
+export type PresetListSummary = { id: string; title: string };
+
 const getStatusLabel = (value: SharedTabShowtimeFilter): string => {
   if (value === "going") return "Going";
   if (value === "interested") return "Interested";
   return "Any status";
 };
 
+const getMovieSetLabel = (include: boolean, exclude: boolean): string =>
+  include ? "Show" : exclude ? "Hide" : "Off";
+
 /**
  * Describe the user's current selections for the save prompt — one row per
  * available dimension, flagged `active` when it is set to something other than
- * its default. The dialog pre-checks the active rows.
+ * its default. Each row is a checkbox: checked means the preset controls that
+ * dimension; unchecked leaves it as-is on apply.
  */
 export const summarizeCurrentSelections = (args: {
   currentFilters: PageFilterPresetState;
@@ -291,6 +306,7 @@ export const summarizeCurrentSelections = (args: {
   canUseWatchlistFilter: boolean;
   showRuntime: boolean;
   showGroupBy: boolean;
+  lists: readonly PresetListSummary[];
 }): DimensionSummary[] => {
   const { currentFilters } = args;
   const status = toSharedTabShowtimeFilter(currentFilters.selected_showtime_filter);
@@ -308,19 +324,36 @@ export const summarizeCurrentSelections = (args: {
   ];
 
   if (args.canUseWatchlistFilter) {
+    const watchlistInclude = Boolean(currentFilters.watchlist_only);
+    const watchlistExclude = Boolean(currentFilters.watchlist_exclude);
     rows.push({
       dimension: "watchlist_only",
       title: "Watchlist",
-      valueLabel: currentFilters.watchlist_only ? "Watchlisted only" : "All movies",
-      active: Boolean(currentFilters.watchlist_only),
+      valueLabel: getMovieSetLabel(watchlistInclude, watchlistExclude),
+      active: watchlistInclude || watchlistExclude,
     });
 
+    const watchedInclude = Boolean(currentFilters.watched_only);
+    const watchedExclude = Boolean(currentFilters.hide_watched);
     rows.push({
       dimension: "hide_watched",
-      title: "Hide watched",
-      valueLabel: currentFilters.hide_watched ? "Hidden" : "Shown",
-      active: Boolean(currentFilters.hide_watched),
+      title: "Watched",
+      valueLabel: getMovieSetLabel(watchedInclude, watchedExclude),
+      active: watchedInclude || watchedExclude,
     });
+
+    const selectedLists = new Set(currentFilters.selected_list_ids ?? []);
+    const excludeLists = new Set(currentFilters.exclude_list_ids ?? []);
+    for (const list of args.lists) {
+      const include = selectedLists.has(list.id);
+      const exclude = excludeLists.has(list.id);
+      rows.push({
+        dimension: listDimension(list.id),
+        title: list.title,
+        valueLabel: getMovieSetLabel(include, exclude),
+        active: include || exclude,
+      });
+    }
   }
 
   rows.push({
@@ -372,36 +405,46 @@ export const summarizeCurrentSelections = (args: {
  * Used in the manage-presets list and any other places that need a one-liner.
  */
 export const describeDisplayPreset = (preset: DisplayPreset): string => {
-  const included = new Set(preset.includedFields);
+  const untouched = new Set(preset.untouchedFields);
+  const controls = (dimension: PresetDimension) => !untouched.has(dimension);
   const f = preset.filters;
   const parts: string[] = [];
 
-  if (included.has("selected_showtime_filter")) {
+  if (controls("selected_showtime_filter")) {
     const status = toSharedTabShowtimeFilter(f.selected_showtime_filter);
-    parts.push(status === "going" ? "Going" : status === "interested" ? "Interested" : "Any status");
+    if (status === "going") parts.push("Going");
+    else if (status === "interested") parts.push("Interested");
   }
-  if (included.has("watchlist_only")) {
-    parts.push(f.watchlist_only ? "Watchlisted" : "All movies");
+  if (controls("watchlist_only")) {
+    if (f.watchlist_only) parts.push("Watchlist");
+    else if (f.watchlist_exclude) parts.push("Hide watchlist");
   }
-  if (included.has("hide_watched") && f.hide_watched) {
-    parts.push("Hide watched");
+  if (controls("hide_watched")) {
+    if (f.watched_only) parts.push("Watched");
+    else if (f.hide_watched) parts.push("Hide watched");
   }
-  if (included.has("days")) {
+  const listCount =
+    (f.selected_list_ids ?? []).filter((id) => controls(listDimension(id))).length +
+    (f.exclude_list_ids ?? []).filter((id) => controls(listDimension(id))).length;
+  if (listCount > 0) {
+    parts.push(`${listCount} list${listCount === 1 ? "" : "s"}`);
+  }
+  if (controls("days") && (f.days?.length ?? 0) > 0) {
     parts.push(formatDayPillLabel(f.days ?? []));
   }
-  if (included.has("time_ranges")) {
+  if (controls("time_ranges") && (f.time_ranges?.length ?? 0) > 0) {
     parts.push(formatTimePillLabel(f.time_ranges ?? []));
   }
-  if (included.has("runtime_ranges")) {
+  if (controls("runtime_ranges") && (f.runtime_ranges?.length ?? 0) > 0) {
     parts.push(formatRuntimePillLabel(f.runtime_ranges ?? []));
   }
-  if (included.has("group_by_movie")) {
-    parts.push(f.group_by_movie ? "Group by movies" : "Group by showtimes");
+  if (controls("group_by_movie") && f.group_by_movie) {
+    parts.push("Group by movies");
   }
-  if (included.has("cinemas") && preset.cinemaIds != null) {
+  if (preset.cinemaIds != null) {
     const n = preset.cinemaIds.length;
     parts.push(`${n} cinema${n === 1 ? "" : "s"}`);
   }
 
-  return parts.join(" · ");
+  return parts.length > 0 ? parts.join(" · ") : "No restrictions";
 };

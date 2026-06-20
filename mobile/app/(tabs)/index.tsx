@@ -26,7 +26,6 @@ import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-util
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 import { applyDisplayPreset, type DisplayPreset } from '@/components/filters/saved-presets';
 import {
-  SHARED_TAB_FILTER_PRESET_SCOPE,
   getSelectedStatusesFromShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
 import { useThemeColors } from '@/hooks/use-theme-color';
@@ -66,9 +65,13 @@ export default function MainShowtimesScreen() {
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
     selectedListIds,
+    setSelectedListIds,
     excludeListIds,
+    setExcludeListIds,
     watchlistExclude,
+    setWatchlistExclude,
     watchedOnly,
+    setWatchedOnly,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -223,17 +226,22 @@ export default function MainShowtimesScreen() {
       hasLetterboxdUsername,
       setSelectedShowtimeFilter,
       setWatchlistOnly,
+      setWatchlistExclude,
       setHideWatched,
+      setWatchedOnly,
       setSelectedDays,
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
       setGroupByMovie,
       setSessionCinemaIds,
+      selectedListIds,
+      excludeListIds,
+      setSelectedListIds,
+      setExcludeListIds,
     });
   };
 
   const filtersRowProps = {
-    scope: SHARED_TAB_FILTER_PRESET_SCOPE,
     onOpenModal: () => openFiltersModal({ showGroupByMovie: true, showPresets: true }),
     onApplyPreset: handleApplyPreset,
   };

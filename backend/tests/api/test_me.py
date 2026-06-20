@@ -879,320 +879,26 @@ def test_me_pings_sorting_is_done_in_backend(
     assert showtime_sorted_ids == [later_showtime.id, earlier_showtime.id]
 
 
-def test_filter_presets_are_scoped_and_include_all_pill_filters(
+_LIST_ID_A = "11111111-1111-1111-1111-111111111111"
+_LIST_ID_B = "22222222-2222-2222-2222-222222222222"
+
+
+def test_saved_presets_store_untouched_fields_lists_and_cinemas(
     client: TestClient, normal_user_token_headers: dict[str, str]
 ) -> None:
-    showtimes_payload = {
-        "name": "After Work",
-        "scope": "SHOWTIMES",
-        "filters": {
-            "selected_showtime_filter": "interested",
-            "showtime_audience": "only-you",
-            "watchlist_only": True,
-            "days": ["2026-02-21", "2026-02-22"],
-            "time_ranges": ["18:00-21:59", "22:00-"],
-            "runtime_ranges": ["90-130"],
-        },
-    }
-    movies_payload = {
-        "name": "Weekend Movies",
-        "scope": "MOVIES",
-        "filters": {
-            "watchlist_only": False,
-            "days": ["2026-02-23"],
-            "time_ranges": ["10:00-14:00"],
-            "runtime_ranges": ["-120"],
-        },
-    }
-
-    showtimes_create = client.post(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        json=showtimes_payload,
-    )
-    assert showtimes_create.status_code == 200
-
-    movies_create = client.post(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        json=movies_payload,
-    )
-    assert movies_create.status_code == 200
-
-    showtimes_list = client.get(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        params={"scope": "SHOWTIMES"},
-    )
-    assert showtimes_list.status_code == 200
-    showtimes_presets = showtimes_list.json()
-    showtimes_default = next(
-        preset for preset in showtimes_presets if preset["is_default"] is True
-    )
-    assert showtimes_default["name"] == "Default"
-    assert showtimes_default["scope"] == "SHOWTIMES"
-    assert showtimes_default["filters"]["selected_showtime_filter"] == "all"
-    assert showtimes_default["filters"]["showtime_audience"] == "including-friends"
-    assert showtimes_default["filters"]["watchlist_only"] is False
-    assert showtimes_default["filters"]["days"] is None
-    assert showtimes_default["filters"]["time_ranges"] is None
-    assert showtimes_default["filters"]["runtime_ranges"] is None
-
-    showtimes_saved = next(
-        preset for preset in showtimes_presets if preset["name"] == "After Work"
-    )
-    assert showtimes_saved["scope"] == "SHOWTIMES"
-    assert showtimes_saved["filters"]["selected_showtime_filter"] == "interested"
-    assert showtimes_saved["filters"]["showtime_audience"] == "only-you"
-    assert showtimes_saved["filters"]["watchlist_only"] is True
-    assert showtimes_saved["filters"]["days"] == ["2026-02-21", "2026-02-22"]
-    assert showtimes_saved["filters"]["time_ranges"] == ["18:00-21:59", "22:00-"]
-    assert showtimes_saved["filters"]["runtime_ranges"] == ["90-130"]
-    assert showtimes_saved["is_favorite"] is False
-
-    movies_list = client.get(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        params={"scope": "MOVIES"},
-    )
-    assert movies_list.status_code == 200
-    movies_presets = movies_list.json()
-    movies_default = next(
-        preset for preset in movies_presets if preset["is_default"] is True
-    )
-    assert movies_default["name"] == "Default"
-    assert movies_default["scope"] == "MOVIES"
-    assert movies_default["filters"]["selected_showtime_filter"] == "all"
-    assert movies_default["filters"]["showtime_audience"] == "including-friends"
-    assert movies_default["filters"]["watchlist_only"] is False
-    assert movies_default["filters"]["days"] is None
-    assert movies_default["filters"]["time_ranges"] is None
-    assert movies_default["filters"]["runtime_ranges"] is None
-
-    movies_saved = next(
-        preset for preset in movies_presets if preset["name"] == "Weekend Movies"
-    )
-    assert movies_saved["scope"] == "MOVIES"
-    assert movies_saved["filters"]["watchlist_only"] is False
-    assert movies_saved["filters"]["days"] == ["2026-02-23"]
-    assert movies_saved["filters"]["time_ranges"] == ["10:00-14:00"]
-    assert movies_saved["filters"]["runtime_ranges"] == ["-120"]
-    assert movies_saved["filters"]["selected_showtime_filter"] is None
-    assert movies_saved["filters"]["showtime_audience"] == "including-friends"
-    assert movies_saved["is_favorite"] is False
-
-
-def test_filter_preset_accepts_relative_and_weekday_days(
-    client: TestClient, normal_user_token_headers: dict[str, str]
-) -> None:
-    expected_days = [
-        "relative:today",
-        "relative:tomorrow",
-        "relative:day_after_tomorrow",
-        "weekday:1",
-        "weekday:5",
-        "2026-03-01",
-    ]
+    # A preset that leaves "days" and one list as-is, controls everything else,
+    # and pins a cinema selection.
     payload = {
-        "name": "Flexible Days",
-        "scope": "SHOWTIMES",
-        "filters": {
-            "selected_showtime_filter": "interested",
-            "watchlist_only": True,
-            "days": expected_days,
-            "time_ranges": ["18:00-21:59"],
-        },
-    }
-
-    save_response = client.post(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        json=payload,
-    )
-    assert save_response.status_code == 200
-    save_body = save_response.json()
-    assert save_body["filters"]["days"] == expected_days
-
-    list_response = client.get(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        params={"scope": "SHOWTIMES"},
-    )
-    assert list_response.status_code == 200
-    presets = list_response.json()
-    saved = next(preset for preset in presets if preset["name"] == "Flexible Days")
-    assert saved["filters"]["days"] == expected_days
-    assert saved["filters"]["showtime_audience"] == "including-friends"
-
-
-def test_filter_preset_upsert_and_delete(
-    client: TestClient, normal_user_token_headers: dict[str, str]
-) -> None:
-    payload_initial = {
-        "name": "Quick Pick",
-        "scope": "SHOWTIMES",
-        "filters": {
-            "selected_showtime_filter": "going",
-            "watchlist_only": False,
-            "days": ["2026-02-25"],
-            "time_ranges": ["12:00-16:00"],
-        },
-    }
-    payload_updated = {
-        "name": "Quick Pick",
-        "scope": "SHOWTIMES",
-        "filters": {
-            "selected_showtime_filter": "all",
-            "watchlist_only": True,
-            "days": ["2026-02-26", "2026-02-27"],
-            "time_ranges": ["-04:00", "20:00-"],
-        },
-    }
-
-    first_save = client.post(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        json=payload_initial,
-    )
-    assert first_save.status_code == 200
-    first_id = first_save.json()["id"]
-
-    second_save = client.post(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        json=payload_updated,
-    )
-    assert second_save.status_code == 200
-    second_body = second_save.json()
-    assert second_body["id"] == first_id
-    assert second_body["filters"]["selected_showtime_filter"] == "all"
-    assert second_body["filters"]["showtime_audience"] == "including-friends"
-    assert second_body["filters"]["watchlist_only"] is True
-    assert second_body["filters"]["days"] == ["2026-02-26", "2026-02-27"]
-    assert second_body["filters"]["time_ranges"] == ["-04:00", "20:00-"]
-
-    list_response = client.get(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        params={"scope": "SHOWTIMES"},
-    )
-    assert list_response.status_code == 200
-    body = list_response.json()
-    non_default = [preset for preset in body if not preset["is_default"]]
-    assert len(non_default) == 1
-    assert non_default[0]["id"] == first_id
-
-    delete_response = client.delete(
-        f"{settings.API_V1_STR}/me/filter-presets/{first_id}",
-        headers=normal_user_token_headers,
-    )
-    assert delete_response.status_code == 200
-
-    list_after_delete = client.get(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        params={"scope": "SHOWTIMES"},
-    )
-    assert list_after_delete.status_code == 200
-    after_delete = list_after_delete.json()
-    assert len(after_delete) == 1
-    assert after_delete[0]["is_default"] is True
-    assert after_delete[0]["name"] == "Default"
-
-
-def test_filter_preset_can_be_marked_as_favorite(
-    client: TestClient, normal_user_token_headers: dict[str, str]
-) -> None:
-    first_payload = {
-        "name": "Weeknights",
-        "scope": "SHOWTIMES",
-        "filters": {
-            "selected_showtime_filter": "interested",
-            "watchlist_only": False,
-            "days": ["2026-02-21"],
-            "time_ranges": ["18:00-21:59"],
-        },
-    }
-    second_payload = {
-        "name": "Late Night",
-        "scope": "SHOWTIMES",
-        "filters": {
-            "selected_showtime_filter": "going",
-            "watchlist_only": True,
-            "days": ["2026-02-22"],
-            "time_ranges": ["22:00-"],
-        },
-    }
-
-    first_create = client.post(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        json=first_payload,
-    )
-    assert first_create.status_code == 200
-    first_id = first_create.json()["id"]
-
-    second_create = client.post(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        json=second_payload,
-    )
-    assert second_create.status_code == 200
-    second_id = second_create.json()["id"]
-
-    favorite_response = client.put(
-        f"{settings.API_V1_STR}/me/filter-presets/{second_id}/favorite",
-        headers=normal_user_token_headers,
-    )
-    assert favorite_response.status_code == 200
-    assert favorite_response.json()["is_favorite"] is True
-
-    favorite_get = client.get(
-        f"{settings.API_V1_STR}/me/filter-presets/favorite",
-        headers=normal_user_token_headers,
-        params={"scope": "SHOWTIMES"},
-    )
-    assert favorite_get.status_code == 200
-    assert favorite_get.json()["id"] == second_id
-
-    list_response = client.get(
-        f"{settings.API_V1_STR}/me/filter-presets",
-        headers=normal_user_token_headers,
-        params={"scope": "SHOWTIMES"},
-    )
-    assert list_response.status_code == 200
-    by_id = {preset["id"]: preset for preset in list_response.json()}
-    assert any(preset["is_default"] is True for preset in list_response.json())
-    assert by_id[first_id]["is_favorite"] is False
-    assert by_id[second_id]["is_favorite"] is True
-
-    clear_response = client.delete(
-        f"{settings.API_V1_STR}/me/filter-presets/favorite",
-        headers=normal_user_token_headers,
-        params={"scope": "SHOWTIMES"},
-    )
-    assert clear_response.status_code == 200
-
-    favorite_after_clear = client.get(
-        f"{settings.API_V1_STR}/me/filter-presets/favorite",
-        headers=normal_user_token_headers,
-        params={"scope": "SHOWTIMES"},
-    )
-    assert favorite_after_clear.status_code == 200
-    assert favorite_after_clear.json() is None
-
-
-def test_saved_presets_store_partial_fields_and_cinemas(
-    client: TestClient, normal_user_token_headers: dict[str, str]
-) -> None:
-    # A days-only preset that also pins a cinema selection.
-    days_payload = {
         "name": "Weekend at the Local",
-        "scope": "SHOWTIMES",
-        "included_fields": ["days", "cinemas"],
+        "untouched_fields": ["days", f"list:{_LIST_ID_B}"],
         "filters": {
             "selected_showtime_filter": "going",
             "watchlist_only": True,
+            "watchlist_exclude": False,
+            "hide_watched": True,
+            "watched_only": False,
+            "selected_list_ids": [_LIST_ID_A],
+            "exclude_list_ids": [_LIST_ID_B],
             "days": ["2026-02-21", "2026-02-22"],
             "time_ranges": ["18:00-21:59"],
         },
@@ -1201,48 +907,59 @@ def test_saved_presets_store_partial_fields_and_cinemas(
     create = client.post(
         f"{settings.API_V1_STR}/me/saved-presets",
         headers=normal_user_token_headers,
-        json=days_payload,
+        json=payload,
     )
     assert create.status_code == 200
     body = create.json()
-    assert body["included_fields"] == ["days", "cinemas"]
+    assert body["untouched_fields"] == ["days", f"list:{_LIST_ID_B}"]
     # cinema_ids are normalized (deduped + sorted).
     assert body["cinema_ids"] == [1, 2, 3]
-    # The full filter snapshot is preserved; the frontend applies only the
-    # included dimensions.
+    # The full filter snapshot is preserved, including the new movie-set fields.
     assert body["filters"]["days"] == ["2026-02-21", "2026-02-22"]
     assert body["filters"]["selected_showtime_filter"] == "going"
+    assert body["filters"]["hide_watched"] is True
+    assert body["filters"]["selected_list_ids"] == [_LIST_ID_A]
+    assert body["filters"]["exclude_list_ids"] == [_LIST_ID_B]
     assert body["is_favorite"] is False
 
-    # Listing is scoped and returns no synthetic "Default" preset.
-    showtimes_list = client.get(
+    # Listing returns no synthetic "Default" preset.
+    presets_list = client.get(
         f"{settings.API_V1_STR}/me/saved-presets",
         headers=normal_user_token_headers,
-        params={"scope": "SHOWTIMES"},
     )
-    assert showtimes_list.status_code == 200
-    presets = showtimes_list.json()
+    assert presets_list.status_code == 200
+    presets = presets_list.json()
     assert [preset["name"] for preset in presets] == ["Weekend at the Local"]
 
-    movies_list = client.get(
+
+def test_saved_preset_defaults_untouched_fields_and_keeps_cinema_ids(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    # Omitting untouched_fields means "control every dimension".
+    payload = {
+        "name": "Just Status",
+        "filters": {"selected_showtime_filter": "interested"},
+        "cinema_ids": [2, 1],
+    }
+    create = client.post(
         f"{settings.API_V1_STR}/me/saved-presets",
         headers=normal_user_token_headers,
-        params={"scope": "MOVIES"},
+        json=payload,
     )
-    assert movies_list.status_code == 200
-    assert movies_list.json() == []
+    assert create.status_code == 200
+    body = create.json()
+    assert body["untouched_fields"] == []
+    # Cinemas are opt-in: a carried selection is stored (normalized).
+    assert body["cinema_ids"] == [1, 2]
 
 
-def test_saved_preset_without_cinemas_field_drops_cinema_ids(
+def test_saved_preset_omitting_cinema_ids_leaves_them_null(
     client: TestClient, normal_user_token_headers: dict[str, str]
 ) -> None:
     payload = {
-        "name": "Just Status",
-        "scope": "SHOWTIMES",
-        "included_fields": ["selected_showtime_filter"],
+        "name": "No Cinemas",
+        "untouched_fields": ["selected_showtime_filter"],
         "filters": {"selected_showtime_filter": "interested"},
-        # cinema_ids supplied but "cinemas" not included -> must be discarded.
-        "cinema_ids": [1, 2],
     }
     create = client.post(
         f"{settings.API_V1_STR}/me/saved-presets",
@@ -1258,33 +975,48 @@ def test_saved_preset_validation_errors(
 ) -> None:
     base = {
         "name": "Bad",
-        "scope": "SHOWTIMES",
         "filters": {},
     }
 
-    # Empty included_fields is rejected.
+    # Empty untouched_fields is valid (control everything).
     empty = client.post(
         f"{settings.API_V1_STR}/me/saved-presets",
         headers=normal_user_token_headers,
-        json={**base, "included_fields": []},
+        json={**base, "untouched_fields": []},
     )
-    assert empty.status_code == 422
+    assert empty.status_code == 200
+
+    # A well-formed list token is accepted.
+    list_token = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={**base, "name": "List", "untouched_fields": [f"list:{_LIST_ID_A}"]},
+    )
+    assert list_token.status_code == 200
 
     # Unknown token is rejected.
     unknown = client.post(
         f"{settings.API_V1_STR}/me/saved-presets",
         headers=normal_user_token_headers,
-        json={**base, "included_fields": ["not_a_real_field"]},
+        json={**base, "untouched_fields": ["not_a_real_field"]},
     )
     assert unknown.status_code == 422
 
-    # "cinemas" requires cinema_ids.
-    missing_cinemas = client.post(
+    # "cinemas" is not an opt-out token (cinemas are opt-in via cinema_ids).
+    cinemas_token = client.post(
         f"{settings.API_V1_STR}/me/saved-presets",
         headers=normal_user_token_headers,
-        json={**base, "included_fields": ["cinemas"]},
+        json={**base, "untouched_fields": ["cinemas"]},
     )
-    assert missing_cinemas.status_code == 422
+    assert cinemas_token.status_code == 422
+
+    # Malformed list token (non-uuid suffix) is rejected.
+    bad_list = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={**base, "untouched_fields": ["list:not-a-uuid"]},
+    )
+    assert bad_list.status_code == 422
 
 
 def test_saved_preset_upsert_delete_and_favorite(
@@ -1295,36 +1027,33 @@ def test_saved_preset_upsert_delete_and_favorite(
         headers=normal_user_token_headers,
         json={
             "name": "Quick",
-            "scope": "SHOWTIMES",
-            "included_fields": ["time_ranges"],
+            "untouched_fields": ["time_ranges"],
             "filters": {"time_ranges": ["18:00-21:59"]},
         },
     )
     assert first.status_code == 200
     first_id = first.json()["id"]
 
-    # Same (scope, name) upserts the existing row.
+    # Same name upserts the existing row.
     upsert = client.post(
         f"{settings.API_V1_STR}/me/saved-presets",
         headers=normal_user_token_headers,
         json={
             "name": "Quick",
-            "scope": "SHOWTIMES",
-            "included_fields": ["days"],
+            "untouched_fields": ["days"],
             "filters": {"days": ["2026-03-01"]},
         },
     )
     assert upsert.status_code == 200
     assert upsert.json()["id"] == first_id
-    assert upsert.json()["included_fields"] == ["days"]
+    assert upsert.json()["untouched_fields"] == ["days"]
 
     second = client.post(
         f"{settings.API_V1_STR}/me/saved-presets",
         headers=normal_user_token_headers,
         json={
             "name": "Late",
-            "scope": "SHOWTIMES",
-            "included_fields": ["time_ranges"],
+            "untouched_fields": ["time_ranges"],
             "filters": {"time_ranges": ["22:00-"]},
             "is_favorite": True,
         },
@@ -1336,12 +1065,11 @@ def test_saved_preset_upsert_delete_and_favorite(
     favorite_get = client.get(
         f"{settings.API_V1_STR}/me/saved-presets/favorite",
         headers=normal_user_token_headers,
-        params={"scope": "SHOWTIMES"},
     )
     assert favorite_get.status_code == 200
     assert favorite_get.json()["id"] == second_id
 
-    # Favoriting another preset clears the previous favorite within the scope.
+    # Favoriting another preset clears the previous favorite.
     refavorite = client.put(
         f"{settings.API_V1_STR}/me/saved-presets/{first_id}/favorite",
         headers=normal_user_token_headers,
@@ -1350,7 +1078,6 @@ def test_saved_preset_upsert_delete_and_favorite(
     favorite_after = client.get(
         f"{settings.API_V1_STR}/me/saved-presets/favorite",
         headers=normal_user_token_headers,
-        params={"scope": "SHOWTIMES"},
     )
     assert favorite_after.json()["id"] == first_id
 

@@ -11,23 +11,24 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MeService, type FilterPresetScope } from "shared";
+import { MeService } from "shared";
+import { useFetchLetterboxdLists } from "shared/hooks/useLetterboxdLists";
 
 import { ThemedText } from "@/components/themed-text";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { type PageFilterPresetState } from "@/components/filters/FilterPresetsModal";
+import { type PageFilterPresetState } from "@/components/filters/filter-preset-utils";
 import {
   buildSavedPresetCreate,
   displayPresetsQueryKey,
   summarizeCurrentSelections,
   type PresetDimension,
+  type PresetListSummary,
 } from "@/components/filters/saved-presets";
 
 type SavePresetDialogProps = {
   visible: boolean;
   onClose: () => void;
-  scope: FilterPresetScope;
   currentFilters: PageFilterPresetState;
   cinemaIds: number[];
   cinemaLabel: string;
@@ -40,7 +41,6 @@ type SavePresetDialogProps = {
 export default function SavePresetDialog({
   visible,
   onClose,
-  scope,
   currentFilters,
   cinemaIds,
   cinemaLabel,
@@ -54,6 +54,16 @@ export default function SavePresetDialog({
   const queryClient = useQueryClient();
   const { bottom: bottomInset } = useSafeAreaInsets();
 
+  const { data: letterboxdLists = [] } = useFetchLetterboxdLists(canUseWatchlistFilter);
+  const lists = useMemo<PresetListSummary[]>(
+    () =>
+      letterboxdLists.map((list) => ({
+        id: list.id,
+        title: list.title ?? list.list_slug,
+      })),
+    [letterboxdLists]
+  );
+
   const summaries = useMemo(
     () =>
       summarizeCurrentSelections({
@@ -63,8 +73,9 @@ export default function SavePresetDialog({
         canUseWatchlistFilter,
         showRuntime,
         showGroupBy,
+        lists,
       }),
-    [currentFilters, cinemaLabel, cinemaActive, canUseWatchlistFilter, showRuntime, showGroupBy]
+    [currentFilters, cinemaLabel, cinemaActive, canUseWatchlistFilter, showRuntime, showGroupBy, lists]
   );
 
   const [name, setName] = useState("");
@@ -92,24 +103,22 @@ export default function SavePresetDialog({
       const created = await MeService.createSavedPreset({
         requestBody: buildSavedPresetCreate({
           name: name.trim(),
-          scope,
           isFavorite: saveAsDefault,
-          includedFields: summaries
+          // Persist the opt-out set: dimensions the user unchecked (left as-is).
+          // Cinemas are opt-in and tracked via `includeCinemas` / `cinema_ids`.
+          untouchedFields: summaries
             .map((row) => row.dimension)
-            .filter((dimension) => included.has(dimension)),
+            .filter((dimension) => dimension !== "cinemas" && !included.has(dimension)),
+          includeCinemas: included.has("cinemas"),
           currentFilters,
           cinemaIds,
         }),
       });
-      if (saveAsDefault) {
-        await MeService.clearFavoriteFilterPreset({ scope });
-      }
       return created;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: displayPresetsQueryKey(scope) });
-      queryClient.invalidateQueries({ queryKey: ["user", "favorite_saved_preset", scope] });
-      queryClient.invalidateQueries({ queryKey: ["user", "favorite_filter_preset", scope] });
+      queryClient.invalidateQueries({ queryKey: displayPresetsQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["user", "favorite_saved_preset"] });
       onClose();
     },
     onError: () => setError("Could not save preset. Please try again."),

@@ -12,7 +12,6 @@ import {
 } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { type FilterPresetScope } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
@@ -23,20 +22,18 @@ import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
 type ManagePresetsModalProps = {
   visible: boolean;
   onClose: () => void;
-  scope: FilterPresetScope;
 };
 
 export default function ManagePresetsModal({
   visible,
   onClose,
-  scope,
 }: ManagePresetsModalProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { presets, isLoading, remove, setFavorite, move } = useDisplayPresets(scope);
+  const { presets, isLoading, remove, setFavorite, move } = useDisplayPresets();
 
   const favoriteHasCinemas = presets.some(
-    (p) => p.isFavorite && p.includedFields.includes("cinemas")
+    (p) => p.isFavorite && p.cinemaIds != null
   );
 
   const confirmDelete = (preset: DisplayPreset) => {
@@ -86,7 +83,7 @@ export default function ManagePresetsModal({
               const canMoveUp = index > 0;
               const canMoveDown = index < presets.length - 1;
               return (
-                <View key={`${preset.source}-${preset.id}`} style={styles.row}>
+                <View key={preset.id} style={styles.row}>
                   <TouchableOpacity
                     style={[styles.iconBtn, !canMoveUp && styles.iconBtnDisabled]}
                     onPress={() => canMoveUp && move(index, index - 1)}

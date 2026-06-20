@@ -55,14 +55,6 @@ class TimeOfDay(str, Enum):
 
 
 @unique
-class FilterPresetScope(str, Enum):
-    """Whether a saved filter preset applies to the movies list or showtimes list."""
-
-    SHOWTIMES = "SHOWTIMES"
-    MOVIES = "MOVIES"
-
-
-@unique
 class NotificationChannel(str, Enum):
     """The delivery mechanism for a notification sent to a user."""
 

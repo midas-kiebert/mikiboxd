@@ -27,25 +27,10 @@ import type {
   MeDeleteUserMeResponse,
   MeUpdateUserMeData,
   MeUpdateUserMeResponse,
-  MeGetFilterPresetsData,
-  MeGetFilterPresetsResponse,
-  MeCreateFilterPresetData,
-  MeCreateFilterPresetResponse,
-  MeGetFavoriteFilterPresetData,
-  MeGetFavoriteFilterPresetResponse,
-  MeClearFavoriteFilterPresetData,
-  MeClearFavoriteFilterPresetResponse,
-  MeSetFavoriteFilterPresetData,
-  MeSetFavoriteFilterPresetResponse,
-  MeDeleteFilterPresetData,
-  MeDeleteFilterPresetResponse,
-  MeGetSavedPresetsData,
   MeGetSavedPresetsResponse,
   MeCreateSavedPresetData,
   MeCreateSavedPresetResponse,
-  MeGetFavoriteSavedPresetData,
   MeGetFavoriteSavedPresetResponse,
-  MeClearFavoriteSavedPresetData,
   MeClearFavoriteSavedPresetResponse,
   MeSetFavoriteSavedPresetData,
   MeSetFavoriteSavedPresetResponse,
@@ -435,155 +420,14 @@ export class MeService {
   }
 
   /**
-   * Get Filter Presets
-   * @param data The data for the request.
-   * @param data.scope
-   * @returns FilterPresetPublic Successful Response
-   * @throws ApiError
-   */
-  public static getFilterPresets(
-    data: MeGetFilterPresetsData,
-  ): CancelablePromise<MeGetFilterPresetsResponse> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/me/filter-presets",
-      query: {
-        scope: data.scope,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Create Filter Preset
-   * @param data The data for the request.
-   * @param data.requestBody
-   * @returns FilterPresetPublic Successful Response
-   * @throws ApiError
-   */
-  public static createFilterPreset(
-    data: MeCreateFilterPresetData,
-  ): CancelablePromise<MeCreateFilterPresetResponse> {
-    return __request(OpenAPI, {
-      method: "POST",
-      url: "/api/v1/me/filter-presets",
-      body: data.requestBody,
-      mediaType: "application/json",
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Get Favorite Filter Preset
-   * @param data The data for the request.
-   * @param data.scope
-   * @returns unknown Successful Response
-   * @throws ApiError
-   */
-  public static getFavoriteFilterPreset(
-    data: MeGetFavoriteFilterPresetData,
-  ): CancelablePromise<MeGetFavoriteFilterPresetResponse> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/me/filter-presets/favorite",
-      query: {
-        scope: data.scope,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Clear Favorite Filter Preset
-   * @param data The data for the request.
-   * @param data.scope
-   * @returns Message Successful Response
-   * @throws ApiError
-   */
-  public static clearFavoriteFilterPreset(
-    data: MeClearFavoriteFilterPresetData,
-  ): CancelablePromise<MeClearFavoriteFilterPresetResponse> {
-    return __request(OpenAPI, {
-      method: "DELETE",
-      url: "/api/v1/me/filter-presets/favorite",
-      query: {
-        scope: data.scope,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Set Favorite Filter Preset
-   * @param data The data for the request.
-   * @param data.presetId
-   * @returns FilterPresetPublic Successful Response
-   * @throws ApiError
-   */
-  public static setFavoriteFilterPreset(
-    data: MeSetFavoriteFilterPresetData,
-  ): CancelablePromise<MeSetFavoriteFilterPresetResponse> {
-    return __request(OpenAPI, {
-      method: "PUT",
-      url: "/api/v1/me/filter-presets/{preset_id}/favorite",
-      path: {
-        preset_id: data.presetId,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
-   * Delete Filter Preset
-   * @param data The data for the request.
-   * @param data.presetId
-   * @returns Message Successful Response
-   * @throws ApiError
-   */
-  public static deleteFilterPreset(
-    data: MeDeleteFilterPresetData,
-  ): CancelablePromise<MeDeleteFilterPresetResponse> {
-    return __request(OpenAPI, {
-      method: "DELETE",
-      url: "/api/v1/me/filter-presets/{preset_id}",
-      path: {
-        preset_id: data.presetId,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
    * Get Saved Presets
-   * @param data The data for the request.
-   * @param data.scope
    * @returns SavedPresetPublic Successful Response
    * @throws ApiError
    */
-  public static getSavedPresets(
-    data: MeGetSavedPresetsData,
-  ): CancelablePromise<MeGetSavedPresetsResponse> {
+  public static getSavedPresets(): CancelablePromise<MeGetSavedPresetsResponse> {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/me/saved-presets",
-      query: {
-        scope: data.scope,
-      },
-      errors: {
-        422: "Validation Error",
-      },
     })
   }
 
@@ -610,45 +454,25 @@ export class MeService {
 
   /**
    * Get Favorite Saved Preset
-   * @param data The data for the request.
-   * @param data.scope
    * @returns unknown Successful Response
    * @throws ApiError
    */
-  public static getFavoriteSavedPreset(
-    data: MeGetFavoriteSavedPresetData,
-  ): CancelablePromise<MeGetFavoriteSavedPresetResponse> {
+  public static getFavoriteSavedPreset(): CancelablePromise<MeGetFavoriteSavedPresetResponse> {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/me/saved-presets/favorite",
-      query: {
-        scope: data.scope,
-      },
-      errors: {
-        422: "Validation Error",
-      },
     })
   }
 
   /**
    * Clear Favorite Saved Preset
-   * @param data The data for the request.
-   * @param data.scope
    * @returns Message Successful Response
    * @throws ApiError
    */
-  public static clearFavoriteSavedPreset(
-    data: MeClearFavoriteSavedPresetData,
-  ): CancelablePromise<MeClearFavoriteSavedPresetResponse> {
+  public static clearFavoriteSavedPreset(): CancelablePromise<MeClearFavoriteSavedPresetResponse> {
     return __request(OpenAPI, {
       method: "DELETE",
       url: "/api/v1/me/saved-presets/favorite",
-      query: {
-        scope: data.scope,
-      },
-      errors: {
-        422: "Validation Error",
-      },
     })
   }
 

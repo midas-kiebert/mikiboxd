@@ -181,6 +181,7 @@ Legend:
 - [ ] `get_movies.py` — Fetches movies from the DB for enrichment
 - [ ] `get_showtimes.py` — Fetches showtimes from the DB for enrichment
 - [ ] `logger.py` — Scraping-specific log configuration
+- [x] `subtitles.py` — Parses cinema subtitle metadata (Dutch free text) into ISO-639-1 codes for `Showtime.subtitles`
 - [ ] `tmdb.py` — TMDB API client ⚠️ Large (1411 LOC)
 - [ ] `tmdb_lookup.py` — TMDB movie resolution + fuzzy matching ⚠️ Large (1470 LOC)
 - [ ] `tmdb_config.py` — TMDB configuration constants

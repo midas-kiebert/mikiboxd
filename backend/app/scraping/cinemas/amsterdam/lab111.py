@@ -12,6 +12,7 @@ from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.date_conversion import get_closest_exact_date
 from app.scraping.logger import logger
+from app.scraping.subtitles import parse_subtitle_label
 from app.scraping.tmdb_lookup import find_tmdb_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_services
@@ -55,6 +56,7 @@ class LAB111Scraper(BaseCinemaScraper):
         directors = extract_name(div, "Regisseur:")
         actors = extract_name(div, "Acteurs:")
         actor = actors[0] if actors else None
+        subtitles = parse_subtitle_label(" ".join(extract_name(div, "Ondertiteling:")))
 
         tmdb_id = find_tmdb_id(
             title_query=title_query,
@@ -119,6 +121,7 @@ class LAB111Scraper(BaseCinemaScraper):
                     datetime=date,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,
+                    subtitles=subtitles,
                 )
             )
         return movie, showtimes

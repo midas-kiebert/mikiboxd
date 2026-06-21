@@ -12,6 +12,7 @@ from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
+from app.scraping.subtitles import parse_subtitle_label
 from app.scraping.tmdb_lookup import find_tmdb_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_service
@@ -115,6 +116,14 @@ class GenericEagerlyScraper(BaseCinemaScraper):
             ),
         )
 
+        # The feed exposes subtitles under the (misnamed) "language" key, e.g.
+        # {"label": "Ondertitels", "value": "Nederlands"}.
+        language_meta = value.get("language")
+        subtitle_value = (
+            language_meta.get("value") if isinstance(language_meta, dict) else None
+        )
+        subtitles = parse_subtitle_label(subtitle_value)
+
         showtimes: list[ShowtimeCreate] = []
         for time in value["times"]:
             theatre = time["location"]
@@ -129,6 +138,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                     datetime=date,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,
+                    subtitles=subtitles,
                 )
             )
 

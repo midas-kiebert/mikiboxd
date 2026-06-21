@@ -13,6 +13,7 @@ from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
+from app.scraping.subtitles import parse_subtitle_label
 from app.scraping.tmdb_lookup import find_tmdb_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_services
@@ -85,6 +86,7 @@ class UitkijkScraper(BaseCinemaScraper):
                     all_shows.append(show)
 
         movie_cache: dict[str, MovieCreate] = {}
+        subtitles_by_slug: dict[str, list[str] | None] = {}
         slug_to_title_query: dict[str, str] = {}
         for show in all_shows:
             slug_to_title_query.setdefault(show.slug, clean_title(show.title))
@@ -102,13 +104,15 @@ class UitkijkScraper(BaseCinemaScraper):
             for future in as_completed(future_to_slug):
                 slug = future_to_slug[future]
                 try:
-                    movie = future.result()
+                    result = future.result()
                 except Exception:
                     logger.exception(f"Failed processing Uitkijk movie slug {slug}")
                     continue
-                if movie is None:
+                if result is None:
                     continue
+                movie, subtitles = result
                 movie_cache[slug] = movie
+                subtitles_by_slug[slug] = subtitles
 
         movies_by_id: dict[int, MovieCreate] = {}
         showtimes: list[ShowtimeCreate] = []
@@ -123,6 +127,7 @@ class UitkijkScraper(BaseCinemaScraper):
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
                     ticket_link=f"https://www.uitkijk.nl/film/{show.slug}",
+                    subtitles=subtitles_by_slug.get(show.slug),
                 )
             )
             movies_by_id[movie.id] = movie
@@ -152,13 +157,16 @@ class UitkijkScraper(BaseCinemaScraper):
         return observed_presences
 
 
-def get_movie(slug: str, title_query: str) -> MovieCreate | None:
+def get_movie(
+    slug: str, title_query: str
+) -> tuple[MovieCreate, list[str] | None] | None:
     # logger.trace(f"Processing movie: {slug}")
     film_url = f"https://www.uitkijk.nl/film/{slug}"
     response = requests.get(film_url, verify=False)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
+    subtitles = parse_subtitle_label(extract_label_value(soup, "Ondertiteling:"))
     director_elements = [
         s
         for s in soup.find_all("strong")
@@ -242,4 +250,19 @@ def get_movie(slug: str, title_query: str) -> MovieCreate | None:
         ),
     )
     logger.debug(f"Resolved TMDB id {tmdb_id} for {movie.title}")
-    return movie
+    return movie, subtitles
+
+
+def extract_label_value(soup: BeautifulSoup, label: str) -> str | None:
+    """Return the text following a ``<strong>label</strong>`` spec entry."""
+    for strong in soup.find_all("strong"):
+        if not (isinstance(strong, Tag) and strong.string == label):
+            continue
+        li = strong.parent
+        if not isinstance(li, Tag):
+            return None
+        inner_strong = li.find("strong")
+        if isinstance(inner_strong, Tag):
+            inner_strong.extract()
+        return sub(r"\s+", " ", li.get_text(strip=True)).strip() or None
+    return None

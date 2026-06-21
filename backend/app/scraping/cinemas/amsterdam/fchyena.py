@@ -12,6 +12,7 @@ from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
+from app.scraping.subtitles import parse_subtitle_freetext
 from app.scraping.tmdb_lookup import find_tmdb_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_service
@@ -74,6 +75,18 @@ class FCHyenaScraper(BaseCinemaScraper):
             logger.debug(f"Could not find actor for {title_query} in {CINEMA}")
             actor = None
 
+        # "Taal" combines spoken language and subtitles in free text, e.g.
+        # "Engels gesproken, Nederlands ondertiteld".
+        language_element = film_element.find(lambda tag: tag.string == "Taal")
+        language_sibling = (
+            language_element.next_sibling
+            if isinstance(language_element, Tag)
+            else None
+        )
+        subtitles = parse_subtitle_freetext(
+            language_sibling.strip() if isinstance(language_sibling, str) else None
+        )
+
         tmdb_id = find_tmdb_id(
             title_query=title_query,
             director_names=directors,
@@ -133,6 +146,7 @@ class FCHyenaScraper(BaseCinemaScraper):
                     datetime=dt,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,
+                    subtitles=subtitles,
                 )
             )
         return movie, showtimes

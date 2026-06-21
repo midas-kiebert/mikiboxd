@@ -100,6 +100,8 @@ function CinemaShowtimesContent() {
     setSelectedListIds,
     excludeListIds,
     setExcludeListIds,
+    selectedLanguages,
+    setSelectedLanguages,
   } = useSharedTabFilters();
   const { user } = useAuth();
   const isFocused = useIsFocused();
@@ -162,6 +164,7 @@ function CinemaShowtimesContent() {
     watchedOnly: effectiveWatchedOnly ? true : undefined,
     selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
     excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
+    selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
   }), [
     cinemaId,
     searchQuery,
@@ -176,6 +179,7 @@ function CinemaShowtimesContent() {
     effectiveWatchedOnly,
     selectedListIds,
     excludeListIds,
+    selectedLanguages,
   ]);
 
   const {
@@ -209,6 +213,7 @@ function CinemaShowtimesContent() {
     watchedOnly: effectiveWatchedOnly ? true : undefined,
     selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
     excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
+    selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
   }), [
     cinemaId,
     searchQuery,
@@ -223,6 +228,7 @@ function CinemaShowtimesContent() {
     effectiveWatchedOnly,
     selectedListIds,
     excludeListIds,
+    selectedLanguages,
   ]);
 
   const {
@@ -281,6 +287,7 @@ function CinemaShowtimesContent() {
     setSelectedRuntimeRanges([]);
     setSelectedListIds([]);
     setExcludeListIds([]);
+    setSelectedLanguages([]);
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────────
@@ -368,6 +375,8 @@ function CinemaShowtimesContent() {
               setSelectedListIds={setSelectedListIds}
               excludeListIds={excludeListIds}
               setExcludeListIds={setExcludeListIds}
+              selectedLanguages={selectedLanguages}
+              setSelectedLanguages={setSelectedLanguages}
               onClearAll={handleClearAll}
             />
           </>
@@ -405,6 +414,8 @@ function CinemaShowtimesContent() {
         setSelectedListIds={setSelectedListIds}
         excludeListIds={excludeListIds}
         setExcludeListIds={setExcludeListIds}
+        selectedLanguages={selectedLanguages}
+        setSelectedLanguages={setSelectedLanguages}
         showLists
         resultCount={resultCount}
       />

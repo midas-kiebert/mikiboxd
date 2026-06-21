@@ -92,6 +92,8 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     setSelectedListIds,
     excludeListIds,
     setExcludeListIds,
+    selectedLanguages,
+    setSelectedLanguages,
     sessionCinemaIds,
     setSessionCinemaIds,
   } = useSharedTabFilters();
@@ -152,6 +154,7 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     watchedOnly: effectiveWatchedOnly ? true : undefined,
     selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
     excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
+    selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
   }), [
     effectiveAppliedWatchlistOnly,
     effectiveWatchlistExclude,
@@ -159,6 +162,7 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     effectiveWatchedOnly,
     selectedListIds,
     excludeListIds,
+    selectedLanguages,
     effectiveCinemaIds,
     includeInterested,
     resolvedApiDays,
@@ -227,6 +231,7 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     setSelectedTimeRanges([]);
     setSelectedListIds([]);
     setExcludeListIds([]);
+    setSelectedLanguages([]);
     if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
   };
 
@@ -351,6 +356,8 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
               setSelectedListIds={setSelectedListIds}
               excludeListIds={excludeListIds}
               setExcludeListIds={setExcludeListIds}
+              selectedLanguages={selectedLanguages}
+              setSelectedLanguages={setSelectedLanguages}
               onClearAll={handleClearAll}
             />
           </>
@@ -390,6 +397,8 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         setSelectedListIds={setSelectedListIds}
         excludeListIds={excludeListIds}
         setExcludeListIds={setExcludeListIds}
+        selectedLanguages={selectedLanguages}
+        setSelectedLanguages={setSelectedLanguages}
         showLists
         resultCount={groupByMovie ? movieSections.length : showtimes.length}
       />

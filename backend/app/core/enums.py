@@ -70,6 +70,18 @@ class SearchField(str, Enum):
 
 
 @unique
+class Language(str, Enum):
+    """Languages selectable in the language filter.
+
+    Values are ISO-639-1 codes matching ``Movie.original_language`` and the
+    codes found in ``Showtime.subtitles``.
+    """
+
+    DUTCH = "nl"
+    ENGLISH = "en"
+
+
+@unique
 class NotificationChannel(str, Enum):
     """The delivery mechanism for a notification sent to a user."""
 

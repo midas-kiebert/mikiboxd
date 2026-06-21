@@ -1,7 +1,7 @@
 import { useInfiniteQuery, keepPreviousData, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { MoviesService, MoviesReadMovieShowtimesResponse } from "../client";
 import { ApiError } from "../client";
-import type { GoingStatus } from "../client";
+import type { GoingStatus, Language } from "../client";
 
 type ShowtimesFilters = {
     query?: string;
@@ -13,6 +13,7 @@ type ShowtimesFilters = {
     watchlistOnly?: boolean;
     hideWatched?: boolean;
     selectedStatuses?: GoingStatus[];
+    selectedLanguages?: Language[];
 };
 
 type useFetchMovieShowtimesProps = {

@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException, Query
 from pydantic import BaseModel
 
-from app.core.enums import GoingStatus, SearchField, TimeOfDay
+from app.core.enums import GoingStatus, Language, SearchField, TimeOfDay
 from app.utils import now_amsterdam_naive
 
 
@@ -35,6 +35,7 @@ class Filters(BaseModel):
     runtime_min: int | None = None
     runtime_max: int | None = None
     selected_statuses: list[GoingStatus] | None = None
+    selected_languages: list[Language] | None = None
 
 
 def parse_time_ranges(value: str) -> TimeRange:
@@ -125,6 +126,16 @@ def get_filters(
             description="Maximum movie runtime in minutes",
         ),
     ] = None,
+    selected_languages: Annotated[
+        list[Language] | None,
+        Query(
+            alias="selected_languages",
+            description=(
+                "Keep movies whose main spoken language is one of these, and "
+                "only showtimes with matching subtitles"
+            ),
+        ),
+    ] = None,
 ) -> Filters:
     if snapshot_time is None:
         snapshot_time = now_amsterdam_naive()
@@ -161,4 +172,5 @@ def get_filters(
         selected_statuses=selected_statuses,
         list_ids=selected_list_ids,
         exclude_list_ids=exclude_list_ids,
+        selected_languages=selected_languages,
     )

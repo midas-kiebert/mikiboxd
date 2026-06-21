@@ -1,7 +1,7 @@
 import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { ShowtimesService, ShowtimesGetMainPageShowtimesResponse } from "../client";
 import { ApiError } from "../client";
-import type { GoingStatus, SearchField } from "../client";
+import type { GoingStatus, Language, SearchField } from "../client";
 
 type ShowtimesFilters = {
     query?: string;
@@ -18,6 +18,7 @@ type ShowtimesFilters = {
     selectedStatuses?: GoingStatus[];
     selectedListIds?: string[];
     excludeListIds?: string[];
+    selectedLanguages?: Language[];
 };
 
 type useFetchMainPageShowtimesProps = {

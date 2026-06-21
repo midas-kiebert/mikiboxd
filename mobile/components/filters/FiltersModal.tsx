@@ -16,6 +16,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MeService } from "shared";
+import type { Language } from "shared/client";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
@@ -50,6 +51,11 @@ const STATUS_OPTIONS_SIMPLE: { value: SharedTabShowtimeFilter; label: string }[]
   { value: "going", label: "Going" },
 ];
 
+const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
+  { value: "nl", label: "Dutch" },
+  { value: "en", label: "English" },
+];
+
 export type FiltersModalProps = {
   visible: boolean;
   onClose: () => void;
@@ -79,6 +85,8 @@ export type FiltersModalProps = {
   setSelectedListIds?: (v: string[]) => void;
   excludeListIds?: string[];
   setExcludeListIds?: (v: string[]) => void;
+  selectedLanguages?: Language[];
+  setSelectedLanguages?: (v: Language[]) => void;
   watchlistExclude?: boolean;
   setWatchlistExclude?: (v: boolean) => void;
   watchedOnly?: boolean;
@@ -115,6 +123,8 @@ export default function FiltersModal({
   setSelectedListIds = () => {},
   excludeListIds = [],
   setExcludeListIds = () => {},
+  selectedLanguages = [],
+  setSelectedLanguages = () => {},
   watchlistExclude = false,
   setWatchlistExclude = () => {},
   watchedOnly = false,
@@ -211,6 +221,7 @@ export default function FiltersModal({
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
       runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
       group_by_movie: groupByMovie,
+      selected_languages: selectedLanguages.length > 0 ? selectedLanguages : null,
     }),
     [
       selectedShowtimeFilter,
@@ -224,6 +235,7 @@ export default function FiltersModal({
       selectedTimeRanges,
       selectedRuntimeRanges,
       groupByMovie,
+      selectedLanguages,
     ]
   );
 
@@ -240,6 +252,7 @@ export default function FiltersModal({
         setSelectedTimeRanges,
         setSelectedRuntimeRanges,
         setGroupByMovie,
+        setSelectedLanguages,
         setSessionCinemaIds,
         selectedListIds,
         excludeListIds,
@@ -258,6 +271,7 @@ export default function FiltersModal({
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
       setGroupByMovie,
+      setSelectedLanguages,
       setSessionCinemaIds,
       selectedListIds,
       excludeListIds,
@@ -369,6 +383,30 @@ export default function FiltersModal({
                 <Divider colors={colors} />
               </>
             )}
+
+            {/* Language */}
+            <SectionLabel label="Language" colors={colors} />
+            <View style={styles.pillRow}>
+              {LANGUAGE_OPTIONS.map((opt) => {
+                const isActive = selectedLanguages.includes(opt.value);
+                return (
+                  <Pill
+                    key={opt.value}
+                    label={opt.label}
+                    active={isActive}
+                    onPress={() =>
+                      setSelectedLanguages(
+                        isActive
+                          ? selectedLanguages.filter((v) => v !== opt.value)
+                          : [...selectedLanguages, opt.value]
+                      )
+                    }
+                    colors={colors}
+                  />
+                );
+              })}
+            </View>
+            <Divider colors={colors} />
 
             {/* Filter movies (watchlist / watched / Letterboxd lists) */}
             {showLists ? (

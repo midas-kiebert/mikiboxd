@@ -6,7 +6,7 @@ from psycopg.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
-from app.core.enums import GoingStatus, SearchField
+from app.core.enums import GoingStatus, Language, SearchField
 from app.crud import friendship as friendship_crud
 from app.crud import movie as movie_crud
 from app.crud import showtime as showtime_crud
@@ -168,6 +168,63 @@ def test_upsert_movie_preserves_existing_duration_when_payload_duration_is_missi
 
     assert updated_movie.id == existing_movie.id
     assert updated_movie.duration == 121
+
+
+def test_upsert_movie_preserves_existing_language_data_when_payload_language_is_missing(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+):
+    """A transient TMDB lookup failure must not wipe previously-enriched language data."""
+    existing_movie = movie_factory(
+        languages=["en", "fr"],
+        original_language="en",
+    )
+    movie_create = MovieCreate(
+        id=existing_movie.id,
+        title=existing_movie.title,
+        poster_link=existing_movie.poster_link,
+        letterboxd_slug=existing_movie.letterboxd_slug,
+        languages=None,
+        original_language=None,
+    )
+
+    updated_movie = movie_crud.upsert_movie(
+        session=db_transaction,
+        movie_create=movie_create,
+    )
+
+    assert updated_movie.id == existing_movie.id
+    assert updated_movie.languages == ["en", "fr"]
+    assert updated_movie.original_language == "en"
+
+
+def test_upsert_movie_updates_language_data_when_payload_has_real_values(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+):
+    existing_movie = movie_factory(
+        languages=["en"],
+        original_language="en",
+    )
+    movie_create = MovieCreate(
+        id=existing_movie.id,
+        title=existing_movie.title,
+        poster_link=existing_movie.poster_link,
+        letterboxd_slug=existing_movie.letterboxd_slug,
+        languages=["nl", "en"],
+        original_language="nl",
+    )
+
+    updated_movie = movie_crud.upsert_movie(
+        session=db_transaction,
+        movie_create=movie_create,
+    )
+
+    assert updated_movie.id == existing_movie.id
+    assert updated_movie.languages == ["nl", "en"]
+    assert updated_movie.original_language == "nl"
 
 
 # def test_get_cinemas_for_movie(
@@ -455,6 +512,90 @@ def test_get_movies_filters_by_selected_statuses(
         movie_going.id,
         movie_interested.id,
     }
+
+
+def test_get_movies_and_count_movies_filter_by_selected_languages(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+
+    movie_english = movie_factory(original_language="en")
+    movie_dutch = movie_factory(original_language="nl")
+    movie_english_no_subtitle_overlap = movie_factory(original_language="en")
+
+    showtime_factory(movie=movie_english, subtitles=["en", "nl"])
+    showtime_factory(movie=movie_dutch, subtitles=["en", "nl"])
+    showtime_factory(movie=movie_english_no_subtitle_overlap, subtitles=["fr"])
+
+    english_only = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.ENGLISH],
+        ),
+    )
+    assert {movie.id for movie in english_only} == {movie_english.id}
+
+    count = movie_crud.count_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.ENGLISH],
+        ),
+    )
+    assert count == 1
+
+    english_or_dutch = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.ENGLISH, Language.DUTCH],
+        ),
+    )
+    assert {movie.id for movie in english_or_dutch} == {
+        movie_english.id,
+        movie_dutch.id,
+    }
+
+
+def test_get_showtimes_for_movie_filters_by_selected_languages(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    movie = movie_factory(original_language="en")
+    showtime_matching = showtime_factory(movie=movie, subtitles=["en"])
+    showtime_no_overlap = showtime_factory(movie=movie, subtitles=["fr"])
+
+    showtimes = movie_crud.get_showtimes_for_movie(
+        session=db_transaction,
+        movie_id=movie.id,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.ENGLISH],
+        ),
+        current_user_id=user.id,
+    )
+
+    assert showtime_matching in showtimes
+    assert showtime_no_overlap not in showtimes
 
 
 def test_get_movies_filters_by_runtime(

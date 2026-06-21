@@ -70,6 +70,8 @@ export default function MainShowtimesScreen() {
     setSelectedListIds,
     excludeListIds,
     setExcludeListIds,
+    selectedLanguages,
+    setSelectedLanguages,
     watchlistExclude,
     setWatchlistExclude,
     watchedOnly,
@@ -127,10 +129,12 @@ export default function MainShowtimesScreen() {
     watchedOnly: effectiveWatchedOnly ? true : undefined,
     selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
     excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
+    selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
   }), [
     searchQuery, searchField, appliedShowtimeFilter, resolvedApiDays, selectedTimeRanges,
     runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, effectiveAppliedWatchlistOnly,
     effectiveAppliedHideWatched, selectedListIds, excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly,
+    selectedLanguages,
   ]);
 
   const activeShowtimesQuery = useFetchMainPageShowtimes({
@@ -157,11 +161,12 @@ export default function MainShowtimesScreen() {
       watchedOnly: effectiveWatchedOnly ? true : undefined,
       selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
       excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
+      selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
     }),
     [
       searchQuery, searchField, effectiveAppliedWatchlistOnly, effectiveAppliedHideWatched, resolvedApiDays, selectedTimeRanges,
       runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, appliedShowtimeFilter, selectedListIds,
-      excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly,
+      excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly, selectedLanguages,
     ]
   );
   const moviesQuery = useFetchMovies({
@@ -240,6 +245,7 @@ export default function MainShowtimesScreen() {
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
       setGroupByMovie,
+      setSelectedLanguages,
       setSessionCinemaIds,
       selectedListIds,
       excludeListIds,
@@ -281,6 +287,8 @@ export default function MainShowtimesScreen() {
     setSelectedListIds,
     excludeListIds,
     setExcludeListIds,
+    selectedLanguages,
+    setSelectedLanguages,
     onOpenFilters: () => openFiltersModal({ showGroupByMovie: true, showPresets: true }),
     onClearAll: () => {
       setIsFilterTransitionLoading(true);
@@ -295,6 +303,7 @@ export default function MainShowtimesScreen() {
       setSelectedRuntimeRanges([]);
       setSelectedListIds([]);
       setExcludeListIds([]);
+      setSelectedLanguages([]);
       if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
     },
   };

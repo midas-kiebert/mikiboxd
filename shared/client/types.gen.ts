@@ -98,6 +98,14 @@ export type HTTPValidationError = {
   detail?: Array<ValidationError>
 }
 
+/**
+ * Languages selectable in the language filter.
+ *
+ * Values are ISO-639-1 codes matching ``Movie.original_language`` and the
+ * codes found in ``Showtime.subtitles``.
+ */
+export type Language = "nl" | "en"
+
 export type LetterboxdListCreate = {
   url: string
 }
@@ -129,6 +137,7 @@ export type MovieInShowtime = {
   release_year?: number | null
   duration?: number | null
   languages?: Array<string> | null
+  original_language?: string | null
 }
 
 export type MovieLoggedIn = {
@@ -142,6 +151,7 @@ export type MovieLoggedIn = {
   release_year?: number | null
   duration?: number | null
   languages?: Array<string> | null
+  original_language?: string | null
   showtimes: Array<ShowtimeInMovieLoggedIn>
 }
 
@@ -156,6 +166,7 @@ export type MovieSummaryLoggedIn = {
   release_year?: number | null
   duration?: number | null
   languages?: Array<string> | null
+  original_language?: string | null
   showtimes: Array<ShowtimeInMovieLoggedIn>
   cinemas: Array<CinemaPublic>
   last_showtime_datetime: string | null
@@ -241,6 +252,7 @@ export type SavedPresetFilters = {
   time_ranges?: Array<string> | null
   runtime_ranges?: Array<string> | null
   group_by_movie?: boolean | null
+  selected_languages?: Array<Language> | null
 }
 
 export type showtime_audience = "including-friends" | "only-you"
@@ -630,6 +642,10 @@ export type MeCountMyShowtimesData = {
    */
   selectedCinemaIds?: Array<number> | null
   /**
+   * Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
+   */
+  selectedLanguages?: Array<Language> | null
+  /**
    * Only show movies on any of these Letterboxd lists
    */
   selectedListIds?: Array<string> | null
@@ -679,6 +695,10 @@ export type MeGetMyShowtimesData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
+   */
+  selectedLanguages?: Array<Language> | null
   /**
    * Only show movies on any of these Letterboxd lists
    */
@@ -832,6 +852,10 @@ export type MoviesCountMoviesData = {
    */
   selectedCinemaIds?: Array<number> | null
   /**
+   * Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
+   */
+  selectedLanguages?: Array<Language> | null
+  /**
    * Only show movies on any of these Letterboxd lists
    */
   selectedListIds?: Array<string> | null
@@ -881,6 +905,10 @@ export type MoviesReadMoviesData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
+   */
+  selectedLanguages?: Array<Language> | null
   /**
    * Only show movies on any of these Letterboxd lists
    */
@@ -934,6 +962,10 @@ export type MoviesReadMovieShowtimesData = {
    */
   selectedCinemaIds?: Array<number> | null
   /**
+   * Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
+   */
+  selectedLanguages?: Array<Language> | null
+  /**
    * Only show movies on any of these Letterboxd lists
    */
   selectedListIds?: Array<string> | null
@@ -982,6 +1014,10 @@ export type MoviesReadMovieData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
+   */
+  selectedLanguages?: Array<Language> | null
   /**
    * Only show movies on any of these Letterboxd lists
    */
@@ -1100,6 +1136,10 @@ export type ShowtimesCountMainPageShowtimesData = {
    */
   selectedCinemaIds?: Array<number> | null
   /**
+   * Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
+   */
+  selectedLanguages?: Array<Language> | null
+  /**
    * Only show movies on any of these Letterboxd lists
    */
   selectedListIds?: Array<string> | null
@@ -1149,6 +1189,10 @@ export type ShowtimesGetMainPageShowtimesData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
+   */
+  selectedLanguages?: Array<Language> | null
   /**
    * Only show movies on any of these Letterboxd lists
    */
@@ -1225,6 +1269,10 @@ export type UsersGetUserSelectedShowtimesData = {
    * Filter showtimes to only these cinema IDs
    */
   selectedCinemaIds?: Array<number> | null
+  /**
+   * Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
+   */
+  selectedLanguages?: Array<Language> | null
   /**
    * Only show movies on any of these Letterboxd lists
    */

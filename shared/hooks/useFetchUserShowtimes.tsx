@@ -2,6 +2,7 @@ import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstac
 import {
     ApiError,
     type GoingStatus,
+    type Language,
     UsersService,
     UsersGetUserSelectedShowtimesResponse,
 } from "../client";
@@ -20,6 +21,7 @@ type ShowtimesFilters = {
     selectedListIds?: string[];
     excludeListIds?: string[];
     selectedStatuses?: GoingStatus[];
+    selectedLanguages?: Language[];
 };
 
 type useFetchUserShowtimesProps = {

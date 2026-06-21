@@ -2,7 +2,7 @@
  * Shared utilities for filter preset matching and serialization, used by
  * FiltersModal, FiltersRow, and the saved-presets feature.
  */
-import type { SavedPresetFilters } from "shared";
+import type { Language, SavedPresetFilters } from "shared";
 import { canonicalizeDaySelections } from "@/components/filters/day-filter-utils";
 import { normalizeSingleRuntimeRangeSelection } from "@/components/filters/runtime-range-utils";
 
@@ -19,11 +19,17 @@ export type PageFilterPresetState = {
   time_ranges?: string[] | null;
   runtime_ranges?: string[] | null;
   group_by_movie?: boolean;
+  selected_languages?: Language[] | null;
 };
 
 const getSortedUniqueStrings = (values?: string[] | null): string[] | null => {
   if (!values || values.length === 0) return null;
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+};
+
+const getSortedUniqueLanguages = (values?: Language[] | null): Language[] | null => {
+  if (!values || values.length === 0) return null;
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b)) as Language[];
 };
 
 export const normalizeFilters = (filters: PageFilterPresetState): PageFilterPresetState => ({
@@ -49,6 +55,7 @@ export const normalizeFilters = (filters: PageFilterPresetState): PageFilterPres
     normalizeSingleRuntimeRangeSelection(filters.runtime_ranges ?? [])
   ),
   group_by_movie: Boolean(filters.group_by_movie),
+  selected_languages: getSortedUniqueLanguages(filters.selected_languages),
 });
 
 export const serializeFilters = (filters: PageFilterPresetState): string =>
@@ -70,5 +77,6 @@ export const normalizeFiltersForSave = (filters: PageFilterPresetState): SavedPr
     time_ranges: normalized.time_ranges ?? null,
     runtime_ranges: normalized.runtime_ranges ?? null,
     group_by_movie: normalized.group_by_movie ?? null,
+    selected_languages: normalized.selected_languages ?? null,
   };
 };

@@ -437,6 +437,9 @@ async def _process_cineville_movie_async(
             languages=(
                 tmdb_details.spoken_languages if tmdb_details is not None else None
             ),
+            original_language=(
+                tmdb_details.original_language if tmdb_details is not None else None
+            ),
             original_title=(
                 tmdb_details.original_title if tmdb_details is not None else None
             ),

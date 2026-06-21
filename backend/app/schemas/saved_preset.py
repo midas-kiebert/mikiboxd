@@ -6,6 +6,8 @@ from uuid import UUID
 from pydantic import field_validator
 from sqlmodel import Field, SQLModel
 
+from app.core.enums import Language
+
 __all__ = [
     "UNTOUCHABLE_FIELDS",
     "LIST_FIELD_PREFIX",
@@ -47,6 +49,7 @@ UNTOUCHABLE_FIELDS = frozenset(
         "time_ranges",
         "runtime_ranges",
         "group_by_movie",
+        "selected_languages",
     }
 )
 
@@ -82,6 +85,7 @@ class SavedPresetFilters(SQLModel):
     time_ranges: list[str] | None = None
     runtime_ranges: list[str] | None = None
     group_by_movie: bool | None = None
+    selected_languages: list[Language] | None = None
 
     @field_validator("days")
     @classmethod

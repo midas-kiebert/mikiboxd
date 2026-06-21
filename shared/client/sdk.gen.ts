@@ -763,6 +763,7 @@ export class MeService {
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
+   * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
    * @returns number Successful Response
    * @throws ApiError
    */
@@ -789,6 +790,7 @@ export class MeService {
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
+        selected_languages: data.selectedLanguages,
       },
       errors: {
         422: "Validation Error",
@@ -817,6 +819,7 @@ export class MeService {
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
+   * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -845,6 +848,7 @@ export class MeService {
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
+        selected_languages: data.selectedLanguages,
       },
       errors: {
         422: "Validation Error",
@@ -1279,6 +1283,7 @@ export class MoviesService {
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
+   * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
    * @returns number Successful Response
    * @throws ApiError
    */
@@ -1305,6 +1310,7 @@ export class MoviesService {
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
+        selected_languages: data.selectedLanguages,
       },
       errors: {
         422: "Validation Error",
@@ -1334,6 +1340,7 @@ export class MoviesService {
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
+   * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
    * @returns MovieSummaryLoggedIn Successful Response
    * @throws ApiError
    */
@@ -1363,6 +1370,7 @@ export class MoviesService {
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
+        selected_languages: data.selectedLanguages,
       },
       errors: {
         422: "Validation Error",
@@ -1392,6 +1400,7 @@ export class MoviesService {
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
+   * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
    * @returns ShowtimeInMovieLoggedIn Successful Response
    * @throws ApiError
    */
@@ -1423,6 +1432,7 @@ export class MoviesService {
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
+        selected_languages: data.selectedLanguages,
       },
       errors: {
         422: "Validation Error",
@@ -1451,6 +1461,7 @@ export class MoviesService {
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
+   * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
    * @returns MovieLoggedIn Successful Response
    * @throws ApiError
    */
@@ -1481,6 +1492,7 @@ export class MoviesService {
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
+        selected_languages: data.selectedLanguages,
       },
       errors: {
         422: "Validation Error",
@@ -1743,6 +1755,7 @@ export class ShowtimesService {
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
+   * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
    * @returns number Successful Response
    * @throws ApiError
    */
@@ -1769,6 +1782,7 @@ export class ShowtimesService {
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
+        selected_languages: data.selectedLanguages,
       },
       errors: {
         422: "Validation Error",
@@ -1797,6 +1811,7 @@ export class ShowtimesService {
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
+   * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -1825,6 +1840,7 @@ export class ShowtimesService {
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
+        selected_languages: data.selectedLanguages,
       },
       errors: {
         422: "Validation Error",
@@ -1948,6 +1964,7 @@ export class UsersService {
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
+   * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
    * @returns ShowtimeLoggedIn Successful Response
    * @throws ApiError
    */
@@ -1979,6 +1996,7 @@ export class UsersService {
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
         runtime_max: data.runtimeMax,
+        selected_languages: data.selectedLanguages,
       },
       errors: {
         422: "Validation Error",

@@ -70,6 +70,8 @@ export default function MovieScreen() {
     setSelectedListIds,
     excludeListIds,
     setExcludeListIds,
+    selectedLanguages,
+    setSelectedLanguages,
     watchlistExclude,
     setWatchlistExclude,
     watchedOnly,
@@ -127,6 +129,7 @@ export default function MovieScreen() {
       watchedOnly: effectiveWatchedOnly ? true : undefined,
       selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
       excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
+      selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
     }),
     [
       searchQuery,
@@ -143,6 +146,7 @@ export default function MovieScreen() {
       runtimeBounds.runtimeMax,
       sessionCinemaIds,
       selectedShowtimeFilter,
+      selectedLanguages,
     ]
   );
 
@@ -203,6 +207,7 @@ export default function MovieScreen() {
       setSelectedRuntimeRanges,
       setSessionCinemaIds,
       setGroupByMovie,
+      setSelectedLanguages,
       selectedListIds,
       excludeListIds,
       setSelectedListIds,
@@ -249,6 +254,8 @@ export default function MovieScreen() {
         setSelectedListIds={setSelectedListIds}
         excludeListIds={excludeListIds}
         setExcludeListIds={setExcludeListIds}
+        selectedLanguages={selectedLanguages}
+        setSelectedLanguages={setSelectedLanguages}
         onOpenFilters={() => openFiltersModal({ showGroupByMovie: false })}
         onClearAll={() => {
           setSelectedShowtimeFilter(toSharedTabShowtimeFilter('all'));
@@ -261,6 +268,7 @@ export default function MovieScreen() {
           setSelectedRuntimeRanges([]);
           setSelectedListIds([]);
           setExcludeListIds([]);
+          setSelectedLanguages([]);
           if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
         }}
       />

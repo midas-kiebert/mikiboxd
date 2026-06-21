@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import type { Language } from "shared/client";
 import { useFetchFavoriteSavedPreset } from "shared/hooks/useFetchFavoriteSavedPreset";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
@@ -7,6 +8,7 @@ import { useSessionDaySelections } from "shared/hooks/useSessionDaySelections";
 import { useSessionShowtimeFilter } from "shared/hooks/useSessionShowtimeFilter";
 import { useSessionTimeRangeSelections } from "shared/hooks/useSessionTimeRangeSelections";
 import { useSessionRuntimeRangeSelections } from "shared/hooks/useSessionRuntimeRangeSelections";
+import { useSessionLanguageSelections } from "shared/hooks/useSessionLanguageSelections";
 import { useSessionWatchlistOnly } from "shared/hooks/useSessionWatchlistOnly";
 import { useSessionHideWatched } from "shared/hooks/useSessionHideWatched";
 import { useSessionGroupByMovie } from "shared/hooks/useSessionGroupByMovie";
@@ -29,6 +31,7 @@ const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
 const EMPTY_RUNTIME_RANGES: string[] = [];
 const EMPTY_LIST_IDS: string[] = [];
+const EMPTY_LANGUAGES: Language[] = [];
 const SESSION_CINEMA_SELECTIONS_KEY = ["session", "cinema_selections"] as const;
 const SESSION_DAY_SELECTIONS_KEY = ["session", "day_selections"] as const;
 const SESSION_SHOWTIME_FILTER_KEY = ["session", "showtime_filter"] as const;
@@ -60,6 +63,8 @@ export function useSharedTabFilters() {
     useSessionTimeRangeSelections();
   const { selections: sessionRuntimeRanges, setSelections: setSessionRuntimeRanges } =
     useSessionRuntimeRangeSelections();
+  const { selections: sessionLanguages, setSelections: setSessionLanguages } =
+    useSessionLanguageSelections();
   const { selection: sessionShowtimeFilter, setSelection: setSessionShowtimeFilter } =
     useSessionShowtimeFilter();
   const { selection: sessionWatchlistOnly, setSelection: setSessionWatchlistOnly } =
@@ -97,6 +102,7 @@ export function useSharedTabFilters() {
   );
   const selectedListIds = sessionListIds ?? EMPTY_LIST_IDS;
   const excludeListIds = sessionExcludeListIds ?? EMPTY_LIST_IDS;
+  const selectedLanguages = sessionLanguages ?? EMPTY_LANGUAGES;
 
   const setSelectedShowtimeFilter = useCallback(
     (next: SharedTabShowtimeFilter) => {
@@ -344,6 +350,8 @@ export function useSharedTabFilters() {
     setSelectedListIds: setSessionListIds,
     excludeListIds,
     setExcludeListIds: setSessionExcludeListIds,
+    selectedLanguages,
+    setSelectedLanguages: setSessionLanguages,
     watchlistExclude,
     setWatchlistExclude,
     watchedOnly,

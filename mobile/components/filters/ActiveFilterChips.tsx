@@ -7,6 +7,7 @@
 import { useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import type { Language } from "shared/client";
 import { useFetchLetterboxdLists } from "shared/hooks/useLetterboxdLists";
 
 import { ThemedText } from "@/components/themed-text";
@@ -42,6 +43,8 @@ type ActiveFilterChipsProps = {
   setSelectedListIds?: (v: string[]) => void;
   excludeListIds?: string[];
   setExcludeListIds?: (v: string[]) => void;
+  selectedLanguages?: Language[];
+  setSelectedLanguages?: (v: Language[]) => void;
   /** When provided, the cinema chip is always rendered and opens the filters modal. */
   onOpenFilters?: () => void;
   /** Optional override for the cinema chip's "select cinemas" action (used outside the tab provider). */
@@ -64,12 +67,15 @@ const STATUS_LABEL: Record<SharedTabShowtimeFilter, string | null> = {
 };
 
 const EMPTY_LIST_IDS: string[] = [];
+const EMPTY_LANGUAGES: Language[] = [];
 
 const RUNTIME_LABEL: Record<string, string> = {
   "0-90": "<90m",
   "90-120": "90-120m",
   "120-999": ">120m",
 };
+
+const LANGUAGE_LABEL: Record<Language, string> = { nl: "Dutch", en: "English" };
 
 export default function ActiveFilterChips({
   groupByMovie,
@@ -96,6 +102,8 @@ export default function ActiveFilterChips({
   setSelectedListIds = () => {},
   excludeListIds = EMPTY_LIST_IDS,
   setExcludeListIds = () => {},
+  selectedLanguages = EMPTY_LANGUAGES,
+  setSelectedLanguages = () => {},
   onOpenFilters,
   onOpenCinemaModal,
   onClearAll,
@@ -212,6 +220,15 @@ export default function ActiveFilterChips({
       });
     }
 
+    for (const language of selectedLanguages) {
+      result.push({
+        key: `language-${language}`,
+        label: LANGUAGE_LABEL[language],
+        onRemove: () =>
+          setSelectedLanguages(selectedLanguages.filter((l) => l !== language)),
+      });
+    }
+
     return result;
   }, [
     groupByMovie,
@@ -228,6 +245,7 @@ export default function ActiveFilterChips({
     selectedDays,
     selectedTimeRanges,
     selectedRuntimeRanges,
+    selectedLanguages,
     setGroupByMovie,
     setWatchlistOnly,
     setWatchlistExclude,
@@ -239,6 +257,7 @@ export default function ActiveFilterChips({
     setSelectedDays,
     setSelectedTimeRanges,
     setSelectedRuntimeRanges,
+    setSelectedLanguages,
   ]);
 
   // Don't render if there's nothing to show (no cinema chip and no filter chips)

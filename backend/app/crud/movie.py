@@ -2,7 +2,8 @@ import re
 from datetime import datetime, time, timedelta
 from uuid import UUID
 
-from sqlalchemy import case, false, func, select
+from sqlalchemy import String, case, false, func, select
+from sqlalchemy.dialects.postgresql import ARRAY as PGArray
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_
@@ -116,6 +117,19 @@ def day_bucket_date_clause(datetime_column):
     return func.date(datetime_column - DAY_BUCKET_OFFSET)
 
 
+def apply_language_filter(stmt, *, filters: Filters):
+    """Keep movies whose main language matches, and only matching-subtitle showtimes.
+
+    Callers must have already joined Movie onto stmt.
+    """
+    selected_languages = filters.selected_languages
+    if not selected_languages:
+        return stmt
+    return stmt.where(col(Movie.original_language).in_(selected_languages)).where(
+        cast(col(Showtime.subtitles), PGArray(String)).overlap(selected_languages)
+    )
+
+
 def get_movie_by_id(*, session: Session, id: int) -> Movie | None:
     """
     Retrieve a movie by its ID.
@@ -183,6 +197,15 @@ def upsert_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
     # so showtime end-time fallback (start + duration + 15m) still works.
     if movie_data.get("duration") is None and db_obj.duration is not None:
         movie_data.pop("duration", None)
+    # A transient TMDB lookup failure must not wipe previously-enriched language
+    # data back to NULL.
+    if movie_data.get("languages") is None and db_obj.languages is not None:
+        movie_data.pop("languages", None)
+    if (
+        movie_data.get("original_language") is None
+        and db_obj.original_language is not None
+    ):
+        movie_data.pop("original_language", None)
     db_obj.sqlmodel_update(movie_data)
     return db_obj
 
@@ -315,12 +338,22 @@ def get_cinemas_for_movie(
             )
         )
 
-    if filters.runtime_min is not None or filters.runtime_max is not None:
+    has_languages_filter = (
+        filters.selected_languages is not None and len(filters.selected_languages) > 0
+    )
+    if (
+        filters.runtime_min is not None
+        or filters.runtime_max is not None
+        or has_languages_filter
+    ):
         stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
         if filters.runtime_min is not None:
             stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
         if filters.runtime_max is not None:
             stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
+        if has_languages_filter:
+            stmt = apply_language_filter(stmt, filters=filters)
+
     result = session.execute(stmt)
     cinemas: list[Cinema] = list(result.scalars().all())
     return cinemas
@@ -520,8 +553,13 @@ def get_showtimes_for_movie(
             )
         )
 
+    has_languages_filter = (
+        filters.selected_languages is not None and len(filters.selected_languages) > 0
+    )
     needs_movie_join = (
-        filters.runtime_min is not None or filters.runtime_max is not None
+        filters.runtime_min is not None
+        or filters.runtime_max is not None
+        or has_languages_filter
     )
     if filters.query and filters.search_field in (
         SearchField.TITLE,
@@ -541,6 +579,9 @@ def get_showtimes_for_movie(
 
     if filters.runtime_max is not None:
         stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
+
+    if has_languages_filter:
+        stmt = apply_language_filter(stmt, filters=filters)
 
     # Movie-set filters (watchlist / watched / lists) only apply when a username is
     # supplied. Callers building grouped movie *cards* (to_summary_logged_in) do not
@@ -665,6 +706,8 @@ def get_movies(
     if filters.runtime_max is not None:
         stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
 
+    stmt = apply_language_filter(stmt, filters=filters)
+
     stmt, force_empty = apply_movie_set_filters(
         stmt,
         movie_id_col=col(Movie.id),
@@ -773,6 +816,8 @@ def count_movies(
 
     if filters.runtime_max is not None:
         stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
+
+    stmt = apply_language_filter(stmt, filters=filters)
 
     stmt, force_empty = apply_movie_set_filters(
         stmt,

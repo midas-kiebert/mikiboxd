@@ -8,6 +8,7 @@
  */
 import {
   MeService,
+  type Language,
   type SavedPresetCreate,
   type SavedPresetFilters,
   type SavedPresetPublic,
@@ -37,6 +38,7 @@ export type PresetDimension =
   | "time_ranges"
   | "runtime_ranges"
   | "group_by_movie"
+  | "selected_languages"
   | "cinemas"
   | PresetListDimension;
 
@@ -64,6 +66,7 @@ export const CONTROLLABLE_FILTER_DIMENSIONS: PresetDimension[] = [
   "time_ranges",
   "runtime_ranges",
   "group_by_movie",
+  "selected_languages",
 ];
 
 /** Tokens valid inside `untouchedFields`: filter dimensions + per-list tokens. */
@@ -110,6 +113,7 @@ export type PresetApplySetters = {
   setSelectedTimeRanges: (value: string[]) => void;
   setSelectedRuntimeRanges: (value: string[]) => void;
   setGroupByMovie: (value: boolean) => void;
+  setSelectedLanguages: (value: Language[]) => void;
   setSessionCinemaIds: (value: number[]) => void;
   // Current list selections, needed to preserve lists the preset leaves as-is.
   selectedListIds: readonly string[];
@@ -166,6 +170,9 @@ export const applyDisplayPreset = (
   }
   if (controls("group_by_movie")) {
     setters.setGroupByMovie(Boolean(filters.group_by_movie));
+  }
+  if (controls("selected_languages")) {
+    setters.setSelectedLanguages(filters.selected_languages ?? []);
   }
   // Cinemas: opt-in. Only ever applied when the preset carries a selection.
   if (preset.cinemaIds) {
@@ -293,6 +300,13 @@ const getStatusLabel = (value: SharedTabShowtimeFilter): string => {
 const getMovieSetLabel = (include: boolean, exclude: boolean): string =>
   include ? "Show" : exclude ? "Hide" : "Off";
 
+const LANGUAGE_LABELS: Record<Language, string> = { nl: "Dutch", en: "English" };
+
+const formatLanguagesLabel = (languages: readonly Language[]): string =>
+  languages.length > 0
+    ? languages.map((language) => LANGUAGE_LABELS[language]).join(", ")
+    : "Any language";
+
 /**
  * Describe the user's current selections for the save prompt — one row per
  * available dimension, flagged `active` when it is set to something other than
@@ -389,6 +403,14 @@ export const summarizeCurrentSelections = (args: {
     });
   }
 
+  const selectedLanguages = currentFilters.selected_languages ?? [];
+  rows.push({
+    dimension: "selected_languages",
+    title: "Language",
+    valueLabel: formatLanguagesLabel(selectedLanguages),
+    active: selectedLanguages.length > 0,
+  });
+
   rows.push({
     dimension: "cinemas",
     title: "Cinemas",
@@ -440,6 +462,9 @@ export const describeDisplayPreset = (preset: DisplayPreset): string => {
   }
   if (controls("group_by_movie") && f.group_by_movie) {
     parts.push("Group by movies");
+  }
+  if (controls("selected_languages") && (f.selected_languages?.length ?? 0) > 0) {
+    parts.push(formatLanguagesLabel(f.selected_languages ?? []));
   }
   if (preset.cinemaIds != null) {
     const n = preset.cinemaIds.length;

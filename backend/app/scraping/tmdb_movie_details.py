@@ -37,7 +37,7 @@ def _movie_to_tmdb_details(movie: Movie) -> tmdb_core.TmdbMovieDetails | None:
         release_year=movie.release_year,
         directors=list(movie.directors) if movie.directors else [],
         poster_url=movie.poster_link,
-        original_language=None,
+        original_language=movie.original_language,
         spoken_languages=(
             _normalize_language_codes(movie.languages) if movie.languages else None
         ),

@@ -1018,6 +1018,49 @@ def test_saved_preset_validation_errors(
     )
     assert bad_list.status_code == 422
 
+    # "selected_languages" is a valid opt-out token.
+    languages_token = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={**base, "name": "Languages", "untouched_fields": ["selected_languages"]},
+    )
+    assert languages_token.status_code == 200
+
+
+def test_saved_preset_stores_selected_languages(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    # A preset that controls "selected_languages" alongside other dimensions.
+    payload = {
+        "name": "Dutch Nights",
+        "untouched_fields": ["days"],
+        "filters": {
+            "selected_showtime_filter": "going",
+            "runtime_ranges": ["90-120"],
+            "selected_languages": ["nl", "en"],
+        },
+    }
+    create = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json=payload,
+    )
+    assert create.status_code == 200
+    body = create.json()
+    assert body["untouched_fields"] == ["days"]
+    assert body["filters"]["selected_languages"] == ["nl", "en"]
+    assert body["filters"]["runtime_ranges"] == ["90-120"]
+
+    # Round-trips through listing too.
+    presets_list = client.get(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+    )
+    assert presets_list.status_code == 200
+    presets = presets_list.json()
+    stored = next(preset for preset in presets if preset["name"] == "Dutch Nights")
+    assert stored["filters"]["selected_languages"] == ["nl", "en"]
+
 
 def test_saved_preset_upsert_delete_and_favorite(
     client: TestClient, normal_user_token_headers: dict[str, str]

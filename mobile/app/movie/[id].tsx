@@ -142,6 +142,8 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
     setSelectedTimeRanges,
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
+    selectedLanguages,
+    setSelectedLanguages,
     sessionCinemaIds,
     setSessionCinemaIds,
   } = useSharedTabFilters();
@@ -173,7 +175,8 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
     days: resolvedApiDays,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
     selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
-  }), [resolvedApiDays, appliedShowtimeFilter, selectedTimeRanges, sessionCinemaIds]);
+    selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
+  }), [resolvedApiDays, appliedShowtimeFilter, selectedTimeRanges, sessionCinemaIds, selectedLanguages]);
 
   const { data: movie, isLoading: isMovieLoading, isError: isMovieError } = useQuery<MovieLoggedIn, Error>({
     queryKey: ["movie", movieId],
@@ -344,10 +347,13 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
               setSelectedTimeRanges={setSelectedTimeRanges}
               selectedRuntimeRanges={[]}
               setSelectedRuntimeRanges={() => {}}
+              selectedLanguages={selectedLanguages}
+              setSelectedLanguages={setSelectedLanguages}
               onClearAll={() => {
                 setSelectedShowtimeFilter("all");
                 setSelectedDays([]);
                 setSelectedTimeRanges([]);
+                setSelectedLanguages([]);
                 if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
               }}
             />
@@ -447,6 +453,8 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
         setSelectedTimeRanges={setSelectedTimeRanges}
         selectedRuntimeRanges={selectedRuntimeRanges}
         setSelectedRuntimeRanges={setSelectedRuntimeRanges}
+        selectedLanguages={selectedLanguages}
+        setSelectedLanguages={setSelectedLanguages}
         resultCount={showtimes.length}
       />
       <CinemaFilterModal

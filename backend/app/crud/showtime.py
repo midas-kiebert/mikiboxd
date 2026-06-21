@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from datetime import datetime, time, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func
@@ -9,7 +10,7 @@ from sqlmodel import Session, Time, cast, col, or_, select
 
 from app.core.enums import GoingStatus, SearchField
 from app.crud import showtime_visibility as showtime_visibility_crud
-from app.crud.movie import apply_search_filter
+from app.crud.movie import apply_language_filter, apply_search_filter
 from app.crud.movie_set_filters import apply_movie_set_filters
 from app.inputs.movie import Filters
 from app.models.friendship import Friendship
@@ -305,15 +306,18 @@ def get_interested_reminder_candidates(
     return list(session.exec(stmt).all())
 
 
-def get_main_page_showtimes(
+def _build_main_page_showtimes_query(
     *,
     session: Session,
     user_id: UUID,
-    limit: int,
-    offset: int,
     filters: Filters,
-    letterboxd_username: str | None = None,
-) -> list[Showtime]:
+    letterboxd_username: str | None,
+) -> tuple[Any, bool]:
+    """
+    Shared filter-application logic for get_main_page_showtimes and
+    count_main_page_showtimes. Every filter dimension must be applied here
+    exactly once so the two entry points can never drift out of sync.
+    """
     stmt = select(Showtime).where(Showtime.datetime >= filters.snapshot_time)
 
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
@@ -339,10 +343,15 @@ def get_main_page_showtimes(
             )
         )
 
+    has_languages_filter = (
+        filters.selected_languages is not None and len(filters.selected_languages) > 0
+    )
+
     if (
         (filters.query and filters.search_field != SearchField.FRIEND)
         or filters.runtime_min is not None
         or filters.runtime_max is not None
+        or has_languages_filter
     ):
         stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
 
@@ -356,6 +365,9 @@ def get_main_page_showtimes(
     if filters.runtime_max is not None:
         stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
 
+    if has_languages_filter:
+        stmt = apply_language_filter(stmt, filters=filters)
+
     stmt, force_empty = apply_movie_set_filters(
         stmt,
         movie_id_col=col(Showtime.movie_id),
@@ -363,7 +375,7 @@ def get_main_page_showtimes(
         letterboxd_username=letterboxd_username,
     )
     if force_empty:
-        return []
+        return stmt, True
 
     if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
         visible_row = aliased(ShowtimeVisibilityEffective)
@@ -387,6 +399,27 @@ def get_main_page_showtimes(
             )
             .distinct()
         )
+
+    return stmt, False
+
+
+def get_main_page_showtimes(
+    *,
+    session: Session,
+    user_id: UUID,
+    limit: int,
+    offset: int,
+    filters: Filters,
+    letterboxd_username: str | None = None,
+) -> list[Showtime]:
+    stmt, force_empty = _build_main_page_showtimes_query(
+        session=session,
+        user_id=user_id,
+        filters=filters,
+        letterboxd_username=letterboxd_username,
+    )
+    if force_empty:
+        return []
 
     stmt = stmt.order_by(col(Showtime.datetime)).limit(limit).offset(offset)
     showtimes = list(session.exec(stmt).all())
@@ -445,79 +478,14 @@ def count_main_page_showtimes(
     filters: Filters,
     letterboxd_username: str | None = None,
 ) -> int:
-    stmt = select(Showtime).where(Showtime.datetime >= filters.snapshot_time)
-
-    if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
-
-    if filters.days is not None and len(filters.days) > 0:
-        stmt = stmt.where(
-            day_bucket_date_clause(col(Showtime.datetime)).in_(filters.days)
-        )
-
-    if filters.time_ranges is not None and len(filters.time_ranges) > 0:
-        stmt = stmt.where(
-            or_(
-                *[
-                    time_range_clause(
-                        col(Showtime.datetime),
-                        col(Showtime.end_datetime),
-                        tr.start,
-                        tr.end,
-                    )
-                    for tr in filters.time_ranges
-                ]
-            )
-        )
-
-    if (
-        (filters.query and filters.search_field != SearchField.FRIEND)
-        or filters.runtime_min is not None
-        or filters.runtime_max is not None
-    ):
-        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
-
-    stmt = apply_search_filter(
-        stmt, filters=filters, session=session, current_user_id=user_id
-    )
-
-    if filters.runtime_min is not None:
-        stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
-
-    if filters.runtime_max is not None:
-        stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
-
-    stmt, force_empty = apply_movie_set_filters(
-        stmt,
-        movie_id_col=col(Showtime.movie_id),
+    stmt, force_empty = _build_main_page_showtimes_query(
+        session=session,
+        user_id=user_id,
         filters=filters,
         letterboxd_username=letterboxd_username,
     )
     if force_empty:
         return 0
-
-    if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
-        visible_row = aliased(ShowtimeVisibilityEffective)
-        stmt = (
-            stmt.join(
-                ShowtimeSelection,
-                col(Showtime.id) == col(ShowtimeSelection.showtime_id),
-            )
-            .outerjoin(
-                visible_row,
-                (col(visible_row.owner_id) == col(ShowtimeSelection.user_id))
-                & (col(visible_row.showtime_id) == col(Showtime.id))
-                & (col(visible_row.viewer_id) == user_id),
-            )
-            .where(
-                or_(
-                    col(ShowtimeSelection.user_id) == user_id,
-                    col(visible_row.viewer_id).is_not(None),
-                ),
-                col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
-            )
-            .distinct()
-        )
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     return session.execute(count_stmt).scalar_one()

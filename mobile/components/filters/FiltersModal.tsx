@@ -23,6 +23,7 @@ import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelecti
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useOptimisticValue } from "@/hooks/useOptimisticValue";
 import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
 import { type SharedTabShowtimeFilter } from "@/components/filters/shared-tab-filters";
 import { type PageFilterPresetState } from "@/components/filters/filter-preset-utils";
@@ -52,8 +53,7 @@ const STATUS_OPTIONS_SIMPLE: { value: SharedTabShowtimeFilter; label: string }[]
 ];
 
 const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
-  { value: "nl", label: "Dutch" },
-  { value: "en", label: "English" },
+  { value: "en", label: "English only" },
 ];
 
 export type FiltersModalProps = {
@@ -280,6 +280,26 @@ export default function FiltersModal({
     ]
   );
 
+  // Pill toggles below paint optimistically and defer the real (potentially
+  // expensive) state update by one frame — see useOptimisticValue.
+  const { value: displayGroupByMovie, change: changeGroupByMovie } = useOptimisticValue(
+    groupByMovie,
+    setGroupByMovie
+  );
+  const { value: displayShowtimeFilter, change: changeShowtimeFilter } = useOptimisticValue(
+    selectedShowtimeFilter,
+    setSelectedShowtimeFilter
+  );
+  const englishOnly = selectedLanguages.includes("en");
+  const { value: displayEnglishOnly, change: changeEnglishOnly } = useOptimisticValue(
+    englishOnly,
+    useCallback((next: boolean) => setSelectedLanguages(next ? ["en"] : []), [setSelectedLanguages])
+  );
+  const { value: displayWatchlistOnlySimple, change: changeWatchlistOnlySimple } =
+    useOptimisticValue(watchlistOnly, setWatchlistOnly);
+  const { value: displayHideWatchedSimple, change: changeHideWatchedSimple } =
+    useOptimisticValue(hideWatched, setHideWatched);
+
   return (
     <>
       <AppBottomSheet visible={visible} onClose={onClose} title="Filters">
@@ -358,8 +378,8 @@ export default function FiltersModal({
               <>
                 <SectionLabel label="Group By" colors={colors} />
                 <View style={styles.pillRow}>
-                  <Pill label="Showtimes" active={!groupByMovie} onPress={() => setGroupByMovie(false)} colors={colors} />
-                  <Pill label="Movies" active={groupByMovie} onPress={() => setGroupByMovie(true)} colors={colors} />
+                  <Pill label="Showtimes" active={!displayGroupByMovie} onPress={() => changeGroupByMovie(false)} colors={colors} />
+                  <Pill label="Movies" active={displayGroupByMovie} onPress={() => changeGroupByMovie(true)} colors={colors} />
                 </View>
                 <Divider colors={colors} />
               </>
@@ -374,8 +394,8 @@ export default function FiltersModal({
                     <Pill
                       key={opt.value}
                       label={opt.label}
-                      active={selectedShowtimeFilter === opt.value}
-                      onPress={() => setSelectedShowtimeFilter(opt.value)}
+                      active={displayShowtimeFilter === opt.value}
+                      onPress={() => changeShowtimeFilter(opt.value)}
                       colors={colors}
                     />
                   ))}
@@ -387,24 +407,15 @@ export default function FiltersModal({
             {/* Language */}
             <SectionLabel label="Language" colors={colors} />
             <View style={styles.pillRow}>
-              {LANGUAGE_OPTIONS.map((opt) => {
-                const isActive = selectedLanguages.includes(opt.value);
-                return (
-                  <Pill
-                    key={opt.value}
-                    label={opt.label}
-                    active={isActive}
-                    onPress={() =>
-                      setSelectedLanguages(
-                        isActive
-                          ? selectedLanguages.filter((v) => v !== opt.value)
-                          : [...selectedLanguages, opt.value]
-                      )
-                    }
-                    colors={colors}
-                  />
-                );
-              })}
+              {LANGUAGE_OPTIONS.map((opt) => (
+                <Pill
+                  key={opt.value}
+                  label={opt.label}
+                  active={displayEnglishOnly}
+                  onPress={() => changeEnglishOnly(!displayEnglishOnly)}
+                  colors={colors}
+                />
+              ))}
             </View>
             <Divider colors={colors} />
 
@@ -434,11 +445,11 @@ export default function FiltersModal({
                 <>
                   <SectionLabel label="Watchlist" colors={colors} />
                   <View style={styles.pillRow}>
-                    <Pill label="All movies" active={!watchlistOnly} onPress={() => setWatchlistOnly(false)} colors={colors} />
-                    <Pill label="Watchlisted only" active={watchlistOnly} onPress={() => setWatchlistOnly(true)} colors={colors} />
+                    <Pill label="All movies" active={!displayWatchlistOnlySimple} onPress={() => changeWatchlistOnlySimple(false)} colors={colors} />
+                    <Pill label="Watchlisted only" active={displayWatchlistOnlySimple} onPress={() => changeWatchlistOnlySimple(true)} colors={colors} />
                   </View>
                   <View style={styles.pillRow}>
-                    <Pill label="Hide watched" active={hideWatched} onPress={() => setHideWatched(!hideWatched)} colors={colors} />
+                    <Pill label="Hide watched" active={displayHideWatchedSimple} onPress={() => changeHideWatchedSimple(!displayHideWatchedSimple)} colors={colors} />
                   </View>
                   <Divider colors={colors} />
                 </>
@@ -645,7 +656,10 @@ function Pill({ label, active, onPress, colors, style, isFavorite }: { label: st
   return (
     <TouchableOpacity
       style={[{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: active ? colors.pillActiveBackground : colors.pillBackground, marginRight: 7, marginBottom: 7, flexDirection: "row", alignItems: "center", gap: 4 }, style]}
-      onPress={onPress}
+      onPress={() => {
+        triggerSelectionHaptic();
+        onPress();
+      }}
       activeOpacity={0.8}
     >
       {isFavorite && <MaterialIcons name="star" size={11} color={active ? colors.pillActiveText : colors.yellow.secondary} />}

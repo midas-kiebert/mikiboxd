@@ -11,7 +11,7 @@
  * refresh weekly server-side; custom lists refresh on app open when stale. A
  * manual refresh is only offered when something is more than a day old.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { DateTime } from "luxon";
@@ -25,6 +25,7 @@ import {
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useOptimisticValue } from "@/hooks/useOptimisticValue";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type Colors = ReturnType<typeof useThemeColors>;
@@ -340,7 +341,7 @@ function FilterItemCard({
   colors: Colors;
 }) {
   const styles = createStyles(colors);
-  const { mode: displayMode, change } = useOptimisticMode(mode, onChangeMode);
+  const { value: displayMode, change } = useOptimisticValue(mode, onChangeMode);
   const borderColor =
     displayMode === "include"
       ? colors.green.secondary
@@ -378,42 +379,6 @@ function FilterItemCard({
       <IncludeExcludeToggle mode={displayMode} onChange={change} colors={colors} />
     </View>
   );
-}
-
-/**
- * Optimistic mode for a filter card. The green/red fill repaints on the same
- * frame as the tap; the real `onChange` — which re-filters the entire movie
- * list — is deferred by one frame so the colour never waits on that work. Once
- * the incoming prop catches up to our optimistic value, we drop the override.
- */
-function useOptimisticMode(mode: ItemMode, onChange: (mode: ItemMode) => void) {
-  const [optimistic, setOptimistic] = useState<ItemMode | null>(null);
-  const frameRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (optimistic !== null && mode === optimistic) setOptimistic(null);
-  }, [mode, optimistic]);
-
-  useEffect(
-    () => () => {
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
-    },
-    []
-  );
-
-  const change = useCallback(
-    (next: ItemMode) => {
-      setOptimistic(next);
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
-      frameRef.current = requestAnimationFrame(() => {
-        frameRef.current = null;
-        onChange(next);
-      });
-    },
-    [onChange]
-  );
-
-  return { mode: optimistic ?? mode, change };
 }
 
 function IncludeExcludeToggle({

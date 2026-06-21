@@ -118,15 +118,18 @@ def day_bucket_date_clause(datetime_column):
 
 
 def apply_language_filter(stmt, *, filters: Filters):
-    """Keep movies whose main language matches, and only matching-subtitle showtimes.
+    """Keep showtimes whose movie's main language matches OR whose subtitles match.
 
     Callers must have already joined Movie onto stmt.
     """
     selected_languages = filters.selected_languages
     if not selected_languages:
         return stmt
-    return stmt.where(col(Movie.original_language).in_(selected_languages)).where(
-        cast(col(Showtime.subtitles), PGArray(String)).overlap(selected_languages)
+    return stmt.where(
+        or_(
+            col(Movie.original_language).in_(selected_languages),
+            cast(col(Showtime.subtitles), PGArray(String)).overlap(selected_languages),
+        )
     )
 
 

@@ -521,15 +521,25 @@ def test_get_movies_and_count_movies_filter_by_selected_languages(
     showtime_factory: Callable[..., Showtime],
     user_factory: Callable[..., User],
 ):
+    """A movie matches if EITHER its original language OR a showtime's
+    subtitles are in the selected languages - the two checks are an OR, not
+    an AND. A French movie with English subtitles must still show up under
+    an English filter, and an English movie with no English subtitles at all
+    must still show up too.
+    """
     user = user_factory()
 
-    movie_english = movie_factory(original_language="en")
-    movie_dutch = movie_factory(original_language="nl")
-    movie_english_no_subtitle_overlap = movie_factory(original_language="en")
+    # Original-language match alone is enough, regardless of subtitles.
+    movie_english_original = movie_factory(original_language="en")
+    showtime_factory(movie=movie_english_original, subtitles=["fr"])
 
-    showtime_factory(movie=movie_english, subtitles=["en", "nl"])
-    showtime_factory(movie=movie_dutch, subtitles=["en", "nl"])
-    showtime_factory(movie=movie_english_no_subtitle_overlap, subtitles=["fr"])
+    # Subtitle match alone is enough, even when the original language differs.
+    movie_french_with_english_subs = movie_factory(original_language="fr")
+    showtime_factory(movie=movie_french_with_english_subs, subtitles=["en"])
+
+    # Neither the original language nor the subtitles match -> excluded.
+    movie_no_match = movie_factory(original_language="es")
+    showtime_factory(movie=movie_no_match, subtitles=["de"])
 
     english_only = movie_crud.get_movies(
         session=db_transaction,
@@ -542,7 +552,10 @@ def test_get_movies_and_count_movies_filter_by_selected_languages(
             selected_languages=[Language.ENGLISH],
         ),
     )
-    assert {movie.id for movie in english_only} == {movie_english.id}
+    assert {movie.id for movie in english_only} == {
+        movie_english_original.id,
+        movie_french_with_english_subs.id,
+    }
 
     count = movie_crud.count_movies(
         session=db_transaction,
@@ -553,7 +566,10 @@ def test_get_movies_and_count_movies_filter_by_selected_languages(
             selected_languages=[Language.ENGLISH],
         ),
     )
-    assert count == 1
+    assert count == 2
+
+    movie_dutch_original = movie_factory(original_language="nl")
+    showtime_factory(movie=movie_dutch_original, subtitles=["fr"])
 
     english_or_dutch = movie_crud.get_movies(
         session=db_transaction,
@@ -566,10 +582,13 @@ def test_get_movies_and_count_movies_filter_by_selected_languages(
             selected_languages=[Language.ENGLISH, Language.DUTCH],
         ),
     )
-    assert {movie.id for movie in english_or_dutch} == {
-        movie_english.id,
-        movie_dutch.id,
+    matched_ids = {movie.id for movie in english_or_dutch}
+    assert matched_ids == {
+        movie_english_original.id,
+        movie_french_with_english_subs.id,
+        movie_dutch_original.id,
     }
+    assert movie_no_match.id not in matched_ids
 
 
 def test_get_showtimes_for_movie_filters_by_selected_languages(
@@ -580,22 +599,40 @@ def test_get_showtimes_for_movie_filters_by_selected_languages(
     user_factory: Callable[..., User],
 ):
     user = user_factory()
-    movie = movie_factory(original_language="en")
-    showtime_matching = showtime_factory(movie=movie, subtitles=["en"])
-    showtime_no_overlap = showtime_factory(movie=movie, subtitles=["fr"])
 
-    showtimes = movie_crud.get_showtimes_for_movie(
+    # Movie's original language matches -> every showtime included regardless
+    # of its own subtitles.
+    english_movie = movie_factory(original_language="en")
+    showtime_no_subtitle_overlap = showtime_factory(movie=english_movie, subtitles=["fr"])
+
+    # Movie's original language doesn't match -> only showtimes whose own
+    # subtitles match are included.
+    french_movie = movie_factory(original_language="fr")
+    showtime_matching_subtitles = showtime_factory(movie=french_movie, subtitles=["en"])
+    showtime_no_match = showtime_factory(movie=french_movie, subtitles=["nl"])
+
+    english_movie_showtimes = movie_crud.get_showtimes_for_movie(
         session=db_transaction,
-        movie_id=movie.id,
+        movie_id=english_movie.id,
         filters=Filters(
             snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
             selected_languages=[Language.ENGLISH],
         ),
         current_user_id=user.id,
     )
+    assert showtime_no_subtitle_overlap in english_movie_showtimes
 
-    assert showtime_matching in showtimes
-    assert showtime_no_overlap not in showtimes
+    french_movie_showtimes = movie_crud.get_showtimes_for_movie(
+        session=db_transaction,
+        movie_id=french_movie.id,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.ENGLISH],
+        ),
+        current_user_id=user.id,
+    )
+    assert showtime_matching_subtitles in french_movie_showtimes
+    assert showtime_no_match not in french_movie_showtimes
 
 
 def test_get_movies_filters_by_runtime(

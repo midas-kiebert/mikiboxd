@@ -57,6 +57,10 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
   const visibleShowtimes = showtimes.slice(0, showtimesLimit);
   const additionalShowtimes = Math.max(totalShowtimes - visibleShowtimes.length, 0);
 
+  const originalTitle =
+    movie.original_title && movie.original_title.trim() !== movie.title.trim()
+      ? movie.original_title.trim()
+      : null;
   const friendsGoing = movie.friends_going || [];
   const friendsInterested = movie.friends_interested || [];
   const hasAudience = friendsGoing.length > 0 || friendsInterested.length > 0;
@@ -84,9 +88,18 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
       <TouchableOpacity style={[styles.movieCard, cardStatusStyle]} onPress={() => onPress?.(movie)}>
         <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
         <View style={styles.movieInfo}>
-          <ThemedText style={styles.movieTitle} numberOfLines={2} ellipsizeMode="tail">
+          <ThemedText
+            style={styles.movieTitle}
+            numberOfLines={originalTitle ? 1 : 2}
+            ellipsizeMode="tail"
+          >
             {movie.title}
           </ThemedText>
+          {originalTitle ? (
+            <ThemedText style={styles.originalTitle} numberOfLines={1} ellipsizeMode="tail">
+              {originalTitle}
+            </ThemedText>
+          ) : null}
           <View style={styles.showtimesSection}>
             <View style={styles.showtimesBody}>
               {visibleShowtimes.length === 0 ? (
@@ -98,6 +111,7 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
                       key={showtime.id}
                       showtime={showtime}
                       variant="compact"
+                      subtitlesAfterCinema
                     />
                   ))}
                 </View>
@@ -176,6 +190,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       lineHeight: Platform.OS === "ios" ? 16 : 17,
       fontWeight: "700",
       color: colors.text,
+      marginBottom: 2,
+    },
+    originalTitle: {
+      fontSize: 10,
+      lineHeight: 12,
+      color: colors.textSecondary,
+      fontStyle: "italic",
+      marginTop: -2,
       marginBottom: 2,
     },
     showtimesSection: {

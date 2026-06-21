@@ -7,6 +7,7 @@ import type { CinemaPublic, GoingStatus, UserPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import CinemaPill from "@/components/badges/CinemaPill";
+import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
@@ -19,6 +20,7 @@ type ShowtimeBase = {
   seat_row?: string | null;
   seat_number?: string | null;
   cinema: CinemaPublic;
+  subtitles?: string[] | null;
   friends_going?: UserPublic[];
   friends_interested?: UserPublic[];
 };
@@ -29,6 +31,7 @@ type ShowtimeRowProps = {
   showFriends?: boolean;
   alignCinemaRight?: boolean;
   showDate?: boolean;
+  subtitlesAfterCinema?: boolean;
 };
 
 const formatShowtime = (
@@ -49,12 +52,19 @@ export default function ShowtimeRow({
   showFriends = false,
   alignCinemaRight = false,
   showDate = true,
+  subtitlesAfterCinema = false,
 }: ShowtimeRowProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
   // Compact mode is used in dense cards; default mode is used in full showtime lists.
   const isCompact = variant === "compact";
+  const subtitlesBadges = (
+    <SubtitlesBadges subtitles={showtime.subtitles} variant={isCompact ? "compact" : "default"} />
+  );
+  const cinemaPill = (
+    <CinemaPill cinema={showtime.cinema} variant={isCompact ? "compact" : "default"} />
+  );
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -70,7 +80,17 @@ export default function ShowtimeRow({
         >
           {formatShowtime(showtime.datetime, showtime.end_datetime, showDate)}
         </ThemedText>
-        <CinemaPill cinema={showtime.cinema} variant={isCompact ? "compact" : "default"} />
+        {subtitlesAfterCinema ? (
+          <>
+            {cinemaPill}
+            {subtitlesBadges}
+          </>
+        ) : (
+          <>
+            {subtitlesBadges}
+            {cinemaPill}
+          </>
+        )}
       </View>
       {showFriends ? (
         <FriendBadges

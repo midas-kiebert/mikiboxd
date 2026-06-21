@@ -127,7 +127,25 @@ def to_logged_in(
             current_user_id=current_user,
         )
     ]
+    friends_watchlisted = [
+        user_converters.to_public(friend)
+        for friend in movies_crud.get_friends_who_watchlisted_movie(
+            session=session,
+            movie_id=movie.id,
+            current_user=current_user,
+        )
+    ]
+    friends_watched = [
+        user_converters.to_public(friend)
+        for friend in movies_crud.get_friends_who_watched_movie(
+            session=session,
+            movie_id=movie.id,
+            current_user=current_user,
+        )
+    ]
     return MovieLoggedIn(
         **movie.model_dump(),
         showtimes=showtimes,
+        friends_watchlisted=friends_watchlisted,
+        friends_watched=friends_watched,
     )

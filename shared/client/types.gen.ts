@@ -153,6 +153,8 @@ export type MovieLoggedIn = {
   languages?: Array<string> | null
   original_language?: string | null
   showtimes: Array<ShowtimeInMovieLoggedIn>
+  friends_watchlisted?: Array<UserPublic>
+  friends_watched?: Array<UserPublic>
 }
 
 export type MovieSummaryLoggedIn = {
@@ -316,6 +318,8 @@ export type ShowtimeLoggedIn = {
   seat_number?: string | null
   invited_by?: Array<UserPublic>
   invite_ping_ids?: Array<number>
+  friends_watchlisted?: Array<UserPublic>
+  friends_watched?: Array<UserPublic>
 }
 
 export type ShowtimePingPublic = {

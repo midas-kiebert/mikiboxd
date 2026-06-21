@@ -19,6 +19,8 @@ from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
+from app.models.watched_selection import WatchedSelection
+from app.models.watchlist_selection import WatchlistSelection
 
 DAY_BUCKET_CUTOFF = time(4, 0)
 DAY_BUCKET_OFFSET = timedelta(
@@ -519,6 +521,66 @@ def get_friends_for_movie(
     result = session.execute(stmt)
     friends: list[User] = list(result.scalars().all())
     return friends
+
+
+def _get_friends_with_movie_in_selection(
+    *,
+    session: Session,
+    selection_model: type[WatchlistSelection] | type[WatchedSelection],
+    movie_id: int,
+    current_user: UUID,
+) -> list[User]:
+    """
+    Friends of ``current_user`` who have ``movie_id`` in the given Letterboxd
+    selection table (watchlist or watched), matched by their linked Letterboxd
+    username. Shared query body for the watchlisted/watched lookups below.
+    """
+    stmt = (
+        select(User)
+        .join(Friendship, col(Friendship.friend_id) == col(User.id))
+        .join(
+            selection_model,
+            col(selection_model.letterboxd_username) == col(User.letterboxd_username),
+        )
+        .where(
+            col(Friendship.user_id) == current_user,
+            col(selection_model.movie_id) == movie_id,
+        )
+        .distinct()
+    )
+    result = session.execute(stmt)
+    friends: list[User] = list(result.scalars().all())
+    return friends
+
+
+def get_friends_who_watchlisted_movie(
+    *,
+    session: Session,
+    movie_id: int,
+    current_user: UUID,
+) -> list[User]:
+    """Friends who have this movie on their Letterboxd watchlist."""
+    return _get_friends_with_movie_in_selection(
+        session=session,
+        selection_model=WatchlistSelection,
+        movie_id=movie_id,
+        current_user=current_user,
+    )
+
+
+def get_friends_who_watched_movie(
+    *,
+    session: Session,
+    movie_id: int,
+    current_user: UUID,
+) -> list[User]:
+    """Friends who have marked this movie as watched on Letterboxd."""
+    return _get_friends_with_movie_in_selection(
+        session=session,
+        selection_model=WatchedSelection,
+        movie_id=movie_id,
+        current_user=current_user,
+    )
 
 
 def get_showtimes_for_movie(

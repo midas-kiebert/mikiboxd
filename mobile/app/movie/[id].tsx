@@ -23,6 +23,7 @@ import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
+import FriendInviteRow from "@/components/friends/FriendInviteRow";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import { ListEndFooter } from "@/components/showtimes/ShowtimesScreen";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
@@ -36,6 +37,7 @@ import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { formatLanguageCode } from "@/utils/language";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
 
@@ -123,6 +125,7 @@ function MovieSkeleton({ styles }: { styles: MovieStyles }) {
 function MovieContent({ id, showtimeId }: MovieContentProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  const router = useRouter();
   const isFetchingMoreRef = useRef(false);
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
@@ -282,7 +285,15 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
     if (!matchingShowtime) return;
 
     openedTargetRef.current = targetShowtimeId;
-    openShowtimeModal({ ...matchingShowtime, movie }, { openedFrom: { movieId } });
+    openShowtimeModal(
+      {
+        ...matchingShowtime,
+        movie,
+        friends_watchlisted: movie.friends_watchlisted ?? [],
+        friends_watched: movie.friends_watched ?? [],
+      },
+      { openedFrom: { movieId } }
+    );
   }, [targetShowtimeId, showtimes, movie, openShowtimeModal, movieId]);
 
   return (
@@ -319,6 +330,22 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
                 </ThemedText>
               ) : movie.release_year ? (
                 <ThemedText style={styles.directorText}>{movie.release_year}</ThemedText>
+              ) : null}
+              {movie.cast && movie.cast.length > 0 ? (
+                <ThemedText style={styles.metaText} numberOfLines={2}>
+                  <ThemedText style={styles.metaLabel}>STARRING </ThemedText>
+                  {movie.cast.slice(0, 3).join(", ")}
+                </ThemedText>
+              ) : null}
+              {movie.duration || formatLanguageCode(movie.original_language) ? (
+                <ThemedText style={styles.metaText} numberOfLines={1}>
+                  {[
+                    movie.duration ? `${movie.duration} min` : null,
+                    formatLanguageCode(movie.original_language),
+                  ]
+                    .filter(Boolean)
+                    .join("  ·  ")}
+                </ThemedText>
               ) : null}
             </View>
           </View>
@@ -363,6 +390,41 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
             sections={showtimeSections}
             keyExtractor={(item) => item.id.toString()}
             stickySectionHeadersEnabled
+            ListHeaderComponent={
+              (movie.friends_watchlisted?.length ?? 0) > 0 ||
+              (movie.friends_watched?.length ?? 0) > 0 ? (
+                <View style={styles.friendWatchWrap}>
+                  {movie.friends_watchlisted && movie.friends_watchlisted.length > 0 ? (
+                    <View style={styles.friendWatchGroup}>
+                      <ThemedText style={styles.friendWatchLabel}>Watchlisted by friends</ThemedText>
+                      {movie.friends_watchlisted.map((friend) => (
+                        <FriendInviteRow
+                          key={`wl-${friend.id}`}
+                          name={friend.display_name?.trim() || "Friend"}
+                          watchStatus="watchlisted"
+                          mode="display"
+                          onPress={() => router.push(`/friend-showtimes/${friend.id}`)}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+                  {movie.friends_watched && movie.friends_watched.length > 0 ? (
+                    <View style={styles.friendWatchGroup}>
+                      <ThemedText style={styles.friendWatchLabel}>Watched by friends</ThemedText>
+                      {movie.friends_watched.map((friend) => (
+                        <FriendInviteRow
+                          key={`wd-${friend.id}`}
+                          name={friend.display_name?.trim() || "Friend"}
+                          watchStatus="watched"
+                          mode="display"
+                          onPress={() => router.push(`/friend-showtimes/${friend.id}`)}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null
+            }
             renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
@@ -374,7 +436,16 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
                         : undefined,
                   ]}
                   onPress={() => {
-                    if (movie) openShowtimeModal({ ...item, movie }, { openedFrom: { movieId } });
+                    if (movie)
+                      openShowtimeModal(
+                        {
+                          ...item,
+                          movie,
+                          friends_watchlisted: movie.friends_watchlisted ?? [],
+                          friends_watched: movie.friends_watched ?? [],
+                        },
+                        { openedFrom: { movieId } }
+                      );
                   }}
                   activeOpacity={0.85}
                 >
@@ -558,6 +629,29 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 11,
       fontWeight: "800",
       letterSpacing: 0.6,
+      color: colors.textSecondary,
+    },
+    metaText: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    metaLabel: {
+      fontSize: 11,
+      fontWeight: "800",
+      letterSpacing: 0.6,
+      color: colors.textSecondary,
+    },
+    friendWatchWrap: {
+      gap: 14,
+    },
+    friendWatchGroup: {
+      gap: 6,
+    },
+    friendWatchLabel: {
+      fontSize: 11,
+      fontWeight: "700",
+      letterSpacing: 0.4,
+      textTransform: "uppercase",
       color: colors.textSecondary,
     },
     dateGroupHeader: {

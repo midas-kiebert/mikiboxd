@@ -9,6 +9,7 @@ import type { ShowtimeLoggedIn } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import CinemaPill from "@/components/badges/CinemaPill";
+import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -47,6 +48,11 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const date = DateTime.fromISO(showtime.datetime);
+  const originalTitle =
+    showtime.movie.original_title &&
+    showtime.movie.original_title.trim() !== showtime.movie.title.trim()
+      ? showtime.movie.original_title.trim()
+      : null;
   const weekday = date.toFormat("ccc");
   const day = date.toFormat("d");
   const month = date.toFormat("LLL");
@@ -141,9 +147,20 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
         />
         <View style={styles.info}>
           <View style={styles.titleRow}>
-            <ThemedText style={styles.title} numberOfLines={2} ellipsizeMode="tail">
-              {showtime.movie.title}
-            </ThemedText>
+            <View style={styles.titleColumn}>
+              <ThemedText
+                style={styles.title}
+                numberOfLines={originalTitle ? 1 : 2}
+                ellipsizeMode="tail"
+              >
+                {showtime.movie.title}
+              </ThemedText>
+              {originalTitle ? (
+                <ThemedText style={styles.originalTitle} numberOfLines={1} ellipsizeMode="tail">
+                  {originalTitle}
+                </ThemedText>
+              ) : null}
+            </View>
             <CinemaPill cinema={showtime.cinema} variant="compact" />
           </View>
           <View
@@ -160,6 +177,9 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
               variant="compact"
               maxRows={responsiveBadgeRows}
             />
+          </View>
+          <View style={styles.subtitlesCorner}>
+            <SubtitlesBadges subtitles={showtime.subtitles} variant="compact" />
           </View>
         </View>
       </TouchableOpacity>
@@ -276,12 +296,31 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       columnGap: 6,
       flexWrap: "nowrap",
     },
+    titleColumn: {
+      flex: 1,
+      minWidth: 0,
+    },
+    originalTitle: {
+      fontSize: 10,
+      lineHeight: 12,
+      color: colors.textSecondary,
+      fontStyle: "italic",
+    },
+    subtitlesCorner: {
+      position: "absolute",
+      // Absolutely positioned children are offset from the parent's border box in
+      // RN, not its padding box — match `info`'s padding so this sits as far from
+      // the corner as CinemaPill (a normal-flow child) sits from the top-right.
+      right: 10,
+      bottom: 8,
+      flexDirection: "row",
+      gap: 4,
+    },
     title: {
       fontSize: Platform.OS === "ios" ? 14 : 15,
       lineHeight: Platform.OS === "ios" ? 16 : 17,
       fontWeight: "700",
       color: colors.text,
-      flex: 1,
       minWidth: 0,
     },
     friendBadgeArea: {

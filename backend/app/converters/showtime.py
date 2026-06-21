@@ -6,6 +6,7 @@ from app.converters import cinema as cinema_converters
 from app.converters import movie as movie_converters
 from app.converters import user as user_converters
 from app.core.enums import GoingStatus
+from app.crud import movie as movie_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.models.showtime import Showtime
@@ -145,6 +146,22 @@ def to_logged_in(
     cinema = cinema_converters.to_public(
         cinema=showtime.cinema,
     )
+    friends_watchlisted = [
+        user_converters.to_public(friend)
+        for friend in movie_crud.get_friends_who_watchlisted_movie(
+            session=session,
+            movie_id=showtime.movie_id,
+            current_user=user_id,
+        )
+    ]
+    friends_watched = [
+        user_converters.to_public(friend)
+        for friend in movie_crud.get_friends_who_watched_movie(
+            session=session,
+            movie_id=showtime.movie_id,
+            current_user=user_id,
+        )
+    ]
 
     return ShowtimeLoggedIn(
         **showtime.model_dump(),
@@ -157,6 +174,8 @@ def to_logged_in(
         cinema=cinema,
         invited_by=invited_by,
         invite_ping_ids=invite_ping_ids,
+        friends_watchlisted=friends_watchlisted,
+        friends_watched=friends_watched,
     )
 
 

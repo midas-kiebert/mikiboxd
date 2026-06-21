@@ -17,6 +17,7 @@ from app.models.movie import Movie, MovieCreate, MovieUpdate
 from app.models.showtime import Showtime
 from app.models.user import User
 from app.models.watched_selection import WatchedSelection
+from app.models.watchlist_selection import WatchlistSelection
 from app.utils import now_amsterdam_naive
 
 
@@ -1217,3 +1218,120 @@ def test_get_showtimes_for_movie_shows_showtimes_for_card_when_watchlist_only(
 
 #     assert movie_2 in movies_with_query
 #     assert len(movies_with_query) == 1
+
+
+def _add_watch_selection(
+    *,
+    session: Session,
+    selection_model: type,
+    user: User,
+    movie: Movie,
+) -> None:
+    """Record `movie` in the given Letterboxd selection table for `user`."""
+    assert user.letterboxd_username is not None
+    session.add(
+        selection_model(
+            letterboxd_username=user.letterboxd_username,
+            letterboxd_slug=movie.letterboxd_slug or f"slug-{movie.id}",
+            movie_id=movie.id,
+        )
+    )
+    session.flush()
+
+
+def test_get_friends_who_watchlisted_movie(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+):
+    current_user = user_factory()
+    friend = user_factory()
+    non_friend = user_factory()
+    movie: Movie = movie_factory()
+    other_movie: Movie = movie_factory()
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user.id,
+        friend_id=friend.id,
+    )
+
+    # Friend watchlisted the target movie → should be returned.
+    _add_watch_selection(
+        session=db_transaction,
+        selection_model=WatchlistSelection,
+        user=friend,
+        movie=movie,
+    )
+    # Non-friend watchlisted it too → must be excluded.
+    _add_watch_selection(
+        session=db_transaction,
+        selection_model=WatchlistSelection,
+        user=non_friend,
+        movie=movie,
+    )
+    # Friend watchlisted a different movie → must not leak into this result.
+    _add_watch_selection(
+        session=db_transaction,
+        selection_model=WatchlistSelection,
+        user=friend,
+        movie=other_movie,
+    )
+
+    friends = movie_crud.get_friends_who_watchlisted_movie(
+        session=db_transaction,
+        movie_id=movie.id,
+        current_user=current_user.id,
+    )
+
+    assert [f.id for f in friends] == [friend.id]
+
+
+def test_get_friends_who_watched_movie(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+):
+    current_user = user_factory()
+    friend = user_factory()
+    non_friend = user_factory()
+    movie: Movie = movie_factory()
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user.id,
+        friend_id=friend.id,
+    )
+
+    _add_watch_selection(
+        session=db_transaction,
+        selection_model=WatchedSelection,
+        user=friend,
+        movie=movie,
+    )
+    _add_watch_selection(
+        session=db_transaction,
+        selection_model=WatchedSelection,
+        user=non_friend,
+        movie=movie,
+    )
+
+    friends = movie_crud.get_friends_who_watched_movie(
+        session=db_transaction,
+        movie_id=movie.id,
+        current_user=current_user.id,
+    )
+
+    assert [f.id for f in friends] == [friend.id]
+
+    # A movie no friend has watched yields an empty list.
+    assert (
+        movie_crud.get_friends_who_watched_movie(
+            session=db_transaction,
+            movie_id=movie_factory().id,
+            current_user=current_user.id,
+        )
+        == []
+    )

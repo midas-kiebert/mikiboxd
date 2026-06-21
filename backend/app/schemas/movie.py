@@ -38,3 +38,5 @@ class MovieLoggedIn(MovieBase):
     original_title: str | None = None
     release_year: int | None = None
     directors: list[str] | None = None
+    friends_watchlisted: list["UserPublic"] = []
+    friends_watched: list["UserPublic"] = []

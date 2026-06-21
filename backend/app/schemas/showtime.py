@@ -40,6 +40,9 @@ class ShowtimeLoggedIn(ShowtimeBase):
     # for this showtime, plus those pings' ids (used to dismiss the invite).
     invited_by: Sequence["UserPublic"] = []
     invite_ping_ids: Sequence[int] = []
+    # Friends who have this movie watchlisted / watched on Letterboxd.
+    friends_watchlisted: Sequence["UserPublic"] = []
+    friends_watched: Sequence["UserPublic"] = []
 
 
 # For responses inside of a Movie model

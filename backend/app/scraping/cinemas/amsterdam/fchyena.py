@@ -79,9 +79,7 @@ class FCHyenaScraper(BaseCinemaScraper):
         # "Engels gesproken, Nederlands ondertiteld".
         language_element = film_element.find(lambda tag: tag.string == "Taal")
         language_sibling = (
-            language_element.next_sibling
-            if isinstance(language_element, Tag)
-            else None
+            language_element.next_sibling if isinstance(language_element, Tag) else None
         )
         subtitles = parse_subtitle_freetext(
             language_sibling.strip() if isinstance(language_sibling, str) else None

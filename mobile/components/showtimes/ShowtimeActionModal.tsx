@@ -24,6 +24,7 @@ import {
   Linking,
   Modal,
   Platform,
+  ScrollView,
   Share,
   StyleSheet,
   TextInput,
@@ -57,13 +58,16 @@ import {
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
 
 import CinemaPill from "@/components/badges/CinemaPill";
+import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
+import FriendInviteRow, { type FriendWatchStatus } from "@/components/friends/FriendInviteRow";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 import { formatSeatLabel } from "@/utils/seat-label";
 import { buildShowtimePingUrl } from "@/constants/ping-link";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
+import { formatLanguageCode } from "@/utils/language";
 import * as Clipboard from "expo-clipboard";
 import { buildCinevilleCardNumber, loadCinevilleCardDigits } from "@/utils/cineville-card";
 
@@ -221,6 +225,8 @@ export default function ShowtimeActionModal({
   const [seatRowDraft, setSeatRowDraft] = useState("");
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
+  // Which "watchlisted/watched by friends" popup is open, if any.
+  const [watchModalKind, setWatchModalKind] = useState<"watchlisted" | "watched" | null>(null);
 
   // Caret rotation for the invite-friends toggle (native thread, like FiltersModal).
   const caretRotation = useRef(new Animated.Value(0)).current;
@@ -268,6 +274,7 @@ export default function ShowtimeActionModal({
       setInviteListReady(false);
       setPingSearchQuery("");
       setIsSeatDialogVisible(false);
+      setWatchModalKind(null);
       caretRotation.setValue(0);
     }
   }, [visible, caretRotation]);
@@ -513,6 +520,29 @@ export default function ShowtimeActionModal({
     [sentPings]
   );
 
+  const friendsWatchlisted = useMemo(
+    () => showtime?.friends_watchlisted ?? [],
+    [showtime?.friends_watchlisted]
+  );
+  const friendsWatched = useMemo(
+    () => showtime?.friends_watched ?? [],
+    [showtime?.friends_watched]
+  );
+  const watchlistedIds = useMemo(
+    () => new Set(friendsWatchlisted.map((friend) => friend.id)),
+    [friendsWatchlisted]
+  );
+  const watchedIds = useMemo(
+    () => new Set(friendsWatched.map((friend) => friend.id)),
+    [friendsWatched]
+  );
+  // Watched takes precedence over watchlisted for the single per-friend icon.
+  const getWatchStatus = useCallback(
+    (friendId: string): FriendWatchStatus =>
+      watchedIds.has(friendId) ? "watched" : watchlistedIds.has(friendId) ? "watchlisted" : null,
+    [watchedIds, watchlistedIds]
+  );
+
   const friendsForPing = useMemo(() => {
     const availabilityRank: Record<FriendPingAvailability, number> = {
       eligible: 0,
@@ -533,13 +563,14 @@ export default function ShowtimeActionModal({
           id: friend.id,
           label: friend.display_name?.trim() || "Friend",
           availability,
+          watchStatus: getWatchStatus(friend.id),
         };
       })
       .sort((left, right) => {
         const rankDiff = availabilityRank[left.availability] - availabilityRank[right.availability];
         return rankDiff !== 0 ? rankDiff : left.label.localeCompare(right.label);
       });
-  }, [friends, friendsGoingIds, friendsInterestedIds, pingedReceiverIds]);
+  }, [friends, friendsGoingIds, friendsInterestedIds, pingedReceiverIds, getWatchStatus]);
 
   // The list shows friends you can still invite + those who already set a
   // going/interested status (muted); already-pinged friends live in the summary.
@@ -577,6 +608,13 @@ export default function ShowtimeActionModal({
       });
     });
   };
+
+  const originalTitle =
+    showtime?.movie.original_title &&
+    showtime.movie.original_title.trim() !== showtime.movie.title.trim()
+      ? showtime.movie.original_title.trim()
+      : null;
+  const spokenLanguage = formatLanguageCode(showtime?.movie.original_language);
 
   const invitedYouLabel = hasInvite ? formatInvitedYou(invite!.senders) : null;
   const showtimeStartsAt = showtime ? DateTime.fromISO(showtime.datetime) : null;
@@ -710,6 +748,11 @@ export default function ShowtimeActionModal({
                 <ThemedText style={styles.movieTitle} numberOfLines={3}>
                   {showtime.movie.title}
                 </ThemedText>
+                {originalTitle ? (
+                  <ThemedText style={styles.originalTitle} numberOfLines={2}>
+                    {originalTitle}
+                  </ThemedText>
+                ) : null}
                 {showtime.movie.directors && showtime.movie.directors.length > 0 ? (
                   <ThemedText style={styles.directorText} numberOfLines={1}>
                     <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
@@ -723,8 +766,15 @@ export default function ShowtimeActionModal({
                 {timeLabel ? (
                   <ThemedText style={styles.timeText}>{timeLabel}</ThemedText>
                 ) : null}
+                {spokenLanguage ? (
+                  <ThemedText style={styles.languageText} numberOfLines={1}>
+                    <ThemedText style={styles.languageLabel}>LANGUAGE </ThemedText>
+                    {spokenLanguage}
+                  </ThemedText>
+                ) : null}
                 <View style={styles.cinemaBadgeRow}>
                   <CinemaPill cinema={showtime.cinema} disabledIfSameId={disabledCinemaId} />
+                  <SubtitlesBadges subtitles={showtime.subtitles} />
                 </View>
               </View>
               <TouchableOpacity
@@ -753,6 +803,54 @@ export default function ShowtimeActionModal({
                   No friends are interested in this showtime yet.
                 </ThemedText>
               )}
+            </View>
+
+            {/* Friends' Letterboxd relationship to this film */}
+            <View style={styles.watchButtonsRow}>
+              {(
+                [
+                  {
+                    kind: "watchlisted" as const,
+                    icon: "bookmark" as const,
+                    accent: colors.orange.secondary,
+                    count: friendsWatchlisted.length,
+                    label:
+                      friendsWatchlisted.length > 0
+                        ? `Watchlisted by ${friendsWatchlisted.length}`
+                        : "No friends watchlisted",
+                  },
+                  {
+                    kind: "watched" as const,
+                    icon: "visibility" as const,
+                    accent: colors.green.secondary,
+                    count: friendsWatched.length,
+                    label:
+                      friendsWatched.length > 0
+                        ? `Watched by ${friendsWatched.length}`
+                        : "No friends watched",
+                  },
+                ]
+              ).map((item) => (
+                <TouchableOpacity
+                  key={item.kind}
+                  style={[styles.watchButton, item.count === 0 && styles.watchButtonEmpty]}
+                  onPress={() => {
+                    triggerSelectionHaptic();
+                    setWatchModalKind(item.kind);
+                  }}
+                  disabled={item.count === 0}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons
+                    name={item.icon}
+                    size={16}
+                    color={item.count > 0 ? item.accent : colors.textSecondary}
+                  />
+                  <ThemedText style={styles.watchButtonText} numberOfLines={1}>
+                    {item.label}
+                  </ThemedText>
+                </TouchableOpacity>
+              ))}
             </View>
 
             {/* Optional "X invited you" banner */}
@@ -956,31 +1054,16 @@ export default function ShowtimeActionModal({
                                 ? "Interested"
                                 : null;
                           return (
-                            <TouchableOpacity
+                            <FriendInviteRow
                               key={friend.id}
-                              style={[styles.friendRow, isHighlighted && styles.friendRowHighlighted]}
+                              name={friend.label}
+                              watchStatus={friend.watchStatus}
+                              statusLabel={statusLabel}
+                              mode="invite"
+                              highlighted={isHighlighted}
                               disabled={!isEligible || isPingingFriend}
-                              onPress={() => handlePingFriend(friend.id)}
-                              activeOpacity={0.7}
-                            >
-                              <ThemedText
-                                style={[styles.friendName, !isEligible && styles.friendNameMuted]}
-                                numberOfLines={1}
-                              >
-                                {friend.label}
-                              </ThemedText>
-                              {isHighlighted ? (
-                                <MaterialIcons
-                                  name="keyboard-return"
-                                  size={16}
-                                  color={colors.blue.secondary}
-                                />
-                              ) : statusLabel ? (
-                                <ThemedText style={styles.friendStatusText}>{statusLabel}</ThemedText>
-                              ) : (
-                                <MaterialIcons name="add" size={18} color={colors.blue.secondary} />
-                              )}
-                            </TouchableOpacity>
+                              onInvite={() => handlePingFriend(friend.id)}
+                            />
                           );
                         })}
                       </View>
@@ -1058,6 +1141,80 @@ export default function ShowtimeActionModal({
           </View>
         </View>
       </Modal>
+
+      {/* Friends who watchlisted / watched this film, with an invite affordance */}
+      <Modal
+        transparent
+        statusBarTranslucent
+        visible={watchModalKind !== null}
+        animationType="fade"
+        onRequestClose={() => setWatchModalKind(null)}
+      >
+        <View style={styles.seatDialogBackdrop}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setWatchModalKind(null)}
+          />
+          <View style={styles.watchModalCard}>
+            {(() => {
+              const watchFriends =
+                watchModalKind === "watched" ? friendsWatched : friendsWatchlisted;
+              const verb = watchModalKind === "watched" ? "Watched" : "Watchlisted";
+              const title = `${verb} by ${watchFriends.length} friend${
+                watchFriends.length === 1 ? "" : "s"
+              }`;
+              return (
+                <>
+                  <View style={styles.watchModalHeader}>
+                    <ThemedText style={styles.watchModalTitle}>{title}</ThemedText>
+                    <TouchableOpacity
+                      onPress={() => setWatchModalKind(null)}
+                      hitSlop={8}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="close" size={18} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView
+                    style={styles.watchModalScroll}
+                    contentContainerStyle={styles.watchModalList}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {watchFriends.map((friend) => {
+                      const availability: FriendPingAvailability = friendsGoingIds.has(friend.id)
+                        ? "going"
+                        : friendsInterestedIds.has(friend.id)
+                          ? "interested"
+                          : pingedReceiverIds.has(friend.id)
+                            ? "pinged"
+                            : "eligible";
+                      const statusLabel =
+                        availability === "going"
+                          ? "Going"
+                          : availability === "interested"
+                            ? "Interested"
+                            : null;
+                      return (
+                        <FriendInviteRow
+                          key={friend.id}
+                          name={friend.display_name?.trim() || "Friend"}
+                          watchStatus={watchModalKind}
+                          statusLabel={statusLabel}
+                          mode="invite"
+                          invited={availability === "pinged"}
+                          disabled={availability !== "eligible" || isPingingFriend}
+                          onInvite={() => handlePingFriend(friend.id)}
+                        />
+                      );
+                    })}
+                  </ScrollView>
+                </>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
     </BottomSheetModal>
   );
 }
@@ -1105,11 +1262,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     summaryInfo: { flex: 1, gap: 1 },
     movieTitle: { fontSize: 19, fontWeight: "800", color: colors.text, paddingRight: 36 },
+    originalTitle: { fontSize: 12, color: colors.textSecondary, fontStyle: "italic", marginTop: 1 },
+    languageText: { fontSize: 11.5, color: colors.textSecondary, marginTop: 1 },
+    languageLabel: { fontSize: 9, fontWeight: "800", letterSpacing: 0.6, color: colors.textSecondary },
     directorText: { fontSize: 10, color: colors.textSecondary, marginTop: -4 },
     directorLabel: { fontSize: 9, fontWeight: "800", letterSpacing: 0.6, color: colors.textSecondary },
     dateText: { fontSize: 12.5, fontWeight: "600", color: colors.text, marginTop: -4 },
     timeText: { fontSize: 12.5, color: colors.textSecondary, marginTop: -4 },
-    cinemaBadgeRow: { flexDirection: "row", alignItems: "center" },
+    cinemaBadgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     movieLinksRow: { flexDirection: "row", gap: 6, marginTop: 2 },
     movieLinkChip: {
       paddingHorizontal: 9,
@@ -1145,6 +1305,28 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 13,
       color: colors.textSecondary,
       textAlign: "center",
+    },
+
+    watchButtonsRow: { flexDirection: "row", gap: 8 },
+    watchButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingVertical: 9,
+      paddingHorizontal: 10,
+    },
+    watchButtonEmpty: { opacity: 0.6 },
+    watchButtonText: {
+      flexShrink: 1,
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.textSecondary,
     },
 
     invitedYouBanner: {
@@ -1238,20 +1420,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     invitePanel: { gap: 10, paddingTop: 2 },
     inviteLoader: { alignItems: "center", paddingVertical: 20 },
     inviteEmptyText: { fontSize: 13, color: colors.textSecondary, paddingVertical: 6 },
-    inviteList: { gap: 2 },
-    friendRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-      borderRadius: 8,
-      paddingHorizontal: 8,
-      paddingVertical: 11,
-    },
-    friendRowHighlighted: { backgroundColor: colors.blue.primary },
-    friendName: { flexShrink: 1, fontSize: 14, fontWeight: "500", color: colors.text },
-    friendNameMuted: { color: colors.textSecondary },
-    friendStatusText: { fontSize: 11, fontWeight: "700", color: colors.textSecondary },
+    inviteList: { gap: 6 },
     inviteEndSpacer: { paddingTop: 16, alignItems: "center" },
     inviteEndMark: { width: 28, height: 3, borderRadius: 2, backgroundColor: colors.divider },
     inviteSearchRow: {
@@ -1313,4 +1482,30 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     seatSaveButtonDisabled: { opacity: 0.5 },
     seatSaveButtonText: { fontSize: 13, fontWeight: "700", color: colors.pillActiveText },
+
+    watchModalCard: {
+      width: "100%",
+      maxWidth: 380,
+      maxHeight: "70%",
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.background,
+      padding: 14,
+      gap: 10,
+      shadowColor: "#000",
+      shadowOpacity: 0.2,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 9,
+    },
+    watchModalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    watchModalTitle: { flex: 1, fontSize: 16, fontWeight: "700", color: colors.text },
+    watchModalScroll: { flexGrow: 0 },
+    watchModalList: { gap: 6, paddingBottom: 2 },
   });

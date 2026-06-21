@@ -85,7 +85,7 @@ const MoviesPage = () => {
     fetchWatchlist()
     fetchWatched()
     hasFetched.current = true
-  }, [])
+  }, [fetchWatchlist, fetchWatched])
 
   // Persist search/filter state into the URL so refresh/share keeps the same view.
   useEffect(() => {
@@ -101,14 +101,21 @@ const MoviesPage = () => {
       },
       replace: true,
     })
-  }, [debouncedSearchQuery, watchlistOnly, navigate])
+  }, [
+    debouncedSearchQuery,
+    watchlistOnly,
+    navigate,
+    search.query,
+    search.watchlistOnly,
+    search.days,
+  ])
 
   // The fetch hook uses these filters as part of its query key.
   const filters: MovieFilters = {
     query: debouncedSearchQuery,
     watchlistOnly: watchlistOnly,
-    days: selectedDays.map((d: Date) =>
-      DateTime.fromJSDate(d).toISODate() || "",
+    days: selectedDays.map(
+      (d: Date) => DateTime.fromJSDate(d).toISODate() || "",
     ),
   }
 

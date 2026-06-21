@@ -3,16 +3,16 @@
  */
 import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
-import type { UserWithFriendStatus } from "shared";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  FriendsService,
-  type FriendsRemoveFriendData,
-  type FriendsAcceptFriendRequestData,
-  type FriendsSendFriendRequestData,
-  type FriendsCancelFriendRequestData,
-  type FriendsDeclineFriendRequestData,
+import { FriendsService } from "shared";
+import type {
+  UserWithFriendStatus,
+  FriendsRemoveFriendData,
+  FriendsAcceptFriendRequestData,
+  FriendsSendFriendRequestData,
+  FriendsCancelFriendRequestData,
+  FriendsDeclineFriendRequestData,
 } from "shared";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";

@@ -153,7 +153,10 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
   const dayAnchorKey =
     DateTime.now().setZone("Europe/Amsterdam").startOf("day").toISODate() ?? "";
   const resolvedApiDays = useMemo(
-    () => resolveDaySelectionsForApi(selectedDays),
+    () =>
+      resolveDaySelectionsForApi(selectedDays, {
+        startDate: DateTime.fromISO(dayAnchorKey, { zone: "Europe/Amsterdam" }),
+      }),
     [dayAnchorKey, selectedDays]
   );
 
@@ -277,7 +280,7 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
 
     openedTargetRef.current = targetShowtimeId;
     openShowtimeModal({ ...matchingShowtime, movie }, { openedFrom: { movieId } });
-  }, [targetShowtimeId, showtimes, movie, openShowtimeModal]);
+  }, [targetShowtimeId, showtimes, movie, openShowtimeModal, movieId]);
 
   return (
     <>

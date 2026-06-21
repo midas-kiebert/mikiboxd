@@ -87,7 +87,7 @@ const Filters = ({ selectedDays, handleDaysChange }: FiltersProps) => {
       setSelectedCinemas(selectedCinemaIds)
       setInitialized(true)
     }
-  }, [selectedCinemaIds])
+  }, [selectedCinemaIds, initialized])
 
   const handleToggle = (cinemaId: number) => {
     const select = !selectedCinemas.includes(cinemaId)

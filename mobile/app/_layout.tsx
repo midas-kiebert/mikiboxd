@@ -4,7 +4,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useRouter, useSegments, usePathname, withLayoutContext } from 'expo-router';
 import { createStackNavigator, TransitionPresets, TransitionSpecs } from '@react-navigation/stack';
-import { Appearance, Easing } from 'react-native';
+import { Appearance, Easing , View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { ApiError, OpenAPI, installAuthRefreshInterceptor } from 'shared';
@@ -14,7 +14,6 @@ import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
 import * as SystemUI from 'expo-system-ui';
 import * as SplashScreen from 'expo-splash-screen';
-import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';

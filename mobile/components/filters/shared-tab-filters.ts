@@ -15,7 +15,7 @@ export type SharedTabFilterId =
 
 export type SharedTabShowtimeFilter = "all" | "interested" | "going";
 
-const SHARED_TAB_FILTERS: ReadonlyArray<{ id: SharedTabFilterId; label: string }> = [
+const SHARED_TAB_FILTERS: readonly { id: SharedTabFilterId; label: string }[] = [
   { id: "showtime-filter", label: "Any Status" },
   { id: "watchlist-only", label: "All Movies" },
   { id: "cinemas", label: "Cinemas" },

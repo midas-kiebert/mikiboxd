@@ -90,7 +90,10 @@ export default function MainShowtimesScreen() {
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
   const resolvedApiDays = useMemo(
-    () => resolveDaySelectionsForApi(selectedDays),
+    () =>
+      resolveDaySelectionsForApi(selectedDays, {
+        startDate: DateTime.fromISO(dayAnchorKey, { zone: "Europe/Amsterdam" }),
+      }),
     [dayAnchorKey, selectedDays]
   );
   const runtimeBounds = useMemo(

@@ -7,8 +7,9 @@ from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_, select
 
-from app.core.enums import GoingStatus
+from app.core.enums import GoingStatus, SearchField
 from app.crud import showtime_visibility as showtime_visibility_crud
+from app.crud.movie import apply_search_filter
 from app.crud.movie_set_filters import apply_movie_set_filters
 from app.inputs.movie import Filters
 from app.models.friendship import Friendship
@@ -339,17 +340,15 @@ def get_main_page_showtimes(
         )
 
     if (
-        filters.query
+        (filters.query and filters.search_field != SearchField.FRIEND)
         or filters.runtime_min is not None
         or filters.runtime_max is not None
     ):
         stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
 
-    if filters.query:
-        pattern = f"%{filters.query}%"
-        stmt = stmt.where(
-            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
-        )
+    stmt = apply_search_filter(
+        stmt, filters=filters, session=session, current_user_id=user_id
+    )
 
     if filters.runtime_min is not None:
         stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
@@ -472,17 +471,15 @@ def count_main_page_showtimes(
         )
 
     if (
-        filters.query
+        (filters.query and filters.search_field != SearchField.FRIEND)
         or filters.runtime_min is not None
         or filters.runtime_max is not None
     ):
         stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
 
-    if filters.query:
-        pattern = f"%{filters.query}%"
-        stmt = stmt.where(
-            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
-        )
+    stmt = apply_search_filter(
+        stmt, filters=filters, session=session, current_user_id=user_id
+    )
 
     if filters.runtime_min is not None:
         stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)

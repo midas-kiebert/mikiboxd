@@ -69,6 +69,7 @@ jobs:
         run: |
           docker exec mikiboxd-db-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
             --clean --if-exists --no-owner --no-privileges \
+            --exclude-table-data=movie --exclude-table-data=showtime \
             | docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach
       - name: Dump prestart logs on failure

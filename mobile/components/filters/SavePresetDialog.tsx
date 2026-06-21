@@ -251,7 +251,7 @@ export default function SavePresetDialog({
           <View style={styles.warning}>
             <MaterialIcons name="info-outline" size={13} color={colors.yellow.secondary} />
             <ThemedText style={styles.warningText}>
-              Setting a preset with cinema selections as default will override your default cinema selection. You will still revert to your default cinema selection when you clear your filters. It is recommended to uncheck "Cinemas" in dropdown above.
+              Setting a preset with cinema selections as default will override your default cinema selection. You will still revert to your default cinema selection when you clear your filters. It is recommended to uncheck &quot;Cinemas&quot; in dropdown above.
             </ThemedText>
           </View>
         )}

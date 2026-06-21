@@ -8,11 +8,11 @@ import {
   describeDisplayPreset,
   type DisplayPreset,
 } from "@/components/filters/saved-presets";
+import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 
 /** Placeholder pill widths shown while presets load (chips variant). */
 const SKELETON_CHIP_WIDTHS = [78, 96, 64];
-import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
-import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type SavedPresetChipsProps = {
   onApply: (preset: DisplayPreset) => void;

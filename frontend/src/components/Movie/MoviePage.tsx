@@ -172,8 +172,8 @@ const MoviePage = () => {
     const movieQueries = queryClient.getQueriesData<InfiniteMoviesData>({
       queryKey: ["movies"],
     })
-    movieQueries.forEach(([queryKey, oldData]) => {
-      if (!oldData) return
+    for (const [queryKey, oldData] of movieQueries) {
+      if (!oldData) continue
 
       const newPages = oldData.pages.map((page) => {
         const newResults = page.map((movie) =>
@@ -186,7 +186,7 @@ const MoviePage = () => {
         ...oldData,
         pages: newPages,
       })
-    })
+    }
   }
 
   const { mutate: handleToggle } = useMutation<

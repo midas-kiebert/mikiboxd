@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, time, timedelta
 from uuid import UUID
 
@@ -325,9 +326,22 @@ def get_cinemas_for_movie(
     return cinemas
 
 
+# "-", "'" and plain spaces are treated as interchangeable (and droppable) so that
+# e.g. "da" / "d a" / "d-a" all match a title containing "d'a".
+_SEPARATOR_CHARS_REGEX = r"[-' ]"
+
+
+def _strip_separators(value: str) -> str:
+    return re.sub(_SEPARATOR_CHARS_REGEX, "", value)
+
+
+def _strip_separators_sql(column):
+    return func.regexp_replace(column, _SEPARATOR_CHARS_REGEX, "", "g")
+
+
 def _unaccent_ilike(column, query: str) -> ColumnElement[bool]:
-    pattern = f"%{query}%"
-    return func.unaccent(column).ilike(func.unaccent(pattern))
+    pattern = f"%{_strip_separators(query)}%"
+    return func.unaccent(_strip_separators_sql(column)).ilike(func.unaccent(pattern))
 
 
 def _title_search_clause(query: str) -> ColumnElement[bool]:
@@ -343,10 +357,9 @@ def _array_search_clause(column, query: str) -> ColumnElement[bool]:
 
 
 def _matching_cinema_ids_subquery(query: str):
-    pattern = f"%{query}%"
     return (
-        select(Cinema.id)
-        .where(func.unaccent(col(Cinema.name)).ilike(func.unaccent(pattern)))
+        select(col(Cinema.id))
+        .where(_unaccent_ilike(col(Cinema.name), query))
         .scalar_subquery()
     )
 
@@ -355,7 +368,7 @@ def _matching_friend_ids(
     *, session: Session, current_user_id: UUID, query: str
 ) -> list[UUID]:
     stmt = (
-        select(Friendship.friend_id)
+        select(col(Friendship.friend_id))
         .join(User, col(User.id) == col(Friendship.friend_id))
         .where(
             col(Friendship.user_id) == current_user_id,
@@ -705,16 +718,18 @@ def get_movies(
 
     order_terms: list[ColumnElement] = []
     if filters.query and filters.search_field == SearchField.TITLE:
-        normalized_query = filters.query.strip().lower()
+        normalized_query = _strip_separators(filters.query.strip().lower())
         order_terms.append(
             case(
                 (
-                    func.unaccent(func.lower(col(Movie.title)))
+                    func.unaccent(_strip_separators_sql(func.lower(col(Movie.title))))
                     == func.unaccent(normalized_query),
                     0,
                 ),
                 (
-                    func.unaccent(func.lower(col(Movie.original_title)))
+                    func.unaccent(
+                        _strip_separators_sql(func.lower(col(Movie.original_title)))
+                    )
                     == func.unaccent(normalized_query),
                     0,
                 ),

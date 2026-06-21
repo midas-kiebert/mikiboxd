@@ -25,13 +25,13 @@ type WeekdayDayOption = {
   weekday: WeekdayNumber;
 };
 
-export const RELATIVE_DAY_OPTIONS: ReadonlyArray<RelativeDayOption> = [
+export const RELATIVE_DAY_OPTIONS: readonly RelativeDayOption[] = [
   { token: "relative:today", label: "Today", offset: 0 },
   { token: "relative:tomorrow", label: "Tomorrow", offset: 1 },
   { token: "relative:day_after_tomorrow", label: "Day After Tomorrow", offset: 2 },
 ] as const;
 
-export const WEEKDAY_DAY_OPTIONS: ReadonlyArray<WeekdayDayOption> = [
+export const WEEKDAY_DAY_OPTIONS: readonly WeekdayDayOption[] = [
   { token: "weekday:1", label: "Monday", shortLabel: "Mon", weekday: 1 },
   { token: "weekday:2", label: "Tuesday", shortLabel: "Tue", weekday: 2 },
   { token: "weekday:3", label: "Wednesday", shortLabel: "Wed", weekday: 3 },

@@ -8,10 +8,7 @@ import { useState } from "react"
 import { FaBars } from "react-icons/fa"
 import { FiLogOut } from "react-icons/fi"
 
-import {
-  PAGE_NOTICE_BANNER_OFFSET_CSS_VAR,
-  SIDEBAR_WIDTH,
-} from "@/constants"
+import { PAGE_NOTICE_BANNER_OFFSET_CSS_VAR, SIDEBAR_WIDTH } from "@/constants"
 import type { MeGetCurrentUserResponse } from "shared"
 import useAuth from "shared/hooks/useAuth"
 import {

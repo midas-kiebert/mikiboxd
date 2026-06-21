@@ -142,7 +142,9 @@ const PingsPage = () => {
     onMutate: ({ pingIds }) => {
       setHiddenPingIds((previous) => {
         const next = new Set(previous)
-        pingIds.forEach((pingId) => next.add(pingId))
+        for (const pingId of pingIds) {
+          next.add(pingId)
+        }
         return next
       })
     },
@@ -156,7 +158,7 @@ const PingsPage = () => {
 
   useEffect(() => {
     markSeenMutation.mutate()
-  }, [])
+  }, [markSeenMutation.mutate])
 
   return (
     <Page>

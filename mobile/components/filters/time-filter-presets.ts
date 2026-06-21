@@ -4,7 +4,7 @@ export type TimeFilterPreset = {
   range: string;
 };
 
-export const TIME_FILTER_PRESETS: ReadonlyArray<TimeFilterPreset> = [
+export const TIME_FILTER_PRESETS: readonly TimeFilterPreset[] = [
   { id: "morning", label: "Morning", range: "06:00-11:59" },
   { id: "afternoon", label: "Afternoon", range: "12:00-17:59" },
   { id: "evening", label: "Evening", range: "18:00-21:59" },

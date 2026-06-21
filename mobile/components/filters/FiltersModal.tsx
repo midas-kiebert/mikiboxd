@@ -163,11 +163,10 @@ export default function FiltersModal({
     queryFn: () => MeService.getCinemaPresets(),
   });
 
-  const effectiveCinemaIds = sessionCinemaIds ?? preferredCinemaIds ?? [];
-  const sortedEffectiveIds = useMemo(
-    () => Array.from(new Set(effectiveCinemaIds)).sort((a, b) => a - b),
-    [effectiveCinemaIds]
-  );
+  const sortedEffectiveIds = useMemo(() => {
+    const effectiveCinemaIds = sessionCinemaIds ?? preferredCinemaIds ?? [];
+    return Array.from(new Set(effectiveCinemaIds)).sort((a, b) => a - b);
+  }, [sessionCinemaIds, preferredCinemaIds]);
 
 
   const dayLabel = formatDayPillLabel(selectedDays);

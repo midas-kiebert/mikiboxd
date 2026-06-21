@@ -2,11 +2,12 @@ import FriendBadge from "@/components/Common/FriendBadge"
 import { Badge, Flex, Icon, IconButton, Spacer } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link as RouterLink } from "@tanstack/react-router"
-import { IoIosCheckmark, IoMdRemove } from "react-icons/io"
-import { LiaPlusSolid, LiaTimesSolid } from "react-icons/lia"
 /**
  * Friends feature component: User Card.
  */
+import type { ReactNode } from "react"
+import { IoIosCheckmark, IoMdRemove } from "react-icons/io"
+import { LiaPlusSolid, LiaTimesSolid } from "react-icons/lia"
 import type { UserWithFriendStatus } from "shared"
 import {
   type FriendsAcceptFriendRequestData,
@@ -25,10 +26,10 @@ const UserCard = ({ user }: UserCardProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const queryClient = useQueryClient()
 
-  let badge
-  let button
-  let secondButton
-  let bgColor
+  let badge: ReactNode = null
+  let button: ReactNode = null
+  let secondButton: ReactNode = null
+  let bgColor: string | undefined
 
   // Data hooks keep this module synced with backend data and shared cache state.
   const removeFriendMutation = useMutation({
@@ -110,17 +111,16 @@ const UserCard = ({ user }: UserCardProps) => {
       </IconButton>
     )
   } else if (user.received_request) {
-    badge =
-      ((bgColor = "blue.100"),
-      (
-        <Badge
-          colorPalette="blue"
-          variant={"solid"}
-          fontSize={{ base: "0.6em", md: "0.8em" }}
-        >
-          Sent you a friend request
-        </Badge>
-      ))
+    bgColor = "blue.100"
+    badge = (
+      <Badge
+        colorPalette="blue"
+        variant={"solid"}
+        fontSize={{ base: "0.6em", md: "0.8em" }}
+      >
+        Sent you a friend request
+      </Badge>
+    )
     button = (
       <IconButton
         aria-label="Decline friend request"

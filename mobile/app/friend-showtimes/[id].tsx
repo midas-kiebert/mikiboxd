@@ -110,7 +110,10 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
   const resolvedApiDays = useMemo(
-    () => resolveDaySelectionsForApi(selectedDays),
+    () =>
+      resolveDaySelectionsForApi(selectedDays, {
+        startDate: DateTime.fromISO(dayAnchorKey, { zone: "Europe/Amsterdam" }),
+      }),
     [dayAnchorKey, selectedDays]
   );
 

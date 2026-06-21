@@ -140,8 +140,8 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   searchQuery: string;
   onSearchChange: (value: string) => void;
   // Legacy pill-based filters — omit when using filterRow slot instead
-  filters?: ReadonlyArray<FilterOption<TFilterId>>;
-  activeFilterIds?: ReadonlyArray<TFilterId>;
+  filters?: readonly FilterOption<TFilterId>[];
+  activeFilterIds?: readonly TFilterId[];
   onToggleFilter?: (id: TFilterId, position?: FilterPillLongPressPosition) => void;
   onLongPressFilter?: (
     id: TFilterId,

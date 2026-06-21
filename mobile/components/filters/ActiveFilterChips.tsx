@@ -228,6 +228,17 @@ export default function ActiveFilterChips({
     selectedDays,
     selectedTimeRanges,
     selectedRuntimeRanges,
+    setGroupByMovie,
+    setWatchlistOnly,
+    setWatchlistExclude,
+    setHideWatched,
+    setWatchedOnly,
+    setSelectedShowtimeFilter,
+    setSelectedListIds,
+    setExcludeListIds,
+    setSelectedDays,
+    setSelectedTimeRanges,
+    setSelectedRuntimeRanges,
   ]);
 
   // Don't render if there's nothing to show (no cinema chip and no filter chips)

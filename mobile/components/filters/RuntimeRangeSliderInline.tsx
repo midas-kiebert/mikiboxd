@@ -92,14 +92,15 @@ export default function RuntimeRangeSliderInline({ selectedRuntimeRanges, onChan
   const railWidthRef = useRef(0);
   const railLeftRef = useRef(0);
 
+  const normalizedRange = normalized[0];
   useEffect(() => {
-    const parsed = parseRangeToSlots(normalized[0]);
+    const parsed = parseRangeToSlots(normalizedRange);
     startSlotRef.current = parsed.startSlot;
     endSlotRef.current = parsed.endSlot;
     setStartSlot(parsed.startSlot);
     setEndSlot(parsed.endSlot);
     setActiveBoundary(null);
-  }, [normalized[0]]);
+  }, [normalizedRange]);
 
   useEffect(() => { startSlotRef.current = startSlot; }, [startSlot]);
   useEffect(() => { endSlotRef.current = endSlot; }, [endSlot]);

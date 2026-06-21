@@ -10,9 +10,7 @@ Create Date: 2026-06-21 10:00:00.000000
 
 """
 
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "d2e3f4a5b6c7"
@@ -23,10 +21,7 @@ depends_on = None
 
 def upgrade():
     op.execute("CREATE EXTENSION IF NOT EXISTS unaccent")
-    op.add_column(
-        "movie",
-        sa.Column("cast", postgresql.ARRAY(sa.String()), nullable=True),
-    )
+    op.execute('ALTER TABLE movie ADD COLUMN IF NOT EXISTS "cast" VARCHAR[]')
 
 
 def downgrade():

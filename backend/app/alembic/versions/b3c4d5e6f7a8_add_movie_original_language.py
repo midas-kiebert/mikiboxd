@@ -11,7 +11,6 @@ Create Date: 2026-06-21 12:00:00.000000
 
 """
 
-import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -22,9 +21,7 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column(
-        "movie", sa.Column("original_language", sa.String(), nullable=True)
-    )
+    op.execute("ALTER TABLE movie ADD COLUMN IF NOT EXISTS original_language VARCHAR")
 
 
 def downgrade():

@@ -65,12 +65,25 @@ jobs:
             echo "waiting for staging db... ($i)"; sleep 2
           done
           echo "staging db did not become healthy" >&2; exit 1
-      - name: Copy production database into staging
+      - name: Copy production database into staging (excluding movie/showtime)
         run: |
           docker exec mikiboxd-db-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
             --clean --if-exists --no-owner --no-privileges \
-            --exclude-table-data=movie --exclude-table-data=showtime \
+            --exclude-table=movie --exclude-table=showtime \
             | docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+      - name: Seed movie/showtime tables from production only if empty
+        run: |
+          MOVIE_COUNT=$(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM movie")
+          SHOWTIME_COUNT=$(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM showtime")
+          if [ "$MOVIE_COUNT" -eq 0 ] && [ "$SHOWTIME_COUNT" -eq 0 ]; then
+            echo "movie/showtime empty in staging, seeding from production"
+            docker exec mikiboxd-db-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+              --data-only --no-owner --no-privileges \
+              --table=movie --table=showtime \
+              | docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+          else
+            echo "movie/showtime already populated in staging ($MOVIE_COUNT movies, $SHOWTIME_COUNT showtimes), leaving as-is"
+          fi
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach
       - name: Dump prestart logs on failure
         if: failure()

@@ -8,7 +8,6 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.core.enums import GoingStatus, VisibilityMode
 from app.crud import cinema_preset as cinema_presets_crud
-from app.crud import friend_group as friend_groups_crud
 from app.crud import friendship as friendship_crud
 from app.crud import movie as movies_crud
 from app.crud import showtime as showtimes_crud
@@ -270,77 +269,6 @@ def ping_friend_for_showtime(
     return Message(message="Friend invited successfully"), ping.id
 
 
-def ping_friend_group_for_showtime(
-    *,
-    session: Session,
-    showtime_id: int,
-    actor_id: UUID,
-    group_id: UUID,
-) -> Message | None:
-    group = friend_groups_crud.get_user_group_by_id(
-        session=session,
-        user_id=actor_id,
-        group_id=group_id,
-    )
-    if group is None:
-        return None
-
-    if (
-        showtimes_crud.get_showtime_by_id(
-            session=session,
-            showtime_id=showtime_id,
-        )
-        is None
-    ):
-        raise ShowtimeNotFoundError(showtime_id)
-
-    all_friend_ids = {
-        friend.id for friend in user_crud.get_friends(session=session, user_id=actor_id)
-    }
-    group_friend_ids = friend_groups_crud.get_group_member_ids(
-        session=session,
-        group_id=group_id,
-    )
-    receiver_ids = sorted(
-        {
-            friend_id
-            for friend_id in group_friend_ids
-            if friend_id in all_friend_ids and friend_id != actor_id
-        },
-        key=str,
-    )
-
-    if len(receiver_ids) == 0:
-        return Message(message="No friends in this group could be invited.")
-
-    sent_count = 0
-    for receiver_id in receiver_ids:
-        try:
-            _create_showtime_ping(
-                session=session,
-                showtime_id=showtime_id,
-                sender_id=actor_id,
-                receiver_id=receiver_id,
-                require_friendship=False,
-            )
-        except (ShowtimePingAlreadySelectedError, ShowtimePingAlreadySentError):
-            continue
-
-        push_notifications.notify_user_on_showtime_ping(
-            session=session,
-            sender_id=actor_id,
-            receiver_id=receiver_id,
-            showtime_id=showtime_id,
-        )
-        sent_count += 1
-
-    if sent_count == 0:
-        return Message(message="No new invites were sent.")
-    if sent_count == 1:
-        return Message(message="Invited 1 friend successfully.")
-    return Message(message=f"Invited {sent_count} friends successfully.")
-
-
 def receive_ping_from_link(
     *,
     session: Session,
@@ -444,11 +372,10 @@ def _create_showtime_ping(
             receiver_id=receiver_id,
             created_at=now_amsterdam_naive(),
         )
-        # The new ping makes sender and receiver mutually visible for this showtime.
-        showtime_visibility_crud.rebuild_effective_visibility_for_ping(
+        # A new ping reshapes the whole invite group's visibility (endpoints,
+        # co-invitees, and invitees inheriting the inviter's privacy).
+        showtime_visibility_crud.rebuild_effective_visibility_for_showtime_participants(
             session=session,
-            sender_id=sender_id,
-            receiver_id=receiver_id,
             showtime_id=showtime_id,
         )
         session.commit()
@@ -532,11 +459,20 @@ def uninvite_friend_from_showtime(
     )
     if deleted:
         try:
-            # Removing the ping may drop the mutual-invite visibility edge.
-            showtime_visibility_crud.rebuild_effective_visibility_for_ping(
+            # Removing the ping may drop visibility edges across the invite group.
+            # Rebuild remaining participants plus the two now-detached endpoints.
+            showtime_visibility_crud.rebuild_effective_visibility_for_showtime_participants(
                 session=session,
-                sender_id=actor_id,
-                receiver_id=friend_id,
+                showtime_id=showtime_id,
+            )
+            showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+                session=session,
+                owner_id=actor_id,
+                showtime_id=showtime_id,
+            )
+            showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+                session=session,
+                owner_id=friend_id,
                 showtime_id=showtime_id,
             )
             session.commit()
@@ -564,10 +500,6 @@ def get_showtime_visibility_batch(
     if len(showtimes_by_id) == 0:
         return []
 
-    default_mode = showtime_visibility_crud.get_owner_default_visibility_mode(
-        session=session,
-        owner_id=actor_id,
-    )
     settings_by_showtime_id = (
         showtime_visibility_crud.get_showtime_visibility_settings_for_showtimes(
             session=session,
@@ -583,7 +515,15 @@ def get_showtime_visibility_batch(
             continue
 
         setting = settings_by_showtime_id.get(showtime_id)
-        mode = setting.mode if setting is not None else default_mode
+        mode = (
+            setting.mode
+            if setting is not None
+            else showtime_visibility_crud.get_owner_default_mode_for_showtime(
+                session=session,
+                owner_id=actor_id,
+                showtime_id=showtime_id,
+            )
+        )
         visibility_payload.append(
             ShowtimeVisibilityPublic(
                 showtime_id=showtime_id,
@@ -615,9 +555,10 @@ def get_showtime_visibility(
     mode = (
         setting.mode
         if setting is not None
-        else showtime_visibility_crud.get_owner_default_visibility_mode(
+        else showtime_visibility_crud.get_owner_default_mode_for_showtime(
             session=session,
             owner_id=actor_id,
+            showtime_id=showtime_id,
         )
     )
 

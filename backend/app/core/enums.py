@@ -43,13 +43,17 @@ class GoingStatus(str, Enum):
 class VisibilityMode(str, Enum):
     """Who may see a user's attendance status for a showtime.
 
-    Stored on ShowtimeVisibilitySetting (per showtime) and as the user's
-    default (User.default_visibility_mode). Friends you invited — and friends
-    who invited you — always see your status regardless of this mode.
+    Stored per showtime on ShowtimeVisibilitySetting.
+
+    - ALL_FRIENDS: every friend you haven't opted out of sharing with.
+    - INVITED_ONLY: nobody by default.
+
+    Regardless of the mode, your status is always visible to friends you
+    invited, friends who invited you, and friends co-invited by the same person
+    who invited you.
     """
 
     ALL_FRIENDS = "ALL_FRIENDS"
-    FAVORITE_FRIENDS = "FAVORITE_FRIENDS"
     INVITED_ONLY = "INVITED_ONLY"
 
 

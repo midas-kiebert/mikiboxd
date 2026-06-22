@@ -40,44 +40,75 @@ def get_showtime_visibility_settings_for_showtimes(
     return {setting.showtime_id: setting for setting in settings}
 
 
-def get_favorite_friend_ids_for_owner(
-    *,
-    session: Session,
-    owner_id: UUID,
-) -> set[UUID]:
-    """Friends the owner has flagged as favorites (always-visible)."""
-    stmt = select(Friendship.friend_id).where(
-        col(Friendship.user_id) == owner_id,
-        col(Friendship.is_favorite).is_(True),
-    )
-    return set(session.exec(stmt).all())
-
-
-def get_owner_default_visibility_mode(
-    *,
-    session: Session,
-    owner_id: UUID,
-) -> VisibilityMode:
-    """The mode applied to showtimes without an explicit setting.
-
-    Incognito mode forces INVITED_ONLY (status hidden from everyone but the
-    people you've exchanged invites with). Otherwise the user's chosen default,
-    falling back to FAVORITE_FRIENDS until they pick one.
-    """
-    owner = session.get(User, owner_id)
-    if owner is None:
-        return VisibilityMode.FAVORITE_FRIENDS
-    if owner.incognito_mode:
-        return VisibilityMode.INVITED_ONLY
-    return owner.default_visibility_mode or VisibilityMode.FAVORITE_FRIENDS
-
-
 def _all_friend_ids(*, session: Session, owner_id: UUID) -> set[UUID]:
     return set(
         session.exec(
             select(Friendship.friend_id).where(col(Friendship.user_id) == owner_id)
         ).all()
     )
+
+
+def _status_sharing_friend_ids(*, session: Session, owner_id: UUID) -> set[UUID]:
+    """Friends the owner hasn't opted out of sharing their status with."""
+    return set(
+        session.exec(
+            select(Friendship.friend_id).where(
+                col(Friendship.user_id) == owner_id,
+                col(Friendship.shares_status).is_(True),
+            )
+        ).all()
+    )
+
+
+def _is_user_private_for_showtime(
+    *,
+    session: Session,
+    user_id: UUID,
+    showtime_id: int,
+) -> bool:
+    """Whether a user is keeping their own status private for a showtime.
+
+    Private means incognito, or an explicit INVITED_ONLY setting on the
+    showtime. Resolved one level only (does not recurse into that user's own
+    inviters) to avoid cycles.
+    """
+    user = session.get(User, user_id)
+    if user is not None and user.incognito_mode:
+        return True
+    setting = session.get(ShowtimeVisibilitySetting, (user_id, showtime_id))
+    return setting is not None and setting.mode == VisibilityMode.INVITED_ONLY
+
+
+def get_owner_default_mode_for_showtime(
+    *,
+    session: Session,
+    owner_id: UUID,
+    showtime_id: int,
+) -> VisibilityMode:
+    """The mode applied to a showtime the owner hasn't explicitly configured.
+
+    Defaults to ALL_FRIENDS, but mirrors a private inviter: if anyone with an
+    active invite out to the owner is keeping this showtime invite-only (or is
+    incognito), the owner defaults to INVITED_ONLY too. Incognito owners are
+    always INVITED_ONLY.
+    """
+    owner = session.get(User, owner_id)
+    if owner is not None and owner.incognito_mode:
+        return VisibilityMode.INVITED_ONLY
+
+    inviter_ids = showtime_ping_crud.get_active_received_inviter_ids(
+        session=session,
+        receiver_id=owner_id,
+        showtime_id=showtime_id,
+    )
+    for inviter_id in inviter_ids:
+        if _is_user_private_for_showtime(
+            session=session,
+            user_id=inviter_id,
+            showtime_id=showtime_id,
+        ):
+            return VisibilityMode.INVITED_ONLY
+    return VisibilityMode.ALL_FRIENDS
 
 
 def _compute_effective_visible_friend_ids_for_showtime(
@@ -98,27 +129,32 @@ def _compute_effective_visible_friend_ids_for_showtime(
     mode = (
         setting.mode
         if setting is not None
-        else get_owner_default_visibility_mode(session=session, owner_id=owner_id)
+        else get_owner_default_mode_for_showtime(
+            session=session, owner_id=owner_id, showtime_id=showtime_id
+        )
     )
 
     if mode == VisibilityMode.ALL_FRIENDS:
-        base_visible_ids = set(all_friend_ids)
-    elif mode == VisibilityMode.FAVORITE_FRIENDS:
-        base_visible_ids = (
-            get_favorite_friend_ids_for_owner(session=session, owner_id=owner_id)
-            & all_friend_ids
-        )
+        base_visible_ids = _status_sharing_friend_ids(
+            session=session, owner_id=owner_id
+        ) & all_friend_ids
     else:  # INVITED_ONLY
         base_visible_ids = set()
 
-    # Invariant: friends you invited — and friends who invited you — always see
-    # your status, regardless of the mode.
-    invited_ids = showtime_ping_crud.get_ping_counterpart_ids_for_showtime(
+    # Always-visible regardless of mode or opt-out:
+    #  - friends you invited, and friends who invited you (direct), and
+    #  - friends co-invited to this showtime by someone who invited you.
+    direct_invited_ids = showtime_ping_crud.get_ping_counterpart_ids_for_showtime(
         session=session,
         owner_id=owner_id,
         showtime_id=showtime_id,
     )
-    return (base_visible_ids | invited_ids) & all_friend_ids
+    co_invited_ids = showtime_ping_crud.get_co_invited_user_ids(
+        session=session,
+        viewer_id=owner_id,
+        showtime_id=showtime_id,
+    )
+    return (base_visible_ids | direct_invited_ids | co_invited_ids) & all_friend_ids
 
 
 def rebuild_effective_visibility_for_showtime(
@@ -223,24 +259,28 @@ def rebuild_effective_visibility_for_owner(
         )
 
 
-def rebuild_effective_visibility_for_ping(
+def rebuild_effective_visibility_for_showtime_participants(
     *,
     session: Session,
-    sender_id: UUID,
-    receiver_id: UUID,
     showtime_id: int,
 ) -> None:
-    """A ping makes sender and receiver mutually visible for the showtime."""
-    rebuild_effective_visibility_for_showtime(
+    """Rebuild the cache for everyone bound to a showtime by a ping.
+
+    A ping (or a participant's mode change) can shift the whole invite group's
+    visibility — co-invitees gain/lose each other and invitees inherit the
+    inviter's privacy — so the rebuild must cover every participant, not just
+    the two ping endpoints.
+    """
+    participant_ids = showtime_ping_crud.get_showtime_participant_ids(
         session=session,
-        owner_id=sender_id,
         showtime_id=showtime_id,
     )
-    rebuild_effective_visibility_for_showtime(
-        session=session,
-        owner_id=receiver_id,
-        showtime_id=showtime_id,
-    )
+    for owner_id in sorted(participant_ids, key=str):
+        rebuild_effective_visibility_for_showtime(
+            session=session,
+            owner_id=owner_id,
+            showtime_id=showtime_id,
+        )
 
 
 def set_visibility_mode_for_showtime(
@@ -253,10 +293,14 @@ def set_visibility_mode_for_showtime(
 ) -> None:
     """Set the per-showtime visibility mode and re-materialize the cache.
 
-    No row is stored when the mode matches the owner's default — the showtime
-    then tracks the default going forward.
+    No row is stored when the mode matches the owner's computed default — the
+    showtime then tracks that default going forward. The owner's privacy choice
+    also affects the people they invited, so the whole participant group is
+    rebuilt.
     """
-    default_mode = get_owner_default_visibility_mode(session=session, owner_id=owner_id)
+    default_mode = get_owner_default_mode_for_showtime(
+        session=session, owner_id=owner_id, showtime_id=showtime_id
+    )
     setting = session.get(ShowtimeVisibilitySetting, (owner_id, showtime_id))
 
     if mode == default_mode:
@@ -280,6 +324,10 @@ def set_visibility_mode_for_showtime(
     rebuild_effective_visibility_for_showtime(
         session=session,
         owner_id=owner_id,
+        showtime_id=showtime_id,
+    )
+    rebuild_effective_visibility_for_showtime_participants(
+        session=session,
         showtime_id=showtime_id,
     )
 

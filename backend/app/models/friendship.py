@@ -15,9 +15,10 @@ from app.utils import now_amsterdam_naive
 class Friendship(SQLModel, table=True):
     user_id: UUID = Field(foreign_key="user.id", ondelete="CASCADE", primary_key=True)
     friend_id: UUID = Field(foreign_key="user.id", ondelete="CASCADE", primary_key=True)
-    # When True, friend_id always sees user_id's status (a "favorite" friend);
-    # otherwise they only see it on invite. Per-owner: stored on the user_id row.
-    is_favorite: bool = Field(default=False, nullable=False)
+    # When True (the default), friend_id sees user_id's status under the
+    # ALL_FRIENDS visibility mode. When opted out (False), friend_id only sees
+    # user_id's status if invited. Per-owner: stored on the user_id row.
+    shares_status: bool = Field(default=True, nullable=False)
 
 
 class FriendRequest(SQLModel, table=True):

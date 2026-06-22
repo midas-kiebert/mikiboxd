@@ -93,6 +93,66 @@ def get_ping_counterpart_ids_for_showtime(
     return set(sent_receiver_ids) | set(received_sender_ids)
 
 
+def get_active_received_inviter_ids(
+    *,
+    session: Session,
+    receiver_id: UUID,
+    showtime_id: int,
+) -> set[UUID]:
+    """Senders of the viewer's still-active (non-dismissed) invites for a showtime."""
+    stmt = select(ShowtimePing.sender_id).where(
+        ShowtimePing.showtime_id == showtime_id,
+        ShowtimePing.receiver_id == receiver_id,
+        col(ShowtimePing.dismissed_at).is_(None),
+    )
+    return set(session.exec(stmt).all())
+
+
+def get_co_invited_user_ids(
+    *,
+    session: Session,
+    viewer_id: UUID,
+    showtime_id: int,
+) -> set[UUID]:
+    """Other people invited by anyone who has an active invite out to the viewer.
+
+    These are the viewer's "co-invitees" for the showtime: a shared invite group
+    formed by a common inviter. The viewer itself is excluded.
+    """
+    inviter_ids = get_active_received_inviter_ids(
+        session=session,
+        receiver_id=viewer_id,
+        showtime_id=showtime_id,
+    )
+    if len(inviter_ids) == 0:
+        return set()
+    stmt = select(ShowtimePing.receiver_id).where(
+        ShowtimePing.showtime_id == showtime_id,
+        col(ShowtimePing.sender_id).in_(inviter_ids),
+        ShowtimePing.receiver_id != viewer_id,
+    )
+    return set(session.exec(stmt).all())
+
+
+def get_showtime_participant_ids(
+    *,
+    session: Session,
+    showtime_id: int,
+) -> set[UUID]:
+    """Everyone bound to a showtime by a ping (either direction) for the showtime.
+
+    Used to scope effective-visibility rebuilds: a ping change can shift the
+    visibility of the whole invite group, not just the two endpoints.
+    """
+    sender_ids = session.exec(
+        select(ShowtimePing.sender_id).where(ShowtimePing.showtime_id == showtime_id)
+    ).all()
+    receiver_ids = session.exec(
+        select(ShowtimePing.receiver_id).where(ShowtimePing.showtime_id == showtime_id)
+    ).all()
+    return set(sender_ids) | set(receiver_ids)
+
+
 def get_sent_showtime_pings(
     *,
     session: Session,

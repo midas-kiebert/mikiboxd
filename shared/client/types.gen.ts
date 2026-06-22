@@ -72,23 +72,8 @@ export type CityPublic = {
   id: number
 }
 
-export type FriendFavoriteUpdate = {
-  is_favorite: boolean
-}
-
-export type FriendGroupCreate = {
-  name: string
-  friend_ids?: Array<string>
-  is_favorite?: boolean | null
-}
-
-export type FriendGroupPublic = {
-  id: string
-  name: string
-  friend_ids: Array<string>
-  is_favorite: boolean
-  created_at: string
-  updated_at: string
+export type FriendStatusSharingUpdate = {
+  shares_status: boolean
 }
 
 /**
@@ -305,6 +290,8 @@ export type ShowtimeInMovieLoggedIn = {
   seat_number?: string | null
   invited_by?: Array<UserPublic>
   invite_ping_ids?: Array<number>
+  co_invited_friends?: Array<UserPublic>
+  pending_invited_friends?: Array<UserPublic>
 }
 
 export type ShowtimeLoggedIn = {
@@ -322,6 +309,8 @@ export type ShowtimeLoggedIn = {
   seat_number?: string | null
   invited_by?: Array<UserPublic>
   invite_ping_ids?: Array<number>
+  co_invited_friends?: Array<UserPublic>
+  pending_invited_friends?: Array<UserPublic>
   friends_watchlisted?: Array<UserPublic>
   friends_watched?: Array<UserPublic>
 }
@@ -413,7 +402,6 @@ export type UserMe = {
   email: string
   is_superuser: boolean
   incognito_mode: boolean
-  default_visibility_mode: VisibilityMode | null
   notify_on_friend_showtime_match: boolean
   notify_on_friend_requests: boolean
   notify_on_showtime_ping: boolean
@@ -448,7 +436,6 @@ export type UserUpdate = {
   email?: string | null
   letterboxd_username?: string | null
   incognito_mode?: boolean | null
-  default_visibility_mode?: VisibilityMode | null
   notify_on_friend_showtime_match?: boolean | null
   notify_on_friend_requests?: boolean | null
   notify_on_showtime_ping?: boolean | null
@@ -471,7 +458,7 @@ export type UserWithFriendStatus = {
   is_friend: boolean
   sent_request: boolean
   received_request: boolean
-  is_favorite?: boolean
+  shares_status?: boolean
 }
 
 export type ValidationError = {
@@ -483,11 +470,16 @@ export type ValidationError = {
 /**
  * Who may see a user's attendance status for a showtime.
  *
- * Stored on ShowtimeVisibilitySetting (per showtime) and as the user's
- * default (User.default_visibility_mode). Friends you invited — and friends
- * who invited you — always see your status regardless of this mode.
+ * Stored per showtime on ShowtimeVisibilitySetting.
+ *
+ * - ALL_FRIENDS: every friend you haven't opted out of sharing with.
+ * - INVITED_ONLY: nobody by default.
+ *
+ * Regardless of the mode, your status is always visible to friends you
+ * invited, friends who invited you, and friends co-invited by the same person
+ * who invited you.
  */
-export type VisibilityMode = "ALL_FRIENDS" | "FAVORITE_FRIENDS" | "INVITED_ONLY"
+export type VisibilityMode = "ALL_FRIENDS" | "INVITED_ONLY"
 
 export type CinemasGetAllCinemasResponse = Array<CinemaPublic>
 
@@ -515,12 +507,12 @@ export type FriendsCancelFriendRequestData = {
 
 export type FriendsCancelFriendRequestResponse = Message
 
-export type FriendsSetFriendFavoriteData = {
+export type FriendsSetFriendStatusSharingData = {
   friendId: string
-  requestBody: FriendFavoriteUpdate
+  requestBody: FriendStatusSharingUpdate
 }
 
-export type FriendsSetFriendFavoriteResponse = Message
+export type FriendsSetFriendStatusSharingResponse = Message
 
 export type FriendsRemoveFriendData = {
   friendId: string
@@ -609,30 +601,6 @@ export type MeDeleteCinemaPresetData = {
 }
 
 export type MeDeleteCinemaPresetResponse = Message
-
-export type MeGetFriendGroupsResponse = Array<FriendGroupPublic>
-
-export type MeCreateFriendGroupData = {
-  requestBody: FriendGroupCreate
-}
-
-export type MeCreateFriendGroupResponse = FriendGroupPublic
-
-export type MeGetFavoriteFriendGroupResponse = FriendGroupPublic | null
-
-export type MeClearFavoriteFriendGroupResponse = Message
-
-export type MeSetFavoriteFriendGroupData = {
-  groupId: string
-}
-
-export type MeSetFavoriteFriendGroupResponse = FriendGroupPublic
-
-export type MeDeleteFriendGroupData = {
-  groupId: string
-}
-
-export type MeDeleteFriendGroupResponse = Message
 
 export type MeUpdatePasswordMeData = {
   requestBody: UpdatePassword
@@ -1086,13 +1054,6 @@ export type ShowtimesUninviteFriendFromShowtimeData = {
 }
 
 export type ShowtimesUninviteFriendFromShowtimeResponse = Message
-
-export type ShowtimesPingFriendGroupForShowtimeData = {
-  groupId: string
-  showtimeId: number
-}
-
-export type ShowtimesPingFriendGroupForShowtimeResponse = Message
 
 export type ShowtimesReceivePingFromLinkData = {
   senderIdentifier: string

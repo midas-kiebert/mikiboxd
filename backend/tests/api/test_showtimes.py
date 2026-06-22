@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.enums import GoingStatus, VisibilityMode
 from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtime_crud
+from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.models.showtime_ping import ShowtimePing
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
@@ -382,28 +383,29 @@ def test_showtime_visibility_get_and_update(
     initial_body = initial_response.json()
     assert initial_body["showtime_id"] == showtime_id
     assert initial_body["movie_id"] == showtime.movie_id
-    # No default chosen yet → falls back to FAVORITE_FRIENDS.
-    assert initial_body["mode"] == "FAVORITE_FRIENDS"
+    # Default is ALL_FRIENDS, so both (non-opted-out) friends can see.
+    assert initial_body["mode"] == "ALL_FRIENDS"
+    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
+        first_friend_id,
+        second_friend_id,
+    }
 
     update_response = client.put(
         f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
         headers=normal_user_token_headers,
-        json={"mode": "ALL_FRIENDS"},
+        json={"mode": "INVITED_ONLY"},
     )
     assert update_response.status_code == 200
-    assert update_response.json()["mode"] == "ALL_FRIENDS"
+    assert update_response.json()["mode"] == "INVITED_ONLY"
 
     updated_get_response = client.get(
         f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
         headers=normal_user_token_headers,
     )
     assert updated_get_response.status_code == 200
-    assert updated_get_response.json()["mode"] == "ALL_FRIENDS"
-    # ALL_FRIENDS materializes both friends as viewers.
-    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
-        first_friend_id,
-        second_friend_id,
-    }
+    assert updated_get_response.json()["mode"] == "INVITED_ONLY"
+    # INVITED_ONLY with no pings → nobody can see.
+    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == set()
 
 
 def test_update_showtime_visibility_rejects_unselected_showtime(
@@ -505,17 +507,25 @@ def test_removing_showtime_selection_clears_showtime_visibility_rows(
     )
     db_transaction.commit()
 
-    # ALL_FRIENDS differs from the FAVORITE_FRIENDS default, so a setting row is
-    # stored (and the friend is materialized into the effective cache).
-    visibility_update_response = client.put(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
-        headers=normal_user_token_headers,
-        json={"mode": "ALL_FRIENDS"},
-    )
-    assert visibility_update_response.status_code == 200
+    # Default is ALL_FRIENDS with the friend visible; INVITED_ONLY differs from
+    # the default so a setting row is stored.
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
         friend_id
     }
+    visibility_update_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"mode": "INVITED_ONLY"},
+    )
+    assert visibility_update_response.status_code == 200
+    assert (
+        showtime_visibility_crud.get_showtime_visibility_setting(
+            session=db_transaction,
+            owner_id=current_user_id,
+            showtime_id=showtime_id,
+        )
+        is not None
+    )
 
     deselect_response = client.put(
         f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
@@ -581,7 +591,7 @@ def test_showtime_visibility_batch_returns_payload_per_showtime(
     update_response = client.put(
         f"{settings.API_V1_STR}/showtimes/{first_showtime_id}/visibility",
         headers=normal_user_token_headers,
-        json={"mode": "ALL_FRIENDS"},
+        json={"mode": "INVITED_ONLY"},
     )
     assert update_response.status_code == 200
 
@@ -600,10 +610,10 @@ def test_showtime_visibility_batch_returns_payload_per_showtime(
         second_showtime_id,
     ]
     assert body[0]["movie_id"] == first_showtime_movie_id
-    assert body[0]["mode"] == "ALL_FRIENDS"
-    # Second showtime has no override → the user's default (FAVORITE_FRIENDS).
+    assert body[0]["mode"] == "INVITED_ONLY"
+    # Second showtime has no override → the default (ALL_FRIENDS).
     assert body[1]["movie_id"] == second_showtime_movie_id
-    assert body[1]["mode"] == "FAVORITE_FRIENDS"
+    assert body[1]["mode"] == "ALL_FRIENDS"
 
 
 def test_showtime_visibility_is_scoped_per_showtime(
@@ -660,34 +670,34 @@ def test_showtime_visibility_is_scoped_per_showtime(
         headers=normal_user_token_headers,
     )
     assert unaffected_response.status_code == 200
-    # The second showtime keeps the user's default mode.
-    assert unaffected_response.json()["mode"] == "FAVORITE_FRIENDS"
+    # The second showtime keeps the default mode.
+    assert unaffected_response.json()["mode"] == "ALL_FRIENDS"
 
 
-def test_default_favorite_friends_mode_only_shows_favorites(
+def test_all_friends_mode_excludes_opted_out_friends(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,
     user_factory,
     showtime_factory,
 ) -> None:
-    favorite_friend = user_factory()
-    other_friend = user_factory()
+    sharing_friend = user_factory()
+    hidden_friend = user_factory()
     showtime = showtime_factory()
     showtime_id = showtime.id
-    favorite_friend_id = favorite_friend.id
-    other_friend_id = other_friend.id
+    sharing_friend_id = sharing_friend.id
+    hidden_friend_id = hidden_friend.id
     current_user_id = _normal_user_id(db_transaction)
 
     friendship_crud.create_friendship(
         session=db_transaction,
         user_id=current_user_id,
-        friend_id=favorite_friend_id,
+        friend_id=sharing_friend_id,
     )
     friendship_crud.create_friendship(
         session=db_transaction,
         user_id=current_user_id,
-        friend_id=other_friend_id,
+        friend_id=hidden_friend_id,
     )
     showtime_crud.add_showtime_selection(
         session=db_transaction,
@@ -697,27 +707,33 @@ def test_default_favorite_friends_mode_only_shows_favorites(
     )
     db_transaction.commit()
 
-    # Mark one friend as a favorite; the default mode is FAVORITE_FRIENDS.
-    favorite_response = client.put(
-        f"{settings.API_V1_STR}/friends/{favorite_friend_id}/favorite",
+    # Default ALL_FRIENDS shows both friends.
+    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
+        sharing_friend_id,
+        hidden_friend_id,
+    }
+
+    # Opt out of sharing with one friend; they no longer see (still ALL_FRIENDS).
+    hide_response = client.put(
+        f"{settings.API_V1_STR}/friends/{hidden_friend_id}/status-visibility",
         headers=normal_user_token_headers,
-        json={"is_favorite": True},
+        json={"shares_status": False},
     )
-    assert favorite_response.status_code == 200
+    assert hide_response.status_code == 200
+    db_transaction.expire_all()
 
     visibility_response = client.get(
         f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
         headers=normal_user_token_headers,
     )
     assert visibility_response.status_code == 200
-    assert visibility_response.json()["mode"] == "FAVORITE_FRIENDS"
-    # Only the favorite friend is materialized as a viewer.
+    assert visibility_response.json()["mode"] == "ALL_FRIENDS"
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
-        favorite_friend_id
+        sharing_friend_id
     }
 
 
-def test_incognito_mode_overrides_and_restores_favorite_friend_visibility(
+def test_incognito_mode_overrides_and_restores_status_visibility(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,
@@ -752,12 +768,14 @@ def test_incognito_mode_overrides_and_restores_favorite_friend_visibility(
     )
     db_transaction.commit()
 
-    favorite_response = client.put(
-        f"{settings.API_V1_STR}/friends/{visible_friend_id}/favorite",
+    # Opt out of the hidden friend so only the visible friend can see by default.
+    hide_response = client.put(
+        f"{settings.API_V1_STR}/friends/{hidden_friend_id}/status-visibility",
         headers=normal_user_token_headers,
-        json={"is_favorite": True},
+        json={"shares_status": False},
     )
-    assert favorite_response.status_code == 200
+    assert hide_response.status_code == 200
+    db_transaction.expire_all()
 
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
         visible_friend_id
@@ -831,8 +849,9 @@ def test_incognito_mode_overrides_and_restores_favorite_friend_visibility(
         headers=normal_user_token_headers,
     )
     assert after_incognito_response.status_code == 200
-    # Default mode restored, favorite friend visible again.
-    assert after_incognito_response.json()["mode"] == "FAVORITE_FRIENDS"
+    # Default mode restored, sharing friend visible again (opted-out one stays hidden).
+    assert after_incognito_response.json()["mode"] == "ALL_FRIENDS"
+    db_transaction.expire_all()
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
         visible_friend_id
     }
@@ -846,68 +865,6 @@ def test_incognito_mode_overrides_and_restores_favorite_friend_visibility(
     assert any(
         showtime_item["id"] == showtime_id
         for showtime_item in visible_friend_view_after_incognito.json()
-    )
-
-
-def test_ping_friend_group_for_showtime(
-    client: TestClient,
-    normal_user_token_headers: dict[str, str],
-    db_transaction: Session,
-    user_factory,
-    showtime_factory,
-) -> None:
-    first_friend = user_factory()
-    second_friend = user_factory()
-    showtime = showtime_factory()
-    showtime_id = showtime.id
-    first_friend_id = first_friend.id
-    second_friend_id = second_friend.id
-    current_user_id = _normal_user_id(db_transaction)
-
-    friendship_crud.create_friendship(
-        session=db_transaction,
-        user_id=current_user_id,
-        friend_id=first_friend_id,
-    )
-    friendship_crud.create_friendship(
-        session=db_transaction,
-        user_id=current_user_id,
-        friend_id=second_friend_id,
-    )
-    db_transaction.commit()
-
-    group_create_response = client.post(
-        f"{settings.API_V1_STR}/me/friend-groups",
-        headers=normal_user_token_headers,
-        json={
-            "name": "Ping Group",
-            "friend_ids": [str(first_friend_id), str(second_friend_id)],
-        },
-    )
-    assert group_create_response.status_code == 200
-    group_id = group_create_response.json()["id"]
-
-    ping_group_response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-group/{group_id}",
-        headers=normal_user_token_headers,
-    )
-    assert ping_group_response.status_code == 200
-    assert ping_group_response.json()["message"] == "Invited 2 friends successfully."
-
-    second_ping_group_response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-group/{group_id}",
-        headers=normal_user_token_headers,
-    )
-    assert second_ping_group_response.status_code == 200
-    assert second_ping_group_response.json()["message"] == "No new invites were sent."
-
-    list_response = client.get(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/pinged-friends",
-        headers=normal_user_token_headers,
-    )
-    assert list_response.status_code == 200
-    assert sorted(list_response.json()) == sorted(
-        [str(first_friend_id), str(second_friend_id)]
     )
 
 
@@ -959,19 +916,13 @@ def test_showtime_visibility_filters_friend_status_in_showtime_payload(
     )
     db_transaction.commit()
 
-    # Favorite only one friend, then restrict the showtime to favorites.
-    favorite_response = client.put(
-        f"{settings.API_V1_STR}/friends/{visible_friend_id}/favorite",
+    # Opt out of the hidden friend; the default ALL_FRIENDS shows the other.
+    hide_response = client.put(
+        f"{settings.API_V1_STR}/friends/{hidden_friend_id}/status-visibility",
         headers=normal_user_token_headers,
-        json={"is_favorite": True},
+        json={"shares_status": False},
     )
-    assert favorite_response.status_code == 200
-    visibility_update_response = client.put(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
-        headers=normal_user_token_headers,
-        json={"mode": "FAVORITE_FRIENDS"},
-    )
-    assert visibility_update_response.status_code == 200
+    assert hide_response.status_code == 200
 
     visible_friend_login = client.post(
         f"{settings.API_V1_STR}/login/access-token",
@@ -1331,23 +1282,23 @@ def test_main_page_showtimes_includes_friend_seat_in_badge_payload(
     assert friend_item["seat_number"] == "5"
 
 
-def test_set_friend_favorite_changes_effective_visibility(
+def test_opting_out_of_status_sharing_changes_effective_visibility(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,
     user_factory,
     showtime_factory,
 ) -> None:
-    favorite_friend = user_factory()
+    friend = user_factory()
     other_friend = user_factory()
     showtime = showtime_factory()
-    favorite_friend_id = favorite_friend.id
+    friend_id = friend.id
     other_friend_id = other_friend.id
     showtime_id = showtime.id
     current_user_id = _normal_user_id(db_transaction)
 
     friendship_crud.create_friendship(
-        session=db_transaction, user_id=current_user_id, friend_id=favorite_friend_id
+        session=db_transaction, user_id=current_user_id, friend_id=friend_id
     )
     friendship_crud.create_friendship(
         session=db_transaction, user_id=current_user_id, friend_id=other_friend_id
@@ -1360,42 +1311,48 @@ def test_set_friend_favorite_changes_effective_visibility(
     )
     db_transaction.commit()
 
-    # Default mode is FAVORITE_FRIENDS and nobody is a favorite yet.
-    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == set()
-
-    favorite_response = client.put(
-        f"{settings.API_V1_STR}/friends/{favorite_friend_id}/favorite",
-        headers=normal_user_token_headers,
-        json={"is_favorite": True},
-    )
-    assert favorite_response.status_code == 200
-    db_transaction.expire_all()
+    # Default ALL_FRIENDS + sharing-by-default → both friends see.
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
-        favorite_friend_id
+        friend_id,
+        other_friend_id,
     }
 
-    # The friend list reflects the favorite flag.
+    hide_response = client.put(
+        f"{settings.API_V1_STR}/friends/{friend_id}/status-visibility",
+        headers=normal_user_token_headers,
+        json={"shares_status": False},
+    )
+    assert hide_response.status_code == 200
+    db_transaction.expire_all()
+    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
+        other_friend_id
+    }
+
+    # The friend list reflects the sharing flag.
     friends_response = client.get(
         f"{settings.API_V1_STR}/me/friends", headers=normal_user_token_headers
     )
     assert friends_response.status_code == 200
-    favorites = {
-        friend["id"]: friend["is_favorite"] for friend in friends_response.json()
+    sharing = {
+        friend["id"]: friend["shares_status"] for friend in friends_response.json()
     }
-    assert favorites[str(favorite_friend_id)] is True
-    assert favorites[str(other_friend_id)] is False
+    assert sharing[str(friend_id)] is False
+    assert sharing[str(other_friend_id)] is True
 
-    unfavorite_response = client.put(
-        f"{settings.API_V1_STR}/friends/{favorite_friend_id}/favorite",
+    restore_response = client.put(
+        f"{settings.API_V1_STR}/friends/{friend_id}/status-visibility",
         headers=normal_user_token_headers,
-        json={"is_favorite": False},
+        json={"shares_status": True},
     )
-    assert unfavorite_response.status_code == 200
+    assert restore_response.status_code == 200
     db_transaction.expire_all()
-    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == set()
+    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
+        friend_id,
+        other_friend_id,
+    }
 
 
-def test_set_friend_favorite_rejects_non_friend(
+def test_set_friend_status_sharing_rejects_non_friend(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,  # noqa: ARG001
@@ -1403,9 +1360,9 @@ def test_set_friend_favorite_rejects_non_friend(
 ) -> None:
     stranger = user_factory()
     response = client.put(
-        f"{settings.API_V1_STR}/friends/{stranger.id}/favorite",
+        f"{settings.API_V1_STR}/friends/{stranger.id}/status-visibility",
         headers=normal_user_token_headers,
-        json={"is_favorite": True},
+        json={"shares_status": False},
     )
     assert response.status_code == 404
 
@@ -1518,64 +1475,101 @@ def test_friend_who_invited_you_sees_your_status(
     }
 
 
-def test_changing_default_visibility_mode_rematerializes_visibility(
+def test_co_invitees_see_your_status_and_inherit_invite_only_default(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,
     user_factory,
     showtime_factory,
 ) -> None:
-    favorite_friend = user_factory()
-    other_friend = user_factory()
+    inviter = user_factory()
+    co_invitee = user_factory()  # my friend, invited by the same inviter
+    bystander = user_factory()  # my friend, not invited
     showtime = showtime_factory()
-    favorite_friend_id = favorite_friend.id
-    other_friend_id = other_friend.id
+    inviter_id = inviter.id
+    co_invitee_id = co_invitee.id
+    bystander_id = bystander.id
     showtime_id = showtime.id
     current_user_id = _normal_user_id(db_transaction)
 
-    friendship_crud.create_friendship(
-        session=db_transaction, user_id=current_user_id, friend_id=favorite_friend_id
-    )
-    friendship_crud.create_friendship(
-        session=db_transaction, user_id=current_user_id, friend_id=other_friend_id
-    )
-    friendship_crud.set_friendship_favorite(
-        session=db_transaction,
-        owner_id=current_user_id,
-        friend_id=favorite_friend_id,
-        is_favorite=True,
-    )
+    for friend_id in (inviter_id, co_invitee_id, bystander_id):
+        friendship_crud.create_friendship(
+            session=db_transaction, user_id=current_user_id, friend_id=friend_id
+        )
     showtime_crud.add_showtime_selection(
         session=db_transaction,
         showtime_id=showtime_id,
         user_id=current_user_id,
         going_status=GoingStatus.GOING,
     )
+    # The inviter is keeping this showtime invite-only.
+    showtime_visibility_crud.set_visibility_mode_for_showtime(
+        session=db_transaction,
+        owner_id=inviter_id,
+        showtime_id=showtime_id,
+        mode=VisibilityMode.INVITED_ONLY,
+        now=now_amsterdam_naive(),
+    )
+    # The inviter invites both me and my friend (co_invitee).
+    showtime_ping_crud.create_showtime_ping(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        sender_id=inviter_id,
+        receiver_id=current_user_id,
+        created_at=now_amsterdam_naive(),
+    )
+    showtime_ping_crud.create_showtime_ping(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        sender_id=inviter_id,
+        receiver_id=co_invitee_id,
+        created_at=now_amsterdam_naive(),
+    )
+    showtime_visibility_crud.rebuild_effective_visibility_for_showtime_participants(
+        session=db_transaction,
+        showtime_id=showtime_id,
+    )
     db_transaction.commit()
 
-    # Default FAVORITE_FRIENDS → only the favorite is visible.
-    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
-        favorite_friend_id
-    }
-
-    all_friends_response = client.patch(
-        f"{settings.API_V1_STR}/me/",
+    # I inherit the inviter's invite-only default for this showtime.
+    visibility_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
         headers=normal_user_token_headers,
-        json={"default_visibility_mode": "ALL_FRIENDS"},
     )
-    assert all_friends_response.status_code == 200
-    assert all_friends_response.json()["default_visibility_mode"] == "ALL_FRIENDS"
+    assert visibility_response.status_code == 200
+    assert visibility_response.json()["mode"] == "INVITED_ONLY"
+
+    # Even under invite-only, the inviter (direct) and the co-invitee see my
+    # status; the un-invited bystander does not.
+    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
+        inviter_id,
+        co_invitee_id,
+    }
+    assert bystander_id not in _effective_viewer_ids(
+        db_transaction, current_user_id, showtime_id
+    )
+
+    # The showtime payload surfaces the co-invited friend for the banner.
+    showtime_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}",
+        headers=normal_user_token_headers,
+    )
+    assert showtime_response.status_code == 200
+    co_invited_ids = {
+        friend["id"] for friend in showtime_response.json()["co_invited_friends"]
+    }
+    assert co_invited_ids == {str(co_invitee_id)}
+
+    # Switching to ALL_FRIENDS still keeps the co-invitee visible.
+    update_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"mode": "ALL_FRIENDS"},
+    )
+    assert update_response.status_code == 200
     db_transaction.expire_all()
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
-        favorite_friend_id,
-        other_friend_id,
+        inviter_id,
+        co_invitee_id,
+        bystander_id,
     }
-
-    invited_only_response = client.patch(
-        f"{settings.API_V1_STR}/me/",
-        headers=normal_user_token_headers,
-        json={"default_visibility_mode": "INVITED_ONLY"},
-    )
-    assert invited_only_response.status_code == 200
-    db_transaction.expire_all()
-    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == set()

@@ -21,7 +21,6 @@ from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
-from app.schemas.friend_group import FriendGroupCreate, FriendGroupPublic
 from app.schemas.letterboxd_list import (
     LetterboxdListCreate,
     LetterboxdListPublic,
@@ -225,102 +224,6 @@ def delete_cinema_preset(
             detail="Cinema preset not found",
         )
     return Message(message="Cinema preset deleted successfully")
-
-
-@router.get("/friend-groups", response_model=list[FriendGroupPublic])
-def get_friend_groups(
-    session: SessionDep,
-    current_user: CurrentUser,
-) -> list[FriendGroupPublic]:
-    return me_service.list_friend_groups(
-        session=session,
-        user_id=current_user.id,
-    )
-
-
-@router.get("/friend-groups/favorite", response_model=FriendGroupPublic | None)
-def get_favorite_friend_group(
-    session: SessionDep,
-    current_user: CurrentUser,
-) -> FriendGroupPublic | None:
-    return me_service.get_favorite_friend_group(
-        session=session,
-        user_id=current_user.id,
-    )
-
-
-@router.post("/friend-groups", response_model=FriendGroupPublic)
-def create_friend_group(
-    session: SessionDep,
-    current_user: CurrentUser,
-    payload: FriendGroupCreate,
-) -> FriendGroupPublic:
-    if not payload.name.strip():
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Group name cannot be empty",
-        )
-    try:
-        return me_service.save_friend_group(
-            session=session,
-            user_id=current_user.id,
-            payload=payload,
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
-
-
-@router.put("/friend-groups/{group_id}/favorite", response_model=FriendGroupPublic)
-def set_favorite_friend_group(
-    session: SessionDep,
-    current_user: CurrentUser,
-    group_id: UUID,
-) -> FriendGroupPublic:
-    favorite = me_service.set_favorite_friend_group(
-        session=session,
-        user_id=current_user.id,
-        group_id=group_id,
-    )
-    if favorite is None:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail="Friend group not found",
-        )
-    return favorite
-
-
-@router.delete("/friend-groups/favorite", response_model=Message)
-def clear_favorite_friend_group(
-    session: SessionDep,
-    current_user: CurrentUser,
-) -> Message:
-    me_service.clear_favorite_friend_group(
-        session=session,
-        user_id=current_user.id,
-    )
-    return Message(message="Default visibility friend group cleared successfully")
-
-
-@router.delete("/friend-groups/{group_id}", response_model=Message)
-def delete_friend_group(
-    session: SessionDep,
-    current_user: CurrentUser,
-    group_id: UUID,
-) -> Message:
-    deleted = me_service.delete_friend_group(
-        session=session,
-        user_id=current_user.id,
-        group_id=group_id,
-    )
-    if not deleted:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail="Friend group not found",
-        )
-    return Message(message="Friend group deleted successfully")
 
 
 @router.delete("/", response_model=Message)

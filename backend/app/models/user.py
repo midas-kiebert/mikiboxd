@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Optional
 from pydantic import EmailStr
 from sqlmodel import Field, Relationship, SQLModel
 
-from app.core.enums import NotificationChannel, VisibilityMode
+from app.core.enums import NotificationChannel
 
 if TYPE_CHECKING:
     from app.models.letterboxd import Letterboxd
@@ -16,10 +16,6 @@ class _UserBase(SQLModel):
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
     incognito_mode: bool = Field(default=False)
-    # Default per-showtime visibility mode applied to newly-selected showtimes.
-    # None means the user has not yet picked one (the mobile app prompts on the
-    # first status change). Treated as FAVORITE_FRIENDS until set.
-    default_visibility_mode: VisibilityMode | None = Field(default=None)
     notify_on_friend_showtime_match: bool = Field(default=True)
     notify_on_friend_requests: bool = Field(default=True)
     notify_on_showtime_ping: bool = Field(default=True)
@@ -67,7 +63,6 @@ class UserUpdate(SQLModel):
     email: EmailStr | None = Field(default=None, max_length=255)
     letterboxd_username: str | None = Field(default=None, max_length=255)
     incognito_mode: bool | None = Field(default=None)
-    default_visibility_mode: VisibilityMode | None = Field(default=None)
     notify_on_friend_showtime_match: bool | None = Field(default=None)
     notify_on_friend_requests: bool | None = Field(default=None)
     notify_on_showtime_ping: bool | None = Field(default=None)

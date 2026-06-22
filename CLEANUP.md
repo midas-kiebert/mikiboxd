@@ -68,12 +68,12 @@ Legend:
 - [x] `showtime_selection.py` — User's going/interested status on a showtime
 - [x] `showtime_ping.py` — Notification sent to a friend about a showtime
 - [x] `notification.py` — Notification-centre entry (match / invite-response / request-accepted)
-- [x] `showtime_visibility.py` — Visibility settings (who can see your going status)
+- [x] `showtime_visibility.py` — Per-showtime visibility mode + effective-visibility cache
 - [x] `showtime_source_presence.py` — Tracks which scraper provided a showtime
 - [x] `scrape_run.py` — Metadata about each scraping execution
-- [x] `friendship.py` — Accepted friend relationships
+- [x] `friendship.py` — Accepted friend relationships (+ per-friend `shares_status`)
 - [x] `filter_preset.py` — Saved filter configurations (movies or showtimes scope)
-- [x] `friend_group.py` — Named groups of friends for visibility rules
+- ~~`friend_group.py`~~ — deleted (friend groups retired in the visibility overhaul)
 - [x] `letterboxd.py` — Cached Letterboxd watchlist data per user
 - [x] `watchlist_selection.py` — Movies on a user's watchlist
 - [x] `push_token.py` — FCM device tokens for push notifications
@@ -97,8 +97,7 @@ Legend:
 - [x] `showtime_visibility.py` — Per-showtime visibility mode response shape
 - [ ] `cinema_preset.py` — Cinema preset response shape
 - [ ] `filter_preset.py` — Filter preset response shape
-- [ ] `friend_group.py` — Friend group response shape
-- [x] `friendship.py` — Friend favorite-toggle request shape
+- [x] `friendship.py` — Friend status-sharing toggle request shape
 - [ ] `push_token.py` — Push token registration shape
 - [ ] `city.py` — City response shape
 
@@ -113,11 +112,11 @@ Legend:
 - [ ] `user.py` — User queries, create, update, password check ⚠️ Large (652 LOC)
 - [ ] `movie.py` — Movie queries with filtering ⚠️ Large (599 LOC)
 - [ ] `showtime.py` — Showtime queries, upserts, reconciliation ⚠️ Large (518 LOC)
-- [x] `showtime_visibility.py` — Effective-visibility cache built from mode + favorites + pings
+- [x] `showtime_visibility.py` — Effective-visibility cache from mode + status-sharing + pings (incl. co-invitees)
 - [ ] `showtime_ping.py` — Ping queries and creation
 - [x] `notification.py` — Notification-centre row queries (upsert, feed, decay)
-- [ ] `friendship.py` — Friend request and friendship queries
-- [ ] `friend_group.py` — Friend group CRUD
+- [ ] `friendship.py` — Friend request and friendship queries (+ status-sharing)
+- ~~`friend_group.py`~~ — deleted (friend groups retired)
 - [ ] `cinema.py` — Cinema queries
 - [ ] `cinema_preset.py` — Cinema preset CRUD
 - [ ] `filter_preset.py` — Filter preset CRUD
@@ -266,7 +265,7 @@ Legend:
 - [ ] `cinema-showtimes.$cinemaId.tsx` — Showtimes for a specific cinema
 - [ ] `friend-showtimes.tsx` — Friend showtimes wrapper
 - [ ] `friend-showtimes.$friendId.tsx` — Showtimes for a specific friend
-- [ ] `friend-groups.tsx` — Friend groups management
+- ~~`friend-groups.tsx`~~ — deleted (friend groups retired; web parity pending)
 - [ ] `add-friend.$receiverId.tsx` — Add a friend by ID (deep link)
 - [ ] `ping.$showtimeId.$sender.tsx` — Ping deep link handler
 - [ ] `forbidden.tsx` — 403 page

@@ -67,27 +67,44 @@ def are_users_friends(
     return friendship is not None
 
 
-def get_favorite_friend_ids(
+def get_friend_ids(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> set[UUID]:
+    """All of the user's friend ids."""
+    return set(
+        session.exec(
+            select(Friendship.friend_id).where(col(Friendship.user_id) == user_id)
+        ).all()
+    )
+
+
+def get_status_sharing_friend_ids(
     *,
     session: Session,
     owner_id: UUID,
 ) -> set[UUID]:
-    """Friends the owner has marked as favorites (always-visible)."""
+    """Friends the owner shares their status with under the ALL_FRIENDS mode.
+
+    A friend is sharing unless the owner has opted out of showing them their
+    status (Friendship.shares_status defaults to True).
+    """
     stmt = select(Friendship.friend_id).where(
         col(Friendship.user_id) == owner_id,
-        col(Friendship.is_favorite).is_(True),
+        col(Friendship.shares_status).is_(True),
     )
     return set(session.exec(stmt).all())
 
 
-def set_friendship_favorite(
+def set_friendship_status_sharing(
     *,
     session: Session,
     owner_id: UUID,
     friend_id: UUID,
-    is_favorite: bool,
+    shares_status: bool,
 ) -> Friendship:
-    """Set the favorite flag on the owner's directional friendship row.
+    """Set whether the owner shares their status with a friend by default.
 
     Raises NoResultFound if the friendship does not exist.
     """
@@ -97,7 +114,7 @@ def set_friendship_favorite(
             Friendship.friend_id == friend_id,
         )
     ).one()
-    friendship.is_favorite = is_favorite
+    friendship.shares_status = shares_status
     session.add(friendship)
     session.flush()
     showtime_visibility_crud.rebuild_effective_visibility_for_owner(

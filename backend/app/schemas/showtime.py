@@ -40,6 +40,10 @@ class ShowtimeLoggedIn(ShowtimeBase):
     # for this showtime, plus those pings' ids (used to dismiss the invite).
     invited_by: Sequence["UserPublic"] = []
     invite_ping_ids: Sequence[int] = []
+    # Your friends who were also invited by someone who invited you (co-invitees).
+    co_invited_friends: Sequence["UserPublic"] = []
+    # Friends you invited who haven't responded going/interested yet (pending).
+    pending_invited_friends: Sequence["UserPublic"] = []
     # Friends who have this movie watchlisted / watched on Letterboxd.
     friends_watchlisted: Sequence["UserPublic"] = []
     friends_watched: Sequence["UserPublic"] = []
@@ -56,3 +60,5 @@ class ShowtimeInMovieLoggedIn(ShowtimeBase):
     seat_number: str | None = None
     invited_by: Sequence["UserPublic"] = []
     invite_ping_ids: Sequence[int] = []
+    co_invited_friends: Sequence["UserPublic"] = []
+    pending_invited_friends: Sequence["UserPublic"] = []

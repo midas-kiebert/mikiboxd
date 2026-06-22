@@ -34,9 +34,7 @@ class ShowtimeVisibilitySetting(SQLModel, table=True):
         primary_key=True,
         ondelete="CASCADE",
     )
-    mode: VisibilityMode = Field(
-        default=VisibilityMode.FAVORITE_FRIENDS, nullable=False
-    )
+    mode: VisibilityMode = Field(default=VisibilityMode.ALL_FRIENDS, nullable=False)
     updated_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
 
 

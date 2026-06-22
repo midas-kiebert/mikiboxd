@@ -52,7 +52,6 @@ def to_me(user: User) -> UserMe:
         notify_channel_invite_response=user.notify_channel_invite_response,
         notify_channel_interest_reminder=user.notify_channel_interest_reminder,
         letterboxd_username=user.letterboxd_username,
-        default_visibility_mode=user.default_visibility_mode,
         watchlist_last_synced=(
             user.letterboxd.last_watchlist_sync if user.letterboxd else None
         ),
@@ -67,7 +66,7 @@ def to_with_friend_status(
     *,
     session: Session,
     current_user: UUID,
-    favorite_friend_ids: set[UUID] | None = None,
+    sharing_friend_ids: set[UUID] | None = None,
 ) -> UserWithFriendStatus:
     """
     Converts a User object to a UserWithFriendStatus object, including friendship status
@@ -77,17 +76,17 @@ def to_with_friend_status(
         user (User): The User object to convert.
         session (Session): The SQLAlchemy session for database operations.
         current_user (UUID): The ID of the current user.
-        favorite_friend_ids (set[UUID] | None): The current user's favorite friend
-            ids, pre-loaded by the caller to avoid a per-user query. When None,
-            it is loaded here.
+        sharing_friend_ids (set[UUID] | None): The friends the current user
+            shares their status with (i.e. not opted out), pre-loaded by the
+            caller to avoid a per-user query. When None, it is loaded here.
     Returns:
         UserWithFriendStatus: The converted UserWithFriendStatus object with friendship details.
     Raises:
         ValidationError: If the user does not match the expected model.
     """
     User.model_validate(user)
-    if favorite_friend_ids is None:
-        favorite_friend_ids = friendship_crud.get_favorite_friend_ids(
+    if sharing_friend_ids is None:
+        sharing_friend_ids = friendship_crud.get_status_sharing_friend_ids(
             session=session,
             owner_id=current_user,
         )
@@ -113,7 +112,8 @@ def to_with_friend_status(
         is_friend=is_friend,
         sent_request=sent_request,
         received_request=received_request,
-        is_favorite=user.id in favorite_friend_ids,
+        # Sharing by default: only opted-out friends are absent from the set.
+        shares_status=(not is_friend) or (user.id in sharing_friend_ids),
     )
 
 

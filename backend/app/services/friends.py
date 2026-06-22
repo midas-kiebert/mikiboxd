@@ -4,7 +4,6 @@ from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlmodel import Session
 
-from app.crud import friend_group as friend_groups_crud
 from app.crud import friendship as friendship_crud
 from app.exceptions.base import AppError
 from app.exceptions.friends_exceptions import (
@@ -16,7 +15,6 @@ from app.exceptions.friends_exceptions import (
 from app.exceptions.user_exceptions import OneOrMoreUsersNotFound
 from app.models.auth_schemas import Message
 from app.services import push_notifications
-from app.utils import now_amsterdam_naive
 
 
 def create_friend_request(
@@ -164,25 +162,25 @@ def cancel_friend_request(
     return Message(message="Friend request cancelled successfully.")
 
 
-def set_friend_favorite(
+def set_friend_status_sharing(
     *,
     session: Session,
     current_user: UUID,
     friend_id: UUID,
-    is_favorite: bool,
+    shares_status: bool,
 ) -> Message:
     """
-    Mark a friend as favorite (always shown your status) or not.
+    Set whether the current user shares their status with a friend by default.
     Raises:
         FriendshipNotFoundError: If the friendship does not exist.
         AppError: For any other (unexpected) errors.
     """
     try:
-        friendship_crud.set_friendship_favorite(
+        friendship_crud.set_friendship_status_sharing(
             session=session,
             owner_id=current_user,
             friend_id=friend_id,
-            is_favorite=is_favorite,
+            shares_status=shares_status,
         )
         session.commit()
     except NoResultFound as e:
@@ -191,7 +189,7 @@ def set_friend_favorite(
     except Exception as e:
         session.rollback()
         raise AppError from e
-    return Message(message="Friend favorite updated successfully.")
+    return Message(message="Friend status sharing updated successfully.")
 
 
 def remove_friend(
@@ -211,19 +209,6 @@ def remove_friend(
             session=session,
             user_id=current_user,
             friend_id=friend_id,
-        )
-        now = now_amsterdam_naive()
-        friend_groups_crud.remove_member_from_owner_groups(
-            session=session,
-            owner_id=current_user,
-            friend_id=friend_id,
-            now=now,
-        )
-        friend_groups_crud.remove_member_from_owner_groups(
-            session=session,
-            owner_id=friend_id,
-            friend_id=current_user,
-            now=now,
         )
         session.commit()
     except NoResultFound as e:

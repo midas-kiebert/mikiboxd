@@ -59,8 +59,10 @@ import {
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
 
 import CinemaPill from "@/components/badges/CinemaPill";
-import VisibilityModePicker from "@/components/showtimes/VisibilityModePicker";
-import { getVisibilityModeMeta } from "@/components/showtimes/visibility-mode";
+import {
+  getVisibilityModeMeta,
+  VISIBILITY_MODE_ORDER,
+} from "@/components/showtimes/visibility-mode";
 import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import FriendInviteRow, { type FriendWatchStatus } from "@/components/friends/FriendInviteRow";
@@ -170,15 +172,20 @@ const getUniqueSenderNames = (senders: UserPublic[]): string[] =>
     .map((sender) => sender.display_name?.trim() || "A friend")
     .filter((value, index, all) => all.indexOf(value) === index);
 
-const formatInvitedYou = (senders: UserPublic[]): string => {
+const formatInvitedYou = (senders: UserPublic[], coInvitedCount: number): string => {
   const names = getUniqueSenderNames(senders);
-  if (names.length <= 1) {
-    return `${names[0] ?? "A friend"} has invited you to this showtime.`;
+  const inviter =
+    names.length <= 1
+      ? (names[0] ?? "A friend")
+      : names.length === 2
+        ? `${names[0]} and ${names[1]}`
+        : `${names[0]} and ${names.length - 1} others`;
+  const verb = names.length <= 1 ? "has" : "have";
+  if (coInvitedCount > 0) {
+    const friendsLabel = coInvitedCount === 1 ? "1 of your friends" : `${coInvitedCount} of your friends`;
+    return `${inviter} ${verb} invited you and ${friendsLabel} to this showtime.`;
   }
-  if (names.length === 2) {
-    return `${names[0]} and ${names[1]} have invited you to this showtime.`;
-  }
-  return `${names[0]} and ${names.length - 1} others have invited you to this showtime.`;
+  return `${inviter} ${verb} invited you to this showtime.`;
 };
 
 export default function ShowtimeActionModal({
@@ -228,7 +235,8 @@ export default function ShowtimeActionModal({
   const [seatRowDraft, setSeatRowDraft] = useState("");
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
-  const [isVisibilityPickerOpen, setIsVisibilityPickerOpen] = useState(false);
+  const [isVisibilityExpanded, setIsVisibilityExpanded] = useState(false);
+  const [isCoInvitedExpanded, setIsCoInvitedExpanded] = useState(false);
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<"watchlisted" | "watched" | null>(null);
 
@@ -369,12 +377,19 @@ export default function ShowtimeActionModal({
     },
   });
 
+  const handleToggleVisibilityExpanded = useCallback(() => {
+    triggerSelectionHaptic();
+    LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
+    setIsVisibilityExpanded((previous) => !previous);
+  }, []);
+
   const handleVisibilityModeSelect = useCallback(
     (mode: VisibilityMode) => {
-      setIsVisibilityPickerOpen(false);
+      LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
+      setIsVisibilityExpanded(false);
       if (!showtime || mode === visibility?.mode) return;
       triggerSelectionHaptic();
-      // Optimistically reflect the new mode in the chip before the request lands.
+      // Optimistically reflect the new mode before the request lands.
       queryClient.setQueryData(visibilityQueryKey, (prev: typeof visibility) =>
         prev ? { ...prev, mode } : prev
       );
@@ -677,7 +692,10 @@ export default function ShowtimeActionModal({
       : null;
   const spokenLanguage = formatLanguageCode(showtime?.movie.original_language);
 
-  const invitedYouLabel = hasInvite ? formatInvitedYou(invite!.senders) : null;
+  const coInvitedFriends = showtime?.co_invited_friends ?? [];
+  const invitedYouLabel = hasInvite
+    ? formatInvitedYou(invite!.senders, coInvitedFriends.length)
+    : null;
   const showtimeStartsAt = showtime ? DateTime.fromISO(showtime.datetime) : null;
   const dateLabel = showtimeStartsAt?.isValid ? showtimeStartsAt.toFormat("cccc d LLLL") : null;
   const durationMinutes = showtime?.movie.duration ?? null;
@@ -690,9 +708,11 @@ export default function ShowtimeActionModal({
         .join(" • ")
     : null;
 
+  const pendingInvitedFriends = showtime?.pending_invited_friends ?? [];
   const hasAudience =
     (showtime?.friends_going.length ?? 0) > 0 ||
-    (showtime?.friends_interested.length ?? 0) > 0;
+    (showtime?.friends_interested.length ?? 0) > 0 ||
+    pendingInvitedFriends.length > 0;
 
   const statusOptions = [
     {
@@ -849,6 +869,7 @@ export default function ShowtimeActionModal({
                 <FriendBadges
                   friendsGoing={showtime.friends_going}
                   friendsInterested={showtime.friends_interested}
+                  friendsPending={pendingInvitedFriends}
                   variant="default"
                   maxVisible={30}
                   disabledUserId={disabledUserId}
@@ -909,11 +930,42 @@ export default function ShowtimeActionModal({
               ))}
             </View>
 
-            {/* Optional "X invited you" banner */}
+            {/* Optional "X invited you (and N of your friends)" banner */}
             {invitedYouLabel ? (
-              <View style={styles.invitedYouBanner}>
-                <MaterialIcons name="mail-outline" size={16} color={colors.blue.secondary} />
-                <ThemedText style={styles.invitedYouText}>{invitedYouLabel}</ThemedText>
+              <View style={styles.invitedYouBannerWrap}>
+                <TouchableOpacity
+                  style={styles.invitedYouBanner}
+                  activeOpacity={coInvitedFriends.length > 0 ? 0.7 : 1}
+                  disabled={coInvitedFriends.length === 0}
+                  onPress={() => {
+                    triggerSelectionHaptic();
+                    LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
+                    setIsCoInvitedExpanded((previous) => !previous);
+                  }}
+                >
+                  <MaterialIcons name="mail-outline" size={16} color={colors.blue.secondary} />
+                  <ThemedText style={styles.invitedYouText}>{invitedYouLabel}</ThemedText>
+                  {coInvitedFriends.length > 0 ? (
+                    <MaterialIcons
+                      name={isCoInvitedExpanded ? "expand-less" : "expand-more"}
+                      size={18}
+                      color={colors.blue.secondary}
+                    />
+                  ) : null}
+                </TouchableOpacity>
+                {isCoInvitedExpanded && coInvitedFriends.length > 0 ? (
+                  <View style={styles.coInvitedList}>
+                    <ThemedText style={styles.coInvitedHeading}>Also invited:</ThemedText>
+                    {coInvitedFriends.map((friend) => (
+                      <View key={friend.id} style={styles.coInvitedRow}>
+                        <MaterialIcons name="person" size={15} color={colors.textSecondary} />
+                        <ThemedText style={styles.coInvitedName} numberOfLines={1}>
+                          {friend.display_name?.trim() || "Friend"}
+                        </ThemedText>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
               </View>
             ) : null}
 
@@ -952,21 +1004,68 @@ export default function ShowtimeActionModal({
               ))}
             </View>
 
-            {/* Who can see your status for this showtime */}
-            {hasStatus && visibility ? (
-              <TouchableOpacity
-                style={[styles.visibilityChip, { borderColor: visibilityMeta!.color }]}
-                onPress={() => setIsVisibilityPickerOpen(true)}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons name="visibility" size={16} color={colors.textSecondary} />
-                <ThemedText style={styles.visibilityChipLabel}>Visible to</ThemedText>
-                <View style={[styles.visibilityChipValue, { backgroundColor: visibilityMeta!.color }]}>
-                  <MaterialIcons name={visibilityMeta!.icon} size={13} color={colors.pillActiveText} />
-                  <ThemedText style={styles.visibilityChipValueText}>{visibilityMeta!.label}</ThemedText>
-                </View>
-                <MaterialIcons name="expand-more" size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
+            {/* Who can see your status for this showtime — inline dropdown */}
+            {hasStatus && visibility && visibilityMeta ? (
+              <View style={styles.visibilitySection}>
+                <TouchableOpacity
+                  style={[styles.visibilityHeader, { borderColor: visibilityMeta.color }]}
+                  onPress={handleToggleVisibilityExpanded}
+                  activeOpacity={0.8}
+                >
+                  <ThemedText style={[styles.visibilityHeaderLabel, { color: visibilityMeta.color }]}>
+                    Status visible to
+                  </ThemedText>
+                  <View style={[styles.visibilityValue, { backgroundColor: visibilityMeta.color }]}>
+                    <MaterialIcons name={visibilityMeta.icon} size={13} color={colors.pillActiveText} />
+                    <ThemedText style={styles.visibilityValueText}>{visibilityMeta.label}</ThemedText>
+                  </View>
+                  <Animated.View
+                    style={{
+                      transform: [
+                        {
+                          rotate: isVisibilityExpanded ? "180deg" : "0deg",
+                        },
+                      ],
+                    }}
+                  >
+                    <MaterialIcons name="expand-more" size={20} color={visibilityMeta.color} />
+                  </Animated.View>
+                </TouchableOpacity>
+                {isVisibilityExpanded ? (
+                  <View style={styles.visibilityOptions}>
+                    {VISIBILITY_MODE_ORDER.map((mode) => {
+                      const optionMeta = getVisibilityModeMeta(mode, colors);
+                      const isSelected = mode === visibility.mode;
+                      return (
+                        <TouchableOpacity
+                          key={mode}
+                          style={[
+                            styles.visibilityOption,
+                            isSelected && { borderColor: optionMeta.color, backgroundColor: colors.pillBackground },
+                          ]}
+                          onPress={() => handleVisibilityModeSelect(mode)}
+                          activeOpacity={0.8}
+                        >
+                          <View style={[styles.visibilityOptionIcon, { backgroundColor: optionMeta.color }]}>
+                            <MaterialIcons name={optionMeta.icon} size={15} color={colors.pillActiveText} />
+                          </View>
+                          <View style={styles.visibilityOptionText}>
+                            <ThemedText style={styles.visibilityOptionLabel}>{optionMeta.label}</ThemedText>
+                            <ThemedText style={styles.visibilityOptionDescription}>
+                              {optionMeta.description}
+                            </ThemedText>
+                          </View>
+                          <MaterialIcons
+                            name={isSelected ? "radio-button-checked" : "radio-button-unchecked"}
+                            size={20}
+                            color={isSelected ? optionMeta.color : colors.textSecondary}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
             ) : null}
 
             {/* Actions: Share + Get Ticket (+ Seat) */}
@@ -1288,13 +1387,6 @@ export default function ShowtimeActionModal({
           </View>
         </View>
       </Modal>
-
-      <VisibilityModePicker
-        visible={isVisibilityPickerOpen}
-        selectedMode={visibility?.mode ?? null}
-        onSelect={handleVisibilityModeSelect}
-        onClose={() => setIsVisibilityPickerOpen(false)}
-      />
     </BottomSheetModal>
   );
 }
@@ -1407,16 +1499,39 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
     },
 
+    invitedYouBannerWrap: {
+      borderRadius: 12,
+      backgroundColor: colors.blue.primary,
+      overflow: "hidden",
+    },
     invitedYouBanner: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
       paddingVertical: 10,
       paddingHorizontal: 12,
-      borderRadius: 12,
-      backgroundColor: colors.blue.primary,
     },
     invitedYouText: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.text },
+    coInvitedList: {
+      paddingHorizontal: 12,
+      paddingBottom: 10,
+      gap: 5,
+    },
+    coInvitedHeading: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.blue.secondary,
+    },
+    coInvitedRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    coInvitedName: {
+      flex: 1,
+      fontSize: 13,
+      color: colors.text,
+    },
 
     statusRow: { flexDirection: "row", gap: 8 },
     statusButton: {
@@ -1438,23 +1553,25 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     statusButtonText: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
 
-    visibilityChip: {
+    visibilitySection: {
+      gap: 8,
+    },
+    visibilityHeader: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
       borderWidth: 1,
       borderRadius: 11,
       backgroundColor: colors.cardBackground,
-      paddingVertical: 8,
+      paddingVertical: 9,
       paddingHorizontal: 12,
     },
-    visibilityChipLabel: {
+    visibilityHeaderLabel: {
       flex: 1,
       fontSize: 13,
-      fontWeight: "600",
-      color: colors.textSecondary,
+      fontWeight: "700",
     },
-    visibilityChipValue: {
+    visibilityValue: {
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
@@ -1462,10 +1579,44 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingVertical: 3,
       paddingHorizontal: 8,
     },
-    visibilityChipValueText: {
+    visibilityValueText: {
       fontSize: 12,
       fontWeight: "700",
       color: colors.pillActiveText,
+    },
+    visibilityOptions: {
+      gap: 8,
+    },
+    visibilityOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      borderRadius: 11,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingVertical: 9,
+      paddingHorizontal: 12,
+    },
+    visibilityOptionIcon: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    visibilityOptionText: {
+      flex: 1,
+      gap: 2,
+    },
+    visibilityOptionLabel: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    visibilityOptionDescription: {
+      fontSize: 12,
+      color: colors.textSecondary,
     },
     ctaRow: { flexDirection: "row", gap: 8 },
     ctaIconButton: {

@@ -28,16 +28,15 @@ import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import FriendCard from '@/components/friends/FriendCard';
 import FilterPills from '@/components/filters/FilterPills';
-import FriendGroupsScreen from './friend-groups';
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
-type FriendsTabId = 'users' | 'received' | 'sent' | 'friends' | 'groups';
+type FriendsTabId = 'users' | 'received' | 'sent' | 'friends';
 type FriendsTabMeta = {
   emptyText: string;
 };
 
-const TAB_META: Record<Exclude<FriendsTabId, 'groups'>, FriendsTabMeta> = {
+const TAB_META: Record<FriendsTabId, FriendsTabMeta> = {
   users: {
     emptyText: 'No users found',
   },
@@ -73,8 +72,7 @@ export default function FriendsScreen() {
     return normalizedTab === 'received' ||
       normalizedTab === 'sent' ||
       normalizedTab === 'friends' ||
-      normalizedTab === 'users' ||
-      normalizedTab === 'groups'
+      normalizedTab === 'users'
       ? normalizedTab
       : null;
   }, [tab]);
@@ -176,8 +174,6 @@ export default function FriendsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['users', 'sentRequests'] });
     } else if (activeTab === 'friends') {
       await queryClient.invalidateQueries({ queryKey: ['users', 'friends'] });
-    } else if (activeTab === 'groups') {
-      await queryClient.invalidateQueries({ queryKey: ['friend-groups'] });
     }
     setRefreshing(false);
   };
@@ -196,7 +192,6 @@ export default function FriendsScreen() {
       { id: 'received', label: 'Requests Received', badgeCount: received.length },
       { id: 'sent', label: 'Requests Sent' },
       { id: 'friends', label: 'Friends' },
-      { id: 'groups', label: 'Friend Groups' },
     ],
     [received.length]
   );
@@ -216,13 +211,7 @@ export default function FriendsScreen() {
         <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder={searchPlaceholder} />
       </View>
 
-      {activeTab === 'groups' ? (
-        <FriendGroupsScreen
-          embedded
-          searchQuery={searchQuery}
-          onSearchQueryChange={setSearchQuery}
-        />
-      ) : activeTab === 'users' ? (
+      {activeTab === 'users' ? (
         <FlatList
           data={displayedUsers}
           keyExtractor={(item) => `user-${item.id}`}

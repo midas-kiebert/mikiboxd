@@ -13,7 +13,7 @@ import type {
   FriendsSendFriendRequestData,
   FriendsCancelFriendRequestData,
   FriendsDeclineFriendRequestData,
-  FriendsSetFriendFavoriteData,
+  FriendsSetFriendStatusSharingData,
 } from "shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -96,14 +96,15 @@ export default function FriendCard({ user }: FriendCardProps) {
     },
   });
 
-  // Optimistic favorite state so the star fills the instant it is tapped.
-  const [isFavorite, setIsFavorite] = useState(user.is_favorite);
+  // Optimistic status-sharing state so the toggle flips the instant it is tapped.
+  const [sharesStatus, setSharesStatus] = useState(user.shares_status);
   useEffect(() => {
-    setIsFavorite(user.is_favorite);
-  }, [user.is_favorite]);
+    setSharesStatus(user.shares_status);
+  }, [user.shares_status]);
 
-  const setFavoriteMutation = useMutation({
-    mutationFn: (data: FriendsSetFriendFavoriteData) => FriendsService.setFriendFavorite(data),
+  const setStatusSharingMutation = useMutation({
+    mutationFn: (data: FriendsSetFriendStatusSharingData) =>
+      FriendsService.setFriendStatusSharing(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       // Visibility of your status to this friend may have changed.
@@ -112,16 +113,19 @@ export default function FriendCard({ user }: FriendCardProps) {
       queryClient.invalidateQueries({ queryKey: ["movies"] });
     },
     onError: (error) => {
-      setIsFavorite(user.is_favorite);
-      console.error("Error updating favorite:", error);
-      Alert.alert("Error", "Could not update favorite.");
+      setSharesStatus(user.shares_status);
+      console.error("Error updating status sharing:", error);
+      Alert.alert("Error", "Could not update status sharing.");
     },
   });
 
-  const handleToggleFavorite = () => {
-    const next = !isFavorite;
-    setIsFavorite(next);
-    setFavoriteMutation.mutate({ friendId: user.id, requestBody: { is_favorite: next } });
+  const handleToggleStatusSharing = () => {
+    const next = !sharesStatus;
+    setSharesStatus(next);
+    setStatusSharingMutation.mutate({
+      friendId: user.id,
+      requestBody: { shares_status: next },
+    });
   };
 
   const isBusy =
@@ -218,25 +222,36 @@ export default function FriendCard({ user }: FriendCardProps) {
               <ThemedText style={[styles.badgeText, { color: badgeTextColor }]}>{statusLabel}</ThemedText>
             </View>
           ) : null}
-          {user.is_friend ? (
-            <TouchableOpacity
-              style={styles.favoriteButton}
-              onPress={(event) => {
-                event.stopPropagation();
-                handleToggleFavorite();
-              }}
-              disabled={isBusy}
-              activeOpacity={0.7}
-              accessibilityLabel={isFavorite ? "Always show status" : "Show status only on invite"}
-            >
-              <MaterialIcons
-                name={isFavorite ? "star" : "star-border"}
-                size={20}
-                color={isFavorite ? colors.yellow.secondary : colors.textSecondary}
-              />
-            </TouchableOpacity>
-          ) : null}
         </View>
+        {user.is_friend ? (
+          <TouchableOpacity
+            style={[styles.shareToggle, !sharesStatus && styles.shareToggleOff]}
+            onPress={(event) => {
+              event.stopPropagation();
+              handleToggleStatusSharing();
+            }}
+            disabled={isBusy}
+            activeOpacity={0.7}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: sharesStatus }}
+            accessibilityLabel={
+              sharesStatus
+                ? "Showing your status to this friend. Tap to hide."
+                : "Hiding your status from this friend. Tap to show."
+            }
+          >
+            <MaterialIcons
+              name={sharesStatus ? "visibility" : "visibility-off"}
+              size={15}
+              color={sharesStatus ? colors.green.secondary : colors.textSecondary}
+            />
+            <ThemedText
+              style={[styles.shareToggleText, { color: sharesStatus ? colors.green.secondary : colors.textSecondary }]}
+            >
+              {sharesStatus ? "Shows your status" : "Status hidden"}
+            </ThemedText>
+          </TouchableOpacity>
+        ) : null}
       </View>
       <View style={styles.actions}>
         {actions.map((action) => {
@@ -308,8 +323,26 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "700",
       color: colors.text,
     },
-    favoriteButton: {
-      padding: 2,
+    shareToggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      alignSelf: "flex-start",
+      marginTop: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.green.secondary,
+      backgroundColor: colors.green.primary,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    shareToggleOff: {
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.pillBackground,
+    },
+    shareToggleText: {
+      fontSize: 11,
+      fontWeight: "700",
     },
     badge: {
       borderWidth: 1,

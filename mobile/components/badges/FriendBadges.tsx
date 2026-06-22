@@ -21,6 +21,8 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 type FriendBadgesProps = {
   friendsGoing?: UserPublic[];
   friendsInterested?: UserPublic[];
+  /** Friends you invited who haven't responded yet — shown last, muted/dashed. */
+  friendsPending?: UserPublic[];
   variant?: "compact" | "default";
   maxVisible?: number;
   maxRows?: number;
@@ -56,6 +58,7 @@ type BadgeItem = {
   friend: UserPublic;
   backgroundColor: string;
   accentColor: string;
+  isPending?: boolean;
 };
 
 const FRIEND_BADGE_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
@@ -113,7 +116,8 @@ const FriendBadge = ({
   onMeasureWidth,
   disabledUserId,
   onNavigate,
-}: FriendBadgeProps) => {
+  isPending,
+}: FriendBadgeProps & { isPending?: boolean }) => {
   const router = useRouter();
   const sizeStyles: VariantStyles =
     variant === "compact"
@@ -151,9 +155,18 @@ const FriendBadge = ({
         styles.badge,
         sizeStyles.badge,
         { backgroundColor, borderColor: accentColor },
+        isPending && styles.pendingBadge,
       ]}
     >
-      <View style={[styles.statusDot, sizeStyles.statusDot, { backgroundColor: accentColor }]} />
+      <View
+        style={[
+          styles.statusDot,
+          sizeStyles.statusDot,
+          isPending
+            ? { backgroundColor: "transparent", borderWidth: 1, borderColor: accentColor }
+            : { backgroundColor: accentColor },
+        ]}
+      />
       <ThemedText
         style={[styles.badgeText, sizeStyles.badgeText, { color: accentColor }]}
         numberOfLines={1}
@@ -174,6 +187,7 @@ const FriendBadge = ({
 export default function FriendBadges({
   friendsGoing = [],
   friendsInterested = [],
+  friendsPending = [],
   variant = "default",
   maxVisible,
   maxRows,
@@ -200,6 +214,13 @@ export default function FriendBadges({
       friend,
       backgroundColor: colors.pillBackground,
       accentColor: colors.friendInterested.secondary,
+    })),
+    ...friendsPending.map((friend) => ({
+      key: `pending-${friend.id}`,
+      friend,
+      backgroundColor: colors.pillBackground,
+      accentColor: colors.textSecondary,
+      isPending: true,
     })),
   ];
 
@@ -326,13 +347,13 @@ export default function FriendBadges({
       ]}
       onLayout={handleContainerLayout}
     >
-      {visibleItems.map(({ key, friend, backgroundColor, accentColor }) => (
+      {visibleItems.map(({ key, friend, backgroundColor, accentColor, isPending }) => (
         <FriendBadge
           key={key}
           badgeKey={key}
           friendId={friend.id}
           name={getFriendName(friend)}
-          seatLabel={getSeatLabel(friend)}
+          seatLabel={isPending ? null : getSeatLabel(friend)}
           backgroundColor={backgroundColor}
           accentColor={accentColor}
           styles={styles}
@@ -340,6 +361,7 @@ export default function FriendBadges({
           onMeasureWidth={handleMeasureBadgeWidth}
           disabledUserId={disabledUserId}
           onNavigate={onNavigate}
+          isPending={isPending}
         />
       ))}
       {hiddenCount > 0 ? (
@@ -449,6 +471,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     defaultBadgeSeatText: {
       fontSize: 9,
       lineHeight: 10,
+    },
+    pendingBadge: {
+      borderStyle: "dashed",
+      opacity: 0.85,
     },
     overflowBadge: {
       backgroundColor: colors.pillBackground,

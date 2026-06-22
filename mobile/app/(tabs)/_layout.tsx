@@ -283,12 +283,6 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="friend-groups"
-        options={{
-          href: null,
-        }}
-      />
     </Tabs>
     </FiltersModalProvider>
   );

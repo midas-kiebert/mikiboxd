@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from sqlmodel import select
 
-from app.models.friend_group import FriendGroup
+from app.core.enums import VisibilityMode
 from app.models.letterboxd import Letterboxd
 from app.models.showtime import Showtime
 from app.models.showtime_ping import ShowtimePing
@@ -10,8 +10,6 @@ from app.models.showtime_selection import ShowtimeSelection
 from app.models.showtime_source_presence import ShowtimeSourcePresence
 from app.models.showtime_visibility import (
     ShowtimeVisibilityEffective,
-    ShowtimeVisibilityFriend,
-    ShowtimeVisibilityGroup,
     ShowtimeVisibilitySetting,
 )
 from app.models.watchlist_selection import WatchlistSelection
@@ -42,13 +40,6 @@ def test_delete_old_showtimes_removes_related_rows(
     )
     owner = user_factory()
     viewer = user_factory()
-
-    friend_group = FriendGroup(
-        owner_user_id=owner.id,
-        name="Cleanup Test Group",
-    )
-    db_transaction.add(friend_group)
-    db_transaction.flush()
 
     db_transaction.add(
         ShowtimeSourcePresence(
@@ -84,21 +75,7 @@ def test_delete_old_showtimes_removes_related_rows(
         ShowtimeVisibilitySetting(
             owner_id=owner.id,
             showtime_id=old_showtime.id,
-            is_all_friends=False,
-        )
-    )
-    db_transaction.add(
-        ShowtimeVisibilityFriend(
-            owner_id=owner.id,
-            showtime_id=old_showtime.id,
-            viewer_id=viewer.id,
-        )
-    )
-    db_transaction.add(
-        ShowtimeVisibilityGroup(
-            owner_id=owner.id,
-            showtime_id=old_showtime.id,
-            group_id=friend_group.id,
+            mode=VisibilityMode.INVITED_ONLY,
         )
     )
     db_transaction.add(
@@ -152,22 +129,6 @@ def test_delete_old_showtimes_removes_related_rows(
         db_transaction.exec(
             select(ShowtimeVisibilitySetting).where(
                 ShowtimeVisibilitySetting.showtime_id == old_showtime.id
-            )
-        ).one_or_none()
-        is None
-    )
-    assert (
-        db_transaction.exec(
-            select(ShowtimeVisibilityFriend).where(
-                ShowtimeVisibilityFriend.showtime_id == old_showtime.id
-            )
-        ).one_or_none()
-        is None
-    )
-    assert (
-        db_transaction.exec(
-            select(ShowtimeVisibilityGroup).where(
-                ShowtimeVisibilityGroup.showtime_id == old_showtime.id
             )
         ).one_or_none()
         is None

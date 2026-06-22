@@ -70,6 +70,14 @@ def update_me(
         incognito_mode_changed = (
             user_data["incognito_mode"] != current_user.incognito_mode
         )
+    default_visibility_mode_changed = False
+    if (
+        "default_visibility_mode" in user_data
+        and user_data["default_visibility_mode"] is not None
+    ):
+        default_visibility_mode_changed = (
+            user_data["default_visibility_mode"] != current_user.default_visibility_mode
+        )
 
     if "display_name" in user_data:
         display_name = user_data["display_name"]
@@ -114,7 +122,7 @@ def update_me(
     except Exception as e:
         raise AppError() from e
 
-    if incognito_mode_changed:
+    if incognito_mode_changed or default_visibility_mode_changed:
         showtime_visibility_crud.rebuild_effective_visibility_for_owner(
             session=session,
             owner_id=current_user.id,

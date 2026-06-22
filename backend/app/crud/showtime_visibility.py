@@ -1,59 +1,17 @@
-from collections import defaultdict
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
-from sqlalchemy import exists, or_
-from sqlalchemy.orm import aliased
-from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, col, delete, select
 
-from app.models.friend_group import FriendGroup, FriendGroupMember
+from app.core.enums import VisibilityMode
+from app.crud import showtime_ping as showtime_ping_crud
 from app.models.friendship import Friendship
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.showtime_visibility import (
     ShowtimeVisibilityEffective,
-    ShowtimeVisibilityFriend,
-    ShowtimeVisibilityGroup,
     ShowtimeVisibilitySetting,
 )
 from app.models.user import User
-
-
-def is_showtime_visible_to_viewer(
-    *,
-    owner_id_value: Any,
-    showtime_id_value: Any,
-    viewer_id_value: Any,
-) -> ColumnElement[bool]:
-    effective_row = aliased(ShowtimeVisibilityEffective)
-    return or_(
-        owner_id_value == viewer_id_value,
-        exists(
-            select(effective_row.owner_id).where(
-                col(effective_row.owner_id) == owner_id_value,
-                col(effective_row.showtime_id) == showtime_id_value,
-                col(effective_row.viewer_id) == viewer_id_value,
-            )
-        ),
-    )
-
-
-def get_visible_friend_ids_for_showtime(
-    *,
-    session: Session,
-    owner_id: UUID,
-    showtime_id: int,
-) -> set[UUID] | None:
-    setting = session.get(ShowtimeVisibilitySetting, (owner_id, showtime_id))
-    if setting is None or setting.is_all_friends:
-        return None
-
-    stmt = select(ShowtimeVisibilityFriend.viewer_id).where(
-        ShowtimeVisibilityFriend.owner_id == owner_id,
-        ShowtimeVisibilityFriend.showtime_id == showtime_id,
-    )
-    return set(session.exec(stmt).all())
 
 
 def get_showtime_visibility_setting(
@@ -82,191 +40,44 @@ def get_showtime_visibility_settings_for_showtimes(
     return {setting.showtime_id: setting for setting in settings}
 
 
-def get_visible_group_ids_for_showtime(
+def get_favorite_friend_ids_for_owner(
     *,
     session: Session,
     owner_id: UUID,
-    showtime_id: int,
 ) -> set[UUID]:
-    setting = session.get(ShowtimeVisibilitySetting, (owner_id, showtime_id))
-    if setting is None or setting.is_all_friends:
-        return set()
-
-    stmt = select(ShowtimeVisibilityGroup.group_id).where(
-        ShowtimeVisibilityGroup.owner_id == owner_id,
-        ShowtimeVisibilityGroup.showtime_id == showtime_id,
+    """Friends the owner has flagged as favorites (always-visible)."""
+    stmt = select(Friendship.friend_id).where(
+        col(Friendship.user_id) == owner_id,
+        col(Friendship.is_favorite).is_(True),
     )
     return set(session.exec(stmt).all())
 
 
-def get_visible_friend_ids_for_showtimes(
+def get_owner_default_visibility_mode(
     *,
     session: Session,
     owner_id: UUID,
-    showtime_ids: list[int],
-) -> dict[int, set[UUID]]:
-    if len(showtime_ids) == 0:
-        return {}
+) -> VisibilityMode:
+    """The mode applied to showtimes without an explicit setting.
 
-    stmt = select(
-        ShowtimeVisibilityFriend.showtime_id,
-        ShowtimeVisibilityFriend.viewer_id,
-    ).where(
-        ShowtimeVisibilityFriend.owner_id == owner_id,
-        col(ShowtimeVisibilityFriend.showtime_id).in_(showtime_ids),
-    )
-    rows = list(session.exec(stmt).all())
-    friend_ids_by_showtime: dict[int, set[UUID]] = defaultdict(set)
-    for showtime_id, viewer_id in rows:
-        friend_ids_by_showtime[showtime_id].add(viewer_id)
-    return dict(friend_ids_by_showtime)
-
-
-def get_visible_group_ids_for_showtimes(
-    *,
-    session: Session,
-    owner_id: UUID,
-    showtime_ids: list[int],
-) -> dict[int, set[UUID]]:
-    if len(showtime_ids) == 0:
-        return {}
-
-    stmt = select(
-        ShowtimeVisibilityGroup.showtime_id,
-        ShowtimeVisibilityGroup.group_id,
-    ).where(
-        ShowtimeVisibilityGroup.owner_id == owner_id,
-        col(ShowtimeVisibilityGroup.showtime_id).in_(showtime_ids),
-    )
-    rows = list(session.exec(stmt).all())
-    group_ids_by_showtime: dict[int, set[UUID]] = defaultdict(set)
-    for showtime_id, group_id in rows:
-        group_ids_by_showtime[showtime_id].add(group_id)
-    return dict(group_ids_by_showtime)
-
-
-def get_favorite_group_ids_for_owner(
-    *,
-    session: Session,
-    owner_id: UUID,
-) -> list[UUID]:
-    stmt = select(FriendGroup.id).where(
-        col(FriendGroup.owner_user_id) == owner_id,
-        col(FriendGroup.is_favorite).is_(True),
-    )
-    return list(session.exec(stmt).all())
-
-
-def is_owner_in_incognito_mode(
-    *,
-    session: Session,
-    owner_id: UUID,
-) -> bool:
+    Incognito mode forces INVITED_ONLY (status hidden from everyone but the
+    people you've exchanged invites with). Otherwise the user's chosen default,
+    falling back to FAVORITE_FRIENDS until they pick one.
+    """
     owner = session.get(User, owner_id)
     if owner is None:
-        return False
-    return owner.incognito_mode
+        return VisibilityMode.FAVORITE_FRIENDS
+    if owner.incognito_mode:
+        return VisibilityMode.INVITED_ONLY
+    return owner.default_visibility_mode or VisibilityMode.FAVORITE_FRIENDS
 
 
-def get_default_visible_group_ids_for_owner(
-    *,
-    session: Session,
-    owner_id: UUID,
-) -> list[UUID]:
-    if is_owner_in_incognito_mode(
-        session=session,
-        owner_id=owner_id,
-    ):
-        return []
-    return sorted(
-        set(
-            get_favorite_group_ids_for_owner(
-                session=session,
-                owner_id=owner_id,
-            )
-        ),
-        key=str,
+def _all_friend_ids(*, session: Session, owner_id: UUID) -> set[UUID]:
+    return set(
+        session.exec(
+            select(Friendship.friend_id).where(col(Friendship.user_id) == owner_id)
+        ).all()
     )
-
-
-def get_default_visible_friend_ids_for_owner(
-    *,
-    session: Session,
-    owner_id: UUID,
-    all_friend_ids: set[UUID] | None = None,
-) -> set[UUID]:
-    owner_friend_ids = all_friend_ids
-    if owner_friend_ids is None:
-        owner_friend_ids = set(
-            session.exec(
-                select(Friendship.friend_id).where(col(Friendship.user_id) == owner_id)
-            ).all()
-        )
-
-    if is_owner_in_incognito_mode(
-        session=session,
-        owner_id=owner_id,
-    ):
-        return set()
-
-    default_visible_group_ids = get_default_visible_group_ids_for_owner(
-        session=session,
-        owner_id=owner_id,
-    )
-    if len(default_visible_group_ids) == 0:
-        return set(owner_friend_ids)
-
-    return (
-        get_friend_ids_for_owner_groups(
-            session=session,
-            owner_id=owner_id,
-            group_ids=default_visible_group_ids,
-        )
-        & owner_friend_ids
-    )
-
-
-def get_friend_ids_for_owner_groups(
-    *,
-    session: Session,
-    owner_id: UUID,
-    group_ids: list[UUID],
-) -> set[UUID]:
-    if len(group_ids) == 0:
-        return set()
-    stmt = (
-        select(FriendGroupMember.friend_id)
-        .join(FriendGroup, col(FriendGroup.id) == col(FriendGroupMember.group_id))
-        .where(
-            col(FriendGroup.owner_user_id) == owner_id,
-            col(FriendGroup.id).in_(group_ids),
-        )
-    )
-    return set(session.exec(stmt).all())
-
-
-def get_friend_ids_for_owner_groups_map(
-    *,
-    session: Session,
-    owner_id: UUID,
-    group_ids: list[UUID],
-) -> dict[UUID, set[UUID]]:
-    if len(group_ids) == 0:
-        return {}
-
-    stmt = (
-        select(FriendGroupMember.group_id, FriendGroupMember.friend_id)
-        .join(FriendGroup, col(FriendGroup.id) == col(FriendGroupMember.group_id))
-        .where(
-            col(FriendGroup.owner_user_id) == owner_id,
-            col(FriendGroup.id).in_(group_ids),
-        )
-    )
-    rows = list(session.exec(stmt).all())
-    friend_ids_by_group: dict[UUID, set[UUID]] = defaultdict(set)
-    for group_id, friend_id in rows:
-        friend_ids_by_group[group_id].add(friend_id)
-    return dict(friend_ids_by_group)
 
 
 def _compute_effective_visible_friend_ids_for_showtime(
@@ -279,47 +90,35 @@ def _compute_effective_visible_friend_ids_for_showtime(
     if owner_selection is None:
         return set()
 
-    all_friend_ids = set(
-        session.exec(
-            select(Friendship.friend_id).where(col(Friendship.user_id) == owner_id)
-        ).all()
-    )
+    all_friend_ids = _all_friend_ids(session=session, owner_id=owner_id)
     if len(all_friend_ids) == 0:
         return set()
 
     setting = session.get(ShowtimeVisibilitySetting, (owner_id, showtime_id))
-    if setting is None:
-        return get_default_visible_friend_ids_for_owner(
-            session=session,
-            owner_id=owner_id,
-            all_friend_ids=all_friend_ids,
+    mode = (
+        setting.mode
+        if setting is not None
+        else get_owner_default_visibility_mode(session=session, owner_id=owner_id)
+    )
+
+    if mode == VisibilityMode.ALL_FRIENDS:
+        base_visible_ids = set(all_friend_ids)
+    elif mode == VisibilityMode.FAVORITE_FRIENDS:
+        base_visible_ids = (
+            get_favorite_friend_ids_for_owner(session=session, owner_id=owner_id)
+            & all_friend_ids
         )
+    else:  # INVITED_ONLY
+        base_visible_ids = set()
 
-    if setting.is_all_friends:
-        return all_friend_ids
-
-    explicit_visible_friend_ids = set(
-        session.exec(
-            select(ShowtimeVisibilityFriend.viewer_id).where(
-                col(ShowtimeVisibilityFriend.owner_id) == owner_id,
-                col(ShowtimeVisibilityFriend.showtime_id) == showtime_id,
-            )
-        ).all()
-    )
-    visible_group_ids = list(
-        session.exec(
-            select(ShowtimeVisibilityGroup.group_id).where(
-                col(ShowtimeVisibilityGroup.owner_id) == owner_id,
-                col(ShowtimeVisibilityGroup.showtime_id) == showtime_id,
-            )
-        ).all()
-    )
-    visible_from_groups = get_friend_ids_for_owner_groups(
+    # Invariant: friends you invited — and friends who invited you — always see
+    # your status, regardless of the mode.
+    invited_ids = showtime_ping_crud.get_ping_counterpart_ids_for_showtime(
         session=session,
         owner_id=owner_id,
-        group_ids=visible_group_ids,
+        showtime_id=showtime_id,
     )
-    return (explicit_visible_friend_ids | visible_from_groups) & all_friend_ids
+    return (base_visible_ids | invited_ids) & all_friend_ids
 
 
 def rebuild_effective_visibility_for_showtime(
@@ -362,18 +161,6 @@ def clear_visibility_for_showtime(
     if setting is not None:
         session.delete(setting)
 
-    session.execute(
-        delete(ShowtimeVisibilityFriend).where(
-            col(ShowtimeVisibilityFriend.owner_id) == owner_id,
-            col(ShowtimeVisibilityFriend.showtime_id) == showtime_id,
-        )
-    )
-    session.execute(
-        delete(ShowtimeVisibilityGroup).where(
-            col(ShowtimeVisibilityGroup.owner_id) == owner_id,
-            col(ShowtimeVisibilityGroup.showtime_id) == showtime_id,
-        )
-    )
     session.execute(
         delete(ShowtimeVisibilityEffective).where(
             col(ShowtimeVisibilityEffective.owner_id) == owner_id,
@@ -436,153 +223,64 @@ def rebuild_effective_visibility_for_owner(
         )
 
 
-def get_effective_visible_friend_ids_for_showtimes(
+def rebuild_effective_visibility_for_ping(
     *,
     session: Session,
-    owner_id: UUID,
-    showtime_ids: list[int],
-) -> dict[int, set[UUID]]:
-    if len(showtime_ids) == 0:
-        return {}
-
-    stmt = select(
-        ShowtimeVisibilityEffective.showtime_id,
-        ShowtimeVisibilityEffective.viewer_id,
-    ).where(
-        col(ShowtimeVisibilityEffective.owner_id) == owner_id,
-        col(ShowtimeVisibilityEffective.showtime_id).in_(showtime_ids),
+    sender_id: UUID,
+    receiver_id: UUID,
+    showtime_id: int,
+) -> None:
+    """A ping makes sender and receiver mutually visible for the showtime."""
+    rebuild_effective_visibility_for_showtime(
+        session=session,
+        owner_id=sender_id,
+        showtime_id=showtime_id,
     )
-    rows = list(session.exec(stmt).all())
-    viewer_ids_by_showtime: dict[int, set[UUID]] = defaultdict(set)
-    for showtime_id, viewer_id in rows:
-        viewer_ids_by_showtime[showtime_id].add(viewer_id)
-    return dict(viewer_ids_by_showtime)
+    rebuild_effective_visibility_for_showtime(
+        session=session,
+        owner_id=receiver_id,
+        showtime_id=showtime_id,
+    )
 
 
-def set_visibility_for_showtime(
+def set_visibility_mode_for_showtime(
     *,
     session: Session,
     owner_id: UUID,
     showtime_id: int,
-    visible_friend_ids: list[UUID],
-    visible_group_ids: list[UUID],
-    all_friend_ids: set[UUID],
-    default_visible_friend_ids: set[UUID],
+    mode: VisibilityMode,
     now: datetime,
 ) -> None:
-    deduped_visible_friend_ids = sorted(set(visible_friend_ids), key=str)
-    deduped_visible_group_ids = sorted(set(visible_group_ids), key=str)
-    visible_group_member_ids = get_friend_ids_for_owner_groups(
-        session=session,
-        owner_id=owner_id,
-        group_ids=deduped_visible_group_ids,
-    )
-    effective_visible_friend_ids = (
-        set(deduped_visible_friend_ids) | visible_group_member_ids
-    )
-    all_friends_selected = effective_visible_friend_ids == all_friend_ids
+    """Set the per-showtime visibility mode and re-materialize the cache.
+
+    No row is stored when the mode matches the owner's default — the showtime
+    then tracks the default going forward.
+    """
+    default_mode = get_owner_default_visibility_mode(session=session, owner_id=owner_id)
     setting = session.get(ShowtimeVisibilitySetting, (owner_id, showtime_id))
 
-    existing_visibility_rows = list(
-        session.exec(
-            select(ShowtimeVisibilityFriend).where(
-                ShowtimeVisibilityFriend.owner_id == owner_id,
-                ShowtimeVisibilityFriend.showtime_id == showtime_id,
-            )
-        ).all()
-    )
-    for visibility_row in existing_visibility_rows:
-        session.delete(visibility_row)
-
-    existing_group_visibility_rows = list(
-        session.exec(
-            select(ShowtimeVisibilityGroup).where(
-                ShowtimeVisibilityGroup.owner_id == owner_id,
-                ShowtimeVisibilityGroup.showtime_id == showtime_id,
-            )
-        ).all()
-    )
-    for group_visibility_row in existing_group_visibility_rows:
-        session.delete(group_visibility_row)
-
-    if effective_visible_friend_ids == default_visible_friend_ids:
+    if mode == default_mode:
         if setting is not None:
             session.delete(setting)
-        session.flush()
-        rebuild_effective_visibility_for_showtime(
-            session=session,
-            owner_id=owner_id,
-            showtime_id=showtime_id,
-        )
-        return
-
-    if setting is None:
-        setting = ShowtimeVisibilitySetting(
-            owner_id=owner_id,
-            showtime_id=showtime_id,
-            is_all_friends=all_friends_selected,
-            updated_at=now,
+    elif setting is None:
+        session.add(
+            ShowtimeVisibilitySetting(
+                owner_id=owner_id,
+                showtime_id=showtime_id,
+                mode=mode,
+                updated_at=now,
+            )
         )
     else:
-        setting.is_all_friends = all_friends_selected
+        setting.mode = mode
         setting.updated_at = now
-    session.add(setting)
-
-    if all_friends_selected:
-        session.flush()
-        rebuild_effective_visibility_for_showtime(
-            session=session,
-            owner_id=owner_id,
-            showtime_id=showtime_id,
-        )
-        return
-
-    for viewer_id in deduped_visible_friend_ids:
-        session.add(
-            ShowtimeVisibilityFriend(
-                owner_id=owner_id,
-                showtime_id=showtime_id,
-                viewer_id=viewer_id,
-                created_at=now,
-            )
-        )
-
-    for group_id in deduped_visible_group_ids:
-        session.add(
-            ShowtimeVisibilityGroup(
-                owner_id=owner_id,
-                showtime_id=showtime_id,
-                group_id=group_id,
-                created_at=now,
-            )
-        )
+        session.add(setting)
 
     session.flush()
     rebuild_effective_visibility_for_showtime(
         session=session,
         owner_id=owner_id,
         showtime_id=showtime_id,
-    )
-
-
-def set_visible_friend_ids_for_showtime(
-    *,
-    session: Session,
-    owner_id: UUID,
-    showtime_id: int,
-    visible_friend_ids: list[UUID],
-    all_friend_ids: set[UUID],
-    now: datetime,
-) -> None:
-    set_visibility_for_showtime(
-        session=session,
-        owner_id=owner_id,
-        showtime_id=showtime_id,
-        visible_friend_ids=visible_friend_ids,
-        visible_group_ids=[],
-        all_friend_ids=all_friend_ids,
-        default_visible_friend_ids=all_friend_ids,
-        now=now,
     )
 
 

@@ -94,10 +94,11 @@ Legend:
 - [ ] `showtime.py` — Showtime response shape (with selections, visibility)
 - [ ] `showtime_ping.py` — Ping response shape
 - [x] `notification.py` — Merged notification-centre feed item shape
-- [ ] `showtime_visibility.py` — Visibility settings response shape
+- [x] `showtime_visibility.py` — Per-showtime visibility mode response shape
 - [ ] `cinema_preset.py` — Cinema preset response shape
 - [ ] `filter_preset.py` — Filter preset response shape
 - [ ] `friend_group.py` — Friend group response shape
+- [x] `friendship.py` — Friend favorite-toggle request shape
 - [ ] `push_token.py` — Push token registration shape
 - [ ] `city.py` — City response shape
 
@@ -112,7 +113,7 @@ Legend:
 - [ ] `user.py` — User queries, create, update, password check ⚠️ Large (652 LOC)
 - [ ] `movie.py` — Movie queries with filtering ⚠️ Large (599 LOC)
 - [ ] `showtime.py` — Showtime queries, upserts, reconciliation ⚠️ Large (518 LOC)
-- [ ] `showtime_visibility.py` — Visibility calculation via SQL joins ⚠️ Large (604 LOC)
+- [x] `showtime_visibility.py` — Effective-visibility cache built from mode + favorites + pings
 - [ ] `showtime_ping.py` — Ping queries and creation
 - [x] `notification.py` — Notification-centre row queries (upsert, feed, decay)
 - [ ] `friendship.py` — Friend request and friendship queries

@@ -13,6 +13,8 @@ import type {
   FriendsDeclineFriendRequestResponse,
   FriendsCancelFriendRequestData,
   FriendsCancelFriendRequestResponse,
+  FriendsSetFriendFavoriteData,
+  FriendsSetFriendFavoriteResponse,
   FriendsRemoveFriendData,
   FriendsRemoveFriendResponse,
   LoginLoginAccessTokenData,
@@ -239,6 +241,31 @@ export class FriendsService {
       path: {
         receiver_id: data.receiverId,
       },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Set Friend Favorite
+   * @param data The data for the request.
+   * @param data.friendId
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static setFriendFavorite(
+    data: FriendsSetFriendFavoriteData,
+  ): CancelablePromise<FriendsSetFriendFavoriteResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/friends/{friend_id}/favorite",
+      path: {
+        friend_id: data.friendId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },

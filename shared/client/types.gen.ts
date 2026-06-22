@@ -72,6 +72,10 @@ export type CityPublic = {
   id: number
 }
 
+export type FriendFavoriteUpdate = {
+  is_favorite: boolean
+}
+
 export type FriendGroupCreate = {
   name: string
   friend_ids?: Array<string>
@@ -346,21 +350,17 @@ export type ShowtimeSelectionUpdate = {
   going_status: GoingStatus
   seat_row?: string | null
   seat_number?: string | null
-  visible_friend_ids?: Array<string> | null
-  visible_group_ids?: Array<string> | null
+  visibility_mode?: VisibilityMode | null
 }
 
 export type ShowtimeVisibilityPublic = {
   showtime_id: number
   movie_id: number
-  visible_friend_ids?: Array<string>
-  visible_group_ids?: Array<string>
-  all_friends_selected: boolean
+  mode: VisibilityMode
 }
 
 export type ShowtimeVisibilityUpdate = {
-  visible_friend_ids?: Array<string>
-  visible_group_ids?: Array<string>
+  mode: VisibilityMode
 }
 
 /**
@@ -413,6 +413,7 @@ export type UserMe = {
   email: string
   is_superuser: boolean
   incognito_mode: boolean
+  default_visibility_mode: VisibilityMode | null
   notify_on_friend_showtime_match: boolean
   notify_on_friend_requests: boolean
   notify_on_showtime_ping: boolean
@@ -447,6 +448,7 @@ export type UserUpdate = {
   email?: string | null
   letterboxd_username?: string | null
   incognito_mode?: boolean | null
+  default_visibility_mode?: VisibilityMode | null
   notify_on_friend_showtime_match?: boolean | null
   notify_on_friend_requests?: boolean | null
   notify_on_showtime_ping?: boolean | null
@@ -469,6 +471,7 @@ export type UserWithFriendStatus = {
   is_friend: boolean
   sent_request: boolean
   received_request: boolean
+  is_favorite?: boolean
 }
 
 export type ValidationError = {
@@ -476,6 +479,15 @@ export type ValidationError = {
   msg: string
   type: string
 }
+
+/**
+ * Who may see a user's attendance status for a showtime.
+ *
+ * Stored on ShowtimeVisibilitySetting (per showtime) and as the user's
+ * default (User.default_visibility_mode). Friends you invited — and friends
+ * who invited you — always see your status regardless of this mode.
+ */
+export type VisibilityMode = "ALL_FRIENDS" | "FAVORITE_FRIENDS" | "INVITED_ONLY"
 
 export type CinemasGetAllCinemasResponse = Array<CinemaPublic>
 
@@ -502,6 +514,13 @@ export type FriendsCancelFriendRequestData = {
 }
 
 export type FriendsCancelFriendRequestResponse = Message
+
+export type FriendsSetFriendFavoriteData = {
+  friendId: string
+  requestBody: FriendFavoriteUpdate
+}
+
+export type FriendsSetFriendFavoriteResponse = Message
 
 export type FriendsRemoveFriendData = {
   friendId: string

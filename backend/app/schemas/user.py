@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import EmailStr
 from sqlmodel import SQLModel
 
-from app.core.enums import NotificationChannel
+from app.core.enums import NotificationChannel, VisibilityMode
 
 if TYPE_CHECKING:
     from .showtime import ShowtimeLoggedIn
@@ -30,6 +30,7 @@ class UserMe(UserPublic):
     email: EmailStr
     is_superuser: bool
     incognito_mode: bool
+    default_visibility_mode: VisibilityMode | None
     notify_on_friend_showtime_match: bool
     notify_on_friend_requests: bool
     notify_on_showtime_ping: bool
@@ -49,6 +50,8 @@ class UserWithFriendStatus(UserPublic):
     is_friend: bool
     sent_request: bool
     received_request: bool
+    # Whether the current user has marked this friend as a favorite (always-visible).
+    is_favorite: bool = False
 
 
 class UserWithShowtimesPublic(UserPublic):

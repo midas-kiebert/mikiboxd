@@ -54,10 +54,13 @@ import {
   type SentShowtimePingPublic,
   type ShowtimeLoggedIn,
   type UserPublic,
+  type VisibilityMode,
 } from "shared";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
 
 import CinemaPill from "@/components/badges/CinemaPill";
+import VisibilityModePicker from "@/components/showtimes/VisibilityModePicker";
+import { getVisibilityModeMeta } from "@/components/showtimes/visibility-mode";
 import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import FriendInviteRow, { type FriendWatchStatus } from "@/components/friends/FriendInviteRow";
@@ -225,6 +228,7 @@ export default function ShowtimeActionModal({
   const [seatRowDraft, setSeatRowDraft] = useState("");
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
+  const [isVisibilityPickerOpen, setIsVisibilityPickerOpen] = useState(false);
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<"watchlisted" | "watched" | null>(null);
 
@@ -335,6 +339,51 @@ export default function ShowtimeActionModal({
       Alert.alert("Error", "Could not cancel invite.");
     },
   });
+
+  // ─── Visibility mode ───────────────────────────────────────────────────────
+  const hasStatus = showtime?.going === "GOING" || showtime?.going === "INTERESTED";
+  const visibilityQueryKey = useMemo(
+    () => ["showtimes", "visibility", selectedShowtimeId] as const,
+    [selectedShowtimeId]
+  );
+  const { data: visibility } = useQuery({
+    queryKey: visibilityQueryKey,
+    enabled: sheetDataEnabled && hasStatus,
+    queryFn: () =>
+      ShowtimesService.getShowtimeVisibility({ showtimeId: selectedShowtimeId as number }),
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
+  });
+
+  const { mutate: updateVisibilityMode } = useMutation({
+    mutationFn: ({ showtimeId, mode }: { showtimeId: number; mode: VisibilityMode }) =>
+      ShowtimesService.updateShowtimeVisibility({ showtimeId, requestBody: { mode } }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(visibilityQueryKey, updated);
+      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
+      queryClient.invalidateQueries({ queryKey: ["movie"] });
+      queryClient.invalidateQueries({ queryKey: ["movies"] });
+    },
+    onError: () => {
+      Alert.alert("Error", "Could not update who can see your status.");
+    },
+  });
+
+  const handleVisibilityModeSelect = useCallback(
+    (mode: VisibilityMode) => {
+      setIsVisibilityPickerOpen(false);
+      if (!showtime || mode === visibility?.mode) return;
+      triggerSelectionHaptic();
+      // Optimistically reflect the new mode in the chip before the request lands.
+      queryClient.setQueryData(visibilityQueryKey, (prev: typeof visibility) =>
+        prev ? { ...prev, mode } : prev
+      );
+      updateVisibilityMode({ showtimeId: showtime.id, mode });
+    },
+    [showtime, visibility?.mode, queryClient, visibilityQueryKey, updateVisibilityMode]
+  );
+
+  const visibilityMeta = visibility ? getVisibilityModeMeta(visibility.mode, colors) : null;
 
   // ─── Seat handling ─────────────────────────────────────────────────────────
   const normalizedSeatRowDraft = seatRowDraft.trim() || null;
@@ -564,13 +613,25 @@ export default function ShowtimeActionModal({
           label: friend.display_name?.trim() || "Friend",
           availability,
           watchStatus: getWatchStatus(friend.id),
+          isWatchlisted: watchlistedIds.has(friend.id),
         };
       })
       .sort((left, right) => {
+        // Friends who have the film watchlisted float to the top.
+        if (left.isWatchlisted !== right.isWatchlisted) {
+          return left.isWatchlisted ? -1 : 1;
+        }
         const rankDiff = availabilityRank[left.availability] - availabilityRank[right.availability];
         return rankDiff !== 0 ? rankDiff : left.label.localeCompare(right.label);
       });
-  }, [friends, friendsGoingIds, friendsInterestedIds, pingedReceiverIds, getWatchStatus]);
+  }, [
+    friends,
+    friendsGoingIds,
+    friendsInterestedIds,
+    pingedReceiverIds,
+    getWatchStatus,
+    watchlistedIds,
+  ]);
 
   // The list shows friends you can still invite + those who already set a
   // going/interested status (muted); already-pinged friends live in the summary.
@@ -623,10 +684,11 @@ export default function ShowtimeActionModal({
   const timeRangeLabel = showtime
     ? formatShowtimeTimeRange(showtime.datetime, showtime.end_datetime)
     : null;
-  const timeLabel =
-    timeRangeLabel && durationMinutes
-      ? `${timeRangeLabel} • ${durationMinutes} min`
-      : timeRangeLabel;
+  const timeLabel = timeRangeLabel
+    ? [timeRangeLabel, durationMinutes ? `${durationMinutes} min` : null, spokenLanguage]
+        .filter(Boolean)
+        .join(" • ")
+    : null;
 
   const hasAudience =
     (showtime?.friends_going.length ?? 0) > 0 ||
@@ -766,12 +828,6 @@ export default function ShowtimeActionModal({
                 {timeLabel ? (
                   <ThemedText style={styles.timeText}>{timeLabel}</ThemedText>
                 ) : null}
-                {spokenLanguage ? (
-                  <ThemedText style={styles.languageText} numberOfLines={1}>
-                    <ThemedText style={styles.languageLabel}>LANGUAGE </ThemedText>
-                    {spokenLanguage}
-                  </ThemedText>
-                ) : null}
                 <View style={styles.cinemaBadgeRow}>
                   <CinemaPill cinema={showtime.cinema} disabledIfSameId={disabledCinemaId} />
                   <SubtitlesBadges subtitles={showtime.subtitles} />
@@ -811,7 +867,7 @@ export default function ShowtimeActionModal({
                 [
                   {
                     kind: "watchlisted" as const,
-                    icon: "bookmark" as const,
+                    icon: "schedule" as const,
                     accent: colors.orange.secondary,
                     count: friendsWatchlisted.length,
                     label:
@@ -895,6 +951,23 @@ export default function ShowtimeActionModal({
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* Who can see your status for this showtime */}
+            {hasStatus && visibility ? (
+              <TouchableOpacity
+                style={[styles.visibilityChip, { borderColor: visibilityMeta!.color }]}
+                onPress={() => setIsVisibilityPickerOpen(true)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="visibility" size={16} color={colors.textSecondary} />
+                <ThemedText style={styles.visibilityChipLabel}>Visible to</ThemedText>
+                <View style={[styles.visibilityChipValue, { backgroundColor: visibilityMeta!.color }]}>
+                  <MaterialIcons name={visibilityMeta!.icon} size={13} color={colors.pillActiveText} />
+                  <ThemedText style={styles.visibilityChipValueText}>{visibilityMeta!.label}</ThemedText>
+                </View>
+                <MaterialIcons name="expand-more" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ) : null}
 
             {/* Actions: Share + Get Ticket (+ Seat) */}
             <View style={styles.ctaRow}>
@@ -1215,6 +1288,13 @@ export default function ShowtimeActionModal({
           </View>
         </View>
       </Modal>
+
+      <VisibilityModePicker
+        visible={isVisibilityPickerOpen}
+        selectedMode={visibility?.mode ?? null}
+        onSelect={handleVisibilityModeSelect}
+        onClose={() => setIsVisibilityPickerOpen(false)}
+      />
     </BottomSheetModal>
   );
 }
@@ -1263,8 +1343,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     summaryInfo: { flex: 1, gap: 1 },
     movieTitle: { fontSize: 19, fontWeight: "800", color: colors.text, paddingRight: 36 },
     originalTitle: { fontSize: 12, color: colors.textSecondary, fontStyle: "italic", marginTop: 1 },
-    languageText: { fontSize: 11.5, color: colors.textSecondary, marginTop: 1 },
-    languageLabel: { fontSize: 9, fontWeight: "800", letterSpacing: 0.6, color: colors.textSecondary },
     directorText: { fontSize: 10, color: colors.textSecondary, marginTop: -4 },
     directorLabel: { fontSize: 9, fontWeight: "800", letterSpacing: 0.6, color: colors.textSecondary },
     dateText: { fontSize: 12.5, fontWeight: "600", color: colors.text, marginTop: -4 },
@@ -1360,6 +1438,35 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     statusButtonText: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
 
+    visibilityChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      borderWidth: 1,
+      borderRadius: 11,
+      backgroundColor: colors.cardBackground,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    visibilityChipLabel: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.textSecondary,
+    },
+    visibilityChipValue: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderRadius: 8,
+      paddingVertical: 3,
+      paddingHorizontal: 8,
+    },
+    visibilityChipValueText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.pillActiveText,
+    },
     ctaRow: { flexDirection: "row", gap: 8 },
     ctaIconButton: {
       gap: 4,

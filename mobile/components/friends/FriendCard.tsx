@@ -1,7 +1,9 @@
 /**
  * Mobile friends feature component: Friend Card.
  */
+import { useEffect, useState } from "react";
 import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { FriendsService } from "shared";
 import type {
@@ -11,6 +13,7 @@ import type {
   FriendsSendFriendRequestData,
   FriendsCancelFriendRequestData,
   FriendsDeclineFriendRequestData,
+  FriendsSetFriendFavoriteData,
 } from "shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -92,6 +95,34 @@ export default function FriendCard({ user }: FriendCardProps) {
       Alert.alert("Error", "Could not cancel friend request.");
     },
   });
+
+  // Optimistic favorite state so the star fills the instant it is tapped.
+  const [isFavorite, setIsFavorite] = useState(user.is_favorite);
+  useEffect(() => {
+    setIsFavorite(user.is_favorite);
+  }, [user.is_favorite]);
+
+  const setFavoriteMutation = useMutation({
+    mutationFn: (data: FriendsSetFriendFavoriteData) => FriendsService.setFriendFavorite(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      // Visibility of your status to this friend may have changed.
+      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
+      queryClient.invalidateQueries({ queryKey: ["movie"] });
+      queryClient.invalidateQueries({ queryKey: ["movies"] });
+    },
+    onError: (error) => {
+      setIsFavorite(user.is_favorite);
+      console.error("Error updating favorite:", error);
+      Alert.alert("Error", "Could not update favorite.");
+    },
+  });
+
+  const handleToggleFavorite = () => {
+    const next = !isFavorite;
+    setIsFavorite(next);
+    setFavoriteMutation.mutate({ friendId: user.id, requestBody: { is_favorite: next } });
+  };
 
   const isBusy =
     removeFriendMutation.isPending ||
@@ -187,6 +218,24 @@ export default function FriendCard({ user }: FriendCardProps) {
               <ThemedText style={[styles.badgeText, { color: badgeTextColor }]}>{statusLabel}</ThemedText>
             </View>
           ) : null}
+          {user.is_friend ? (
+            <TouchableOpacity
+              style={styles.favoriteButton}
+              onPress={(event) => {
+                event.stopPropagation();
+                handleToggleFavorite();
+              }}
+              disabled={isBusy}
+              activeOpacity={0.7}
+              accessibilityLabel={isFavorite ? "Always show status" : "Show status only on invite"}
+            >
+              <MaterialIcons
+                name={isFavorite ? "star" : "star-border"}
+                size={20}
+                color={isFavorite ? colors.yellow.secondary : colors.textSecondary}
+              />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
       <View style={styles.actions}>
@@ -258,6 +307,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 16,
       fontWeight: "700",
       color: colors.text,
+    },
+    favoriteButton: {
+      padding: 2,
     },
     badge: {
       borderWidth: 1,

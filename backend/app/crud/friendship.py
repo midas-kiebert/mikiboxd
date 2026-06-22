@@ -67,6 +67,46 @@ def are_users_friends(
     return friendship is not None
 
 
+def get_favorite_friend_ids(
+    *,
+    session: Session,
+    owner_id: UUID,
+) -> set[UUID]:
+    """Friends the owner has marked as favorites (always-visible)."""
+    stmt = select(Friendship.friend_id).where(
+        col(Friendship.user_id) == owner_id,
+        col(Friendship.is_favorite).is_(True),
+    )
+    return set(session.exec(stmt).all())
+
+
+def set_friendship_favorite(
+    *,
+    session: Session,
+    owner_id: UUID,
+    friend_id: UUID,
+    is_favorite: bool,
+) -> Friendship:
+    """Set the favorite flag on the owner's directional friendship row.
+
+    Raises NoResultFound if the friendship does not exist.
+    """
+    friendship = session.exec(
+        select(Friendship).where(
+            Friendship.user_id == owner_id,
+            Friendship.friend_id == friend_id,
+        )
+    ).one()
+    friendship.is_favorite = is_favorite
+    session.add(friendship)
+    session.flush()
+    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+        session=session,
+        owner_id=owner_id,
+    )
+    return friendship
+
+
 def create_friend_request(
     *,
     session: Session,

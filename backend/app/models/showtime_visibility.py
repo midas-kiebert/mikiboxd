@@ -1,15 +1,15 @@
 """Showtime visibility models.
 
-Four tables work together to control who can see whose showtime attendance:
+Two tables control who can see whose showtime attendance:
 
-- ShowtimeVisibilitySetting  — per (owner, showtime): is visibility open to all
-  friends, or restricted to specific friends/groups?
-- ShowtimeVisibilityFriend   — explicit allow-list: (owner, showtime) → viewer
-- ShowtimeVisibilityGroup    — group-based allow-list: (owner, showtime) → group
-- ShowtimeVisibilityEffective — denormalized read cache: (owner, showtime) → viewer
-  rows that are materialized from the three tables above.
+- ShowtimeVisibilitySetting  — per (owner, showtime): which visibility mode
+  applies (all friends / favorite friends / invited only). A row exists only
+  when the showtime's mode differs from the owner's default mode.
+- ShowtimeVisibilityEffective — denormalized read cache: (owner, showtime) →
+  viewer rows materialized from the setting (or owner default), the owner's
+  favorite friends, and the pings exchanged for the showtime.
 
-Write paths update Setting/Friend/Group. Read paths query only Effective.
+Write paths update Setting; read paths query only Effective.
 """
 
 from datetime import datetime
@@ -17,11 +17,12 @@ from uuid import UUID
 
 from sqlmodel import Field, SQLModel
 
+from app.core.enums import VisibilityMode
 from app.utils import now_amsterdam_naive
 
 
 class ShowtimeVisibilitySetting(SQLModel, table=True):
-    """Whether a user's attendance for a showtime is visible to all friends or restricted."""
+    """Per-showtime visibility mode for a user's attendance status."""
 
     owner_id: UUID = Field(
         foreign_key="user.id",
@@ -33,50 +34,10 @@ class ShowtimeVisibilitySetting(SQLModel, table=True):
         primary_key=True,
         ondelete="CASCADE",
     )
-    is_all_friends: bool = Field(default=True, nullable=False)
+    mode: VisibilityMode = Field(
+        default=VisibilityMode.FAVORITE_FRIENDS, nullable=False
+    )
     updated_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
-
-
-class ShowtimeVisibilityFriend(SQLModel, table=True):
-    """Explicit friend-level allow: viewer_id may see owner's attendance for showtime_id."""
-
-    owner_id: UUID = Field(
-        foreign_key="user.id",
-        primary_key=True,
-        ondelete="CASCADE",
-    )
-    showtime_id: int = Field(
-        foreign_key="showtime.id",
-        primary_key=True,
-        ondelete="CASCADE",
-    )
-    viewer_id: UUID = Field(
-        foreign_key="user.id",
-        primary_key=True,
-        ondelete="CASCADE",
-    )
-    created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
-
-
-class ShowtimeVisibilityGroup(SQLModel, table=True):
-    """Group-level allow: all members of group_id may see owner's attendance for showtime_id."""
-
-    owner_id: UUID = Field(
-        foreign_key="user.id",
-        primary_key=True,
-        ondelete="CASCADE",
-    )
-    showtime_id: int = Field(
-        foreign_key="showtime.id",
-        primary_key=True,
-        ondelete="CASCADE",
-    )
-    group_id: UUID = Field(
-        foreign_key="friendgroup.id",
-        primary_key=True,
-        ondelete="CASCADE",
-    )
-    created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
 
 
 class ShowtimeVisibilityEffective(SQLModel, table=True):

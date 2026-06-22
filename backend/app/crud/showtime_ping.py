@@ -65,6 +65,34 @@ def get_pinged_friend_ids_for_showtime(
     return list(session.exec(stmt).all())
 
 
+def get_ping_counterpart_ids_for_showtime(
+    *,
+    session: Session,
+    owner_id: UUID,
+    showtime_id: int,
+) -> set[UUID]:
+    """Friends bound to the owner by a ping for this showtime, either direction.
+
+    A ping (S→R) means S invited R, so both invariants apply: S's status is
+    visible to R (S invited them) and R's status is visible to S (they invited
+    R back, i.e. R was invited by S). This returns, for the owner, the set of
+    the *other* party in every ping the owner sent or received for the showtime.
+    """
+    sent_receiver_ids = session.exec(
+        select(ShowtimePing.receiver_id).where(
+            ShowtimePing.showtime_id == showtime_id,
+            ShowtimePing.sender_id == owner_id,
+        )
+    ).all()
+    received_sender_ids = session.exec(
+        select(ShowtimePing.sender_id).where(
+            ShowtimePing.showtime_id == showtime_id,
+            ShowtimePing.receiver_id == owner_id,
+        )
+    ).all()
+    return set(sent_receiver_ids) | set(received_sender_ids)
+
+
 def get_sent_showtime_pings(
     *,
     session: Session,

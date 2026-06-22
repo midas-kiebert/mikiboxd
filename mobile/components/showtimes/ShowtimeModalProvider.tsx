@@ -21,9 +21,19 @@ import {
   type GoingStatus,
   type ShowtimeLoggedIn,
   type UserPublic,
+  type VisibilityMode,
 } from "shared";
+import useAuth from "shared/hooks/useAuth";
 
 import ShowtimeActionModal, { type ShowtimeInvite } from "@/components/showtimes/ShowtimeActionModal";
+import VisibilityModePicker from "@/components/showtimes/VisibilityModePicker";
+
+type PendingSelection = {
+  showtimeId: number;
+  going: GoingStatus;
+  seatRow: string | null;
+  seatNumber: string | null;
+};
 
 export type OpenOptions = {
   invite?: ShowtimeInvite | null;
@@ -52,11 +62,15 @@ export function useShowtimeModal() {
 
 export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [visible, setVisible] = useState(false);
   const [currentShowtime, setCurrentShowtime] = useState<ShowtimeLoggedIn | null>(null);
   const [invite, setInvite] = useState<ShowtimeInvite | null>(null);
   const [openedFrom, setOpenedFrom] = useState<OpenOptions["openedFrom"]>(undefined);
   const [isLoadingById, setIsLoadingById] = useState(false);
+  // The status the user is setting for the first time, held until they pick a
+  // default visibility mode in the popup.
+  const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   // Guards against a slow getShowtimeById resolving after a newer open superseded it.
   const openRequestIdRef = useRef(0);
 
@@ -119,19 +133,23 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
       going,
       seatRow,
       seatNumber,
+      visibilityMode,
     }: {
       showtimeId: number;
       going: GoingStatus;
       seatRow?: string | null;
       seatNumber?: string | null;
+      visibilityMode?: VisibilityMode | null;
     }) => {
       const requestBody: {
         going_status: GoingStatus;
         seat_row?: string | null;
         seat_number?: string | null;
+        visibility_mode?: VisibilityMode | null;
       } = { going_status: going };
       if (seatRow !== undefined) requestBody.seat_row = seatRow;
       if (seatNumber !== undefined) requestBody.seat_number = seatNumber;
+      if (visibilityMode != null) requestBody.visibility_mode = visibilityMode;
       return ShowtimesService.updateShowtimeSelection({ showtimeId, requestBody });
     },
     onSuccess: (updatedShowtime) => {
@@ -151,25 +169,79 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  const handleUpdateStatus = useCallback(
-    (going: GoingStatus, seat?: { seatRow: string | null; seatNumber: string | null }) => {
-      if (!currentShowtime || isUpdatingStatus) return;
+  const submitSelection = useCallback(
+    (
+      showtime: ShowtimeLoggedIn,
+      going: GoingStatus,
+      seat?: { seatRow: string | null; seatNumber: string | null },
+      visibilityMode?: VisibilityMode | null
+    ) => {
       const nextSeatRow =
-        going === "GOING" ? (seat?.seatRow ?? currentShowtime.seat_row ?? null) : null;
+        going === "GOING" ? (seat?.seatRow ?? showtime.seat_row ?? null) : null;
       const nextSeatNumber =
-        going === "GOING" ? (seat?.seatNumber ?? currentShowtime.seat_number ?? null) : null;
+        going === "GOING" ? (seat?.seatNumber ?? showtime.seat_number ?? null) : null;
       // Optimistic update so the sheet reflects the new status immediately.
       setCurrentShowtime((previous) =>
         previous ? { ...previous, going, seat_row: nextSeatRow, seat_number: nextSeatNumber } : previous
       );
       updateShowtimeSelection({
-        showtimeId: currentShowtime.id,
+        showtimeId: showtime.id,
         going,
         seatRow: seat?.seatRow,
         seatNumber: seat?.seatNumber,
+        visibilityMode,
       });
     },
-    [currentShowtime, isUpdatingStatus, updateShowtimeSelection]
+    [updateShowtimeSelection]
+  );
+
+  const handleUpdateStatus = useCallback(
+    (going: GoingStatus, seat?: { seatRow: string | null; seatNumber: string | null }) => {
+      if (!currentShowtime || isUpdatingStatus) return;
+      // First time the user marks going/interested, prompt for a default
+      // visibility mode before saving anything.
+      const needsVisibilityChoice =
+        (going === "GOING" || going === "INTERESTED") &&
+        user != null &&
+        user.default_visibility_mode == null;
+      if (needsVisibilityChoice) {
+        setPendingSelection({
+          showtimeId: currentShowtime.id,
+          going,
+          seatRow: seat?.seatRow ?? null,
+          seatNumber: seat?.seatNumber ?? null,
+        });
+        return;
+      }
+      submitSelection(currentShowtime, going, seat);
+    },
+    [currentShowtime, isUpdatingStatus, submitSelection, user]
+  );
+
+  const updateDefaultVisibilityMutation = useMutation({
+    mutationFn: (mode: VisibilityMode) =>
+      MeService.updateUserMe({ requestBody: { default_visibility_mode: mode } }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+    },
+  });
+
+  const handleFirstTimeVisibilityPick = useCallback(
+    (mode: VisibilityMode) => {
+      const pending = pendingSelection;
+      setPendingSelection(null);
+      if (!pending) return;
+      updateDefaultVisibilityMutation.mutate(mode);
+      if (currentShowtime && currentShowtime.id === pending.showtimeId) {
+        submitSelection(
+          currentShowtime,
+          pending.going,
+          { seatRow: pending.seatRow, seatNumber: pending.seatNumber },
+          mode
+        );
+      }
+    },
+    [currentShowtime, pendingSelection, submitSelection, updateDefaultVisibilityMutation]
   );
 
   const { mutate: dismissInvitePings, isPending: isDismissingInvite } = useMutation({
@@ -244,6 +316,14 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
         disableMovieNavigation={openedFrom?.movieId !== undefined}
         disabledCinemaId={openedFrom?.cinemaId}
         disabledUserId={openedFrom?.userId}
+      />
+      <VisibilityModePicker
+        visible={pendingSelection !== null}
+        selectedMode={null}
+        onSelect={handleFirstTimeVisibilityPick}
+        onClose={() => setPendingSelection(null)}
+        title="Who can see your status?"
+        subtitle="Pick your default. You can change it any time, per showtime."
       />
     </ShowtimeModalContext.Provider>
   );

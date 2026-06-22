@@ -164,6 +164,36 @@ def cancel_friend_request(
     return Message(message="Friend request cancelled successfully.")
 
 
+def set_friend_favorite(
+    *,
+    session: Session,
+    current_user: UUID,
+    friend_id: UUID,
+    is_favorite: bool,
+) -> Message:
+    """
+    Mark a friend as favorite (always shown your status) or not.
+    Raises:
+        FriendshipNotFoundError: If the friendship does not exist.
+        AppError: For any other (unexpected) errors.
+    """
+    try:
+        friendship_crud.set_friendship_favorite(
+            session=session,
+            owner_id=current_user,
+            friend_id=friend_id,
+            is_favorite=is_favorite,
+        )
+        session.commit()
+    except NoResultFound as e:
+        session.rollback()
+        raise FriendshipNotFoundError(current_user, friend_id) from e
+    except Exception as e:
+        session.rollback()
+        raise AppError from e
+    return Message(message="Friend favorite updated successfully.")
+
+
 def remove_friend(
     *,
     session: Session,

@@ -53,7 +53,7 @@ export default function FriendInviteRow({
 
   const watchIcon =
     watchStatus === "watchlisted"
-      ? { name: "bookmark" as const, color: colors.orange.secondary }
+      ? { name: "schedule" as const, color: colors.orange.secondary }
       : watchStatus === "watched"
         ? { name: "visibility" as const, color: colors.green.secondary }
         : null;

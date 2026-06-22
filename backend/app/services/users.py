@@ -74,9 +74,15 @@ def get_users(
         offset=offset,
         current_user_id=current_user_id,
     )
+    favorite_friend_ids = friendship_crud.get_favorite_friend_ids(
+        session=session, owner_id=current_user_id
+    )
     return [
         user_converters.to_with_friend_status(
-            user_db, session=session, current_user=current_user_id
+            user_db,
+            session=session,
+            current_user=current_user_id,
+            favorite_friend_ids=favorite_friend_ids,
         )
         for user_db in users_db
     ]
@@ -169,9 +175,15 @@ def get_friends(
         list[UserWithFriendStatus]: List of friends of the user.
     """
     friends = users_crud.get_friends(session=session, user_id=user_id)
+    favorite_friend_ids = friendship_crud.get_favorite_friend_ids(
+        session=session, owner_id=user_id
+    )
     return [
         user_converters.to_with_friend_status(
-            session=session, current_user=user_id, user=friend
+            session=session,
+            current_user=user_id,
+            user=friend,
+            favorite_friend_ids=favorite_friend_ids,
         )
         for friend in friends
     ]
@@ -195,9 +207,15 @@ def get_sent_friend_requests(
         session=session,
         user_id=user_id,
     )
+    favorite_friend_ids = friendship_crud.get_favorite_friend_ids(
+        session=session, owner_id=user_id
+    )
     return [
         user_converters.to_with_friend_status(
-            session=session, current_user=user_id, user=request
+            session=session,
+            current_user=user_id,
+            user=request,
+            favorite_friend_ids=favorite_friend_ids,
         )
         for request in requests
     ]
@@ -221,9 +239,15 @@ def get_received_friend_requests(
         session=session,
         user_id=user_id,
     )
+    favorite_friend_ids = friendship_crud.get_favorite_friend_ids(
+        session=session, owner_id=user_id
+    )
     return [
         user_converters.to_with_friend_status(
-            session=session, current_user=user_id, user=request
+            session=session,
+            current_user=user_id,
+            user=request,
+            favorite_friend_ids=favorite_friend_ids,
         )
         for request in requests
     ]

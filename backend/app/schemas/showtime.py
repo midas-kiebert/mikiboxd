@@ -1,10 +1,9 @@
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.core.enums import GoingStatus
+from app.core.enums import GoingStatus, VisibilityMode
 from app.models.showtime import ShowtimeBase
 
 if TYPE_CHECKING:
@@ -23,8 +22,9 @@ class ShowtimeSelectionUpdate(BaseModel):
     going_status: GoingStatus
     seat_row: str | None = None
     seat_number: str | None = None
-    visible_friend_ids: list[UUID] | None = None
-    visible_group_ids: list[UUID] | None = None
+    # Optional per-showtime visibility mode applied alongside the status change
+    # (e.g. when the first-time popup lets the user pick a mode for this showtime).
+    visibility_mode: VisibilityMode | None = None
 
 
 class ShowtimeLoggedIn(ShowtimeBase):

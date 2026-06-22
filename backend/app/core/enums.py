@@ -40,6 +40,20 @@ class GoingStatus(str, Enum):
 
 
 @unique
+class VisibilityMode(str, Enum):
+    """Who may see a user's attendance status for a showtime.
+
+    Stored on ShowtimeVisibilitySetting (per showtime) and as the user's
+    default (User.default_visibility_mode). Friends you invited — and friends
+    who invited you — always see your status regardless of this mode.
+    """
+
+    ALL_FRIENDS = "ALL_FRIENDS"
+    FAVORITE_FRIENDS = "FAVORITE_FRIENDS"
+    INVITED_ONLY = "INVITED_ONLY"
+
+
+@unique
 class TimeOfDay(str, Enum):
     """Coarse time-of-day bucket used for showtime filtering.
 

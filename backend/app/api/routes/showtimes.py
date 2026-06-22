@@ -53,8 +53,7 @@ def update_showtime_selection(
             going_status=payload.going_status,
             seat_row=payload.seat_row,
             seat_number=payload.seat_number,
-            visible_friend_ids=payload.visible_friend_ids,
-            visible_group_ids=payload.visible_group_ids,
+            visibility_mode=payload.visibility_mode,
             update_seat=should_update_seat,
         )
     except ValueError as error:
@@ -251,8 +250,7 @@ def update_showtime_visibility(
             session=session,
             showtime_id=showtime_id,
             actor_id=current_user.id,
-            visible_friend_ids=payload.visible_friend_ids,
-            visible_group_ids=payload.visible_group_ids,
+            mode=payload.mode,
         )
     except ValueError as error:
         raise HTTPException(

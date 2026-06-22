@@ -408,7 +408,7 @@ def test_showtime_visibility_get_and_update(
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == set()
 
 
-def test_update_showtime_visibility_rejects_unselected_showtime(
+def test_visibility_can_be_set_before_choosing_a_status(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,
@@ -428,16 +428,34 @@ def test_update_showtime_visibility_rejects_unselected_showtime(
     )
     db_transaction.commit()
 
+    # Configure visibility without any selection yet — allowed and persisted.
     update_response = client.put(
         f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
         headers=normal_user_token_headers,
-        json={"mode": "ALL_FRIENDS"},
+        json={"mode": "INVITED_ONLY"},
     )
-    assert update_response.status_code == 400
+    assert update_response.status_code == 200
+    assert update_response.json()["mode"] == "INVITED_ONLY"
+    # Nothing is materialized until a status is set.
+    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == set()
+
+    # Marking going now applies the pre-set mode.
+    selection_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
+        headers=normal_user_token_headers,
+        json={"going_status": "GOING"},
+    )
+    assert selection_response.status_code == 200
+    db_transaction.expire_all()
     assert (
-        update_response.json()["detail"]
-        == "Visibility can only be configured for showtimes you marked as Going or Interested."
+        client.get(
+            f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+            headers=normal_user_token_headers,
+        ).json()["mode"]
+        == "INVITED_ONLY"
     )
+    # INVITED_ONLY with no invites → still nobody.
+    assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == set()
 
 
 def test_update_showtime_selection_applies_visibility_mode(
@@ -481,7 +499,7 @@ def test_update_showtime_selection_applies_visibility_mode(
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == set()
 
 
-def test_removing_showtime_selection_clears_showtime_visibility_rows(
+def test_removing_showtime_selection_clears_effective_but_keeps_setting(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,
@@ -507,8 +525,7 @@ def test_removing_showtime_selection_clears_showtime_visibility_rows(
     )
     db_transaction.commit()
 
-    # Default is ALL_FRIENDS with the friend visible; INVITED_ONLY differs from
-    # the default so a setting row is stored.
+    # Default ALL_FRIENDS shows the friend; INVITED_ONLY differs so a row is stored.
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
         friend_id
     }
@@ -518,14 +535,6 @@ def test_removing_showtime_selection_clears_showtime_visibility_rows(
         json={"mode": "INVITED_ONLY"},
     )
     assert visibility_update_response.status_code == 200
-    assert (
-        showtime_visibility_crud.get_showtime_visibility_setting(
-            session=db_transaction,
-            owner_id=current_user_id,
-            showtime_id=showtime_id,
-        )
-        is not None
-    )
 
     deselect_response = client.put(
         f"{settings.API_V1_STR}/showtimes/selection/{showtime_id}",
@@ -533,15 +542,16 @@ def test_removing_showtime_selection_clears_showtime_visibility_rows(
         json={"going_status": "NOT_GOING"},
     )
     assert deselect_response.status_code == 200
+    db_transaction.expire_all()
 
-    assert (
-        showtime_visibility_crud.get_showtime_visibility_setting(
-            session=db_transaction,
-            owner_id=current_user_id,
-            showtime_id=showtime_id,
-        )
-        is None
+    # The chosen mode persists across the status change; only the cache is cleared.
+    setting = showtime_visibility_crud.get_showtime_visibility_setting(
+        session=db_transaction,
+        owner_id=current_user_id,
+        showtime_id=showtime_id,
     )
+    assert setting is not None
+    assert setting.mode == VisibilityMode.INVITED_ONLY
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == set()
 
 

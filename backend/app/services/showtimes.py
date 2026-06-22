@@ -582,16 +582,8 @@ def update_showtime_visibility(
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
 
-    actor_selection_status = user_crud.get_showtime_going_status(
-        session=session,
-        showtime_id=showtime_id,
-        user_id=actor_id,
-    )
-    if actor_selection_status not in {GoingStatus.GOING, GoingStatus.INTERESTED}:
-        raise ValueError(
-            "Visibility can only be configured for showtimes you marked as Going or Interested."
-        )
-
+    # Visibility can be configured before a status is set; the stored mode is
+    # applied to the effective cache once the user marks going/interested.
     _apply_showtime_visibility_mode_for_owner(
         session=session,
         showtime_id=showtime_id,

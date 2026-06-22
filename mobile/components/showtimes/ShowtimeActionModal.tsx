@@ -349,14 +349,15 @@ export default function ShowtimeActionModal({
   });
 
   // ─── Visibility mode ───────────────────────────────────────────────────────
-  const hasStatus = showtime?.going === "GOING" || showtime?.going === "INTERESTED";
   const visibilityQueryKey = useMemo(
     () => ["showtimes", "visibility", selectedShowtimeId] as const,
     [selectedShowtimeId]
   );
   const { data: visibility } = useQuery({
+    // Loaded whenever the sheet is open so the user can set who sees their
+    // status before choosing a status.
     queryKey: visibilityQueryKey,
-    enabled: sheetDataEnabled && hasStatus,
+    enabled: sheetDataEnabled,
     queryFn: () =>
       ShowtimesService.getShowtimeVisibility({ showtimeId: selectedShowtimeId as number }),
     staleTime: 0,
@@ -1005,7 +1006,7 @@ export default function ShowtimeActionModal({
             </View>
 
             {/* Who can see your status for this showtime — inline dropdown */}
-            {hasStatus && visibility && visibilityMeta ? (
+            {visibility && visibilityMeta ? (
               <View style={styles.visibilitySection}>
                 <TouchableOpacity
                   style={[styles.visibilityHeader, { borderColor: visibilityMeta.color }]}

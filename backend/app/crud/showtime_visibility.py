@@ -187,16 +187,18 @@ def rebuild_effective_visibility_for_showtime(
     session.flush()
 
 
-def clear_visibility_for_showtime(
+def clear_effective_visibility_for_showtime(
     *,
     session: Session,
     owner_id: UUID,
     showtime_id: int,
 ) -> None:
-    setting = session.get(ShowtimeVisibilitySetting, (owner_id, showtime_id))
-    if setting is not None:
-        session.delete(setting)
+    """Drop the materialized viewer rows for a showtime.
 
+    The owner's chosen visibility *setting* is intentionally left in place so it
+    persists across status changes — you can configure who can see your status
+    before (and after) you mark going/interested.
+    """
     session.execute(
         delete(ShowtimeVisibilityEffective).where(
             col(ShowtimeVisibilityEffective.owner_id) == owner_id,
@@ -218,22 +220,9 @@ def rebuild_effective_visibility_for_owner(
             )
         ).all()
     )
-    settings_showtime_ids = set(
-        session.exec(
-            select(ShowtimeVisibilitySetting.showtime_id).where(
-                col(ShowtimeVisibilitySetting.owner_id) == owner_id
-            )
-        ).all()
-    )
 
-    stale_settings_showtime_ids = sorted(settings_showtime_ids - selected_showtime_ids)
-    for showtime_id in stale_settings_showtime_ids:
-        clear_visibility_for_showtime(
-            session=session,
-            owner_id=owner_id,
-            showtime_id=showtime_id,
-        )
-
+    # Drop materialized rows for showtimes the owner no longer attends (their
+    # visibility settings stay, so a pre-set mode survives a status change).
     existing_effective_showtime_ids = set(
         session.exec(
             select(ShowtimeVisibilityEffective.showtime_id).where(
@@ -245,7 +234,7 @@ def rebuild_effective_visibility_for_owner(
         existing_effective_showtime_ids - selected_showtime_ids
     )
     for showtime_id in stale_effective_showtime_ids:
-        clear_visibility_for_showtime(
+        clear_effective_visibility_for_showtime(
             session=session,
             owner_id=owner_id,
             showtime_id=showtime_id,

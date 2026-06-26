@@ -84,6 +84,16 @@ jobs:
           else
             echo "movie/showtime already populated in staging ($MOVIE_COUNT movies, $SHOWTIME_COUNT showtimes), leaving as-is"
           fi
+      - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach
+      - name: Wait for staging backend to be healthy
+        run: |
+          for i in $(seq 1 30); do
+            if [ "$(docker inspect -f '{{.State.Health.Status}}' mikiboxd-staging-backend-1)" = "healthy" ]; then
+              echo "staging backend healthy"; exit 0
+            fi
+            echo "waiting for staging backend... ($i)"; sleep 2
+          done
+          echo "staging backend did not become healthy" >&2; exit 1
       - name: Make Test User friends with everyone in staging
         run: |
           docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
@@ -96,16 +106,6 @@ jobs:
           WHERE t.email = 'test@midaskiebert.nl' AND u.id != t.id
           ON CONFLICT DO NOTHING;
           "
-      - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach
-      - name: Wait for staging backend to be healthy
-        run: |
-          for i in $(seq 1 30); do
-            if [ "$(docker inspect -f '{{.State.Health.Status}}' mikiboxd-staging-backend-1)" = "healthy" ]; then
-              echo "staging backend healthy"; exit 0
-            fi
-            echo "waiting for staging backend... ($i)"; sleep 2
-          done
-          echo "staging backend did not become healthy" >&2; exit 1
       - name: Rebuild friend-status visibility cache for everyone
         run: docker exec mikiboxd-staging-backend-1 python scripts/rebuild-all-visibility.py
       - name: Dump prestart logs on failure

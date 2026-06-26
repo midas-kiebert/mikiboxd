@@ -1,0 +1,17 @@
+<mjml>
+  <mj-body background-color="#fafbfc">
+    <mj-section background-color="#fff" padding="40px 20px">
+      <mj-column vertical-align="middle" width="100%">
+        <mj-text align="center" padding="35px" font-size="20px" font-family="Arial, Helvetica, sans-serif" color="#333">{{ project_name }} - New showtimes for your watchlist</mj-text>
+        <mj-text align="center" font-size="16px" padding-left="25px" padding-right="25px" font-family="Arial, Helvetica, sans-serif" color="#555">These movies just got a showtime they didn't have before:</mj-text>
+        {% for movie in movies %}
+        <mj-divider border-color="#eee" border-width="1px"></mj-divider>
+        <mj-text align="left" font-size="16px" padding-left="25px" padding-right="25px" font-family="Arial, Helvetica, sans-serif" color="#333"><strong>{{ movie.title }}</strong></mj-text>
+        <mj-text align="left" font-size="14px" padding-left="25px" padding-right="25px" font-family="Arial, Helvetica, sans-serif" color="#555">{{ movie.cinema_name }} &bull; {{ movie.datetime_label }}</mj-text>
+        {% endfor %}
+        <mj-divider border-color="#ccc" border-width="2px"></mj-divider>
+        <mj-button align="center" font-size="16px" background-color="#009688" border-radius="8px" color="#fff" href="{{ app_link }}" padding="15px 30px">Open agenda</mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

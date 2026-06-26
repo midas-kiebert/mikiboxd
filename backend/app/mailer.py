@@ -10,12 +10,16 @@ SMTP settings come from environment variables (see core/config.py).
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import emails  # type: ignore
 from jinja2 import Template
 
 from app.core.config import settings
+
+if TYPE_CHECKING:
+    from app.models.movie import Movie
+    from app.models.showtime import Showtime
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +104,32 @@ def generate_reset_password_email(email_to: str, email: str, token: str) -> Emai
             "email": email_to,
             "valid_hours": settings.EMAIL_RESET_TOKEN_EXPIRE_HOURS,
             "link": link,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_watchlist_digest_email(
+    *,
+    movie_entries: list[tuple["Movie", "Showtime"]],
+) -> EmailData:
+    """Generate the watchlist digest email for movies that just got a new showtime."""
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - New showtimes for your watchlist"
+    movies = [
+        {
+            "title": movie.title,
+            "cinema_name": showtime.cinema.name,
+            "datetime_label": showtime.datetime.strftime("%a, %b %d at %H:%M"),
+        }
+        for movie, showtime in movie_entries
+    ]
+    html_content = _render_email_template(
+        template_name="watchlist_digest.html",
+        context={
+            "project_name": project_name,
+            "movies": movies,
+            "app_link": settings.FRONTEND_HOST,
         },
     )
     return EmailData(html_content=html_content, subject=subject)

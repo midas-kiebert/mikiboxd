@@ -89,6 +89,25 @@ def _purge_stale_notifications() -> None:
         logger.exception("Failed to run notification purge job")
 
 
+def _send_watchlist_digests() -> None:
+    """Email users movies on their watchlist (or list override) that just got a showtime.
+
+    Runs daily; daily-frequency users are processed every run, weekly-frequency
+    users only on Mondays. Outside production this only reaches superusers.
+    Errors are caught so a single failure does not stop the scheduler.
+    """
+    from app.api.deps import get_db_context
+    from app.services import watchlist_digest
+
+    try:
+        with get_db_context() as session:
+            sent_count = watchlist_digest.send_due_digests(session=session)
+        if sent_count > 0:
+            logger.info("Sent %s watchlist digest emails", sent_count)
+    except Exception:
+        logger.exception("Failed to run watchlist digest job")
+
+
 if __name__ == "__main__":
     scheduler = BlockingScheduler()
     scheduler.add_job(
@@ -110,5 +129,10 @@ if __name__ == "__main__":
         func=_sync_curated_letterboxd_lists,
         trigger=CronTrigger(day_of_week="mon", hour=5, minute=0, timezone=_TIMEZONE),
         id="sync_curated_letterboxd_lists",
+    )
+    scheduler.add_job(
+        func=_send_watchlist_digests,
+        trigger=CronTrigger(hour=8, minute=0, timezone=_TIMEZONE),
+        id="send_watchlist_digests",
     )
     scheduler.start()

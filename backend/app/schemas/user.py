@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import EmailStr
 from sqlmodel import SQLModel
 
-from app.core.enums import NotificationChannel
+from app.core.enums import DigestFrequency, NotificationChannel
 
 if TYPE_CHECKING:
     from .showtime import ShowtimeLoggedIn
@@ -43,6 +43,9 @@ class UserMe(UserPublic):
     letterboxd_username: str | None
     watchlist_last_synced: datetime | None = None
     watched_last_synced: datetime | None = None
+    notify_watchlist_digest_enabled: bool
+    notify_watchlist_digest_frequency: DigestFrequency
+    notify_watchlist_digest_list_id: UUID | None
 
 
 class UserWithFriendStatus(UserPublic):

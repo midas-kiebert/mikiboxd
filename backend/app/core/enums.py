@@ -108,6 +108,14 @@ class NotificationChannel(str, Enum):
 
 
 @unique
+class DigestFrequency(str, Enum):
+    """How often a user wants to receive the watchlist new-showtime email digest."""
+
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
+
+@unique
 class ShowtimePingSort(str, Enum):
     """Sort order options for the pings list endpoint."""
 

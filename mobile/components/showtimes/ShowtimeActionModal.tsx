@@ -240,6 +240,13 @@ export default function ShowtimeActionModal({
     () => caretRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }),
     [caretRotation]
   );
+  // Same native-thread caret rotation for the visibility dropdown toggle.
+  const visibilityCaretRotation = useRef(new Animated.Value(0)).current;
+  const visibilityCaretSpin = useMemo(
+    () =>
+      visibilityCaretRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }),
+    [visibilityCaretRotation]
+  );
 
   const selectedShowtimeId = showtime?.id ?? null;
   const sheetDataEnabled = visible && selectedShowtimeId !== null;
@@ -281,9 +288,11 @@ export default function ShowtimeActionModal({
       setPingSearchQuery("");
       setIsSeatDialogVisible(false);
       setWatchModalKind(null);
+      setIsVisibilityExpanded(false);
       caretRotation.setValue(0);
+      visibilityCaretRotation.setValue(0);
     }
-  }, [visible, caretRotation]);
+  }, [visible, caretRotation, visibilityCaretRotation]);
 
 
   useEffect(() => {
@@ -374,13 +383,25 @@ export default function ShowtimeActionModal({
 
   const handleToggleVisibilityExpanded = useCallback(() => {
     triggerSelectionHaptic();
+    const next = !isVisibilityExpanded;
+    // Rotate the caret on the native thread, same as the invite-friends toggle.
+    Animated.timing(visibilityCaretRotation, {
+      toValue: next ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
     LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
-    setIsVisibilityExpanded((previous) => !previous);
-  }, []);
+    setIsVisibilityExpanded(next);
+  }, [isVisibilityExpanded, visibilityCaretRotation]);
 
   const handleVisibilityModeSelect = useCallback(
     (mode: VisibilityMode) => {
       LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
+      Animated.timing(visibilityCaretRotation, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
       setIsVisibilityExpanded(false);
       if (!showtime || mode === visibility?.mode) return;
       triggerSelectionHaptic();
@@ -390,7 +411,14 @@ export default function ShowtimeActionModal({
       );
       updateVisibilityMode({ showtimeId: showtime.id, mode });
     },
-    [showtime, visibility?.mode, queryClient, visibilityQueryKey, updateVisibilityMode]
+    [
+      showtime,
+      visibility?.mode,
+      queryClient,
+      visibilityQueryKey,
+      updateVisibilityMode,
+      visibilityCaretRotation,
+    ]
   );
 
   const visibilityMeta = visibility ? getVisibilityModeMeta(visibility.mode, colors) : null;
@@ -1068,67 +1096,66 @@ export default function ShowtimeActionModal({
               ) : null}
             </View>
 
-            {/* Who can see your status for this showtime — inline dropdown */}
-            {visibility && visibilityMeta ? (
-              <View style={styles.visibilitySection}>
-                <TouchableOpacity
-                  style={styles.visibilityHeader}
-                  onPress={handleToggleVisibilityExpanded}
-                  activeOpacity={0.8}
-                >
-                  <ThemedText style={styles.visibilityHeaderLabel}>Status visible to</ThemedText>
+            {/* Who can see your status for this showtime — inline dropdown.
+                The section (and its header height) renders as soon as the showtime
+                does, even before the visibility query resolves, with a skeleton
+                badge in place of the real one — otherwise the row pops in once the
+                fetch lands and visibly shifts everything below it (worse on Android). */}
+            <View style={styles.visibilitySection}>
+              <TouchableOpacity
+                style={styles.visibilityHeader}
+                onPress={handleToggleVisibilityExpanded}
+                activeOpacity={0.8}
+                disabled={!visibilityMeta}
+              >
+                <ThemedText style={styles.visibilityHeaderLabel}>Status visible to</ThemedText>
+                {visibilityMeta ? (
                   <View style={[styles.visibilityValue, { backgroundColor: visibilityMeta.color }]}>
                     <MaterialIcons name={visibilityMeta.icon} size={13} color={colors.pillActiveText} />
                     <ThemedText style={styles.visibilityValueText}>{visibilityMeta.label}</ThemedText>
                   </View>
-                  <Animated.View
-                    style={{
-                      transform: [
-                        {
-                          rotate: isVisibilityExpanded ? "180deg" : "0deg",
-                        },
-                      ],
-                    }}
-                  >
-                    <MaterialIcons name="expand-more" size={20} color={colors.textSecondary} />
-                  </Animated.View>
-                </TouchableOpacity>
-                {isVisibilityExpanded ? (
-                  <View style={styles.visibilityOptions}>
-                    {VISIBILITY_MODE_ORDER.map((mode) => {
-                      const optionMeta = getVisibilityModeMeta(mode, colors);
-                      const isSelected = mode === visibility.mode;
-                      return (
-                        <TouchableOpacity
-                          key={mode}
-                          style={[
-                            styles.visibilityOption,
-                            isSelected && { borderColor: optionMeta.color, backgroundColor: colors.pillBackground },
-                          ]}
-                          onPress={() => handleVisibilityModeSelect(mode)}
-                          activeOpacity={0.8}
-                        >
-                          <View style={[styles.visibilityOptionIcon, { backgroundColor: optionMeta.color }]}>
-                            <MaterialIcons name={optionMeta.icon} size={15} color={colors.pillActiveText} />
-                          </View>
-                          <View style={styles.visibilityOptionText}>
-                            <ThemedText style={styles.visibilityOptionLabel}>{optionMeta.label}</ThemedText>
-                            <ThemedText style={styles.visibilityOptionDescription}>
-                              {optionMeta.description}
-                            </ThemedText>
-                          </View>
-                          <MaterialIcons
-                            name={isSelected ? "radio-button-checked" : "radio-button-unchecked"}
-                            size={20}
-                            color={isSelected ? optionMeta.color : colors.textSecondary}
-                          />
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
+                ) : (
+                  <View style={[styles.visibilityValue, styles.visibilityValueSkeleton]} />
+                )}
+                <Animated.View style={{ transform: [{ rotate: visibilityCaretSpin }] }}>
+                  <MaterialIcons name="expand-more" size={20} color={colors.textSecondary} />
+                </Animated.View>
+              </TouchableOpacity>
+              {visibility && isVisibilityExpanded ? (
+                <View style={styles.visibilityOptions}>
+                  {VISIBILITY_MODE_ORDER.map((mode) => {
+                    const optionMeta = getVisibilityModeMeta(mode, colors);
+                    const isSelected = mode === visibility.mode;
+                    return (
+                      <TouchableOpacity
+                        key={mode}
+                        style={[
+                          styles.visibilityOption,
+                          isSelected && { borderColor: optionMeta.color, backgroundColor: colors.pillBackground },
+                        ]}
+                        onPress={() => handleVisibilityModeSelect(mode)}
+                        activeOpacity={0.8}
+                      >
+                        <View style={[styles.visibilityOptionIcon, { backgroundColor: optionMeta.color }]}>
+                          <MaterialIcons name={optionMeta.icon} size={15} color={colors.pillActiveText} />
+                        </View>
+                        <View style={styles.visibilityOptionText}>
+                          <ThemedText style={styles.visibilityOptionLabel}>{optionMeta.label}</ThemedText>
+                          <ThemedText style={styles.visibilityOptionDescription}>
+                            {optionMeta.description}
+                          </ThemedText>
+                        </View>
+                        <MaterialIcons
+                          name={isSelected ? "radio-button-checked" : "radio-button-unchecked"}
+                          size={20}
+                          color={isSelected ? optionMeta.color : colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
 
             {/* Who you've invited */}
             <View
@@ -1563,6 +1590,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 8,
       paddingVertical: 3,
       paddingHorizontal: 8,
+    },
+    visibilityValueSkeleton: {
+      width: 78,
+      height: 19,
+      backgroundColor: colors.pillBackground,
     },
     visibilityValueText: {
       fontSize: 12,

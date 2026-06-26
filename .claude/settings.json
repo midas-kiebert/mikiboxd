@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(uv run:*)",
-      "Bash(gh workflow *)"
+      "Bash(gh workflow *)",
+      "Bash(node -e ' *)"
     ]
   }
 }

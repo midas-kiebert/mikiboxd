@@ -58,6 +58,9 @@ def to_me(user: User) -> UserMe:
         watched_last_synced=(
             user.letterboxd.last_watched_sync if user.letterboxd else None
         ),
+        notify_watchlist_digest_enabled=user.notify_watchlist_digest_enabled,
+        notify_watchlist_digest_frequency=user.notify_watchlist_digest_frequency,
+        notify_watchlist_digest_list_id=user.notify_watchlist_digest_list_id,
     )
 
 

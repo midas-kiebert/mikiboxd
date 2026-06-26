@@ -1,10 +1,11 @@
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 from pydantic import EmailStr
 from sqlmodel import Field, Relationship, SQLModel
 
-from app.core.enums import NotificationChannel
+from app.core.enums import DigestFrequency, NotificationChannel
 
 if TYPE_CHECKING:
     from app.models.letterboxd import Letterboxd
@@ -43,6 +44,14 @@ class _UserBase(SQLModel):
         sa_column_kwargs={"index": True},
         foreign_key="letterboxd.letterboxd_username",
     )
+    notify_watchlist_digest_enabled: bool = Field(default=True)
+    notify_watchlist_digest_frequency: DigestFrequency = Field(
+        default=DigestFrequency.WEEKLY
+    )
+    notify_watchlist_digest_list_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="letterboxdlist.id",
+    )
 
 
 # Properties to receive via API on creation (admin/superuser use — exposes all fields)
@@ -75,6 +84,9 @@ class UserUpdate(SQLModel):
     notify_channel_showtime_ping: NotificationChannel | None = Field(default=None)
     notify_channel_invite_response: NotificationChannel | None = Field(default=None)
     notify_channel_interest_reminder: NotificationChannel | None = Field(default=None)
+    notify_watchlist_digest_enabled: bool | None = Field(default=None)
+    notify_watchlist_digest_frequency: DigestFrequency | None = Field(default=None)
+    notify_watchlist_digest_list_id: uuid.UUID | None = Field(default=None)
     password: str | None = Field(default=None, min_length=1, max_length=255)
 
 
@@ -82,6 +94,8 @@ class UserUpdate(SQLModel):
 class User(_UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
+    # Drives the digest lookback window and prevents double-sends; not user-facing.
+    notify_watchlist_digest_last_sent_at: datetime | None = Field(default=None)
     letterboxd: Optional["Letterboxd"] = Relationship(
         sa_relationship_kwargs={"lazy": "joined"},
     )

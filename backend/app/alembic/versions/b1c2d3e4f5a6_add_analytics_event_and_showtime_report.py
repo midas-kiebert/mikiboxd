@@ -1,5 +1,8 @@
 """add analytics_event and showtime_report tables
 
+All forward DDL is idempotent so a partial/replayed run on staging cannot
+wedge the backend.
+
 Revision ID: b1c2d3e4f5a6
 Revises: a7c4e9b2d5f3
 Create Date: 2026-06-27 00:00:00.000000
@@ -7,10 +10,7 @@ Create Date: 2026-06-27 00:00:00.000000
 """
 
 from alembic import op
-import sqlalchemy as sa
 
-
-# revision identifiers, used by Alembic.
 revision = "b1c2d3e4f5a6"
 down_revision = "a7c4e9b2d5f3"
 branch_labels = None
@@ -18,93 +18,61 @@ depends_on = None
 
 
 def upgrade():
-    op.create_table(
-        "analyticsevent",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("user_id", sa.Uuid(), nullable=False),
-        sa.Column(
-            "name",
-            sa.Enum(
-                "login",
-                "filter_applied",
-                "preset_used",
-                "invite_sent",
-                "notification_clicked",
-                name="name",
-                native_enum=False,
-            ),
-            nullable=False,
-        ),
-        sa.Column("platform", sa.String(length=32), nullable=True),
-        sa.Column("properties", sa.JSON(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(["user_id"], ["user.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
+    op.execute(
+        "CREATE TABLE IF NOT EXISTS analyticsevent ("
+        "id SERIAL NOT NULL PRIMARY KEY, "
+        'user_id UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE, '
+        "name VARCHAR(20) NOT NULL, "
+        "platform VARCHAR(32), "
+        "properties JSON, "
+        "created_at TIMESTAMP NOT NULL"
+        ")"
     )
-    op.create_index(
-        "ix_analyticsevent_user_id", "analyticsevent", ["user_id"], unique=False
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_analyticsevent_user_id "
+        "ON analyticsevent (user_id)"
     )
-    op.create_index(
-        "ix_analyticsevent_name", "analyticsevent", ["name"], unique=False
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_analyticsevent_name ON analyticsevent (name)"
     )
-    op.create_index(
-        "ix_analyticsevent_created_at", "analyticsevent", ["created_at"], unique=False
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_analyticsevent_created_at "
+        "ON analyticsevent (created_at)"
     )
 
-    op.create_table(
-        "showtimereport",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("showtime_id", sa.Integer(), nullable=False),
-        sa.Column("reporter_id", sa.Uuid(), nullable=False),
-        sa.Column(
-            "reason",
-            sa.Enum(
-                "incorrect_movie",
-                "incorrect_time",
-                "does_not_exist",
-                "duplicate",
-                "other",
-                name="reason",
-                native_enum=False,
-            ),
-            nullable=False,
-        ),
-        sa.Column("message", sa.String(length=1000), nullable=True),
-        sa.Column(
-            "status",
-            sa.Enum(
-                "open",
-                "resolved",
-                "dismissed",
-                name="status",
-                native_enum=False,
-            ),
-            nullable=False,
-        ),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("resolved_at", sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(["showtime_id"], ["showtime.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["reporter_id"], ["user.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
+    op.execute(
+        "CREATE TABLE IF NOT EXISTS showtimereport ("
+        "id SERIAL NOT NULL PRIMARY KEY, "
+        "showtime_id integer NOT NULL REFERENCES showtime(id) ON DELETE CASCADE, "
+        'reporter_id UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE, '
+        "reason VARCHAR(16) NOT NULL, "
+        "message VARCHAR(1000), "
+        "status VARCHAR(9) NOT NULL, "
+        "created_at TIMESTAMP NOT NULL, "
+        "resolved_at TIMESTAMP"
+        ")"
     )
-    op.create_index(
-        "ix_showtimereport_showtime_id", "showtimereport", ["showtime_id"], unique=False
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_showtimereport_showtime_id "
+        "ON showtimereport (showtime_id)"
     )
-    op.create_index(
-        "ix_showtimereport_reporter_id", "showtimereport", ["reporter_id"], unique=False
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_showtimereport_reporter_id "
+        "ON showtimereport (reporter_id)"
     )
-    op.create_index(
-        "ix_showtimereport_status", "showtimereport", ["status"], unique=False
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_showtimereport_status "
+        "ON showtimereport (status)"
     )
 
 
 def downgrade():
-    op.drop_index("ix_showtimereport_status", table_name="showtimereport")
-    op.drop_index("ix_showtimereport_reporter_id", table_name="showtimereport")
-    op.drop_index("ix_showtimereport_showtime_id", table_name="showtimereport")
-    op.drop_table("showtimereport")
+    op.execute("DROP INDEX IF EXISTS ix_showtimereport_status")
+    op.execute("DROP INDEX IF EXISTS ix_showtimereport_reporter_id")
+    op.execute("DROP INDEX IF EXISTS ix_showtimereport_showtime_id")
+    op.execute("DROP TABLE IF EXISTS showtimereport")
 
-    op.drop_index("ix_analyticsevent_created_at", table_name="analyticsevent")
-    op.drop_index("ix_analyticsevent_name", table_name="analyticsevent")
-    op.drop_index("ix_analyticsevent_user_id", table_name="analyticsevent")
-    op.drop_table("analyticsevent")
+    op.execute("DROP INDEX IF EXISTS ix_analyticsevent_created_at")
+    op.execute("DROP INDEX IF EXISTS ix_analyticsevent_name")
+    op.execute("DROP INDEX IF EXISTS ix_analyticsevent_user_id")
+    op.execute("DROP TABLE IF EXISTS analyticsevent")

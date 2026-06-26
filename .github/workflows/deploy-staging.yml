@@ -65,12 +65,15 @@ jobs:
             echo "waiting for staging db... ($i)"; sleep 2
           done
           echo "staging db did not become healthy" >&2; exit 1
-      - name: Copy production database into staging (excluding movie/showtime)
+      - name: Copy production database into staging (excluding movie/showtime/pushtoken)
         run: |
           docker exec mikiboxd-db-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
             --clean --if-exists --no-owner --no-privileges \
-            --exclude-table=movie --exclude-table=showtime \
+            --exclude-table=movie --exclude-table=showtime --exclude-table=pushtoken \
             | docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+      - name: Wipe push tokens in staging (prod tokens must never live here)
+        run: |
+          docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "TRUNCATE TABLE pushtoken;"
       - name: Seed movie/showtime tables from production only if empty
         run: |
           MOVIE_COUNT=$(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM movie")

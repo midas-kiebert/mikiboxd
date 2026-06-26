@@ -31,7 +31,7 @@ from app.models.saved_preset import SavedPreset
 from app.models.showtime import Showtime
 from app.models.user import User, UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
-from app.schemas.notification import NotificationFeedItem
+from app.schemas.notification import NotificationFeedItem, NotificationFeedType
 from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
@@ -45,7 +45,7 @@ logger = getLogger(__name__)
 NOTIFICATION_MAX_AGE = timedelta(days=30)
 
 # Maps stored notification types to the strings the client feed expects.
-_NOTIFICATION_FEED_TYPES = {
+_NOTIFICATION_FEED_TYPES: dict[NotificationType, NotificationFeedType] = {
     NotificationType.FRIEND_SHOWTIME_MATCH: "friend_showtime_match",
     NotificationType.INVITE_RESPONSE: "invite_response",
     NotificationType.FRIEND_REQUEST_ACCEPTED: "friend_request_accepted",

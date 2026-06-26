@@ -155,7 +155,8 @@ export default function SettingsScreen() {
     useState<NotificationChannelPreferenceKey | null>(null);
   // Local state for the watchlist new-showtime email digest setting.
   const [digestEnabled, setDigestEnabled] = useState(false);
-  const [digestFrequency, setDigestFrequency] = useState<DigestFrequency>('weekly');
+  const [digestFrequency, setDigestFrequency] =
+    useState<DigestFrequency>('weekly_or_urgent');
   const [digestListId, setDigestListId] = useState<string | null>(null);
   const [digestAdvancedOpen, setDigestAdvancedOpen] = useState(false);
   const [isUpdatingDigest, setIsUpdatingDigest] = useState(false);
@@ -184,7 +185,7 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     setDigestEnabled(!!user?.notify_watchlist_digest_enabled);
-    setDigestFrequency(user?.notify_watchlist_digest_frequency ?? 'weekly');
+    setDigestFrequency(user?.notify_watchlist_digest_frequency ?? 'weekly_or_urgent');
     setDigestListId(user?.notify_watchlist_digest_list_id ?? null);
   }, [
     user?.notify_watchlist_digest_enabled,
@@ -857,19 +858,21 @@ export default function SettingsScreen() {
                     style={[
                       styles.notificationChannelOption,
                       styles.notificationChannelOptionRight,
-                      digestFrequency === 'weekly' && styles.notificationChannelOptionActive,
+                      digestFrequency === 'weekly_or_urgent' &&
+                        styles.notificationChannelOptionActive,
                     ]}
-                    onPress={() => handleDigestFrequencyChange('weekly')}
+                    onPress={() => handleDigestFrequencyChange('weekly_or_urgent')}
                     disabled={!user || isUpdatingDigest}
                     activeOpacity={0.8}
                   >
                     <ThemedText
                       style={[
                         styles.notificationChannelOptionText,
-                        digestFrequency === 'weekly' && styles.notificationChannelOptionTextActive,
+                        digestFrequency === 'weekly_or_urgent' &&
+                          styles.notificationChannelOptionTextActive,
                       ]}
                     >
-                      Weekly
+                      Smart
                     </ThemedText>
                   </TouchableOpacity>
                 </View>

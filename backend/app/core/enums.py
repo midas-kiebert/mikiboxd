@@ -109,10 +109,15 @@ class NotificationChannel(str, Enum):
 
 @unique
 class DigestFrequency(str, Enum):
-    """How often a user wants to receive the watchlist new-showtime email digest."""
+    """How often a user wants to receive the watchlist new-showtime email digest.
+
+    DAILY sends every newly-available movie every day. WEEKLY_OR_URGENT holds
+    new movies back for up to a week, but sends early if one of the pending
+    showtimes is happening soon — see app/services/watchlist_digest.py.
+    """
 
     DAILY = "daily"
-    WEEKLY = "weekly"
+    WEEKLY_OR_URGENT = "weekly_or_urgent"
 
 
 @unique

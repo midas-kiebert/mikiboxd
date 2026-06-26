@@ -86,8 +86,12 @@ export type CoInvitedFriendPublic = {
 
 /**
  * How often a user wants to receive the watchlist new-showtime email digest.
+ *
+ * DAILY sends every newly-available movie every day. WEEKLY_OR_URGENT holds
+ * new movies back for up to a week, but sends early if one of the pending
+ * showtimes is happening soon — see app/services/watchlist_digest.py.
  */
-export type DigestFrequency = "daily" | "weekly"
+export type DigestFrequency = "daily" | "weekly_or_urgent"
 
 export type FriendStatusSharingUpdate = {
   shares_status: boolean
@@ -1229,6 +1233,12 @@ export type ShowtimesGetShowtimeByIdData = {
 }
 
 export type ShowtimesGetShowtimeByIdResponse = ShowtimeLoggedIn
+
+export type UsersUnsubscribeWatchlistDigestData = {
+  token: string
+}
+
+export type UsersUnsubscribeWatchlistDigestResponse = string
 
 export type UsersSearchUsersData = {
   limit?: number

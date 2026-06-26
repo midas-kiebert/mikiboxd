@@ -89,12 +89,33 @@ def _purge_stale_notifications() -> None:
         logger.exception("Failed to run notification purge job")
 
 
+def _refresh_watchlist_digest_queue() -> None:
+    """Detect movies that just became newly available for the watchlist digest.
+
+    Runs daily, after the nightly scrape. Populates the digest queue that
+    `_send_watchlist_digests` reads from; each movie is queued at most once,
+    ever. Errors are caught so a single failure does not stop the scheduler.
+    """
+    from app.api.deps import get_db_context
+    from app.services import watchlist_digest
+
+    try:
+        with get_db_context() as session:
+            queued_count = watchlist_digest.refresh_digest_queue(session=session)
+        if queued_count > 0:
+            logger.info("Queued %s newly available movies for the digest", queued_count)
+    except Exception:
+        logger.exception("Failed to run watchlist digest queue refresh job")
+
+
 def _send_watchlist_digests() -> None:
     """Email users movies on their watchlist (or list override) that just got a showtime.
 
-    Runs daily; daily-frequency users are processed every run, weekly-frequency
-    users only on Mondays. Outside production this only reaches superusers.
-    Errors are caught so a single failure does not stop the scheduler.
+    Runs daily, after the queue refresh. Daily-frequency users are sent every
+    pending movie every run; weekly-or-urgent users are held back until either
+    a pending showtime is within 3 days or it's been over a week since their
+    last digest. Outside production this only reaches superusers. Errors are
+    caught so a single failure does not stop the scheduler.
     """
     from app.api.deps import get_db_context
     from app.services import watchlist_digest
@@ -129,6 +150,11 @@ if __name__ == "__main__":
         func=_sync_curated_letterboxd_lists,
         trigger=CronTrigger(day_of_week="mon", hour=5, minute=0, timezone=_TIMEZONE),
         id="sync_curated_letterboxd_lists",
+    )
+    scheduler.add_job(
+        func=_refresh_watchlist_digest_queue,
+        trigger=CronTrigger(hour=7, minute=0, timezone=_TIMEZONE),
+        id="refresh_watchlist_digest_queue",
     )
     scheduler.add_job(
         func=_send_watchlist_digests,

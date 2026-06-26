@@ -16,12 +16,16 @@ import emails  # type: ignore
 from jinja2 import Template
 
 from app.core.config import settings
+from app.core.security import generate_watchlist_digest_unsubscribe_token
 
 if TYPE_CHECKING:
     from app.models.movie import Movie
     from app.models.showtime import Showtime
 
 logger = logging.getLogger(__name__)
+
+BRAND_NAME = "MiKiNO"
+BRAND_LOGO_URL = "https://mikino.nl/assets/images/mikino-logo.png"
 
 
 @dataclass
@@ -111,25 +115,38 @@ def generate_reset_password_email(email_to: str, email: str, token: str) -> Emai
 
 def generate_watchlist_digest_email(
     *,
+    email_to: str,
     movie_entries: list[tuple["Movie", "Showtime"]],
 ) -> EmailData:
     """Generate the watchlist digest email for movies that just got a new showtime."""
-    project_name = settings.PROJECT_NAME
-    subject = f"{project_name} - New showtimes for your watchlist"
+    subject = f"{BRAND_NAME} - New showtimes for your watchlist"
     movies = [
         {
             "title": movie.title,
             "cinema_name": showtime.cinema.name,
             "datetime_label": showtime.datetime.strftime("%a, %b %d at %H:%M"),
+            "poster_link": movie.poster_link,
+            "mikino_link": f"{settings.FRONTEND_HOST}/movie/{movie.id}",
+            "letterboxd_link": (
+                f"https://letterboxd.com/film/{movie.letterboxd_slug}/"
+                if movie.letterboxd_slug
+                else None
+            ),
         }
         for movie, showtime in movie_entries
     ]
+    unsubscribe_token = generate_watchlist_digest_unsubscribe_token(email=email_to)
+    unsubscribe_link = (
+        f"{settings.API_HOST}{settings.API_V1_STR}"
+        f"/users/unsubscribe-watchlist-digest?token={unsubscribe_token}"
+    )
     html_content = _render_email_template(
         template_name="watchlist_digest.html",
         context={
-            "project_name": project_name,
+            "brand_name": BRAND_NAME,
+            "logo_url": BRAND_LOGO_URL,
             "movies": movies,
-            "app_link": settings.FRONTEND_HOST,
+            "unsubscribe_link": unsubscribe_link,
         },
     )
     return EmailData(html_content=html_content, subject=subject)

@@ -3,7 +3,19 @@
     "allow": [
       "Bash(uv run:*)",
       "Bash(gh workflow *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(npx -y mjml@5.3.0 --version)",
+      "Bash(npx -y mjml@5.3.0 src/watchlist_digest.mjml -o build/watchlist_digest.html)",
+      "Bash(.venv/bin/python3 -c ' *)",
+      "Bash(curl -sI \"https://a.ltrbxd.com/resized/film-poster/5/1/7/2/2/51722-the-matrix-0-230-0-345-crop.jpg\")",
+      "Bash(curl -sI \"https://a.ltrbxd.com/resized/sm/upload/aw/h8/0o/zo/spirited-away-0-230-0-345-crop.jpg\")",
+      "Bash(curl -s \"https://letterboxd.com/film/the-matrix/poster/std/230/\" -A \"Mozilla/5.0\")",
+      "Bash(curl -sI \"https://a.ltrbxd.com/resized/film-poster/5/1/5/1/8/51518-the-matrix-0-230-0-345-crop.jpg?v=fc7c366afe\")",
+      "Bash(curl -s \"https://letterboxd.com/film/spirited-away/poster/std/230/\" -A \"Mozilla/5.0\")",
+      "Bash(awk -F'\"' '{print $2}')",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d app -c \"\\\\d watchlistdigestqueueentry\" -c \"\\\\d watchlistdigestnotifiedmovie\" -c \"select column_default from information_schema.columns where table_name='user' and column_name='notify_watchlist_digest_frequency';\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d app -c \"DELETE FROM showtime WHERE id IN \\(9001,9002\\); DELETE FROM movie WHERE id IN \\(9001,9002\\); DELETE FROM cinema WHERE id=9001; DELETE FROM city WHERE id=9001;\")",
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d app -c \"DELETE FROM watchlistdigestnotifiedmovie; DELETE FROM watchlistdigestqueueentry; DELETE FROM watchlistselection; DELETE FROM \\\\\"user\\\\\" WHERE email='tester1@example.com'; DELETE FROM letterboxd WHERE letterboxd_username='tester1'; DELETE FROM showtime WHERE id IN \\(9001,9002\\); DELETE FROM movie WHERE id IN \\(9001,9002\\); DELETE FROM cinema WHERE id=9001; DELETE FROM city WHERE id=9001;\")"
     ]
   }
 }

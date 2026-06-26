@@ -134,3 +134,29 @@ def verify_password_reset_token(token: str) -> str | None:
         return str(decoded["sub"])
     except jwt.exceptions.InvalidTokenError:
         return None
+
+
+def generate_watchlist_digest_unsubscribe_token(email: str) -> str:
+    """Generate a JWT for the one-click "unsubscribe" link in digest emails.
+
+    Deliberately has no expiry — the link must keep working no matter how
+    long the email sits unread. The `type` claim scopes it so it can't be
+    reused as e.g. a password reset token.
+    """
+    return jwt.encode(
+        {"sub": email, "type": "watchlist_digest_unsubscribe"},
+        settings.SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+
+def verify_watchlist_digest_unsubscribe_token(token: str) -> str | None:
+    """Decode and validate an unsubscribe token, returning the encoded email."""
+    try:
+        decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.exceptions.InvalidTokenError:
+        return None
+    if decoded.get("type") != "watchlist_digest_unsubscribe":
+        return None
+    sub = decoded.get("sub")
+    return str(sub) if sub is not None else None

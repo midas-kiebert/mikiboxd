@@ -46,7 +46,7 @@ class _UserBase(SQLModel):
     )
     notify_watchlist_digest_enabled: bool = Field(default=True)
     notify_watchlist_digest_frequency: DigestFrequency = Field(
-        default=DigestFrequency.WEEKLY
+        default=DigestFrequency.WEEKLY_OR_URGENT
     )
     notify_watchlist_digest_list_id: uuid.UUID | None = Field(
         default=None,

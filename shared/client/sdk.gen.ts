@@ -120,6 +120,8 @@ import type {
   ShowtimesGetMainPageShowtimesResponse,
   ShowtimesGetShowtimeByIdData,
   ShowtimesGetShowtimeByIdResponse,
+  UsersUnsubscribeWatchlistDigestData,
+  UsersUnsubscribeWatchlistDigestResponse,
   UsersSearchUsersData,
   UsersSearchUsersResponse,
   UsersRegisterUserData,
@@ -1763,6 +1765,32 @@ export class ShowtimesService {
 }
 
 export class UsersService {
+  /**
+   * Unsubscribe Watchlist Digest
+   * One-click unsubscribe from watchlist digest emails, linked from the email itself.
+   *
+   * No authentication — the signed token in the link is what proves the
+   * request is for that specific user's account.
+   * @param data The data for the request.
+   * @param data.token
+   * @returns string Successful Response
+   * @throws ApiError
+   */
+  public static unsubscribeWatchlistDigest(
+    data: UsersUnsubscribeWatchlistDigestData,
+  ): CancelablePromise<UsersUnsubscribeWatchlistDigestResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/users/unsubscribe-watchlist-digest",
+      query: {
+        token: data.token,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
   /**
    * Search Users
    * @param data The data for the request.

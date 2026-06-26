@@ -1,16 +1,40 @@
 <mjml>
   <mj-body background-color="#fafbfc">
-    <mj-section background-color="#fff" padding="40px 20px">
+    <mj-section background-color="#fff" padding="32px 20px 16px">
       <mj-column vertical-align="middle" width="100%">
-        <mj-text align="center" padding="35px" font-size="20px" font-family="Arial, Helvetica, sans-serif" color="#333">{{ project_name }} - New showtimes for your watchlist</mj-text>
+        <mj-image width="56px" align="center" src="{{ logo_url }}" alt="{{ brand_name }}"></mj-image>
+        <mj-text align="center" padding="16px 0 0" font-size="20px" font-family="Arial, Helvetica, sans-serif" color="#333">{{ brand_name }} &bull; New showtimes for your watchlist</mj-text>
         <mj-text align="center" font-size="16px" padding-left="25px" padding-right="25px" font-family="Arial, Helvetica, sans-serif" color="#555">These movies just got a showtime they didn't have before:</mj-text>
-        {% for movie in movies %}
+      </mj-column>
+    </mj-section>
+    <mj-raw>{% for movie in movies %}</mj-raw>
+    <mj-section background-color="#fff" padding="8px 20px">
+      <mj-group>
+        <mj-column width="72px" vertical-align="middle">
+          <mj-raw>{% if movie.poster_link %}</mj-raw>
+          <mj-image width="60px" padding="0" border-radius="6px" src="{{ movie.poster_link }}" alt="{{ movie.title }}"></mj-image>
+          <mj-raw>{% endif %}</mj-raw>
+        </mj-column>
+        <mj-column width="488px" vertical-align="middle">
+          <mj-text align="left" padding="0 10px" font-size="16px" font-family="Arial, Helvetica, sans-serif" color="#333"><strong>{{ movie.title }}</strong></mj-text>
+          <mj-text align="left" padding="4px 10px 10px" font-size="14px" font-family="Arial, Helvetica, sans-serif" color="#555">{{ movie.cinema_name }} &bull; {{ movie.datetime_label }}</mj-text>
+          <mj-text align="left" padding="0 10px" font-size="13px" font-family="Arial, Helvetica, sans-serif" color="#009688">
+            {% if movie.letterboxd_link %}<a href="{{ movie.letterboxd_link }}" style="color:#009688;text-decoration:none;">Letterboxd</a> &bull; {% endif %}<a href="{{ movie.mikino_link }}" style="color:#009688;text-decoration:none;">View on {{ brand_name }}</a>
+          </mj-text>
+        </mj-column>
+      </mj-group>
+    </mj-section>
+    <mj-section background-color="#fff" padding="0 20px 32px">
+      <mj-column>
         <mj-divider border-color="#eee" border-width="1px"></mj-divider>
-        <mj-text align="left" font-size="16px" padding-left="25px" padding-right="25px" font-family="Arial, Helvetica, sans-serif" color="#333"><strong>{{ movie.title }}</strong></mj-text>
-        <mj-text align="left" font-size="14px" padding-left="25px" padding-right="25px" font-family="Arial, Helvetica, sans-serif" color="#555">{{ movie.cinema_name }} &bull; {{ movie.datetime_label }}</mj-text>
-        {% endfor %}
-        <mj-divider border-color="#ccc" border-width="2px"></mj-divider>
-        <mj-button align="center" font-size="16px" background-color="#009688" border-radius="8px" color="#fff" href="{{ app_link }}" padding="15px 30px">Open agenda</mj-button>
+      </mj-column>
+    </mj-section>
+    <mj-raw>{% endfor %}</mj-raw>
+    <mj-section background-color="#fafbfc" padding="8px 20px 32px">
+      <mj-column>
+        <mj-text align="center" font-size="12px" font-family="Arial, Helvetica, sans-serif" color="#999">
+          <a href="{{ unsubscribe_link }}" style="color:#999;text-decoration:underline;">Unsubscribe from these emails</a>
+        </mj-text>
       </mj-column>
     </mj-section>
   </mj-body>

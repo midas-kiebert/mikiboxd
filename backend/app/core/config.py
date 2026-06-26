@@ -113,6 +113,9 @@ class Settings(BaseSettings):
     # Which origins are allowed to make cross-origin requests to the API.
     # The FRONTEND_HOST is always included automatically (see all_cors_origins).
     FRONTEND_HOST: str = "http://localhost:5173"
+    # Used by the backend to generate absolute links to itself in emails
+    # (e.g. one-click unsubscribe links, which must hit the API directly).
+    API_HOST: str = "http://localhost:8000"
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(_parse_cors)
     ] = []

@@ -79,6 +79,8 @@ Legend:
 - [x] `push_token.py` — FCM device tokens for push notifications
 - [x] `tmdb_lookup_cache.py` — Cache of title → TMDB ID resolutions
 - [x] `city.py` — City (currently Amsterdam only)
+- [ ] `watchlist_digest_queue_entry.py` — Movies newly available for the watchlist digest (queued once, ever)
+- [ ] `watchlist_digest_notified_movie.py` — Per-user record of movies already sent/seen in the digest
 
 ---
 

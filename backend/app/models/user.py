@@ -3,7 +3,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 from pydantic import EmailStr
-from sqlmodel import Field, Relationship, SQLModel
+from sqlalchemy import Enum as SAEnum
+from sqlmodel import Column, Field, Relationship, SQLModel
 
 from app.core.enums import DigestFrequency, NotificationChannel
 
@@ -46,7 +47,16 @@ class _UserBase(SQLModel):
     )
     notify_watchlist_digest_enabled: bool = Field(default=True)
     notify_watchlist_digest_frequency: DigestFrequency = Field(
-        default=DigestFrequency.WEEKLY_OR_URGENT
+        sa_column=Column(
+            SAEnum(
+                DigestFrequency,
+                native_enum=False,
+                length=40,
+                values_callable=lambda enum: [m.value for m in enum],
+            ),
+            nullable=False,
+        ),
+        default=DigestFrequency.WEEKLY_OR_URGENT,
     )
     notify_watchlist_digest_list_id: uuid.UUID | None = Field(
         default=None,

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ShowtimeLoggedIn",
     "ShowtimeInMovieLoggedIn",
+    "CoInvitedFriendPublic",
 ]
 
 
@@ -25,6 +26,18 @@ class ShowtimeSelectionUpdate(BaseModel):
     # Optional per-showtime visibility mode applied alongside the status change
     # (e.g. when the first-time popup lets the user pick a mode for this showtime).
     visibility_mode: VisibilityMode | None = None
+
+
+class CoInvitedFriendPublic(BaseModel):
+    """A friend who was invited by the same person who invited you.
+
+    `inviter` is whichever of your active inviters sent that friend their
+    invite — used to attribute the friend in the "Invited" list ("Invited by
+    <inviter>").
+    """
+
+    friend: "UserPublic"
+    inviter: "UserPublic"
 
 
 class ShowtimeLoggedIn(ShowtimeBase):
@@ -40,8 +53,9 @@ class ShowtimeLoggedIn(ShowtimeBase):
     # for this showtime, plus those pings' ids (used to dismiss the invite).
     invited_by: Sequence["UserPublic"] = []
     invite_ping_ids: Sequence[int] = []
-    # Your friends who were also invited by someone who invited you (co-invitees).
-    co_invited_friends: Sequence["UserPublic"] = []
+    # Your friends who were also invited by someone who invited you (co-invitees),
+    # excluding anyone you already invited yourself.
+    co_invited_friends: Sequence["CoInvitedFriendPublic"] = []
     # Friends you invited who haven't responded going/interested yet (pending).
     pending_invited_friends: Sequence["UserPublic"] = []
     # Friends who have this movie watchlisted / watched on Letterboxd.
@@ -60,5 +74,5 @@ class ShowtimeInMovieLoggedIn(ShowtimeBase):
     seat_number: str | None = None
     invited_by: Sequence["UserPublic"] = []
     invite_ping_ids: Sequence[int] = []
-    co_invited_friends: Sequence["UserPublic"] = []
+    co_invited_friends: Sequence["CoInvitedFriendPublic"] = []
     pending_invited_friends: Sequence["UserPublic"] = []

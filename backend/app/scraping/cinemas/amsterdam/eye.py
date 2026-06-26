@@ -223,22 +223,22 @@ class EyeScraper(BaseCinemaScraper):
         showtimes: list[ShowtimeCreate] = []
         for show in valid_shows:
             production = show.production[0]
-            movie = movies_by_production_id.get(production.id)
-            if movie is None:
+            cached_movie = movies_by_production_id.get(production.id)
+            if cached_movie is None:
                 continue
             start_datetime = datetime.fromisoformat(show.startDateTime).replace(
                 tzinfo=None
             )
             showtimes.append(
                 ShowtimeCreate(
-                    movie_id=movie.id,
+                    movie_id=cached_movie.id,
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
                     ticket_link=show.ticketUrl,
                     subtitles=subtitles_by_production_id.get(production.id),
                 )
             )
-            movies_by_id[movie.id] = movie
+            movies_by_id[cached_movie.id] = cached_movie
 
         observed_presences: list[tuple[str, int]] = []
         with get_db_context() as session:

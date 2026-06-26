@@ -135,9 +135,10 @@ def _compute_effective_visible_friend_ids_for_showtime(
     )
 
     if mode == VisibilityMode.ALL_FRIENDS:
-        base_visible_ids = _status_sharing_friend_ids(
-            session=session, owner_id=owner_id
-        ) & all_friend_ids
+        base_visible_ids = (
+            _status_sharing_friend_ids(session=session, owner_id=owner_id)
+            & all_friend_ids
+        )
     else:  # INVITED_ONLY
         base_visible_ids = set()
 
@@ -286,6 +287,11 @@ def set_visibility_mode_for_showtime(
     showtime then tracks that default going forward. The owner's privacy choice
     also affects the people they invited, so the whole participant group is
     rebuilt.
+
+    The owner can always change their own mode either way — the "tightening
+    only" rule lives in `get_owner_default_mode_for_showtime` instead: it only
+    ever inherits a *stricter* default from a private inviter, never a looser
+    one, but an explicit choice here always wins.
     """
     default_mode = get_owner_default_mode_for_showtime(
         session=session, owner_id=owner_id, showtime_id=showtime_id

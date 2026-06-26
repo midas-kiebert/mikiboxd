@@ -87,7 +87,8 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
           : undefined;
   const hasAudience =
     (showtime.friends_going?.length ?? 0) > 0 ||
-    (showtime.friends_interested?.length ?? 0) > 0;
+    (showtime.friends_interested?.length ?? 0) > 0 ||
+    (showtime.pending_invited_friends?.length ?? 0) > 0;
   const responsiveBadgeRows = useMemo(() => {
     if (!hasAudience) return undefined;
     return getCompactBadgeRowsForHeight(friendBadgeAreaHeight - COMPACT_BADGE_TOP_PADDING);
@@ -174,6 +175,7 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
             <FriendBadges
               friendsGoing={showtime.friends_going}
               friendsInterested={showtime.friends_interested}
+              friendsPending={showtime.pending_invited_friends}
               variant="compact"
               maxRows={responsiveBadgeRows}
             />

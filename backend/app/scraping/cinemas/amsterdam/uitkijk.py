@@ -117,20 +117,20 @@ class UitkijkScraper(BaseCinemaScraper):
         movies_by_id: dict[int, MovieCreate] = {}
         showtimes: list[ShowtimeCreate] = []
         for show in all_shows:
-            movie = movie_cache.get(show.slug)
-            if movie is None:
+            cached_movie = movie_cache.get(show.slug)
+            if cached_movie is None:
                 continue
             start_datetime = to_amsterdam_time(show.start_date)
             showtimes.append(
                 ShowtimeCreate(
-                    movie_id=movie.id,
+                    movie_id=cached_movie.id,
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
                     ticket_link=f"https://www.uitkijk.nl/film/{show.slug}",
                     subtitles=subtitles_by_slug.get(show.slug),
                 )
             )
-            movies_by_id[movie.id] = movie
+            movies_by_id[cached_movie.id] = cached_movie
 
         observed_presences: list[tuple[str, int]] = []
         with get_db_context() as session:

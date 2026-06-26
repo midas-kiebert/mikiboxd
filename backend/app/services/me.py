@@ -710,14 +710,31 @@ def dismiss_received_showtime_ping(
     user_id: UUID,
     ping_id: int,
 ) -> bool:
+    ping = showtime_ping_crud.get_showtime_ping_by_id(session=session, ping_id=ping_id)
     dismissed = showtime_ping_crud.dismiss_received_showtime_ping(
         session=session,
         ping_id=ping_id,
         receiver_id=user_id,
         dismissed_at=now_amsterdam_naive(),
     )
-    if dismissed:
-        session.commit()
+    if dismissed and ping is not None:
+        # Dismissing drops the dismisser from the inviter's active invite group,
+        # which can also drop their co-invitees out of each other's visibility —
+        # rebuild the whole group, not just the dismisser.
+        try:
+            showtime_visibility_crud.rebuild_effective_visibility_for_showtime_participants(
+                session=session,
+                showtime_id=ping.showtime_id,
+            )
+            showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+                session=session,
+                owner_id=user_id,
+                showtime_id=ping.showtime_id,
+            )
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise AppError from e
     return dismissed
 
 

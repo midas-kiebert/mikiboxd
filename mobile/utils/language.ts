@@ -18,6 +18,9 @@ const LANGUAGE_NAMES: Record<string, string> = {
   ja: "Japanese",
   ko: "Korean",
   zh: "Chinese",
+  // TMDB sometimes tags Chinese-language films with "cn" (a country code,
+  // not a valid ISO-639-1 language code) instead of "zh".
+  cn: "Chinese",
   hi: "Hindi",
   ar: "Arabic",
   tr: "Turkish",

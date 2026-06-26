@@ -1485,6 +1485,47 @@ def test_friend_who_invited_you_sees_your_status(
     }
 
 
+def test_being_invited_by_an_all_friends_inviter_stays_all_friends(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    """Being invited only tightens your default when the inviter is private.
+
+    An inviter who is plain ALL_FRIENDS shouldn't push you to INVITED_ONLY —
+    that only happens if the inviter is themselves private/incognito for this
+    showtime (covered by test_co_invitees_..._inherit_invite_only_default).
+    """
+    inviter = user_factory()
+    inviter_id = inviter.id
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=current_user_id, friend_id=inviter_id
+    )
+    db_transaction.commit()
+
+    showtime_ping_crud.create_showtime_ping(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        sender_id=inviter_id,
+        receiver_id=current_user_id,
+        created_at=now_amsterdam_naive(),
+    )
+    db_transaction.commit()
+
+    visibility_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+    )
+    assert visibility_response.status_code == 200
+    assert visibility_response.json()["mode"] == "ALL_FRIENDS"
+
+
 def test_co_invitees_see_your_status_and_inherit_invite_only_default(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
@@ -1566,7 +1607,8 @@ def test_co_invitees_see_your_status_and_inherit_invite_only_default(
     )
     assert showtime_response.status_code == 200
     co_invited_ids = {
-        friend["id"] for friend in showtime_response.json()["co_invited_friends"]
+        entry["friend"]["id"]
+        for entry in showtime_response.json()["co_invited_friends"]
     }
     assert co_invited_ids == {str(co_invitee_id)}
 

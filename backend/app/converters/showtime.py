@@ -13,7 +13,11 @@ from app.crud import showtime_ping as showtime_ping_crud
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
-from app.schemas.showtime import ShowtimeInMovieLoggedIn, ShowtimeLoggedIn
+from app.schemas.showtime import (
+    CoInvitedFriendPublic,
+    ShowtimeInMovieLoggedIn,
+    ShowtimeLoggedIn,
+)
 from app.schemas.user import UserPublic
 
 
@@ -110,21 +114,46 @@ def _co_invited_friends(
     session: Session,
     showtime_id: int,
     user_id: UUID,
-) -> list[UserPublic]:
-    """Your friends who were also invited to this showtime by someone who invited you."""
-    co_invited_ids = showtime_ping_crud.get_co_invited_user_ids(
+) -> list[CoInvitedFriendPublic]:
+    """Your friends who were also invited to this showtime by someone who invited you.
+
+    Excludes anyone you already invited yourself — those are attributed to you,
+    not to the shared inviter, in the "Invited" list.
+    """
+    inviter_by_co_invited_id = showtime_ping_crud.get_co_invited_user_ids_with_inviter(
         session=session,
         viewer_id=user_id,
         showtime_id=showtime_id,
     )
-    if len(co_invited_ids) == 0:
+    if len(inviter_by_co_invited_id) == 0:
         return []
     friend_ids = friendship_crud.get_friend_ids(session=session, user_id=user_id)
-    visible_ids = co_invited_ids & friend_ids
+    already_invited_ids = set(
+        showtime_ping_crud.get_pinged_friend_ids_for_showtime(
+            session=session, showtime_id=showtime_id, sender_id=user_id
+        )
+    )
+    visible_ids = set(inviter_by_co_invited_id) & friend_ids - already_invited_ids
     if len(visible_ids) == 0:
         return []
-    users = session.exec(select(User).where(col(User.id).in_(visible_ids))).all()
-    return [user_converters.to_public(user) for user in users]
+    relevant_ids = visible_ids | {inviter_by_co_invited_id[fid] for fid in visible_ids}
+    users_by_id = {
+        user.id: user
+        for user in session.exec(
+            select(User).where(col(User.id).in_(relevant_ids))
+        ).all()
+    }
+    return [
+        CoInvitedFriendPublic(
+            friend=user_converters.to_public(users_by_id[friend_id]),
+            inviter=user_converters.to_public(
+                users_by_id[inviter_by_co_invited_id[friend_id]]
+            ),
+        )
+        for friend_id in visible_ids
+        if friend_id in users_by_id
+        and inviter_by_co_invited_id[friend_id] in users_by_id
+    ]
 
 
 def _pending_invited_friends(

@@ -119,19 +119,45 @@ def get_co_invited_user_ids(
     These are the viewer's "co-invitees" for the showtime: a shared invite group
     formed by a common inviter. The viewer itself is excluded.
     """
+    return set(
+        get_co_invited_user_ids_with_inviter(
+            session=session, viewer_id=viewer_id, showtime_id=showtime_id
+        )
+    )
+
+
+def get_co_invited_user_ids_with_inviter(
+    *,
+    session: Session,
+    viewer_id: UUID,
+    showtime_id: int,
+) -> dict[UUID, UUID]:
+    """Co-invitees mapped to the shared inviter who invited each of them.
+
+    Same invite group as `get_co_invited_user_ids`, but attributes each
+    co-invitee to one of the viewer's active inviters — whichever invited them
+    (deterministic when more than one inviter sent that person an invite).
+    """
     inviter_ids = get_active_received_inviter_ids(
         session=session,
         receiver_id=viewer_id,
         showtime_id=showtime_id,
     )
     if len(inviter_ids) == 0:
-        return set()
-    stmt = select(ShowtimePing.receiver_id).where(
-        ShowtimePing.showtime_id == showtime_id,
-        col(ShowtimePing.sender_id).in_(inviter_ids),
-        ShowtimePing.receiver_id != viewer_id,
+        return {}
+    stmt = (
+        select(ShowtimePing.receiver_id, ShowtimePing.sender_id)
+        .where(
+            ShowtimePing.showtime_id == showtime_id,
+            col(ShowtimePing.sender_id).in_(inviter_ids),
+            ShowtimePing.receiver_id != viewer_id,
+        )
+        .order_by(col(ShowtimePing.sender_id))
     )
-    return set(session.exec(stmt).all())
+    inviter_by_receiver: dict[UUID, UUID] = {}
+    for receiver_id, sender_id in session.exec(stmt).all():
+        inviter_by_receiver.setdefault(receiver_id, sender_id)
+    return inviter_by_receiver
 
 
 def get_showtime_participant_ids(

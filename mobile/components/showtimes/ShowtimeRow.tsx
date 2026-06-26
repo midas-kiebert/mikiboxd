@@ -23,6 +23,7 @@ type ShowtimeBase = {
   subtitles?: string[] | null;
   friends_going?: UserPublic[];
   friends_interested?: UserPublic[];
+  pending_invited_friends?: UserPublic[];
 };
 
 type ShowtimeRowProps = {
@@ -96,6 +97,7 @@ export default function ShowtimeRow({
         <FriendBadges
           friendsGoing={showtime.friends_going}
           friendsInterested={showtime.friends_interested}
+          friendsPending={showtime.pending_invited_friends}
           variant={isCompact ? "compact" : "default"}
           style={styles.friendRow}
         />

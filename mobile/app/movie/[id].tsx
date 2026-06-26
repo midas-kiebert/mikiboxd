@@ -23,7 +23,6 @@ import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
-import FriendInviteRow from "@/components/friends/FriendInviteRow";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import { ListEndFooter } from "@/components/showtimes/ShowtimesScreen";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
@@ -396,30 +395,48 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
                 <View style={styles.friendWatchWrap}>
                   {movie.friends_watchlisted && movie.friends_watchlisted.length > 0 ? (
                     <View style={styles.friendWatchGroup}>
-                      <ThemedText style={styles.friendWatchLabel}>Watchlisted by friends</ThemedText>
-                      {movie.friends_watchlisted.map((friend) => (
-                        <FriendInviteRow
-                          key={`wl-${friend.id}`}
-                          name={friend.display_name?.trim() || "Friend"}
-                          watchStatus="watchlisted"
-                          mode="display"
-                          onPress={() => router.push(`/friend-showtimes/${friend.id}`)}
-                        />
-                      ))}
+                      <ThemedText style={styles.friendWatchLabel}>
+                        Watchlisted by {movie.friends_watchlisted.length} friend
+                        {movie.friends_watchlisted.length === 1 ? "" : "s"}
+                      </ThemedText>
+                      <View style={styles.friendWatchChipsRow}>
+                        {movie.friends_watchlisted.map((friend) => (
+                          <TouchableOpacity
+                            key={`wl-${friend.id}`}
+                            style={styles.friendWatchChip}
+                            onPress={() => router.push(`/friend-showtimes/${friend.id}`)}
+                            activeOpacity={0.7}
+                          >
+                            <MaterialIcons name="schedule" size={11} color={colors.orange.secondary} />
+                            <ThemedText style={styles.friendWatchChipText} numberOfLines={1}>
+                              {friend.display_name?.trim() || "Friend"}
+                            </ThemedText>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                   ) : null}
                   {movie.friends_watched && movie.friends_watched.length > 0 ? (
                     <View style={styles.friendWatchGroup}>
-                      <ThemedText style={styles.friendWatchLabel}>Watched by friends</ThemedText>
-                      {movie.friends_watched.map((friend) => (
-                        <FriendInviteRow
-                          key={`wd-${friend.id}`}
-                          name={friend.display_name?.trim() || "Friend"}
-                          watchStatus="watched"
-                          mode="display"
-                          onPress={() => router.push(`/friend-showtimes/${friend.id}`)}
-                        />
-                      ))}
+                      <ThemedText style={styles.friendWatchLabel}>
+                        Watched by {movie.friends_watched.length} friend
+                        {movie.friends_watched.length === 1 ? "" : "s"}
+                      </ThemedText>
+                      <View style={styles.friendWatchChipsRow}>
+                        {movie.friends_watched.map((friend) => (
+                          <TouchableOpacity
+                            key={`wd-${friend.id}`}
+                            style={styles.friendWatchChip}
+                            onPress={() => router.push(`/friend-showtimes/${friend.id}`)}
+                            activeOpacity={0.7}
+                          >
+                            <MaterialIcons name="visibility" size={11} color={colors.green.secondary} />
+                            <ThemedText style={styles.friendWatchChipText} numberOfLines={1}>
+                              {friend.display_name?.trim() || "Friend"}
+                            </ThemedText>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                   ) : null}
                 </View>
@@ -653,6 +670,29 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       letterSpacing: 0.4,
       textTransform: "uppercase",
       color: colors.textSecondary,
+    },
+    friendWatchChipsRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    friendWatchChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      maxWidth: 140,
+    },
+    friendWatchChipText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: colors.text,
+      flexShrink: 1,
     },
     dateGroupHeader: {
       marginTop: -6,

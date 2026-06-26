@@ -72,6 +72,18 @@ export type CityPublic = {
   id: number
 }
 
+/**
+ * A friend who was invited by the same person who invited you.
+ *
+ * `inviter` is whichever of your active inviters sent that friend their
+ * invite — used to attribute the friend in the "Invited" list ("Invited by
+ * <inviter>").
+ */
+export type CoInvitedFriendPublic = {
+  friend: UserPublic
+  inviter: UserPublic
+}
+
 export type FriendStatusSharingUpdate = {
   shares_status: boolean
 }
@@ -290,7 +302,7 @@ export type ShowtimeInMovieLoggedIn = {
   seat_number?: string | null
   invited_by?: Array<UserPublic>
   invite_ping_ids?: Array<number>
-  co_invited_friends?: Array<UserPublic>
+  co_invited_friends?: Array<CoInvitedFriendPublic>
   pending_invited_friends?: Array<UserPublic>
 }
 
@@ -309,7 +321,7 @@ export type ShowtimeLoggedIn = {
   seat_number?: string | null
   invited_by?: Array<UserPublic>
   invite_ping_ids?: Array<number>
-  co_invited_friends?: Array<UserPublic>
+  co_invited_friends?: Array<CoInvitedFriendPublic>
   pending_invited_friends?: Array<UserPublic>
   friends_watchlisted?: Array<UserPublic>
   friends_watched?: Array<UserPublic>

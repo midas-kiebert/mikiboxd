@@ -1,3 +1,4 @@
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -18,6 +19,24 @@ MISSING_STREAK_TO_DEACTIVATE = 2
 MIN_BASELINE_FOR_RATIO_GUARD = 10
 MIN_OBSERVED_RATIO = 0.30
 ORPHAN_DELETE_CUTOFF_DAYS = 1
+
+_recovered_presence_lock = threading.Lock()
+_recovered_presence_count = 0
+
+
+def _record_recovered_presence() -> None:
+    global _recovered_presence_count
+    with _recovered_presence_lock:
+        _recovered_presence_count += 1
+
+
+def consume_recovered_presence_count() -> int:
+    """Return and clear the count of presences that were missing and are now seen again."""
+    global _recovered_presence_count
+    with _recovered_presence_lock:
+        count = _recovered_presence_count
+        _recovered_presence_count = 0
+    return count
 
 
 @dataclass(frozen=True)
@@ -222,6 +241,8 @@ def _upsert_observed_presence(
         return None
 
     previous_showtime_id = existing.showtime_id
+    if existing.missing_streak > 0:
+        _record_recovered_presence()
     existing.showtime_id = observed.showtime_id
     existing.last_seen_run_id = run_id
     existing.last_seen_at = seen_at

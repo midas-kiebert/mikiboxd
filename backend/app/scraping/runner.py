@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from rapidfuzz import fuzz
-from sqlalchemy import func
 from sqlmodel import Session, col, delete, select
 
 from app.api.deps import get_db_context
@@ -23,11 +22,6 @@ from app.models.scrape_run import ScrapeRun, ScrapeRunStatus
 from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
 from app.scraping.letterboxd.load_letterboxd_data import (
-    LETTERBOXD_CF_BLOCK_SECONDS,
-    LETTERBOXD_HTTP_403_RETRY_ATTEMPTS,
-    LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD,
-    LETTERBOXD_HTTP_CONCURRENCY,
-    LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS,
     backfill_missing_letterboxd_data,
     consume_letterboxd_failure_events,
     reset_letterboxd_request_budget,
@@ -77,23 +71,12 @@ class ScrapeRunDetail:
 
 
 @dataclass(frozen=True)
-class PresenceHealthSnapshot:
-    active_presence_count: int
-    inactive_presence_count: int
-    pending_delete_count: int
-    pending_delete_by_stream: list[tuple[str, int]]
-
-
-@dataclass(frozen=True)
-class Letterboxd403Diagnostics:
-    observed_403_events: int
-    unique_tmdb_ids: int
-    probable_automated_block_events: int
-    cooldown_events: int
-    session_refresh_errors: int
-    session_refresh_http_errors: int
-    unique_cf_rays: int
-    sample_cf_rays: list[str]
+class OneTimeMissDetail:
+    source_stream: str
+    movie_title: str
+    cinema_name: str
+    showtime_datetime: datetime
+    showtime_id: int
 
 
 @dataclass
@@ -397,60 +380,42 @@ def _stream_display_name(source_stream: str, cinema_name_by_id: dict[int, str]) 
     return f"{source_stream} ({cinema_name})"
 
 
-def _load_presence_health_snapshot() -> PresenceHealthSnapshot:
+def _load_one_time_miss_details() -> list[OneTimeMissDetail]:
+    """Presences missed exactly once: one more miss away from being deleted."""
     threshold_minus_one = max(0, scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE - 1)
     try:
         with get_db_context() as session:
-            active_presence_count = int(
+            rows = list(
                 session.exec(
-                    select(func.count(col(ShowtimeSourcePresence.id))).where(
-                        col(ShowtimeSourcePresence.active).is_(True)
+                    select(ShowtimeSourcePresence, Showtime, Movie, Cinema)
+                    .join(
+                        Showtime,
+                        col(ShowtimeSourcePresence.showtime_id) == col(Showtime.id),
                     )
-                ).one()
-                or 0
-            )
-            inactive_presence_count = int(
-                session.exec(
-                    select(func.count(col(ShowtimeSourcePresence.id))).where(
-                        col(ShowtimeSourcePresence.active).is_(False)
-                    )
-                ).one()
-                or 0
-            )
-            pending_rows = list(
-                session.exec(
-                    select(
-                        ShowtimeSourcePresence.source_stream,
-                        func.count(col(ShowtimeSourcePresence.id)),
-                    )
+                    .join(Movie, col(Showtime.movie_id) == col(Movie.id))
+                    .join(Cinema, col(Showtime.cinema_id) == col(Cinema.id))
                     .where(
                         col(ShowtimeSourcePresence.active).is_(True),
                         ShowtimeSourcePresence.missing_streak == threshold_minus_one,
                     )
-                    .group_by(ShowtimeSourcePresence.source_stream)
                 ).all()
             )
     except Exception as e:
-        logger.error(f"Failed to load source-presence health snapshot. Error: {e}")
-        return PresenceHealthSnapshot(
-            active_presence_count=0,
-            inactive_presence_count=0,
-            pending_delete_count=0,
-            pending_delete_by_stream=[],
-        )
+        logger.error(f"Failed to load one-time-miss details. Error: {e}")
+        return []
 
-    pending_by_stream: list[tuple[str, int]] = [
-        (str(source_stream), int(count_value))
-        for source_stream, count_value in pending_rows
+    details = [
+        OneTimeMissDetail(
+            source_stream=presence.source_stream,
+            movie_title=movie.title,
+            cinema_name=cinema.name,
+            showtime_datetime=showtime.datetime,
+            showtime_id=showtime.id,
+        )
+        for presence, showtime, movie, cinema in rows
     ]
-    pending_by_stream.sort(key=lambda item: (-item[1], item[0]))
-    pending_delete_count = sum(count for _, count in pending_by_stream)
-    return PresenceHealthSnapshot(
-        active_presence_count=active_presence_count,
-        inactive_presence_count=inactive_presence_count,
-        pending_delete_count=pending_delete_count,
-        pending_delete_by_stream=pending_by_stream,
-    )
+    details.sort(key=lambda detail: detail.showtime_datetime)
+    return details
 
 
 def _tmdb_miss_title_counts(tmdb_misses: list[dict[str, Any]]) -> list[tuple[str, int]]:
@@ -545,72 +510,6 @@ def _letterboxd_failure_breakdown(
             event_type = "unknown_failure"
         counts[event_type] = counts.get(event_type, 0) + 1
     return counts
-
-
-def _letterboxd_403_diagnostics(
-    letterboxd_failures: list[dict[str, Any]],
-) -> Letterboxd403Diagnostics:
-    observed_403_events = 0
-    unique_tmdb_ids: set[int] = set()
-    probable_automated_block_events = 0
-    cooldown_events = 0
-    session_refresh_errors = 0
-    session_refresh_http_errors = 0
-    cf_rays: set[str] = set()
-
-    for failure in letterboxd_failures:
-        status_code = failure.get("status_code")
-        event_type = str(failure.get("event_type") or "").strip()
-        reason = str(failure.get("reason") or "").strip()
-
-        if status_code == 403 or event_type.startswith("http_403"):
-            observed_403_events += 1
-            tmdb_id_raw = failure.get("tmdb_id")
-            if isinstance(tmdb_id_raw, int):
-                unique_tmdb_ids.add(tmdb_id_raw)
-            elif isinstance(tmdb_id_raw, str) and tmdb_id_raw.isdigit():
-                unique_tmdb_ids.add(int(tmdb_id_raw))
-
-        if "probable_automated_block" in reason or event_type in {
-            "cloudflare_challenge",
-            "http_403_block",
-            "http_403_streak_block",
-        }:
-            probable_automated_block_events += 1
-
-        if event_type in {
-            "cooldown_skip",
-            "cloudflare_challenge",
-            "rate_limited",
-            "http_403_block",
-            "http_403_streak_block",
-        }:
-            cooldown_events += 1
-
-        if event_type == "session_refresh_error":
-            session_refresh_errors += 1
-        if event_type == "session_refresh_http_error":
-            session_refresh_http_errors += 1
-
-        response_meta_raw = failure.get("response_meta")
-        if isinstance(response_meta_raw, dict):
-            cf_ray_raw = response_meta_raw.get("cf_ray")
-            if cf_ray_raw is not None:
-                cf_ray = str(cf_ray_raw).strip()
-                if cf_ray:
-                    cf_rays.add(cf_ray)
-
-    sample_cf_rays = sorted(cf_rays)[:8]
-    return Letterboxd403Diagnostics(
-        observed_403_events=observed_403_events,
-        unique_tmdb_ids=len(unique_tmdb_ids),
-        probable_automated_block_events=probable_automated_block_events,
-        cooldown_events=cooldown_events,
-        session_refresh_errors=session_refresh_errors,
-        session_refresh_http_errors=session_refresh_http_errors,
-        unique_cf_rays=len(cf_rays),
-        sample_cf_rays=sample_cf_rays,
-    )
 
 
 def _render_letterboxd_failure_item(failure: dict[str, Any]) -> str:
@@ -1308,14 +1207,13 @@ def _render_recap_html(
     cinema_scraper_details: list[ScrapeRunDetail],
     cinema_scraper_status_counts: dict[str, int],
     cinema_name_by_id: dict[int, str],
-    slowest_run_details: list[ScrapeRunDetail],
-    presence_health: PresenceHealthSnapshot,
+    recovered_presence_count: int,
+    one_time_miss_details: list[OneTimeMissDetail],
     tmdb_miss_titles: list[tuple[str, int]],
     low_confidence_lookups: list[dict[str, Any]],
     low_confidence_threshold: float,
     error_stage_counts: dict[str, int],
     letterboxd_failure_counts: dict[str, int],
-    letterboxd_403_diagnostics: Letterboxd403Diagnostics,
 ) -> str:
     deleted_items = (
         "".join(
@@ -1399,23 +1297,15 @@ def _render_recap_html(
         )
         or "<li>None</li>"
     )
-    pending_delete_items = (
-        "".join(
-            f"<li>{escape(source_stream)}: <b>{count}</b></li>"
-            for source_stream, count in presence_health.pending_delete_by_stream[:25]
-        )
-        or "<li>None</li>"
-    )
-    slowest_stream_items = (
+    one_time_miss_items = (
         "".join(
             "<li>"
-            f"{escape(detail.source_stream)} "
-            f"[{escape(detail.status)}] "
-            f"duration=<b>{detail.duration_seconds:.1f}s</b> "
-            f"observed={detail.observed_showtime_count if detail.observed_showtime_count is not None else '-'}"
+            f"{escape(detail.source_stream)} | "
+            f"{escape(detail.movie_title)} "
+            f"@ {escape(detail.cinema_name)} "
+            f"({escape(detail.showtime_datetime.isoformat())}, showtime_id={detail.showtime_id})"
             "</li>"
-            for detail in slowest_run_details
-            if detail.duration_seconds is not None
+            for detail in one_time_miss_details
         )
         or "<li>None</li>"
     )
@@ -1463,20 +1353,6 @@ def _render_recap_html(
         )
         or "<li>None</li>"
     )
-    letterboxd_403_cf_ray_items = (
-        "".join(
-            f"<li><code>{escape(cf_ray)}</code></li>"
-            for cf_ray in letterboxd_403_diagnostics.sample_cf_rays
-        )
-        or "<li>None</li>"
-    )
-    letterboxd_403_interpretation = "No 403 responses observed."
-    if letterboxd_403_diagnostics.observed_403_events > 0:
-        if letterboxd_403_diagnostics.cooldown_events > 0:
-            letterboxd_403_interpretation = "Automated-block protections were triggered and cooldown mode was engaged."
-        else:
-            letterboxd_403_interpretation = "403 responses were observed without cooldown trigger; this usually indicates a short-lived edge/IP reputation block."
-
     return f"""
     <h2>Scrape Recap</h2>
     <p>Started: <code>{escape(started_at.isoformat())}</code></p>
@@ -1490,6 +1366,8 @@ def _render_recap_html(
       <li>Future showtimes after run: <b>{future_showtime_count_after}</b></li>
       <li>Future movies before run: <b>{future_movie_count_before}</b></li>
       <li>Future movies after run: <b>{future_movie_count_after}</b></li>
+      <li>Previously missing, now seen again: <b>{recovered_presence_count}</b></li>
+      <li>One-time misses (one more miss from deletion): <b>{len(one_time_miss_details)}</b></li>
     </ul>
     <p>Total TMDB lookups sent: <b>{len(tmdb_lookups)}</b></p>
     <p>TMDB cache hit rate: <b>{tmdb_hit_rate:.1f}%</b></p>
@@ -1502,6 +1380,16 @@ def _render_recap_html(
     <p>Missing-cinema insert failure count: <b>{len(missing_cinema_insert_failures)}</b></p>
     <p>Total scrape streams recorded: <b>{len(scrape_run_details)}</b></p>
     <p>Cinema scraper streams recorded: <b>{len(cinema_scraper_details)}</b></p>
+    <h3>New Movies In Future Showtimes</h3>
+    <ul>{new_movie_items}</ul>
+    <h3>Showtimes No Longer Found (Future Only)</h3>
+    <ul>{deleted_items}</ul>
+    <h3>One-Time Misses</h3>
+    <ul>{one_time_miss_items}</ul>
+    <h3>Missing Cinemas</h3>
+    <ul>{missing_cinema_items}</ul>
+    <h3>Missing Cinema Insert Failures</h3>
+    <ul>{missing_cinema_insert_failure_items}</ul>
     <h3>TMDB Cache Breakdown</h3>
     <ul>{tmdb_cache_breakdown_items}</ul>
     <h3>Scrape Run Statuses</h3>
@@ -1510,48 +1398,12 @@ def _render_recap_html(
     <ul>{cinema_scraper_status_items}</ul>
     <h3>Letterboxd Failure Breakdown</h3>
     <ul>{letterboxd_failure_breakdown_items}</ul>
-    <h3>Letterboxd 403 Diagnostics</h3>
-    <ul>
-      <li>Observed HTTP 403 events: <b>{letterboxd_403_diagnostics.observed_403_events}</b></li>
-      <li>Unique TMDB IDs impacted by 403: <b>{letterboxd_403_diagnostics.unique_tmdb_ids}</b></li>
-      <li>Probable automated-block signals: <b>{letterboxd_403_diagnostics.probable_automated_block_events}</b></li>
-      <li>Cooldown/block events: <b>{letterboxd_403_diagnostics.cooldown_events}</b></li>
-      <li>Session refresh failures: <b>{letterboxd_403_diagnostics.session_refresh_errors}</b></li>
-      <li>Session refresh non-200 responses: <b>{letterboxd_403_diagnostics.session_refresh_http_errors}</b></li>
-      <li>Unique Cloudflare Ray IDs observed: <b>{letterboxd_403_diagnostics.unique_cf_rays}</b></li>
-      <li>Interpretation: {escape(letterboxd_403_interpretation)}</li>
-    </ul>
-    <h3>Letterboxd CF-Ray Samples</h3>
-    <ul>{letterboxd_403_cf_ray_items}</ul>
-    <h3>Letterboxd Mitigation Settings</h3>
-    <ul>
-      <li>HTTP concurrency: <b>{LETTERBOXD_HTTP_CONCURRENCY}</b></li>
-      <li>Minimum request interval: <b>{LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS:.2f}s</b></li>
-      <li>HTTP 403 retry attempts: <b>{LETTERBOXD_HTTP_403_RETRY_ATTEMPTS}</b></li>
-      <li>HTTP 403 streak threshold for cooldown: <b>{LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD}</b></li>
-      <li>Cooldown window after detected block: <b>{LETTERBOXD_CF_BLOCK_SECONDS:.0f}s</b></li>
-      <li>Automatic session refresh-on-403: <b>enabled</b></li>
-      <li>Persistent cookie jar across Letterboxd requests: <b>enabled</b></li>
-    </ul>
-    <h3>Sync Safety Guardrail</h3>
-    <ul>
-      <li>Deletion threshold: <b>{scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE}</b> consecutive misses.</li>
-      <li>Active source presences: <b>{presence_health.active_presence_count}</b></li>
-      <li>Inactive source presences: <b>{presence_health.inactive_presence_count}</b></li>
-      <li>Pending delete on next miss: <b>{presence_health.pending_delete_count}</b></li>
-    </ul>
-    <h3>Pending Delete By Stream</h3>
-    <ul>{pending_delete_items}</ul>
-    <h3>Slowest Streams</h3>
-    <ul>{slowest_stream_items}</ul>
     <h3>TMDB Miss Titles (Top)</h3>
     <ul>{tmdb_miss_title_items}</ul>
     <h3>Low-Confidence TMDB Matches</h3>
     <ul>{low_confidence_items}</ul>
     <h3>Error Stages</h3>
     <ul>{error_stage_items}</ul>
-    <h3>New Movies In Future Showtimes</h3>
-    <ul>{new_movie_items}</ul>
     <h3>Per-Stream Run Details</h3>
     <ul>{run_detail_items}</ul>
     <h3>Per Cinema Scraper Detail</h3>
@@ -1560,15 +1412,9 @@ def _render_recap_html(
     <ul>{letterboxd_failure_items}</ul>
     <h3>TMDB ID Not Found</h3>
     <ul>{tmdb_miss_items}</ul>
-    <h3>Showtimes No Longer Found (Future Only)</h3>
-    <ul>{deleted_items}</ul>
-    <h3>Missing Cinemas</h3>
-    <ul>{missing_cinema_items}</ul>
-    <h3>Missing Cinema Insert Failures</h3>
-    <ul>{missing_cinema_insert_failure_items}</ul>
     <h3>Errors</h3>
     <ul>{error_items}</ul>
-    <p>Attachments include TMDB lookups, Letterboxd failures, Letterboxd 403 diagnostics, and full run details.</p>
+    <p>Attachments include TMDB lookups, Letterboxd failures, and full run details.</p>
     """
 
 
@@ -1625,17 +1471,8 @@ def _send_recap_email(
         )
     cinema_name_by_id = _load_cinema_name_by_id()
     letterboxd_failure_counts = _letterboxd_failure_breakdown(letterboxd_failures)
-    letterboxd_403_diagnostics = _letterboxd_403_diagnostics(letterboxd_failures)
-    slowest_run_details = sorted(
-        [
-            detail
-            for detail in scrape_run_details
-            if detail.duration_seconds is not None
-        ],
-        key=lambda detail: detail.duration_seconds or 0.0,
-        reverse=True,
-    )[:15]
-    presence_health = _load_presence_health_snapshot()
+    recovered_presence_count = scrape_sync_service.consume_recovered_presence_count()
+    one_time_miss_details = _load_one_time_miss_details()
     error_stage_counts = _error_stage_counts(errors)
 
     new_future_showtime_ids = after_snapshot.showtime_ids - before_snapshot.showtime_ids
@@ -1664,14 +1501,13 @@ def _send_recap_email(
         cinema_scraper_details=cinema_scraper_details,
         cinema_scraper_status_counts=cinema_scraper_status_counts,
         cinema_name_by_id=cinema_name_by_id,
-        slowest_run_details=slowest_run_details,
-        presence_health=presence_health,
+        recovered_presence_count=recovered_presence_count,
+        one_time_miss_details=one_time_miss_details,
         tmdb_miss_titles=tmdb_miss_titles,
         low_confidence_lookups=low_confidence_lookups,
         low_confidence_threshold=TMDB_LOW_CONFIDENCE_THRESHOLD,
         error_stage_counts=error_stage_counts,
         letterboxd_failure_counts=letterboxd_failure_counts,
-        letterboxd_403_diagnostics=letterboxd_403_diagnostics,
     )
 
     tmdb_low_confidence_compact = [
@@ -1753,56 +1589,25 @@ def _send_recap_email(
     letterboxd_failures_attachment_name = (
         f"letterboxd_failures_{started_at:%Y%m%d_%H%M%S}.json"
     )
-    letterboxd_403_diagnostics_attachment_data = _compact_json_bytes(
-        {
-            "observed_403_events": letterboxd_403_diagnostics.observed_403_events,
-            "unique_tmdb_ids": letterboxd_403_diagnostics.unique_tmdb_ids,
-            "probable_automated_block_events": (
-                letterboxd_403_diagnostics.probable_automated_block_events
-            ),
-            "cooldown_events": letterboxd_403_diagnostics.cooldown_events,
-            "session_refresh_errors": (
-                letterboxd_403_diagnostics.session_refresh_errors
-            ),
-            "session_refresh_http_errors": (
-                letterboxd_403_diagnostics.session_refresh_http_errors
-            ),
-            "unique_cf_rays": letterboxd_403_diagnostics.unique_cf_rays,
-            "sample_cf_rays": letterboxd_403_diagnostics.sample_cf_rays,
-            "mitigation_settings": {
-                "http_concurrency": LETTERBOXD_HTTP_CONCURRENCY,
-                "min_request_interval_seconds": (
-                    LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS
-                ),
-                "http_403_retry_attempts": LETTERBOXD_HTTP_403_RETRY_ATTEMPTS,
-                "http_403_streak_block_threshold": (
-                    LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD
-                ),
-                "cooldown_seconds": LETTERBOXD_CF_BLOCK_SECONDS,
-                "session_refresh_on_403": True,
-                "persistent_cookie_jar": True,
-            },
-        }
-    )
-    letterboxd_403_diagnostics_attachment_name = (
-        f"letterboxd_403_diagnostics_{started_at:%Y%m%d_%H%M%S}.json"
-    )
-
-    presence_health_attachment_data = _compact_json_bytes(
+    one_time_misses_attachment_data = _compact_json_bytes(
         {
             "missing_streak_to_deactivate": (
                 scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE
             ),
-            "active_presence_count": presence_health.active_presence_count,
-            "inactive_presence_count": presence_health.inactive_presence_count,
-            "pending_delete_count": presence_health.pending_delete_count,
-            "pending_delete_by_stream": [
-                {"source_stream": source_stream, "count": count}
-                for source_stream, count in presence_health.pending_delete_by_stream
+            "recovered_presence_count": recovered_presence_count,
+            "one_time_misses": [
+                {
+                    "source_stream": detail.source_stream,
+                    "movie_title": detail.movie_title,
+                    "cinema_name": detail.cinema_name,
+                    "showtime_datetime": detail.showtime_datetime.isoformat(),
+                    "showtime_id": detail.showtime_id,
+                }
+                for detail in one_time_miss_details
             ],
         }
     )
-    presence_health_attachment_name = f"presence_health_{started_at:%Y%m%d_%H%M%S}.json"
+    one_time_misses_attachment_name = f"one_time_misses_{started_at:%Y%m%d_%H%M%S}.json"
     missing_cinema_insert_failures_attachment_data = _compact_json_bytes(
         missing_cinema_insert_failures,
     )
@@ -1839,13 +1644,8 @@ def _send_recap_email(
                 "mime_type": "application/json",
             },
             {
-                "filename": letterboxd_403_diagnostics_attachment_name,
-                "data": letterboxd_403_diagnostics_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": presence_health_attachment_name,
-                "data": presence_health_attachment_data,
+                "filename": one_time_misses_attachment_name,
+                "data": one_time_misses_attachment_data,
                 "mime_type": "application/json",
             },
             {

@@ -15,7 +15,13 @@
       "Bash(awk -F'\"' '{print $2}')",
       "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d app -c \"\\\\d watchlistdigestqueueentry\" -c \"\\\\d watchlistdigestnotifiedmovie\" -c \"select column_default from information_schema.columns where table_name='user' and column_name='notify_watchlist_digest_frequency';\")",
       "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d app -c \"DELETE FROM showtime WHERE id IN \\(9001,9002\\); DELETE FROM movie WHERE id IN \\(9001,9002\\); DELETE FROM cinema WHERE id=9001; DELETE FROM city WHERE id=9001;\")",
-      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d app -c \"DELETE FROM watchlistdigestnotifiedmovie; DELETE FROM watchlistdigestqueueentry; DELETE FROM watchlistselection; DELETE FROM \\\\\"user\\\\\" WHERE email='tester1@example.com'; DELETE FROM letterboxd WHERE letterboxd_username='tester1'; DELETE FROM showtime WHERE id IN \\(9001,9002\\); DELETE FROM movie WHERE id IN \\(9001,9002\\); DELETE FROM cinema WHERE id=9001; DELETE FROM city WHERE id=9001;\")"
+      "Bash(PGPASSWORD=postgres psql -h localhost -U postgres -d app -c \"DELETE FROM watchlistdigestnotifiedmovie; DELETE FROM watchlistdigestqueueentry; DELETE FROM watchlistselection; DELETE FROM \\\\\"user\\\\\" WHERE email='tester1@example.com'; DELETE FROM letterboxd WHERE letterboxd_username='tester1'; DELETE FROM showtime WHERE id IN \\(9001,9002\\); DELETE FROM movie WHERE id IN \\(9001,9002\\); DELETE FROM cinema WHERE id=9001; DELETE FROM city WHERE id=9001;\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/scraping/runner.py'\\).read\\(\\)\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/services/scrape_sync.py'\\).read\\(\\)\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/scraping/scrape.py'\\).read\\(\\)\\)\")",
+      "Bash(python -m py_compile app/scraping/runner.py app/services/scrape_sync.py app/scraping/scrape.py)",
+      "Bash(git log *)",
+      "Bash(python -m py_compile app/scraping/scrape.py)"
     ]
   }
 }

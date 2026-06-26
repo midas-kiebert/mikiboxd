@@ -25,6 +25,7 @@ from app.utils import now_amsterdam_naive
 
 def _add_to_watchlist(*, session: Session, user: User, movie: Movie) -> None:
     assert user.letterboxd_username is not None
+    assert movie.letterboxd_slug is not None
     watchlist_crud.add_watchlist_selection(
         session=session,
         letterboxd_username=user.letterboxd_username,
@@ -268,6 +269,73 @@ def test_movie_with_no_current_future_showtime_is_not_sent_or_marked_notified(
 
     assert sent is False
     assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is None
+
+
+def test_movie_whose_only_showtime_is_deleted_before_send_stays_pending(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    monkeypatch,
+):
+    """If the showtime that queued a movie is deleted before the digest runs,
+
+    the movie is skipped (not sent, not marked notified) rather than emailed
+    with a dangling reference — it stays pending for a future run.
+    """
+    now = now_amsterdam_naive()
+    monkeypatch.setattr("app.services.watchlist_digest.now_amsterdam_naive", lambda: now)
+    send_calls: list[dict] = []
+    monkeypatch.setattr(
+        "app.services.watchlist_digest.send_email",
+        lambda **kwargs: send_calls.append(kwargs),
+    )
+
+    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    movie = movie_factory()
+    _add_to_watchlist(session=db_transaction, user=user, movie=movie)
+    showtime = showtime_factory(movie=movie, datetime=now + timedelta(days=2))
+    _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
+    db_transaction.delete(showtime)
+    db_transaction.commit()
+
+    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+
+    assert sent is False
+    assert not send_calls
+    assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is None
+
+
+def test_movie_with_one_of_two_showtimes_deleted_is_still_sent_with_the_other(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    monkeypatch,
+):
+    """Deleting the soonest showtime falls back to the movie's next one, rather
+
+    than skipping the movie entirely.
+    """
+    now = now_amsterdam_naive()
+    monkeypatch.setattr("app.services.watchlist_digest.now_amsterdam_naive", lambda: now)
+    monkeypatch.setattr("app.services.watchlist_digest.send_email", lambda **kwargs: None)
+
+    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    movie = movie_factory()
+    _add_to_watchlist(session=db_transaction, user=user, movie=movie)
+    soonest = showtime_factory(movie=movie, datetime=now + timedelta(days=1))
+    showtime_factory(movie=movie, datetime=now + timedelta(days=5))
+    _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
+    db_transaction.delete(soonest)
+    db_transaction.commit()
+
+    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+
+    assert sent is True
+    assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is not None
 
 
 def test_movie_already_marked_going_is_excluded_and_marked_notified(

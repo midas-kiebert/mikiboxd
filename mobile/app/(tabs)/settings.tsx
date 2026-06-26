@@ -821,7 +821,7 @@ export default function SettingsScreen() {
                 <View style={styles.notificationToggleTextContainer}>
                   <ThemedText style={styles.notificationToggleTitle}>Watchlist digest</ThemedText>
                   <ThemedText style={styles.notificationToggleDescription}>
-                    Email me when a watchlisted movie gets a showtime it didn't have before.
+                    Email me when a watchlisted movie gets a showtime it didn&apos;t have before.
                   </ThemedText>
                 </View>
                 <Switch

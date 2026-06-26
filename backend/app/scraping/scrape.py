@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any, cast
 
 import aiohttp
+from sqlalchemy.exc import NoResultFound
 
 from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
@@ -200,14 +201,15 @@ def _persist_cineville_results_batch(
 
                     cinema_id = cinema_id_by_name.get(venue_name)
                     if cinema_id is None:
-                        cinema_id = cinema_crud.get_cinema_id_by_name(
-                            session=session,
-                            name=venue_name,
-                        )
-                        if cinema_id is None:
+                        try:
+                            cinema_id = cinema_crud.get_cinema_id_by_name(
+                                session=session,
+                                name=venue_name,
+                            )
+                        except NoResultFound:
                             raise ValueError(
                                 f"Cinema not found for Cineville venue '{venue_name}'"
-                            )
+                            ) from None
                         cinema_id_by_name[venue_name] = cinema_id
 
                     source_stream = f"cineville:{cinema_id}"
@@ -228,7 +230,10 @@ def _persist_cineville_results_batch(
                     )
                     observed_by_stream[source_stream].append(
                         scrape_sync_service.ObservedPresence(
-                            source_event_key=f"event:{showtime_data.id}",
+                            source_event_key=(
+                                f"production:{prepared_movie.production_id}"
+                                f"|start:{showtime_data.start_date}"
+                            ),
                             showtime_id=db_showtime.id,
                         )
                     )

@@ -5,6 +5,7 @@ import UserMenu from "@/components/Common/UserMenu"
 import MovieLinks from "@/components/Movie/MovieLinks"
 import MoviePoster from "@/components/Movie/MoviePoster"
 import MovieTitle from "@/components/Movie/MovieTitle"
+import ReportShowtimeButton from "@/components/Movie/ReportShowtimeButton"
 import { Showtimes } from "@/components/Movie/Showtimes"
 import Filters from "@/components/Movies/Filters"
 import { Route } from "@/routes/movie.$movieId"
@@ -27,6 +28,7 @@ import type { GoingStatus, ShowtimeInMovieLoggedIn } from "shared"
 import type { MovieSummaryLoggedIn } from "shared"
 import { useFetchFriends } from "shared/hooks/useFetchFriends"
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas"
+import useTrackEvent from "shared/hooks/useTrackEvent"
 import Directors from "./Directors"
 import OriginalTitle from "./OriginalTitle"
 import ReleaseYear from "./ReleaseYear"
@@ -47,6 +49,7 @@ type InfiniteMoviesData = {
 const MoviePage = () => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const queryClient = useQueryClient()
+  const { trackEvent } = useTrackEvent()
   const [selectedShowtime, setSelectedShowtime] =
     useState<ShowtimeInMovieLoggedIn | null>(null)
   const [pingListOpen, setPingListOpen] = useState(false)
@@ -229,6 +232,7 @@ const MoviePage = () => {
           ? previous
           : [...previous, variables.friendId],
       )
+      trackEvent("invite_sent")
     },
     onError: (error) => {
       console.error("Error inviting friend:", error)
@@ -423,6 +427,7 @@ const MoviePage = () => {
                         )}
                       </Box>
                     ) : null}
+                    <ReportShowtimeButton showtimeId={selectedShowtime.id} />
                   </VStack>
                 </Dialog.Body>
               </Dialog.Content>

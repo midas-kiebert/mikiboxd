@@ -10,6 +10,7 @@ import {
 } from "@/components/filters/saved-presets";
 import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import useTrackEvent from "shared/hooks/useTrackEvent";
 
 /** Placeholder pill widths shown while presets load (chips variant). */
 const SKELETON_CHIP_WIDTHS = [78, 96, 64];
@@ -27,9 +28,11 @@ export default function SavedPresetChips({
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { presets, isLoading, remove } = useDisplayPresets();
+  const { trackEvent } = useTrackEvent();
 
   const handleApply = (preset: DisplayPreset) => {
     triggerSelectionHaptic();
+    trackEvent("preset_used");
     onApply(preset);
   };
 

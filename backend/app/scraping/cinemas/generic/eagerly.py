@@ -13,6 +13,7 @@ from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
 from app.scraping.subtitles import parse_subtitle_label
+from app.scraping.title_hints import parse_year_hint_from_title
 from app.scraping.tmdb_lookup import find_tmdb_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_service
@@ -71,10 +72,13 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         if isinstance(starring_short, str) and starring_short:
             actor = sub(r"\s*\([^)]*\)", "", starring_short.split(",")[0].strip())
 
+        year = parse_year_hint_from_title(slug)
+
         tmdb_id = find_tmdb_id(
             title_query=title_query,
             director_names=directors,
             actor_name=actor,
+            year=year,
         )
         if not tmdb_id:
             logger.warning(f"No TMDB ID found for {title_query}, skipping")
@@ -100,7 +104,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
             letterboxd_slug=None,
             directors=tmdb_directors if tmdb_directors else None,
             release_year=(
-                tmdb_details.release_year if tmdb_details is not None else None
+                tmdb_details.release_year if tmdb_details is not None else year
             ),
             duration=(
                 tmdb_details.runtime_minutes if tmdb_details is not None else None

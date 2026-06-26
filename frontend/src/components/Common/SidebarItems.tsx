@@ -2,10 +2,13 @@
  * Shared web layout/presentation component: Sidebar Items.
  */
 import { Box, Flex, Icon, Text } from "@chakra-ui/react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Link as RouterLink } from "@tanstack/react-router"
 import { FaUserFriends } from "react-icons/fa"
 import { FaRegCalendar } from "react-icons/fa6"
-import { FiBell, FiFilm, FiHome, FiSettings } from "react-icons/fi"
+import { FiBell, FiFilm, FiHome, FiSettings, FiShield } from "react-icons/fi"
+
+import type { MeGetCurrentUserResponse } from "shared"
 
 const items = [
   { icon: FiHome, title: "Dashboard", path: "/" },
@@ -22,7 +25,14 @@ interface SidebarItemsProps {
 
 const SidebarItems = ({ onClose }: SidebarItemsProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
-  const listItems = items.map(({ icon, title, path }) => (
+  const queryClient = useQueryClient()
+  const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>([
+    "currentUser",
+  ])
+  const finalItems = currentUser?.is_superuser
+    ? [...items, { icon: FiShield, title: "Admin", path: "/admin" }]
+    : items
+  const listItems = finalItems.map(({ icon, title, path }) => (
     <RouterLink key={title} from="/" to={path} search={true} onClick={onClose}>
       <Flex
         gap={4}

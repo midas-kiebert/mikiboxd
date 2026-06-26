@@ -7,7 +7,7 @@ own data (profile, presets, cinemas, pings, friends, watchlist, push tokens).
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import status as http_status
 
 from app.api.deps import (
@@ -17,9 +17,11 @@ from app.api.deps import (
 from app.converters import user as user_converters
 from app.core.enums import ShowtimePingSort
 from app.core.security import get_password_hash, verify_password
+from app.crud import analytics_event as analytics_event_crud
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
+from app.schemas.analytics_event import AnalyticsEventCreate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.letterboxd_list import (
     LetterboxdListCreate,
@@ -604,3 +606,22 @@ def delete_push_token(
         token=payload.token,
     )
     return Message(message="Push token deleted successfully")
+
+
+@router.post("/events", status_code=http_status.HTTP_204_NO_CONTENT)
+def record_event(
+    *,
+    request: Request,
+    session: SessionDep,
+    current_user: CurrentUser,
+    payload: AnalyticsEventCreate,
+) -> None:
+    """Record a single usage-analytics event fired by the web or mobile client."""
+    analytics_event_crud.create_event(
+        session=session,
+        user_id=current_user.id,
+        name=payload.name,
+        platform=request.headers.get("X-Client-Platform"),
+        properties=payload.properties,
+    )
+    session.commit()

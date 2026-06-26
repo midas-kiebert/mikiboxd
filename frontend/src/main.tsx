@@ -32,6 +32,9 @@ OpenAPI.BASE = import.meta.env.VITE_API_URL
 OpenAPI.TOKEN = async () => {
   return (await storage.getItem("access_token")) || ""
 }
+// Lets the backend attribute logins/events to a platform without any
+// per-request client code (see AnalyticsEventName.LOGIN in login.py).
+OpenAPI.HEADERS = { "X-Client-Platform": "web" }
 
 const router = createRouter({
   routeTree,

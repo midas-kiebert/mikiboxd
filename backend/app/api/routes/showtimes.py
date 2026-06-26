@@ -10,10 +10,13 @@ from fastapi import status as http_status
 
 from app.api.deps import CurrentUser, SessionDep, get_db_context
 from app.crud import showtime_ping as showtime_ping_crud
+from app.crud import showtime_report as showtime_report_crud
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message
+from app.models.showtime import Showtime
 from app.schemas.showtime import ShowtimeLoggedIn, ShowtimeSelectionUpdate
 from app.schemas.showtime_ping import SentShowtimePingPublic
+from app.schemas.showtime_report import ShowtimeReportCreate
 from app.schemas.showtime_visibility import (
     ShowtimeVisibilityPublic,
     ShowtimeVisibilityUpdate,
@@ -126,6 +129,29 @@ def receive_ping_from_link(
         receiver_id=current_user.id,
         sender_identifier=sender_identifier,
     )
+
+
+@router.post("/{showtime_id}/report", response_model=Message)
+def report_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+    payload: ShowtimeReportCreate,
+) -> Message:
+    if session.get(Showtime, showtime_id) is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Showtime not found"
+        )
+    showtime_report_crud.create_report(
+        session=session,
+        showtime_id=showtime_id,
+        reporter_id=current_user.id,
+        reason=payload.reason,
+        message=payload.message,
+    )
+    session.commit()
+    return Message(message="Report submitted successfully")
 
 
 @router.get("/{showtime_id}/pinged-friends", response_model=list[UUID])

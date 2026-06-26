@@ -57,6 +57,7 @@ import {
   type VisibilityMode,
 } from "shared";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
+import useTrackEvent from "shared/hooks/useTrackEvent";
 
 import CinemaPill from "@/components/badges/CinemaPill";
 import {
@@ -207,6 +208,7 @@ export default function ShowtimeActionModal({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
   const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>(["currentUser"]);
+  const { trackEvent } = useTrackEvent();
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const scrollViewRef = useRef<any>(null);
@@ -325,6 +327,7 @@ export default function ShowtimeActionModal({
       ShowtimesService.pingFriendForShowtime({ showtimeId, friendId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sentPingsQueryKey });
+      trackEvent("invite_sent");
     },
     onError: (error) => {
       const detail =
@@ -337,6 +340,34 @@ export default function ShowtimeActionModal({
       Alert.alert("Error", detail ?? "Could not send invite.");
     },
   });
+
+  const { mutate: reportShowtimeIssue } = useMutation({
+    mutationFn: ({
+      showtimeId,
+      reason,
+    }: {
+      showtimeId: number;
+      reason: "incorrect_movie" | "incorrect_time" | "does_not_exist" | "duplicate" | "other";
+    }) => ShowtimesService.reportShowtime({ showtimeId, requestBody: { reason } }),
+    onSuccess: () => {
+      Alert.alert("Thanks!", "We'll take a look at this showtime.");
+    },
+    onError: () => {
+      Alert.alert("Error", "Could not submit the report. Please try again.");
+    },
+  });
+
+  const handleReportShowtime = () => {
+    if (!showtime) return;
+    const showtimeId = showtime.id;
+    Alert.alert("Report an issue", "What's wrong with this showtime?", [
+      { text: "Wrong movie", onPress: () => reportShowtimeIssue({ showtimeId, reason: "incorrect_movie" }) },
+      { text: "Wrong time", onPress: () => reportShowtimeIssue({ showtimeId, reason: "incorrect_time" }) },
+      { text: "Doesn't exist", onPress: () => reportShowtimeIssue({ showtimeId, reason: "does_not_exist" }) },
+      { text: "Duplicate", onPress: () => reportShowtimeIssue({ showtimeId, reason: "duplicate" }) },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
 
   const { mutate: uninviteFriend, isPending: isUninviting } = useMutation({
     mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
@@ -1094,6 +1125,14 @@ export default function ShowtimeActionModal({
                   </ThemedText>
                 </TouchableOpacity>
               ) : null}
+              <TouchableOpacity
+                style={styles.ctaIconButton}
+                onPress={handleReportShowtime}
+                activeOpacity={0.85}
+              >
+                <MaterialIcons name="flag" size={20} color={colors.textSecondary} />
+                <ThemedText style={styles.ctaIconButtonText}>Report</ThemedText>
+              </TouchableOpacity>
             </View>
 
             {/* Who can see your status for this showtime — inline dropdown.

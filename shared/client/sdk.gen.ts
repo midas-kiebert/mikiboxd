@@ -4,6 +4,22 @@ import type { CancelablePromise } from "./core/CancelablePromise"
 import { OpenAPI } from "./core/OpenAPI"
 import { request as __request } from "./core/request"
 import type {
+  AdminGetAnalyticsOverviewData,
+  AdminGetAnalyticsOverviewResponse,
+  AdminSearchMoviesData,
+  AdminSearchMoviesResponse,
+  AdminUpdateMovieData,
+  AdminUpdateMovieResponse,
+  AdminSearchShowtimesData,
+  AdminSearchShowtimesResponse,
+  AdminUpdateShowtimeData,
+  AdminUpdateShowtimeResponse,
+  AdminDeleteShowtimeData,
+  AdminDeleteShowtimeResponse,
+  AdminListShowtimeReportsData,
+  AdminListShowtimeReportsResponse,
+  AdminUpdateShowtimeReportData,
+  AdminUpdateShowtimeReportResponse,
   CinemasGetAllCinemasResponse,
   FriendsSendFriendRequestData,
   FriendsSendFriendRequestResponse,
@@ -88,6 +104,8 @@ import type {
   MeRegisterPushTokenResponse,
   MeDeletePushTokenData,
   MeDeletePushTokenResponse,
+  MeRecordEventData,
+  MeRecordEventResponse,
   MoviesCountMoviesData,
   MoviesCountMoviesResponse,
   MoviesReadMoviesData,
@@ -104,6 +122,8 @@ import type {
   ShowtimesUninviteFriendFromShowtimeResponse,
   ShowtimesReceivePingFromLinkData,
   ShowtimesReceivePingFromLinkResponse,
+  ShowtimesReportShowtimeData,
+  ShowtimesReportShowtimeResponse,
   ShowtimesGetPingedFriendIdsForShowtimeData,
   ShowtimesGetPingedFriendIdsForShowtimeResponse,
   ShowtimesGetSentPingsForShowtimeData,
@@ -134,6 +154,205 @@ import type {
   UtilsOverrideTmdbCacheEntryData,
   UtilsOverrideTmdbCacheEntryResponse,
 } from "./types.gen"
+
+export class AdminService {
+  /**
+   * Get Analytics Overview
+   * @param data The data for the request.
+   * @param data.windowDays
+   * @returns AnalyticsOverview Successful Response
+   * @throws ApiError
+   */
+  public static getAnalyticsOverview(
+    data: AdminGetAnalyticsOverviewData = {},
+  ): CancelablePromise<AdminGetAnalyticsOverviewResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/admin/analytics/overview",
+      query: {
+        window_days: data.windowDays,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Search Movies
+   * @param data The data for the request.
+   * @param data.q
+   * @param data.limit
+   * @returns AdminMoviePublic Successful Response
+   * @throws ApiError
+   */
+  public static searchMovies(
+    data: AdminSearchMoviesData,
+  ): CancelablePromise<AdminSearchMoviesResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/admin/movies",
+      query: {
+        q: data.q,
+        limit: data.limit,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update Movie
+   * @param data The data for the request.
+   * @param data.movieId
+   * @param data.requestBody
+   * @returns AdminMoviePublic Successful Response
+   * @throws ApiError
+   */
+  public static updateMovie(
+    data: AdminUpdateMovieData,
+  ): CancelablePromise<AdminUpdateMovieResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/admin/movies/{movie_id}",
+      path: {
+        movie_id: data.movieId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Search Showtimes
+   * @param data The data for the request.
+   * @param data.cinemaId
+   * @param data.movieId
+   * @param data.fromDatetime
+   * @param data.toDatetime
+   * @param data.limit
+   * @param data.offset
+   * @returns AdminShowtimePublic Successful Response
+   * @throws ApiError
+   */
+  public static searchShowtimes(
+    data: AdminSearchShowtimesData = {},
+  ): CancelablePromise<AdminSearchShowtimesResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/admin/showtimes",
+      query: {
+        cinema_id: data.cinemaId,
+        movie_id: data.movieId,
+        from_datetime: data.fromDatetime,
+        to_datetime: data.toDatetime,
+        limit: data.limit,
+        offset: data.offset,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update Showtime
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @param data.requestBody
+   * @returns AdminShowtimePublic Successful Response
+   * @throws ApiError
+   */
+  public static updateShowtime(
+    data: AdminUpdateShowtimeData,
+  ): CancelablePromise<AdminUpdateShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/admin/showtimes/{showtime_id}",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Delete Showtime
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static deleteShowtime(
+    data: AdminDeleteShowtimeData,
+  ): CancelablePromise<AdminDeleteShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/admin/showtimes/{showtime_id}",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * List Showtime Reports
+   * @param data The data for the request.
+   * @param data.status
+   * @returns ShowtimeReportAdminView Successful Response
+   * @throws ApiError
+   */
+  public static listShowtimeReports(
+    data: AdminListShowtimeReportsData = {},
+  ): CancelablePromise<AdminListShowtimeReportsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/admin/showtime-reports",
+      query: {
+        status: data.status,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update Showtime Report
+   * @param data The data for the request.
+   * @param data.reportId
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static updateShowtimeReport(
+    data: AdminUpdateShowtimeReportData,
+  ): CancelablePromise<AdminUpdateShowtimeReportResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/admin/showtime-reports/{report_id}",
+      path: {
+        report_id: data.reportId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+}
 
 export class CinemasService {
   /**
@@ -1178,6 +1397,28 @@ export class MeService {
       },
     })
   }
+
+  /**
+   * Record Event
+   * Record a single usage-analytics event fired by the web or mobile client.
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns void Successful Response
+   * @throws ApiError
+   */
+  public static recordEvent(
+    data: MeRecordEventData,
+  ): CancelablePromise<MeRecordEventResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/events",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
 }
 
 export class MoviesService {
@@ -1510,6 +1751,31 @@ export class ShowtimesService {
         showtime_id: data.showtimeId,
         sender_identifier: data.senderIdentifier,
       },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Report Showtime
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static reportShowtime(
+    data: ShowtimesReportShowtimeData,
+  ): CancelablePromise<ShowtimesReportShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/showtimes/{showtime_id}/report",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },

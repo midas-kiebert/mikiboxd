@@ -16,6 +16,7 @@ import re
 # Subtitle-language words (Dutch, plus the odd English spelling) -> ISO-639-1.
 _LANGUAGE_CODES: dict[str, str] = {
     "nederlands": "nl",
+    "nedrlands": "nl",  # studio-k.nu typo
     "dutch": "nl",
     "engels": "en",
     "english": "en",

@@ -13,6 +13,7 @@ from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.date_conversion import get_closest_exact_date
 from app.scraping.logger import logger
 from app.scraping.subtitles import parse_subtitle_label
+from app.scraping.title_hints import parse_year_hint_from_title
 from app.scraping.tmdb_lookup import find_tmdb_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_services
@@ -57,11 +58,13 @@ class LAB111Scraper(BaseCinemaScraper):
         actors = extract_name(div, "Acteurs:")
         actor = actors[0] if actors else None
         subtitles = parse_subtitle_label(" ".join(extract_name(div, "Ondertiteling:")))
+        year = parse_year_hint_from_title(raw_title)
 
         tmdb_id = find_tmdb_id(
             title_query=title_query,
             director_names=directors,
             actor_name=actor,
+            year=year,
         )
         if tmdb_id is None:
             logger.warning(f"No TMDB id found for {title_query}, skipping")
@@ -82,7 +85,7 @@ class LAB111Scraper(BaseCinemaScraper):
             letterboxd_slug=None,
             directors=tmdb_directors if tmdb_directors else None,
             release_year=(
-                tmdb_details.release_year if tmdb_details is not None else None
+                tmdb_details.release_year if tmdb_details is not None else year
             ),
             duration=(
                 tmdb_details.runtime_minutes if tmdb_details is not None else None

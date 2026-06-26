@@ -14,6 +14,10 @@ from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
 from app.scraping.subtitles import parse_subtitle_label
+from app.scraping.title_hints import (
+    parse_subtitle_hint_from_title,
+    parse_year_hint_from_title,
+)
 from app.scraping.tmdb_lookup import find_tmdb_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_services
@@ -88,8 +92,10 @@ class UitkijkScraper(BaseCinemaScraper):
         movie_cache: dict[str, MovieCreate] = {}
         subtitles_by_slug: dict[str, list[str] | None] = {}
         slug_to_title_query: dict[str, str] = {}
+        slug_to_raw_title: dict[str, str] = {}
         for show in all_shows:
             slug_to_title_query.setdefault(show.slug, clean_title(show.title))
+            slug_to_raw_title.setdefault(show.slug, show.title)
 
         max_workers = min(len(slug_to_title_query), self.item_concurrency()) or 1
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -98,6 +104,7 @@ class UitkijkScraper(BaseCinemaScraper):
                     get_movie,
                     slug=slug,
                     title_query=title_query,
+                    raw_title=slug_to_raw_title[slug],
                 ): slug
                 for slug, title_query in slug_to_title_query.items()
             }
@@ -158,7 +165,7 @@ class UitkijkScraper(BaseCinemaScraper):
 
 
 def get_movie(
-    slug: str, title_query: str
+    slug: str, title_query: str, raw_title: str
 ) -> tuple[MovieCreate, list[str] | None] | None:
     # logger.trace(f"Processing movie: {slug}")
     film_url = f"https://www.uitkijk.nl/film/{slug}"
@@ -167,6 +174,9 @@ def get_movie(
 
     soup = BeautifulSoup(response.text, "html.parser")
     subtitles = parse_subtitle_label(extract_label_value(soup, "Ondertiteling:"))
+    if subtitles is None:
+        subtitles = parse_subtitle_hint_from_title(raw_title)
+    year = parse_year_hint_from_title(raw_title)
     director_elements = [
         s
         for s in soup.find_all("strong")
@@ -219,7 +229,10 @@ def get_movie(
     # logger.trace(f"{title_query = }, {director = }, {actor = }")
 
     tmdb_id = find_tmdb_id(
-        title_query=title_query, director_names=directors, actor_name=actor
+        title_query=title_query,
+        director_names=directors,
+        actor_name=actor,
+        year=year,
     )
     if tmdb_id is None:
         logger.warning(f"No TMDB id found for {title_query}, skipping")
@@ -239,7 +252,7 @@ def get_movie(
         title=tmdb_details.title if tmdb_details is not None else title_query,
         letterboxd_slug=None,
         directors=tmdb_directors if tmdb_directors else None,
-        release_year=tmdb_details.release_year if tmdb_details is not None else None,
+        release_year=tmdb_details.release_year if tmdb_details is not None else year,
         duration=tmdb_details.runtime_minutes if tmdb_details is not None else None,
         languages=tmdb_details.spoken_languages if tmdb_details is not None else None,
         original_title=(

@@ -108,6 +108,40 @@ def get_showtime_by_id(
     return session.get(Showtime, showtime_id)
 
 
+def search_showtimes_for_admin(
+    *,
+    session: Session,
+    cinema_id: int | None,
+    movie_id: int | None,
+    from_datetime: datetime | None,
+    to_datetime: datetime | None,
+    limit: int,
+    offset: int,
+) -> list[Showtime]:
+    stmt = select(Showtime).order_by(col(Showtime.datetime).desc())
+    if cinema_id is not None:
+        stmt = stmt.where(Showtime.cinema_id == cinema_id)
+    if movie_id is not None:
+        stmt = stmt.where(Showtime.movie_id == movie_id)
+    if from_datetime is not None:
+        stmt = stmt.where(col(Showtime.datetime) >= from_datetime)
+    if to_datetime is not None:
+        stmt = stmt.where(col(Showtime.datetime) <= to_datetime)
+    stmt = stmt.limit(limit).offset(offset)
+    return list(session.exec(stmt).all())
+
+
+def update_showtime(
+    *, showtime: Showtime, update_data: dict[str, Any]
+) -> Showtime:
+    showtime.sqlmodel_update(update_data)
+    return showtime
+
+
+def delete_showtime(*, session: Session, showtime: Showtime) -> None:
+    session.delete(showtime)
+
+
 def get_showtimes_by_ids(
     *,
     session: Session,

@@ -28,8 +28,12 @@ import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutPingsRouteImport } from './routes/_layout/pings'
 import { Route as LayoutMoviesRouteImport } from './routes/_layout/movies'
 import { Route as LayoutFriendsRouteImport } from './routes/_layout/friends'
+import { Route as LayoutAdminIndexRouteImport } from './routes/_layout/admin/index'
 import { Route as PingShowtimeIdSenderRouteImport } from './routes/ping.$showtimeId.$sender'
 import { Route as LayoutMeShowtimesRouteImport } from './routes/_layout/me/showtimes'
+import { Route as LayoutAdminShowtimesRouteImport } from './routes/_layout/admin/showtimes'
+import { Route as LayoutAdminReportsRouteImport } from './routes/_layout/admin/reports'
+import { Route as LayoutAdminMoviesRouteImport } from './routes/_layout/admin/movies'
 import { Route as LayoutUserIdShowtimesRouteImport } from './routes/_layout/$userId/showtimes'
 
 const SignupRoute = SignupRouteImport.update({
@@ -126,6 +130,11 @@ const LayoutFriendsRoute = LayoutFriendsRouteImport.update({
   path: '/friends',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutAdminIndexRoute = LayoutAdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const PingShowtimeIdSenderRoute = PingShowtimeIdSenderRouteImport.update({
   id: '/ping/$showtimeId/$sender',
   path: '/ping/$showtimeId/$sender',
@@ -134,6 +143,21 @@ const PingShowtimeIdSenderRoute = PingShowtimeIdSenderRouteImport.update({
 const LayoutMeShowtimesRoute = LayoutMeShowtimesRouteImport.update({
   id: '/me/showtimes',
   path: '/me/showtimes',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutAdminShowtimesRoute = LayoutAdminShowtimesRouteImport.update({
+  id: '/admin/showtimes',
+  path: '/admin/showtimes',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutAdminReportsRoute = LayoutAdminReportsRouteImport.update({
+  id: '/admin/reports',
+  path: '/admin/reports',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutAdminMoviesRoute = LayoutAdminMoviesRouteImport.update({
+  id: '/admin/movies',
+  path: '/admin/movies',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutUserIdShowtimesRoute = LayoutUserIdShowtimesRouteImport.update({
@@ -162,8 +186,12 @@ export interface FileRoutesByFullPath {
   '/friend-showtimes/$friendId': typeof FriendShowtimesFriendIdRoute
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
+  '/admin/movies': typeof LayoutAdminMoviesRoute
+  '/admin/reports': typeof LayoutAdminReportsRoute
+  '/admin/showtimes': typeof LayoutAdminShowtimesRoute
   '/me/showtimes': typeof LayoutMeShowtimesRoute
   '/ping/$showtimeId/$sender': typeof PingShowtimeIdSenderRoute
+  '/admin/': typeof LayoutAdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/beta': typeof BetaRoute
@@ -185,8 +213,12 @@ export interface FileRoutesByTo {
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/': typeof LayoutIndexRoute
   '/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
+  '/admin/movies': typeof LayoutAdminMoviesRoute
+  '/admin/reports': typeof LayoutAdminReportsRoute
+  '/admin/showtimes': typeof LayoutAdminShowtimesRoute
   '/me/showtimes': typeof LayoutMeShowtimesRoute
   '/ping/$showtimeId/$sender': typeof PingShowtimeIdSenderRoute
+  '/admin': typeof LayoutAdminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -210,8 +242,12 @@ export interface FileRoutesById {
   '/movie/$movieId': typeof MovieMovieIdRoute
   '/_layout/': typeof LayoutIndexRoute
   '/_layout/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
+  '/_layout/admin/movies': typeof LayoutAdminMoviesRoute
+  '/_layout/admin/reports': typeof LayoutAdminReportsRoute
+  '/_layout/admin/showtimes': typeof LayoutAdminShowtimesRoute
   '/_layout/me/showtimes': typeof LayoutMeShowtimesRoute
   '/ping/$showtimeId/$sender': typeof PingShowtimeIdSenderRoute
+  '/_layout/admin/': typeof LayoutAdminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -235,8 +271,12 @@ export interface FileRouteTypes {
     | '/friend-showtimes/$friendId'
     | '/movie/$movieId'
     | '/$userId/showtimes'
+    | '/admin/movies'
+    | '/admin/reports'
+    | '/admin/showtimes'
     | '/me/showtimes'
     | '/ping/$showtimeId/$sender'
+    | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/beta'
@@ -258,8 +298,12 @@ export interface FileRouteTypes {
     | '/movie/$movieId'
     | '/'
     | '/$userId/showtimes'
+    | '/admin/movies'
+    | '/admin/reports'
+    | '/admin/showtimes'
     | '/me/showtimes'
     | '/ping/$showtimeId/$sender'
+    | '/admin'
   id:
     | '__root__'
     | '/_layout'
@@ -282,8 +326,12 @@ export interface FileRouteTypes {
     | '/movie/$movieId'
     | '/_layout/'
     | '/_layout/$userId/showtimes'
+    | '/_layout/admin/movies'
+    | '/_layout/admin/reports'
+    | '/_layout/admin/showtimes'
     | '/_layout/me/showtimes'
     | '/ping/$showtimeId/$sender'
+    | '/_layout/admin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -437,6 +485,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutFriendsRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/admin/': {
+      id: '/_layout/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof LayoutAdminIndexRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/ping/$showtimeId/$sender': {
       id: '/ping/$showtimeId/$sender'
       path: '/ping/$showtimeId/$sender'
@@ -449,6 +504,27 @@ declare module '@tanstack/react-router' {
       path: '/me/showtimes'
       fullPath: '/me/showtimes'
       preLoaderRoute: typeof LayoutMeShowtimesRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/admin/showtimes': {
+      id: '/_layout/admin/showtimes'
+      path: '/admin/showtimes'
+      fullPath: '/admin/showtimes'
+      preLoaderRoute: typeof LayoutAdminShowtimesRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/admin/reports': {
+      id: '/_layout/admin/reports'
+      path: '/admin/reports'
+      fullPath: '/admin/reports'
+      preLoaderRoute: typeof LayoutAdminReportsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/admin/movies': {
+      id: '/_layout/admin/movies'
+      path: '/admin/movies'
+      fullPath: '/admin/movies'
+      preLoaderRoute: typeof LayoutAdminMoviesRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/$userId/showtimes': {
@@ -468,7 +544,11 @@ interface LayoutRouteChildren {
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
   LayoutUserIdShowtimesRoute: typeof LayoutUserIdShowtimesRoute
+  LayoutAdminMoviesRoute: typeof LayoutAdminMoviesRoute
+  LayoutAdminReportsRoute: typeof LayoutAdminReportsRoute
+  LayoutAdminShowtimesRoute: typeof LayoutAdminShowtimesRoute
   LayoutMeShowtimesRoute: typeof LayoutMeShowtimesRoute
+  LayoutAdminIndexRoute: typeof LayoutAdminIndexRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
@@ -478,7 +558,11 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
   LayoutUserIdShowtimesRoute: LayoutUserIdShowtimesRoute,
+  LayoutAdminMoviesRoute: LayoutAdminMoviesRoute,
+  LayoutAdminReportsRoute: LayoutAdminReportsRoute,
+  LayoutAdminShowtimesRoute: LayoutAdminShowtimesRoute,
   LayoutMeShowtimesRoute: LayoutMeShowtimesRoute,
+  LayoutAdminIndexRoute: LayoutAdminIndexRoute,
 }
 
 const LayoutRouteWithChildren =

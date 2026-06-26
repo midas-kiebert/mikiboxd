@@ -4,7 +4,6 @@ from re import split, sub
 import requests
 from dateutil import parser
 from pydantic import BaseModel
-from rapidfuzz import fuzz
 
 from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
@@ -12,6 +11,10 @@ from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
+from app.scraping.title_hints import (
+    parse_subtitle_hint_from_title,
+    parse_year_hint_from_title,
+)
 from app.scraping.tmdb_lookup import find_tmdb_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_services
@@ -21,28 +24,40 @@ from app.services import showtimes as showtimes_services
 CINEMA = "Kriterion"
 
 
-class MovieAttributes(BaseModel):
-    titel: str
-    regie: str
-
-
-class MovieData(BaseModel):
-    attributes: MovieAttributes
-
-
-class MovieResponse(BaseModel):
-    data: list[MovieData]
-
-
 class Show(BaseModel):
+    id: int
     production_id: int
     name: str
     start_date: str
-    id: int
+    director: str | None = None
+    duration: int | None = None
+    spoken_languages: str | None = None
+    subtitle_languages: str | None = None
+    is_deleted: str = "false"
 
 
-class Shows(BaseModel):
+class ShowsResponse(BaseModel):
+    success: bool
     shows: list[Show]
+
+
+def clean_title(name: str) -> str:
+    title = name.split(" | ")[0].strip()
+    return sub(r"\s*\([^)]*\)", "", title).strip()
+
+
+def parse_directors(director: str | None) -> list[str]:
+    if not director:
+        return []
+    return [
+        d.strip() for d in split(r"\s*(?: and | en |,|\|)\s*", director) if d.strip()
+    ]
+
+
+def parse_languages(value: str | None) -> list[str] | None:
+    if not value:
+        return None
+    return [v.strip() for v in value.split(",") if v.strip()] or None
 
 
 class KriterionScraper(BaseCinemaScraper):
@@ -54,32 +69,13 @@ class KriterionScraper(BaseCinemaScraper):
 
     def scrape(self) -> list[tuple[str, int]]:
         assert self.cinema_id is not None
-        url_movies = "https://kritsite-cms-mxa7oxwmcq-ez.a.run.app/api/films?populate=*&pagination[page]=1&pagination[pageSize]=1000&sort=release:asc"
-        url_showtimes = "https://storage.googleapis.com/kritsite-buffer/shows.json"
+        url_shows = "https://www.kriterion.nl/data/shows.json"
 
-        response = requests.get(url_showtimes)
+        response = requests.get(url_shows)
         response.raise_for_status()
-        response_movies = requests.get(url_movies)
-        response_movies.raise_for_status()
 
-        data: Shows = Shows.model_validate(response.json())
-        shows = data.shows
-
-        movies_data = MovieResponse.model_validate(response_movies.json()).data
-        movies_attributes = [m.attributes for m in movies_data]
-
-        movies_directors: list[tuple[str, list[str]]] = []
-
-        for attrs in movies_attributes:
-            title = sub(
-                r"\s*\([^)]*\)", "", attrs.titel.split(" | ")[0].strip()
-            )  # Take the first part of the title if multiple are listed
-            directors = [
-                director.strip()
-                for director in split(r"\s*(?: and | en |,|\|)\s*", attrs.regie)
-            ]
-            movies_directors.append((title, directors))
-            # logger.trace(f"title: {title}, director: {director}")
+        data = ShowsResponse.model_validate(response.json())
+        shows = [show for show in data.shows if show.is_deleted.lower() != "true"]
 
         shows_by_production_id: dict[int, Show] = {}
         for show in shows:
@@ -89,11 +85,7 @@ class KriterionScraper(BaseCinemaScraper):
         max_workers = min(len(shows_by_production_id), self.item_concurrency()) or 1
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_production_id = {
-                executor.submit(
-                    get_movie,
-                    show=show,
-                    movies_directors=movies_directors,
-                ): production_id
+                executor.submit(get_movie, show=show): production_id
                 for production_id, show in shows_by_production_id.items()
             }
             for future in as_completed(future_to_production_id):
@@ -117,18 +109,21 @@ class KriterionScraper(BaseCinemaScraper):
             movie = movie_cache.get(show.production_id)
             if movie is None:
                 continue
-            datetime_str = show.start_date
-            start_datetime = parser.parse(datetime_str).replace(tzinfo=None)
+            start_datetime = parser.parse(show.start_date).replace(tzinfo=None)
             ticket_link = (
                 "https://tickets.kriterion.nl/kriterion/nl/flow_configs/"
                 f"webshop/steps/start/show/{show.id}"
             )
+            subtitles = parse_languages(show.subtitle_languages)
+            if subtitles is None:
+                subtitles = parse_subtitle_hint_from_title(show.name)
             showtimes.append(
                 ShowtimeCreate(
                     movie_id=movie.id,
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,
+                    subtitles=subtitles,
                 )
             )
             movies_by_id[movie.id] = movie
@@ -158,26 +153,19 @@ class KriterionScraper(BaseCinemaScraper):
         return observed_presences
 
 
-def get_movie(
-    show: Show, movies_directors: list[tuple[str, list[str]]]
-) -> MovieCreate | None:
-    title_query = sub(r"\s*\([^)]*\)", "", show.name.split(" | ")[0].strip())
+def get_movie(show: Show) -> MovieCreate | None:
+    title_query = clean_title(show.name)
+    directors = parse_directors(show.director)
+    spoken_languages = parse_languages(show.spoken_languages)
+    year = parse_year_hint_from_title(show.name)
 
-    # find directorprocess_show
-    best_fuzz_ratio = 0.0
-    directors: list[str] = []
-    for title, dirs in movies_directors:
-        fuzz_ratio = fuzz.token_set_ratio(title_query.lower(), title.lower())
-        if fuzz_ratio > best_fuzz_ratio:
-            best_fuzz_ratio = fuzz_ratio
-            directors = dirs
-    if best_fuzz_ratio < 50:
-        logger.debug(
-            f"Could not match showtime title {title_query} with movie title {title}, no director found."
-        )
-        directors = []
-
-    tmdb_id = find_tmdb_id(title_query=title_query, director_names=directors)
+    tmdb_id = find_tmdb_id(
+        title_query=title_query,
+        director_names=directors,
+        duration_minutes=show.duration,
+        spoken_languages=spoken_languages,
+        year=year,
+    )
     if tmdb_id is None:
         logger.debug(f"No TMDB id found for {title_query}")
         return None
@@ -196,7 +184,7 @@ def get_movie(
         title=tmdb_details.title if tmdb_details is not None else title_query,
         letterboxd_slug=None,
         directors=tmdb_directors if tmdb_directors else None,
-        release_year=tmdb_details.release_year if tmdb_details is not None else None,
+        release_year=tmdb_details.release_year if tmdb_details is not None else year,
         duration=tmdb_details.runtime_minutes if tmdb_details is not None else None,
         languages=tmdb_details.spoken_languages if tmdb_details is not None else None,
         original_title=(

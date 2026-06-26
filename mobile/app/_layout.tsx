@@ -4,7 +4,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useRouter, useSegments, usePathname, withLayoutContext } from 'expo-router';
 import { createStackNavigator, TransitionPresets, TransitionSpecs } from '@react-navigation/stack';
-import { Appearance, Easing , View } from 'react-native';
+import { Appearance, Easing, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { ApiError, OpenAPI, installAuthRefreshInterceptor } from 'shared';
@@ -44,6 +44,7 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryCl
 import axios, { AxiosRequestTransformer } from 'axios'
 import * as qs from 'qs'
 import useAuth from 'shared/hooks/useAuth';
+import useTrackEvent from 'shared/hooks/useTrackEvent';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -119,6 +120,10 @@ OpenAPI.TOKEN = async () => {
   const token = await storage.getItem('access_token');
   return token || '';
 }
+
+// Lets the backend attribute logins/events to a platform without any
+// per-request client code (see AnalyticsEventName.LOGIN in login.py).
+OpenAPI.HEADERS = { 'X-Client-Platform': Platform.OS };
 
 let apiLoggingEnabled = false;
 if (__DEV__ && !apiLoggingEnabled) {
@@ -196,6 +201,7 @@ function RootLayourContent() {
   const hasHiddenNativeSplashRef = useRef(false)
   const { user } = useAuth();
   const userId = user?.id ? String(user.id) : undefined;
+  const { trackEvent } = useTrackEvent();
   // Lets notification taps open the showtime modal in place instead of navigating.
   const { openShowtimeModalById } = useShowtimeModal();
   // Keeps the previous token for dev logging without causing rerenders.
@@ -323,6 +329,11 @@ function RootLayourContent() {
       }
       handledNotificationResponsesRef.current.add(responseKey)
 
+      const notificationData = response.notification.request.content.data
+      trackEvent('notification_clicked', {
+        type: (notificationData as { type?: string } | undefined)?.type,
+      })
+
       try {
         await handleNotificationQuickAction(response)
       } catch (error) {
@@ -350,7 +361,7 @@ function RootLayourContent() {
         console.error('Error clearing last notification response:', error)
       }
     },
-    [router, openShowtimeModalById]
+    [router, openShowtimeModalById, trackEvent]
   )
 
   useEffect(() => {

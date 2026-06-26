@@ -39,6 +39,7 @@ import DayFilterModal from "@/components/filters/DayFilterModal";
 import FilterMoviesSection from "@/components/filters/FilterMoviesSection";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
+import useTrackEvent from "shared/hooks/useTrackEvent";
 
 const DAY_PRESETS = [
   { token: "relative:today", label: "Today" },
@@ -140,6 +141,15 @@ export default function FiltersModal({
   const { openCinemaModal: providerOpenCinemaModal } = useFiltersModal();
   const openCinemaModal = onOpenCinemaModal ?? providerOpenCinemaModal;
   const [dayModalVisible, setDayModalVisible] = useState(false);
+  const { trackEvent } = useTrackEvent();
+  // Filters apply live as the user taps pills, so any way of dismissing this
+  // sheet — the "View results" button, swipe-down, or backdrop tap — commits
+  // the current filter state. Track it here, not just on the button, so the
+  // swipe/backdrop paths (handled by AppBottomSheet's onClose) aren't missed.
+  const handleClose = useCallback(() => {
+    trackEvent("filter_applied");
+    onClose();
+  }, [trackEvent, onClose]);
 
   // contentMounted: false on first open (shows spinner while content renders),
   // then permanently true so subsequent opens show content immediately.
@@ -302,7 +312,7 @@ export default function FiltersModal({
 
   return (
     <>
-      <AppBottomSheet visible={visible} onClose={onClose} title="Filters">
+      <AppBottomSheet visible={visible} onClose={handleClose} title="Filters">
         {/* @gorhom/portal (used by the bottom sheet) does not forward React
             context, so re-provide the QueryClient for hooks rendered inside. */}
         <QueryClientProvider client={queryClient}>
@@ -577,7 +587,7 @@ export default function FiltersModal({
 
             <TouchableOpacity
               style={styles.viewResultsButton}
-              onPress={onClose}
+              onPress={handleClose}
               activeOpacity={0.85}
             >
               {resultCount !== undefined ? (

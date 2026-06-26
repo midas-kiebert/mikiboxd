@@ -148,6 +148,18 @@ def get_movie_by_id(*, session: Session, id: int) -> Movie | None:
     return movie
 
 
+def search_movies_for_admin(
+    *, session: Session, query: str, limit: int
+) -> list[Movie]:
+    stmt = (
+        select(Movie)
+        .where(_title_search_clause(query))
+        .order_by(col(Movie.title))
+        .limit(limit)
+    )
+    return list(session.exec(stmt).all())
+
+
 def upsert_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
     """
     Insert or update a movie in the database.

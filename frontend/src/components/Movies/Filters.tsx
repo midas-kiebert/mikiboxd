@@ -6,6 +6,7 @@ import type { CinemaPublic, CityPublic } from "shared"
 import { MeService, type MeSetCinemaSelectionsData } from "shared/client"
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas"
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas"
+import useTrackEvent from "shared/hooks/useTrackEvent"
 import { useDebouncedCallback } from "use-debounce"
 import { DayFilter } from "../Common/DayFilter"
 import CityCinemas from "./CityCinemas"
@@ -22,6 +23,7 @@ type FiltersProps = {
 function useDebouncedCinemaMutation(delay = 500) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const queryClient = useQueryClient()
+  const { trackEvent } = useTrackEvent()
 
   // Data hooks keep this module synced with backend data and shared cache state.
   const mutation = useMutation({
@@ -37,6 +39,7 @@ function useDebouncedCinemaMutation(delay = 500) {
         variables.requestBody,
       )
       queryClient.resetQueries({ queryKey: ["movies"] })
+      trackEvent("filter_applied", { filter: "cinema" })
     },
   })
 

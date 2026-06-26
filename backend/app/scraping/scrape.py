@@ -22,8 +22,15 @@ from app.scraping.cinemas.amsterdam.fchyena import FCHyenaScraper
 from app.scraping.cinemas.amsterdam.filmhallen import FilmHallenScraper
 from app.scraping.cinemas.amsterdam.kriterion import KriterionScraper
 from app.scraping.cinemas.amsterdam.lab111 import LAB111Scraper
+from app.scraping.cinemas.amsterdam.rialto import RialtoDePijpScraper, RialtoVUScraper
+from app.scraping.cinemas.amsterdam.studiok import StudioKScraper
 from app.scraping.cinemas.amsterdam.themovies import TheMoviesScraper
 from app.scraping.cinemas.amsterdam.uitkijk import UitkijkScraper
+from app.scraping.cinemas.haarlem.filmkoepel import FilmkoepelScraper
+from app.scraping.cinemas.rotterdam.kinorotterdam import KinoRotterdamScraper
+from app.scraping.cinemas.utrecht.hartlooper import LouisHartlooperComplexScraper
+from app.scraping.cinemas.utrecht.slachtstraat import SlachtstraatScraper
+from app.scraping.cinemas.utrecht.springhaver import SpringhaverScraper
 from app.scraping.logger import logger
 from app.scraping.tmdb_lookup import find_tmdb_id_async
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details_async
@@ -44,6 +51,14 @@ SCRAPERS: list[ScraperFactory] = [
     KriterionScraper,
     TheMoviesScraper,
     FilmHallenScraper,
+    StudioKScraper,
+    RialtoDePijpScraper,
+    RialtoVUScraper,
+    KinoRotterdamScraper,
+    LouisHartlooperComplexScraper,
+    SlachtstraatScraper,
+    SpringhaverScraper,
+    FilmkoepelScraper,
 ]
 
 
@@ -333,6 +348,14 @@ def _expected_cinema_name(scraper_name: str) -> str | None:
         "KriterionScraper": "Kriterion",
         "TheMoviesScraper": "The Movies",
         "FilmHallenScraper": "Filmhallen",
+        "StudioKScraper": "Studio/K",
+        "RialtoDePijpScraper": "Rialto De Pijp",
+        "RialtoVUScraper": "Rialto VU",
+        "KinoRotterdamScraper": "KINO",
+        "LouisHartlooperComplexScraper": "Louis Hartlooper Complex",
+        "SlachtstraatScraper": "Slachtstraat",
+        "SpringhaverScraper": "Springhaver",
+        "FilmkoepelScraper": "Filmkoepel",
     }.get(scraper_name)
 
 

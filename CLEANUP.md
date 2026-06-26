@@ -50,6 +50,7 @@ Legend:
 - [x] `routes/cinemas.py` — Cinema listing endpoints
 - [x] `routes/users.py` — User lookup endpoints (admin + public profiles)
 - [x] `routes/utils.py` — Utility endpoints (health check, TMDB cache override)
+- [ ] `routes/admin.py` — Superuser-only endpoints (analytics overview, movie/showtime moderation, showtime reports)
 
 ---
 
@@ -81,6 +82,8 @@ Legend:
 - [x] `city.py` — City (currently Amsterdam only)
 - [ ] `watchlist_digest_queue_entry.py` — Movies newly available for the watchlist digest (queued once, ever)
 - [ ] `watchlist_digest_notified_movie.py` — Per-user record of movies already sent/seen in the digest
+- [ ] `analytics_event.py` — Single usage-analytics event (name + free-form properties)
+- [ ] `showtime_report.py` — User-submitted report that a showtime is wrong
 
 ---
 
@@ -102,6 +105,10 @@ Legend:
 - [x] `friendship.py` — Friend status-sharing toggle request shape
 - [ ] `push_token.py` — Push token registration shape
 - [ ] `city.py` — City response shape
+- [ ] `analytics_event.py` — Event create/public response shapes
+- [ ] `analytics_dashboard.py` — Admin analytics-overview response shape
+- [ ] `showtime_report.py` — Showtime report create/update/admin-view shapes
+- [ ] `admin.py` — Admin movie/showtime moderation request/response shapes
 
 ---
 
@@ -125,6 +132,8 @@ Legend:
 - [ ] `watchlist.py` — Watchlist selection CRUD
 - [ ] `push_token.py` — Push token registration and lookup
 - [ ] `city.py` — City queries
+- [ ] `analytics_event.py` — Event creation and dashboard aggregation queries
+- [ ] `showtime_report.py` — Report creation, listing (joined), status updates
 
 ---
 
@@ -142,6 +151,7 @@ Legend:
 - [ ] `users.py` — User management (admin operations)
 - [ ] `watchlist.py` — Watchlist sync logic
 - [ ] `scrape_sync.py` — Triggers scraping from the API layer
+- [ ] `analytics_dashboard.py` — Aggregates AnalyticsEvent/Notification/ShowtimePing/User data for the admin overview
 
 ---
 
@@ -184,6 +194,7 @@ Legend:
 - [ ] `get_showtimes.py` — Fetches showtimes from the DB for enrichment
 - [ ] `logger.py` — Scraping-specific log configuration
 - [x] `subtitles.py` — Parses cinema subtitle metadata (Dutch free text) into ISO-639-1 codes for `Showtime.subtitles`
+- [ ] `title_hints.py` — Subtitle/year hints recoverable from a raw scraped title/slug
 - [ ] `tmdb.py` — TMDB API client ⚠️ Large (1411 LOC)
 - [ ] `tmdb_lookup.py` — TMDB movie resolution + fuzzy matching ⚠️ Large (1470 LOC)
 - [ ] `tmdb_config.py` — TMDB configuration constants
@@ -200,6 +211,19 @@ Legend:
 - [ ] `cinemas/amsterdam/lab111.py` — Lab111 scraper
 - [ ] `cinemas/amsterdam/themovies.py` — The Movies scraper
 - [ ] `cinemas/amsterdam/fchyena.py` — FC Hyena scraper
+- [ ] `cinemas/amsterdam/studiok.py` — Studio/K scraper
+- [ ] `cinemas/amsterdam/rialto.py` — Rialto De Pijp + Rialto VU scraper
+
+**Cinema scrapers — Rotterdam:**
+- [ ] `cinemas/rotterdam/kinorotterdam.py` — KINO scraper (Eagerly)
+
+**Cinema scrapers — Utrecht:**
+- [ ] `cinemas/utrecht/hartlooper.py` — Louis Hartlooper Complex scraper (Eagerly)
+- [ ] `cinemas/utrecht/slachtstraat.py` — Slachtstraat scraper (Eagerly)
+- [ ] `cinemas/utrecht/springhaver.py` — Springhaver scraper (Eagerly)
+
+**Cinema scrapers — Haarlem:**
+- [ ] `cinemas/haarlem/filmkoepel.py` — Filmkoepel scraper (Eagerly)
 
 **Cinema scrapers — Generic:**
 - [ ] `cinemas/generic/eagerly.py` — Eagerly-based generic scraper
@@ -233,6 +257,7 @@ Legend:
 - [ ] Add tests for `services/showtimes.py` (visibility logic)
 - [ ] Add tests for `crud/showtime_visibility.py`
 - [ ] Add tests for `crud/user.py` (time-range filtering)
+- [ ] `tests/api/test_admin.py` — Admin route gating, analytics overview, movie/showtime moderation, showtime reports
 
 ---
 
@@ -272,6 +297,10 @@ Legend:
 - [ ] `ping.$showtimeId.$sender.tsx` — Ping deep link handler
 - [ ] `forbidden.tsx` — 403 page
 - [ ] `routeTree.gen.ts` — Auto-generated (do not edit manually)
+- [ ] `_layout/admin/index.tsx` — Superuser analytics overview page
+- [ ] `_layout/admin/movies.tsx` — Superuser movie-record / TMDB-cache editor page
+- [ ] `_layout/admin/showtimes.tsx` — Superuser showtime moderation page
+- [ ] `_layout/admin/reports.tsx` — Superuser showtime-report triage page
 
 ---
 
@@ -316,6 +345,7 @@ Legend:
 - [ ] `MovieLinks.tsx` — External links (TMDB, Letterboxd, etc.)
 - [ ] `MoviePoster.tsx` — Large poster
 - [ ] `MovieTitle.tsx` + `OriginalTitle.tsx` + `ReleaseYear.tsx` — Title block
+- [ ] `ReportShowtimeButton.tsx` — "Report an issue" dialog (incorrect movie/time, etc.)
 
 **Showtimes:**
 - [ ] `ShowtimesPage.tsx` — Showtimes list page
@@ -346,6 +376,13 @@ Legend:
 
 **UI primitives (`components/ui/`):**
 - [ ] Review generated Chakra UI wrappers — understand what each one does
+
+**Admin (`components/Admin/`):**
+- [ ] `AdminGuard.tsx` — Renders Forbidden for non-superusers
+- [ ] `AdminOverview.tsx` — Analytics overview (logins, feature usage, invite/notification rates)
+- [ ] `AdminMovies.tsx` — Movie-record edit form + TMDB lookup-cache override form
+- [ ] `AdminShowtimes.tsx` — Showtime search, inline edit, delete
+- [ ] `AdminReports.tsx` — Showtime-report triage (resolve/dismiss)
 
 ---
 
@@ -379,6 +416,7 @@ Legend:
 - [ ] `useSessionShowtimeAudience.ts` — Session-level audience filter (mobile no longer uses the Only You / Including Friends distinction; web may still use this)
 - [ ] `useSessionShowtimeFilter.ts` — Combined session filter state
 - [ ] `useSessionWatchlistOnly.ts` — Session-level watchlist toggle
+- [ ] `useTrackEvent.ts` — Fire-and-forget POST /me/events for usage analytics (web + mobile)
 
 ---
 

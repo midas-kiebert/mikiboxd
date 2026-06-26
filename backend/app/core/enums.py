@@ -144,3 +144,38 @@ class NotificationType(str, Enum):
     INVITE_RESPONSE = "invite_response"
     # Someone accepted a friend request you sent.
     FRIEND_REQUEST_ACCEPTED = "friend_request_accepted"
+
+
+@unique
+class AnalyticsEventName(str, Enum):
+    """Closed set of client/server-fired usage events recorded for the beta.
+
+    Fired via POST /me/events from web/mobile (except LOGIN, which the login
+    route records itself) and aggregated by app/services/analytics_dashboard.py.
+    """
+
+    LOGIN = "login"
+    FILTER_APPLIED = "filter_applied"
+    PRESET_USED = "preset_used"
+    INVITE_SENT = "invite_sent"
+    NOTIFICATION_CLICKED = "notification_clicked"
+
+
+@unique
+class ShowtimeReportReason(str, Enum):
+    """Why a user is flagging a showtime as wrong."""
+
+    INCORRECT_MOVIE = "incorrect_movie"
+    INCORRECT_TIME = "incorrect_time"
+    DOES_NOT_EXIST = "does_not_exist"
+    DUPLICATE = "duplicate"
+    OTHER = "other"
+
+
+@unique
+class ShowtimeReportStatus(str, Enum):
+    """Moderation state of a user-submitted showtime report."""
+
+    OPEN = "open"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"

@@ -3,6 +3,7 @@
  */
 import { Flex } from "@chakra-ui/react"
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router"
+import { useEffect } from "react"
 
 import BottomNavBar from "@/components/Common/BottomNavBar"
 // import Navbar from "@/components/Common/Navbar"
@@ -11,6 +12,7 @@ import { PAGE_NOTICE_BANNER_OFFSET_CSS_VAR } from "@/constants"
 import { useIsMobile } from "@/hooks/useIsMobile"
 import { Box } from "@chakra-ui/react"
 import { isLoggedIn } from "shared/hooks/useAuth"
+import useTrackEvent from "shared/hooks/useTrackEvent"
 
 export const Route = createFileRoute("/_layout")({
   component: Layout,
@@ -27,8 +29,15 @@ function Layout() {
   // Read flow: route state and data hooks first, then handlers, then page JSX.
   const isMobile = useIsMobile()
   const pageNoticeOffset = `var(${PAGE_NOTICE_BANNER_OFFSET_CSS_VAR}, 0px)`
+  const { trackEvent } = useTrackEvent()
 
   const height = isMobile ? "calc(100% - 60px)" : "100%"
+
+  useEffect(() => {
+    // beforeLoad already guarantees a session exists by the time this layout
+    // mounts, so a mount here is a genuine website open (one per page load).
+    trackEvent("app_open")
+  }, [trackEvent])
 
   // Render/output using the state and derived values prepared above.
   return (

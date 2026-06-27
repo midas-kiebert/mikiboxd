@@ -1,10 +1,25 @@
 /**
  * Admin feature component: AdminOverview. Beta usage-analytics dashboard.
  */
-import { Box, Heading, SimpleGrid, Stat, Table, Text } from "@chakra-ui/react"
+import { Box, Button, Heading, SimpleGrid, Stack, Stat, Table, Text } from "@chakra-ui/react"
+import { Link } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
 
 import { AdminService } from "shared"
+
+const AdminNav = () => (
+  <Stack direction="row" gap={2} mb={6}>
+    <Button asChild size="sm" variant="outline">
+      <Link to="/admin/movies">Movies</Link>
+    </Button>
+    <Button asChild size="sm" variant="outline">
+      <Link to="/admin/showtimes">Showtimes</Link>
+    </Button>
+    <Button asChild size="sm" variant="outline">
+      <Link to="/admin/reports">Reports</Link>
+    </Button>
+  </Stack>
+)
 
 const AdminOverview = () => {
   const { data: overview, isLoading } = useQuery({
@@ -13,7 +28,12 @@ const AdminOverview = () => {
   })
 
   if (isLoading || !overview) {
-    return <Text>Loading analytics…</Text>
+    return (
+      <Box>
+        <AdminNav />
+        <Text>Loading analytics…</Text>
+      </Box>
+    )
   }
 
   const inviteOpenRate = overview.invites_sent
@@ -27,6 +47,7 @@ const AdminOverview = () => {
 
   return (
     <Box>
+      <AdminNav />
       <Heading size="md" mb={4}>
         Last {overview.window_days} days
       </Heading>
@@ -76,7 +97,7 @@ const AdminOverview = () => {
       </Table.Root>
 
       <Heading size="sm" mb={2}>
-        Logins by day / user
+        Opens by day / user
       </Heading>
       <Table.Root size="sm" mb={8}>
         <Table.Header>
@@ -88,7 +109,7 @@ const AdminOverview = () => {
           </Table.Row>
         </Table.Header>
         <Table.Body>
-          {overview.logins_by_day_user.map((row, i) => (
+          {overview.opens_by_day_user.map((row, i) => (
             <Table.Row key={i}>
               <Table.Cell>{row.day}</Table.Cell>
               <Table.Cell>{row.user_email}</Table.Cell>

@@ -155,6 +155,7 @@ class AnalyticsEventName(str, Enum):
     """
 
     LOGIN = "login"
+    APP_OPEN = "app_open"
     FILTER_APPLIED = "filter_applied"
     PRESET_USED = "preset_used"
     INVITE_SENT = "invite_sent"
@@ -169,6 +170,7 @@ class ShowtimeReportReason(str, Enum):
     INCORRECT_TIME = "incorrect_time"
     DOES_NOT_EXIST = "does_not_exist"
     DUPLICATE = "duplicate"
+    WRONG_SUBTITLES = "wrong_subtitles"
     OTHER = "other"
 
 

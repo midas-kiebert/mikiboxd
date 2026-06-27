@@ -300,7 +300,15 @@ function CinemaShowtimesContent() {
       style={styles.flex}
       data={movies}
       renderItem={({ item }) => (
-        <MovieCard movie={item} onPress={(movie) => router.push(`/movie/${movie.id}`)} />
+        <MovieCard
+          movie={item}
+          onPress={(movie) =>
+            router.push({
+              pathname: "/movie/[id]",
+              params: { id: String(movie.id), cinemaId: String(cinemaId) },
+            })
+          }
+        />
       )}
       keyExtractor={(item) => item.id.toString()}
       contentContainerStyle={styles.movieFeed}

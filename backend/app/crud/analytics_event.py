@@ -39,20 +39,25 @@ def count_by_name(
     return dict(session.exec(stmt).all())
 
 
-def count_logins_by_day_and_user(
+def count_opens_by_day_and_user(
     *, session: Session, since: datetime
 ) -> list[tuple[datetime, UUID, str, str | None, int]]:
-    """One row per (day, user, platform) with how many times they logged in.
+    """One row per (day, user, platform) with how many times they opened the app/site.
 
-    Kept per-user rather than aggregated across all users so the dashboard can
-    show who is actually logging in, not just a daily total.
+    Counts both LOGIN (credential sign-in) and APP_OPEN (silent re-auth on an
+    already-authenticated launch) so the dashboard reflects actual usage, not
+    just the rarer event of typing in a password. Kept per-user rather than
+    aggregated across all users so the dashboard can show who is actually
+    using the product, not just a daily total.
     """
     day = func.date_trunc("day", AnalyticsEvent.created_at)
     stmt = (
         select(day, AnalyticsEvent.user_id, User.email, AnalyticsEvent.platform, func.count())
         .join(User, User.id == AnalyticsEvent.user_id)
         .where(
-            AnalyticsEvent.name == AnalyticsEventName.LOGIN,
+            col(AnalyticsEvent.name).in_(
+                [AnalyticsEventName.LOGIN, AnalyticsEventName.APP_OPEN]
+            ),
             col(AnalyticsEvent.created_at) >= since,
         )
         .group_by(day, AnalyticsEvent.user_id, User.email, AnalyticsEvent.platform)

@@ -24,6 +24,7 @@ export type AdminShowtimePublic = {
   movie_title: string
   cinema_id: number
   cinema_name: string
+  cinema_url: string
 }
 
 export type AdminShowtimeUpdate = {
@@ -50,6 +51,7 @@ export type AnalyticsEventCreate = {
  */
 export type AnalyticsEventName =
   | "login"
+  | "app_open"
   | "filter_applied"
   | "preset_used"
   | "invite_sent"
@@ -59,7 +61,7 @@ export type AnalyticsOverview = {
   window_days: number
   total_users: number
   users_with_push_token: number
-  logins_by_day_user: Array<LoginsByDayUser>
+  opens_by_day_user: Array<OpensByDayUser>
   event_counts: {
     [key: string]: number
   }
@@ -202,14 +204,6 @@ export type LetterboxdListPublic = {
   film_count: number
 }
 
-export type LoginsByDayUser = {
-  day: string
-  user_id: string
-  user_email: string
-  platform: string | null
-  count: number
-}
-
 export type Message = {
   message: string
 }
@@ -323,6 +317,14 @@ export type NotificationOptInBreakdown = {
   setting: string
   enabled_count: number
   disabled_count: number
+}
+
+export type OpensByDayUser = {
+  day: string
+  user_id: string
+  user_email: string
+  platform: string | null
+  count: number
 }
 
 export type PushTokenDelete = {
@@ -454,8 +456,11 @@ export type ShowtimePingSort = "ping_created_at" | "showtime_datetime"
 export type ShowtimeReportAdminView = {
   id: number
   showtime_id: number
+  movie_id: number
   movie_title: string
+  cinema_id: number
   cinema_name: string
+  cinema_url: string
   showtime_datetime: string
   reporter_id: string
   reporter_email: string
@@ -479,6 +484,7 @@ export type ShowtimeReportReason =
   | "incorrect_time"
   | "does_not_exist"
   | "duplicate"
+  | "wrong_subtitles"
   | "other"
 
 /**
@@ -672,6 +678,12 @@ export type AdminSearchShowtimesData = {
 }
 
 export type AdminSearchShowtimesResponse = Array<AdminShowtimePublic>
+
+export type AdminGetShowtimeData = {
+  showtimeId: number
+}
+
+export type AdminGetShowtimeResponse = AdminShowtimePublic
 
 export type AdminUpdateShowtimeData = {
   requestBody: AdminShowtimeUpdate

@@ -50,7 +50,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 3,
       justifyContent: "center",
       alignItems: "center",
-      backgroundColor: `${colors.divider}80`,
+      backgroundColor: colors.pillBackground,
     },
     text: {
       includeFontPadding: false,

@@ -24,8 +24,11 @@ class ShowtimeReportUpdate(SQLModel):
 class ShowtimeReportAdminView(SQLModel):
     id: int
     showtime_id: int
+    movie_id: int
     movie_title: str
+    cinema_id: int
     cinema_name: str
+    cinema_url: str
     showtime_datetime: datetime
     reporter_id: UUID
     reporter_email: str

@@ -277,7 +277,12 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         <ShowtimeCard
           showtime={item}
           onPress={(st) => openShowtimeModal(st, { openedFrom: { userId: userId ?? undefined } })}
-          onLongPress={(st) => router.push(`/movie/${st.movie.id}`)}
+          onLongPress={(st) =>
+            router.push({
+              pathname: "/movie/[id]",
+              params: { id: String(st.movie.id), cinemaId: String(st.cinema.id) },
+            })
+          }
         />
       )}
       contentContainerStyle={styles.movieSectionContent}

@@ -97,6 +97,21 @@ export type ShowtimeInvite = {
 
 type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
 
+type ReportReason =
+  | "incorrect_movie"
+  | "incorrect_time"
+  | "does_not_exist"
+  | "duplicate"
+  | "wrong_subtitles";
+
+const REPORT_REASON_OPTIONS: { value: ReportReason; label: string }[] = [
+  { value: "incorrect_movie", label: "Wrong movie" },
+  { value: "incorrect_time", label: "Wrong time" },
+  { value: "wrong_subtitles", label: "Wrong subtitles" },
+  { value: "does_not_exist", label: "Doesn't exist" },
+  { value: "duplicate", label: "Duplicate" },
+];
+
 type ShowtimeActionModalProps = {
   visible: boolean;
   showtime: ShowtimeLoggedIn | null;
@@ -118,6 +133,8 @@ type ShowtimeActionModalProps = {
   disabledCinemaId?: number;
   /** Disables friend badge navigation for this user when already on their page. */
   disabledUserId?: string;
+  /** Carries the showtimes-tab filters over to the movie page when navigating there. */
+  inheritFilters?: boolean;
 };
 
 // ─── Seat input helpers ───────────────────────────────────────────────────────
@@ -197,6 +214,7 @@ export default function ShowtimeActionModal({
   disableMovieNavigation = false,
   disabledCinemaId,
   disabledUserId,
+  inheritFilters = false,
 }: ShowtimeActionModalProps) {
   const { top: topInset, bottom: bottomInset } = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -232,6 +250,7 @@ export default function ShowtimeActionModal({
   const [seatRowDraft, setSeatRowDraft] = useState("");
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
+  const [isReportDialogVisible, setIsReportDialogVisible] = useState(false);
   const [isVisibilityExpanded, setIsVisibilityExpanded] = useState(false);
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<"watchlisted" | "watched" | null>(null);
@@ -289,6 +308,7 @@ export default function ShowtimeActionModal({
       setInviteListReady(false);
       setPingSearchQuery("");
       setIsSeatDialogVisible(false);
+      setIsReportDialogVisible(false);
       setWatchModalKind(null);
       setIsVisibilityExpanded(false);
       caretRotation.setValue(0);
@@ -341,15 +361,16 @@ export default function ShowtimeActionModal({
     },
   });
 
-  const { mutate: reportShowtimeIssue } = useMutation({
+  const { mutate: reportShowtimeIssue, isPending: isSubmittingReport } = useMutation({
     mutationFn: ({
       showtimeId,
       reason,
     }: {
       showtimeId: number;
-      reason: "incorrect_movie" | "incorrect_time" | "does_not_exist" | "duplicate" | "other";
+      reason: ReportReason;
     }) => ShowtimesService.reportShowtime({ showtimeId, requestBody: { reason } }),
     onSuccess: () => {
+      setIsReportDialogVisible(false);
       Alert.alert("Thanks!", "We'll take a look at this showtime.");
     },
     onError: () => {
@@ -357,16 +378,9 @@ export default function ShowtimeActionModal({
     },
   });
 
-  const handleReportShowtime = () => {
+  const handleSubmitReport = (reason: ReportReason) => {
     if (!showtime) return;
-    const showtimeId = showtime.id;
-    Alert.alert("Report an issue", "What's wrong with this showtime?", [
-      { text: "Wrong movie", onPress: () => reportShowtimeIssue({ showtimeId, reason: "incorrect_movie" }) },
-      { text: "Wrong time", onPress: () => reportShowtimeIssue({ showtimeId, reason: "incorrect_time" }) },
-      { text: "Doesn't exist", onPress: () => reportShowtimeIssue({ showtimeId, reason: "does_not_exist" }) },
-      { text: "Duplicate", onPress: () => reportShowtimeIssue({ showtimeId, reason: "duplicate" }) },
-      { text: "Cancel", style: "cancel" },
-    ]);
+    reportShowtimeIssue({ showtimeId: showtime.id, reason });
   };
 
   const { mutate: uninviteFriend, isPending: isUninviting } = useMutation({
@@ -552,7 +566,14 @@ export default function ShowtimeActionModal({
   const handleGoToMoviePage = () => {
     if (!showtime) return;
     bottomSheetModalRef.current?.close();
-    router.push(`/movie/${showtime.movie.id}`);
+    router.push({
+      pathname: "/movie/[id]",
+      params: {
+        id: String(showtime.movie.id),
+        cinemaId: String(showtime.cinema.id),
+        ...(inheritFilters ? { inheritFilters: "1" } : {}),
+      },
+    });
   };
 
 
@@ -970,6 +991,15 @@ export default function ShowtimeActionModal({
                   No friends are interested in this showtime yet.
                 </ThemedText>
               )}
+              <TouchableOpacity
+                style={styles.reportLink}
+                onPress={() => setIsReportDialogVisible(true)}
+                hitSlop={8}
+                activeOpacity={0.6}
+              >
+                <MaterialIcons name="flag" size={11} color={colors.textSecondary} />
+                <ThemedText style={styles.reportLinkText}>Report</ThemedText>
+              </TouchableOpacity>
             </View>
 
             {/* Friends' Letterboxd relationship to this film */}
@@ -1125,14 +1155,6 @@ export default function ShowtimeActionModal({
                   </ThemedText>
                 </TouchableOpacity>
               ) : null}
-              <TouchableOpacity
-                style={styles.ctaIconButton}
-                onPress={handleReportShowtime}
-                activeOpacity={0.85}
-              >
-                <MaterialIcons name="flag" size={20} color={colors.textSecondary} />
-                <ThemedText style={styles.ctaIconButtonText}>Report</ThemedText>
-              </TouchableOpacity>
             </View>
 
             {/* Who can see your status for this showtime — inline dropdown.
@@ -1387,6 +1409,50 @@ export default function ShowtimeActionModal({
         </View>
       </Modal>
 
+      {/* Report an issue with this showtime */}
+      <Modal
+        transparent
+        statusBarTranslucent
+        visible={isReportDialogVisible}
+        animationType="fade"
+        onRequestClose={() => setIsReportDialogVisible(false)}
+      >
+        <View style={styles.seatDialogBackdrop}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setIsReportDialogVisible(false)}
+          />
+          <View style={styles.seatDialogCard}>
+            <ThemedText style={styles.seatDialogTitle}>Report an issue</ThemedText>
+            <ThemedText style={styles.reportDialogSubtitle}>
+              What's wrong with this showtime?
+            </ThemedText>
+            <View style={styles.reportReasonList}>
+              {REPORT_REASON_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={styles.reportReasonOption}
+                  onPress={() => handleSubmitReport(option.value)}
+                  disabled={isSubmittingReport}
+                  activeOpacity={0.7}
+                >
+                  <ThemedText style={styles.reportReasonOptionText}>{option.label}</ThemedText>
+                  <MaterialIcons name="chevron-right" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity
+              style={styles.reportCancelButton}
+              onPress={() => setIsReportDialogVisible(false)}
+              activeOpacity={0.8}
+            >
+              <ThemedText style={styles.reportCancelButtonText}>Cancel</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Friends who watchlisted / watched this film, with an invite affordance */}
       <Modal
         transparent
@@ -1536,11 +1602,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
 
     audienceBox: {
+      position: "relative",
       minHeight: 42,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderColor: `${colors.divider}80`,
       paddingVertical: 10,
+      paddingRight: 54,
       justifyContent: "center",
     },
     audienceBoxEmpty: { alignItems: "center" },
@@ -1548,6 +1616,22 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 13,
       color: colors.textSecondary,
       textAlign: "center",
+    },
+    reportLink: {
+      position: "absolute",
+      right: 0,
+      bottom: 8,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      paddingVertical: 4,
+      paddingHorizontal: 4,
+    },
+    reportLinkText: {
+      fontSize: 10.5,
+      fontWeight: "600",
+      color: colors.textSecondary,
+      opacity: 0.8,
     },
 
     watchButtonsRow: { flexDirection: "row", gap: 8 },
@@ -1798,6 +1882,26 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     seatSaveButtonDisabled: { opacity: 0.5 },
     seatSaveButtonText: { fontSize: 13, fontWeight: "700", color: colors.pillActiveText },
+
+    reportDialogSubtitle: { fontSize: 13, color: colors.textSecondary, marginTop: -4 },
+    reportReasonList: { gap: 2 },
+    reportReasonOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderRadius: 9,
+      paddingVertical: 11,
+      paddingHorizontal: 10,
+    },
+    reportReasonOptionText: { fontSize: 14, fontWeight: "600", color: colors.text },
+    reportCancelButton: {
+      minHeight: 38,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.pillBackground,
+    },
+    reportCancelButtonText: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
 
     watchModalCard: {
       width: "100%",

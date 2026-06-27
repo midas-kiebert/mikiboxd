@@ -36,3 +36,4 @@ class AdminShowtimePublic(SQLModel):
     movie_title: str
     cinema_id: int
     cinema_name: str
+    cinema_url: str

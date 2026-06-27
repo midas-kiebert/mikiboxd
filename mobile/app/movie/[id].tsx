@@ -16,8 +16,9 @@ import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import type { Language } from "shared/client";
 import type { MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
-import { MoviesService } from "shared";
+import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -30,7 +31,10 @@ import FiltersModal from "@/components/filters/FiltersModal";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
-import { getSelectedStatusesFromShowtimeFilter } from "@/components/filters/shared-tab-filters";
+import {
+  getSelectedStatusesFromShowtimeFilter,
+  type SharedTabShowtimeFilter,
+} from "@/components/filters/shared-tab-filters";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
@@ -53,6 +57,8 @@ type MovieStyles = ReturnType<typeof createStyles>;
 type MovieContentProps = {
   id: string;
   showtimeId?: string | string[];
+  inheritFilters?: string | string[];
+  cinemaId?: string | string[];
 };
 
 /**
@@ -66,9 +72,11 @@ export default function MoviePage() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
-  const { id, showtimeId } = useLocalSearchParams<{
+  const { id, showtimeId, inheritFilters, cinemaId } = useLocalSearchParams<{
     id: string;
     showtimeId?: string | string[];
+    inheritFilters?: string | string[];
+    cinemaId?: string | string[];
   }>();
 
   const contentReady = useDeferredMount(`movie:${id}`);
@@ -88,7 +96,12 @@ export default function MoviePage() {
         </TouchableOpacity>
       </View>
       {contentReady ? (
-        <MovieContent id={id} showtimeId={showtimeId} />
+        <MovieContent
+          id={id}
+          showtimeId={showtimeId}
+          inheritFilters={inheritFilters}
+          cinemaId={cinemaId}
+        />
       ) : (
         <MovieSkeleton styles={styles} />
       )}
@@ -121,7 +134,7 @@ function MovieSkeleton({ styles }: { styles: MovieStyles }) {
   );
 }
 
-function MovieContent({ id, showtimeId }: MovieContentProps) {
+function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContentProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
@@ -134,25 +147,53 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const {
-    selectedShowtimeFilter,
-    appliedShowtimeFilter,
-    setSelectedShowtimeFilter,
-    selectedDays,
-    setSelectedDays,
-    selectedTimeRanges,
-    setSelectedTimeRanges,
-    selectedRuntimeRanges,
-    setSelectedRuntimeRanges,
-    selectedLanguages,
-    setSelectedLanguages,
-    sessionCinemaIds,
-    setSessionCinemaIds,
-  } = useSharedTabFilters();
+  // The tabs' filters (status/day/time/language) are page-scoped here: they only
+  // carry over when `inheritFilters` says this page was opened from the
+  // showtimes tab (or a modal opened from it). Cinema selection stays the one
+  // global "my cinemas" preference shared everywhere.
+  const shared = useSharedTabFilters();
+  const { sessionCinemaIds, setSessionCinemaIds } = shared;
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+
+  const shouldInheritFilters = useMemo(
+    () => (Array.isArray(inheritFilters) ? inheritFilters[0] : inheritFilters) === "1",
+    [inheritFilters]
+  );
+
+  const [selectedShowtimeFilter, setSelectedShowtimeFilter] = useState<SharedTabShowtimeFilter>(
+    () => (shouldInheritFilters ? shared.appliedShowtimeFilter : "all")
+  );
+  const [selectedDays, setSelectedDays] = useState<string[]>(
+    () => (shouldInheritFilters ? shared.selectedDays : [])
+  );
+  const [selectedTimeRanges, setSelectedTimeRanges] = useState<string[]>(
+    () => (shouldInheritFilters ? shared.selectedTimeRanges : [])
+  );
+  const [selectedRuntimeRanges, setSelectedRuntimeRanges] = useState<string[]>(
+    () => (shouldInheritFilters ? shared.selectedRuntimeRanges : [])
+  );
+  const [selectedLanguages, setSelectedLanguages] = useState<Language[]>(
+    () => (shouldInheritFilters ? shared.selectedLanguages : [])
+  );
+  const appliedShowtimeFilter = selectedShowtimeFilter;
 
   const movieId = useMemo(() => Number(id), [id]);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
+
+  // Safety net: if the showtime that led here belongs to a cinema the global
+  // cinema filter excludes, fall back to "all cinemas" so it's still visible.
+  const originCinemaId = useMemo(() => {
+    const normalized = Array.isArray(cinemaId) ? cinemaId[0] : cinemaId;
+    const parsed = Number.parseInt(normalized?.trim() ?? "", 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, [cinemaId]);
+
+  useEffect(() => {
+    if (originCinemaId === null) return;
+    if (sessionCinemaIds && sessionCinemaIds.length > 0 && !sessionCinemaIds.includes(originCinemaId)) {
+      setSessionCinemaIds(undefined);
+    }
+  }, [originCinemaId, sessionCinemaIds, setSessionCinemaIds]);
 
   const dayAnchorKey =
     DateTime.now().setZone("Europe/Amsterdam").startOf("day").toISODate() ?? "";
@@ -171,6 +212,36 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
     const parsed = Number.parseInt(normalizedShowtimeId?.trim() ?? "", 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }, [showtimeId]);
+
+  // Notifications/pings only carry a showtime id, not its cinema — fetch the
+  // showtime directly (bypassing the cinema filter) so the same fallback applies.
+  const handledTargetCinemaRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (targetShowtimeId === null || originCinemaId !== null) return;
+    if (handledTargetCinemaRef.current === targetShowtimeId) return;
+    handledTargetCinemaRef.current = targetShowtimeId;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const fetched = await ShowtimesService.getShowtimeById({ showtimeId: targetShowtimeId });
+        if (cancelled) return;
+        const fetchedCinemaId = fetched.cinema?.id;
+        if (
+          fetchedCinemaId !== undefined &&
+          sessionCinemaIds &&
+          sessionCinemaIds.length > 0 &&
+          !sessionCinemaIds.includes(fetchedCinemaId)
+        ) {
+          setSessionCinemaIds(undefined);
+        }
+      } catch {
+        // Ignore — the modal-open effect below already handles an unresolvable showtime.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [targetShowtimeId, originCinemaId, sessionCinemaIds, setSessionCinemaIds]);
 
   const showtimesFilters = useMemo(() => ({
     selectedCinemaIds: sessionCinemaIds,

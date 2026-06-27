@@ -69,6 +69,7 @@ def _to_admin_showtime_public(showtime) -> AdminShowtimePublic:
         movie_title=showtime.movie.title,
         cinema_id=showtime.cinema_id,
         cinema_name=showtime.cinema.name,
+        cinema_url=showtime.cinema.url,
     )
 
 
@@ -93,6 +94,16 @@ def search_showtimes(
         offset=offset,
     )
     return [_to_admin_showtime_public(showtime) for showtime in showtimes]
+
+
+@router.get("/showtimes/{showtime_id}", response_model=AdminShowtimePublic)
+def get_showtime(*, session: SessionDep, showtime_id: int) -> AdminShowtimePublic:
+    showtime = showtime_crud.get_showtime_by_id(session=session, showtime_id=showtime_id)
+    if showtime is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Showtime not found"
+        )
+    return _to_admin_showtime_public(showtime)
 
 
 @router.patch("/showtimes/{showtime_id}", response_model=AdminShowtimePublic)
@@ -131,8 +142,11 @@ def list_showtime_reports(
         ShowtimeReportAdminView(
             id=report.id,
             showtime_id=report.showtime_id,
+            movie_id=movie.id,
             movie_title=movie.title,
+            cinema_id=cinema.id,
             cinema_name=cinema.name,
+            cinema_url=cinema.url,
             showtime_datetime=showtime.datetime,
             reporter_id=reporter.id,
             reporter_email=reporter.email,

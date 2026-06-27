@@ -338,7 +338,15 @@ export default function MainShowtimesScreen() {
         <FlatList
           data={movies}
           renderItem={({ item }) => (
-            <MovieCard movie={item} onPress={(movie) => router.push(`/movie/${movie.id}`)} />
+            <MovieCard
+              movie={item}
+              onPress={(movie) =>
+                router.push({
+                  pathname: "/movie/[id]",
+                  params: { id: String(movie.id), inheritFilters: "1" },
+                })
+              }
+            />
           )}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.movieFeed}
@@ -372,6 +380,8 @@ export default function MainShowtimesScreen() {
           refreshing={refreshing}
           onRefresh={handleRefresh}
           emptyText="No showtimes found"
+          openModalOptions={{ inheritFilters: true }}
+          inheritFiltersOnMovieNav
         />
       )}
     </TopSafeAreaView>

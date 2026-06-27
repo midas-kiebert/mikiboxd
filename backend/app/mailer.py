@@ -7,6 +7,7 @@ Email templates live in app/email-templates/build/.
 SMTP settings come from environment variables (see core/config.py).
 """
 
+import html
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 BRAND_NAME = "MiKiNO"
 BRAND_LOGO_URL = "https://mikino.nl/assets/images/mikino-logo.png"
+REPORT_NOTIFICATION_EMAIL = "report@mikino.nl"
 
 
 @dataclass
@@ -149,4 +151,30 @@ def generate_watchlist_digest_email(
             "unsubscribe_link": unsubscribe_link,
         },
     )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_showtime_report_email(
+    *,
+    movie_title: str,
+    cinema_name: str,
+    showtime_datetime_label: str,
+    reason_label: str,
+    message: str | None,
+    reporter_email: str,
+) -> EmailData:
+    """Generate the internal notification sent to report@mikino.nl on every report.
+
+    Plain inline HTML rather than a Jinja template — this is an internal
+    moderation notification, not a branded user-facing email.
+    """
+    subject = f"{BRAND_NAME} - Showtime report: {movie_title} ({reason_label})"
+    admin_link = f"{settings.FRONTEND_HOST}/admin/reports"
+    html_content = f"""
+    <p><strong>{html.escape(movie_title)}</strong> at <strong>{html.escape(cinema_name)}</strong>, {html.escape(showtime_datetime_label)}</p>
+    <p>Reason: {html.escape(reason_label)}</p>
+    <p>Message: {html.escape(message) if message else "(none)"}</p>
+    <p>Reported by: {html.escape(reporter_email)}</p>
+    <p><a href="{admin_link}">Open the reports dashboard</a></p>
+    """
     return EmailData(html_content=html_content, subject=subject)

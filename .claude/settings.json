@@ -76,7 +76,12 @@
       "Bash(ssh -v -o BatchMode=yes -o ConnectTimeout=10 mi-ki exit)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://staging.mikino.nl/)",
       "Bash(grep -rln \"logins_by_day_platform\\\\|LoginsByDayPlatform\\\\|count_logins_by_day_and_platform\" backend tests)",
-      "Bash(grep -rn \"logins_by_day_platform\" backend/tests)"
+      "Bash(grep -rn \"logins_by_day_platform\" backend/tests)",
+      "Bash(grep -rn \"openShowtimeModal\\\\|openModalOptions\\\\|router.push\\(\\\\`/movie\" app/ components/showtimes/ utils/push-notifications.ts)",
+      "Bash(find . -path ./node_modules -prune -o -name \"useFetchMovieShowtimes*\" -print)",
+      "Bash(find . -path ./node_modules -prune -o -name \"shared-tab-filters*\" -print)",
+      "Bash(grep -n \"ShowtimeCard\\\\|router.push\\(\\\\`/movie\\\\|onLongPress\" \"app/cinema-showtimes/[id].tsx\")",
+      "Read(//home/midas/cinema-agenda-fastapi/frontend/src/routes/**)"
     ]
   }
 }

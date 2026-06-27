@@ -37,6 +37,8 @@ type ShowtimesListContentProps = {
   onRefresh: () => void | Promise<void>;
   emptyText?: string;
   openModalOptions?: OpenOptions;
+  /** Carry the showtimes-tab filters over when long-pressing into the movie page. */
+  inheritFiltersOnMovieNav?: boolean;
 };
 
 export function ShowtimesListContent({
@@ -50,6 +52,7 @@ export function ShowtimesListContent({
   onRefresh,
   emptyText = "No showtimes found",
   openModalOptions,
+  inheritFiltersOnMovieNav = false,
 }: ShowtimesListContentProps) {
   const router = useRouter();
   const colors = useThemeColors();
@@ -97,7 +100,16 @@ export function ShowtimesListContent({
           <ShowtimeCard
             showtime={item}
             onPress={(showtime) => openShowtimeModal(showtime, openModalOptions)}
-            onLongPress={(showtime) => router.push(`/movie/${showtime.movie.id}`)}
+            onLongPress={(showtime) =>
+              router.push({
+                pathname: "/movie/[id]",
+                params: {
+                  id: String(showtime.movie.id),
+                  cinemaId: String(showtime.cinema.id),
+                  ...(inheritFiltersOnMovieNav ? { inheritFilters: "1" } : {}),
+                },
+              })
+            }
           />
         )}
         keyExtractor={(item) => item.id.toString()}
@@ -153,6 +165,7 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   listContent?: React.ReactNode;
   emptyText?: string;
   openModalOptions?: OpenOptions;
+  inheritFiltersOnMovieNav?: boolean;
 };
 
 export default function ShowtimesScreen<TFilterId extends string = string>({
@@ -177,6 +190,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   listContent,
   emptyText = "No showtimes found",
   openModalOptions,
+  inheritFiltersOnMovieNav,
 }: ShowtimesScreenProps<TFilterId>) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -214,6 +228,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
           onRefresh={onRefresh}
           emptyText={emptyText}
           openModalOptions={openModalOptions}
+          inheritFiltersOnMovieNav={inheritFiltersOnMovieNav}
         />
       )}
     </TopSafeAreaView>

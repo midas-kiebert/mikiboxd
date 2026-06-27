@@ -28,6 +28,9 @@ import ShowtimeActionModal, { type ShowtimeInvite } from "@/components/showtimes
 export type OpenOptions = {
   invite?: ShowtimeInvite | null;
   openedFrom?: { movieId?: number; cinemaId?: number; userId?: string };
+  /** True when the modal was opened from a context whose showtimes-tab filters
+   * should carry over to the movie page (e.g. the showtimes tab itself). */
+  inheritFilters?: boolean;
 };
 
 type ShowtimeModalContextValue = {
@@ -56,6 +59,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
   const [currentShowtime, setCurrentShowtime] = useState<ShowtimeLoggedIn | null>(null);
   const [invite, setInvite] = useState<ShowtimeInvite | null>(null);
   const [openedFrom, setOpenedFrom] = useState<OpenOptions["openedFrom"]>(undefined);
+  const [inheritFilters, setInheritFilters] = useState(false);
   const [isLoadingById, setIsLoadingById] = useState(false);
   // Guards against a slow getShowtimeById resolving after a newer open superseded it.
   const openRequestIdRef = useRef(0);
@@ -65,6 +69,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
       openRequestIdRef.current += 1;
       setInvite(options?.invite ?? null);
       setOpenedFrom(options?.openedFrom);
+      setInheritFilters(Boolean(options?.inheritFilters));
       setCurrentShowtime(showtime);
       setIsLoadingById(false);
       setVisible(true);
@@ -77,6 +82,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
       const requestId = ++openRequestIdRef.current;
       setInvite(options?.invite ?? null);
       setOpenedFrom(options?.openedFrom);
+      setInheritFilters(Boolean(options?.inheritFilters));
       setCurrentShowtime(null);
       setIsLoadingById(true);
       setVisible(true);
@@ -244,6 +250,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
         disableMovieNavigation={openedFrom?.movieId !== undefined}
         disabledCinemaId={openedFrom?.cinemaId}
         disabledUserId={openedFrom?.userId}
+        inheritFilters={inheritFilters}
       />
     </ShowtimeModalContext.Provider>
   );

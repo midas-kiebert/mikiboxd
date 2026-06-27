@@ -262,6 +262,16 @@ function RootLayourContent() {
     };
   }, [])
 
+  const hasTrackedAppOpenRef = useRef(false)
+  useEffect(() => {
+    // Fire once per cold start, the moment we know a session exists — this is
+    // what actually reflects app usage, since most launches reuse the stored
+    // token and never hit the LOGIN-tracked /login/access-token endpoint.
+    if (isChecking || !isAuthenticated || hasTrackedAppOpenRef.current) return;
+    hasTrackedAppOpenRef.current = true;
+    trackEvent('app_open');
+  }, [isChecking, isAuthenticated, trackEvent]);
+
   useEffect(() => {
     // Warm the caches the shell renders from (preset chips) so it appears fully
     // populated rather than streaming in. Bounded by a timeout so a slow network

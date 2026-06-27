@@ -3,29 +3,16 @@
  * already-stored movie rows, or override the TMDB lookup cache for future
  * scrapes.
  */
-import {
-  Box,
-  Button,
-  Heading,
-  Input,
-  Stack,
-  Tabs,
-  Text,
-} from "@chakra-ui/react"
+import { Box, Button, Heading, Input, Stack, Tabs } from "@chakra-ui/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { type SubmitHandler, useForm } from "react-hook-form"
 
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
-import {
-  type ApiError,
-  AdminService,
-  type AdminMoviePublic,
-  type MovieUpdate,
-  UtilsService,
-} from "shared"
+import { type ApiError, AdminService, type AdminMoviePublic, type MovieUpdate } from "shared"
 import { Field } from "../ui/field"
+import TmdbCacheOverrideForm from "./TmdbCacheOverrideForm"
 
 const EditMovieForm = ({ movie }: { movie: AdminMoviePublic }) => {
   const queryClient = useQueryClient()
@@ -68,80 +55,6 @@ const EditMovieForm = ({ movie }: { movie: AdminMoviePublic }) => {
         </Field>
         <Button type="submit" loading={mutation.isPending} alignSelf="start">
           Save movie record
-        </Button>
-      </Stack>
-    </form>
-  )
-}
-
-const TmdbCacheOverrideForm = () => {
-  const { showSuccessToast } = useCustomToast()
-  const { register, handleSubmit } = useForm({
-    defaultValues: {
-      title_query: "",
-      director_names: "",
-      actor_name: "",
-      year: undefined as number | undefined,
-      tmdb_id: undefined as number | undefined,
-    },
-  })
-
-  const mutation = useMutation({
-    mutationFn: (data: {
-      title_query: string
-      director_names: string
-      actor_name: string
-      year?: number
-      tmdb_id?: number
-    }) =>
-      UtilsService.overrideTmdbCacheEntry({
-        requestBody: {
-          title_query: data.title_query,
-          director_names: data.director_names
-            ? data.director_names.split(",").map((s) => s.trim())
-            : [],
-          actor_name: data.actor_name || null,
-          year: data.year ?? null,
-          tmdb_id: data.tmdb_id ?? null,
-        },
-      }),
-    onSuccess: () => showSuccessToast("Lookup cache entry updated."),
-    onError: (err: ApiError) => handleError(err),
-  })
-
-  return (
-    <form
-      onSubmit={handleSubmit((data) =>
-        mutation.mutate({
-          ...data,
-          year: data.year ? Number(data.year) : undefined,
-          tmdb_id: data.tmdb_id ? Number(data.tmdb_id) : undefined,
-        }),
-      )}
-    >
-      <Stack gap={3} maxW="md">
-        <Text fontSize="sm" color="gray.500">
-          Fixes the cached TMDB lookup so future scrapes of this title resolve
-          correctly. Does not change movies already stored — use the "Edit
-          movie record" tab for that.
-        </Text>
-        <Field label="Title as scraped">
-          <Input {...register("title_query")} required />
-        </Field>
-        <Field label="Director names (comma separated)">
-          <Input {...register("director_names")} />
-        </Field>
-        <Field label="Lead actor">
-          <Input {...register("actor_name")} />
-        </Field>
-        <Field label="Release year">
-          <Input type="number" {...register("year")} />
-        </Field>
-        <Field label="Correct TMDB ID">
-          <Input type="number" {...register("tmdb_id")} required />
-        </Field>
-        <Button type="submit" loading={mutation.isPending} alignSelf="start">
-          Override cache entry
         </Button>
       </Stack>
     </form>

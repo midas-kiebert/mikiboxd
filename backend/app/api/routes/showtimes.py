@@ -1,6 +1,7 @@
 """Showtime endpoints."""
 
 import asyncio
+import logging
 import os
 import threading
 from uuid import UUID
@@ -9,9 +10,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi import status as http_status
 
 from app.api.deps import CurrentUser, SessionDep, get_db_context
+from app.core.config import settings
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_report as showtime_report_crud
 from app.inputs.movie import Filters, get_filters
+from app.mailer import EmailDeliveryError, generate_showtime_report_email, send_email
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime
 from app.schemas.showtime import ShowtimeLoggedIn, ShowtimeSelectionUpdate
@@ -23,6 +26,8 @@ from app.schemas.showtime_visibility import (
 )
 from app.services import push_notifications
 from app.services import showtimes as showtimes_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/showtimes", tags=["showtimes"])
 
@@ -131,15 +136,47 @@ def receive_ping_from_link(
     )
 
 
+def _send_report_notification_email(
+    *,
+    movie_title: str,
+    cinema_name: str,
+    showtime_datetime_label: str,
+    reason_label: str,
+    message: str | None,
+    reporter_email: str,
+) -> None:
+    if not settings.emails_enabled:
+        logger.info("Email notifications are disabled; skipping showtime report email")
+        return
+    email_data = generate_showtime_report_email(
+        movie_title=movie_title,
+        cinema_name=cinema_name,
+        showtime_datetime_label=showtime_datetime_label,
+        reason_label=reason_label,
+        message=message,
+        reporter_email=reporter_email,
+    )
+    try:
+        send_email(
+            email_to="report@mikino.nl",
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+    except (AssertionError, EmailDeliveryError, Exception):
+        logger.exception("Failed sending showtime report notification email")
+
+
 @router.post("/{showtime_id}/report", response_model=Message)
 def report_showtime(
     *,
     session: SessionDep,
+    background_tasks: BackgroundTasks,
     showtime_id: int,
     current_user: CurrentUser,
     payload: ShowtimeReportCreate,
 ) -> Message:
-    if session.get(Showtime, showtime_id) is None:
+    showtime = session.get(Showtime, showtime_id)
+    if showtime is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Showtime not found"
         )
@@ -151,6 +188,15 @@ def report_showtime(
         message=payload.message,
     )
     session.commit()
+    background_tasks.add_task(
+        _send_report_notification_email,
+        movie_title=showtime.movie.title,
+        cinema_name=showtime.cinema.name,
+        showtime_datetime_label=showtime.datetime.strftime("%a, %b %d at %H:%M"),
+        reason_label=payload.reason.value.replace("_", " "),
+        message=payload.message,
+        reporter_email=current_user.email,
+    )
     return Message(message="Report submitted successfully")
 
 

@@ -12,6 +12,8 @@ import type {
   AdminUpdateMovieResponse,
   AdminSearchShowtimesData,
   AdminSearchShowtimesResponse,
+  AdminGetShowtimeData,
+  AdminGetShowtimeResponse,
   AdminUpdateShowtimeData,
   AdminUpdateShowtimeResponse,
   AdminDeleteShowtimeData,
@@ -252,6 +254,28 @@ export class AdminService {
         to_datetime: data.toDatetime,
         limit: data.limit,
         offset: data.offset,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Showtime
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns AdminShowtimePublic Successful Response
+   * @throws ApiError
+   */
+  public static getShowtime(
+    data: AdminGetShowtimeData,
+  ): CancelablePromise<AdminGetShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/admin/showtimes/{showtime_id}",
+      path: {
+        showtime_id: data.showtimeId,
       },
       errors: {
         422: "Validation Error",

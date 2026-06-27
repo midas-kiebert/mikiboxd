@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlmodel import SQLModel
 
 
-class LoginsByDayUser(SQLModel):
+class OpensByDayUser(SQLModel):
     day: str
     user_id: UUID
     user_email: str
@@ -21,7 +21,7 @@ class AnalyticsOverview(SQLModel):
     window_days: int
     total_users: int
     users_with_push_token: int
-    logins_by_day_user: list[LoginsByDayUser]
+    opens_by_day_user: list[OpensByDayUser]
     event_counts: dict[str, int]
     invites_sent: int
     invites_opened: int

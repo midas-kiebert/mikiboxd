@@ -26,7 +26,7 @@ def test_superuser_can_fetch_analytics_overview(
     )
     assert response.status_code == 200
     payload = response.json()
-    assert "logins_by_day_platform" in payload
+    assert "logins_by_day_user" in payload
     assert "notification_opt_in" in payload
 
 

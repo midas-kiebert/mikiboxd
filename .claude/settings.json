@@ -72,7 +72,11 @@
       "Bash(curl -s --max-time 10 \"https://www.kinorotterdam.nl/fk-feed/agenda\")",
       "Bash(python -c ' *)",
       "Bash(env)",
-      "Bash(timeout 90 npx vite build --logLevel warn)"
+      "Bash(timeout 90 npx vite build --logLevel warn)",
+      "Bash(ssh -v -o BatchMode=yes -o ConnectTimeout=10 mi-ki exit)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://staging.mikino.nl/)",
+      "Bash(grep -rln \"logins_by_day_platform\\\\|LoginsByDayPlatform\\\\|count_logins_by_day_and_platform\" backend tests)",
+      "Bash(grep -rn \"logins_by_day_platform\" backend/tests)"
     ]
   }
 }

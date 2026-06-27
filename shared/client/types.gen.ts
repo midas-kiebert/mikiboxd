@@ -59,7 +59,7 @@ export type AnalyticsOverview = {
   window_days: number
   total_users: number
   users_with_push_token: number
-  logins_by_day_platform: Array<LoginsByDayPlatform>
+  logins_by_day_user: Array<LoginsByDayUser>
   event_counts: {
     [key: string]: number
   }
@@ -202,8 +202,10 @@ export type LetterboxdListPublic = {
   film_count: number
 }
 
-export type LoginsByDayPlatform = {
+export type LoginsByDayUser = {
   day: string
+  user_id: string
+  user_email: string
   platform: string | null
   count: number
 }

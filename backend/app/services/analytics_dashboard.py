@@ -23,7 +23,7 @@ from app.models.showtime_ping import ShowtimePing
 from app.models.user import User
 from app.schemas.analytics_dashboard import (
     AnalyticsOverview,
-    LoginsByDayPlatform,
+    LoginsByDayUser,
     NotificationOptInBreakdown,
 )
 from app.utils import now_amsterdam_naive
@@ -82,9 +82,15 @@ def get_overview(*, session: Session, window_days: int = 30) -> AnalyticsOvervie
     event_counts_raw = analytics_event_crud.count_by_name(session=session, since=since)
     event_counts = {name.value: count for name, count in event_counts_raw.items()}
 
-    logins_by_day_platform = [
-        LoginsByDayPlatform(day=day.date().isoformat(), platform=platform, count=count)
-        for day, platform, count in analytics_event_crud.count_logins_by_day_and_platform(
+    logins_by_day_user = [
+        LoginsByDayUser(
+            day=day.date().isoformat(),
+            user_id=user_id,
+            user_email=user_email,
+            platform=platform,
+            count=count,
+        )
+        for day, user_id, user_email, platform, count in analytics_event_crud.count_logins_by_day_and_user(
             session=session, since=since
         )
     ]
@@ -95,7 +101,7 @@ def get_overview(*, session: Session, window_days: int = 30) -> AnalyticsOvervie
         window_days=window_days,
         total_users=total_users,
         users_with_push_token=_users_with_push_token(session=session),
-        logins_by_day_platform=logins_by_day_platform,
+        logins_by_day_user=logins_by_day_user,
         event_counts=event_counts,
         invites_sent=event_counts.get(AnalyticsEventName.INVITE_SENT.value, 0),
         invites_opened=_count_invites_opened(session=session, since=since),

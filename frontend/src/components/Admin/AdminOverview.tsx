@@ -76,20 +76,22 @@ const AdminOverview = () => {
       </Table.Root>
 
       <Heading size="sm" mb={2}>
-        Logins by day / platform
+        Logins by day / user
       </Heading>
       <Table.Root size="sm" mb={8}>
         <Table.Header>
           <Table.Row>
             <Table.ColumnHeader>Day</Table.ColumnHeader>
+            <Table.ColumnHeader>User</Table.ColumnHeader>
             <Table.ColumnHeader>Platform</Table.ColumnHeader>
             <Table.ColumnHeader>Count</Table.ColumnHeader>
           </Table.Row>
         </Table.Header>
         <Table.Body>
-          {overview.logins_by_day_platform.map((row, i) => (
+          {overview.logins_by_day_user.map((row, i) => (
             <Table.Row key={i}>
               <Table.Cell>{row.day}</Table.Cell>
+              <Table.Cell>{row.user_email}</Table.Cell>
               <Table.Cell>{row.platform ?? "unknown"}</Table.Cell>
               <Table.Cell>{row.count}</Table.Cell>
             </Table.Row>

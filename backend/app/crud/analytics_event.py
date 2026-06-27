@@ -6,6 +6,7 @@ from sqlmodel import Session, col, select
 
 from app.core.enums import AnalyticsEventName
 from app.models.analytics_event import AnalyticsEvent
+from app.models.user import User
 
 
 def create_event(
@@ -38,17 +39,23 @@ def count_by_name(
     return dict(session.exec(stmt).all())
 
 
-def count_logins_by_day_and_platform(
+def count_logins_by_day_and_user(
     *, session: Session, since: datetime
-) -> list[tuple[datetime, str | None, int]]:
+) -> list[tuple[datetime, UUID, str, str | None, int]]:
+    """One row per (day, user, platform) with how many times they logged in.
+
+    Kept per-user rather than aggregated across all users so the dashboard can
+    show who is actually logging in, not just a daily total.
+    """
     day = func.date_trunc("day", AnalyticsEvent.created_at)
     stmt = (
-        select(day, AnalyticsEvent.platform, func.count())
+        select(day, AnalyticsEvent.user_id, User.email, AnalyticsEvent.platform, func.count())
+        .join(User, User.id == AnalyticsEvent.user_id)
         .where(
             AnalyticsEvent.name == AnalyticsEventName.LOGIN,
             col(AnalyticsEvent.created_at) >= since,
         )
-        .group_by(day, AnalyticsEvent.platform)
-        .order_by(day)
+        .group_by(day, AnalyticsEvent.user_id, User.email, AnalyticsEvent.platform)
+        .order_by(day.desc(), User.email)
     )
     return list(session.exec(stmt).all())

@@ -1,8 +1,12 @@
+from uuid import UUID
+
 from sqlmodel import SQLModel
 
 
-class LoginsByDayPlatform(SQLModel):
+class LoginsByDayUser(SQLModel):
     day: str
+    user_id: UUID
+    user_email: str
     platform: str | None
     count: int
 
@@ -17,7 +21,7 @@ class AnalyticsOverview(SQLModel):
     window_days: int
     total_users: int
     users_with_push_token: int
-    logins_by_day_platform: list[LoginsByDayPlatform]
+    logins_by_day_user: list[LoginsByDayUser]
     event_counts: dict[str, int]
     invites_sent: int
     invites_opened: int

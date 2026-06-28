@@ -2,7 +2,8 @@
  * Expo Router screen/module for (tabs) / index. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet } from 'react-native';
+import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
 import { useIsFocused } from '@react-navigation/native';
@@ -22,6 +23,7 @@ import FiltersRow from '@/components/filters/FiltersRow';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import { ShowtimesListContent, ListEndFooter } from '@/components/showtimes/ShowtimesScreen';
+import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import MovieCard from '@/components/movies/MovieCard';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
@@ -309,12 +311,8 @@ export default function MainShowtimesScreen() {
   };
 
   const renderMoviesEmpty = () => {
-    if (moviesLoading || moviesFetching) {
-      return (
-        <ThemedView style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.tint} />
-        </ThemedView>
-      );
+    if (moviesLoading || moviesFetching || refreshing) {
+      return <SkeletonRows height={150} />;
     }
     return (
       <ThemedView style={styles.centerContainer}>
@@ -322,6 +320,10 @@ export default function MainShowtimesScreen() {
       </ThemedView>
     );
   };
+
+  // Clear the list while refreshing so the pull-to-refresh visibly reloads,
+  // even when the refetched data is unchanged.
+  const visibleMovies = refreshing ? [] : movies;
 
   return (
     <TopSafeAreaView style={styles.container}>
@@ -336,7 +338,7 @@ export default function MainShowtimesScreen() {
       <ActiveFilterChips {...activeChipsProps} />
       {groupByMovie ? (
         <FlatList
-          data={movies}
+          data={visibleMovies}
           renderItem={({ item }) => (
             <MovieCard
               movie={item}
@@ -357,7 +359,7 @@ export default function MainShowtimesScreen() {
               <ThemedView style={styles.footerLoader}>
                 <ActivityIndicator size="large" color={colors.tint} />
               </ThemedView>
-            ) : !moviesHasNextPage && !moviesLoading && !moviesFetching && movies.length > 0 ? (
+            ) : !moviesHasNextPage && !moviesLoading && !moviesFetching && !refreshing && movies.length > 0 ? (
               <ListEndFooter label="No more movies" />
             ) : null
           }
@@ -365,7 +367,7 @@ export default function MainShowtimesScreen() {
             if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
           }}
           onEndReachedThreshold={2}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         />
       ) : (
         <ShowtimesListContent

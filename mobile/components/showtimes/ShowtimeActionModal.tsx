@@ -77,6 +77,7 @@ import {
   isSyntheticMovieId,
 } from "@/constants/synthetic-movies";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { formatLanguageCode } from "@/utils/language";
 import * as Clipboard from "expo-clipboard";
 import { buildCinevilleCardNumber, loadCinevilleCardDigits } from "@/utils/cineville-card";
@@ -258,6 +259,9 @@ export default function ShowtimeActionModal({
   const [isVisibilityExpanded, setIsVisibilityExpanded] = useState(false);
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<"watchlisted" | "watched" | null>(null);
+  // Custom fast fade for the watch modal — RN's built-in Modal animationType="fade"
+  // has a fixed, slow native duration that can't be sped up via props.
+  const watchModalOpacity = useRef(new Animated.Value(0)).current;
 
   // Caret rotation for the invite-friends toggle (native thread, like FiltersModal).
   const caretRotation = useRef(new Animated.Value(0)).current;
@@ -528,6 +532,24 @@ export default function ShowtimeActionModal({
     if (shouldShowSeatButton || !isSeatDialogVisible) return;
     setIsSeatDialogVisible(false);
   }, [isSeatDialogVisible, shouldShowSeatButton]);
+
+  useEffect(() => {
+    if (!watchModalKind) return;
+    watchModalOpacity.setValue(0);
+    Animated.timing(watchModalOpacity, {
+      toValue: 1,
+      duration: 120,
+      useNativeDriver: true,
+    }).start();
+  }, [watchModalKind, watchModalOpacity]);
+
+  const handleCloseWatchModal = useCallback(() => {
+    Animated.timing(watchModalOpacity, {
+      toValue: 0,
+      duration: 120,
+      useNativeDriver: true,
+    }).start(() => setWatchModalKind(null));
+  }, [watchModalOpacity]);
 
   const handleStatusPress = (going: GoingStatus) => {
     if (!showtime || isUpdatingStatus) return;
@@ -1055,7 +1077,7 @@ export default function ShowtimeActionModal({
                 >
                   <MaterialIcons
                     name={item.icon}
-                    size={16}
+                    size={13}
                     color={item.count > 0 ? item.accent : colors.textSecondary}
                   />
                   <ThemedText style={styles.watchButtonText} numberOfLines={1}>
@@ -1105,7 +1127,7 @@ export default function ShowtimeActionModal({
                 >
                   <MaterialIcons
                     name={option.icon}
-                    size={22}
+                    size={20}
                     color={option.selected ? option.palette.secondary : colors.textSecondary}
                   />
                   <ThemedText
@@ -1128,7 +1150,7 @@ export default function ShowtimeActionModal({
                 disabled={!currentUser?.id}
                 activeOpacity={0.85}
               >
-                <MaterialIcons name="share" size={20} color={colors.textSecondary} />
+                <MaterialIcons name="share" size={18} color={colors.textSecondary} />
                 <ThemedText style={styles.ctaIconButtonText}>Share</ThemedText>
               </TouchableOpacity>
               {!disableMovieNavigation ? (
@@ -1137,7 +1159,7 @@ export default function ShowtimeActionModal({
                   onPress={handleGoToMoviePage}
                   activeOpacity={0.85}
                 >
-                  <MaterialIcons name="format-list-bulleted" size={20} color={colors.textSecondary} />
+                  <MaterialIcons name="format-list-bulleted" size={18} color={colors.textSecondary} />
                   <ThemedText style={styles.ctaIconButtonText}>All showtimes</ThemedText>
                 </TouchableOpacity>
               ) : null}
@@ -1147,7 +1169,7 @@ export default function ShowtimeActionModal({
                   onPress={handleOpenTicketLink}
                   activeOpacity={0.85}
                 >
-                  <MaterialIcons name="local-activity" size={20} color={colors.textSecondary} />
+                  <MaterialIcons name="local-activity" size={18} color={colors.textSecondary} />
                   <ThemedText style={styles.ctaIconButtonText}>Get ticket</ThemedText>
                 </TouchableOpacity>
               ) : null}
@@ -1159,7 +1181,7 @@ export default function ShowtimeActionModal({
                 >
                   <MaterialIcons
                     name="event-seat"
-                    size={20}
+                    size={18}
                     color={isSeatConfigured ? colors.green.secondary : colors.textSecondary}
                   />
                   <ThemedText
@@ -1191,7 +1213,7 @@ export default function ShowtimeActionModal({
                     <ThemedText style={styles.visibilityValueText}>{visibilityMeta.label}</ThemedText>
                   </View>
                 ) : (
-                  <View style={[styles.visibilityValue, styles.visibilityValueSkeleton]} />
+                  <Skeleton style={[styles.visibilityValue, styles.visibilityValueSkeleton]} />
                 )}
                 <Animated.View style={{ transform: [{ rotate: visibilityCaretSpin }] }}>
                   <MaterialIcons name="expand-more" size={20} color={colors.textSecondary} />
@@ -1473,14 +1495,14 @@ export default function ShowtimeActionModal({
         transparent
         statusBarTranslucent
         visible={watchModalKind !== null}
-        animationType="fade"
-        onRequestClose={() => setWatchModalKind(null)}
+        animationType="none"
+        onRequestClose={handleCloseWatchModal}
       >
-        <View style={styles.seatDialogBackdrop}>
+        <Animated.View style={[styles.seatDialogBackdrop, { opacity: watchModalOpacity }]}>
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
             activeOpacity={1}
-            onPress={() => setWatchModalKind(null)}
+            onPress={handleCloseWatchModal}
           />
           <View style={styles.watchModalCard}>
             {(() => {
@@ -1495,7 +1517,7 @@ export default function ShowtimeActionModal({
                   <View style={styles.watchModalHeader}>
                     <ThemedText style={styles.watchModalTitle}>{title}</ThemedText>
                     <TouchableOpacity
-                      onPress={() => setWatchModalKind(null)}
+                      onPress={handleCloseWatchModal}
                       hitSlop={8}
                       activeOpacity={0.7}
                     >
@@ -1539,7 +1561,7 @@ export default function ShowtimeActionModal({
               );
             })()}
           </View>
-        </View>
+        </Animated.View>
       </Modal>
     </BottomSheetModal>
   );
@@ -1587,8 +1609,20 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.posterPlaceholder,
     },
     summaryInfo: { flex: 1, gap: 1 },
-    movieTitle: { fontSize: 19, fontWeight: "800", color: colors.text, paddingRight: 36 },
-    originalTitle: { fontSize: 12, color: colors.textSecondary, fontStyle: "italic", marginTop: 1 },
+    movieTitle: {
+      fontSize: 19,
+      lineHeight: 22,
+      fontWeight: "800",
+      color: colors.text,
+      paddingRight: 36,
+    },
+    originalTitle: {
+      fontSize: 12,
+      lineHeight: 14,
+      color: colors.textSecondary,
+      fontStyle: "italic",
+      marginTop: 0,
+    },
     directorText: { fontSize: 10, color: colors.textSecondary, marginTop: -4 },
     directorLabel: { fontSize: 9, fontWeight: "800", letterSpacing: 0.6, color: colors.textSecondary },
     dateText: { fontSize: 12.5, fontWeight: "600", color: colors.text, marginTop: -4 },
@@ -1648,25 +1682,25 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       opacity: 0.8,
     },
 
-    watchButtonsRow: { flexDirection: "row", gap: 8 },
+    watchButtonsRow: { flexDirection: "row", gap: 6 },
     watchButton: {
       flex: 1,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 6,
-      borderRadius: 12,
+      gap: 5,
+      borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      paddingVertical: 7,
-      paddingHorizontal: 10,
+      backgroundColor: colors.background,
+      paddingVertical: 4,
+      paddingHorizontal: 8,
     },
-    watchButtonEmpty: { opacity: 0.6 },
+    watchButtonEmpty: { opacity: 0.5 },
     watchButtonText: {
       flexShrink: 1,
-      fontSize: 12,
-      fontWeight: "700",
+      fontSize: 11,
+      fontWeight: "600",
       color: colors.textSecondary,
     },
 
@@ -1687,12 +1721,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     statusRow: { flexDirection: "row", gap: 8 },
     statusButton: {
       flex: 1,
-      gap: 5,
+      gap: 3,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.pillBackground,
-      paddingVertical: 6,
+      paddingVertical: 5,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -1702,7 +1736,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       shadowOffset: { width: 0, height: 2 },
       elevation: 3,
     },
-    statusButtonText: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
+    statusButtonText: { fontSize: 12, fontWeight: "700", color: colors.textSecondary },
 
     visibilitySection: {
       gap: 8,
@@ -1774,11 +1808,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     ctaRow: { flexDirection: "row", gap: 8 },
     ctaIconButton: {
-      gap: 4,
+      gap: 3,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      paddingTop: 7,
+      paddingTop: 5,
       paddingBottom: 4,
       paddingHorizontal: 14,
       alignItems: "center",

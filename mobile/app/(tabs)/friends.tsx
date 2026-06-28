@@ -6,13 +6,13 @@ import { useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
-  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MeService } from 'shared';
@@ -27,6 +27,7 @@ import { useThemeColors } from '@/hooks/use-theme-color';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import FriendCard from '@/components/friends/FriendCard';
+import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import FilterPills from '@/components/filters/FilterPills';
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
@@ -213,11 +214,11 @@ export default function FriendsScreen() {
 
       {activeTab === 'users' ? (
         <FlatList
-          data={displayedUsers}
+          data={hasUserSearch && refreshing ? [] : displayedUsers}
           keyExtractor={(item) => `user-${item.id}`}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           renderItem={({ item }) => <FriendCard user={item} />}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           onEndReached={handleLoadMore}
@@ -251,10 +252,8 @@ export default function FriendsScreen() {
                   </TouchableOpacity>
                 ) : null}
               </View>
-            ) : isFetchingUsers ? (
-              <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={colors.tint} />
-              </View>
+            ) : isFetchingUsers || refreshing ? (
+              <SkeletonRows height={64} />
             ) : (
               <View style={styles.emptyCard}>
                 <ThemedText style={styles.emptyText}>{TAB_META.users.emptyText}</ThemedText>
@@ -273,11 +272,13 @@ export default function FriendsScreen() {
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         >
           {activeTab === 'received' ? (
             <View style={styles.section}>
-              {isFetchingReceived && displayedReceived.length === 0 ? (
+              {refreshing ? (
+                <SkeletonRows height={64} />
+              ) : isFetchingReceived && displayedReceived.length === 0 ? (
                 <View style={styles.centerContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />
                 </View>
@@ -301,7 +302,9 @@ export default function FriendsScreen() {
 
           {activeTab === 'sent' ? (
             <View style={styles.section}>
-              {isFetchingSent && displayedSent.length === 0 ? (
+              {refreshing ? (
+                <SkeletonRows height={64} />
+              ) : isFetchingSent && displayedSent.length === 0 ? (
                 <View style={styles.centerContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />
                 </View>
@@ -325,7 +328,9 @@ export default function FriendsScreen() {
 
           {activeTab === 'friends' ? (
             <View style={styles.section}>
-              {isFetchingFriends && displayedFriends.length === 0 ? (
+              {refreshing ? (
+                <SkeletonRows height={64} />
+              ) : isFetchingFriends && displayedFriends.length === 0 ? (
                 <View style={styles.centerContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />
                 </View>

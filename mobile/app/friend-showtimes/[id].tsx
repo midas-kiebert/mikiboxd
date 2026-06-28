@@ -2,7 +2,8 @@
  * Expo Router screen/module for friend-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, RefreshControl, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { DateTime } from 'luxon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -18,6 +19,7 @@ import FiltersModal from '@/components/filters/FiltersModal';
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import ShowtimeCard from '@/components/showtimes/ShowtimeCard';
+import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import { useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { ThemedText } from '@/components/themed-text';
@@ -260,10 +262,14 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     </TouchableOpacity>
   );
 
+  // Clear sections while refreshing so pull-to-refresh visibly reloads, even
+  // when the refetched data is unchanged.
+  const visibleMovieSections = refreshing ? [] : movieSections;
+
   const moviesContent = groupByMovie ? (
     <SectionList
       style={styles.flex}
-      sections={movieSections}
+      sections={visibleMovieSections}
       keyExtractor={(item) => item.id.toString()}
       renderSectionHeader={({ section }) => (
         <View style={styles.movieSectionHeader}>
@@ -288,10 +294,8 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
       contentContainerStyle={styles.movieSectionContent}
       showsVerticalScrollIndicator={false}
       ListEmptyComponent={
-        isLoading || isFetching ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color={colors.tint} />
-          </View>
+        isLoading || isFetching || refreshing ? (
+          <SkeletonRows height={112} />
         ) : (
           <View style={styles.centerContainer}>
             <ThemedText style={styles.emptyText}>No showtimes in this agenda</ThemedText>
@@ -303,13 +307,13 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
           <View style={styles.footerLoader}>
             <ActivityIndicator size="small" color={colors.tint} />
           </View>
-        ) : !hasNextPage && !isLoading && !isFetching && showtimes.length > 0 ? (
+        ) : !hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0 ? (
           <ListEndFooter label="No more showtimes" />
         ) : null
       }
       onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
       onEndReachedThreshold={2}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
     />
   ) : undefined;
 

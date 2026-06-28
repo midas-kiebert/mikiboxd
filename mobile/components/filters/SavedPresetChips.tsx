@@ -9,6 +9,7 @@ import {
   type DisplayPreset,
 } from "@/components/filters/saved-presets";
 import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
@@ -130,7 +131,7 @@ function ChipsScroll({
         {isLoading &&
           presets.length === 0 &&
           SKELETON_CHIP_WIDTHS.map((width, i) => (
-            <View key={`skeleton-${i}`} style={[styles.chipSkeleton, { width }]} />
+            <Skeleton key={`skeleton-${i}`} style={[styles.chipSkeleton, { width }]} />
           ))}
         {presets.map((preset) => (
           <TouchableOpacity

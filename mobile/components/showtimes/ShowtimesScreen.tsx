@@ -2,7 +2,8 @@
  * Mobile showtimes feature component: Showtimes Screen.
  */
 import React from "react";
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
+import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { type ShowtimeLoggedIn } from "shared";
 
@@ -17,6 +18,7 @@ import FilterPills, {
   type FilterPillLongPressPosition,
 } from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 /**
  * Rendered at the bottom of any paginated list once all pages are loaded.
@@ -67,20 +69,20 @@ export function ShowtimesListContent({
         </View>
       );
     }
-    if (!hasNextPage && !isLoading && !isFetching && showtimes.length > 0) {
+    if (!hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0) {
       return <ListEndFooter label="No more showtimes" />;
     }
     return null;
   };
 
   const renderEmpty = () => {
-    if (isLoading || isFetching) {
+    if (isLoading || isFetching || refreshing) {
       // Skeleton cards (rather than a lone spinner) so the list keeps its shape
       // while data loads instead of popping in.
       return (
         <View>
           {[0, 1, 2, 3, 4].map((i) => (
-            <View key={i} style={[styles.skeletonBone, styles.skeletonCard]} />
+            <Skeleton key={i} style={styles.skeletonCard} />
           ))}
         </View>
       );
@@ -92,10 +94,15 @@ export function ShowtimesListContent({
     );
   };
 
+  // While pull-to-refresh is running, clear the list so it visibly reloads into
+  // skeletons and back — otherwise an unchanged result looks like nothing
+  // happened. The fresh data renders the moment `refreshing` flips back to false.
+  const data = refreshing ? [] : showtimes;
+
   return (
     <View style={styles.container}>
       <FlatList
-        data={showtimes}
+        data={data}
         renderItem={({ item }) => (
           <ShowtimeCard
             showtime={item}
@@ -122,7 +129,7 @@ export function ShowtimesListContent({
         }}
         onEndReachedThreshold={2}
         refreshing={isLoading}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />
     </View>
   );
@@ -259,15 +266,15 @@ export function ShowtimesScreenSkeleton({
         showBackButton={topBarShowBackButton}
       />
       <View style={styles.skeletonSearch}>
-        <View style={styles.skeletonSearchBar} />
+        <Skeleton style={styles.skeletonSearchBar} />
       </View>
       <View style={styles.skeletonFilterRow}>
-        <View style={[styles.skeletonBone, { height: 32, width: 90, borderRadius: 18 }]} />
-        <View style={[styles.skeletonBone, { height: 32, width: 72, borderRadius: 18 }]} />
+        <Skeleton style={{ height: 32, width: 90, borderRadius: 18 }} />
+        <Skeleton style={{ height: 32, width: 72, borderRadius: 18 }} />
       </View>
       <View style={styles.listContent}>
         {[0, 1, 2, 3, 4].map((i) => (
-          <View key={i} style={[styles.skeletonBone, styles.skeletonCard]} />
+          <Skeleton key={i} style={styles.skeletonCard} />
         ))}
       </View>
     </TopSafeAreaView>
@@ -283,9 +290,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     listContent: {
       paddingTop: 12,
       paddingHorizontal: 16,
-    },
-    skeletonBone: {
-      backgroundColor: colors.posterPlaceholder,
     },
     skeletonSearch: {
       paddingHorizontal: 16,

@@ -6,8 +6,8 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
-  RefreshControl,
 } from 'react-native';
+import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
@@ -19,6 +19,7 @@ import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
+import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import FiltersRow from '@/components/filters/FiltersRow';
@@ -180,12 +181,8 @@ export default function MovieScreen() {
     ) : null;
 
   const renderEmpty = () => {
-    if (isLoading || isFetching) {
-      return (
-        <ThemedView style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.tint} />
-        </ThemedView>
-      );
+    if (isLoading || isFetching || refreshing) {
+      return <SkeletonRows height={150} />;
     }
     return (
       <ThemedView style={styles.centerContainer}>
@@ -193,6 +190,10 @@ export default function MovieScreen() {
       </ThemedView>
     );
   };
+
+  // Clear the list while refreshing so pull-to-refresh visibly reloads, even
+  // when the refetched data is unchanged.
+  const visibleMovies = refreshing ? [] : movies;
 
   const handleApplyPreset = (preset: DisplayPreset) => {
     applyDisplayPreset(preset, {
@@ -274,7 +275,7 @@ export default function MovieScreen() {
       />
 
       <FlatList
-        data={movies}
+        data={visibleMovies}
         renderItem={({ item }) => (
           <MovieCard movie={item} onPress={(movie) => router.push(`/movie/${movie.id}`)} />
         )}
@@ -285,7 +286,7 @@ export default function MovieScreen() {
         ListFooterComponent={renderFooter}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={2}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       />
     </TopSafeAreaView>
   );

@@ -29,6 +29,7 @@ export const Colors = {
     notificationBadge: '#c92a2a',
     divider: '#d8dde5',
     posterPlaceholder: '#d8dde5',
+    skeletonShine: 'rgba(255, 255, 255, 0.6)',
     pink: {
       primary: '#f8c9d8',
       secondary: '#7a1f3d',
@@ -97,6 +98,7 @@ export const Colors = {
     notificationBadge: '#d63a3a',
     divider: '#3a3a3a',
     posterPlaceholder: '#3a3a3a',
+    skeletonShine: 'rgba(255, 255, 255, 0.08)',
     pink: {
       primary: '#5a1e33',
       secondary: '#f6b7cf',

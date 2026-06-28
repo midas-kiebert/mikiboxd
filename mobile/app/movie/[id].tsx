@@ -11,6 +11,7 @@ import {
   View,
   Linking,
 } from "react-native";
+import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -26,6 +27,8 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { ThemedText } from "@/components/themed-text";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import { ListEndFooter } from "@/components/showtimes/ShowtimesScreen";
+import { SkeletonRows } from "@/components/ui/SkeletonRows";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 import FiltersModal from "@/components/filters/FiltersModal";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
@@ -117,21 +120,21 @@ function MovieSkeleton({ styles }: { styles: MovieStyles }) {
   return (
     <>
       <View style={styles.staticHeader}>
-        <View style={[styles.poster, styles.skeletonBone]} />
+        <Skeleton style={styles.poster} />
         <View style={styles.summaryInfo}>
-          <View style={[styles.skeletonBone, { height: 24, width: "75%", borderRadius: 5 }]} />
-          <View style={[styles.skeletonBone, { height: 13, width: "50%", borderRadius: 4, marginTop: 6 }]} />
-          <View style={[styles.skeletonBone, { height: 12, width: "65%", borderRadius: 4, marginTop: 4 }]} />
+          <Skeleton style={{ height: 24, width: "75%", borderRadius: 5 }} />
+          <Skeleton style={{ height: 13, width: "50%", borderRadius: 4, marginTop: 6 }} />
+          <Skeleton style={{ height: 12, width: "65%", borderRadius: 4, marginTop: 4 }} />
         </View>
       </View>
       <View style={styles.divider} />
       <View style={styles.filterRow}>
-        <View style={[styles.skeletonBone, { height: 32, width: 88, borderRadius: 18 }]} />
+        <Skeleton style={{ height: 32, width: 88, borderRadius: 18 }} />
       </View>
       <View style={styles.divider} />
       <View style={styles.skeletonList}>
         {[0, 1, 2].map((i) => (
-          <View key={i} style={[styles.skeletonBone, styles.skeletonCard]} />
+          <Skeleton key={i} style={styles.skeletonCard} />
         ))}
       </View>
     </>
@@ -474,7 +477,7 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
           </View>
           <View style={styles.divider} />
           <SectionList
-            sections={showtimeSections}
+            sections={refreshing ? [] : showtimeSections}
             keyExtractor={(item) => item.id.toString()}
             stickySectionHeadersEnabled
             ListHeaderComponent={
@@ -579,15 +582,12 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
               </View>
             )}
             contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) }]}
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
+            refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
             onEndReached={handleEndReached}
             onEndReachedThreshold={0.4}
             ListEmptyComponent={
-              isShowtimesLoading ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color={colors.tint} />
-                </View>
+              isShowtimesLoading || refreshing ? (
+                <SkeletonRows height={64} />
               ) : isShowtimesError ? (
                 <ThemedText style={styles.errorText}>Could not load showtimes.</ThemedText>
               ) : (
@@ -599,7 +599,7 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="small" color={colors.tint} />
                 </View>
-              ) : !hasNextPage && !isShowtimesLoading && showtimes.length > 0 ? (
+              ) : !hasNextPage && !isShowtimesLoading && !refreshing && showtimes.length > 0 ? (
                 <ListEndFooter label="No more showtimes" />
               ) : null
             }
@@ -801,9 +801,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     showtimeCardGlow: {
       borderRadius: 10,
       backgroundColor: colors.cardBackground,
-    },
-    skeletonBone: {
-      backgroundColor: colors.posterPlaceholder,
     },
     skeletonList: {
       padding: 16,

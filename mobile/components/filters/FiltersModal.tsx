@@ -5,7 +5,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -22,6 +21,7 @@ import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import { ThemedText } from "@/components/themed-text";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useOptimisticValue } from "@/hooks/useOptimisticValue";
 import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
@@ -648,17 +648,8 @@ function Divider({ colors }: { colors: ReturnType<typeof useThemeColors> }) {
 }
 
 function CountSkeleton() {
-  const opacity = useRef(new Animated.Value(0.4)).current;
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.8, duration: 500, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.4, duration: 500, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [opacity]);
   return (
-    <Animated.View style={{ opacity, height: 20, width: 140, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.5)" }} />
+    <Skeleton style={{ height: 20, width: 140, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.5)" }} />
   );
 }
 

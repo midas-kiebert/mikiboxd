@@ -2,7 +2,8 @@
  * Expo Router screen/module for cinema-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
+import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import { DateTime } from "luxon";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,6 +19,7 @@ import FiltersButtonRow from "@/components/filters/FiltersButtonRow";
 import FiltersModal from "@/components/filters/FiltersModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
 import MovieCard from "@/components/movies/MovieCard";
+import { SkeletonRows } from "@/components/ui/SkeletonRows";
 import { ThemedText } from "@/components/themed-text";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
 import { getRuntimeBoundsFromSelections } from "@/components/filters/runtime-range-utils";
@@ -295,10 +297,14 @@ function CinemaShowtimesContent() {
   const isFetching = groupByMovie ? moviesFetching : showtimesFetching;
   const resultCount = groupByMovie ? movies.length : showtimes.length;
 
+  // Clear the list while refreshing so pull-to-refresh visibly reloads, even
+  // when the refetched data is unchanged.
+  const visibleMovies = refreshing ? [] : movies;
+
   const moviesContent = groupByMovie ? (
     <FlatList
       style={styles.flex}
-      data={movies}
+      data={visibleMovies}
       renderItem={({ item }) => (
         <MovieCard
           movie={item}
@@ -314,10 +320,8 @@ function CinemaShowtimesContent() {
       contentContainerStyle={styles.movieFeed}
       showsVerticalScrollIndicator={false}
       ListEmptyComponent={
-        moviesLoading || moviesFetching ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color={colors.tint} />
-          </View>
+        moviesLoading || moviesFetching || refreshing ? (
+          <SkeletonRows height={150} />
         ) : (
           <View style={styles.centerContainer}>
             <ThemedText style={styles.emptyText}>No movies found</ThemedText>
@@ -335,7 +339,7 @@ function CinemaShowtimesContent() {
         if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
       }}
       onEndReachedThreshold={2}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
     />
   ) : undefined;
 

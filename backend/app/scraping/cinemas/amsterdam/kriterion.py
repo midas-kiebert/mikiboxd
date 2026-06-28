@@ -7,7 +7,11 @@ from pydantic import BaseModel
 
 from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
-from app.models.movie import MovieCreate
+from app.models.movie import (
+    MovieCreate,
+    is_sneak_preview_title,
+    sneak_preview_movie,
+)
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
@@ -154,6 +158,9 @@ class KriterionScraper(BaseCinemaScraper):
 
 
 def get_movie(show: Show) -> MovieCreate | None:
+    if is_sneak_preview_title(show.name):
+        return sneak_preview_movie()
+
     title_query = clean_title(show.name)
     directors = parse_directors(show.director)
     spoken_languages = parse_languages(show.spoken_languages)

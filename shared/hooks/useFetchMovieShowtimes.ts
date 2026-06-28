@@ -42,7 +42,9 @@ export function useFetchMovieShowtimes(
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
-        enabled: Number.isFinite(movieId) && movieId > 0,
+        // `!== 0` (not `> 0`): synthetic listings like sneak previews use
+        // negative movie ids. 0 and NaN remain invalid.
+        enabled: Number.isFinite(movieId) && movieId !== 0,
         queryFn: ({ pageParam = 0}) => {
             return MoviesService.readMovieShowtimes({
                 offset: pageParam,

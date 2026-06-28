@@ -283,12 +283,19 @@ def get_movies_without_letterboxd_slug(*, session: Session) -> list[Movie]:
     """
     Retrieve all movies that do not have a Letterboxd slug.
 
+    Synthetic listings (negative ids, e.g. sneak previews) are excluded: they
+    have no Letterboxd page, so scraping for one would only waste requests and
+    risk attaching a wrong slug/poster.
+
     Parameters:
         session (Session): The database session.
     Returns:
         list[Movie]: A list of movies without a Letterboxd slug.
     """
-    stmt = select(Movie).where(col(Movie.letterboxd_slug).is_(None))
+    stmt = select(Movie).where(
+        col(Movie.letterboxd_slug).is_(None),
+        col(Movie.id) >= 0,
+    )
     result = session.execute(stmt)
     movies: list[Movie] = list(result.scalars().all())
     return movies

@@ -72,6 +72,10 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 import { formatSeatLabel } from "@/utils/seat-label";
 import { buildShowtimePingUrl } from "@/constants/ping-link";
+import {
+  UNKNOWN_METADATA_PLACEHOLDER,
+  isSyntheticMovieId,
+} from "@/constants/synthetic-movies";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 import { formatLanguageCode } from "@/utils/language";
 import * as Clipboard from "expo-clipboard";
@@ -809,14 +813,18 @@ export default function ShowtimeActionModal({
   }, [sentPings, coInvitedFriends, colors]);
   const showtimeStartsAt = showtime ? DateTime.fromISO(showtime.datetime) : null;
   const dateLabel = showtimeStartsAt?.isValid ? showtimeStartsAt.toFormat("cccc d LLLL") : null;
+  const isSyntheticMovie = showtime ? isSyntheticMovieId(showtime.movie.id) : false;
   const durationMinutes = showtime?.movie.duration ?? null;
+  const durationLabel = durationMinutes
+    ? `${durationMinutes} min`
+    : isSyntheticMovie
+      ? `${UNKNOWN_METADATA_PLACEHOLDER} min`
+      : null;
   const timeRangeLabel = showtime
     ? formatShowtimeTimeRange(showtime.datetime, showtime.end_datetime)
     : null;
   const timeLabel = timeRangeLabel
-    ? [timeRangeLabel, durationMinutes ? `${durationMinutes} min` : null, spokenLanguage]
-        .filter(Boolean)
-        .join(" • ")
+    ? [timeRangeLabel, durationLabel, spokenLanguage].filter(Boolean).join(" • ")
     : null;
 
   // The pending-invite badge itself is intentionally not shown in this modal —
@@ -953,6 +961,11 @@ export default function ShowtimeActionModal({
                     {showtime.movie.directors.join(", ")}
                     {showtime.movie.release_year ? ` (${showtime.movie.release_year})` : null}
                   </ThemedText>
+                ) : isSyntheticMovie ? (
+                  <ThemedText style={styles.directorText} numberOfLines={1}>
+                    <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
+                    {`${UNKNOWN_METADATA_PLACEHOLDER} (${UNKNOWN_METADATA_PLACEHOLDER})`}
+                  </ThemedText>
                 ) : null}
                 {dateLabel ? (
                   <ThemedText style={styles.dateText}>{dateLabel}</ThemedText>
@@ -975,8 +988,19 @@ export default function ShowtimeActionModal({
               </TouchableOpacity>
             </View>
 
-            {/* Friends going / interested */}
+            {/* Friends going / interested, with the report link anchored just
+                above its top divider — absolutely positioned so it doesn't
+                claim any extra vertical space in the layout. */}
             <View style={[styles.audienceBox, !hasAudience && styles.audienceBoxEmpty]}>
+              <TouchableOpacity
+                style={styles.reportLink}
+                onPress={() => setIsReportDialogVisible(true)}
+                hitSlop={8}
+                activeOpacity={0.6}
+              >
+                <MaterialIcons name="flag" size={11} color={colors.textSecondary} />
+                <ThemedText style={styles.reportLinkText}>Report</ThemedText>
+              </TouchableOpacity>
               {hasAudience ? (
                 <FriendBadges
                   friendsGoing={showtime.friends_going}
@@ -991,15 +1015,6 @@ export default function ShowtimeActionModal({
                   No friends are interested in this showtime yet.
                 </ThemedText>
               )}
-              <TouchableOpacity
-                style={styles.reportLink}
-                onPress={() => setIsReportDialogVisible(true)}
-                hitSlop={8}
-                activeOpacity={0.6}
-              >
-                <MaterialIcons name="flag" size={11} color={colors.textSecondary} />
-                <ThemedText style={styles.reportLinkText}>Report</ThemedText>
-              </TouchableOpacity>
             </View>
 
             {/* Friends' Letterboxd relationship to this film */}
@@ -1608,7 +1623,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderColor: `${colors.divider}80`,
       paddingVertical: 10,
-      paddingRight: 54,
       justifyContent: "center",
     },
     audienceBoxEmpty: { alignItems: "center" },
@@ -1619,12 +1633,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     reportLink: {
       position: "absolute",
+      top: -21,
       right: 0,
-      bottom: 8,
       flexDirection: "row",
       alignItems: "center",
       gap: 3,
-      paddingVertical: 4,
+      paddingVertical: 1,
       paddingHorizontal: 4,
     },
     reportLinkText: {

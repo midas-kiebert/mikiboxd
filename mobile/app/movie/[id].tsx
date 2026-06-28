@@ -41,6 +41,10 @@ import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import { formatLanguageCode } from "@/utils/language";
+import {
+  UNKNOWN_METADATA_PLACEHOLDER,
+  isSyntheticMovieId,
+} from "@/constants/synthetic-movies";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
 
@@ -259,7 +263,9 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
         snapshotTime,
         showtimeLimit: 0,
       }),
-    enabled: Number.isFinite(movieId) && movieId > 0,
+    // `!== 0` (not `> 0`): synthetic listings like sneak previews use negative
+    // movie ids. 0 and NaN remain invalid.
+    enabled: Number.isFinite(movieId) && movieId !== 0,
   });
 
   const {
@@ -312,7 +318,7 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
   };
 
   const handleRefresh = async () => {
-    if (!Number.isFinite(movieId) || movieId <= 0) return;
+    if (!Number.isFinite(movieId) || movieId === 0) return;
     setRefreshing(true);
     try {
       await refreshInfiniteQueryWithFreshSnapshot<ShowtimeInMovieLoggedIn[]>({
@@ -325,6 +331,8 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
       setRefreshing(false);
     }
   };
+
+  const isSynthetic = movie ? isSyntheticMovieId(movie.id) : false;
 
   const letterboxdSlug = movie?.letterboxd_slug?.trim() ?? "";
   const letterboxdSearchQuery = movie?.title
@@ -398,6 +406,11 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
                   {movie.directors.join(", ")}
                   {movie.release_year ? ` (${movie.release_year})` : null}
                 </ThemedText>
+              ) : isSynthetic ? (
+                <ThemedText style={styles.directorText} numberOfLines={2}>
+                  <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
+                  {`${UNKNOWN_METADATA_PLACEHOLDER} (${UNKNOWN_METADATA_PLACEHOLDER})`}
+                </ThemedText>
               ) : movie.release_year ? (
                 <ThemedText style={styles.directorText}>{movie.release_year}</ThemedText>
               ) : null}
@@ -415,6 +428,10 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
                   ]
                     .filter(Boolean)
                     .join("  ·  ")}
+                </ThemedText>
+              ) : isSynthetic ? (
+                <ThemedText style={styles.metaText} numberOfLines={1}>
+                  {`${UNKNOWN_METADATA_PLACEHOLDER} min`}
                 </ThemedText>
               ) : null}
             </View>

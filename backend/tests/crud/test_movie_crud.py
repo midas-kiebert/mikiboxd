@@ -137,6 +137,23 @@ def test_get_movies_without_letterboxd_slug(
     assert movies_without_slug[0].letterboxd_slug is None
 
 
+def test_get_movies_without_letterboxd_slug_excludes_synthetic_movies(
+    *,
+    db_transaction: Session,
+    movie_factory,
+):
+    # Synthetic listings (negative ids, e.g. sneak previews) have no Letterboxd
+    # page, so they must never be handed to the slug/poster backfill.
+    real_without_slug: Movie = movie_factory(id=27205, letterboxd_slug=None)
+    movie_factory(id=-1, letterboxd_slug=None)
+
+    movies_without_slug = movie_crud.get_movies_without_letterboxd_slug(
+        session=db_transaction,
+    )
+
+    assert [movie.id for movie in movies_without_slug] == [real_without_slug.id]
+
+
 def test_update_movie_success(*, movie_factory: Callable[..., Movie]):
     movie: Movie = movie_factory()
 

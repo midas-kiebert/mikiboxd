@@ -81,7 +81,17 @@
       "Bash(find . -path ./node_modules -prune -o -name \"useFetchMovieShowtimes*\" -print)",
       "Bash(find . -path ./node_modules -prune -o -name \"shared-tab-filters*\" -print)",
       "Bash(grep -n \"ShowtimeCard\\\\|router.push\\(\\\\`/movie\\\\|onLongPress\" \"app/cinema-showtimes/[id].tsx\")",
-      "Read(//home/midas/cinema-agenda-fastapi/frontend/src/routes/**)"
+      "Read(//home/midas/cinema-agenda-fastapi/frontend/src/routes/**)",
+      "Bash(curl -s \"https://www.kriterion.nl/data/shows.json\" -o kriterion.json -w \"HTTP %{http_code}, %{size_download} bytes\\\\n\")",
+      "Bash(curl -s \"https://www.kinorotterdam.nl//fk-feed/agenda\" -o kino.json -w \"HTTP %{http_code}, %{size_download} bytes\\\\n\")",
+      "Bash(curl -s \"https://api.uitkijk.nl/z-tickets/ladder?offset=0&limit=50\")",
+      "Bash(curl -s \"https://fchyena.nl/films\")",
+      "Bash(curl -s \"https://studio-k.nu/films/\")",
+      "Bash(curl -s \"https://lab111.nl/programma\")",
+      "Bash(cd /home/midas/cinema-agenda-fastapi *)",
+      "Read(//home/midas/cinema-agenda-fastapi/mobile/**)",
+      "Read(//home/midas/cinema-agenda-fastapi/shared/hooks/**)",
+      "Bash(git --no-pager diff --stat)"
     ]
   }
 }

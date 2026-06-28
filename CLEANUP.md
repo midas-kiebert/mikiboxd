@@ -64,7 +64,7 @@ Legend:
 - [x] `cinema.py` — Cinema venue (name, city, coords, seating preset)
 - [x] `cinema_selection.py` — Which cinemas a user has selected
 - [x] `cinema_preset.py` — Saved named sets of cinema selections
-- [x] `movie.py` — Movie metadata (title, duration, genres, TMDB ID, poster)
+- [x] `movie.py` — Movie metadata (title, duration, genres, poster). Positive id = TMDB id; negative id = synthetic listing (e.g. sneak preview) via `sneak_preview_movie()` / `is_synthetic_movie_id`
 - [x] `showtime.py` — Individual screening (datetime, cinema, movie, ticket link)
 - [x] `showtime_selection.py` — User's going/interested status on a showtime
 - [x] `showtime_ping.py` — Notification sent to a friend about a showtime

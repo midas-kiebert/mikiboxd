@@ -8,7 +8,11 @@ import requests
 
 from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
-from app.models.movie import MovieCreate
+from app.models.movie import (
+    MovieCreate,
+    is_sneak_preview_title,
+    sneak_preview_movie,
+)
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
@@ -47,16 +51,13 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         self.url = f"{url_base}/fk-feed/agenda"
         self.theatre_filter = theatre_filter  # For Leiden
 
-    def _process_movie_entry(
+    def _resolve_movie_via_tmdb(
         self,
         *,
         slug: str,
+        title_query: str,
         value: dict[str, Any],
-    ) -> tuple[MovieCreate, list[ShowtimeCreate]] | None:
-        if not value.get("times"):
-            return None
-
-        title_query = clean_title(slug)
+    ) -> MovieCreate | None:
         directors_raw = value.get("director_name")
         directors_value = (
             directors_raw.get("value") if isinstance(directors_raw, dict) else None
@@ -98,7 +99,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         tmdb_directors = (
             tmdb_details.directors if tmdb_details is not None else list(directors)
         )
-        movie = MovieCreate(
+        return MovieCreate(
             id=int(tmdb_id),
             title=tmdb_title,
             letterboxd_slug=None,
@@ -119,6 +120,25 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                 tmdb_details.enriched_at if tmdb_details is not None else None
             ),
         )
+
+    def _process_movie_entry(
+        self,
+        *,
+        slug: str,
+        value: dict[str, Any],
+    ) -> tuple[MovieCreate, list[ShowtimeCreate]] | None:
+        if not value.get("times"):
+            return None
+
+        title_query = clean_title(slug)
+        if is_sneak_preview_title(slug) or is_sneak_preview_title(title_query):
+            movie = sneak_preview_movie()
+        else:
+            movie = self._resolve_movie_via_tmdb(
+                slug=slug, title_query=title_query, value=value
+            )
+            if movie is None:
+                return None
 
         # The feed exposes subtitles under the (misnamed) "language" key, e.g.
         # {"label": "Ondertitels", "value": "Nederlands"}.
@@ -146,7 +166,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                 )
             )
 
-        logger.debug(f"Resolved TMDB id {tmdb_id} for {movie.title}")
+        logger.debug(f"Resolved movie {movie.id} for {movie.title}")
         return movie, showtimes
 
     def scrape(self) -> list[tuple[str, int]]:

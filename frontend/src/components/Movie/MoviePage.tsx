@@ -76,7 +76,9 @@ const MoviePage = () => {
     queryKey: ["movie", movieIdNumber, selectedCinemaIds, selectedDayFilters],
     enabled:
       Number.isFinite(movieIdNumber) &&
-      movieIdNumber > 0 &&
+      // `!== 0` (not `> 0`): synthetic listings like sneak previews use
+      // negative movie ids. 0 and NaN remain invalid.
+      movieIdNumber !== 0 &&
       !shouldWaitForCinemaSelection,
     queryFn: () =>
       MoviesService.readMovie({

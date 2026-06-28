@@ -14,7 +14,11 @@ from sqlalchemy.exc import NoResultFound
 
 from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
-from app.models.movie import MovieCreate
+from app.models.movie import (
+    MovieCreate,
+    is_sneak_preview_title,
+    sneak_preview_movie,
+)
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.cinemas.amsterdam.eye import EyeScraper
@@ -386,38 +390,82 @@ async def _process_cineville_movie_async(
             else None
         )
 
-        try:
-            tmdb_id = await find_tmdb_id_async(
-                session=session,
-                title_query=title_query,
-                actor_name=actor_names_for_lookup,
-                director_names=directors,
-                year=release_year,
-                duration_minutes=duration_minutes,
-                spoken_languages=spoken_languages,
-            )
-        except Exception as e:
-            return (
-                None,
-                [
-                    _format_error_context(
-                        stage="tmdb_lookup",
-                        error=e,
-                        movie_title=movie_title,
-                        production_id=production_id,
-                    )
-                ],
-            )
-        if tmdb_id is None:
-            logger.warning(f"TMDB ID not found for movie: {title_query}")
-            return None, []
+        if is_sneak_preview_title(movie_data.title) or is_sneak_preview_title(
+            title_query
+        ):
+            movie = sneak_preview_movie()
+        else:
+            try:
+                tmdb_id = await find_tmdb_id_async(
+                    session=session,
+                    title_query=title_query,
+                    actor_name=actor_names_for_lookup,
+                    director_names=directors,
+                    year=release_year,
+                    duration_minutes=duration_minutes,
+                    spoken_languages=spoken_languages,
+                )
+            except Exception as e:
+                return (
+                    None,
+                    [
+                        _format_error_context(
+                            stage="tmdb_lookup",
+                            error=e,
+                            movie_title=movie_title,
+                            production_id=production_id,
+                        )
+                    ],
+                )
+            if tmdb_id is None:
+                logger.warning(f"TMDB ID not found for movie: {title_query}")
+                return None, []
 
-        tmdb_details = await get_tmdb_movie_details_async(
-            session=session, tmdb_id=tmdb_id
-        )
-        if tmdb_details is None:
-            logger.warning(
-                f"TMDB details not found for TMDB ID {tmdb_id}; using fallback metadata."
+            tmdb_details = await get_tmdb_movie_details_async(
+                session=session, tmdb_id=tmdb_id
+            )
+            if tmdb_details is None:
+                logger.warning(
+                    f"TMDB details not found for TMDB ID {tmdb_id}; using fallback metadata."
+                )
+
+            tmdb_runtime_minutes = _runtime_minutes_or_none(
+                tmdb_details.runtime_minutes if tmdb_details is not None else None
+            )
+            cineville_runtime_minutes = _runtime_minutes_or_none(duration_minutes)
+
+            tmdb_title = (
+                tmdb_details.title if tmdb_details is not None else movie_data.title
+            )
+            tmdb_directors = (
+                tmdb_details.directors if tmdb_details is not None else list(directors)
+            )
+            tmdb_cast = tmdb_details.cast_names if tmdb_details is not None else None
+            movie = MovieCreate(
+                title=tmdb_title,
+                id=tmdb_id,
+                letterboxd_slug=None,
+                directors=tmdb_directors if tmdb_directors else None,
+                cast=tmdb_cast if tmdb_cast else None,
+                release_year=(
+                    tmdb_details.release_year if tmdb_details is not None else None
+                ),
+                # Prefer TMDB runtime when available; otherwise keep Cineville runtime
+                # so missing endDate showtimes can still fall back to
+                # start + runtime + 15m.
+                duration=tmdb_runtime_minutes or cineville_runtime_minutes,
+                languages=(
+                    tmdb_details.spoken_languages if tmdb_details is not None else None
+                ),
+                original_language=(
+                    tmdb_details.original_language if tmdb_details is not None else None
+                ),
+                original_title=(
+                    tmdb_details.original_title if tmdb_details is not None else None
+                ),
+                tmdb_last_enriched_at=(
+                    tmdb_details.enriched_at if tmdb_details is not None else None
+                ),
             )
 
         try:
@@ -438,43 +486,6 @@ async def _process_cineville_movie_async(
                 ],
             )
 
-        tmdb_runtime_minutes = _runtime_minutes_or_none(
-            tmdb_details.runtime_minutes if tmdb_details is not None else None
-        )
-        cineville_runtime_minutes = _runtime_minutes_or_none(duration_minutes)
-
-        tmdb_title = (
-            tmdb_details.title if tmdb_details is not None else movie_data.title
-        )
-        tmdb_directors = (
-            tmdb_details.directors if tmdb_details is not None else list(directors)
-        )
-        tmdb_cast = tmdb_details.cast_names if tmdb_details is not None else None
-        movie = MovieCreate(
-            title=tmdb_title,
-            id=tmdb_id,
-            letterboxd_slug=None,
-            directors=tmdb_directors if tmdb_directors else None,
-            cast=tmdb_cast if tmdb_cast else None,
-            release_year=(
-                tmdb_details.release_year if tmdb_details is not None else None
-            ),
-            # Prefer TMDB runtime when available; otherwise keep Cineville runtime so
-            # missing endDate showtimes can still fall back to start + runtime + 15m.
-            duration=tmdb_runtime_minutes or cineville_runtime_minutes,
-            languages=(
-                tmdb_details.spoken_languages if tmdb_details is not None else None
-            ),
-            original_language=(
-                tmdb_details.original_language if tmdb_details is not None else None
-            ),
-            original_title=(
-                tmdb_details.original_title if tmdb_details is not None else None
-            ),
-            tmdb_last_enriched_at=(
-                tmdb_details.enriched_at if tmdb_details is not None else None
-            ),
-        )
         prepared_showtimes = [
             PreparedCinevilleShowtime(
                 id=showtime.id,

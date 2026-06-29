@@ -37,7 +37,13 @@ def clean_title(title: str) -> str:
 
 
 class GenericEagerlyScraper(BaseCinemaScraper):
-    def __init__(self, cinema: str, url_base: str, theatre_filter: str = "") -> None:
+    def __init__(
+        self,
+        cinema: str,
+        url_base: str,
+        theatre_filter: str = "",
+        subtitle_venue_aliases: list[str] | None = None,
+    ) -> None:
         self.cinema = cinema
         with get_db_context() as session:
             self.cinema_id = cinema_crud.get_cinema_id_by_name(
@@ -50,6 +56,11 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         self.url_base = url_base
         self.url = f"{url_base}/fk-feed/agenda"
         self.theatre_filter = theatre_filter  # For Leiden
+        # Louis Hartlooper Complex and Springhaver share a subtitle label that
+        # states a different language per venue, e.g.
+        # "Nederlands (LHC), English (Springhaver)". Each venue reads only its
+        # own clause via these aliases.
+        self.subtitle_venue_aliases = subtitle_venue_aliases
 
     def _resolve_movie_via_tmdb(
         self,
@@ -146,7 +157,9 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         subtitle_value = (
             language_meta.get("value") if isinstance(language_meta, dict) else None
         )
-        subtitles = parse_subtitle_label(subtitle_value)
+        subtitles = parse_subtitle_label(
+            subtitle_value, venue_aliases=self.subtitle_venue_aliases
+        )
 
         showtimes: list[ShowtimeCreate] = []
         for time in value["times"]:

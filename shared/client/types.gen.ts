@@ -579,6 +579,7 @@ export type UserMe = {
   notify_watchlist_digest_enabled: boolean
   notify_watchlist_digest_frequency: DigestFrequency
   notify_watchlist_digest_list_id: string | null
+  notify_watchlist_digest_cinema_preset_id: string | null
 }
 
 export type UserPublic = {
@@ -613,6 +614,7 @@ export type UserUpdate = {
   notify_watchlist_digest_enabled?: boolean | null
   notify_watchlist_digest_frequency?: DigestFrequency | null
   notify_watchlist_digest_list_id?: string | null
+  notify_watchlist_digest_cinema_preset_id?: string | null
   password?: string | null
 }
 

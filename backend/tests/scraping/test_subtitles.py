@@ -29,6 +29,28 @@ def test_parse_subtitle_label(value: str | None, expected: list[str] | None) -> 
 
 
 @pytest.mark.parametrize(
+    "value, venue_aliases, expected",
+    [
+        # Louis Hartlooper Complex and Springhaver share this label but show a
+        # different subtitle language each.
+        ("Nederlands (LHC), English (Springhaver)", ["lhc", "hartlooper"], ["nl"]),
+        ("Nederlands (LHC), English (Springhaver)", ["springhaver", "sht"], ["en"]),
+        # Order-independent.
+        ("English (Springhaver), Nederlands (LHC)", ["lhc", "hartlooper"], ["nl"]),
+        # A plain label without venue annotations is parsed as usual.
+        ("Nederlands", ["lhc", "hartlooper"], ["nl"]),
+        ("Nederlands of Engels", ["springhaver", "sht"], ["nl", "en"]),
+        # No clause names this venue -> subtitling unknown for it.
+        ("Nederlands (LHC)", ["springhaver", "sht"], None),
+    ],
+)
+def test_parse_subtitle_label_venue_aware(
+    value: str, venue_aliases: list[str], expected: list[str] | None
+) -> None:
+    assert parse_subtitle_label(value, venue_aliases=venue_aliases) == expected
+
+
+@pytest.mark.parametrize(
     "value, expected",
     [
         # Subtitle language stated explicitly.

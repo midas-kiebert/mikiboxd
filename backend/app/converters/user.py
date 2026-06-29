@@ -61,6 +61,9 @@ def to_me(user: User) -> UserMe:
         notify_watchlist_digest_enabled=user.notify_watchlist_digest_enabled,
         notify_watchlist_digest_frequency=user.notify_watchlist_digest_frequency,
         notify_watchlist_digest_list_id=user.notify_watchlist_digest_list_id,
+        notify_watchlist_digest_cinema_preset_id=(
+            user.notify_watchlist_digest_cinema_preset_id
+        ),
     )
 
 

@@ -62,6 +62,13 @@ class _UserBase(SQLModel):
         default=None,
         foreign_key="letterboxdlist.id",
     )
+    # Restricts the digest to movies with a future showtime at one of this
+    # cinema preset's cinemas. None falls back to the user's favorite preset;
+    # if neither resolves, the digest is not cinema-filtered.
+    notify_watchlist_digest_cinema_preset_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="cinemapreset.id",
+    )
 
 
 # Properties to receive via API on creation (admin/superuser use — exposes all fields)
@@ -97,6 +104,7 @@ class UserUpdate(SQLModel):
     notify_watchlist_digest_enabled: bool | None = Field(default=None)
     notify_watchlist_digest_frequency: DigestFrequency | None = Field(default=None)
     notify_watchlist_digest_list_id: uuid.UUID | None = Field(default=None)
+    notify_watchlist_digest_cinema_preset_id: uuid.UUID | None = Field(default=None)
     password: str | None = Field(default=None, min_length=1, max_length=255)
 
 

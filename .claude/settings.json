@@ -91,7 +91,32 @@
       "Bash(cd /home/midas/cinema-agenda-fastapi *)",
       "Read(//home/midas/cinema-agenda-fastapi/mobile/**)",
       "Read(//home/midas/cinema-agenda-fastapi/shared/hooks/**)",
-      "Bash(git --no-pager diff --stat)"
+      "Bash(git --no-pager diff --stat)",
+      "Bash(node -e \"const r = require\\('/home/midas/cinema-agenda-fastapi/mobile/node_modules/react-native-reanimated/package.json'\\); console.log\\(r.version\\)\")",
+      "Bash(pnpm -v)",
+      "Bash(chmod +x scripts/web-dev.sh)",
+      "Bash(curl -s -o /dev/null -w \"staging direct health: %{http_code}\\\\n\" https://api.staging.mikino.nl/api/v1/utils/health-check/ --max-time 10)",
+      "Bash(VITE_API_URL=\"\" VITE_API_PROXY_TARGET=\"https://api.staging.mikino.nl\" pnpm dev --port 5199)",
+      "Bash(echo \"started pid $!\")",
+      "Bash(curl -s -o /dev/null http://localhost:5199/)",
+      "Bash(curl -s -o /dev/null -w \"localhost:5199/ → %{http_code}\\\\n\" http://localhost:5199/)",
+      "Bash(curl -s -w \"\\\\nlocalhost:5199/api/v1/utils/health-check/ → %{http_code}\\\\n\" http://localhost:5199/api/v1/utils/health-check/)",
+      "Bash(kill 190572)",
+      "Bash(echo \"pid $!\")",
+      "Bash(curl -s -o /dev/null -w \"/ → %{http_code}\\\\n\" http://localhost:5199/)",
+      "Bash(curl -s -o /dev/null -w \"/src/main.tsx → %{http_code}\\\\n\" http://localhost:5199/src/main.tsx)",
+      "Bash(curl -s -o /dev/null -w \"/src/theme.tsx → %{http_code}\\\\n\" http://localhost:5199/src/theme.tsx)",
+      "Bash(curl -s -o /dev/null -w \"/src/theme/tokens.ts → %{http_code}\\\\n\" http://localhost:5199/src/theme/tokens.ts)",
+      "Bash(curl -s \"http://localhost:5199/src/theme/tokens.ts\")",
+      "Bash(curl -s -o /dev/null -w \"/@fs .../shared/theme/colors.ts → %{http_code}\\\\n\" \"http://localhost:5199/shared/theme/colors.ts\")",
+      "Bash(curl -s -o /dev/null -w \"alias /shared/theme/colors → %{http_code}\\\\n\" \"http://localhost:5199/shared/theme/colors\")",
+      "Bash(node -e \"console.log\\(require\\('@playwright/test'\\) ? 'playwright module present' : 'no'\\)\")",
+      "Bash(kill 197150)",
+      "Bash(pkill -f \"vite --port 5199\")",
+      "Bash(curl -s -o /dev/null -w \"boot: %{http_code}\\\\n\" http://localhost:5199/)",
+      "Bash(pkill -9 -f \"vite --port 5198\")",
+      "Bash(kill -9 226391 290349)",
+      "Bash(git switch *)"
     ]
   }
 }

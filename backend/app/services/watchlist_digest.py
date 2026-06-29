@@ -34,6 +34,7 @@ from sqlmodel import Session, col, select
 
 from app.core.config import settings
 from app.core.enums import DigestFrequency, Environment, GoingStatus
+from app.crud import cinema_preset as cinema_preset_crud
 from app.crud import movie_set_filters
 from app.mailer import EmailDeliveryError, generate_watchlist_digest_email, send_email
 from app.models.movie import Movie
@@ -141,25 +142,44 @@ def _movie_ids_with_user_interest(
     )
 
 
+def _resolve_digest_cinema_ids(*, session: Session, user: User) -> list[int]:
+    """Cinema ids the digest is restricted to: the user's chosen preset, else
+    their favorite preset. Empty means no cinema restriction.
+
+    A chosen preset that no longer exists (deleted after being selected) falls
+    back to the favorite — the column carries no DB-level foreign key.
+    """
+    preset_id = user.notify_watchlist_digest_cinema_preset_id
+    if preset_id is not None:
+        preset = cinema_preset_crud.get_user_preset_by_id(
+            session=session, user_id=user.id, preset_id=preset_id
+        )
+        if preset is not None:
+            return list(preset.cinema_ids)
+    return cinema_preset_crud.get_favorite_cinema_ids(session=session, user_id=user.id)
+
+
 def _resolve_movie_entries(
-    *, session: Session, movie_ids: set[int], now: datetime
+    *, session: Session, movie_ids: set[int], cinema_ids: list[int], now: datetime
 ) -> list[tuple[Movie, Showtime]]:
     """Pair each movie with its current next future showtime, dropping any movie
 
-    that no longer has one.
+    that no longer has one. When ``cinema_ids`` is non-empty, only showtimes at
+    those cinemas are considered — a movie showing solely elsewhere is dropped.
     """
     if not movie_ids:
         return []
     movies = session.exec(select(Movie).where(col(Movie.id).in_(movie_ids))).all()
     entries: list[tuple[Movie, Showtime]] = []
     for movie in movies:
+        stmt = select(Showtime).where(
+            col(Showtime.movie_id) == movie.id,
+            col(Showtime.datetime) > now,
+        )
+        if cinema_ids:
+            stmt = stmt.where(col(Showtime.cinema_id).in_(cinema_ids))
         next_showtime = session.exec(
-            select(Showtime)
-            .where(
-                col(Showtime.movie_id) == movie.id,
-                col(Showtime.datetime) > now,
-            )
-            .order_by(col(Showtime.datetime).asc())
+            stmt.order_by(col(Showtime.datetime).asc())
         ).first()
         if next_showtime is not None:
             entries.append((movie, next_showtime))
@@ -235,8 +255,12 @@ def build_and_send_digest(
     if not candidate_ids:
         return False
 
+    cinema_ids = _resolve_digest_cinema_ids(session=session, user=user)
     movie_entries = _resolve_movie_entries(
-        session=session, movie_ids=candidate_ids, now=reference_time
+        session=session,
+        movie_ids=candidate_ids,
+        cinema_ids=cinema_ids,
+        now=reference_time,
     )
     if not movie_entries:
         return False

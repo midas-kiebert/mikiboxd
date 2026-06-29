@@ -264,7 +264,8 @@ Legend:
 ## Frontend — Entry & Config (`frontend/src/`)
 
 - [ ] `main.tsx` — App entry point, React Query setup, Axios interceptors
-- [ ] `theme.tsx` — Chakra UI theme customisation
+- [x] `theme.tsx` — Chakra UI theme: app `semanticTokens` (light+dark) from `theme/tokens.ts`, plus `ui.main` + button recipe
+- [x] `theme/tokens.ts` — Generates Chakra `app.*` semantic color tokens from `shared/theme/colors.ts` (matches the mobile palette, no drift)
 - [ ] `constants.ts` — App-wide constants
 - [ ] `types.ts` — Custom TypeScript types (beyond auto-generated API types)
 - [ ] `utils.ts` — Frontend utility functions
@@ -309,8 +310,10 @@ Legend:
 **Common (shared UI):**
 - [ ] `Layout.tsx` — Page layout wrapper
 - [ ] `Navbar.tsx` — Top navigation bar
-- [ ] `Sidebar.tsx` + `SidebarItems.tsx` — Desktop sidebar
-- [ ] `BottomNavBar.tsx` — Mobile bottom navigation
+- [ ] `Sidebar.tsx` + `SidebarItems.tsx` — Desktop sidebar (legacy; still used by standalone MoviePage, replaced by NavRail elsewhere)
+- [x] `NavRail.tsx` — Slim desktop icon nav rail (app-parity rebuild); replaces Sidebar in `_layout`
+- [x] `nav-items.ts` — Shared nav entry list used by NavRail + BottomNavBar
+- [x] `BottomNavBar.tsx` — Mobile-web bottom navigation (now app-token themed, shares nav-items.ts)
 - [ ] `TopBar.tsx` — Mobile top bar
 - [ ] `UserMenu.tsx` — User avatar dropdown
 - [ ] `Page.tsx` — Page container with consistent padding
@@ -347,14 +350,22 @@ Legend:
 - [ ] `MovieTitle.tsx` + `OriginalTitle.tsx` + `ReleaseYear.tsx` — Title block
 - [ ] `ReportShowtimeButton.tsx` — "Report an issue" dialog (incorrect movie/time, etc.)
 
-**Showtimes:**
-- [ ] `ShowtimesPage.tsx` — Showtimes list page
-- [ ] `MainShowtimesPage.tsx` — Main (all-cinemas) showtimes view
+**Showtimes (app-parity rebuild):**
+- [ ] `ShowtimesPage.tsx` — Per-user showtimes list page
+- [x] `MainShowtimesPage.tsx` — Main showtimes view: 3-zone master-detail (filters | list | detail drawer)
 - [ ] `MyShowtimesPage.tsx` — User's own upcoming showtimes
-- [ ] `Showtimes.tsx` — Showtime list rendering
-- [ ] `ShowtimeCard.tsx` — Individual showtime card
-- [ ] `ShowtimeInfoBox.tsx` — Showtime metadata
-- [ ] `DatetimeCard.tsx` — Date/time display
+- [x] `Showtimes.tsx` — Showtime card list (optional select/onSelect for the detail drawer)
+- [x] `ShowtimeCard.tsx` — Showtime card redesigned to match the app (date column, badges, status tint, selected ring)
+- [x] `ShowtimeDetailDrawer.tsx` — Right slide-over: set status, audience, invite banner, movie link
+- [x] `useUpdateShowtimeStatus.ts` — Going-status mutation with optimistic list patch (candidate to share with mobile)
+- [x] `badges/CinemaPill.tsx` + `badges/FriendBadges.tsx` + `badges/SubtitlesBadges.tsx` — Card badges ported from the app
+- ~~`ShowtimeInfoBox.tsx`~~ + ~~`DatetimeCard.tsx`~~ — deleted (folded into the new ShowtimeCard)
+
+**Filters (`components/Filters/`, app-parity rebuild):**
+- [x] `FiltersSidebar.tsx` — Always-open desktop filters panel (status, days, subtitles/language, group-by, watchlist, cinemas; time/runtime/lists/presets to come)
+- [x] `useShowtimeFilters.ts` — Showtimes-filter state over the shared `useSession*` hooks + derived query filters
+- [x] `cinema-grouping.ts` — Group cinemas by city (≥3 → own section, else "Other cinemas"), ported from the app's CinemaFilterModal
+- [x] `CinemaFilterSection.tsx` — Grouped cinema chips with per-city + global select-all
 
 **Friends:**
 - [ ] `FriendsPage.tsx` — Friends list page
@@ -392,6 +403,7 @@ Legend:
 - [ ] `useCustomToast.ts` — Toast notification helper
 - [ ] `useInfiniteScroll.ts` — Infinite scroll detection
 - [ ] `useIsMobile.ts` — Responsive breakpoint detection
+- [x] `useThemeColors.ts` — Raw app palette for the active light/dark mode (web mirror of the mobile hook), for dynamic colors that aren't static tokens
 
 **Shared data hooks (`shared/hooks/`):**
 - [ ] `useAuth.ts` — Login, logout, token management
@@ -427,6 +439,8 @@ Legend:
 - [ ] `utils.ts` — Shared utility functions
 - [ ] `client/` — Auto-generated OpenAPI client (do not edit manually)
 - [ ] `authRefresh.ts` — Axios interceptor: transparently refreshes the access token on 401 (moved from `mobile/utils/auth-refresh.ts` so web shares it too)
+- [x] `theme/colors.ts` — Single source for the app color palette, light + dark (moved out of `mobile/constants/theme.ts`; mobile re-exports it, web builds Chakra tokens from it)
+- [x] `filters/day-filter-utils.ts` — Day-selection token model + API resolution, shared by web + mobile (moved out of `mobile/components/filters/`, which now re-exports it)
 
 ---
 

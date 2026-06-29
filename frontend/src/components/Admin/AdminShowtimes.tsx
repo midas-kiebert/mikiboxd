@@ -7,7 +7,7 @@ import { useState } from "react"
 
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
-import { type ApiError, AdminService, type AdminShowtimePublic } from "shared"
+import { AdminService, type AdminShowtimePublic, type ApiError } from "shared"
 import { Field } from "../ui/field"
 
 const EditShowtimeRow = ({ showtime }: { showtime: AdminShowtimePublic }) => {
@@ -74,7 +74,9 @@ const EditShowtimeRow = ({ showtime }: { showtime: AdminShowtimePublic }) => {
             colorPalette="red"
             loading={deleteMutation.isPending}
             onClick={() => {
-              if (confirm(`Delete this showtime for "${showtime.movie_title}"?`)) {
+              if (
+                confirm(`Delete this showtime for "${showtime.movie_title}"?`)
+              ) {
                 deleteMutation.mutate()
               }
             }}
@@ -111,7 +113,10 @@ const AdminShowtimes = () => {
           <Input value={movieId} onChange={(e) => setMovieId(e.target.value)} />
         </Field>
         <Field label="Cinema ID">
-          <Input value={cinemaId} onChange={(e) => setCinemaId(e.target.value)} />
+          <Input
+            value={cinemaId}
+            onChange={(e) => setCinemaId(e.target.value)}
+          />
         </Field>
       </Stack>
 

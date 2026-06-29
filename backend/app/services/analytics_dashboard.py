@@ -56,16 +56,14 @@ def _users_with_push_token(*, session: Session) -> int:
     return session.exec(stmt).one()
 
 
-def _notification_opt_in_breakdown(*, session: Session) -> list[NotificationOptInBreakdown]:
+def _notification_opt_in_breakdown(
+    *, session: Session
+) -> list[NotificationOptInBreakdown]:
     breakdown = []
     for setting in _NOTIFY_SETTINGS:
         column = getattr(User, setting)
-        enabled = session.exec(
-            select(func.count()).where(column.is_(True))
-        ).one()
-        disabled = session.exec(
-            select(func.count()).where(column.is_(False))
-        ).one()
+        enabled = session.exec(select(func.count()).where(column.is_(True))).one()
+        disabled = session.exec(select(func.count()).where(column.is_(False))).one()
         breakdown.append(
             NotificationOptInBreakdown(
                 setting=setting,

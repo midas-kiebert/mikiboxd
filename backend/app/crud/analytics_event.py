@@ -32,7 +32,7 @@ def count_by_name(
     *, session: Session, since: datetime
 ) -> dict[AnalyticsEventName, int]:
     stmt = (
-        select(AnalyticsEvent.name, func.count())
+        select(col(AnalyticsEvent.name), func.count())
         .where(col(AnalyticsEvent.created_at) >= since)
         .group_by(AnalyticsEvent.name)
     )
@@ -52,7 +52,13 @@ def count_opens_by_day_and_user(
     """
     day = func.date_trunc("day", AnalyticsEvent.created_at)
     stmt = (
-        select(day, AnalyticsEvent.user_id, User.email, AnalyticsEvent.platform, func.count())
+        select(  # type: ignore[call-overload]
+            day,
+            AnalyticsEvent.user_id,
+            User.email,
+            AnalyticsEvent.platform,
+            func.count(),
+        )
         .join(User, User.id == AnalyticsEvent.user_id)
         .where(
             col(AnalyticsEvent.name).in_(

@@ -142,6 +142,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
             return None
 
         title_query = clean_title(slug)
+        movie: MovieCreate | None
         if is_sneak_preview_title(slug) or is_sneak_preview_title(title_query):
             movie = sneak_preview_movie()
         else:

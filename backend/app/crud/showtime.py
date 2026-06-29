@@ -131,9 +131,7 @@ def search_showtimes_for_admin(
     return list(session.exec(stmt).all())
 
 
-def update_showtime(
-    *, showtime: Showtime, update_data: dict[str, Any]
-) -> Showtime:
+def update_showtime(*, showtime: Showtime, update_data: dict[str, Any]) -> Showtime:
     showtime.sqlmodel_update(update_data)
     return showtime
 

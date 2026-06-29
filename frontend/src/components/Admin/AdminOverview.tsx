@@ -1,9 +1,18 @@
 /**
  * Admin feature component: AdminOverview. Beta usage-analytics dashboard.
  */
-import { Box, Button, Heading, SimpleGrid, Stack, Stat, Table, Text } from "@chakra-ui/react"
-import { Link } from "@tanstack/react-router"
+import {
+  Box,
+  Button,
+  Heading,
+  SimpleGrid,
+  Stack,
+  Stat,
+  Table,
+  Text,
+} from "@chakra-ui/react"
 import { useQuery } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 
 import { AdminService } from "shared"
 
@@ -64,7 +73,8 @@ const AdminOverview = () => {
         <Stat.Root>
           <Stat.Label>Invites sent / opened</Stat.Label>
           <Stat.ValueText>
-            {overview.invites_sent} / {overview.invites_opened} ({inviteOpenRate}%)
+            {overview.invites_sent} / {overview.invites_opened} (
+            {inviteOpenRate}%)
           </Stat.ValueText>
         </Stat.Root>
         <Stat.Root>

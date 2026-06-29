@@ -19,7 +19,11 @@ import { useState } from "react"
 
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
-import { type ApiError, ShowtimesService, type ShowtimeReportReason } from "shared"
+import {
+  type ApiError,
+  type ShowtimeReportReason,
+  ShowtimesService,
+} from "shared"
 import { Field } from "../ui/field"
 
 const REASON_OPTIONS: { value: ShowtimeReportReason; label: string }[] = [

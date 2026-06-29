@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.core.enums import ShowtimeReportReason, ShowtimeReportStatus
 from app.models.cinema import Cinema
@@ -38,16 +38,16 @@ def list_reports(
     *, session: Session, status: ShowtimeReportStatus | None
 ) -> list[tuple[ShowtimeReport, Showtime, Movie, Cinema, User]]:
     stmt = (
-        select(ShowtimeReport, Showtime, Movie, Cinema, User)
+        select(ShowtimeReport, Showtime, Movie, Cinema, User)  # type: ignore[call-overload]
         .join(Showtime, Showtime.id == ShowtimeReport.showtime_id)
         .join(Movie, Movie.id == Showtime.movie_id)
         .join(Cinema, Cinema.id == Showtime.cinema_id)
         .join(User, User.id == ShowtimeReport.reporter_id)
-        .order_by(ShowtimeReport.created_at.desc())
+        .order_by(col(ShowtimeReport.created_at).desc())
     )
     if status is not None:
         stmt = stmt.where(ShowtimeReport.status == status)
-    return list(session.exec(stmt).all())
+    return list(session.exec(stmt).all())  # type: ignore[return-value]
 
 
 def update_status(

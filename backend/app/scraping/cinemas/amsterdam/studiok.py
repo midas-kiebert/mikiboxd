@@ -104,9 +104,9 @@ class StudioKScraper(BaseCinemaScraper):
         if fallback_subtitles is None:
             fallback_subtitles = parse_subtitle_hint_from_title(title_query)
         duration = parse_minutes(extract_label_value(soup, "Speelduur:"))
-        year = parse_year(extract_label_value(soup, "Jaar:")) or parse_year_hint_from_title(
-            title_query
-        )
+        year = parse_year(
+            extract_label_value(soup, "Jaar:")
+        ) or parse_year_hint_from_title(title_query)
 
         tmdb_id = find_tmdb_id(
             title_query=title_query,

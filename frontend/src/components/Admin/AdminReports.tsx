@@ -20,7 +20,11 @@ import { useState } from "react"
 
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
-import { type ApiError, AdminService, type ShowtimeReportAdminView } from "shared"
+import {
+  AdminService,
+  type ApiError,
+  type ShowtimeReportAdminView,
+} from "shared"
 import { Field } from "../ui/field"
 import TmdbCacheOverrideForm from "./TmdbCacheOverrideForm"
 
@@ -47,7 +51,9 @@ const EditShowtimePanel = ({ showtimeId }: { showtimeId: number }) => {
       }),
     onSuccess: () => {
       showSuccessToast("Showtime updated.")
-      queryClient.invalidateQueries({ queryKey: ["admin", "showtime", showtimeId] })
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "showtime", showtimeId],
+      })
       queryClient.invalidateQueries({ queryKey: ["admin", "showtime-reports"] })
     },
     onError: (err: ApiError) => handleError(err),
@@ -72,7 +78,11 @@ const EditShowtimePanel = ({ showtimeId }: { showtimeId: number }) => {
           onChange={(e) => setTicketLink(e.target.value)}
         />
       </Field>
-      <Button size="sm" loading={mutation.isPending} onClick={() => mutation.mutate()}>
+      <Button
+        size="sm"
+        loading={mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
         Save showtime
       </Button>
     </Stack>
@@ -105,12 +115,20 @@ const ReportRow = ({ report }: { report: ShowtimeReportAdminView }) => {
     <>
       <Table.Row>
         <Table.Cell>
-          <Link href={`/movie/${report.movie_id}`} target="_blank" rel="noopener noreferrer">
+          <Link
+            href={`/movie/${report.movie_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             {report.movie_title}
           </Link>
         </Table.Cell>
         <Table.Cell>
-          <Link href={report.cinema_url} target="_blank" rel="noopener noreferrer">
+          <Link
+            href={report.cinema_url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             {report.cinema_name}
           </Link>
         </Table.Cell>
@@ -142,10 +160,18 @@ const ReportRow = ({ report }: { report: ShowtimeReportAdminView }) => {
                 </Button>
               </>
             )}
-            <Button size="sm" variant="ghost" onClick={() => setIsFixOpen((open) => !open)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setIsFixOpen((open) => !open)}
+            >
               {isFixOpen ? "Hide fix" : "Fix showtime"}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setIsTmdbDialogOpen(true)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setIsTmdbDialogOpen(true)}
+            >
               Fix TMDB cache
             </Button>
           </Stack>
@@ -158,14 +184,25 @@ const ReportRow = ({ report }: { report: ShowtimeReportAdminView }) => {
           </Table.Cell>
         </Table.Row>
       )}
-      <Dialog.Root open={isTmdbDialogOpen} onOpenChange={(e) => setIsTmdbDialogOpen(e.open)}>
+      <Dialog.Root
+        open={isTmdbDialogOpen}
+        onOpenChange={(e) => setIsTmdbDialogOpen(e.open)}
+      >
         <Portal>
           <Dialog.Backdrop />
           <Dialog.Positioner>
             <Dialog.Content p={4}>
-              <Dialog.Header>Fix TMDB cache for "{report.movie_title}"</Dialog.Header>
+              <Dialog.Header>
+                Fix TMDB cache for "{report.movie_title}"
+              </Dialog.Header>
               <Dialog.CloseTrigger asChild>
-                <Button position="absolute" top={2} right={2} size="xs" variant="ghost">
+                <Button
+                  position="absolute"
+                  top={2}
+                  right={2}
+                  size="xs"
+                  variant="ghost"
+                >
                   ✕
                 </Button>
               </Dialog.CloseTrigger>

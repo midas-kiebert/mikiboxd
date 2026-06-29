@@ -152,9 +152,7 @@ class RialtoScraper(BaseCinemaScraper):
             date = program.get("date")
             starts_at = program.get("starts_at")
             try:
-                showtime_dt = datetime.strptime(
-                    f"{date} {starts_at}", "%Y-%m-%d %H:%M"
-                )
+                showtime_dt = datetime.strptime(f"{date} {starts_at}", "%Y-%m-%d %H:%M")
             except (TypeError, ValueError):
                 logger.warning(
                     f"Could not parse Rialto showtime '{date} {starts_at}' "

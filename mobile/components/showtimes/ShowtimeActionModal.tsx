@@ -1463,7 +1463,7 @@ export default function ShowtimeActionModal({
           <View style={styles.seatDialogCard}>
             <ThemedText style={styles.seatDialogTitle}>Report an issue</ThemedText>
             <ThemedText style={styles.reportDialogSubtitle}>
-              What's wrong with this showtime?
+              What&apos;s wrong with this showtime?
             </ThemedText>
             <View style={styles.reportReasonList}>
               {REPORT_REASON_OPTIONS.map((option) => (

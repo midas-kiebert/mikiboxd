@@ -39,7 +39,9 @@ def get_analytics_overview(
 
 
 @router.get("/movies", response_model=list[AdminMoviePublic])
-def search_movies(*, session: SessionDep, q: str, limit: int = 25) -> list[AdminMoviePublic]:
+def search_movies(
+    *, session: SessionDep, q: str, limit: int = 25
+) -> list[AdminMoviePublic]:
     movies = movie_crud.search_movies_for_admin(session=session, query=q, limit=limit)
     return [AdminMoviePublic.model_validate(movie) for movie in movies]
 
@@ -98,7 +100,9 @@ def search_showtimes(
 
 @router.get("/showtimes/{showtime_id}", response_model=AdminShowtimePublic)
 def get_showtime(*, session: SessionDep, showtime_id: int) -> AdminShowtimePublic:
-    showtime = showtime_crud.get_showtime_by_id(session=session, showtime_id=showtime_id)
+    showtime = showtime_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
     if showtime is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Showtime not found"
@@ -110,7 +114,9 @@ def get_showtime(*, session: SessionDep, showtime_id: int) -> AdminShowtimePubli
 def update_showtime(
     *, session: SessionDep, showtime_id: int, payload: AdminShowtimeUpdate
 ) -> AdminShowtimePublic:
-    showtime = showtime_crud.get_showtime_by_id(session=session, showtime_id=showtime_id)
+    showtime = showtime_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
     if showtime is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Showtime not found"
@@ -123,7 +129,9 @@ def update_showtime(
 
 @router.delete("/showtimes/{showtime_id}", response_model=Message)
 def delete_showtime(*, session: SessionDep, showtime_id: int) -> Message:
-    showtime = showtime_crud.get_showtime_by_id(session=session, showtime_id=showtime_id)
+    showtime = showtime_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
     if showtime is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Showtime not found"
@@ -170,9 +178,7 @@ def update_showtime_report(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Report not found"
         )
     resolved_at = (
-        now_amsterdam_naive()
-        if payload.status != ShowtimeReportStatus.OPEN
-        else None
+        now_amsterdam_naive() if payload.status != ShowtimeReportStatus.OPEN else None
     )
     showtime_report_crud.update_status(
         report=report, status=payload.status, resolved_at=resolved_at

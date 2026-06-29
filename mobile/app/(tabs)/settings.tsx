@@ -4,7 +4,7 @@
 import { Alert, Linking, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import {
@@ -22,6 +22,7 @@ import { type ThemePreference, useThemePreference } from '@/utils/theme-preferen
 import useAuth from 'shared/hooks/useAuth';
 import {
   MeService,
+  type CinemaPresetPublic,
   type DigestFrequency,
   type NotificationChannel,
   type UpdatePassword,
@@ -158,10 +159,19 @@ export default function SettingsScreen() {
   const [digestFrequency, setDigestFrequency] =
     useState<DigestFrequency>('weekly_or_urgent');
   const [digestListId, setDigestListId] = useState<string | null>(null);
+  // null = follow the favorite cinema preset; a uuid = pin a specific preset.
+  const [digestCinemaPresetId, setDigestCinemaPresetId] = useState<string | null>(null);
   const [digestAdvancedOpen, setDigestAdvancedOpen] = useState(false);
   const [isUpdatingDigest, setIsUpdatingDigest] = useState(false);
-  // Lists are only needed once the advanced picker is opened.
+  // Lists and cinema presets are only needed once the advanced picker is opened.
   const { data: digestLists = [] } = useFetchLetterboxdLists(digestAdvancedOpen);
+  const { data: cinemaPresets = [] } = useQuery<CinemaPresetPublic[]>({
+    queryKey: ['cinema-presets'],
+    queryFn: () => MeService.getCinemaPresets(),
+    enabled: digestAdvancedOpen,
+  });
+  // The preset the digest follows when no specific one is pinned.
+  const favoriteCinemaPreset = cinemaPresets.find((preset) => preset.is_favorite);
   // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   // Cineville card number (9 digits only, CP$ prefix is added automatically).
@@ -187,10 +197,12 @@ export default function SettingsScreen() {
     setDigestEnabled(!!user?.notify_watchlist_digest_enabled);
     setDigestFrequency(user?.notify_watchlist_digest_frequency ?? 'weekly_or_urgent');
     setDigestListId(user?.notify_watchlist_digest_list_id ?? null);
+    setDigestCinemaPresetId(user?.notify_watchlist_digest_cinema_preset_id ?? null);
   }, [
     user?.notify_watchlist_digest_enabled,
     user?.notify_watchlist_digest_frequency,
     user?.notify_watchlist_digest_list_id,
+    user?.notify_watchlist_digest_cinema_preset_id,
   ]);
 
   // Load the saved Cineville card digits from device storage.
@@ -506,6 +518,16 @@ export default function SettingsScreen() {
       { notify_watchlist_digest_list_id: listId },
       () => setDigestListId(listId),
       () => setDigestListId(previous)
+    );
+  };
+
+  const handleDigestCinemaPresetChange = (presetId: string | null) => {
+    if (presetId === digestCinemaPresetId) return;
+    const previous = digestCinemaPresetId;
+    void handleDigestUpdate(
+      { notify_watchlist_digest_cinema_preset_id: presetId },
+      () => setDigestCinemaPresetId(presetId),
+      () => setDigestCinemaPresetId(previous)
     );
   };
 
@@ -882,52 +904,101 @@ export default function SettingsScreen() {
                 activeOpacity={0.8}
               >
                 <ThemedText style={styles.digestAdvancedToggle}>
-                  {digestAdvancedOpen ? 'Hide advanced' : 'Advanced: use a different list'}
+                  {digestAdvancedOpen ? 'Hide advanced' : 'Advanced: list & cinemas'}
                 </ThemedText>
               </TouchableOpacity>
               {digestAdvancedOpen ? (
-                <View style={styles.digestListOptions}>
-                  <TouchableOpacity
-                    style={[
-                      styles.digestListOption,
-                      digestListId === null && styles.digestListOptionActive,
-                    ]}
-                    onPress={() => handleDigestListChange(null)}
-                    disabled={!user || isUpdatingDigest}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText
-                      style={[
-                        styles.digestListOptionText,
-                        digestListId === null && styles.digestListOptionTextActive,
-                      ]}
-                    >
-                      My watchlist
-                    </ThemedText>
-                  </TouchableOpacity>
-                  {digestLists.map((list) => (
+                <>
+                  <ThemedText style={styles.notificationChannelLabel}>Source</ThemedText>
+                  <View style={styles.digestListOptions}>
                     <TouchableOpacity
-                      key={list.id}
                       style={[
                         styles.digestListOption,
-                        digestListId === list.id && styles.digestListOptionActive,
+                        digestListId === null && styles.digestListOptionActive,
                       ]}
-                      onPress={() => handleDigestListChange(list.id)}
+                      onPress={() => handleDigestListChange(null)}
                       disabled={!user || isUpdatingDigest}
                       activeOpacity={0.8}
                     >
                       <ThemedText
                         style={[
                           styles.digestListOptionText,
-                          digestListId === list.id && styles.digestListOptionTextActive,
+                          digestListId === null && styles.digestListOptionTextActive,
                         ]}
                       >
-                        {list.title ?? list.list_slug}
-                        {list.is_curated ? ' (curated)' : ''}
+                        My watchlist
                       </ThemedText>
                     </TouchableOpacity>
-                  ))}
-                </View>
+                    {digestLists.map((list) => (
+                      <TouchableOpacity
+                        key={list.id}
+                        style={[
+                          styles.digestListOption,
+                          digestListId === list.id && styles.digestListOptionActive,
+                        ]}
+                        onPress={() => handleDigestListChange(list.id)}
+                        disabled={!user || isUpdatingDigest}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText
+                          style={[
+                            styles.digestListOptionText,
+                            digestListId === list.id && styles.digestListOptionTextActive,
+                          ]}
+                        >
+                          {list.title ?? list.list_slug}
+                          {list.is_curated ? ' (curated)' : ''}
+                        </ThemedText>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <ThemedText style={styles.notificationChannelLabel}>Cinemas</ThemedText>
+                  <View style={styles.digestListOptions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.digestListOption,
+                        digestCinemaPresetId === null && styles.digestListOptionActive,
+                      ]}
+                      onPress={() => handleDigestCinemaPresetChange(null)}
+                      disabled={!user || isUpdatingDigest}
+                      activeOpacity={0.8}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.digestListOptionText,
+                          digestCinemaPresetId === null && styles.digestListOptionTextActive,
+                        ]}
+                      >
+                        {favoriteCinemaPreset
+                          ? `Default (${favoriteCinemaPreset.name})`
+                          : 'All cinemas'}
+                      </ThemedText>
+                    </TouchableOpacity>
+                    {cinemaPresets.map((preset) => (
+                      <TouchableOpacity
+                        key={preset.id}
+                        style={[
+                          styles.digestListOption,
+                          digestCinemaPresetId === preset.id && styles.digestListOptionActive,
+                        ]}
+                        onPress={() => handleDigestCinemaPresetChange(preset.id)}
+                        disabled={!user || isUpdatingDigest}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText
+                          style={[
+                            styles.digestListOptionText,
+                            digestCinemaPresetId === preset.id &&
+                              styles.digestListOptionTextActive,
+                          ]}
+                        >
+                          {preset.name}
+                          {preset.is_favorite ? ' (favorite)' : ''}
+                        </ThemedText>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
               ) : null}
             </View>
             {notificationPermissionStatus === 'denied' ? (

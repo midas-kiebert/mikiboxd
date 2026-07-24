@@ -37,9 +37,14 @@ def get_report_by_id(*, session: Session, report_id: int) -> ShowtimeReport | No
 def list_reports(
     *, session: Session, status: ShowtimeReportStatus | None
 ) -> list[tuple[ShowtimeReport, Showtime, Movie, Cinema, User, int]]:
+    # Scalar subquery rather than a window function: a window function is
+    # applied after the WHERE clause, so filtering by status would also
+    # shrink the rows the count is computed over.
     report_count = (
-        func.count()
-        .over(partition_by=col(ShowtimeReport.showtime_id))
+        select(func.count())
+        .select_from(ShowtimeReport)
+        .where(ShowtimeReport.showtime_id == col(Showtime.id))
+        .scalar_subquery()
         .label("report_count")
     )
     stmt = (

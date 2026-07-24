@@ -44,6 +44,7 @@ def list_reports(
         select(func.count())
         .select_from(ShowtimeReport)
         .where(ShowtimeReport.showtime_id == col(Showtime.id))
+        .correlate(Showtime)
         .scalar_subquery()
         .label("report_count")
     )

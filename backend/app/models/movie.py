@@ -68,6 +68,12 @@ class MovieUpdate(SQLModel):
 # Database model, database table inferred from class name
 class Movie(MovieBase, table=True):
     tmdb_last_enriched_at: datetime | None = None
+    # Whether the movie currently has a future showtime, as of the last
+    # watchlist-digest refresh. Persisted so the digest can detect the
+    # not-listed -> listed transition (a genuinely new arrival, including a
+    # reappearance) without being fooled by showtimes that merely churned.
+    # See app/services/watchlist_digest.py.
+    currently_listed: bool = False
 
 
 def sneak_preview_movie() -> MovieCreate:

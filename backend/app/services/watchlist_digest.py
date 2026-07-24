@@ -3,10 +3,12 @@
 Two-phase pipeline, both run daily by the scheduler:
 
   1. ``refresh_digest_queue`` finds movies that just became "newly available"
-     — they now have at least one future showtime, but had no showtime at
-     all (past or future) as of 24 hours ago — and records each one, once,
-     forever, in ``WatchlistDigestQueueEntry``. A movie can only ever enter
-     the queue a single time.
+     — they have a future showtime now but did not at the previous refresh
+     (a not-listed -> listed transition, tracked by ``Movie.currently_listed``)
+     — and records each in ``WatchlistDigestQueueEntry``. A movie that stays
+     listed is queued only once; a movie that disappears and later returns is
+     queued again, because losing all showtimes clears its queue and notified
+     records.
 
   2. ``send_due_digests`` walks every eligible user and, for each one, looks
      at queue entries matching their watchlist/list source that haven't been
@@ -30,7 +32,7 @@ from datetime import datetime, timedelta
 from logging import getLogger
 from typing import Any
 
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, delete, select, update
 
 from app.core.config import settings
 from app.core.enums import DigestFrequency, Environment, GoingStatus
@@ -47,47 +49,75 @@ from app.utils import now_amsterdam_naive
 
 logger = getLogger(__name__)
 
-_DISCOVERY_LOOKBACK = timedelta(days=1)
 _URGENT_WITHIN = timedelta(days=3)
 _WEEKLY_MAX_WAIT = timedelta(days=7)
 
 
 def refresh_digest_queue(*, session: Session, now: datetime | None = None) -> int:
-    """Detect newly-available movies and add them to the digest queue.
+    """Detect movies that just became available and add them to the digest queue.
 
-    A movie qualifies once: it currently has a future showtime and had no
-    showtime at all — past or future — created more than 24 hours ago.
+    "Newly available" means a not-listed -> listed transition: the movie has a
+    future showtime now but did not at the previous refresh (tracked by the
+    persistent ``Movie.currently_listed`` flag). This intentionally re-triggers
+    for a movie that disappeared and later came back, while a movie that stays
+    listed — including one whose showtimes were merely deleted and re-created by
+    scrape churn — is only ever queued once per genuine appearance.
+
+    When a movie stops being listed, its queue entry and every user's notified
+    record for it are cleared, so a future reappearance notifies afresh.
+
     Returns the number of movies newly queued.
     """
     reference_time = now or now_amsterdam_naive()
-    cutoff = reference_time - _DISCOVERY_LOOKBACK
 
-    rows = session.exec(
-        select(Showtime.movie_id, Showtime.datetime, Showtime.created_at)
-    ).all()
+    rows = session.exec(select(Showtime.movie_id, Showtime.datetime)).all()
+    available_now: set[int] = {
+        movie_id
+        for movie_id, showtime_datetime in rows
+        if showtime_datetime > reference_time
+    }
 
-    future_movie_ids: set[int] = set()
-    had_showtime_before_cutoff: set[int] = set()
-    for movie_id, showtime_datetime, created_at in rows:
-        if showtime_datetime > reference_time:
-            future_movie_ids.add(movie_id)
-        if created_at < cutoff:
-            had_showtime_before_cutoff.add(movie_id)
+    movie_states = session.exec(select(Movie.id, Movie.currently_listed)).all()
+    became_available: set[int] = set()
+    became_unavailable: set[int] = set()
+    for movie_id, currently_listed in movie_states:
+        is_available = movie_id in available_now
+        if is_available and not currently_listed:
+            became_available.add(movie_id)
+        elif not is_available and currently_listed:
+            became_unavailable.add(movie_id)
 
-    already_queued_ids = set(
-        session.exec(select(WatchlistDigestQueueEntry.movie_id)).all()
-    )
-
-    newly_available_ids = (
-        future_movie_ids - had_showtime_before_cutoff - already_queued_ids
-    )
-    for movie_id in newly_available_ids:
-        session.add(
-            WatchlistDigestQueueEntry(movie_id=movie_id, added_at=reference_time)
+    if became_available:
+        session.execute(
+            update(Movie)
+            .where(col(Movie.id).in_(became_available))
+            .values(currently_listed=True)
         )
-    if newly_available_ids:
+        for movie_id in became_available:
+            session.add(
+                WatchlistDigestQueueEntry(movie_id=movie_id, added_at=reference_time)
+            )
+    if became_unavailable:
+        session.execute(
+            update(Movie)
+            .where(col(Movie.id).in_(became_unavailable))
+            .values(currently_listed=False)
+        )
+        # Clear queue + per-user notified history so a later reappearance is
+        # treated as a fresh arrival.
+        session.execute(
+            delete(WatchlistDigestQueueEntry).where(
+                col(WatchlistDigestQueueEntry.movie_id).in_(became_unavailable)
+            )
+        )
+        session.execute(
+            delete(WatchlistDigestNotifiedMovie).where(
+                col(WatchlistDigestNotifiedMovie.movie_id).in_(became_unavailable)
+            )
+        )
+    if became_available or became_unavailable:
         session.commit()
-    return len(newly_available_ids)
+    return len(became_available)
 
 
 def _resolve_source_movie_ids_subquery(user: User) -> Any | None:

@@ -6,7 +6,7 @@ Every route here requires get_current_active_superuser — see the existing
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi import status as http_status
 
 from app.api.deps import SessionDep, get_current_active_superuser
@@ -18,8 +18,14 @@ from app.models.auth_schemas import Message
 from app.models.movie import MovieUpdate
 from app.schemas.admin import AdminMoviePublic, AdminShowtimePublic, AdminShowtimeUpdate
 from app.schemas.analytics_dashboard import AnalyticsOverview
+from app.schemas.scrape_monitor import (
+    ScrapeMonitorResponse,
+    ScrapeRecapDetail,
+    ScrapeRecapView,
+)
 from app.schemas.showtime_report import ShowtimeReportAdminView, ShowtimeReportUpdate
 from app.services import analytics_dashboard as analytics_dashboard_service
+from app.services import scrape_monitor as scrape_monitor_service
 from app.utils import now_amsterdam_naive
 
 router = APIRouter(
@@ -185,3 +191,45 @@ def update_showtime_report(
     )
     session.commit()
     return Message(message="Report updated successfully")
+
+
+# --- Scrape monitor -------------------------------------------------------
+
+
+@router.get("/scrape/runs", response_model=ScrapeMonitorResponse)
+def get_scrape_runs(*, session: SessionDep, hours: int = 48) -> ScrapeMonitorResponse:
+    """Per-stream scrape-run history with deltas + anomaly flags (JSON = script/LLM friendly)."""
+    return scrape_monitor_service.get_scrape_runs(session=session, window_hours=hours)
+
+
+@router.get("/scrape/recaps", response_model=list[ScrapeRecapView])
+def list_scrape_recaps(
+    *, session: SessionDep, limit: int = 20
+) -> list[ScrapeRecapView]:
+    return scrape_monitor_service.list_recaps(session=session, limit=limit)
+
+
+@router.get("/scrape/recaps/{recap_id}", response_model=ScrapeRecapDetail)
+def get_scrape_recap(*, session: SessionDep, recap_id: int) -> ScrapeRecapDetail:
+    recap = scrape_monitor_service.get_recap(session=session, recap_id=recap_id)
+    if recap is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Recap not found"
+        )
+    return recap
+
+
+@router.get("/scrape/recaps/{recap_id}/attachments/{filename}")
+def get_scrape_recap_attachment(
+    *, session: SessionDep, recap_id: int, filename: str
+) -> Response:
+    """Raw attachment bytes (the machine-readable per-run traces: TMDB lookups, run details)."""
+    result = scrape_monitor_service.get_recap_attachment(
+        session=session, recap_id=recap_id, filename=filename
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Attachment not found"
+        )
+    data, mime_type = result
+    return Response(content=data, media_type=mime_type)

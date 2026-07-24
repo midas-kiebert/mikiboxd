@@ -22,6 +22,17 @@ from app.services import showtimes as showtimes_services
 
 CINEMA = "LAB111"
 
+# lab111.nl returns 402 Payment Required to the default python-requests
+# User-Agent (bot protection); a browser User-Agent gets the real agenda page.
+REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.8",
+}
+
 
 def clean_title(title: str) -> str:
     title = title.lower()
@@ -132,7 +143,7 @@ class LAB111Scraper(BaseCinemaScraper):
     def scrape(self) -> list[tuple[str, int]]:
         assert self.cinema_id is not None
         url = "https://lab111.nl/programma"
-        response = requests.get(url)
+        response = requests.get(url, headers=REQUEST_HEADERS, timeout=30)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
@@ -183,11 +194,10 @@ class LAB111Scraper(BaseCinemaScraper):
                     showtime_create=showtime_create,
                     commit=False,
                 )
-                source_event_key = scrape_sync_service.fallback_source_event_key(
+                source_event_key = scrape_sync_service.showtime_identity_event_key(
                     movie_id=showtime_create.movie_id,
                     cinema_id=showtime_create.cinema_id,
                     dt=showtime_create.datetime,
-                    ticket_link=showtime_create.ticket_link,
                 )
                 observed_presences.append((source_event_key, showtime.id))
             session.commit()

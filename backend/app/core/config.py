@@ -226,9 +226,6 @@ class Settings(BaseSettings):
     # How many days to wait before re-syncing a user's Letterboxd watchlist
     LETTERBOXD_LAST_WATCHLIST_SYNC_RETENTION_DAYS: int = 1
 
-    # Timeout for sending the post-scrape recap email
-    SCRAPE_RECAP_EMAIL_TIMEOUT_SECONDS: float = 120.0
-
     # -------------------------------------------------------------------------
     # Monitoring & Notifications
     # -------------------------------------------------------------------------

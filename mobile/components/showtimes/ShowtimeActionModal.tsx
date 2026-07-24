@@ -44,7 +44,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -67,8 +67,8 @@ import {
 } from "@/components/showtimes/visibility-mode";
 import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
-import FriendCard from "@/components/friends/FriendCard";
 import FriendInviteRow, { type FriendWatchStatus } from "@/components/friends/FriendInviteRow";
+import InlineFriendRequestButtons from "@/components/friends/InlineFriendRequestButtons";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
@@ -810,15 +810,17 @@ export default function ShowtimeActionModal({
   const nonFriendParticipants = showtime?.non_friend_participants ?? [];
   const invitedYouLabel = hasInvite ? formatInvitedYou(invite!.senders) : null;
 
-  // The "Invited" tab merges who you've invited (with their respond status)
-  // and who your inviter(s) also invited (your co-invitees) — each row says
-  // who's responsible for the invite, "you" taking priority when both apply.
+  // The "Invited" tab merges who you've invited (with their respond status),
+  // who your inviter(s) also invited (your co-invitees), and non-friends from
+  // the same invite chain (with an inline friend-request affordance instead
+  // of a status) — each row says who's responsible for the invite, "you"
+  // taking priority when both apply.
   const invitedTabEntries = useMemo(() => {
     const sentEntries = sentPings.map((ping) => ({
       key: `sent-${ping.id}`,
       userId: ping.receiver_id,
       name: ping.receiver_name,
-      invitedByLabel: "Invited by you",
+      invitedByLabel: "Invited by you" as string | null,
       statusLabel: ping.dismissed_at ? "Dismissed" : ping.seen_at ? "Seen" : "Pending",
       statusColor: ping.dismissed_at
         ? colors.red.secondary
@@ -826,18 +828,44 @@ export default function ShowtimeActionModal({
           ? colors.green.secondary
           : colors.textSecondary,
       canUninvite: true,
+      nonFriendUser: null as (typeof nonFriendParticipants)[number]["user"] | null,
     }));
     const coInvitedEntries = coInvitedFriends.map((entry) => ({
       key: `co-${entry.friend.id}`,
       userId: entry.friend.id,
       name: entry.friend.display_name?.trim() || "Friend",
-      invitedByLabel: `Invited by ${entry.inviter.display_name?.trim() || "a friend"}`,
+      invitedByLabel: `Invited by ${entry.inviter.display_name?.trim() || "a friend"}` as
+        | string
+        | null,
       statusLabel: null,
       statusColor: colors.textSecondary,
       canUninvite: false,
+      nonFriendUser: null as (typeof nonFriendParticipants)[number]["user"] | null,
     }));
-    return [...sentEntries, ...coInvitedEntries];
-  }, [sentPings, coInvitedFriends, colors]);
+    const knownIds = new Set([
+      ...sentEntries.map((entry) => entry.userId),
+      ...coInvitedEntries.map((entry) => entry.userId),
+    ]);
+    const nonFriendEntries = nonFriendParticipants
+      .filter((entry) => !knownIds.has(entry.user.id))
+      .map((entry) => ({
+        key: `non-friend-${entry.user.id}`,
+        userId: entry.user.id,
+        name: entry.user.display_name?.trim() || "Friend",
+        invitedByLabel: (entry.invited_by_you
+          ? "Invited by you"
+          : entry.invited_you
+            ? "Invited you"
+            : entry.inviter
+              ? `Invited by ${entry.inviter.display_name?.trim() || "a friend"}`
+              : null) as string | null,
+        statusLabel: null,
+        statusColor: colors.textSecondary,
+        canUninvite: false,
+        nonFriendUser: entry.user as (typeof nonFriendParticipants)[number]["user"] | null,
+      }));
+    return [...sentEntries, ...coInvitedEntries, ...nonFriendEntries];
+  }, [sentPings, coInvitedFriends, nonFriendParticipants, colors]);
   const showtimeStartsAt = showtime ? DateTime.fromISO(showtime.datetime) : null;
   const dateLabel = showtimeStartsAt?.isValid ? showtimeStartsAt.toFormat("cccc d LLLL") : null;
   const isSyntheticMovie = showtime ? isSyntheticMovieId(showtime.movie.id) : false;
@@ -921,6 +949,9 @@ export default function ShowtimeActionModal({
       android_keyboardInputMode="adjustResize"
       onChange={handleSheetChange}
     >
+      {/* @gorhom/portal (used by the bottom sheet) does not forward React
+          context, so re-provide the QueryClient for hooks rendered inside. */}
+      <QueryClientProvider client={queryClient}>
       <BottomSheetScrollView
         ref={scrollViewRef}
         style={styles.scroll}
@@ -1283,9 +1314,11 @@ export default function ShowtimeActionModal({
                         <ThemedText style={styles.invitedRowName} numberOfLines={1}>
                           {entry.name}
                         </ThemedText>
-                        <ThemedText style={styles.invitedRowAttribution} numberOfLines={1}>
-                          {entry.invitedByLabel}
-                        </ThemedText>
+                        {entry.invitedByLabel ? (
+                          <ThemedText style={styles.invitedRowAttribution} numberOfLines={1}>
+                            {entry.invitedByLabel}
+                          </ThemedText>
+                        ) : null}
                       </View>
                       {entry.statusLabel ? (
                         <ThemedText style={[styles.invitedRowStatus, { color: entry.statusColor }]}>
@@ -1306,23 +1339,14 @@ export default function ShowtimeActionModal({
                           <MaterialIcons name="close" size={14} color={colors.textSecondary} />
                         </TouchableOpacity>
                       ) : null}
+                      {entry.nonFriendUser ? (
+                        <InlineFriendRequestButtons user={entry.nonFriendUser} />
+                      ) : null}
                     </View>
                   ))}
                 </View>
               )}
             </View>
-
-            {/* Non-friends you keep running into via invites for this showtime */}
-            {nonFriendParticipants.length > 0 ? (
-              <View style={styles.invitedSection}>
-                <ThemedText style={styles.sectionLabel}>Also here</ThemedText>
-                <View style={styles.invitedList}>
-                  {nonFriendParticipants.map((user) => (
-                    <FriendCard key={user.id} user={user} />
-                  ))}
-                </View>
-              </View>
-            ) : null}
 
             {/* Invite friends (collapsible, blue invite coding) */}
             <TouchableOpacity
@@ -1582,6 +1606,7 @@ export default function ShowtimeActionModal({
           </View>
         </Animated.View>
       </Modal>
+      </QueryClientProvider>
     </BottomSheetModal>
   );
 }

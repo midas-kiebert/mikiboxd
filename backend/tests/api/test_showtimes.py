@@ -1686,7 +1686,8 @@ def test_non_friend_participants_surfaces_non_friends_from_invite_graph(
     )
     assert showtime_response.status_code == 200
     non_friend_participant_ids = {
-        entry["id"] for entry in showtime_response.json()["non_friend_participants"]
+        entry["user"]["id"]
+        for entry in showtime_response.json()["non_friend_participants"]
     }
     assert non_friend_participant_ids == {str(stranger_id)}
 
@@ -1740,7 +1741,8 @@ def test_non_friend_participants_empty_without_chain_acceptance(
     )
     assert showtime_response.status_code == 200
     non_friend_participant_ids = {
-        entry["id"] for entry in showtime_response.json()["non_friend_participants"]
+        entry["user"]["id"]
+        for entry in showtime_response.json()["non_friend_participants"]
     }
     assert str(stranger_id) not in non_friend_participant_ids
 

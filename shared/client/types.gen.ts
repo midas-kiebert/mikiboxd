@@ -278,6 +278,23 @@ export type NewPassword = {
 }
 
 /**
+ * A non-friend in the viewer's invite graph for a showtime (identity only,
+ * no going/interested status — the client offers a friend-request control
+ * instead).
+ *
+ * Attribution mirrors `CoInvitedFriendPublic`'s "Invited by <inviter>"
+ * convention, plus the two direct cases: `invited_by_you` (the viewer
+ * invited them) and `invited_you` (they invited the viewer). At most one of
+ * `invited_by_you`, `invited_you`, `inviter` is set.
+ */
+export type NonFriendParticipantPublic = {
+  user: UserWithFriendStatus
+  invited_by_you?: boolean
+  invited_you?: boolean
+  inviter?: UserPublic | null
+}
+
+/**
  * The delivery mechanism for a notification sent to a user.
  */
 export type NotificationChannel = "push" | "email"
@@ -492,7 +509,7 @@ export type ShowtimeLoggedIn = {
   pending_invited_friends?: Array<UserPublic>
   friends_watchlisted?: Array<UserPublic>
   friends_watched?: Array<UserPublic>
-  non_friend_participants?: Array<UserWithFriendStatus>
+  non_friend_participants?: Array<NonFriendParticipantPublic>
 }
 
 export type ShowtimePingPublic = {

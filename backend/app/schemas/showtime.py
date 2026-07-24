@@ -16,6 +16,7 @@ __all__ = [
     "ShowtimeLoggedIn",
     "ShowtimeInMovieLoggedIn",
     "CoInvitedFriendPublic",
+    "NonFriendParticipantPublic",
 ]
 
 
@@ -38,6 +39,23 @@ class CoInvitedFriendPublic(BaseModel):
 
     friend: "UserPublic"
     inviter: "UserPublic"
+
+
+class NonFriendParticipantPublic(BaseModel):
+    """A non-friend in the viewer's invite graph for a showtime (identity only,
+    no going/interested status — the client offers a friend-request control
+    instead).
+
+    Attribution mirrors `CoInvitedFriendPublic`'s "Invited by <inviter>"
+    convention, plus the two direct cases: `invited_by_you` (the viewer
+    invited them) and `invited_you` (they invited the viewer). At most one of
+    `invited_by_you`, `invited_you`, `inviter` is set.
+    """
+
+    user: "UserWithFriendStatus"
+    invited_by_you: bool = False
+    invited_you: bool = False
+    inviter: "UserPublic | None" = None
 
 
 class ShowtimeLoggedIn(ShowtimeBase):
@@ -64,7 +82,7 @@ class ShowtimeLoggedIn(ShowtimeBase):
     # Non-friends in the same invite graph (direct/co-invited/chain) for this
     # showtime. Identity only, no going/interested status — the client shows
     # an inline friend-request control instead.
-    non_friend_participants: Sequence["UserWithFriendStatus"] = []
+    non_friend_participants: Sequence["NonFriendParticipantPublic"] = []
 
 
 # For responses inside of a Movie model

@@ -15,10 +15,11 @@ from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
 from app.schemas.showtime import (
     CoInvitedFriendPublic,
+    NonFriendParticipantPublic,
     ShowtimeInMovieLoggedIn,
     ShowtimeLoggedIn,
 )
-from app.schemas.user import UserPublic, UserWithFriendStatus
+from app.schemas.user import UserPublic
 
 
 def _friend_to_public_with_seat(
@@ -188,31 +189,55 @@ def _non_friend_participants(
     session: Session,
     showtime_id: int,
     user_id: UUID,
-) -> list[UserWithFriendStatus]:
+) -> list[NonFriendParticipantPublic]:
     """Non-friends in the viewer's invite graph (direct/co-invited/chain).
 
     Identity only, no status — used to offer a friend-request affordance for
     people the viewer keeps running into via invites but isn't friends with.
+    Each entry carries who's responsible for the invite, same convention as
+    `_co_invited_friends`.
     """
-    related_ids = showtime_ping_crud.get_related_participant_ids_for_showtime(
-        session=session,
-        viewer_id=user_id,
-        showtime_id=showtime_id,
+    attribution_by_id = (
+        showtime_ping_crud.get_related_participant_attribution_for_showtime(
+            session=session,
+            viewer_id=user_id,
+            showtime_id=showtime_id,
+        )
     )
-    if len(related_ids) == 0:
+    if len(attribution_by_id) == 0:
         return []
     friend_ids = friendship_crud.get_friend_ids(session=session, user_id=user_id)
-    non_friend_ids = related_ids - friend_ids
+    non_friend_ids = set(attribution_by_id) - friend_ids
     if len(non_friend_ids) == 0:
         return []
-    users = session.exec(
-        select(User).where(col(User.id).in_(non_friend_ids))
-    ).all()
+
+    inviter_ids = {
+        attribution.inviter_id
+        for user_id_, attribution in attribution_by_id.items()
+        if user_id_ in non_friend_ids and attribution.inviter_id is not None
+    }
+    users_by_id = {
+        user.id: user
+        for user in session.exec(
+            select(User).where(col(User.id).in_(non_friend_ids | inviter_ids))
+        ).all()
+    }
     return [
-        user_converters.to_with_friend_status(
-            user, session=session, current_user=user_id
+        NonFriendParticipantPublic(
+            user=user_converters.to_with_friend_status(
+                users_by_id[participant_id], session=session, current_user=user_id
+            ),
+            invited_by_you=attribution.invited_by_you,
+            invited_you=attribution.invited_you,
+            inviter=(
+                user_converters.to_public(users_by_id[attribution.inviter_id])
+                if attribution.inviter_id is not None
+                and attribution.inviter_id in users_by_id
+                else None
+            ),
         )
-        for user in users
+        for participant_id, attribution in attribution_by_id.items()
+        if participant_id in non_friend_ids and participant_id in users_by_id
     ]
 
 

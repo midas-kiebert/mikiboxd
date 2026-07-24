@@ -269,6 +269,7 @@ export type MovieUpdate = {
   original_language?: string | null
   cast?: Array<string> | null
   tmdb_last_enriched_at?: string | null
+  tmdb_cache_id?: number | null
 }
 
 export type NewPassword = {
@@ -457,6 +458,7 @@ export type ShowtimeInMovieLoggedIn = {
   end_datetime?: string | null
   ticket_link?: string | null
   subtitles?: Array<string> | null
+  scrape_source?: string | null
   id: number
   cinema: CinemaPublic
   friends_going: Array<UserPublic>
@@ -475,6 +477,7 @@ export type ShowtimeLoggedIn = {
   end_datetime?: string | null
   ticket_link?: string | null
   subtitles?: Array<string> | null
+  scrape_source?: string | null
   id: number
   movie: MovieInShowtime
   cinema: CinemaPublic
@@ -520,13 +523,16 @@ export type ShowtimeReportAdminView = {
   cinema_name: string
   cinema_url: string
   showtime_datetime: string
+  ticket_link: string | null
   reporter_id: string
   reporter_email: string
+  reporter_report_banned: boolean
   reason: ShowtimeReportReason
   message: string | null
   status: ShowtimeReportStatus
   created_at: string
   resolved_at: string | null
+  report_count: number
 }
 
 export type ShowtimeReportCreate = {
@@ -638,6 +644,7 @@ export type UserMe = {
   notify_watchlist_digest_frequency: DigestFrequency
   notify_watchlist_digest_list_id: string | null
   notify_watchlist_digest_cinema_preset_id: string | null
+  can_report: boolean
 }
 
 export type UserPublic = {
@@ -652,6 +659,11 @@ export type UserRegister = {
   email: string
   password: string
   display_name?: string | null
+}
+
+export type UserReportBanUpdate = {
+  banned: boolean
+  duration_days?: number | null
 }
 
 export type UserUpdate = {
@@ -770,6 +782,13 @@ export type AdminUpdateShowtimeReportData = {
 }
 
 export type AdminUpdateShowtimeReportResponse = Message
+
+export type AdminUpdateUserReportBanData = {
+  requestBody: UserReportBanUpdate
+  userId: string
+}
+
+export type AdminUpdateUserReportBanResponse = Message
 
 export type AdminGetScrapeRunsData = {
   hours?: number

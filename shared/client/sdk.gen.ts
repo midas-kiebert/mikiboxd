@@ -22,6 +22,8 @@ import type {
   AdminListShowtimeReportsResponse,
   AdminUpdateShowtimeReportData,
   AdminUpdateShowtimeReportResponse,
+  AdminUpdateUserReportBanData,
+  AdminUpdateUserReportBanResponse,
   AdminGetScrapeRunsData,
   AdminGetScrapeRunsResponse,
   AdminListScrapeRecapsData,
@@ -376,6 +378,31 @@ export class AdminService {
       url: "/api/v1/admin/showtime-reports/{report_id}",
       path: {
         report_id: data.reportId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update User Report Ban
+   * @param data The data for the request.
+   * @param data.userId
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static updateUserReportBan(
+    data: AdminUpdateUserReportBanData,
+  ): CancelablePromise<AdminUpdateUserReportBanResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/admin/users/{user_id}/report-ban",
+      path: {
+        user_id: data.userId,
       },
       body: data.requestBody,
       mediaType: "application/json",

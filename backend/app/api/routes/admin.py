@@ -150,6 +150,7 @@ def delete_showtime(*, session: SessionDep, showtime_id: int) -> Message:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Showtime not found"
         )
+    showtime_crud.tombstone_showtime(session=session, showtime=showtime)
     showtime_crud.delete_showtime(session=session, showtime=showtime)
     session.commit()
     return Message(message="Showtime deleted successfully")

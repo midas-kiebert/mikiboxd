@@ -67,6 +67,7 @@ import {
 } from "@/components/showtimes/visibility-mode";
 import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
+import FriendCard from "@/components/friends/FriendCard";
 import FriendInviteRow, { type FriendWatchStatus } from "@/components/friends/FriendInviteRow";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -806,6 +807,7 @@ export default function ShowtimeActionModal({
   const spokenLanguage = formatLanguageCode(showtime?.movie.original_language);
 
   const coInvitedFriends = showtime?.co_invited_friends ?? [];
+  const nonFriendParticipants = showtime?.non_friend_participants ?? [];
   const invitedYouLabel = hasInvite ? formatInvitedYou(invite!.senders) : null;
 
   // The "Invited" tab merges who you've invited (with their respond status)
@@ -1309,6 +1311,18 @@ export default function ShowtimeActionModal({
                 </View>
               )}
             </View>
+
+            {/* Non-friends you keep running into via invites for this showtime */}
+            {nonFriendParticipants.length > 0 ? (
+              <View style={styles.invitedSection}>
+                <ThemedText style={styles.sectionLabel}>Also here</ThemedText>
+                <View style={styles.invitedList}>
+                  {nonFriendParticipants.map((user) => (
+                    <FriendCard key={user.id} user={user} />
+                  ))}
+                </View>
+              </View>
+            ) : null}
 
             {/* Invite friends (collapsible, blue invite coding) */}
             <TouchableOpacity

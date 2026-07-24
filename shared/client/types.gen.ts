@@ -492,6 +492,7 @@ export type ShowtimeLoggedIn = {
   pending_invited_friends?: Array<UserPublic>
   friends_watchlisted?: Array<UserPublic>
   friends_watched?: Array<UserPublic>
+  non_friend_participants?: Array<UserWithFriendStatus>
 }
 
 export type ShowtimePingPublic = {

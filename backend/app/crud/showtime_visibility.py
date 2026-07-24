@@ -144,7 +144,9 @@ def _compute_effective_visible_friend_ids_for_showtime(
 
     # Always-visible regardless of mode or opt-out:
     #  - friends you invited, and friends who invited you (direct), and
-    #  - friends co-invited to this showtime by someone who invited you.
+    #  - friends co-invited to this showtime by someone who invited you, and
+    #  - friends one hop further along an accepted chain (see
+    #    get_chain_invited_user_ids).
     direct_invited_ids = showtime_ping_crud.get_ping_counterpart_ids_for_showtime(
         session=session,
         owner_id=owner_id,
@@ -155,7 +157,14 @@ def _compute_effective_visible_friend_ids_for_showtime(
         viewer_id=owner_id,
         showtime_id=showtime_id,
     )
-    return (base_visible_ids | direct_invited_ids | co_invited_ids) & all_friend_ids
+    chain_invited_ids = showtime_ping_crud.get_chain_invited_user_ids(
+        session=session,
+        viewer_id=owner_id,
+        showtime_id=showtime_id,
+    )
+    return (
+        base_visible_ids | direct_invited_ids | co_invited_ids | chain_invited_ids
+    ) & all_friend_ids
 
 
 def rebuild_effective_visibility_for_showtime(

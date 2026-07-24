@@ -18,7 +18,7 @@ from app.schemas.showtime import (
     ShowtimeInMovieLoggedIn,
     ShowtimeLoggedIn,
 )
-from app.schemas.user import UserPublic
+from app.schemas.user import UserPublic, UserWithFriendStatus
 
 
 def _friend_to_public_with_seat(
@@ -183,6 +183,39 @@ def _pending_invited_friends(
     return pending
 
 
+def _non_friend_participants(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID,
+) -> list[UserWithFriendStatus]:
+    """Non-friends in the viewer's invite graph (direct/co-invited/chain).
+
+    Identity only, no status — used to offer a friend-request affordance for
+    people the viewer keeps running into via invites but isn't friends with.
+    """
+    related_ids = showtime_ping_crud.get_related_participant_ids_for_showtime(
+        session=session,
+        viewer_id=user_id,
+        showtime_id=showtime_id,
+    )
+    if len(related_ids) == 0:
+        return []
+    friend_ids = friendship_crud.get_friend_ids(session=session, user_id=user_id)
+    non_friend_ids = related_ids - friend_ids
+    if len(non_friend_ids) == 0:
+        return []
+    users = session.exec(
+        select(User).where(col(User.id).in_(non_friend_ids))
+    ).all()
+    return [
+        user_converters.to_with_friend_status(
+            user, session=session, current_user=user_id
+        )
+        for user in users
+    ]
+
+
 def to_logged_in(
     showtime: Showtime,
     *,
@@ -254,6 +287,9 @@ def to_logged_in(
         user_id=user_id,
         responded_ids=responded_ids,
     )
+    non_friend_participants = _non_friend_participants(
+        session=session, showtime_id=showtime.id, user_id=user_id
+    )
 
     return ShowtimeLoggedIn(
         **showtime.model_dump(),
@@ -270,6 +306,7 @@ def to_logged_in(
         pending_invited_friends=pending_invited_friends,
         friends_watchlisted=friends_watchlisted,
         friends_watched=friends_watched,
+        non_friend_participants=non_friend_participants,
     )
 
 

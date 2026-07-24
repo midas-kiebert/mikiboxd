@@ -9,7 +9,7 @@ from app.models.showtime import ShowtimeBase
 if TYPE_CHECKING:
     from .cinema import CinemaPublic
     from .movie import MovieInShowtime
-    from .user import UserPublic
+    from .user import UserPublic, UserWithFriendStatus
 
 
 __all__ = [
@@ -61,6 +61,10 @@ class ShowtimeLoggedIn(ShowtimeBase):
     # Friends who have this movie watchlisted / watched on Letterboxd.
     friends_watchlisted: Sequence["UserPublic"] = []
     friends_watched: Sequence["UserPublic"] = []
+    # Non-friends in the same invite graph (direct/co-invited/chain) for this
+    # showtime. Identity only, no going/interested status — the client shows
+    # an inline friend-request control instead.
+    non_friend_participants: Sequence["UserWithFriendStatus"] = []
 
 
 # For responses inside of a Movie model

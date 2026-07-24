@@ -250,22 +250,23 @@ def _persist_cineville_results_batch(
                         showtime_create=showtime,
                         commit=False,
                     )
-                    observed_by_stream[source_stream].append(
-                        scrape_sync_service.ObservedPresence(
-                            # Key on the resolved showtime's identity, not the
-                            # volatile Cineville event/production UUIDs (which
-                            # rotate every scrape and caused delete/recreate
-                            # churn).
-                            source_event_key=(
-                                scrape_sync_service.showtime_identity_event_key(
-                                    movie_id=db_showtime.movie_id,
-                                    cinema_id=db_showtime.cinema_id,
-                                    dt=db_showtime.datetime,
-                                )
-                            ),
-                            showtime_id=db_showtime.id,
+                    if db_showtime is not None:
+                        observed_by_stream[source_stream].append(
+                            scrape_sync_service.ObservedPresence(
+                                # Key on the resolved showtime's identity, not the
+                                # volatile Cineville event/production UUIDs (which
+                                # rotate every scrape and caused delete/recreate
+                                # churn).
+                                source_event_key=(
+                                    scrape_sync_service.showtime_identity_event_key(
+                                        movie_id=db_showtime.movie_id,
+                                        cinema_id=db_showtime.cinema_id,
+                                        dt=db_showtime.datetime,
+                                    )
+                                ),
+                                showtime_id=db_showtime.id,
+                            )
                         )
-                    )
                 except Exception as e:
                     if _is_missing_cinema_insert_error(e):
                         missing_cinemas.add(venue_name)

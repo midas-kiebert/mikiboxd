@@ -13,6 +13,7 @@ from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud.movie import apply_language_filter, apply_search_filter
 from app.crud.movie_set_filters import apply_movie_set_filters
 from app.inputs.movie import Filters
+from app.models.deleted_showtime import DeletedShowtime
 from app.models.friendship import Friendship
 from app.models.movie import Movie
 from app.models.showtime import Showtime, ShowtimeCreate
@@ -137,7 +138,43 @@ def update_showtime(*, showtime: Showtime, update_data: dict[str, Any]) -> Showt
 
 
 def delete_showtime(*, session: Session, showtime: Showtime) -> None:
+    """Hard-delete a showtime. Callers that want it to stay gone across future
+    scrapes must also record a `DeletedShowtime` tombstone (see the admin
+    reports-page delete endpoint) before calling this."""
     session.delete(showtime)
+
+
+def tombstone_showtime(*, session: Session, showtime: Showtime) -> None:
+    if is_showtime_tombstoned(
+        session=session,
+        movie_id=showtime.movie_id,
+        cinema_id=showtime.cinema_id,
+        datetime=showtime.datetime,
+    ):
+        return
+    session.add(
+        DeletedShowtime(
+            movie_id=showtime.movie_id,
+            cinema_id=showtime.cinema_id,
+            datetime=showtime.datetime,
+        )
+    )
+    session.flush()
+
+
+def is_showtime_tombstoned(
+    *,
+    session: Session,
+    movie_id: int,
+    cinema_id: int,
+    datetime,
+) -> bool:
+    stmt = select(DeletedShowtime.id).where(
+        DeletedShowtime.movie_id == movie_id,
+        DeletedShowtime.cinema_id == cinema_id,
+        DeletedShowtime.datetime == datetime,
+    )
+    return session.execute(stmt).first() is not None
 
 
 def get_showtimes_by_movie_id(*, session: Session, movie_id: int) -> list[Showtime]:
@@ -607,6 +644,13 @@ def add_showtime_selection(
             owner_id=user_id,
             showtime_id=showtime_id,
         )
+        # A status change can flip chain visibility for other participants
+        # (see get_chain_invited_user_ids), so the whole invite group is
+        # rebuilt, not just the owner's own rows.
+        showtime_visibility_crud.rebuild_effective_visibility_for_showtime_participants(
+            session=session,
+            showtime_id=showtime_id,
+        )
         return showtime
 
     db_obj = ShowtimeSelection(
@@ -623,6 +667,10 @@ def add_showtime_selection(
     showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
         session=session,
         owner_id=user_id,
+        showtime_id=showtime_id,
+    )
+    showtime_visibility_crud.rebuild_effective_visibility_for_showtime_participants(
+        session=session,
         showtime_id=showtime_id,
     )
     return showtime
@@ -673,6 +721,12 @@ def remove_showtime_selection(
     showtime_visibility_crud.clear_effective_visibility_for_showtime(
         session=session,
         owner_id=user_id,
+        showtime_id=showtime_id,
+    )
+    # Losing your selection can also drop chain visibility for other
+    # participants who relied on you as an accepted connector.
+    showtime_visibility_crud.rebuild_effective_visibility_for_showtime_participants(
+        session=session,
         showtime_id=showtime_id,
     )
 

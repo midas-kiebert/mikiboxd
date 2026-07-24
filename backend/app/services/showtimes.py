@@ -690,12 +690,15 @@ def upsert_showtime(
     session: Session,
     showtime_create: ShowtimeCreate,
     commit: bool = True,
-) -> Showtime:
+) -> Showtime | None:
     """
     Insert or update a showtime and return the resulting database row.
     Uses the same +/-1h time-shift heuristic as insert_showtime_if_not_exists.
     If the only close match differs by movie_id (for example after a TMDB cache
     correction), reassign that existing showtime to the new movie_id.
+
+    Returns None (creating nothing) if this exact showtime was previously
+    deleted by an admin from the reports page — see DeletedShowtime.
     """
     # Prefer exact unique match so metadata fallbacks (for example end_datetime)
     # can be applied on unchanged showtimes instead of hitting unique-violation
@@ -718,6 +721,14 @@ def upsert_showtime(
             showtime_create=showtime_create,
             delta=timedelta(hours=1),
         )
+    if existing_showtime is None and showtimes_crud.is_showtime_tombstoned(
+        session=session,
+        movie_id=showtime_create.movie_id,
+        cinema_id=showtime_create.cinema_id,
+        datetime=showtime_create.datetime,
+    ):
+        return None
+
     _apply_end_datetime_fallback(
         session=session,
         showtime_create=showtime_create,

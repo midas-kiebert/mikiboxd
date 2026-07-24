@@ -30,10 +30,13 @@ class ShowtimeReportAdminView(SQLModel):
     cinema_name: str
     cinema_url: str
     showtime_datetime: datetime
+    ticket_link: str | None
     reporter_id: UUID
     reporter_email: str
+    reporter_report_banned: bool
     reason: ShowtimeReportReason
     message: str | None
     status: ShowtimeReportStatus
     created_at: datetime
     resolved_at: datetime | None
+    report_count: int

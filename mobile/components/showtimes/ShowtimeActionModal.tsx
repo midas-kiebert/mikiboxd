@@ -56,6 +56,7 @@ import {
   type UserPublic,
   type VisibilityMode,
 } from "shared";
+import useAuth from "shared/hooks/useAuth";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
@@ -256,6 +257,8 @@ export default function ShowtimeActionModal({
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
   const [isReportDialogVisible, setIsReportDialogVisible] = useState(false);
+  const { user } = useAuth();
+  const canReport = user ? user.can_report : true;
   const [isVisibilityExpanded, setIsVisibilityExpanded] = useState(false);
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<"watchlisted" | "watched" | null>(null);
@@ -1014,15 +1017,17 @@ export default function ShowtimeActionModal({
                 above its top divider — absolutely positioned so it doesn't
                 claim any extra vertical space in the layout. */}
             <View style={[styles.audienceBox, !hasAudience && styles.audienceBoxEmpty]}>
-              <TouchableOpacity
-                style={styles.reportLink}
-                onPress={() => setIsReportDialogVisible(true)}
-                hitSlop={8}
-                activeOpacity={0.6}
-              >
-                <MaterialIcons name="flag" size={11} color={colors.textSecondary} />
-                <ThemedText style={styles.reportLinkText}>Report</ThemedText>
-              </TouchableOpacity>
+              {canReport && (
+                <TouchableOpacity
+                  style={styles.reportLink}
+                  onPress={() => setIsReportDialogVisible(true)}
+                  hitSlop={8}
+                  activeOpacity={0.6}
+                >
+                  <MaterialIcons name="flag" size={11} color={colors.textSecondary} />
+                  <ThemedText style={styles.reportLinkText}>Report</ThemedText>
+                </TouchableOpacity>
+              )}
               {hasAudience ? (
                 <FriendBadges
                   friendsGoing={showtime.friends_going}

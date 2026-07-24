@@ -1,3 +1,4 @@
+from datetime import timedelta
 from urllib.parse import quote
 
 from fastapi.testclient import TestClient
@@ -1625,3 +1626,51 @@ def test_co_invitees_see_your_status_and_inherit_invite_only_default(
         co_invitee_id,
         bystander_id,
     }
+
+
+def test_report_showtime_is_blocked_for_report_banned_user(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory()
+    current_user_id = _normal_user_id(db_transaction)
+    current_user = db_transaction.get(User, current_user_id)
+    assert current_user is not None
+    current_user.report_banned = True
+    current_user.report_ban_expires_at = None
+    db_transaction.add(current_user)
+    db_transaction.commit()
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime.id}/report",
+        headers=normal_user_token_headers,
+        json={"reason": "incorrect_time", "message": "Starts 30 min later"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_report_showtime_allowed_when_ban_has_expired(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory()
+    current_user_id = _normal_user_id(db_transaction)
+    current_user = db_transaction.get(User, current_user_id)
+    assert current_user is not None
+    current_user.report_banned = True
+    current_user.report_ban_expires_at = now_amsterdam_naive() - timedelta(days=1)
+    db_transaction.add(current_user)
+    db_transaction.commit()
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime.id}/report",
+        headers=normal_user_token_headers,
+        json={"reason": "incorrect_time", "message": "Starts 30 min later"},
+    )
+
+    assert response.status_code == 200

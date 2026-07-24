@@ -17,6 +17,7 @@ from app.inputs.movie import Filters, get_filters
 from app.mailer import EmailDeliveryError, generate_showtime_report_email, send_email
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime
+from app.models.user import is_report_banned
 from app.schemas.showtime import ShowtimeLoggedIn, ShowtimeSelectionUpdate
 from app.schemas.showtime_ping import SentShowtimePingPublic
 from app.schemas.showtime_report import ShowtimeReportCreate
@@ -175,6 +176,11 @@ def report_showtime(
     current_user: CurrentUser,
     payload: ShowtimeReportCreate,
 ) -> Message:
+    if is_report_banned(current_user):
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="You are temporarily blocked from reporting showtimes",
+        )
     showtime = session.get(Showtime, showtime_id)
     if showtime is None:
         raise HTTPException(

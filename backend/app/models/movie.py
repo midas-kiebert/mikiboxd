@@ -51,6 +51,9 @@ class MovieBase(SQLModel):
 # Properties to receive on movie creation
 class MovieCreate(MovieBase):
     tmdb_last_enriched_at: datetime | None = None
+    # The TmdbLookupCache row (if any) whose lookup resolved this movie's id —
+    # lets a later cache correction find and fix every movie it produced.
+    tmdb_cache_id: int | None = None
 
 
 # Properties to receive on movie update
@@ -63,11 +66,13 @@ class MovieUpdate(SQLModel):
     original_language: str | None = None
     cast: list[str] | None = None
     tmdb_last_enriched_at: datetime | None = None
+    tmdb_cache_id: int | None = None
 
 
 # Database model, database table inferred from class name
 class Movie(MovieBase, table=True):
     tmdb_last_enriched_at: datetime | None = None
+    tmdb_cache_id: int | None = Field(default=None, foreign_key="tmdblookupcache.id")
     # Whether the movie currently has a future showtime, as of the last
     # watchlist-digest refresh. Persisted so the digest can detect the
     # not-listed -> listed transition (a genuinely new arrival, including a

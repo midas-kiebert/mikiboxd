@@ -36,7 +36,7 @@ from app.scraping.cinemas.utrecht.hartlooper import LouisHartlooperComplexScrape
 from app.scraping.cinemas.utrecht.slachtstraat import SlachtstraatScraper
 from app.scraping.cinemas.utrecht.springhaver import SpringhaverScraper
 from app.scraping.logger import logger
-from app.scraping.tmdb_lookup import find_tmdb_id_async
+from app.scraping.tmdb_lookup import find_tmdb_id_async, get_tmdb_lookup_cache_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details_async
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
@@ -451,9 +451,18 @@ async def _process_cineville_movie_async(
                 tmdb_details.directors if tmdb_details is not None else list(directors)
             )
             tmdb_cast = tmdb_details.cast_names if tmdb_details is not None else None
+            tmdb_cache_id = get_tmdb_lookup_cache_id(
+                title_query=title_query,
+                director_names=directors,
+                actor_name=actor_names_for_lookup,
+                year=release_year,
+                duration_minutes=duration_minutes,
+                spoken_languages=spoken_languages,
+            )
             movie = MovieCreate(
                 title=tmdb_title,
                 id=tmdb_id,
+                tmdb_cache_id=tmdb_cache_id,
                 letterboxd_slug=None,
                 directors=tmdb_directors if tmdb_directors else None,
                 cast=tmdb_cast if tmdb_cast else None,

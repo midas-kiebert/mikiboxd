@@ -17,7 +17,7 @@ from app.scraping.title_hints import (
     parse_subtitle_hint_from_title,
     parse_year_hint_from_title,
 )
-from app.scraping.tmdb_lookup import find_tmdb_id
+from app.scraping.tmdb_lookup import find_tmdb_id, get_tmdb_lookup_cache_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
@@ -108,11 +108,18 @@ class FCHyenaScraper(BaseCinemaScraper):
                 f"TMDB details not found for TMDB ID {tmdb_id}; using fallback metadata."
             )
 
+        tmdb_cache_id = get_tmdb_lookup_cache_id(
+            title_query=title_query,
+            director_names=directors,
+            actor_name=actor,
+            year=year,
+        )
         tmdb_directors = (
             tmdb_details.directors if tmdb_details is not None else list(directors)
         )
         movie = MovieCreate(
             id=int(tmdb_id),
+            tmdb_cache_id=tmdb_cache_id,
             title=tmdb_details.title if tmdb_details is not None else raw_title,
             letterboxd_slug=None,
             directors=tmdb_directors if tmdb_directors else None,

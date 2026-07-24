@@ -6,7 +6,7 @@ from app.converters import showtime as showtime_converters
 from app.crud import friendship as friendship_crud
 from app.crud import user as user_crud
 from app.inputs.movie import Filters
-from app.models.user import User
+from app.models.user import User, is_report_banned
 from app.schemas.user import (
     UserMe,
     UserPublic,
@@ -64,6 +64,7 @@ def to_me(user: User) -> UserMe:
         notify_watchlist_digest_cinema_preset_id=(
             user.notify_watchlist_digest_cinema_preset_id
         ),
+        can_report=not is_report_banned(user),
     )
 
 

@@ -601,6 +601,40 @@ def _store_cached_tmdb_id(
         _tmdb_cache_available = False
 
 
+def get_tmdb_lookup_cache_id(
+    *,
+    title_query: str,
+    director_names: list[str],
+    actor_name: str | None = None,
+    year: int | None = None,
+    duration_minutes: int | None = None,
+    spoken_languages: Sequence[str] | None = None,
+) -> int | None:
+    """The TmdbLookupCache row id backing a `find_tmdb_id` call with these
+    same inputs, if the cache is available and populated. Callers use this
+    right after `find_tmdb_id` to stamp `MovieCreate.tmdb_cache_id`, so a
+    later admin cache correction can find and fix every movie it produced."""
+    payload = build_lookup_payload(
+        title_query=title_query,
+        director_names=director_names,
+        actor_name=actor_name,
+        year=year,
+        duration_minutes=duration_minutes,
+        spoken_languages=spoken_languages,
+    )
+    payload_json = payload_to_canonical_json(payload)
+    lookup_hash = payload_hash(payload_json)
+    try:
+        with get_db_context() as session:
+            stmt = select(TmdbLookupCache.id).where(
+                TmdbLookupCache.lookup_hash == lookup_hash,
+                TmdbLookupCache.lookup_payload == payload_json,
+            )
+            return session.exec(stmt).first()
+    except SQLAlchemyError:
+        return None
+
+
 def _record_tmdb_lookup_event(
     *,
     payload_json: str,

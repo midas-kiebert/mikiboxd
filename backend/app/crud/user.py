@@ -20,6 +20,7 @@ from app.models.showtime_selection import ShowtimeSelection
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User, UserCreate, UserUpdate
 from app.models.watchlist_selection import WatchlistSelection
+from app.utils import now_amsterdam_naive
 
 DAY_BUCKET_CUTOFF = time(4, 0)
 DAY_BUCKET_OFFSET = timedelta(
@@ -254,6 +255,26 @@ def update_user(
         extra_data["hashed_password"] = hashed_password
     db_user.sqlmodel_update(user_data, update=extra_data)
     session.flush()  # Check for unique constraints
+    return db_user
+
+
+def set_report_ban(
+    *,
+    db_user: User,
+    banned: bool,
+    duration_days: int | None,
+) -> User:
+    """Ban/unban a user from reporting showtimes. `duration_days=None` while
+    banning means indefinite; unbanning always clears both fields."""
+    db_user.report_banned = banned
+    if not banned:
+        db_user.report_ban_expires_at = None
+    elif duration_days is not None:
+        db_user.report_ban_expires_at = now_amsterdam_naive() + timedelta(
+            days=duration_days
+        )
+    else:
+        db_user.report_ban_expires_at = None
     return db_user
 
 

@@ -1,8 +1,9 @@
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.converters import user as user_converters
 from app.models.user import User
+from app.utils import now_amsterdam_naive
 
 # from pytest_mock import MockerFixture
 
@@ -24,6 +25,42 @@ def test_to_me_exposes_letterboxd_sync_timestamps(
 
     assert me.watchlist_last_synced == synced_at
     assert me.watched_last_synced is None
+
+
+def test_to_me_can_report_is_true_when_not_banned(
+    *,
+    user_factory: Callable[..., User],
+):
+    user = user_factory(report_banned=False, report_ban_expires_at=None)
+
+    me = user_converters.to_me(user)
+
+    assert me.can_report is True
+
+
+def test_to_me_can_report_is_false_when_banned_indefinitely(
+    *,
+    user_factory: Callable[..., User],
+):
+    user = user_factory(report_banned=True, report_ban_expires_at=None)
+
+    me = user_converters.to_me(user)
+
+    assert me.can_report is False
+
+
+def test_to_me_can_report_is_true_after_ban_expires(
+    *,
+    user_factory: Callable[..., User],
+):
+    user = user_factory(
+        report_banned=True,
+        report_ban_expires_at=now_amsterdam_naive() - timedelta(days=1),
+    )
+
+    me = user_converters.to_me(user)
+
+    assert me.can_report is True
 
 
 # def test_to_with_friend_status(

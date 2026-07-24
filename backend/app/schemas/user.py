@@ -47,6 +47,7 @@ class UserMe(UserPublic):
     notify_watchlist_digest_frequency: DigestFrequency
     notify_watchlist_digest_list_id: UUID | None
     notify_watchlist_digest_cinema_preset_id: UUID | None
+    can_report: bool
 
 
 class UserWithFriendStatus(UserPublic):

@@ -13,7 +13,7 @@ from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
 from app.scraping.subtitles import parse_subtitle_label
-from app.scraping.tmdb_lookup import find_tmdb_id
+from app.scraping.tmdb_lookup import find_tmdb_id, get_tmdb_lookup_cache_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_services
 from app.services import scrape_sync as scrape_sync_service
@@ -120,11 +120,19 @@ class RialtoScraper(BaseCinemaScraper):
                 f"TMDB details not found for TMDB ID {tmdb_id}; using fallback metadata."
             )
 
+        tmdb_cache_id = get_tmdb_lookup_cache_id(
+            title_query=title_query,
+            director_names=directors,
+            year=year,
+            duration_minutes=duration,
+            spoken_languages=spoken_languages,
+        )
         tmdb_directors = (
             tmdb_details.directors if tmdb_details is not None else directors
         )
         movie = MovieCreate(
             id=int(tmdb_id),
+            tmdb_cache_id=tmdb_cache_id,
             title=tmdb_details.title if tmdb_details is not None else title_query,
             letterboxd_slug=None,
             directors=tmdb_directors if tmdb_directors else None,

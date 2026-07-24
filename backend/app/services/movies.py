@@ -8,13 +8,16 @@ from app.converters import movie as movie_converters
 from app.converters import showtime as showtime_converters
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import movie as movies_crud
+from app.crud import showtime as showtime_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
 from app.exceptions.movie_exceptions import MovieNotFoundError
 from app.inputs.movie import Filters
-from app.models.movie import MovieCreate, MovieUpdate
+from app.models.movie import Movie, MovieCreate, MovieUpdate
 from app.schemas.movie import MovieLoggedIn, MovieSummaryLoggedIn
 from app.schemas.showtime import ShowtimeInMovieLoggedIn
+from app.scraping.logger import logger
+from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 
 
 def get_movie_summaries(
@@ -261,6 +264,73 @@ def insert_movie_if_not_exists(
             raise AppError from e
     except Exception as e:
         raise AppError from e
+
+
+def reassign_movies_for_cache_correction(
+    *,
+    session: Session,
+    cache_id: int,
+    old_tmdb_id: int,
+    new_tmdb_id: int,
+) -> None:
+    """After an admin corrects a TMDB lookup-cache entry, fix every movie
+    that cache entry produced: create/update the correct Movie, move all of
+    the old movie's showtimes onto it, and unlist the stale movie (kept, not
+    deleted, since watchlist/selection history may still reference it).
+    """
+    if old_tmdb_id == new_tmdb_id:
+        return
+    old_movie = session.get(Movie, old_tmdb_id)
+    if old_movie is None or old_movie.tmdb_cache_id != cache_id:
+        return
+
+    tmdb_details = get_tmdb_movie_details(new_tmdb_id)
+    if tmdb_details is None:
+        logger.warning(
+            "Cache correction to TMDB ID %s has no TMDB details; "
+            "reassigning showtimes with fallback metadata.",
+            new_tmdb_id,
+        )
+    movie_create = MovieCreate(
+        id=new_tmdb_id,
+        title=tmdb_details.title if tmdb_details is not None else old_movie.title,
+        original_title=(
+            tmdb_details.original_title if tmdb_details is not None else None
+        ),
+        directors=(
+            tmdb_details.directors if tmdb_details is not None else old_movie.directors
+        ),
+        release_year=(
+            tmdb_details.release_year
+            if tmdb_details is not None
+            else old_movie.release_year
+        ),
+        duration=(
+            tmdb_details.runtime_minutes
+            if tmdb_details is not None
+            else old_movie.duration
+        ),
+        languages=(
+            tmdb_details.spoken_languages
+            if tmdb_details is not None
+            else old_movie.languages
+        ),
+        original_language=(
+            tmdb_details.original_language
+            if tmdb_details is not None
+            else old_movie.original_language
+        ),
+        tmdb_last_enriched_at=(
+            tmdb_details.enriched_at if tmdb_details is not None else None
+        ),
+        tmdb_cache_id=cache_id,
+    )
+    movies_crud.upsert_movie(session=session, movie_create=movie_create)
+    showtime_crud.reassign_showtimes_movie(
+        session=session, old_movie_id=old_tmdb_id, new_movie_id=new_tmdb_id
+    )
+    old_movie.currently_listed = False
+    session.flush()
 
 
 def update_movie(

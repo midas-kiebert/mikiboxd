@@ -45,7 +45,7 @@ class _UserBase(SQLModel):
         sa_column_kwargs={"index": True},
         foreign_key="letterboxd.letterboxd_username",
     )
-    notify_watchlist_digest_enabled: bool = Field(default=True)
+    notify_watchlist_digest_enabled: bool = Field(default=False)
     notify_watchlist_digest_frequency: DigestFrequency = Field(
         sa_column=Column(
             SAEnum(

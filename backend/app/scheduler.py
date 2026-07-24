@@ -23,13 +23,31 @@ _TIMEZONE = ZoneInfo("Europe/Amsterdam")
 
 
 def _scrape_data() -> None:
-    """Run the nightly scrape — fetches showtimes for all cinemas and syncs them to the DB."""
+    """Run a scrape — fetches showtimes for all cinemas and syncs them to the DB.
+
+    Runs every 6 hours. Each run stores its recap; ``_send_daily_scrape_recap``
+    emails them together once a day.
+    """
     from app.scraping.runner import run
 
     try:
         run()
     except Exception:
-        logger.exception("Failed to run nightly scrape job")
+        logger.exception("Failed to run scrape job")
+
+
+def _send_daily_scrape_recap() -> None:
+    """Email one recap covering every scrape run in the last 24 hours.
+
+    Runs daily. Errors are caught so a single failure does not stop the
+    scheduler.
+    """
+    from app.scraping.runner import send_daily_recap
+
+    try:
+        send_daily_recap()
+    except Exception:
+        logger.exception("Failed to send daily scrape recap")
 
 
 def _send_interested_showtime_reminders() -> None:
@@ -133,8 +151,13 @@ if __name__ == "__main__":
     scheduler = BlockingScheduler()
     scheduler.add_job(
         func=_scrape_data,
-        trigger=CronTrigger(hour=3, minute=0, timezone=_TIMEZONE),
-        id="nightly_scrape",
+        trigger=CronTrigger(hour="0,6,12,18", minute=0, timezone=_TIMEZONE),
+        id="scrape_data",
+    )
+    scheduler.add_job(
+        func=_send_daily_scrape_recap,
+        trigger=CronTrigger(hour=9, minute=0, timezone=_TIMEZONE),
+        id="send_daily_scrape_recap",
     )
     scheduler.add_job(
         func=_send_interested_showtime_reminders,

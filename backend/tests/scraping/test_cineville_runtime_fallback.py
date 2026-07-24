@@ -25,6 +25,7 @@ def _tmdb_details(*, runtime_minutes: int | None) -> SimpleNamespace:
         release_year=2025,
         runtime_minutes=runtime_minutes,
         spoken_languages=["nl"],
+        original_language=None,
         original_title=None,
         enriched_at=None,
     )

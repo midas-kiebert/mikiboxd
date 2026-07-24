@@ -27,6 +27,9 @@ const AdminNav = () => (
     <Button asChild size="sm" variant="outline">
       <Link to="/admin/reports">Reports</Link>
     </Button>
+    <Button asChild size="sm" variant="outline">
+      <Link to="/admin/scrapes">Scrapes</Link>
+    </Button>
   </Stack>
 )
 

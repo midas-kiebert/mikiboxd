@@ -15,7 +15,11 @@ from app.models.watched_selection import WatchedSelection
 from app.models.watchlist_selection import WatchlistSelection
 from app.utils import now_amsterdam_naive
 
-MISSING_STREAK_TO_DEACTIVATE = 2
+# A showtime is only soft-deleted after it has been missing for this many
+# consecutive successful runs. At the 6-hourly scrape cadence this means a
+# showtime must be absent for ~18h before removal, which absorbs a single
+# flaky scrape (e.g. a transient Cineville rate-limit) without dropping films.
+MISSING_STREAK_TO_DEACTIVATE = 3
 MIN_BASELINE_FOR_RATIO_GUARD = 10
 MIN_OBSERVED_RATIO = 0.30
 ORPHAN_DELETE_CUTOFF_DAYS = 1
@@ -140,15 +144,21 @@ def cleanup_letterboxd_data(
     )
 
 
-def fallback_source_event_key(
+def showtime_identity_event_key(
     *,
     movie_id: int,
     cinema_id: int,
     dt,
-    ticket_link: str | None,
 ) -> str:
-    ticket = ticket_link or ""
-    return f"{movie_id}|{cinema_id}|{dt.isoformat()}|{ticket}"
+    """Stable presence key for a showtime, keyed on its unique identity.
+
+    Deliberately excludes volatile fields (Cineville event/production UUIDs,
+    rotating ticket URLs). Those changed almost every run, which re-keyed the
+    presence and let the missing-streak logic delete-and-recreate showtimes.
+    ``(movie_id, cinema_id, datetime)`` is exactly the showtime's unique
+    constraint, so one showtime maps to exactly one presence per source stream.
+    """
+    return f"{movie_id}|{cinema_id}|{dt.isoformat()}"
 
 
 def record_failed_run(
@@ -193,24 +203,6 @@ def _latest_success_observed_count(
     if run is None:
         return None
     return run.observed_showtime_count
-
-
-def _latest_run(
-    *,
-    session: Session,
-    source_stream: str,
-    exclude_run_id: int,
-) -> ScrapeRun | None:
-    stmt = (
-        select(ScrapeRun)
-        .where(
-            ScrapeRun.source_stream == source_stream,
-            ScrapeRun.id != exclude_run_id,
-        )
-        .order_by(col(ScrapeRun.started_at).desc())
-        .limit(1)
-    )
-    return session.exec(stmt).first()
 
 
 def _upsert_observed_presence(
@@ -434,11 +426,6 @@ def record_success_run(
         source_stream=source_stream,
         exclude_run_id=run_id,
     )
-    previous_run = _latest_run(
-        session=session,
-        source_stream=source_stream,
-        exclude_run_id=run_id,
-    )
 
     degraded_reason: str | None = None
     suspicious_reason: str | None = None
@@ -458,13 +445,11 @@ def record_success_run(
                 f"({previous_success_count})."
             )
     if suspicious_reason is not None:
-        same_suspicious_as_previous = (
-            previous_run is not None
-            and previous_run.status == ScrapeRunStatus.DEGRADED
-            and previous_run.observed_showtime_count == observed_count
-        )
-        if not same_suspicious_as_previous:
-            degraded_reason = suspicious_reason
+        # Always treat a suspicious run as degraded, which skips deletion. A
+        # source that observed 0 or far fewer showtimes than usual is far more
+        # likely to be a transient failure than a real collapse; stale rows are
+        # cleaned up safely by date-based expiry instead of being deleted here.
+        degraded_reason = suspicious_reason
 
     remapped_showtime_ids: set[int] = set()
     for source_event_key, showtime_id in deduped.items():

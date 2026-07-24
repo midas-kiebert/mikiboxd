@@ -76,7 +76,10 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-CINEVILLE_CONCURRENCY = _env_int("CINEVILLE_CONCURRENCY", 15)
+# Cineville rate-limits (HTTP 429) when the scrape fans out a request per movie.
+# Keep concurrency modest; the retry/backoff in cineville_client absorbs the
+# occasional 429, and the 6-hourly cadence leaves plenty of time.
+CINEVILLE_CONCURRENCY = _env_int("CINEVILLE_CONCURRENCY", 5)
 CINEMA_SCRAPER_CONCURRENCY = _env_int("CINEMA_SCRAPER_CONCURRENCY", 2)
 CINEVILLE_HTTP_TOTAL_LIMIT = _env_int(
     "CINEVILLE_HTTP_TOTAL_LIMIT",
@@ -249,9 +252,16 @@ def _persist_cineville_results_batch(
                     )
                     observed_by_stream[source_stream].append(
                         scrape_sync_service.ObservedPresence(
+                            # Key on the resolved showtime's identity, not the
+                            # volatile Cineville event/production UUIDs (which
+                            # rotate every scrape and caused delete/recreate
+                            # churn).
                             source_event_key=(
-                                f"production:{prepared_movie.production_id}"
-                                f"|start:{showtime_data.start_date}"
+                                scrape_sync_service.showtime_identity_event_key(
+                                    movie_id=db_showtime.movie_id,
+                                    cinema_id=db_showtime.cinema_id,
+                                    dt=db_showtime.datetime,
+                                )
                             ),
                             showtime_id=db_showtime.id,
                         )

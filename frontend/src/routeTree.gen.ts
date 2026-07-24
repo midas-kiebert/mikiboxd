@@ -32,6 +32,7 @@ import { Route as LayoutAdminIndexRouteImport } from './routes/_layout/admin/ind
 import { Route as PingShowtimeIdSenderRouteImport } from './routes/ping.$showtimeId.$sender'
 import { Route as LayoutMeShowtimesRouteImport } from './routes/_layout/me/showtimes'
 import { Route as LayoutAdminShowtimesRouteImport } from './routes/_layout/admin/showtimes'
+import { Route as LayoutAdminScrapesRouteImport } from './routes/_layout/admin/scrapes'
 import { Route as LayoutAdminReportsRouteImport } from './routes/_layout/admin/reports'
 import { Route as LayoutAdminMoviesRouteImport } from './routes/_layout/admin/movies'
 import { Route as LayoutUserIdShowtimesRouteImport } from './routes/_layout/$userId/showtimes'
@@ -150,6 +151,11 @@ const LayoutAdminShowtimesRoute = LayoutAdminShowtimesRouteImport.update({
   path: '/admin/showtimes',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutAdminScrapesRoute = LayoutAdminScrapesRouteImport.update({
+  id: '/admin/scrapes',
+  path: '/admin/scrapes',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutAdminReportsRoute = LayoutAdminReportsRouteImport.update({
   id: '/admin/reports',
   path: '/admin/reports',
@@ -188,6 +194,7 @@ export interface FileRoutesByFullPath {
   '/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
   '/admin/movies': typeof LayoutAdminMoviesRoute
   '/admin/reports': typeof LayoutAdminReportsRoute
+  '/admin/scrapes': typeof LayoutAdminScrapesRoute
   '/admin/showtimes': typeof LayoutAdminShowtimesRoute
   '/me/showtimes': typeof LayoutMeShowtimesRoute
   '/ping/$showtimeId/$sender': typeof PingShowtimeIdSenderRoute
@@ -215,6 +222,7 @@ export interface FileRoutesByTo {
   '/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
   '/admin/movies': typeof LayoutAdminMoviesRoute
   '/admin/reports': typeof LayoutAdminReportsRoute
+  '/admin/scrapes': typeof LayoutAdminScrapesRoute
   '/admin/showtimes': typeof LayoutAdminShowtimesRoute
   '/me/showtimes': typeof LayoutMeShowtimesRoute
   '/ping/$showtimeId/$sender': typeof PingShowtimeIdSenderRoute
@@ -244,6 +252,7 @@ export interface FileRoutesById {
   '/_layout/$userId/showtimes': typeof LayoutUserIdShowtimesRoute
   '/_layout/admin/movies': typeof LayoutAdminMoviesRoute
   '/_layout/admin/reports': typeof LayoutAdminReportsRoute
+  '/_layout/admin/scrapes': typeof LayoutAdminScrapesRoute
   '/_layout/admin/showtimes': typeof LayoutAdminShowtimesRoute
   '/_layout/me/showtimes': typeof LayoutMeShowtimesRoute
   '/ping/$showtimeId/$sender': typeof PingShowtimeIdSenderRoute
@@ -273,6 +282,7 @@ export interface FileRouteTypes {
     | '/$userId/showtimes'
     | '/admin/movies'
     | '/admin/reports'
+    | '/admin/scrapes'
     | '/admin/showtimes'
     | '/me/showtimes'
     | '/ping/$showtimeId/$sender'
@@ -300,6 +310,7 @@ export interface FileRouteTypes {
     | '/$userId/showtimes'
     | '/admin/movies'
     | '/admin/reports'
+    | '/admin/scrapes'
     | '/admin/showtimes'
     | '/me/showtimes'
     | '/ping/$showtimeId/$sender'
@@ -328,6 +339,7 @@ export interface FileRouteTypes {
     | '/_layout/$userId/showtimes'
     | '/_layout/admin/movies'
     | '/_layout/admin/reports'
+    | '/_layout/admin/scrapes'
     | '/_layout/admin/showtimes'
     | '/_layout/me/showtimes'
     | '/ping/$showtimeId/$sender'
@@ -513,6 +525,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminShowtimesRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/admin/scrapes': {
+      id: '/_layout/admin/scrapes'
+      path: '/admin/scrapes'
+      fullPath: '/admin/scrapes'
+      preLoaderRoute: typeof LayoutAdminScrapesRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/admin/reports': {
       id: '/_layout/admin/reports'
       path: '/admin/reports'
@@ -546,6 +565,7 @@ interface LayoutRouteChildren {
   LayoutUserIdShowtimesRoute: typeof LayoutUserIdShowtimesRoute
   LayoutAdminMoviesRoute: typeof LayoutAdminMoviesRoute
   LayoutAdminReportsRoute: typeof LayoutAdminReportsRoute
+  LayoutAdminScrapesRoute: typeof LayoutAdminScrapesRoute
   LayoutAdminShowtimesRoute: typeof LayoutAdminShowtimesRoute
   LayoutMeShowtimesRoute: typeof LayoutMeShowtimesRoute
   LayoutAdminIndexRoute: typeof LayoutAdminIndexRoute
@@ -560,6 +580,7 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutUserIdShowtimesRoute: LayoutUserIdShowtimesRoute,
   LayoutAdminMoviesRoute: LayoutAdminMoviesRoute,
   LayoutAdminReportsRoute: LayoutAdminReportsRoute,
+  LayoutAdminScrapesRoute: LayoutAdminScrapesRoute,
   LayoutAdminShowtimesRoute: LayoutAdminShowtimesRoute,
   LayoutMeShowtimesRoute: LayoutMeShowtimesRoute,
   LayoutAdminIndexRoute: LayoutAdminIndexRoute,

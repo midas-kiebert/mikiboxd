@@ -72,6 +72,7 @@ Legend:
 - [x] `showtime_visibility.py` — Per-showtime visibility mode + effective-visibility cache
 - [x] `showtime_source_presence.py` — Tracks which scraper provided a showtime
 - [x] `scrape_run.py` — Metadata about each scraping execution
+- [x] `scrape_recap.py` — Stored per-run scrape recap (stitched into one daily email)
 - [x] `friendship.py` — Accepted friend relationships (+ per-friend `shares_status`)
 - [x] `filter_preset.py` — Saved filter configurations (movies or showtimes scope)
 - ~~`friend_group.py`~~ — deleted (friend groups retired in the visibility overhaul)
@@ -107,6 +108,7 @@ Legend:
 - [ ] `city.py` — City response shape
 - [ ] `analytics_event.py` — Event create/public response shapes
 - [ ] `analytics_dashboard.py` — Admin analytics-overview response shape
+- [x] `scrape_monitor.py` — Admin scrape-run/recap response shapes (deltas + anomaly flags)
 - [ ] `showtime_report.py` — Showtime report create/update/admin-view shapes
 - [ ] `admin.py` — Admin movie/showtime moderation request/response shapes
 
@@ -152,6 +154,7 @@ Legend:
 - [ ] `watchlist.py` — Watchlist sync logic
 - [ ] `scrape_sync.py` — Triggers scraping from the API layer
 - [ ] `analytics_dashboard.py` — Aggregates AnalyticsEvent/Notification/ShowtimePing/User data for the admin overview
+- [x] `scrape_monitor.py` — Read-only aggregation of ScrapeRun/ScrapeRecap for the admin scrape monitor (deltas + anomaly flags)
 
 ---
 
@@ -188,6 +191,7 @@ Legend:
 
 - [ ] `runner.py` — Main scraping orchestrator ⚠️ Very large (2042 LOC) — needs splitting
 - [ ] `scrape.py` — Executes a single scraper and stores results
+- [x] `cineville_client.py` — Shared Cineville POST helper with 429/5xx retry + backoff
 - [ ] `base_cinema_scraper.py` — Abstract base class for cinema scrapers ⚠️ Too thin (18 LOC)
 - [ ] `date_conversion.py` — Date/time parsing helpers for scrapers
 - [ ] `get_movies.py` — Fetches movies from the DB for enrichment

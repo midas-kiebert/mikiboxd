@@ -1,11 +1,11 @@
+import base64
 import json
 import re
 import sys
-import threading
 import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -14,10 +14,10 @@ from rapidfuzz import fuzz
 from sqlmodel import Session, col, delete, select
 
 from app.api.deps import get_db_context
-from app.core.config import settings
 from app.mailer import send_email
 from app.models.cinema import Cinema
 from app.models.movie import Movie
+from app.models.scrape_recap import ScrapeRecap
 from app.models.scrape_run import ScrapeRun, ScrapeRunStatus
 from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
@@ -41,6 +41,7 @@ from app.services.scrape_sync import DeletedShowtimeInfo
 from app.utils import clean_title, now_amsterdam_naive
 
 RECAP_EMAIL_TO = "scraper.mikino@midaskiebert.nl"
+RECAP_AGGREGATION_WINDOW = timedelta(hours=24)
 STAGE_PATTERN = re.compile(r"(^|\s)stage=([^|]+)")
 TITLE_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
 CINEVILLE_STREAM_PREFIX = "cineville:"
@@ -1418,7 +1419,7 @@ def _render_recap_html(
     """
 
 
-def _send_recap_email(
+def _store_run_recap(
     *,
     started_at,
     finished_at,
@@ -1428,6 +1429,7 @@ def _send_recap_email(
     before_snapshot: FutureSnapshot,
     after_snapshot: FutureSnapshot,
 ) -> None:
+    """Render this run's recap and persist it for the daily aggregated email."""
     tmdb_misses = [lookup for lookup in tmdb_lookups if lookup["tmdb_id"] is None]
 
     deleted_showtimes = _dedupe_deleted_showtimes(summary.deleted_showtimes)
@@ -1615,88 +1617,150 @@ def _send_recap_email(
         f"missing_cinema_insert_failures_{started_at:%Y%m%d_%H%M%S}.json"
     )
 
-    send_email(
-        email_to=RECAP_EMAIL_TO,
-        subject=(
-            "Cinema Scrape Recap "
-            f"{started_at:%Y-%m-%d %H:%M} -> {finished_at:%Y-%m-%d %H:%M}"
-        ),
-        html_content=html,
-        attachments=[
-            {
-                "filename": tmdb_lookup_attachment_name,
-                "data": tmdb_lookup_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": scrape_runs_attachment_name,
-                "data": scrape_runs_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": cinema_scraper_runs_attachment_name,
-                "data": cinema_scraper_runs_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": letterboxd_failures_attachment_name,
-                "data": letterboxd_failures_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": one_time_misses_attachment_name,
-                "data": one_time_misses_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": missing_cinema_insert_failures_attachment_name,
-                "data": missing_cinema_insert_failures_attachment_data,
-                "mime_type": "application/json",
-            },
-        ],
+    subject = (
+        "Cinema Scrape Recap "
+        f"{started_at:%Y-%m-%d %H:%M} -> {finished_at:%Y-%m-%d %H:%M}"
+    )
+    attachments = [
+        {
+            "filename": tmdb_lookup_attachment_name,
+            "data": tmdb_lookup_attachment_data,
+            "mime_type": "application/json",
+        },
+        {
+            "filename": scrape_runs_attachment_name,
+            "data": scrape_runs_attachment_data,
+            "mime_type": "application/json",
+        },
+        {
+            "filename": cinema_scraper_runs_attachment_name,
+            "data": cinema_scraper_runs_attachment_data,
+            "mime_type": "application/json",
+        },
+        {
+            "filename": letterboxd_failures_attachment_name,
+            "data": letterboxd_failures_attachment_data,
+            "mime_type": "application/json",
+        },
+        {
+            "filename": one_time_misses_attachment_name,
+            "data": one_time_misses_attachment_data,
+            "mime_type": "application/json",
+        },
+        {
+            "filename": missing_cinema_insert_failures_attachment_name,
+            "data": missing_cinema_insert_failures_attachment_data,
+            "mime_type": "application/json",
+        },
+    ]
+    _persist_run_recap(
+        started_at=started_at,
+        finished_at=finished_at,
+        subject=subject,
+        html=html,
+        attachments=attachments,
     )
 
 
-def _send_recap_email_with_timeout(
+def _persist_run_recap(
     *,
     started_at: datetime,
     finished_at: datetime,
-    summary: ScrapeExecutionSummary,
-    tmdb_lookups: list[dict[str, Any]],
-    letterboxd_failures: list[dict[str, Any]],
-    before_snapshot: FutureSnapshot,
-    after_snapshot: FutureSnapshot,
+    subject: str,
+    html: str,
+    attachments: list[dict[str, Any]],
 ) -> None:
-    timeout_seconds = max(1.0, float(settings.SCRAPE_RECAP_EMAIL_TIMEOUT_SECONDS))
-    done = threading.Event()
-    error_holder: dict[str, Exception] = {}
-
-    def _worker() -> None:
-        try:
-            _send_recap_email(
+    """Store this run's rendered recap + attachments for the daily digest."""
+    serialized_attachments = [
+        {
+            "filename": attachment["filename"],
+            "mime_type": attachment["mime_type"],
+            "data_b64": base64.b64encode(attachment["data"]).decode("ascii"),
+        }
+        for attachment in attachments
+    ]
+    with get_db_context() as session:
+        session.add(
+            ScrapeRecap(
                 started_at=started_at,
                 finished_at=finished_at,
-                summary=summary,
-                tmdb_lookups=tmdb_lookups,
-                letterboxd_failures=letterboxd_failures,
-                before_snapshot=before_snapshot,
-                after_snapshot=after_snapshot,
+                subject=subject,
+                html=html,
+                attachments_json=json.dumps(serialized_attachments),
             )
-        except Exception as exc:  # pragma: no cover - reported via error_holder
-            error_holder["error"] = exc
-        finally:
-            done.set()
-
-    thread = threading.Thread(target=_worker, name="scrape-recap-email", daemon=True)
-    thread.start()
-    if not done.wait(timeout_seconds):
-        logger.error(
-            "Timed out sending scrape recap email after %.1fs; continuing shutdown.",
-            timeout_seconds,
         )
-        return
-    if "error" in error_holder:
-        raise error_holder["error"]
+        session.commit()
+
+
+def send_daily_recap() -> bool:
+    """Email one recap covering every scrape run stored in the last 24 hours.
+
+    Runs are rendered per-run (``_store_run_recap``) and stitched together here,
+    so the scrape can run several times a day while only one recap email is
+    sent. Sent recaps are deleted; stragglers older than the window are pruned
+    so a failed send can't let the table grow unbounded.
+    """
+    now = now_amsterdam_naive()
+    window_start = now - RECAP_AGGREGATION_WINDOW
+
+    with get_db_context() as session:
+        recaps = list(
+            session.exec(
+                select(ScrapeRecap)
+                .where(ScrapeRecap.started_at >= window_start)
+                .order_by(col(ScrapeRecap.started_at).asc())
+            ).all()
+        )
+        if not recaps:
+            logger.info("No scrape recaps stored in the last 24h; nothing to send.")
+            return False
+
+        first_started = recaps[0].started_at
+        last_finished = recaps[-1].finished_at
+        subject = (
+            f"Cinema Scrape Daily Recap {first_started:%Y-%m-%d %H:%M} -> "
+            f"{last_finished:%Y-%m-%d %H:%M} ({len(recaps)} run(s))"
+        )
+        sections = [
+            f"<h1>Daily scrape recap — {len(recaps)} run(s) in the last 24h</h1>"
+        ]
+        attachments: list[dict[str, Any]] = []
+        for recap in recaps:
+            sections.append(
+                "<hr/>"
+                f"<h1>Run {escape(recap.started_at.isoformat())} &rarr; "
+                f"{escape(recap.finished_at.isoformat())}</h1>"
+                f"{recap.html}"
+            )
+            for attachment in json.loads(recap.attachments_json):
+                attachments.append(
+                    {
+                        "filename": attachment["filename"],
+                        "data": base64.b64decode(attachment["data_b64"]),
+                        "mime_type": attachment["mime_type"],
+                    }
+                )
+        html = "".join(sections)
+        sent_ids = [recap.id for recap in recaps]
+
+    send_email(
+        email_to=RECAP_EMAIL_TO,
+        subject=subject,
+        html_content=html,
+        attachments=attachments,
+    )
+
+    with get_db_context() as session:
+        session.execute(delete(ScrapeRecap).where(col(ScrapeRecap.id).in_(sent_ids)))
+        # Prune any stragglers from earlier failed sends so the table stays small.
+        session.execute(
+            delete(ScrapeRecap).where(
+                col(ScrapeRecap.started_at) < now - 2 * RECAP_AGGREGATION_WINDOW
+            )
+        )
+        session.commit()
+    logger.info("Sent daily scrape recap covering %s run(s).", len(sent_ids))
+    return True
 
 
 def run() -> None:
@@ -1822,7 +1886,7 @@ def run() -> None:
                     exc_info=True,
                 )
             try:
-                _send_recap_email_with_timeout(
+                _store_run_recap(
                     started_at=started_at,
                     finished_at=finished_at,
                     summary=summary,
@@ -1831,9 +1895,9 @@ def run() -> None:
                     before_snapshot=before_snapshot,
                     after_snapshot=after_snapshot,
                 )
-                logger.info("Sent scrape recap email.")
+                logger.info("Stored scrape recap for the daily digest.")
             except Exception:
-                logger.error("Failed to send scrape recap email.", exc_info=True)
+                logger.error("Failed to store scrape recap.", exc_info=True)
 
     if fatal_error is not None:
         sys.exit(1)

@@ -153,11 +153,10 @@ class UitkijkScraper(BaseCinemaScraper):
                     showtime_create=showtime_create,
                     commit=False,
                 )
-                source_event_key = scrape_sync_service.fallback_source_event_key(
+                source_event_key = scrape_sync_service.showtime_identity_event_key(
                     movie_id=showtime_create.movie_id,
                     cinema_id=showtime_create.cinema_id,
                     dt=showtime_create.datetime,
-                    ticket_link=showtime_create.ticket_link,
                 )
                 observed_presences.append((source_event_key, showtime.id))
             session.commit()

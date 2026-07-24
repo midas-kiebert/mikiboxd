@@ -27,6 +27,18 @@ from app.services import showtimes as showtimes_services
 
 CINEMA = "Kriterion"
 
+# The feed sits behind bot protection that 402/403s the default python-requests
+# User-Agent (the old storage.googleapis.com buffer URL 403'd outright); a
+# browser User-Agent gets the JSON reliably.
+REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+    ),
+    "Accept": "application/json,*/*",
+    "Referer": "https://www.kriterion.nl/",
+}
+
 
 class Show(BaseModel):
     id: int
@@ -75,7 +87,7 @@ class KriterionScraper(BaseCinemaScraper):
         assert self.cinema_id is not None
         url_shows = "https://www.kriterion.nl/data/shows.json"
 
-        response = requests.get(url_shows)
+        response = requests.get(url_shows, headers=REQUEST_HEADERS, timeout=30)
         response.raise_for_status()
 
         data = ShowsResponse.model_validate(response.json())
@@ -146,11 +158,10 @@ class KriterionScraper(BaseCinemaScraper):
                     showtime_create=showtime,
                     commit=False,
                 )
-                source_event_key = scrape_sync_service.fallback_source_event_key(
+                source_event_key = scrape_sync_service.showtime_identity_event_key(
                     movie_id=showtime.movie_id,
                     cinema_id=showtime.cinema_id,
                     dt=showtime.datetime,
-                    ticket_link=showtime.ticket_link,
                 )
                 observed_presences.append((source_event_key, db_showtime.id))
             session.commit()

@@ -40,6 +40,24 @@ class GoingStatus(str, Enum):
 
 
 @unique
+class VisibilityMode(str, Enum):
+    """Who may see a user's attendance status for a showtime.
+
+    Stored per showtime on ShowtimeVisibilitySetting.
+
+    - ALL_FRIENDS: every friend you haven't opted out of sharing with.
+    - INVITED_ONLY: nobody by default.
+
+    Regardless of the mode, your status is always visible to friends you
+    invited, friends who invited you, and friends co-invited by the same person
+    who invited you.
+    """
+
+    ALL_FRIENDS = "ALL_FRIENDS"
+    INVITED_ONLY = "INVITED_ONLY"
+
+
+@unique
 class TimeOfDay(str, Enum):
     """Coarse time-of-day bucket used for showtime filtering.
 
@@ -55,11 +73,30 @@ class TimeOfDay(str, Enum):
 
 
 @unique
-class FilterPresetScope(str, Enum):
-    """Whether a saved filter preset applies to the movies list or showtimes list."""
+class SearchField(str, Enum):
+    """Which attribute the movie search ``query`` is matched against.
 
-    SHOWTIMES = "SHOWTIMES"
-    MOVIES = "MOVIES"
+    TITLE also matches ``original_title``; the others match arrays/related
+    tables rather than a single Movie column — see ``apply_search_filter``.
+    """
+
+    TITLE = "title"
+    DIRECTOR = "director"
+    ACTOR = "actor"
+    CINEMA = "cinema"
+    FRIEND = "friend"
+
+
+@unique
+class Language(str, Enum):
+    """Languages selectable in the language filter.
+
+    Values are ISO-639-1 codes matching ``Movie.original_language`` and the
+    codes found in ``Showtime.subtitles``.
+    """
+
+    DUTCH = "nl"
+    ENGLISH = "en"
 
 
 @unique
@@ -68,6 +105,19 @@ class NotificationChannel(str, Enum):
 
     PUSH = "push"  # Mobile push notification via FCM
     EMAIL = "email"
+
+
+@unique
+class DigestFrequency(str, Enum):
+    """How often a user wants to receive the watchlist new-showtime email digest.
+
+    DAILY sends every newly-available movie every day. WEEKLY_OR_URGENT holds
+    new movies back for up to a week, but sends early if one of the pending
+    showtimes is happening soon — see app/services/watchlist_digest.py.
+    """
+
+    DAILY = "daily"
+    WEEKLY_OR_URGENT = "weekly_or_urgent"
 
 
 @unique
@@ -94,3 +144,40 @@ class NotificationType(str, Enum):
     INVITE_RESPONSE = "invite_response"
     # Someone accepted a friend request you sent.
     FRIEND_REQUEST_ACCEPTED = "friend_request_accepted"
+
+
+@unique
+class AnalyticsEventName(str, Enum):
+    """Closed set of client/server-fired usage events recorded for the beta.
+
+    Fired via POST /me/events from web/mobile (except LOGIN, which the login
+    route records itself) and aggregated by app/services/analytics_dashboard.py.
+    """
+
+    LOGIN = "login"
+    APP_OPEN = "app_open"
+    FILTER_APPLIED = "filter_applied"
+    PRESET_USED = "preset_used"
+    INVITE_SENT = "invite_sent"
+    NOTIFICATION_CLICKED = "notification_clicked"
+
+
+@unique
+class ShowtimeReportReason(str, Enum):
+    """Why a user is flagging a showtime as wrong."""
+
+    INCORRECT_MOVIE = "incorrect_movie"
+    INCORRECT_TIME = "incorrect_time"
+    DOES_NOT_EXIST = "does_not_exist"
+    DUPLICATE = "duplicate"
+    WRONG_SUBTITLES = "wrong_subtitles"
+    OTHER = "other"
+
+
+@unique
+class ShowtimeReportStatus(str, Enum):
+    """Moderation state of a user-submitted showtime report."""
+
+    OPEN = "open"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"

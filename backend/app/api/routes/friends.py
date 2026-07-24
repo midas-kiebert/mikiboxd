@@ -7,6 +7,7 @@ from app.api.deps import (
     SessionDep,
 )
 from app.models.auth_schemas import Message
+from app.schemas.friendship import FriendStatusSharingUpdate
 from app.services import friends as friends_service
 
 router = APIRouter(prefix="/friends", tags=["friends"])
@@ -59,6 +60,22 @@ def cancel_friend_request(
         session=session,
         current_user=current_user.id,
         receiver_id=receiver_id,
+    )
+
+
+@router.put("/{friend_id}/status-visibility")
+def set_friend_status_sharing(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    friend_id: uuid.UUID,
+    payload: FriendStatusSharingUpdate,
+) -> Message:
+    return friends_service.set_friend_status_sharing(
+        session=session,
+        current_user=current_user.id,
+        friend_id=friend_id,
+        shares_status=payload.shares_status,
     )
 
 

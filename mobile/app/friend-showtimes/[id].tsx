@@ -2,7 +2,8 @@
  * Expo Router screen/module for friend-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, RefreshControl, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { DateTime } from 'luxon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -18,6 +19,7 @@ import FiltersModal from '@/components/filters/FiltersModal';
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import ShowtimeCard from '@/components/showtimes/ShowtimeCard';
+import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import { useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { ThemedText } from '@/components/themed-text';
@@ -75,15 +77,25 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     watchlistOnly,
     appliedWatchlistOnly,
     setWatchlistOnly,
+    watchlistExclude,
+    setWatchlistExclude,
     hideWatched,
     appliedHideWatched,
     setHideWatched,
+    watchedOnly,
+    setWatchedOnly,
     groupByMovie,
     setGroupByMovie,
     selectedDays: sharedSelectedDays,
     setSelectedDays,
     selectedTimeRanges: sharedSelectedTimeRanges,
     setSelectedTimeRanges,
+    selectedListIds,
+    setSelectedListIds,
+    excludeListIds,
+    setExcludeListIds,
+    selectedLanguages,
+    setSelectedLanguages,
     sessionCinemaIds,
     setSessionCinemaIds,
   } = useSharedTabFilters();
@@ -92,15 +104,20 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
 
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
+  const effectiveWatchlistExclude = hasLetterboxdUsername ? watchlistExclude : false;
   const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
   const effectiveAppliedHideWatched = hasLetterboxdUsername ? appliedHideWatched : false;
+  const effectiveWatchedOnly = hasLetterboxdUsername ? watchedOnly : false;
   const selectedDays = sharedSelectedDays ?? EMPTY_DAYS;
   const selectedTimeRanges = sharedSelectedTimeRanges ?? EMPTY_TIME_RANGES;
 
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
   const resolvedApiDays = useMemo(
-    () => resolveDaySelectionsForApi(selectedDays),
+    () =>
+      resolveDaySelectionsForApi(selectedDays, {
+        startDate: DateTime.fromISO(dayAnchorKey, { zone: "Europe/Amsterdam" }),
+      }),
     [dayAnchorKey, selectedDays]
   );
 
@@ -134,10 +151,20 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
     selectedStatuses: (includeInterested ? ['GOING', 'INTERESTED'] : ['GOING']) as GoingStatus[],
     watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
+    watchlistExclude: effectiveWatchlistExclude ? true : undefined,
     hideWatched: effectiveAppliedHideWatched ? true : undefined,
+    watchedOnly: effectiveWatchedOnly ? true : undefined,
+    selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
+    excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
+    selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
   }), [
     effectiveAppliedWatchlistOnly,
+    effectiveWatchlistExclude,
     effectiveAppliedHideWatched,
+    effectiveWatchedOnly,
+    selectedListIds,
+    excludeListIds,
+    selectedLanguages,
     effectiveCinemaIds,
     includeInterested,
     resolvedApiDays,
@@ -198,10 +225,15 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
 
   const handleClearAll = () => {
     setWatchlistOnly(false);
+    setWatchlistExclude(false);
     setHideWatched(false);
+    setWatchedOnly(false);
     setGroupByMovie(false);
     setSelectedDays([]);
     setSelectedTimeRanges([]);
+    setSelectedListIds([]);
+    setExcludeListIds([]);
+    setSelectedLanguages([]);
     if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
   };
 
@@ -230,10 +262,14 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     </TouchableOpacity>
   );
 
+  // Clear sections while refreshing so pull-to-refresh visibly reloads, even
+  // when the refetched data is unchanged.
+  const visibleMovieSections = refreshing ? [] : movieSections;
+
   const moviesContent = groupByMovie ? (
     <SectionList
       style={styles.flex}
-      sections={movieSections}
+      sections={visibleMovieSections}
       keyExtractor={(item) => item.id.toString()}
       renderSectionHeader={({ section }) => (
         <View style={styles.movieSectionHeader}>
@@ -247,16 +283,19 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         <ShowtimeCard
           showtime={item}
           onPress={(st) => openShowtimeModal(st, { openedFrom: { userId: userId ?? undefined } })}
-          onLongPress={(st) => router.push(`/movie/${st.movie.id}`)}
+          onLongPress={(st) =>
+            router.push({
+              pathname: "/movie/[id]",
+              params: { id: String(st.movie.id), cinemaId: String(st.cinema.id) },
+            })
+          }
         />
       )}
       contentContainerStyle={styles.movieSectionContent}
       showsVerticalScrollIndicator={false}
       ListEmptyComponent={
-        isLoading || isFetching ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color={colors.tint} />
-          </View>
+        isLoading || isFetching || refreshing ? (
+          <SkeletonRows height={112} />
         ) : (
           <View style={styles.centerContainer}>
             <ThemedText style={styles.emptyText}>No showtimes in this agenda</ThemedText>
@@ -268,13 +307,13 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
           <View style={styles.footerLoader}>
             <ActivityIndicator size="small" color={colors.tint} />
           </View>
-        ) : !hasNextPage && !isLoading && !isFetching && showtimes.length > 0 ? (
+        ) : !hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0 ? (
           <ListEndFooter label="No more showtimes" />
         ) : null
       }
       onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
       onEndReachedThreshold={2}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
     />
   ) : undefined;
 
@@ -306,8 +345,12 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
               setGroupByMovie={setGroupByMovie}
               watchlistOnly={effectiveWatchlistOnly}
               setWatchlistOnly={setWatchlistOnly}
+              watchlistExclude={effectiveWatchlistExclude}
+              setWatchlistExclude={setWatchlistExclude}
               hideWatched={effectiveHideWatched}
               setHideWatched={setHideWatched}
+              watchedOnly={effectiveWatchedOnly}
+              setWatchedOnly={setWatchedOnly}
               canUseWatchlistFilter={hasLetterboxdUsername}
               selectedShowtimeFilter="all"
               setSelectedShowtimeFilter={() => {}}
@@ -318,6 +361,12 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
               setSelectedTimeRanges={setSelectedTimeRanges}
               selectedRuntimeRanges={[]}
               setSelectedRuntimeRanges={() => {}}
+              selectedListIds={selectedListIds}
+              setSelectedListIds={setSelectedListIds}
+              excludeListIds={excludeListIds}
+              setExcludeListIds={setExcludeListIds}
+              selectedLanguages={selectedLanguages}
+              setSelectedLanguages={setSelectedLanguages}
               onClearAll={handleClearAll}
             />
           </>
@@ -334,8 +383,12 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         showGroupByMovie
         watchlistOnly={effectiveWatchlistOnly}
         setWatchlistOnly={setWatchlistOnly}
+        watchlistExclude={effectiveWatchlistExclude}
+        setWatchlistExclude={setWatchlistExclude}
         hideWatched={effectiveHideWatched}
         setHideWatched={setHideWatched}
+        watchedOnly={effectiveWatchedOnly}
+        setWatchedOnly={setWatchedOnly}
         canUseWatchlistFilter={hasLetterboxdUsername}
         selectedShowtimeFilter="all"
         setSelectedShowtimeFilter={() => {}}
@@ -349,6 +402,13 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         setSelectedTimeRanges={setSelectedTimeRanges}
         selectedRuntimeRanges={[]}
         setSelectedRuntimeRanges={() => {}}
+        selectedListIds={selectedListIds}
+        setSelectedListIds={setSelectedListIds}
+        excludeListIds={excludeListIds}
+        setExcludeListIds={setExcludeListIds}
+        selectedLanguages={selectedLanguages}
+        setSelectedLanguages={setSelectedLanguages}
+        showLists
         resultCount={groupByMovie ? movieSections.length : showtimes.length}
       />
       <CinemaFilterModal

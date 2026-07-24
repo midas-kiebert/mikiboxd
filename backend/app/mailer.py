@@ -7,17 +7,27 @@ Email templates live in app/email-templates/build/.
 SMTP settings come from environment variables (see core/config.py).
 """
 
+import html
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import emails  # type: ignore
 from jinja2 import Template
 
 from app.core.config import settings
+from app.core.security import generate_watchlist_digest_unsubscribe_token
+
+if TYPE_CHECKING:
+    from app.models.movie import Movie
+    from app.models.showtime import Showtime
 
 logger = logging.getLogger(__name__)
+
+BRAND_NAME = "MiKiNO"
+BRAND_LOGO_URL = "https://mikino.nl/assets/images/mikino-logo.png"
+REPORT_NOTIFICATION_EMAIL = "report@mikino.nl"
 
 
 @dataclass
@@ -102,4 +112,69 @@ def generate_reset_password_email(email_to: str, email: str, token: str) -> Emai
             "link": link,
         },
     )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_watchlist_digest_email(
+    *,
+    email_to: str,
+    movie_entries: list[tuple["Movie", "Showtime"]],
+) -> EmailData:
+    """Generate the watchlist digest email for movies that just got a new showtime."""
+    subject = f"{BRAND_NAME} - New showtimes for your watchlist"
+    movies = [
+        {
+            "title": movie.title,
+            "cinema_name": showtime.cinema.name,
+            "datetime_label": showtime.datetime.strftime("%a, %b %d at %H:%M"),
+            "poster_link": movie.poster_link,
+            "mikino_link": f"{settings.FRONTEND_HOST}/movie/{movie.id}",
+            "letterboxd_link": (
+                f"https://letterboxd.com/film/{movie.letterboxd_slug}/"
+                if movie.letterboxd_slug
+                else None
+            ),
+        }
+        for movie, showtime in movie_entries
+    ]
+    unsubscribe_token = generate_watchlist_digest_unsubscribe_token(email=email_to)
+    unsubscribe_link = (
+        f"{settings.API_HOST}{settings.API_V1_STR}"
+        f"/users/unsubscribe-watchlist-digest?token={unsubscribe_token}"
+    )
+    html_content = _render_email_template(
+        template_name="watchlist_digest.html",
+        context={
+            "brand_name": BRAND_NAME,
+            "logo_url": BRAND_LOGO_URL,
+            "movies": movies,
+            "unsubscribe_link": unsubscribe_link,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_showtime_report_email(
+    *,
+    movie_title: str,
+    cinema_name: str,
+    showtime_datetime_label: str,
+    reason_label: str,
+    message: str | None,
+    reporter_email: str,
+) -> EmailData:
+    """Generate the internal notification sent to report@mikino.nl on every report.
+
+    Plain inline HTML rather than a Jinja template — this is an internal
+    moderation notification, not a branded user-facing email.
+    """
+    subject = f"{BRAND_NAME} - Showtime report: {movie_title} ({reason_label})"
+    admin_link = f"{settings.FRONTEND_HOST}/admin/reports"
+    html_content = f"""
+    <p><strong>{html.escape(movie_title)}</strong> at <strong>{html.escape(cinema_name)}</strong>, {html.escape(showtime_datetime_label)}</p>
+    <p>Reason: {html.escape(reason_label)}</p>
+    <p>Message: {html.escape(message) if message else "(none)"}</p>
+    <p>Reported by: {html.escape(reporter_email)}</p>
+    <p><a href="{admin_link}">Open the reports dashboard</a></p>
+    """
     return EmailData(html_content=html_content, subject=subject)

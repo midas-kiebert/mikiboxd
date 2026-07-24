@@ -4,17 +4,16 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useRouter, useSegments, usePathname, withLayoutContext } from 'expo-router';
 import { createStackNavigator, TransitionPresets, TransitionSpecs } from '@react-navigation/stack';
-import { Appearance, Easing } from 'react-native';
+import { Appearance, Easing, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-import { ApiError, OpenAPI } from 'shared';
+import { ApiError, OpenAPI, installAuthRefreshInterceptor } from 'shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage, setStorage } from 'shared/storage';
 import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
 import * as SystemUI from 'expo-system-ui';
 import * as SplashScreen from 'expo-splash-screen';
-import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -22,10 +21,8 @@ import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { loadThemePreference, useThemePreference } from '@/utils/theme-preference';
-import { installAuthRefreshInterceptor } from '@/utils/auth-refresh';
 import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
 import AppSplash from '@/components/layout/AppSplash';
-import { SHARED_TAB_FILTER_PRESET_SCOPE } from '@/components/filters/shared-tab-filters';
 import {
   displayPresetOrderQueryKey,
   displayPresetsQueryKey,
@@ -47,6 +44,7 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryCl
 import axios, { AxiosRequestTransformer } from 'axios'
 import * as qs from 'qs'
 import useAuth from 'shared/hooks/useAuth';
+import useTrackEvent from 'shared/hooks/useTrackEvent';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -114,13 +112,18 @@ axios.defaults.transformRequest = [
 ]
 
 // OpenAPI.BASE = "http://192.168.1.121:8000";
-OpenAPI.BASE = "https://api.mikino.nl";
+// In dev (`pnpm start`) talk to the staging API/DB; release builds use production.
+OpenAPI.BASE = __DEV__ ? "https://api.staging.mikino.nl" : "https://api.mikino.nl";
 
 // Attach bearer token from secure storage to every generated client request.
 OpenAPI.TOKEN = async () => {
   const token = await storage.getItem('access_token');
   return token || '';
 }
+
+// Lets the backend attribute logins/events to a platform without any
+// per-request client code (see AnalyticsEventName.LOGIN in login.py).
+OpenAPI.HEADERS = { 'X-Client-Platform': Platform.OS };
 
 let apiLoggingEnabled = false;
 if (__DEV__ && !apiLoggingEnabled) {
@@ -198,6 +201,7 @@ function RootLayourContent() {
   const hasHiddenNativeSplashRef = useRef(false)
   const { user } = useAuth();
   const userId = user?.id ? String(user.id) : undefined;
+  const { trackEvent } = useTrackEvent();
   // Lets notification taps open the showtime modal in place instead of navigating.
   const { openShowtimeModalById } = useShowtimeModal();
   // Keeps the previous token for dev logging without causing rerenders.
@@ -258,6 +262,16 @@ function RootLayourContent() {
     };
   }, [])
 
+  const hasTrackedAppOpenRef = useRef(false)
+  useEffect(() => {
+    // Fire once per cold start, the moment we know a session exists — this is
+    // what actually reflects app usage, since most launches reuse the stored
+    // token and never hit the LOGIN-tracked /login/access-token endpoint.
+    if (isChecking || !isAuthenticated || hasTrackedAppOpenRef.current) return;
+    hasTrackedAppOpenRef.current = true;
+    trackEvent('app_open');
+  }, [isChecking, isAuthenticated, trackEvent]);
+
   useEffect(() => {
     // Warm the caches the shell renders from (preset chips) so it appears fully
     // populated rather than streaming in. Bounded by a timeout so a slow network
@@ -270,12 +284,12 @@ function RootLayourContent() {
     let cancelled = false;
     const warm = Promise.allSettled([
       queryClient.prefetchQuery({
-        queryKey: displayPresetsQueryKey(SHARED_TAB_FILTER_PRESET_SCOPE),
-        queryFn: () => fetchDisplayPresets(SHARED_TAB_FILTER_PRESET_SCOPE),
+        queryKey: displayPresetsQueryKey,
+        queryFn: () => fetchDisplayPresets(),
       }),
       queryClient.prefetchQuery({
-        queryKey: displayPresetOrderQueryKey(SHARED_TAB_FILTER_PRESET_SCOPE),
-        queryFn: () => loadDisplayPresetOrder(SHARED_TAB_FILTER_PRESET_SCOPE),
+        queryKey: displayPresetOrderQueryKey,
+        queryFn: () => loadDisplayPresetOrder(),
       }),
     ]);
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
@@ -325,6 +339,11 @@ function RootLayourContent() {
       }
       handledNotificationResponsesRef.current.add(responseKey)
 
+      const notificationData = response.notification.request.content.data
+      trackEvent('notification_clicked', {
+        type: (notificationData as { type?: string } | undefined)?.type,
+      })
+
       try {
         await handleNotificationQuickAction(response)
       } catch (error) {
@@ -352,7 +371,7 @@ function RootLayourContent() {
         console.error('Error clearing last notification response:', error)
       }
     },
-    [router, openShowtimeModalById]
+    [router, openShowtimeModalById, trackEvent]
   )
 
   useEffect(() => {

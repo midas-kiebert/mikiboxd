@@ -10,10 +10,15 @@ from datetime import datetime
 from typing import Any, cast
 
 import aiohttp
+from sqlalchemy.exc import NoResultFound
 
 from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
-from app.models.movie import MovieCreate
+from app.models.movie import (
+    MovieCreate,
+    is_sneak_preview_title,
+    sneak_preview_movie,
+)
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.cinemas.amsterdam.eye import EyeScraper
@@ -21,8 +26,15 @@ from app.scraping.cinemas.amsterdam.fchyena import FCHyenaScraper
 from app.scraping.cinemas.amsterdam.filmhallen import FilmHallenScraper
 from app.scraping.cinemas.amsterdam.kriterion import KriterionScraper
 from app.scraping.cinemas.amsterdam.lab111 import LAB111Scraper
+from app.scraping.cinemas.amsterdam.rialto import RialtoDePijpScraper, RialtoVUScraper
+from app.scraping.cinemas.amsterdam.studiok import StudioKScraper
 from app.scraping.cinemas.amsterdam.themovies import TheMoviesScraper
 from app.scraping.cinemas.amsterdam.uitkijk import UitkijkScraper
+from app.scraping.cinemas.haarlem.filmkoepel import FilmkoepelScraper
+from app.scraping.cinemas.rotterdam.kinorotterdam import KinoRotterdamScraper
+from app.scraping.cinemas.utrecht.hartlooper import LouisHartlooperComplexScraper
+from app.scraping.cinemas.utrecht.slachtstraat import SlachtstraatScraper
+from app.scraping.cinemas.utrecht.springhaver import SpringhaverScraper
 from app.scraping.logger import logger
 from app.scraping.tmdb_lookup import find_tmdb_id_async
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details_async
@@ -43,6 +55,14 @@ SCRAPERS: list[ScraperFactory] = [
     KriterionScraper,
     TheMoviesScraper,
     FilmHallenScraper,
+    StudioKScraper,
+    RialtoDePijpScraper,
+    RialtoVUScraper,
+    KinoRotterdamScraper,
+    LouisHartlooperComplexScraper,
+    SlachtstraatScraper,
+    SpringhaverScraper,
+    FilmkoepelScraper,
 ]
 
 
@@ -56,7 +76,10 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-CINEVILLE_CONCURRENCY = _env_int("CINEVILLE_CONCURRENCY", 15)
+# Cineville rate-limits (HTTP 429) when the scrape fans out a request per movie.
+# Keep concurrency modest; the retry/backoff in cineville_client absorbs the
+# occasional 429, and the 6-hourly cadence leaves plenty of time.
+CINEVILLE_CONCURRENCY = _env_int("CINEVILLE_CONCURRENCY", 5)
 CINEMA_SCRAPER_CONCURRENCY = _env_int("CINEMA_SCRAPER_CONCURRENCY", 2)
 CINEVILLE_HTTP_TOTAL_LIMIT = _env_int(
     "CINEVILLE_HTTP_TOTAL_LIMIT",
@@ -200,14 +223,15 @@ def _persist_cineville_results_batch(
 
                     cinema_id = cinema_id_by_name.get(venue_name)
                     if cinema_id is None:
-                        cinema_id = cinema_crud.get_cinema_id_by_name(
-                            session=session,
-                            name=venue_name,
-                        )
-                        if cinema_id is None:
+                        try:
+                            cinema_id = cinema_crud.get_cinema_id_by_name(
+                                session=session,
+                                name=venue_name,
+                            )
+                        except NoResultFound:
                             raise ValueError(
                                 f"Cinema not found for Cineville venue '{venue_name}'"
-                            )
+                            ) from None
                         cinema_id_by_name[venue_name] = cinema_id
 
                     source_stream = f"cineville:{cinema_id}"
@@ -228,7 +252,17 @@ def _persist_cineville_results_batch(
                     )
                     observed_by_stream[source_stream].append(
                         scrape_sync_service.ObservedPresence(
-                            source_event_key=f"event:{showtime_data.id}",
+                            # Key on the resolved showtime's identity, not the
+                            # volatile Cineville event/production UUIDs (which
+                            # rotate every scrape and caused delete/recreate
+                            # churn).
+                            source_event_key=(
+                                scrape_sync_service.showtime_identity_event_key(
+                                    movie_id=db_showtime.movie_id,
+                                    cinema_id=db_showtime.cinema_id,
+                                    dt=db_showtime.datetime,
+                                )
+                            ),
                             showtime_id=db_showtime.id,
                         )
                     )
@@ -328,6 +362,14 @@ def _expected_cinema_name(scraper_name: str) -> str | None:
         "KriterionScraper": "Kriterion",
         "TheMoviesScraper": "The Movies",
         "FilmHallenScraper": "Filmhallen",
+        "StudioKScraper": "Studio/K",
+        "RialtoDePijpScraper": "Rialto De Pijp",
+        "RialtoVUScraper": "Rialto VU",
+        "KinoRotterdamScraper": "KINO",
+        "LouisHartlooperComplexScraper": "Louis Hartlooper Complex",
+        "SlachtstraatScraper": "Slachtstraat",
+        "SpringhaverScraper": "Springhaver",
+        "FilmkoepelScraper": "Filmkoepel",
     }.get(scraper_name)
 
 
@@ -358,38 +400,82 @@ async def _process_cineville_movie_async(
             else None
         )
 
-        try:
-            tmdb_id = await find_tmdb_id_async(
-                session=session,
-                title_query=title_query,
-                actor_name=actor_names_for_lookup,
-                director_names=directors,
-                year=release_year,
-                duration_minutes=duration_minutes,
-                spoken_languages=spoken_languages,
-            )
-        except Exception as e:
-            return (
-                None,
-                [
-                    _format_error_context(
-                        stage="tmdb_lookup",
-                        error=e,
-                        movie_title=movie_title,
-                        production_id=production_id,
-                    )
-                ],
-            )
-        if tmdb_id is None:
-            logger.warning(f"TMDB ID not found for movie: {title_query}")
-            return None, []
+        if is_sneak_preview_title(movie_data.title) or is_sneak_preview_title(
+            title_query
+        ):
+            movie = sneak_preview_movie()
+        else:
+            try:
+                tmdb_id = await find_tmdb_id_async(
+                    session=session,
+                    title_query=title_query,
+                    actor_name=actor_names_for_lookup,
+                    director_names=directors,
+                    year=release_year,
+                    duration_minutes=duration_minutes,
+                    spoken_languages=spoken_languages,
+                )
+            except Exception as e:
+                return (
+                    None,
+                    [
+                        _format_error_context(
+                            stage="tmdb_lookup",
+                            error=e,
+                            movie_title=movie_title,
+                            production_id=production_id,
+                        )
+                    ],
+                )
+            if tmdb_id is None:
+                logger.warning(f"TMDB ID not found for movie: {title_query}")
+                return None, []
 
-        tmdb_details = await get_tmdb_movie_details_async(
-            session=session, tmdb_id=tmdb_id
-        )
-        if tmdb_details is None:
-            logger.warning(
-                f"TMDB details not found for TMDB ID {tmdb_id}; using fallback metadata."
+            tmdb_details = await get_tmdb_movie_details_async(
+                session=session, tmdb_id=tmdb_id
+            )
+            if tmdb_details is None:
+                logger.warning(
+                    f"TMDB details not found for TMDB ID {tmdb_id}; using fallback metadata."
+                )
+
+            tmdb_runtime_minutes = _runtime_minutes_or_none(
+                tmdb_details.runtime_minutes if tmdb_details is not None else None
+            )
+            cineville_runtime_minutes = _runtime_minutes_or_none(duration_minutes)
+
+            tmdb_title = (
+                tmdb_details.title if tmdb_details is not None else movie_data.title
+            )
+            tmdb_directors = (
+                tmdb_details.directors if tmdb_details is not None else list(directors)
+            )
+            tmdb_cast = tmdb_details.cast_names if tmdb_details is not None else None
+            movie = MovieCreate(
+                title=tmdb_title,
+                id=tmdb_id,
+                letterboxd_slug=None,
+                directors=tmdb_directors if tmdb_directors else None,
+                cast=tmdb_cast if tmdb_cast else None,
+                release_year=(
+                    tmdb_details.release_year if tmdb_details is not None else None
+                ),
+                # Prefer TMDB runtime when available; otherwise keep Cineville runtime
+                # so missing endDate showtimes can still fall back to
+                # start + runtime + 15m.
+                duration=tmdb_runtime_minutes or cineville_runtime_minutes,
+                languages=(
+                    tmdb_details.spoken_languages if tmdb_details is not None else None
+                ),
+                original_language=(
+                    tmdb_details.original_language if tmdb_details is not None else None
+                ),
+                original_title=(
+                    tmdb_details.original_title if tmdb_details is not None else None
+                ),
+                tmdb_last_enriched_at=(
+                    tmdb_details.enriched_at if tmdb_details is not None else None
+                ),
             )
 
         try:
@@ -410,38 +496,6 @@ async def _process_cineville_movie_async(
                 ],
             )
 
-        tmdb_runtime_minutes = _runtime_minutes_or_none(
-            tmdb_details.runtime_minutes if tmdb_details is not None else None
-        )
-        cineville_runtime_minutes = _runtime_minutes_or_none(duration_minutes)
-
-        tmdb_title = (
-            tmdb_details.title if tmdb_details is not None else movie_data.title
-        )
-        tmdb_directors = (
-            tmdb_details.directors if tmdb_details is not None else list(directors)
-        )
-        movie = MovieCreate(
-            title=tmdb_title,
-            id=tmdb_id,
-            letterboxd_slug=None,
-            directors=tmdb_directors if tmdb_directors else None,
-            release_year=(
-                tmdb_details.release_year if tmdb_details is not None else None
-            ),
-            # Prefer TMDB runtime when available; otherwise keep Cineville runtime so
-            # missing endDate showtimes can still fall back to start + runtime + 15m.
-            duration=tmdb_runtime_minutes or cineville_runtime_minutes,
-            languages=(
-                tmdb_details.spoken_languages if tmdb_details is not None else None
-            ),
-            original_title=(
-                tmdb_details.original_title if tmdb_details is not None else None
-            ),
-            tmdb_last_enriched_at=(
-                tmdb_details.enriched_at if tmdb_details is not None else None
-            ),
-        )
         prepared_showtimes = [
             PreparedCinevilleShowtime(
                 id=showtime.id,

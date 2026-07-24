@@ -6,18 +6,20 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
-  RefreshControl,
 } from 'react-native';
+import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
+import type { SearchField } from 'shared/client';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
+import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import FiltersRow from '@/components/filters/FiltersRow';
@@ -27,7 +29,6 @@ import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-util
 import { applyDisplayPreset, type DisplayPreset } from '@/components/filters/saved-presets';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 import {
-  SHARED_TAB_FILTER_PRESET_SCOPE,
   getSelectedStatusesFromShowtimeFilter,
   toSharedTabShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
@@ -41,6 +42,7 @@ export default function MovieScreen() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchField, setSearchField] = useState<SearchField>('title');
   const [refreshing, setRefreshing] = useState(false);
   const { openFiltersModal } = useFiltersModal();
   const isFocused = useIsFocused();
@@ -66,9 +68,15 @@ export default function MovieScreen() {
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
     selectedListIds,
+    setSelectedListIds,
     excludeListIds,
+    setExcludeListIds,
+    selectedLanguages,
+    setSelectedLanguages,
     watchlistExclude,
+    setWatchlistExclude,
     watchedOnly,
+    setWatchedOnly,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -83,7 +91,10 @@ export default function MovieScreen() {
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
   const resolvedApiDays = useMemo(
-    () => resolveDaySelectionsForApi(selectedDays),
+    () =>
+      resolveDaySelectionsForApi(selectedDays, {
+        startDate: DateTime.fromISO(dayAnchorKey, { zone: "Europe/Amsterdam" }),
+      }),
     [dayAnchorKey, selectedDays]
   );
   const runtimeBounds = useMemo(
@@ -106,6 +117,7 @@ export default function MovieScreen() {
   const movieFilters = useMemo<MovieFilters>(
     () => ({
       query: searchQuery,
+      searchField,
       watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
       hideWatched: effectiveAppliedHideWatched ? true : undefined,
       days: resolvedApiDays,
@@ -118,9 +130,11 @@ export default function MovieScreen() {
       watchedOnly: effectiveWatchedOnly ? true : undefined,
       selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
       excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
+      selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
     }),
     [
       searchQuery,
+      searchField,
       effectiveAppliedWatchlistOnly,
       effectiveAppliedHideWatched,
       effectiveWatchlistExclude,
@@ -133,6 +147,7 @@ export default function MovieScreen() {
       runtimeBounds.runtimeMax,
       sessionCinemaIds,
       selectedShowtimeFilter,
+      selectedLanguages,
     ]
   );
 
@@ -166,12 +181,8 @@ export default function MovieScreen() {
     ) : null;
 
   const renderEmpty = () => {
-    if (isLoading || isFetching) {
-      return (
-        <ThemedView style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.tint} />
-        </ThemedView>
-      );
+    if (isLoading || isFetching || refreshing) {
+      return <SkeletonRows height={150} />;
     }
     return (
       <ThemedView style={styles.centerContainer}>
@@ -180,17 +191,28 @@ export default function MovieScreen() {
     );
   };
 
+  // Clear the list while refreshing so pull-to-refresh visibly reloads, even
+  // when the refetched data is unchanged.
+  const visibleMovies = refreshing ? [] : movies;
+
   const handleApplyPreset = (preset: DisplayPreset) => {
     applyDisplayPreset(preset, {
       hasLetterboxdUsername,
       setSelectedShowtimeFilter,
       setWatchlistOnly,
+      setWatchlistExclude,
       setHideWatched,
+      setWatchedOnly,
       setSelectedDays,
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
       setSessionCinemaIds,
       setGroupByMovie,
+      setSelectedLanguages,
+      selectedListIds,
+      excludeListIds,
+      setSelectedListIds,
+      setExcludeListIds,
     });
   };
 
@@ -198,9 +220,13 @@ export default function MovieScreen() {
   return (
     <TopSafeAreaView style={styles.container}>
       <TopBar />
-      <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search movies" />
+      <SearchBar
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        searchField={searchField}
+        onChangeSearchField={setSearchField}
+      />
       <FiltersRow
-        scope={SHARED_TAB_FILTER_PRESET_SCOPE}
         onOpenModal={() => openFiltersModal({ showGroupByMovie: false })}
         onApplyPreset={handleApplyPreset}
       />
@@ -209,8 +235,12 @@ export default function MovieScreen() {
         setGroupByMovie={setGroupByMovie}
         watchlistOnly={effectiveWatchlistOnly}
         setWatchlistOnly={setWatchlistOnly}
+        watchlistExclude={effectiveWatchlistExclude}
+        setWatchlistExclude={setWatchlistExclude}
         hideWatched={effectiveHideWatched}
         setHideWatched={setHideWatched}
+        watchedOnly={effectiveWatchedOnly}
+        setWatchedOnly={setWatchedOnly}
         canUseWatchlistFilter={hasLetterboxdUsername}
         selectedShowtimeFilter={selectedShowtimeFilter}
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}
@@ -221,20 +251,31 @@ export default function MovieScreen() {
         setSelectedTimeRanges={setSelectedTimeRanges}
         selectedRuntimeRanges={selectedRuntimeRanges}
         setSelectedRuntimeRanges={setSelectedRuntimeRanges}
+        selectedListIds={selectedListIds}
+        setSelectedListIds={setSelectedListIds}
+        excludeListIds={excludeListIds}
+        setExcludeListIds={setExcludeListIds}
+        selectedLanguages={selectedLanguages}
+        setSelectedLanguages={setSelectedLanguages}
         onOpenFilters={() => openFiltersModal({ showGroupByMovie: false })}
         onClearAll={() => {
           setSelectedShowtimeFilter(toSharedTabShowtimeFilter('all'));
           setWatchlistOnly(false);
+          setWatchlistExclude(false);
           setHideWatched(false);
+          setWatchedOnly(false);
           setSelectedDays([]);
           setSelectedTimeRanges([]);
           setSelectedRuntimeRanges([]);
+          setSelectedListIds([]);
+          setExcludeListIds([]);
+          setSelectedLanguages([]);
           if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
         }}
       />
 
       <FlatList
-        data={movies}
+        data={visibleMovies}
         renderItem={({ item }) => (
           <MovieCard movie={item} onPress={(movie) => router.push(`/movie/${movie.id}`)} />
         )}
@@ -245,7 +286,7 @@ export default function MovieScreen() {
         ListFooterComponent={renderFooter}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={2}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       />
     </TopSafeAreaView>
   );

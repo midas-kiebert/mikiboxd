@@ -113,6 +113,9 @@ class Settings(BaseSettings):
     # Which origins are allowed to make cross-origin requests to the API.
     # The FRONTEND_HOST is always included automatically (see all_cors_origins).
     FRONTEND_HOST: str = "http://localhost:5173"
+    # Used by the backend to generate absolute links to itself in emails
+    # (e.g. one-click unsubscribe links, which must hit the API directly).
+    API_HOST: str = "http://localhost:8000"
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(_parse_cors)
     ] = []
@@ -222,9 +225,6 @@ class Settings(BaseSettings):
 
     # How many days to wait before re-syncing a user's Letterboxd watchlist
     LETTERBOXD_LAST_WATCHLIST_SYNC_RETENTION_DAYS: int = 1
-
-    # Timeout for sending the post-scrape recap email
-    SCRAPE_RECAP_EMAIL_TIMEOUT_SECONDS: float = 120.0
 
     # -------------------------------------------------------------------------
     # Monitoring & Notifications

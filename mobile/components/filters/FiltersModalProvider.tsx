@@ -57,6 +57,8 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     setSelectedListIds,
     excludeListIds,
     setExcludeListIds,
+    selectedLanguages,
+    setSelectedLanguages,
     watchlistExclude,
     setWatchlistExclude,
     watchedOnly,
@@ -101,7 +103,8 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     selectedStatuses: getSelectedStatusesFromShowtimeFilter(selectedShowtimeFilter),
     selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
     excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
-  }), [sessionCinemaIds, resolvedApiDays, selectedTimeRanges, runtimeBounds, effectiveWatchlistOnly, effectiveHideWatched, effectiveWatchlistExclude, effectiveWatchedOnly, selectedShowtimeFilter, selectedListIds, excludeListIds]);
+    selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
+  }), [sessionCinemaIds, resolvedApiDays, selectedTimeRanges, runtimeBounds, effectiveWatchlistOnly, effectiveHideWatched, effectiveWatchlistExclude, effectiveWatchedOnly, selectedShowtimeFilter, selectedListIds, excludeListIds, selectedLanguages]);
 
   const { data: showtimesCount } = useQuery({
     queryKey: ['count', 'showtimes', 'main', countFilters],
@@ -168,6 +171,8 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         setSelectedListIds={setSelectedListIds}
         excludeListIds={excludeListIds}
         setExcludeListIds={setExcludeListIds}
+        selectedLanguages={selectedLanguages}
+        setSelectedLanguages={setSelectedLanguages}
         watchlistExclude={effectiveWatchlistExclude}
         setWatchlistExclude={setWatchlistExclude}
         watchedOnly={effectiveWatchedOnly}

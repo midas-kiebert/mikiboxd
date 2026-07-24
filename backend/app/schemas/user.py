@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import EmailStr
 from sqlmodel import SQLModel
 
-from app.core.enums import NotificationChannel
+from app.core.enums import DigestFrequency, NotificationChannel
 
 if TYPE_CHECKING:
     from .showtime import ShowtimeLoggedIn
@@ -43,12 +43,19 @@ class UserMe(UserPublic):
     letterboxd_username: str | None
     watchlist_last_synced: datetime | None = None
     watched_last_synced: datetime | None = None
+    notify_watchlist_digest_enabled: bool
+    notify_watchlist_digest_frequency: DigestFrequency
+    notify_watchlist_digest_list_id: UUID | None
+    notify_watchlist_digest_cinema_preset_id: UUID | None
 
 
 class UserWithFriendStatus(UserPublic):
     is_friend: bool
     sent_request: bool
     received_request: bool
+    # Whether the current user shares their status with this friend by default
+    # (True unless they've opted out; opted-out friends only see status on invite).
+    shares_status: bool = True
 
 
 class UserWithShowtimesPublic(UserPublic):

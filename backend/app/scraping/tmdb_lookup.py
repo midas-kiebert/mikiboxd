@@ -426,7 +426,7 @@ def _parse_tmdb_movie_details(
     raw_cast = credits.get("cast", []) if isinstance(credits, dict) else []
     if isinstance(raw_cast, list):
         seen_cast: set[str] = set()
-        for member in raw_cast[:15]:
+        for member in raw_cast[:40]:
             if not isinstance(member, dict):
                 continue
             name_raw = member.get("name")

@@ -1,10 +1,13 @@
-import asyncio
 from datetime import datetime
 
 import aiohttp
 import requests
 from pydantic import BaseModel, Field
 
+from app.scraping.cineville_client import (
+    CinevilleFetchError,
+    post_json_with_retry,
+)
 from app.scraping.logger import logger
 
 
@@ -115,18 +118,26 @@ async def get_showtimes_json_async(
 
     close_session = session is None
     if close_session:
-        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
+        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15))
 
     assert session is not None
     try:
-        async with session.post(url, headers=headers, json=payload) as response:
-            response.raise_for_status()
-            response_json = await response.json()
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        response_json = await post_json_with_retry(
+            session=session,
+            url=url,
+            headers=headers,
+            payload=payload,
+            timeout=aiohttp.ClientTimeout(total=15),
+            context=f"showtimes fetch (production {productionId})",
+        )
+    except CinevilleFetchError as e:
+        # Propagate so the caller drops this movie for the run rather than
+        # treating a rate-limited fetch as "this movie has no showtimes",
+        # which would let the presence tracker delete its showtimes.
         logger.warning(
             f"Failed to fetch showtimes for production ID {productionId}. Error: {e}"
         )
-        return []
+        raise
     finally:
         if close_session:
             await session.close()

@@ -1,6 +1,6 @@
-from uuid import UUID
+from sqlmodel import SQLModel
 
-from sqlmodel import Field, SQLModel
+from app.core.enums import VisibilityMode
 
 __all__ = [
     "ShowtimeVisibilityPublic",
@@ -9,13 +9,10 @@ __all__ = [
 
 
 class ShowtimeVisibilityUpdate(SQLModel):
-    visible_friend_ids: list[UUID] = Field(default_factory=list)
-    visible_group_ids: list[UUID] = Field(default_factory=list)
+    mode: VisibilityMode
 
 
 class ShowtimeVisibilityPublic(SQLModel):
     showtime_id: int
     movie_id: int
-    visible_friend_ids: list[UUID] = Field(default_factory=list)
-    visible_group_ids: list[UUID] = Field(default_factory=list)
-    all_friends_selected: bool
+    mode: VisibilityMode

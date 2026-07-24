@@ -7,6 +7,8 @@
 import { useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import type { Language } from "shared/client";
+import { useFetchLetterboxdLists } from "shared/hooks/useLetterboxdLists";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -21,8 +23,12 @@ type ActiveFilterChipsProps = {
   setGroupByMovie: (v: boolean) => void;
   watchlistOnly: boolean;
   setWatchlistOnly: (v: boolean) => void;
+  watchlistExclude?: boolean;
+  setWatchlistExclude?: (v: boolean) => void;
   hideWatched: boolean;
   setHideWatched: (v: boolean) => void;
+  watchedOnly?: boolean;
+  setWatchedOnly?: (v: boolean) => void;
   canUseWatchlistFilter?: boolean;
   selectedShowtimeFilter: SharedTabShowtimeFilter;
   setSelectedShowtimeFilter: (v: SharedTabShowtimeFilter) => void;
@@ -33,6 +39,12 @@ type ActiveFilterChipsProps = {
   setSelectedTimeRanges: (v: string[]) => void;
   selectedRuntimeRanges: string[];
   setSelectedRuntimeRanges: (v: string[]) => void;
+  selectedListIds?: string[];
+  setSelectedListIds?: (v: string[]) => void;
+  excludeListIds?: string[];
+  setExcludeListIds?: (v: string[]) => void;
+  selectedLanguages?: Language[];
+  setSelectedLanguages?: (v: Language[]) => void;
   /** When provided, the cinema chip is always rendered and opens the filters modal. */
   onOpenFilters?: () => void;
   /** Optional override for the cinema chip's "select cinemas" action (used outside the tab provider). */
@@ -54,19 +66,28 @@ const STATUS_LABEL: Record<SharedTabShowtimeFilter, string | null> = {
   going: "Going",
 };
 
+const EMPTY_LIST_IDS: string[] = [];
+const EMPTY_LANGUAGES: Language[] = [];
+
 const RUNTIME_LABEL: Record<string, string> = {
   "0-90": "<90m",
   "90-120": "90-120m",
   "120-999": ">120m",
 };
 
+const LANGUAGE_LABEL: Record<Language, string> = { nl: "Dutch", en: "English" };
+
 export default function ActiveFilterChips({
   groupByMovie,
   setGroupByMovie,
   watchlistOnly,
   setWatchlistOnly,
+  watchlistExclude = false,
+  setWatchlistExclude = () => {},
   hideWatched,
   setHideWatched,
+  watchedOnly = false,
+  setWatchedOnly = () => {},
   canUseWatchlistFilter = false,
   selectedShowtimeFilter,
   setSelectedShowtimeFilter,
@@ -77,6 +98,12 @@ export default function ActiveFilterChips({
   setSelectedTimeRanges,
   selectedRuntimeRanges,
   setSelectedRuntimeRanges,
+  selectedListIds = EMPTY_LIST_IDS,
+  setSelectedListIds = () => {},
+  excludeListIds = EMPTY_LIST_IDS,
+  setExcludeListIds = () => {},
+  selectedLanguages = EMPTY_LANGUAGES,
+  setSelectedLanguages = () => {},
   onOpenFilters,
   onOpenCinemaModal,
   onClearAll,
@@ -87,6 +114,14 @@ export default function ActiveFilterChips({
   const [hasMoreRight, setHasMoreRight] = useState(false);
   const contentW = useRef(0);
   const containerW = useRef(0);
+  const { data: letterboxdLists = [] } = useFetchLetterboxdLists(
+    selectedListIds.length > 0 || excludeListIds.length > 0
+  );
+  const listTitleById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const list of letterboxdLists) map.set(list.id, list.title ?? list.list_slug);
+    return map;
+  }, [letterboxdLists]);
 
   const chips = useMemo<Chip[]>(() => {
     const result: Chip[] = [];
@@ -118,11 +153,43 @@ export default function ActiveFilterChips({
       });
     }
 
+    if (canUseWatchlistFilter && watchlistExclude) {
+      result.push({
+        key: "watchlist-exclude",
+        label: "Hide watchlist",
+        onRemove: () => setWatchlistExclude(false),
+      });
+    }
+
     if (canUseWatchlistFilter && hideWatched) {
       result.push({
         key: "hide-watched",
         label: "Hide watched",
         onRemove: () => setHideWatched(false),
+      });
+    }
+
+    if (canUseWatchlistFilter && watchedOnly) {
+      result.push({
+        key: "watched-only",
+        label: "Watched only",
+        onRemove: () => setWatchedOnly(false),
+      });
+    }
+
+    for (const listId of selectedListIds) {
+      result.push({
+        key: `list-include-${listId}`,
+        label: listTitleById.get(listId) ?? "List",
+        onRemove: () => setSelectedListIds(selectedListIds.filter((id) => id !== listId)),
+      });
+    }
+
+    for (const listId of excludeListIds) {
+      result.push({
+        key: `list-exclude-${listId}`,
+        label: `Hide: ${listTitleById.get(listId) ?? "List"}`,
+        onRemove: () => setExcludeListIds(excludeListIds.filter((id) => id !== listId)),
       });
     }
 
@@ -153,17 +220,44 @@ export default function ActiveFilterChips({
       });
     }
 
+    for (const language of selectedLanguages) {
+      result.push({
+        key: `language-${language}`,
+        label: LANGUAGE_LABEL[language],
+        onRemove: () =>
+          setSelectedLanguages(selectedLanguages.filter((l) => l !== language)),
+      });
+    }
+
     return result;
   }, [
     groupByMovie,
     watchlistOnly,
+    watchlistExclude,
     hideWatched,
+    watchedOnly,
     canUseWatchlistFilter,
     selectedShowtimeFilter,
     showStatusFilter,
+    selectedListIds,
+    excludeListIds,
+    listTitleById,
     selectedDays,
     selectedTimeRanges,
     selectedRuntimeRanges,
+    selectedLanguages,
+    setGroupByMovie,
+    setWatchlistOnly,
+    setWatchlistExclude,
+    setHideWatched,
+    setWatchedOnly,
+    setSelectedShowtimeFilter,
+    setSelectedListIds,
+    setExcludeListIds,
+    setSelectedDays,
+    setSelectedTimeRanges,
+    setSelectedRuntimeRanges,
+    setSelectedLanguages,
   ]);
 
   // Don't render if there's nothing to show (no cinema chip and no filter chips)

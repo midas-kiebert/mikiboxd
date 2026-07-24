@@ -12,6 +12,11 @@ from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
+from app.scraping.subtitles import parse_subtitle_freetext
+from app.scraping.title_hints import (
+    parse_subtitle_hint_from_title,
+    parse_year_hint_from_title,
+)
 from app.scraping.tmdb_lookup import find_tmdb_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_service
@@ -74,10 +79,24 @@ class FCHyenaScraper(BaseCinemaScraper):
             logger.debug(f"Could not find actor for {title_query} in {CINEMA}")
             actor = None
 
+        # "Taal" combines spoken language and subtitles in free text, e.g.
+        # "Engels gesproken, Nederlands ondertiteld".
+        language_element = film_element.find(lambda tag: tag.string == "Taal")
+        language_sibling = (
+            language_element.next_sibling if isinstance(language_element, Tag) else None
+        )
+        subtitles = parse_subtitle_freetext(
+            language_sibling.strip() if isinstance(language_sibling, str) else None
+        )
+        if subtitles is None:
+            subtitles = parse_subtitle_hint_from_title(raw_title)
+        year = parse_year_hint_from_title(raw_title)
+
         tmdb_id = find_tmdb_id(
             title_query=title_query,
             director_names=directors,
             actor_name=actor,
+            year=year,
         )
         if tmdb_id is None:
             logger.warning(f"No TMDB id found for {title_query}, skipping")
@@ -98,7 +117,7 @@ class FCHyenaScraper(BaseCinemaScraper):
             letterboxd_slug=None,
             directors=tmdb_directors if tmdb_directors else None,
             release_year=(
-                tmdb_details.release_year if tmdb_details is not None else None
+                tmdb_details.release_year if tmdb_details is not None else year
             ),
             duration=(
                 tmdb_details.runtime_minutes if tmdb_details is not None else None
@@ -133,6 +152,7 @@ class FCHyenaScraper(BaseCinemaScraper):
                     datetime=dt,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,
+                    subtitles=subtitles,
                 )
             )
         return movie, showtimes
@@ -185,11 +205,10 @@ class FCHyenaScraper(BaseCinemaScraper):
                     showtime_create=showtime_create,
                     commit=False,
                 )
-                source_event_key = scrape_sync_service.fallback_source_event_key(
+                source_event_key = scrape_sync_service.showtime_identity_event_key(
                     movie_id=showtime_create.movie_id,
                     cinema_id=showtime_create.cinema_id,
                     dt=showtime_create.datetime,
-                    ticket_link=showtime_create.ticket_link,
                 )
                 observed_presences.append((source_event_key, showtime.id))
             session.commit()

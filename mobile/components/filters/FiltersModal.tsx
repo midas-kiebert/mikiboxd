@@ -5,7 +5,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -16,18 +15,18 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MeService } from "shared";
+import type { Language } from "shared/client";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import { ThemedText } from "@/components/themed-text";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useOptimisticValue } from "@/hooks/useOptimisticValue";
 import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
-import {
-  SHARED_TAB_FILTER_PRESET_SCOPE,
-  type SharedTabShowtimeFilter,
-} from "@/components/filters/shared-tab-filters";
-import { type PageFilterPresetState } from "@/components/filters/FilterPresetsModal";
+import { type SharedTabShowtimeFilter } from "@/components/filters/shared-tab-filters";
+import { type PageFilterPresetState } from "@/components/filters/filter-preset-utils";
 import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selection";
 import SavePresetDialog from "@/components/filters/SavePresetDialog";
 import ManagePresetsModal from "@/components/filters/ManagePresetsModal";
@@ -40,6 +39,7 @@ import DayFilterModal from "@/components/filters/DayFilterModal";
 import FilterMoviesSection from "@/components/filters/FilterMoviesSection";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
+import useTrackEvent from "shared/hooks/useTrackEvent";
 
 const DAY_PRESETS = [
   { token: "relative:today", label: "Today" },
@@ -51,6 +51,10 @@ const STATUS_OPTIONS_SIMPLE: { value: SharedTabShowtimeFilter; label: string }[]
   { value: "all", label: "Any" },
   { value: "interested", label: "Interested" },
   { value: "going", label: "Going" },
+];
+
+const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
+  { value: "en", label: "English only" },
 ];
 
 export type FiltersModalProps = {
@@ -82,6 +86,8 @@ export type FiltersModalProps = {
   setSelectedListIds?: (v: string[]) => void;
   excludeListIds?: string[];
   setExcludeListIds?: (v: string[]) => void;
+  selectedLanguages?: Language[];
+  setSelectedLanguages?: (v: Language[]) => void;
   watchlistExclude?: boolean;
   setWatchlistExclude?: (v: boolean) => void;
   watchedOnly?: boolean;
@@ -118,6 +124,8 @@ export default function FiltersModal({
   setSelectedListIds = () => {},
   excludeListIds = [],
   setExcludeListIds = () => {},
+  selectedLanguages = [],
+  setSelectedLanguages = () => {},
   watchlistExclude = false,
   setWatchlistExclude = () => {},
   watchedOnly = false,
@@ -133,6 +141,15 @@ export default function FiltersModal({
   const { openCinemaModal: providerOpenCinemaModal } = useFiltersModal();
   const openCinemaModal = onOpenCinemaModal ?? providerOpenCinemaModal;
   const [dayModalVisible, setDayModalVisible] = useState(false);
+  const { trackEvent } = useTrackEvent();
+  // Filters apply live as the user taps pills, so any way of dismissing this
+  // sheet — the "View results" button, swipe-down, or backdrop tap — commits
+  // the current filter state. Track it here, not just on the button, so the
+  // swipe/backdrop paths (handled by AppBottomSheet's onClose) aren't missed.
+  const handleClose = useCallback(() => {
+    trackEvent("filter_applied");
+    onClose();
+  }, [trackEvent, onClose]);
 
   // contentMounted: false on first open (shows spinner while content renders),
   // then permanently true so subsequent opens show content immediately.
@@ -166,11 +183,10 @@ export default function FiltersModal({
     queryFn: () => MeService.getCinemaPresets(),
   });
 
-  const effectiveCinemaIds = sessionCinemaIds ?? preferredCinemaIds ?? [];
-  const sortedEffectiveIds = useMemo(
-    () => Array.from(new Set(effectiveCinemaIds)).sort((a, b) => a - b),
-    [effectiveCinemaIds]
-  );
+  const sortedEffectiveIds = useMemo(() => {
+    const effectiveCinemaIds = sessionCinemaIds ?? preferredCinemaIds ?? [];
+    return Array.from(new Set(effectiveCinemaIds)).sort((a, b) => a - b);
+  }, [sessionCinemaIds, preferredCinemaIds]);
 
 
   const dayLabel = formatDayPillLabel(selectedDays);
@@ -206,20 +222,30 @@ export default function FiltersModal({
       selected_showtime_filter: selectedShowtimeFilter,
       showtime_audience: "including-friends",
       watchlist_only: watchlistOnly,
+      watchlist_exclude: watchlistExclude,
       hide_watched: hideWatched,
+      watched_only: watchedOnly,
+      selected_list_ids: selectedListIds.length > 0 ? selectedListIds : null,
+      exclude_list_ids: excludeListIds.length > 0 ? excludeListIds : null,
       days: selectedDays.length > 0 ? selectedDays : null,
       time_ranges: selectedTimeRanges.length > 0 ? selectedTimeRanges : null,
       runtime_ranges: selectedRuntimeRanges.length > 0 ? selectedRuntimeRanges : null,
       group_by_movie: groupByMovie,
+      selected_languages: selectedLanguages.length > 0 ? selectedLanguages : null,
     }),
     [
       selectedShowtimeFilter,
       watchlistOnly,
+      watchlistExclude,
       hideWatched,
+      watchedOnly,
+      selectedListIds,
+      excludeListIds,
       selectedDays,
       selectedTimeRanges,
       selectedRuntimeRanges,
       groupByMovie,
+      selectedLanguages,
     ]
   );
 
@@ -229,30 +255,64 @@ export default function FiltersModal({
         hasLetterboxdUsername: canUseWatchlistFilter,
         setSelectedShowtimeFilter,
         setWatchlistOnly,
+        setWatchlistExclude,
         setHideWatched,
+        setWatchedOnly,
         setSelectedDays,
         setSelectedTimeRanges,
         setSelectedRuntimeRanges,
         setGroupByMovie,
+        setSelectedLanguages,
         setSessionCinemaIds,
+        selectedListIds,
+        excludeListIds,
+        setSelectedListIds,
+        setExcludeListIds,
       });
     },
     [
       canUseWatchlistFilter,
       setSelectedShowtimeFilter,
       setWatchlistOnly,
+      setWatchlistExclude,
       setHideWatched,
+      setWatchedOnly,
       setSelectedDays,
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
       setGroupByMovie,
+      setSelectedLanguages,
       setSessionCinemaIds,
+      selectedListIds,
+      excludeListIds,
+      setSelectedListIds,
+      setExcludeListIds,
     ]
   );
 
+  // Pill toggles below paint optimistically and defer the real (potentially
+  // expensive) state update by one frame — see useOptimisticValue.
+  const { value: displayGroupByMovie, change: changeGroupByMovie } = useOptimisticValue(
+    groupByMovie,
+    setGroupByMovie
+  );
+  const { value: displayShowtimeFilter, change: changeShowtimeFilter } = useOptimisticValue(
+    selectedShowtimeFilter,
+    setSelectedShowtimeFilter
+  );
+  const englishOnly = selectedLanguages.includes("en");
+  const { value: displayEnglishOnly, change: changeEnglishOnly } = useOptimisticValue(
+    englishOnly,
+    useCallback((next: boolean) => setSelectedLanguages(next ? ["en"] : []), [setSelectedLanguages])
+  );
+  const { value: displayWatchlistOnlySimple, change: changeWatchlistOnlySimple } =
+    useOptimisticValue(watchlistOnly, setWatchlistOnly);
+  const { value: displayHideWatchedSimple, change: changeHideWatchedSimple } =
+    useOptimisticValue(hideWatched, setHideWatched);
+
   return (
     <>
-      <AppBottomSheet visible={visible} onClose={onClose} title="Filters">
+      <AppBottomSheet visible={visible} onClose={handleClose} title="Filters">
         {/* @gorhom/portal (used by the bottom sheet) does not forward React
             context, so re-provide the QueryClient for hooks rendered inside. */}
         <QueryClientProvider client={queryClient}>
@@ -328,8 +388,8 @@ export default function FiltersModal({
               <>
                 <SectionLabel label="Group By" colors={colors} />
                 <View style={styles.pillRow}>
-                  <Pill label="Showtimes" active={!groupByMovie} onPress={() => setGroupByMovie(false)} colors={colors} />
-                  <Pill label="Movies" active={groupByMovie} onPress={() => setGroupByMovie(true)} colors={colors} />
+                  <Pill label="Showtimes" active={!displayGroupByMovie} onPress={() => changeGroupByMovie(false)} colors={colors} />
+                  <Pill label="Movies" active={displayGroupByMovie} onPress={() => changeGroupByMovie(true)} colors={colors} />
                 </View>
                 <Divider colors={colors} />
               </>
@@ -344,8 +404,8 @@ export default function FiltersModal({
                     <Pill
                       key={opt.value}
                       label={opt.label}
-                      active={selectedShowtimeFilter === opt.value}
-                      onPress={() => setSelectedShowtimeFilter(opt.value)}
+                      active={displayShowtimeFilter === opt.value}
+                      onPress={() => changeShowtimeFilter(opt.value)}
                       colors={colors}
                     />
                   ))}
@@ -353,6 +413,21 @@ export default function FiltersModal({
                 <Divider colors={colors} />
               </>
             )}
+
+            {/* Language */}
+            <SectionLabel label="Language" colors={colors} />
+            <View style={styles.pillRow}>
+              {LANGUAGE_OPTIONS.map((opt) => (
+                <Pill
+                  key={opt.value}
+                  label={opt.label}
+                  active={displayEnglishOnly}
+                  onPress={() => changeEnglishOnly(!displayEnglishOnly)}
+                  colors={colors}
+                />
+              ))}
+            </View>
+            <Divider colors={colors} />
 
             {/* Filter movies (watchlist / watched / Letterboxd lists) */}
             {showLists ? (
@@ -380,11 +455,11 @@ export default function FiltersModal({
                 <>
                   <SectionLabel label="Watchlist" colors={colors} />
                   <View style={styles.pillRow}>
-                    <Pill label="All movies" active={!watchlistOnly} onPress={() => setWatchlistOnly(false)} colors={colors} />
-                    <Pill label="Watchlisted only" active={watchlistOnly} onPress={() => setWatchlistOnly(true)} colors={colors} />
+                    <Pill label="All movies" active={!displayWatchlistOnlySimple} onPress={() => changeWatchlistOnlySimple(false)} colors={colors} />
+                    <Pill label="Watchlisted only" active={displayWatchlistOnlySimple} onPress={() => changeWatchlistOnlySimple(true)} colors={colors} />
                   </View>
                   <View style={styles.pillRow}>
-                    <Pill label="Hide watched" active={hideWatched} onPress={() => setHideWatched(!hideWatched)} colors={colors} />
+                    <Pill label="Hide watched" active={displayHideWatchedSimple} onPress={() => changeHideWatchedSimple(!displayHideWatchedSimple)} colors={colors} />
                   </View>
                   <Divider colors={colors} />
                 </>
@@ -476,11 +551,7 @@ export default function FiltersModal({
               <>
                 <Divider colors={colors} />
                 <SectionLabel label="Presets" colors={colors} />
-                <SavedPresetChips
-                  scope={SHARED_TAB_FILTER_PRESET_SCOPE}
-                  onApply={handleApplyPreset}
-                  variant="cards"
-                />
+                <SavedPresetChips onApply={handleApplyPreset} variant="cards" />
                 <View style={styles.presetActionsColumn}>
                   <TouchableOpacity
                     style={styles.cinemaOpenRow}
@@ -516,7 +587,7 @@ export default function FiltersModal({
 
             <TouchableOpacity
               style={styles.viewResultsButton}
-              onPress={onClose}
+              onPress={handleClose}
               activeOpacity={0.85}
             >
               {resultCount !== undefined ? (
@@ -541,7 +612,6 @@ export default function FiltersModal({
       <SavePresetDialog
         visible={savePresetVisible}
         onClose={() => setSavePresetVisible(false)}
-        scope={SHARED_TAB_FILTER_PRESET_SCOPE}
         currentFilters={currentFilters}
         cinemaIds={sortedEffectiveIds}
         cinemaLabel={cinemaLabel}
@@ -553,7 +623,6 @@ export default function FiltersModal({
       <ManagePresetsModal
         visible={managePresetsVisible}
         onClose={() => setManagePresetsVisible(false)}
-        scope={SHARED_TAB_FILTER_PRESET_SCOPE}
       />
     </>
   );
@@ -579,17 +648,8 @@ function Divider({ colors }: { colors: ReturnType<typeof useThemeColors> }) {
 }
 
 function CountSkeleton() {
-  const opacity = useRef(new Animated.Value(0.4)).current;
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.8, duration: 500, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.4, duration: 500, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [opacity]);
   return (
-    <Animated.View style={{ opacity, height: 20, width: 140, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.5)" }} />
+    <Skeleton style={{ height: 20, width: 140, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.5)" }} />
   );
 }
 
@@ -597,7 +657,10 @@ function Pill({ label, active, onPress, colors, style, isFavorite }: { label: st
   return (
     <TouchableOpacity
       style={[{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: active ? colors.pillActiveBackground : colors.pillBackground, marginRight: 7, marginBottom: 7, flexDirection: "row", alignItems: "center", gap: 4 }, style]}
-      onPress={onPress}
+      onPress={() => {
+        triggerSelectionHaptic();
+        onPress();
+      }}
       activeOpacity={0.8}
     >
       {isFavorite && <MaterialIcons name="star" size={11} color={active ? colors.pillActiveText : colors.yellow.secondary} />}

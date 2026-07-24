@@ -11,13 +11,15 @@ import {
   View,
   Linking,
 } from "react-native";
+import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import type { Language } from "shared/client";
 import type { MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
-import { MoviesService } from "shared";
+import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -25,17 +27,27 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { ThemedText } from "@/components/themed-text";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import { ListEndFooter } from "@/components/showtimes/ShowtimesScreen";
+import { SkeletonRows } from "@/components/ui/SkeletonRows";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 import FiltersModal from "@/components/filters/FiltersModal";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
-import { getSelectedStatusesFromShowtimeFilter } from "@/components/filters/shared-tab-filters";
+import {
+  getSelectedStatusesFromShowtimeFilter,
+  type SharedTabShowtimeFilter,
+} from "@/components/filters/shared-tab-filters";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { formatLanguageCode } from "@/utils/language";
+import {
+  UNKNOWN_METADATA_PLACEHOLDER,
+  isSyntheticMovieId,
+} from "@/constants/synthetic-movies";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
 
@@ -52,6 +64,8 @@ type MovieStyles = ReturnType<typeof createStyles>;
 type MovieContentProps = {
   id: string;
   showtimeId?: string | string[];
+  inheritFilters?: string | string[];
+  cinemaId?: string | string[];
 };
 
 /**
@@ -65,9 +79,11 @@ export default function MoviePage() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
-  const { id, showtimeId } = useLocalSearchParams<{
+  const { id, showtimeId, inheritFilters, cinemaId } = useLocalSearchParams<{
     id: string;
     showtimeId?: string | string[];
+    inheritFilters?: string | string[];
+    cinemaId?: string | string[];
   }>();
 
   const contentReady = useDeferredMount(`movie:${id}`);
@@ -87,7 +103,12 @@ export default function MoviePage() {
         </TouchableOpacity>
       </View>
       {contentReady ? (
-        <MovieContent id={id} showtimeId={showtimeId} />
+        <MovieContent
+          id={id}
+          showtimeId={showtimeId}
+          inheritFilters={inheritFilters}
+          cinemaId={cinemaId}
+        />
       ) : (
         <MovieSkeleton styles={styles} />
       )}
@@ -99,30 +120,31 @@ function MovieSkeleton({ styles }: { styles: MovieStyles }) {
   return (
     <>
       <View style={styles.staticHeader}>
-        <View style={[styles.poster, styles.skeletonBone]} />
+        <Skeleton style={styles.poster} />
         <View style={styles.summaryInfo}>
-          <View style={[styles.skeletonBone, { height: 24, width: "75%", borderRadius: 5 }]} />
-          <View style={[styles.skeletonBone, { height: 13, width: "50%", borderRadius: 4, marginTop: 6 }]} />
-          <View style={[styles.skeletonBone, { height: 12, width: "65%", borderRadius: 4, marginTop: 4 }]} />
+          <Skeleton style={{ height: 24, width: "75%", borderRadius: 5 }} />
+          <Skeleton style={{ height: 13, width: "50%", borderRadius: 4, marginTop: 6 }} />
+          <Skeleton style={{ height: 12, width: "65%", borderRadius: 4, marginTop: 4 }} />
         </View>
       </View>
       <View style={styles.divider} />
       <View style={styles.filterRow}>
-        <View style={[styles.skeletonBone, { height: 32, width: 88, borderRadius: 18 }]} />
+        <Skeleton style={{ height: 32, width: 88, borderRadius: 18 }} />
       </View>
       <View style={styles.divider} />
       <View style={styles.skeletonList}>
         {[0, 1, 2].map((i) => (
-          <View key={i} style={[styles.skeletonBone, styles.skeletonCard]} />
+          <Skeleton key={i} style={styles.skeletonCard} />
         ))}
       </View>
     </>
   );
 }
 
-function MovieContent({ id, showtimeId }: MovieContentProps) {
+function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContentProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  const router = useRouter();
   const isFetchingMoreRef = useRef(false);
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
@@ -132,28 +154,61 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const {
-    selectedShowtimeFilter,
-    appliedShowtimeFilter,
-    setSelectedShowtimeFilter,
-    selectedDays,
-    setSelectedDays,
-    selectedTimeRanges,
-    setSelectedTimeRanges,
-    selectedRuntimeRanges,
-    setSelectedRuntimeRanges,
-    sessionCinemaIds,
-    setSessionCinemaIds,
-  } = useSharedTabFilters();
+  // The tabs' filters (status/day/time/language) are page-scoped here: they only
+  // carry over when `inheritFilters` says this page was opened from the
+  // showtimes tab (or a modal opened from it). Cinema selection stays the one
+  // global "my cinemas" preference shared everywhere.
+  const shared = useSharedTabFilters();
+  const { sessionCinemaIds, setSessionCinemaIds } = shared;
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+
+  const shouldInheritFilters = useMemo(
+    () => (Array.isArray(inheritFilters) ? inheritFilters[0] : inheritFilters) === "1",
+    [inheritFilters]
+  );
+
+  const [selectedShowtimeFilter, setSelectedShowtimeFilter] = useState<SharedTabShowtimeFilter>(
+    () => (shouldInheritFilters ? shared.appliedShowtimeFilter : "all")
+  );
+  const [selectedDays, setSelectedDays] = useState<string[]>(
+    () => (shouldInheritFilters ? shared.selectedDays : [])
+  );
+  const [selectedTimeRanges, setSelectedTimeRanges] = useState<string[]>(
+    () => (shouldInheritFilters ? shared.selectedTimeRanges : [])
+  );
+  const [selectedRuntimeRanges, setSelectedRuntimeRanges] = useState<string[]>(
+    () => (shouldInheritFilters ? shared.selectedRuntimeRanges : [])
+  );
+  const [selectedLanguages, setSelectedLanguages] = useState<Language[]>(
+    () => (shouldInheritFilters ? shared.selectedLanguages : [])
+  );
+  const appliedShowtimeFilter = selectedShowtimeFilter;
 
   const movieId = useMemo(() => Number(id), [id]);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
+  // Safety net: if the showtime that led here belongs to a cinema the global
+  // cinema filter excludes, fall back to "all cinemas" so it's still visible.
+  const originCinemaId = useMemo(() => {
+    const normalized = Array.isArray(cinemaId) ? cinemaId[0] : cinemaId;
+    const parsed = Number.parseInt(normalized?.trim() ?? "", 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, [cinemaId]);
+
+  useEffect(() => {
+    if (originCinemaId === null) return;
+    if (sessionCinemaIds && sessionCinemaIds.length > 0 && !sessionCinemaIds.includes(originCinemaId)) {
+      setSessionCinemaIds(undefined);
+    }
+  }, [originCinemaId, sessionCinemaIds, setSessionCinemaIds]);
+
   const dayAnchorKey =
     DateTime.now().setZone("Europe/Amsterdam").startOf("day").toISODate() ?? "";
   const resolvedApiDays = useMemo(
-    () => resolveDaySelectionsForApi(selectedDays),
+    () =>
+      resolveDaySelectionsForApi(selectedDays, {
+        startDate: DateTime.fromISO(dayAnchorKey, { zone: "Europe/Amsterdam" }),
+      }),
     [dayAnchorKey, selectedDays]
   );
 
@@ -165,12 +220,43 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }, [showtimeId]);
 
+  // Notifications/pings only carry a showtime id, not its cinema — fetch the
+  // showtime directly (bypassing the cinema filter) so the same fallback applies.
+  const handledTargetCinemaRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (targetShowtimeId === null || originCinemaId !== null) return;
+    if (handledTargetCinemaRef.current === targetShowtimeId) return;
+    handledTargetCinemaRef.current = targetShowtimeId;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const fetched = await ShowtimesService.getShowtimeById({ showtimeId: targetShowtimeId });
+        if (cancelled) return;
+        const fetchedCinemaId = fetched.cinema?.id;
+        if (
+          fetchedCinemaId !== undefined &&
+          sessionCinemaIds &&
+          sessionCinemaIds.length > 0 &&
+          !sessionCinemaIds.includes(fetchedCinemaId)
+        ) {
+          setSessionCinemaIds(undefined);
+        }
+      } catch {
+        // Ignore — the modal-open effect below already handles an unresolvable showtime.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [targetShowtimeId, originCinemaId, sessionCinemaIds, setSessionCinemaIds]);
+
   const showtimesFilters = useMemo(() => ({
     selectedCinemaIds: sessionCinemaIds,
     days: resolvedApiDays,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
     selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
-  }), [resolvedApiDays, appliedShowtimeFilter, selectedTimeRanges, sessionCinemaIds]);
+    selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
+  }), [resolvedApiDays, appliedShowtimeFilter, selectedTimeRanges, sessionCinemaIds, selectedLanguages]);
 
   const { data: movie, isLoading: isMovieLoading, isError: isMovieError } = useQuery<MovieLoggedIn, Error>({
     queryKey: ["movie", movieId],
@@ -180,7 +266,9 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
         snapshotTime,
         showtimeLimit: 0,
       }),
-    enabled: Number.isFinite(movieId) && movieId > 0,
+    // `!== 0` (not `> 0`): synthetic listings like sneak previews use negative
+    // movie ids. 0 and NaN remain invalid.
+    enabled: Number.isFinite(movieId) && movieId !== 0,
   });
 
   const {
@@ -233,7 +321,7 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
   };
 
   const handleRefresh = async () => {
-    if (!Number.isFinite(movieId) || movieId <= 0) return;
+    if (!Number.isFinite(movieId) || movieId === 0) return;
     setRefreshing(true);
     try {
       await refreshInfiniteQueryWithFreshSnapshot<ShowtimeInMovieLoggedIn[]>({
@@ -246,6 +334,8 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
       setRefreshing(false);
     }
   };
+
+  const isSynthetic = movie ? isSyntheticMovieId(movie.id) : false;
 
   const letterboxdSlug = movie?.letterboxd_slug?.trim() ?? "";
   const letterboxdSearchQuery = movie?.title
@@ -276,8 +366,16 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
     if (!matchingShowtime) return;
 
     openedTargetRef.current = targetShowtimeId;
-    openShowtimeModal({ ...matchingShowtime, movie }, { openedFrom: { movieId } });
-  }, [targetShowtimeId, showtimes, movie, openShowtimeModal]);
+    openShowtimeModal(
+      {
+        ...matchingShowtime,
+        movie,
+        friends_watchlisted: movie.friends_watchlisted ?? [],
+        friends_watched: movie.friends_watched ?? [],
+      },
+      { openedFrom: { movieId } }
+    );
+  }, [targetShowtimeId, showtimes, movie, openShowtimeModal, movieId]);
 
   return (
     <>
@@ -311,8 +409,33 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
                   {movie.directors.join(", ")}
                   {movie.release_year ? ` (${movie.release_year})` : null}
                 </ThemedText>
+              ) : isSynthetic ? (
+                <ThemedText style={styles.directorText} numberOfLines={2}>
+                  <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
+                  {`${UNKNOWN_METADATA_PLACEHOLDER} (${UNKNOWN_METADATA_PLACEHOLDER})`}
+                </ThemedText>
               ) : movie.release_year ? (
                 <ThemedText style={styles.directorText}>{movie.release_year}</ThemedText>
+              ) : null}
+              {movie.cast && movie.cast.length > 0 ? (
+                <ThemedText style={styles.metaText} numberOfLines={2}>
+                  <ThemedText style={styles.metaLabel}>STARRING </ThemedText>
+                  {movie.cast.slice(0, 3).join(", ")}
+                </ThemedText>
+              ) : null}
+              {movie.duration || formatLanguageCode(movie.original_language) ? (
+                <ThemedText style={styles.metaText} numberOfLines={1}>
+                  {[
+                    movie.duration ? `${movie.duration} min` : null,
+                    formatLanguageCode(movie.original_language),
+                  ]
+                    .filter(Boolean)
+                    .join("  ·  ")}
+                </ThemedText>
+              ) : isSynthetic ? (
+                <ThemedText style={styles.metaText} numberOfLines={1}>
+                  {`${UNKNOWN_METADATA_PLACEHOLDER} min`}
+                </ThemedText>
               ) : null}
             </View>
           </View>
@@ -341,19 +464,75 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
               setSelectedTimeRanges={setSelectedTimeRanges}
               selectedRuntimeRanges={[]}
               setSelectedRuntimeRanges={() => {}}
+              selectedLanguages={selectedLanguages}
+              setSelectedLanguages={setSelectedLanguages}
               onClearAll={() => {
                 setSelectedShowtimeFilter("all");
                 setSelectedDays([]);
                 setSelectedTimeRanges([]);
+                setSelectedLanguages([]);
                 if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
               }}
             />
           </View>
           <View style={styles.divider} />
           <SectionList
-            sections={showtimeSections}
+            sections={refreshing ? [] : showtimeSections}
             keyExtractor={(item) => item.id.toString()}
             stickySectionHeadersEnabled
+            ListHeaderComponent={
+              (movie.friends_watchlisted?.length ?? 0) > 0 ||
+              (movie.friends_watched?.length ?? 0) > 0 ? (
+                <View style={styles.friendWatchWrap}>
+                  {movie.friends_watchlisted && movie.friends_watchlisted.length > 0 ? (
+                    <View style={styles.friendWatchGroup}>
+                      <ThemedText style={styles.friendWatchLabel}>
+                        Watchlisted by {movie.friends_watchlisted.length} friend
+                        {movie.friends_watchlisted.length === 1 ? "" : "s"}
+                      </ThemedText>
+                      <View style={styles.friendWatchChipsRow}>
+                        {movie.friends_watchlisted.map((friend) => (
+                          <TouchableOpacity
+                            key={`wl-${friend.id}`}
+                            style={styles.friendWatchChip}
+                            onPress={() => router.push(`/friend-showtimes/${friend.id}`)}
+                            activeOpacity={0.7}
+                          >
+                            <MaterialIcons name="schedule" size={11} color={colors.orange.secondary} />
+                            <ThemedText style={styles.friendWatchChipText} numberOfLines={1}>
+                              {friend.display_name?.trim() || "Friend"}
+                            </ThemedText>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+                  {movie.friends_watched && movie.friends_watched.length > 0 ? (
+                    <View style={styles.friendWatchGroup}>
+                      <ThemedText style={styles.friendWatchLabel}>
+                        Watched by {movie.friends_watched.length} friend
+                        {movie.friends_watched.length === 1 ? "" : "s"}
+                      </ThemedText>
+                      <View style={styles.friendWatchChipsRow}>
+                        {movie.friends_watched.map((friend) => (
+                          <TouchableOpacity
+                            key={`wd-${friend.id}`}
+                            style={styles.friendWatchChip}
+                            onPress={() => router.push(`/friend-showtimes/${friend.id}`)}
+                            activeOpacity={0.7}
+                          >
+                            <MaterialIcons name="visibility" size={11} color={colors.green.secondary} />
+                            <ThemedText style={styles.friendWatchChipText} numberOfLines={1}>
+                              {friend.display_name?.trim() || "Friend"}
+                            </ThemedText>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null
+            }
             renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
@@ -365,7 +544,16 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
                         : undefined,
                   ]}
                   onPress={() => {
-                    if (movie) openShowtimeModal({ ...item, movie }, { openedFrom: { movieId } });
+                    if (movie)
+                      openShowtimeModal(
+                        {
+                          ...item,
+                          movie,
+                          friends_watchlisted: movie.friends_watchlisted ?? [],
+                          friends_watched: movie.friends_watched ?? [],
+                        },
+                        { openedFrom: { movieId } }
+                      );
                   }}
                   activeOpacity={0.85}
                 >
@@ -394,15 +582,12 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
               </View>
             )}
             contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) }]}
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
+            refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
             onEndReached={handleEndReached}
             onEndReachedThreshold={0.4}
             ListEmptyComponent={
-              isShowtimesLoading ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color={colors.tint} />
-                </View>
+              isShowtimesLoading || refreshing ? (
+                <SkeletonRows height={64} />
               ) : isShowtimesError ? (
                 <ThemedText style={styles.errorText}>Could not load showtimes.</ThemedText>
               ) : (
@@ -414,7 +599,7 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="small" color={colors.tint} />
                 </View>
-              ) : !hasNextPage && !isShowtimesLoading && showtimes.length > 0 ? (
+              ) : !hasNextPage && !isShowtimesLoading && !refreshing && showtimes.length > 0 ? (
                 <ListEndFooter label="No more showtimes" />
               ) : null
             }
@@ -444,6 +629,8 @@ function MovieContent({ id, showtimeId }: MovieContentProps) {
         setSelectedTimeRanges={setSelectedTimeRanges}
         selectedRuntimeRanges={selectedRuntimeRanges}
         setSelectedRuntimeRanges={setSelectedRuntimeRanges}
+        selectedLanguages={selectedLanguages}
+        setSelectedLanguages={setSelectedLanguages}
         resultCount={showtimes.length}
       />
       <CinemaFilterModal
@@ -549,6 +736,52 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       letterSpacing: 0.6,
       color: colors.textSecondary,
     },
+    metaText: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    metaLabel: {
+      fontSize: 11,
+      fontWeight: "800",
+      letterSpacing: 0.6,
+      color: colors.textSecondary,
+    },
+    friendWatchWrap: {
+      gap: 14,
+    },
+    friendWatchGroup: {
+      gap: 6,
+    },
+    friendWatchLabel: {
+      fontSize: 11,
+      fontWeight: "700",
+      letterSpacing: 0.4,
+      textTransform: "uppercase",
+      color: colors.textSecondary,
+    },
+    friendWatchChipsRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    friendWatchChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      maxWidth: 140,
+    },
+    friendWatchChipText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: colors.text,
+      flexShrink: 1,
+    },
     dateGroupHeader: {
       marginTop: -6,
       paddingTop: 6,
@@ -568,9 +801,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     showtimeCardGlow: {
       borderRadius: 10,
       backgroundColor: colors.cardBackground,
-    },
-    skeletonBone: {
-      backgroundColor: colors.posterPlaceholder,
     },
     skeletonList: {
       padding: 16,

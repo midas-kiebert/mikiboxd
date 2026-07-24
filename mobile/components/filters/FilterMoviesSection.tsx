@@ -12,7 +12,7 @@
  * manual refresh is only offered when something is more than a day old.
  */
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { DateTime } from "luxon";
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,6 +25,7 @@ import {
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useOptimisticValue } from "@/hooks/useOptimisticValue";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type Colors = ReturnType<typeof useThemeColors>;
@@ -144,11 +145,25 @@ export default function FilterMoviesSection({
     syncList.mutate(id, { onSettled: () => setSyncingId(null) });
   };
 
-  const handleRemoveList = (id: string) => {
-    triggerSelectionHaptic();
-    setSelectedListIds(selectedListIds.filter((x) => x !== id));
-    setExcludeListIds(excludeListIds.filter((x) => x !== id));
-    removeList.mutate(id);
+  const handleRemoveList = (list: LetterboxdListPublic) => {
+    Alert.alert(
+      "Remove list?",
+      `Remove "${list.title ?? list.list_slug}" from your lists?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => {
+            triggerSelectionHaptic();
+            setSelectedListIds(selectedListIds.filter((x) => x !== list.id));
+            setExcludeListIds(excludeListIds.filter((x) => x !== list.id));
+            removeList.mutate(list.id);
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   const refreshWatch = (
@@ -223,7 +238,7 @@ export default function FilterMoviesSection({
           onChangeMode={(m) => setListMode(list.id, m)}
           syncing={syncingId === list.id}
           onSync={() => handleSyncList(list.id)}
-          onRemove={() => handleRemoveList(list.id)}
+          onRemove={() => handleRemoveList(list)}
           colors={colors}
         />
       ))}
@@ -326,9 +341,15 @@ function FilterItemCard({
   colors: Colors;
 }) {
   const styles = createStyles(colors);
-  const active = mode !== "off";
+  const { value: displayMode, change } = useOptimisticValue(mode, onChangeMode);
+  const borderColor =
+    displayMode === "include"
+      ? colors.green.secondary
+      : displayMode === "exclude"
+        ? colors.red.secondary
+        : colors.divider;
   return (
-    <View style={[styles.card, active && styles.cardActive]}>
+    <View style={[styles.card, { borderColor }]}>
       <View style={styles.cardTop}>
         <View style={styles.cardTextBlock}>
           <ThemedText style={styles.cardTitle} numberOfLines={1}>
@@ -355,7 +376,7 @@ function FilterItemCard({
           </TouchableOpacity>
         )}
       </View>
-      <IncludeExcludeToggle mode={mode} onChange={onChangeMode} colors={colors} />
+      <IncludeExcludeToggle mode={displayMode} onChange={change} colors={colors} />
     </View>
   );
 }
@@ -373,20 +394,20 @@ function IncludeExcludeToggle({
   return (
     <View style={styles.toggleRow}>
       <Segment
-        label="Include"
-        icon="add"
+        label="Show"
+        icon="visibility"
         active={mode === "include"}
-        bg={colors.green.primary}
-        fg={colors.green.secondary}
+        activeBg={colors.green.primary}
+        activeFg={colors.green.secondary}
         onPress={() => onChange(mode === "include" ? "off" : "include")}
         colors={colors}
       />
       <Segment
-        label="Exclude"
-        icon="block"
+        label="Hide"
+        icon="visibility-off"
         active={mode === "exclude"}
-        bg={colors.red.primary}
-        fg={colors.red.secondary}
+        activeBg={colors.red.primary}
+        activeFg={colors.red.secondary}
         onPress={() => onChange(mode === "exclude" ? "off" : "exclude")}
         colors={colors}
       />
@@ -398,39 +419,36 @@ function Segment({
   label,
   icon,
   active,
-  bg,
-  fg,
+  activeBg,
+  activeFg,
   onPress,
   colors,
 }: {
   label: string;
   icon: keyof typeof MaterialIcons.glyphMap;
   active: boolean;
-  bg: string;
-  fg: string;
+  activeBg: string;
+  activeFg: string;
   onPress: () => void;
   colors: Colors;
 }) {
+  const styles = createStyles(colors);
+  const fg = active ? activeFg : colors.pillText;
   return (
-    <TouchableOpacity
-      style={{
-        flex: 1,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 4,
-        paddingVertical: 7,
-        borderRadius: 10,
-        backgroundColor: active ? bg : colors.pillBackground,
-      }}
+    <Pressable
+      // `pressed` updates synchronously on touch-down, so the segment dims
+      // instantly even while the movie list re-filters in the background.
+      style={({ pressed }) => [
+        styles.segment,
+        { backgroundColor: active ? activeBg : colors.pillBackground },
+        pressed && styles.segmentPressed,
+      ]}
+      android_ripple={{ color: fg }}
       onPress={onPress}
-      activeOpacity={0.8}
     >
-      <MaterialIcons name={icon} size={14} color={active ? fg : colors.pillText} />
-      <ThemedText style={{ fontSize: 12, fontWeight: "600", color: active ? fg : colors.pillText }}>
-        {label}
-      </ThemedText>
-    </TouchableOpacity>
+      <MaterialIcons name={icon} size={15} color={fg} />
+      <ThemedText style={[styles.segmentLabel, { color: fg }]}>{label}</ThemedText>
+    </Pressable>
   );
 }
 
@@ -471,7 +489,6 @@ const createStyles = (colors: Colors) =>
       marginBottom: 8,
       gap: 8,
     },
-    cardActive: { borderColor: colors.tint },
     cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
     cardTextBlock: { flex: 1 },
     cardTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
@@ -479,6 +496,18 @@ const createStyles = (colors: Colors) =>
     cardSubtitle: { fontSize: 12, color: colors.textSecondary, flexShrink: 1 },
     removeButton: { padding: 2 },
     toggleRow: { flexDirection: "row", gap: 6 },
+    segment: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      paddingVertical: 8,
+      borderRadius: 10,
+      overflow: "hidden",
+    },
+    segmentPressed: { opacity: 0.55 },
+    segmentLabel: { fontSize: 12.5, fontWeight: "700" },
     emptyHint: { fontSize: 12, color: colors.textSecondary, marginBottom: 8 },
     addRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
     addInput: {

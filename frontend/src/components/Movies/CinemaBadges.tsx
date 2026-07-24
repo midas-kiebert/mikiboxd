@@ -17,7 +17,7 @@ const CinemaBadges = ({ cinemas }: CinemaBadgesProps) => {
   cinemas.sort((a, b) => a.name.length - b.name.length)
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const badgeRefs = useRef<HTMLDivElement[]>([])
+  const badgeRefs = useRef<(HTMLDivElement | null)[]>([])
   const moreRef = useRef<HTMLDivElement>(null)
   const [visibleCount, setVisibleCount] = useState(cinemas.length)
   const [morePos, setMorePos] = useState(0)
@@ -75,7 +75,9 @@ const CinemaBadges = ({ cinemas }: CinemaBadgesProps) => {
         {cinemas.map((cinema, i) => (
           <Box
             key={cinema.id}
-            ref={(el: any) => (badgeRefs.current[i] = el!)}
+            ref={(el: HTMLDivElement | null) => {
+              badgeRefs.current[i] = el
+            }}
             visibility={visibleCount > i ? "visible" : "hidden"}
           >
             <CinemaBadge cinema={cinema} />

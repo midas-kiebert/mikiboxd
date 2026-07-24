@@ -1,4 +1,4 @@
-import type { CinemaPresetPublic, FilterPresetScope, GoingStatus } from "shared";
+import type { CinemaPresetPublic, GoingStatus } from "shared";
 
 import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
 import { formatRuntimePillLabel } from "@/components/filters/runtime-range-utils";
@@ -15,9 +15,7 @@ export type SharedTabFilterId =
 
 export type SharedTabShowtimeFilter = "all" | "interested" | "going";
 
-export const SHARED_TAB_FILTER_PRESET_SCOPE: FilterPresetScope = "SHOWTIMES";
-
-const SHARED_TAB_FILTERS: ReadonlyArray<{ id: SharedTabFilterId; label: string }> = [
+const SHARED_TAB_FILTERS: readonly { id: SharedTabFilterId; label: string }[] = [
   { id: "showtime-filter", label: "Any Status" },
   { id: "watchlist-only", label: "All Movies" },
   { id: "cinemas", label: "Cinemas" },

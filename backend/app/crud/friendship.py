@@ -67,6 +67,63 @@ def are_users_friends(
     return friendship is not None
 
 
+def get_friend_ids(
+    *,
+    session: Session,
+    user_id: UUID,
+) -> set[UUID]:
+    """All of the user's friend ids."""
+    return set(
+        session.exec(
+            select(Friendship.friend_id).where(col(Friendship.user_id) == user_id)
+        ).all()
+    )
+
+
+def get_status_sharing_friend_ids(
+    *,
+    session: Session,
+    owner_id: UUID,
+) -> set[UUID]:
+    """Friends the owner shares their status with under the ALL_FRIENDS mode.
+
+    A friend is sharing unless the owner has opted out of showing them their
+    status (Friendship.shares_status defaults to True).
+    """
+    stmt = select(Friendship.friend_id).where(
+        col(Friendship.user_id) == owner_id,
+        col(Friendship.shares_status).is_(True),
+    )
+    return set(session.exec(stmt).all())
+
+
+def set_friendship_status_sharing(
+    *,
+    session: Session,
+    owner_id: UUID,
+    friend_id: UUID,
+    shares_status: bool,
+) -> Friendship:
+    """Set whether the owner shares their status with a friend by default.
+
+    Raises NoResultFound if the friendship does not exist.
+    """
+    friendship = session.exec(
+        select(Friendship).where(
+            Friendship.user_id == owner_id,
+            Friendship.friend_id == friend_id,
+        )
+    ).one()
+    friendship.shares_status = shares_status
+    session.add(friendship)
+    session.flush()
+    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+        session=session,
+        owner_id=owner_id,
+    )
+    return friendship
+
+
 def create_friend_request(
     *,
     session: Session,

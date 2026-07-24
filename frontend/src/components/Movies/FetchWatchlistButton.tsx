@@ -3,7 +3,7 @@
  */
 import { Button } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { useEffect } from "react"
+import { useCallback, useEffect } from "react"
 import { FaSync } from "react-icons/fa"
 import { MeService } from "shared"
 
@@ -28,12 +28,12 @@ const FetchWatchlistButton = () => {
     },
   })
 
-  const syncAll = () => {
+  const syncAll = useCallback(() => {
     fetchWatchlist()
     fetchWatched()
-  }
+  }, [fetchWatchlist, fetchWatched])
 
-  useEffect(() => syncAll(), [])
+  useEffect(() => syncAll(), [syncAll])
 
   // Render/output using the state and derived values prepared above.
   return (

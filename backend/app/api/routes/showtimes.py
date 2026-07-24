@@ -1,6 +1,7 @@
 """Showtime endpoints."""
 
 import asyncio
+import logging
 import os
 import threading
 from uuid import UUID
@@ -9,17 +10,24 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi import status as http_status
 
 from app.api.deps import CurrentUser, SessionDep, get_db_context
+from app.core.config import settings
 from app.crud import showtime_ping as showtime_ping_crud
+from app.crud import showtime_report as showtime_report_crud
 from app.inputs.movie import Filters, get_filters
+from app.mailer import EmailDeliveryError, generate_showtime_report_email, send_email
 from app.models.auth_schemas import Message
+from app.models.showtime import Showtime
 from app.schemas.showtime import ShowtimeLoggedIn, ShowtimeSelectionUpdate
 from app.schemas.showtime_ping import SentShowtimePingPublic
+from app.schemas.showtime_report import ShowtimeReportCreate
 from app.schemas.showtime_visibility import (
     ShowtimeVisibilityPublic,
     ShowtimeVisibilityUpdate,
 )
 from app.services import push_notifications
 from app.services import showtimes as showtimes_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/showtimes", tags=["showtimes"])
 
@@ -53,8 +61,7 @@ def update_showtime_selection(
             going_status=payload.going_status,
             seat_row=payload.seat_row,
             seat_number=payload.seat_number,
-            visible_friend_ids=payload.visible_friend_ids,
-            visible_group_ids=payload.visible_group_ids,
+            visibility_mode=payload.visibility_mode,
             update_seat=should_update_seat,
         )
     except ValueError as error:
@@ -113,27 +120,6 @@ def ping_friend_for_showtime(
     return message
 
 
-@router.post("/{showtime_id}/ping-group/{group_id}", response_model=Message)
-def ping_friend_group_for_showtime(
-    *,
-    session: SessionDep,
-    showtime_id: int,
-    group_id: UUID,
-    current_user: CurrentUser,
-) -> Message:
-    message = showtimes_service.ping_friend_group_for_showtime(
-        session=session,
-        showtime_id=showtime_id,
-        actor_id=current_user.id,
-        group_id=group_id,
-    )
-    if message is None:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND, detail="Friend group not found"
-        )
-    return message
-
-
 @router.post("/{showtime_id}/ping-link/{sender_identifier}", response_model=Message)
 def receive_ping_from_link(
     *,
@@ -148,6 +134,70 @@ def receive_ping_from_link(
         receiver_id=current_user.id,
         sender_identifier=sender_identifier,
     )
+
+
+def _send_report_notification_email(
+    *,
+    movie_title: str,
+    cinema_name: str,
+    showtime_datetime_label: str,
+    reason_label: str,
+    message: str | None,
+    reporter_email: str,
+) -> None:
+    if not settings.emails_enabled:
+        logger.info("Email notifications are disabled; skipping showtime report email")
+        return
+    email_data = generate_showtime_report_email(
+        movie_title=movie_title,
+        cinema_name=cinema_name,
+        showtime_datetime_label=showtime_datetime_label,
+        reason_label=reason_label,
+        message=message,
+        reporter_email=reporter_email,
+    )
+    try:
+        send_email(
+            email_to="report@mikino.nl",
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+    except (AssertionError, EmailDeliveryError, Exception):
+        logger.exception("Failed sending showtime report notification email")
+
+
+@router.post("/{showtime_id}/report", response_model=Message)
+def report_showtime(
+    *,
+    session: SessionDep,
+    background_tasks: BackgroundTasks,
+    showtime_id: int,
+    current_user: CurrentUser,
+    payload: ShowtimeReportCreate,
+) -> Message:
+    showtime = session.get(Showtime, showtime_id)
+    if showtime is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Showtime not found"
+        )
+    showtime_report_crud.create_report(
+        session=session,
+        showtime_id=showtime_id,
+        reporter_id=current_user.id,
+        reason=payload.reason,
+        message=payload.message,
+    )
+    session.commit()
+    background_tasks.add_task(
+        _send_report_notification_email,
+        movie_title=showtime.movie.title,
+        cinema_name=showtime.cinema.name,
+        showtime_datetime_label=showtime.datetime.strftime("%a, %b %d at %H:%M"),
+        reason_label=payload.reason.value.replace("_", " "),
+        message=payload.message,
+        reporter_email=current_user.email,
+    )
+    return Message(message="Report submitted successfully")
 
 
 @router.get("/{showtime_id}/pinged-friends", response_model=list[UUID])
@@ -251,8 +301,7 @@ def update_showtime_visibility(
             session=session,
             showtime_id=showtime_id,
             actor_id=current_user.id,
-            visible_friend_ids=payload.visible_friend_ids,
-            visible_group_ids=payload.visible_group_ids,
+            mode=payload.mode,
         )
     except ValueError as error:
         raise HTTPException(

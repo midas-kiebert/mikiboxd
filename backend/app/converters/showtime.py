@@ -1,17 +1,24 @@
 from uuid import UUID
 
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 
 from app.converters import cinema as cinema_converters
 from app.converters import movie as movie_converters
 from app.converters import user as user_converters
 from app.core.enums import GoingStatus
+from app.crud import friendship as friendship_crud
+from app.crud import movie as movie_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
-from app.schemas.showtime import ShowtimeInMovieLoggedIn, ShowtimeLoggedIn
+from app.schemas.showtime import (
+    CoInvitedFriendPublic,
+    ShowtimeInMovieLoggedIn,
+    ShowtimeLoggedIn,
+)
+from app.schemas.user import UserPublic
 
 
 def _friend_to_public_with_seat(
@@ -102,6 +109,80 @@ def _invite_info_for_showtime(
     return invited_by, invite_ping_ids
 
 
+def _co_invited_friends(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID,
+) -> list[CoInvitedFriendPublic]:
+    """Your friends who were also invited to this showtime by someone who invited you.
+
+    Excludes anyone you already invited yourself — those are attributed to you,
+    not to the shared inviter, in the "Invited" list.
+    """
+    inviter_by_co_invited_id = showtime_ping_crud.get_co_invited_user_ids_with_inviter(
+        session=session,
+        viewer_id=user_id,
+        showtime_id=showtime_id,
+    )
+    if len(inviter_by_co_invited_id) == 0:
+        return []
+    friend_ids = friendship_crud.get_friend_ids(session=session, user_id=user_id)
+    already_invited_ids = set(
+        showtime_ping_crud.get_pinged_friend_ids_for_showtime(
+            session=session, showtime_id=showtime_id, sender_id=user_id
+        )
+    )
+    visible_ids = set(inviter_by_co_invited_id) & friend_ids - already_invited_ids
+    if len(visible_ids) == 0:
+        return []
+    relevant_ids = visible_ids | {inviter_by_co_invited_id[fid] for fid in visible_ids}
+    users_by_id = {
+        user.id: user
+        for user in session.exec(
+            select(User).where(col(User.id).in_(relevant_ids))
+        ).all()
+    }
+    return [
+        CoInvitedFriendPublic(
+            friend=user_converters.to_public(users_by_id[friend_id]),
+            inviter=user_converters.to_public(
+                users_by_id[inviter_by_co_invited_id[friend_id]]
+            ),
+        )
+        for friend_id in visible_ids
+        if friend_id in users_by_id
+        and inviter_by_co_invited_id[friend_id] in users_by_id
+    ]
+
+
+def _pending_invited_friends(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID,
+    responded_ids: set[UUID],
+) -> list[UserPublic]:
+    """Friends you invited who haven't responded going/interested yet."""
+    rows = showtime_ping_crud.get_sent_showtime_pings(
+        session=session,
+        showtime_id=showtime_id,
+        sender_id=user_id,
+    )
+    pending: list[UserPublic] = []
+    for ping, display_name in rows:
+        if ping.receiver_id in responded_ids:
+            continue
+        pending.append(
+            UserPublic(
+                id=ping.receiver_id,
+                is_active=True,
+                display_name=display_name,
+            )
+        )
+    return pending
+
+
 def to_logged_in(
     showtime: Showtime,
     *,
@@ -145,6 +226,34 @@ def to_logged_in(
     cinema = cinema_converters.to_public(
         cinema=showtime.cinema,
     )
+    friends_watchlisted = [
+        user_converters.to_public(friend)
+        for friend in movie_crud.get_friends_who_watchlisted_movie(
+            session=session,
+            movie_id=showtime.movie_id,
+            current_user=user_id,
+        )
+    ]
+    friends_watched = [
+        user_converters.to_public(friend)
+        for friend in movie_crud.get_friends_who_watched_movie(
+            session=session,
+            movie_id=showtime.movie_id,
+            current_user=user_id,
+        )
+    ]
+    responded_ids = {friend.id for friend in friends_going} | {
+        friend.id for friend in friends_interested
+    }
+    co_invited_friends = _co_invited_friends(
+        session=session, showtime_id=showtime.id, user_id=user_id
+    )
+    pending_invited_friends = _pending_invited_friends(
+        session=session,
+        showtime_id=showtime.id,
+        user_id=user_id,
+        responded_ids=responded_ids,
+    )
 
     return ShowtimeLoggedIn(
         **showtime.model_dump(),
@@ -157,6 +266,10 @@ def to_logged_in(
         cinema=cinema,
         invited_by=invited_by,
         invite_ping_ids=invite_ping_ids,
+        co_invited_friends=co_invited_friends,
+        pending_invited_friends=pending_invited_friends,
+        friends_watchlisted=friends_watchlisted,
+        friends_watched=friends_watched,
     )
 
 
@@ -201,6 +314,18 @@ def to_in_movie_logged_in(
     cinema = cinema_converters.to_public(
         cinema=showtime.cinema,
     )
+    responded_ids = {friend.id for friend in friends_going} | {
+        friend.id for friend in friends_interested
+    }
+    co_invited_friends = _co_invited_friends(
+        session=session, showtime_id=showtime.id, user_id=user_id
+    )
+    pending_invited_friends = _pending_invited_friends(
+        session=session,
+        showtime_id=showtime.id,
+        user_id=user_id,
+        responded_ids=responded_ids,
+    )
 
     return ShowtimeInMovieLoggedIn(
         **showtime.model_dump(),
@@ -212,4 +337,6 @@ def to_in_movie_logged_in(
         cinema=cinema,
         invited_by=invited_by,
         invite_ping_ids=invite_ping_ids,
+        co_invited_friends=co_invited_friends,
+        pending_invited_friends=pending_invited_friends,
     )

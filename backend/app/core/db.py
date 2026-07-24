@@ -65,6 +65,17 @@ def init_db(session: Session) -> None:
 
     session.commit()
 
+    # Promote known test accounts to superuser. The watchlist digest is
+    # gated to superusers outside production, so this account needs the flag
+    # to test it on dev/staging.
+    midas = session.exec(
+        select(User).where(User.email == "mikino@midaskiebert.nl")
+    ).first()
+    if midas is not None and not midas.is_superuser:
+        midas.is_superuser = True
+        session.add(midas)
+        session.commit()
+
     # Seed the curated Letterboxd lists from configs/letterboxd_lists.yaml.
     # Idempotent: existing lists are left untouched. Films are populated lazily
     # on the list's first sync, not here (no scraping at seed time).

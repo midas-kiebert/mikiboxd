@@ -2,13 +2,15 @@
  * Expo Router screen/module for (tabs) / index. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet } from 'react-native';
+import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
+import type { SearchField } from 'shared/client';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
@@ -21,12 +23,12 @@ import FiltersRow from '@/components/filters/FiltersRow';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import { ShowtimesListContent, ListEndFooter } from '@/components/showtimes/ShowtimesScreen';
+import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import MovieCard from '@/components/movies/MovieCard';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 import { applyDisplayPreset, type DisplayPreset } from '@/components/filters/saved-presets';
 import {
-  SHARED_TAB_FILTER_PRESET_SCOPE,
   getSelectedStatusesFromShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
 import { useThemeColors } from '@/hooks/use-theme-color';
@@ -38,6 +40,7 @@ export default function MainShowtimesScreen() {
   const styles = createStyles(colors);
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchField, setSearchField] = useState<SearchField>('title');
   const [isFilterTransitionLoading, setIsFilterTransitionLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { openFiltersModal } = useFiltersModal();
@@ -66,9 +69,15 @@ export default function MainShowtimesScreen() {
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
     selectedListIds,
+    setSelectedListIds,
     excludeListIds,
+    setExcludeListIds,
+    selectedLanguages,
+    setSelectedLanguages,
     watchlistExclude,
+    setWatchlistExclude,
     watchedOnly,
+    setWatchedOnly,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -85,7 +94,10 @@ export default function MainShowtimesScreen() {
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
   const resolvedApiDays = useMemo(
-    () => resolveDaySelectionsForApi(selectedDays),
+    () =>
+      resolveDaySelectionsForApi(selectedDays, {
+        startDate: DateTime.fromISO(dayAnchorKey, { zone: "Europe/Amsterdam" }),
+      }),
     [dayAnchorKey, selectedDays]
   );
   const runtimeBounds = useMemo(
@@ -106,6 +118,7 @@ export default function MainShowtimesScreen() {
   // ─── Showtimes query ────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({
     query: searchQuery || undefined,
+    searchField,
     selectedCinemaIds: sessionCinemaIds,
     days: resolvedApiDays,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
@@ -118,10 +131,12 @@ export default function MainShowtimesScreen() {
     watchedOnly: effectiveWatchedOnly ? true : undefined,
     selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
     excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
+    selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
   }), [
-    searchQuery, appliedShowtimeFilter, resolvedApiDays, selectedTimeRanges,
+    searchQuery, searchField, appliedShowtimeFilter, resolvedApiDays, selectedTimeRanges,
     runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, effectiveAppliedWatchlistOnly,
     effectiveAppliedHideWatched, selectedListIds, excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly,
+    selectedLanguages,
   ]);
 
   const activeShowtimesQuery = useFetchMainPageShowtimes({
@@ -135,6 +150,7 @@ export default function MainShowtimesScreen() {
   const movieFilters = useMemo<MovieFilters>(
     () => ({
       query: searchQuery,
+      searchField,
       watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
       hideWatched: effectiveAppliedHideWatched ? true : undefined,
       days: resolvedApiDays,
@@ -147,11 +163,12 @@ export default function MainShowtimesScreen() {
       watchedOnly: effectiveWatchedOnly ? true : undefined,
       selectedListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
       excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
+      selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
     }),
     [
-      searchQuery, effectiveAppliedWatchlistOnly, effectiveAppliedHideWatched, resolvedApiDays, selectedTimeRanges,
+      searchQuery, searchField, effectiveAppliedWatchlistOnly, effectiveAppliedHideWatched, resolvedApiDays, selectedTimeRanges,
       runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, appliedShowtimeFilter, selectedListIds,
-      excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly,
+      excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly, selectedLanguages,
     ]
   );
   const moviesQuery = useFetchMovies({
@@ -223,17 +240,23 @@ export default function MainShowtimesScreen() {
       hasLetterboxdUsername,
       setSelectedShowtimeFilter,
       setWatchlistOnly,
+      setWatchlistExclude,
       setHideWatched,
+      setWatchedOnly,
       setSelectedDays,
       setSelectedTimeRanges,
       setSelectedRuntimeRanges,
       setGroupByMovie,
+      setSelectedLanguages,
       setSessionCinemaIds,
+      selectedListIds,
+      excludeListIds,
+      setSelectedListIds,
+      setExcludeListIds,
     });
   };
 
   const filtersRowProps = {
-    scope: SHARED_TAB_FILTER_PRESET_SCOPE,
     onOpenModal: () => openFiltersModal({ showGroupByMovie: true, showPresets: true }),
     onApplyPreset: handleApplyPreset,
   };
@@ -243,8 +266,12 @@ export default function MainShowtimesScreen() {
     setGroupByMovie,
     watchlistOnly: effectiveWatchlistOnly,
     setWatchlistOnly: (v: boolean) => { setIsFilterTransitionLoading(true); setWatchlistOnly(v); },
+    watchlistExclude: effectiveWatchlistExclude,
+    setWatchlistExclude: (v: boolean) => { setIsFilterTransitionLoading(true); setWatchlistExclude(v); },
     hideWatched: effectiveHideWatched,
     setHideWatched: (v: boolean) => { setIsFilterTransitionLoading(true); setHideWatched(v); },
+    watchedOnly: effectiveWatchedOnly,
+    setWatchedOnly: (v: boolean) => { setIsFilterTransitionLoading(true); setWatchedOnly(v); },
     canUseWatchlistFilter: hasLetterboxdUsername,
     selectedShowtimeFilter,
     setSelectedShowtimeFilter: (v: typeof selectedShowtimeFilter) => {
@@ -258,27 +285,34 @@ export default function MainShowtimesScreen() {
     setSelectedTimeRanges,
     selectedRuntimeRanges,
     setSelectedRuntimeRanges,
+    selectedListIds,
+    setSelectedListIds,
+    excludeListIds,
+    setExcludeListIds,
+    selectedLanguages,
+    setSelectedLanguages,
     onOpenFilters: () => openFiltersModal({ showGroupByMovie: true, showPresets: true }),
     onClearAll: () => {
       setIsFilterTransitionLoading(true);
       setSelectedShowtimeFilter('all');
       setWatchlistOnly(false);
+      setWatchlistExclude(false);
       setHideWatched(false);
+      setWatchedOnly(false);
       setGroupByMovie(false);
       setSelectedDays([]);
       setSelectedTimeRanges([]);
       setSelectedRuntimeRanges([]);
+      setSelectedListIds([]);
+      setExcludeListIds([]);
+      setSelectedLanguages([]);
       if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
     },
   };
 
   const renderMoviesEmpty = () => {
-    if (moviesLoading || moviesFetching) {
-      return (
-        <ThemedView style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.tint} />
-        </ThemedView>
-      );
+    if (moviesLoading || moviesFetching || refreshing) {
+      return <SkeletonRows height={150} />;
     }
     return (
       <ThemedView style={styles.centerContainer}>
@@ -287,21 +321,34 @@ export default function MainShowtimesScreen() {
     );
   };
 
+  // Clear the list while refreshing so the pull-to-refresh visibly reloads,
+  // even when the refetched data is unchanged.
+  const visibleMovies = refreshing ? [] : movies;
+
   return (
     <TopSafeAreaView style={styles.container}>
       <TopBar />
       <SearchBar
         value={searchQuery}
         onChangeText={setSearchQuery}
-        placeholder={groupByMovie ? 'Search movies' : 'Search showtimes'}
+        searchField={searchField}
+        onChangeSearchField={setSearchField}
       />
       <FiltersRow {...filtersRowProps} />
       <ActiveFilterChips {...activeChipsProps} />
       {groupByMovie ? (
         <FlatList
-          data={movies}
+          data={visibleMovies}
           renderItem={({ item }) => (
-            <MovieCard movie={item} onPress={(movie) => router.push(`/movie/${movie.id}`)} />
+            <MovieCard
+              movie={item}
+              onPress={(movie) =>
+                router.push({
+                  pathname: "/movie/[id]",
+                  params: { id: String(movie.id), inheritFilters: "1" },
+                })
+              }
+            />
           )}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.movieFeed}
@@ -312,7 +359,7 @@ export default function MainShowtimesScreen() {
               <ThemedView style={styles.footerLoader}>
                 <ActivityIndicator size="large" color={colors.tint} />
               </ThemedView>
-            ) : !moviesHasNextPage && !moviesLoading && !moviesFetching && movies.length > 0 ? (
+            ) : !moviesHasNextPage && !moviesLoading && !moviesFetching && !refreshing && movies.length > 0 ? (
               <ListEndFooter label="No more movies" />
             ) : null
           }
@@ -320,7 +367,7 @@ export default function MainShowtimesScreen() {
             if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
           }}
           onEndReachedThreshold={2}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         />
       ) : (
         <ShowtimesListContent
@@ -335,6 +382,8 @@ export default function MainShowtimesScreen() {
           refreshing={refreshing}
           onRefresh={handleRefresh}
           emptyText="No showtimes found"
+          openModalOptions={{ inheritFilters: true }}
+          inheritFiltersOnMovieNav
         />
       )}
     </TopSafeAreaView>

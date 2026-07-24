@@ -6,16 +6,18 @@ from psycopg.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
-from app.core.enums import GoingStatus
+from app.core.enums import GoingStatus, Language, SearchField
 from app.crud import friendship as friendship_crud
 from app.crud import movie as movie_crud
 from app.crud import showtime as showtime_crud
 from app.crud import user as user_crud
 from app.inputs.movie import Filters
+from app.models.cinema import Cinema
 from app.models.movie import Movie, MovieCreate, MovieUpdate
 from app.models.showtime import Showtime
 from app.models.user import User
 from app.models.watched_selection import WatchedSelection
+from app.models.watchlist_selection import WatchlistSelection
 from app.utils import now_amsterdam_naive
 
 
@@ -135,6 +137,23 @@ def test_get_movies_without_letterboxd_slug(
     assert movies_without_slug[0].letterboxd_slug is None
 
 
+def test_get_movies_without_letterboxd_slug_excludes_synthetic_movies(
+    *,
+    db_transaction: Session,
+    movie_factory,
+):
+    # Synthetic listings (negative ids, e.g. sneak previews) have no Letterboxd
+    # page, so they must never be handed to the slug/poster backfill.
+    real_without_slug: Movie = movie_factory(id=27205, letterboxd_slug=None)
+    movie_factory(id=-1, letterboxd_slug=None)
+
+    movies_without_slug = movie_crud.get_movies_without_letterboxd_slug(
+        session=db_transaction,
+    )
+
+    assert [movie.id for movie in movies_without_slug] == [real_without_slug.id]
+
+
 def test_update_movie_success(*, movie_factory: Callable[..., Movie]):
     movie: Movie = movie_factory()
 
@@ -167,6 +186,63 @@ def test_upsert_movie_preserves_existing_duration_when_payload_duration_is_missi
 
     assert updated_movie.id == existing_movie.id
     assert updated_movie.duration == 121
+
+
+def test_upsert_movie_preserves_existing_language_data_when_payload_language_is_missing(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+):
+    """A transient TMDB lookup failure must not wipe previously-enriched language data."""
+    existing_movie = movie_factory(
+        languages=["en", "fr"],
+        original_language="en",
+    )
+    movie_create = MovieCreate(
+        id=existing_movie.id,
+        title=existing_movie.title,
+        poster_link=existing_movie.poster_link,
+        letterboxd_slug=existing_movie.letterboxd_slug,
+        languages=None,
+        original_language=None,
+    )
+
+    updated_movie = movie_crud.upsert_movie(
+        session=db_transaction,
+        movie_create=movie_create,
+    )
+
+    assert updated_movie.id == existing_movie.id
+    assert updated_movie.languages == ["en", "fr"]
+    assert updated_movie.original_language == "en"
+
+
+def test_upsert_movie_updates_language_data_when_payload_has_real_values(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+):
+    existing_movie = movie_factory(
+        languages=["en"],
+        original_language="en",
+    )
+    movie_create = MovieCreate(
+        id=existing_movie.id,
+        title=existing_movie.title,
+        poster_link=existing_movie.poster_link,
+        letterboxd_slug=existing_movie.letterboxd_slug,
+        languages=["nl", "en"],
+        original_language="nl",
+    )
+
+    updated_movie = movie_crud.upsert_movie(
+        session=db_transaction,
+        movie_create=movie_create,
+    )
+
+    assert updated_movie.id == existing_movie.id
+    assert updated_movie.languages == ["nl", "en"]
+    assert updated_movie.original_language == "nl"
 
 
 # def test_get_cinemas_for_movie(
@@ -456,6 +532,127 @@ def test_get_movies_filters_by_selected_statuses(
     }
 
 
+def test_get_movies_and_count_movies_filter_by_selected_languages(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    """A movie matches if EITHER its original language OR a showtime's
+    subtitles are in the selected languages - the two checks are an OR, not
+    an AND. A French movie with English subtitles must still show up under
+    an English filter, and an English movie with no English subtitles at all
+    must still show up too.
+    """
+    user = user_factory()
+
+    # Original-language match alone is enough, regardless of subtitles.
+    movie_english_original = movie_factory(original_language="en")
+    showtime_factory(movie=movie_english_original, subtitles=["fr"])
+
+    # Subtitle match alone is enough, even when the original language differs.
+    movie_french_with_english_subs = movie_factory(original_language="fr")
+    showtime_factory(movie=movie_french_with_english_subs, subtitles=["en"])
+
+    # Neither the original language nor the subtitles match -> excluded.
+    movie_no_match = movie_factory(original_language="es")
+    showtime_factory(movie=movie_no_match, subtitles=["de"])
+
+    english_only = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.ENGLISH],
+        ),
+    )
+    assert {movie.id for movie in english_only} == {
+        movie_english_original.id,
+        movie_french_with_english_subs.id,
+    }
+
+    count = movie_crud.count_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.ENGLISH],
+        ),
+    )
+    assert count == 2
+
+    movie_dutch_original = movie_factory(original_language="nl")
+    showtime_factory(movie=movie_dutch_original, subtitles=["fr"])
+
+    english_or_dutch = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.ENGLISH, Language.DUTCH],
+        ),
+    )
+    matched_ids = {movie.id for movie in english_or_dutch}
+    assert matched_ids == {
+        movie_english_original.id,
+        movie_french_with_english_subs.id,
+        movie_dutch_original.id,
+    }
+    assert movie_no_match.id not in matched_ids
+
+
+def test_get_showtimes_for_movie_filters_by_selected_languages(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+
+    # Movie's original language matches -> every showtime included regardless
+    # of its own subtitles.
+    english_movie = movie_factory(original_language="en")
+    showtime_no_subtitle_overlap = showtime_factory(movie=english_movie, subtitles=["fr"])
+
+    # Movie's original language doesn't match -> only showtimes whose own
+    # subtitles match are included.
+    french_movie = movie_factory(original_language="fr")
+    showtime_matching_subtitles = showtime_factory(movie=french_movie, subtitles=["en"])
+    showtime_no_match = showtime_factory(movie=french_movie, subtitles=["nl"])
+
+    english_movie_showtimes = movie_crud.get_showtimes_for_movie(
+        session=db_transaction,
+        movie_id=english_movie.id,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.ENGLISH],
+        ),
+        current_user_id=user.id,
+    )
+    assert showtime_no_subtitle_overlap in english_movie_showtimes
+
+    french_movie_showtimes = movie_crud.get_showtimes_for_movie(
+        session=db_transaction,
+        movie_id=french_movie.id,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.ENGLISH],
+        ),
+        current_user_id=user.id,
+    )
+    assert showtime_matching_subtitles in french_movie_showtimes
+    assert showtime_no_match not in french_movie_showtimes
+
+
 def test_get_movies_filters_by_runtime(
     *,
     db_transaction: Session,
@@ -571,6 +768,211 @@ def test_get_showtimes_for_movie_hide_watched_filter(
     )
 
     assert showtime_watched not in showtimes
+
+
+def test_get_movies_query_is_diacritics_insensitive(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    movie = movie_factory(title="München", directors=[])
+    other = movie_factory(title="Some Other Film", directors=[])
+    showtime_factory(movie=movie)
+    showtime_factory(movie=other)
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="munchen",
+        ),
+    )
+
+    assert {m.id for m in movies} == {movie.id}
+
+
+def test_get_movies_exact_title_match_ranked_first(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    movie_substring = movie_factory(title="Madagascar", directors=[])
+    movie_exact = movie_factory(title="M", directors=[])
+
+    # The substring match's showtime is earlier, so without ranking it would
+    # sort first by min(showtime.datetime) — ranking must override that.
+    showtime_factory(movie=movie_substring, datetime=now_amsterdam_naive() + timedelta(hours=1))
+    showtime_factory(movie=movie_exact, datetime=now_amsterdam_naive() + timedelta(hours=2))
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="M",
+        ),
+    )
+
+    assert [m.id for m in movies] == [movie_exact.id, movie_substring.id]
+
+
+def test_get_movies_search_field_director(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    movie_match = movie_factory(title="A Film", directors=["Greta Gerwig"])
+    movie_other = movie_factory(title="B Film", directors=["Someone Else"])
+    showtime_factory(movie=movie_match)
+    showtime_factory(movie=movie_other)
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="gerwig",
+            search_field=SearchField.DIRECTOR,
+        ),
+    )
+
+    assert {m.id for m in movies} == {movie_match.id}
+
+
+def test_get_movies_search_field_actor(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    movie_match = movie_factory(
+        title="A Film", directors=[], cast=["Timothée Chalamet"]
+    )
+    movie_other = movie_factory(title="B Film", directors=[], cast=["Someone Else"])
+    showtime_factory(movie=movie_match)
+    showtime_factory(movie=movie_other)
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="chalamet",
+            search_field=SearchField.ACTOR,
+        ),
+    )
+
+    assert {m.id for m in movies} == {movie_match.id}
+
+
+def test_get_movies_search_field_cinema(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    cinema_factory: Callable[..., Cinema],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    cinema_match = cinema_factory(name="The Grand Picture House")
+    cinema_other = cinema_factory(name="Plaza")
+    movie_match = movie_factory(title="A Film", directors=[])
+    movie_other = movie_factory(title="B Film", directors=[])
+    showtime_factory(movie=movie_match, cinema=cinema_match)
+    showtime_factory(movie=movie_other, cinema=cinema_other)
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="grand",
+            search_field=SearchField.CINEMA,
+        ),
+    )
+
+    assert {m.id for m in movies} == {movie_match.id}
+
+
+def test_get_movies_search_field_friend(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    friend = user_factory(display_name="Alice Wonderland")
+    stranger = user_factory(display_name="Bob Builder")
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=user.id, friend_id=friend.id
+    )
+
+    movie_match = movie_factory(title="A Film", directors=[])
+    movie_other = movie_factory(title="B Film", directors=[])
+    showtime_match = showtime_factory(movie=movie_match)
+    showtime_other = showtime_factory(movie=movie_other)
+
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_match.id,
+        user_id=friend.id,
+        going_status=GoingStatus.INTERESTED,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_other.id,
+        user_id=stranger.id,
+        going_status=GoingStatus.GOING,
+    )
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=user.id,
+        cinema_ids=[showtime_match.cinema_id, showtime_other.cinema_id],
+    )
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="alice",
+            search_field=SearchField.FRIEND,
+        ),
+    )
+
+    assert {m.id for m in movies} == {movie_match.id}
 
 
 def test_get_showtimes_for_movie_shows_showtimes_for_card_when_watchlist_only(
@@ -833,3 +1235,120 @@ def test_get_showtimes_for_movie_shows_showtimes_for_card_when_watchlist_only(
 
 #     assert movie_2 in movies_with_query
 #     assert len(movies_with_query) == 1
+
+
+def _add_watch_selection(
+    *,
+    session: Session,
+    selection_model: type,
+    user: User,
+    movie: Movie,
+) -> None:
+    """Record `movie` in the given Letterboxd selection table for `user`."""
+    assert user.letterboxd_username is not None
+    session.add(
+        selection_model(
+            letterboxd_username=user.letterboxd_username,
+            letterboxd_slug=movie.letterboxd_slug or f"slug-{movie.id}",
+            movie_id=movie.id,
+        )
+    )
+    session.flush()
+
+
+def test_get_friends_who_watchlisted_movie(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+):
+    current_user = user_factory()
+    friend = user_factory()
+    non_friend = user_factory()
+    movie: Movie = movie_factory()
+    other_movie: Movie = movie_factory()
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user.id,
+        friend_id=friend.id,
+    )
+
+    # Friend watchlisted the target movie → should be returned.
+    _add_watch_selection(
+        session=db_transaction,
+        selection_model=WatchlistSelection,
+        user=friend,
+        movie=movie,
+    )
+    # Non-friend watchlisted it too → must be excluded.
+    _add_watch_selection(
+        session=db_transaction,
+        selection_model=WatchlistSelection,
+        user=non_friend,
+        movie=movie,
+    )
+    # Friend watchlisted a different movie → must not leak into this result.
+    _add_watch_selection(
+        session=db_transaction,
+        selection_model=WatchlistSelection,
+        user=friend,
+        movie=other_movie,
+    )
+
+    friends = movie_crud.get_friends_who_watchlisted_movie(
+        session=db_transaction,
+        movie_id=movie.id,
+        current_user=current_user.id,
+    )
+
+    assert [f.id for f in friends] == [friend.id]
+
+
+def test_get_friends_who_watched_movie(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+):
+    current_user = user_factory()
+    friend = user_factory()
+    non_friend = user_factory()
+    movie: Movie = movie_factory()
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user.id,
+        friend_id=friend.id,
+    )
+
+    _add_watch_selection(
+        session=db_transaction,
+        selection_model=WatchedSelection,
+        user=friend,
+        movie=movie,
+    )
+    _add_watch_selection(
+        session=db_transaction,
+        selection_model=WatchedSelection,
+        user=non_friend,
+        movie=movie,
+    )
+
+    friends = movie_crud.get_friends_who_watched_movie(
+        session=db_transaction,
+        movie_id=movie.id,
+        current_user=current_user.id,
+    )
+
+    assert [f.id for f in friends] == [friend.id]
+
+    # A movie no friend has watched yields an empty list.
+    assert (
+        movie_crud.get_friends_who_watched_movie(
+            session=db_transaction,
+            movie_id=movie_factory().id,
+            current_user=current_user.id,
+        )
+        == []
+    )

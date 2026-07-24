@@ -6,7 +6,7 @@ from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
-from app.core.enums import GoingStatus
+from app.core.enums import GoingStatus, Language
 from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtime_crud
 from app.crud import user as user_crud
@@ -840,3 +840,62 @@ def test_get_main_page_showtimes_filters_by_movie_runtime(
     assert showtime_short not in showtimes
     assert showtime_match in showtimes
     assert showtime_long not in showtimes
+
+
+def test_get_main_page_showtimes_filters_by_selected_languages(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    movie_factory: Callable[..., Movie],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+
+    # Regression case: "Army of Shadows" - French audio with English subtitles
+    # must NOT match a Dutch-only language filter.
+    movie_french = movie_factory(original_language="fr")
+    movie_dutch = movie_factory(original_language="nl")
+
+    showtime_french = showtime_factory(movie=movie_french, subtitles=["en"])
+    showtime_dutch = showtime_factory(movie=movie_dutch, subtitles=["en", "nl"])
+
+    showtimes = showtime_crud.get_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.DUTCH],
+        ),
+    )
+
+    assert showtime_dutch in showtimes
+    assert showtime_french not in showtimes
+
+
+def test_count_main_page_showtimes_filters_by_selected_languages(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+    movie_factory: Callable[..., Movie],
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+
+    movie_french = movie_factory(original_language="fr")
+    movie_dutch = movie_factory(original_language="nl")
+
+    showtime_factory(movie=movie_french, subtitles=["en"])
+    showtime_factory(movie=movie_dutch, subtitles=["en", "nl"])
+
+    count = showtime_crud.count_main_page_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            selected_languages=[Language.DUTCH],
+        ),
+    )
+
+    assert count == 1

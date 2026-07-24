@@ -24,7 +24,7 @@ type DayQuickOption = QuickSelectionPopoverOption & {
 
 const ANY_DAY_OPTION_ID = "any-day";
 
-const DAY_QUICK_OPTIONS: ReadonlyArray<DayQuickOption> = [
+const DAY_QUICK_OPTIONS: readonly DayQuickOption[] = [
   { id: ANY_DAY_OPTION_ID, label: "Any Day", days: [] },
   ...RELATIVE_DAY_OPTIONS.map((option) => ({
     id: option.token,
@@ -36,7 +36,7 @@ const DAY_QUICK_OPTIONS: ReadonlyArray<DayQuickOption> = [
 const DAY_QUICK_OPTIONS_BY_ID = new Map(DAY_QUICK_OPTIONS.map((option) => [option.id, option]));
 const DAY_QUICK_OPTION_IDS = new Set(DAY_QUICK_OPTIONS.map((option) => option.id));
 
-const DAY_QUICK_POPOVER_OPTIONS: ReadonlyArray<QuickSelectionPopoverOption> = DAY_QUICK_OPTIONS.map(
+const DAY_QUICK_POPOVER_OPTIONS: readonly QuickSelectionPopoverOption[] = DAY_QUICK_OPTIONS.map(
   ({ id, label, meta }) => ({ id, label, meta })
 );
 

@@ -9,7 +9,6 @@
  */
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { type FilterPresetScope } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -18,12 +17,11 @@ import { type DisplayPreset } from "@/components/filters/saved-presets";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 export type FiltersRowProps = {
-  scope: FilterPresetScope;
   onOpenModal: () => void;
   onApplyPreset: (preset: DisplayPreset) => void;
 };
 
-export default function FiltersRow({ scope, onOpenModal, onApplyPreset }: FiltersRowProps) {
+export default function FiltersRow({ onOpenModal, onApplyPreset }: FiltersRowProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
 
@@ -48,11 +46,7 @@ export default function FiltersRow({ scope, onOpenModal, onApplyPreset }: Filter
       <View style={styles.separator} />
 
       {/* Scrollable preset buttons */}
-      <SavedPresetChips
-        scope={scope}
-        onApply={onApplyPreset}
-        variant="chips"
-      />
+      <SavedPresetChips onApply={onApplyPreset} variant="chips" />
     </View>
   );
 }

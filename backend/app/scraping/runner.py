@@ -1,33 +1,27 @@
+import base64
 import json
 import re
 import sys
-import threading
 import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
 from typing import Any
 
 from rapidfuzz import fuzz
-from sqlalchemy import func
 from sqlmodel import Session, col, delete, select
 
 from app.api.deps import get_db_context
-from app.core.config import settings
 from app.mailer import send_email
 from app.models.cinema import Cinema
 from app.models.movie import Movie
+from app.models.scrape_recap import ScrapeRecap
 from app.models.scrape_run import ScrapeRun, ScrapeRunStatus
 from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
 from app.scraping.letterboxd.load_letterboxd_data import (
-    LETTERBOXD_CF_BLOCK_SECONDS,
-    LETTERBOXD_HTTP_403_RETRY_ATTEMPTS,
-    LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD,
-    LETTERBOXD_HTTP_CONCURRENCY,
-    LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS,
     backfill_missing_letterboxd_data,
     consume_letterboxd_failure_events,
     reset_letterboxd_request_budget,
@@ -47,6 +41,7 @@ from app.services.scrape_sync import DeletedShowtimeInfo
 from app.utils import clean_title, now_amsterdam_naive
 
 RECAP_EMAIL_TO = "scraper.mikino@midaskiebert.nl"
+RECAP_AGGREGATION_WINDOW = timedelta(hours=24)
 STAGE_PATTERN = re.compile(r"(^|\s)stage=([^|]+)")
 TITLE_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
 CINEVILLE_STREAM_PREFIX = "cineville:"
@@ -77,23 +72,12 @@ class ScrapeRunDetail:
 
 
 @dataclass(frozen=True)
-class PresenceHealthSnapshot:
-    active_presence_count: int
-    inactive_presence_count: int
-    pending_delete_count: int
-    pending_delete_by_stream: list[tuple[str, int]]
-
-
-@dataclass(frozen=True)
-class Letterboxd403Diagnostics:
-    observed_403_events: int
-    unique_tmdb_ids: int
-    probable_automated_block_events: int
-    cooldown_events: int
-    session_refresh_errors: int
-    session_refresh_http_errors: int
-    unique_cf_rays: int
-    sample_cf_rays: list[str]
+class OneTimeMissDetail:
+    source_stream: str
+    movie_title: str
+    cinema_name: str
+    showtime_datetime: datetime
+    showtime_id: int
 
 
 @dataclass
@@ -397,60 +381,42 @@ def _stream_display_name(source_stream: str, cinema_name_by_id: dict[int, str]) 
     return f"{source_stream} ({cinema_name})"
 
 
-def _load_presence_health_snapshot() -> PresenceHealthSnapshot:
+def _load_one_time_miss_details() -> list[OneTimeMissDetail]:
+    """Presences missed exactly once: one more miss away from being deleted."""
     threshold_minus_one = max(0, scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE - 1)
     try:
         with get_db_context() as session:
-            active_presence_count = int(
+            rows = list(
                 session.exec(
-                    select(func.count(col(ShowtimeSourcePresence.id))).where(
-                        col(ShowtimeSourcePresence.active).is_(True)
+                    select(ShowtimeSourcePresence, Showtime, Movie, Cinema)
+                    .join(
+                        Showtime,
+                        col(ShowtimeSourcePresence.showtime_id) == col(Showtime.id),
                     )
-                ).one()
-                or 0
-            )
-            inactive_presence_count = int(
-                session.exec(
-                    select(func.count(col(ShowtimeSourcePresence.id))).where(
-                        col(ShowtimeSourcePresence.active).is_(False)
-                    )
-                ).one()
-                or 0
-            )
-            pending_rows = list(
-                session.exec(
-                    select(
-                        ShowtimeSourcePresence.source_stream,
-                        func.count(col(ShowtimeSourcePresence.id)),
-                    )
+                    .join(Movie, col(Showtime.movie_id) == col(Movie.id))
+                    .join(Cinema, col(Showtime.cinema_id) == col(Cinema.id))
                     .where(
                         col(ShowtimeSourcePresence.active).is_(True),
                         ShowtimeSourcePresence.missing_streak == threshold_minus_one,
                     )
-                    .group_by(ShowtimeSourcePresence.source_stream)
                 ).all()
             )
     except Exception as e:
-        logger.error(f"Failed to load source-presence health snapshot. Error: {e}")
-        return PresenceHealthSnapshot(
-            active_presence_count=0,
-            inactive_presence_count=0,
-            pending_delete_count=0,
-            pending_delete_by_stream=[],
-        )
+        logger.error(f"Failed to load one-time-miss details. Error: {e}")
+        return []
 
-    pending_by_stream: list[tuple[str, int]] = [
-        (str(source_stream), int(count_value))
-        for source_stream, count_value in pending_rows
+    details = [
+        OneTimeMissDetail(
+            source_stream=presence.source_stream,
+            movie_title=movie.title,
+            cinema_name=cinema.name,
+            showtime_datetime=showtime.datetime,
+            showtime_id=showtime.id,
+        )
+        for presence, showtime, movie, cinema in rows
     ]
-    pending_by_stream.sort(key=lambda item: (-item[1], item[0]))
-    pending_delete_count = sum(count for _, count in pending_by_stream)
-    return PresenceHealthSnapshot(
-        active_presence_count=active_presence_count,
-        inactive_presence_count=inactive_presence_count,
-        pending_delete_count=pending_delete_count,
-        pending_delete_by_stream=pending_by_stream,
-    )
+    details.sort(key=lambda detail: detail.showtime_datetime)
+    return details
 
 
 def _tmdb_miss_title_counts(tmdb_misses: list[dict[str, Any]]) -> list[tuple[str, int]]:
@@ -545,72 +511,6 @@ def _letterboxd_failure_breakdown(
             event_type = "unknown_failure"
         counts[event_type] = counts.get(event_type, 0) + 1
     return counts
-
-
-def _letterboxd_403_diagnostics(
-    letterboxd_failures: list[dict[str, Any]],
-) -> Letterboxd403Diagnostics:
-    observed_403_events = 0
-    unique_tmdb_ids: set[int] = set()
-    probable_automated_block_events = 0
-    cooldown_events = 0
-    session_refresh_errors = 0
-    session_refresh_http_errors = 0
-    cf_rays: set[str] = set()
-
-    for failure in letterboxd_failures:
-        status_code = failure.get("status_code")
-        event_type = str(failure.get("event_type") or "").strip()
-        reason = str(failure.get("reason") or "").strip()
-
-        if status_code == 403 or event_type.startswith("http_403"):
-            observed_403_events += 1
-            tmdb_id_raw = failure.get("tmdb_id")
-            if isinstance(tmdb_id_raw, int):
-                unique_tmdb_ids.add(tmdb_id_raw)
-            elif isinstance(tmdb_id_raw, str) and tmdb_id_raw.isdigit():
-                unique_tmdb_ids.add(int(tmdb_id_raw))
-
-        if "probable_automated_block" in reason or event_type in {
-            "cloudflare_challenge",
-            "http_403_block",
-            "http_403_streak_block",
-        }:
-            probable_automated_block_events += 1
-
-        if event_type in {
-            "cooldown_skip",
-            "cloudflare_challenge",
-            "rate_limited",
-            "http_403_block",
-            "http_403_streak_block",
-        }:
-            cooldown_events += 1
-
-        if event_type == "session_refresh_error":
-            session_refresh_errors += 1
-        if event_type == "session_refresh_http_error":
-            session_refresh_http_errors += 1
-
-        response_meta_raw = failure.get("response_meta")
-        if isinstance(response_meta_raw, dict):
-            cf_ray_raw = response_meta_raw.get("cf_ray")
-            if cf_ray_raw is not None:
-                cf_ray = str(cf_ray_raw).strip()
-                if cf_ray:
-                    cf_rays.add(cf_ray)
-
-    sample_cf_rays = sorted(cf_rays)[:8]
-    return Letterboxd403Diagnostics(
-        observed_403_events=observed_403_events,
-        unique_tmdb_ids=len(unique_tmdb_ids),
-        probable_automated_block_events=probable_automated_block_events,
-        cooldown_events=cooldown_events,
-        session_refresh_errors=session_refresh_errors,
-        session_refresh_http_errors=session_refresh_http_errors,
-        unique_cf_rays=len(cf_rays),
-        sample_cf_rays=sample_cf_rays,
-    )
 
 
 def _render_letterboxd_failure_item(failure: dict[str, Any]) -> str:
@@ -1308,14 +1208,13 @@ def _render_recap_html(
     cinema_scraper_details: list[ScrapeRunDetail],
     cinema_scraper_status_counts: dict[str, int],
     cinema_name_by_id: dict[int, str],
-    slowest_run_details: list[ScrapeRunDetail],
-    presence_health: PresenceHealthSnapshot,
+    recovered_presence_count: int,
+    one_time_miss_details: list[OneTimeMissDetail],
     tmdb_miss_titles: list[tuple[str, int]],
     low_confidence_lookups: list[dict[str, Any]],
     low_confidence_threshold: float,
     error_stage_counts: dict[str, int],
     letterboxd_failure_counts: dict[str, int],
-    letterboxd_403_diagnostics: Letterboxd403Diagnostics,
 ) -> str:
     deleted_items = (
         "".join(
@@ -1399,23 +1298,15 @@ def _render_recap_html(
         )
         or "<li>None</li>"
     )
-    pending_delete_items = (
-        "".join(
-            f"<li>{escape(source_stream)}: <b>{count}</b></li>"
-            for source_stream, count in presence_health.pending_delete_by_stream[:25]
-        )
-        or "<li>None</li>"
-    )
-    slowest_stream_items = (
+    one_time_miss_items = (
         "".join(
             "<li>"
-            f"{escape(detail.source_stream)} "
-            f"[{escape(detail.status)}] "
-            f"duration=<b>{detail.duration_seconds:.1f}s</b> "
-            f"observed={detail.observed_showtime_count if detail.observed_showtime_count is not None else '-'}"
+            f"{escape(detail.source_stream)} | "
+            f"{escape(detail.movie_title)} "
+            f"@ {escape(detail.cinema_name)} "
+            f"({escape(detail.showtime_datetime.isoformat())}, showtime_id={detail.showtime_id})"
             "</li>"
-            for detail in slowest_run_details
-            if detail.duration_seconds is not None
+            for detail in one_time_miss_details
         )
         or "<li>None</li>"
     )
@@ -1463,20 +1354,6 @@ def _render_recap_html(
         )
         or "<li>None</li>"
     )
-    letterboxd_403_cf_ray_items = (
-        "".join(
-            f"<li><code>{escape(cf_ray)}</code></li>"
-            for cf_ray in letterboxd_403_diagnostics.sample_cf_rays
-        )
-        or "<li>None</li>"
-    )
-    letterboxd_403_interpretation = "No 403 responses observed."
-    if letterboxd_403_diagnostics.observed_403_events > 0:
-        if letterboxd_403_diagnostics.cooldown_events > 0:
-            letterboxd_403_interpretation = "Automated-block protections were triggered and cooldown mode was engaged."
-        else:
-            letterboxd_403_interpretation = "403 responses were observed without cooldown trigger; this usually indicates a short-lived edge/IP reputation block."
-
     return f"""
     <h2>Scrape Recap</h2>
     <p>Started: <code>{escape(started_at.isoformat())}</code></p>
@@ -1490,6 +1367,8 @@ def _render_recap_html(
       <li>Future showtimes after run: <b>{future_showtime_count_after}</b></li>
       <li>Future movies before run: <b>{future_movie_count_before}</b></li>
       <li>Future movies after run: <b>{future_movie_count_after}</b></li>
+      <li>Previously missing, now seen again: <b>{recovered_presence_count}</b></li>
+      <li>One-time misses (one more miss from deletion): <b>{len(one_time_miss_details)}</b></li>
     </ul>
     <p>Total TMDB lookups sent: <b>{len(tmdb_lookups)}</b></p>
     <p>TMDB cache hit rate: <b>{tmdb_hit_rate:.1f}%</b></p>
@@ -1502,6 +1381,16 @@ def _render_recap_html(
     <p>Missing-cinema insert failure count: <b>{len(missing_cinema_insert_failures)}</b></p>
     <p>Total scrape streams recorded: <b>{len(scrape_run_details)}</b></p>
     <p>Cinema scraper streams recorded: <b>{len(cinema_scraper_details)}</b></p>
+    <h3>New Movies In Future Showtimes</h3>
+    <ul>{new_movie_items}</ul>
+    <h3>Showtimes No Longer Found (Future Only)</h3>
+    <ul>{deleted_items}</ul>
+    <h3>One-Time Misses</h3>
+    <ul>{one_time_miss_items}</ul>
+    <h3>Missing Cinemas</h3>
+    <ul>{missing_cinema_items}</ul>
+    <h3>Missing Cinema Insert Failures</h3>
+    <ul>{missing_cinema_insert_failure_items}</ul>
     <h3>TMDB Cache Breakdown</h3>
     <ul>{tmdb_cache_breakdown_items}</ul>
     <h3>Scrape Run Statuses</h3>
@@ -1510,48 +1399,12 @@ def _render_recap_html(
     <ul>{cinema_scraper_status_items}</ul>
     <h3>Letterboxd Failure Breakdown</h3>
     <ul>{letterboxd_failure_breakdown_items}</ul>
-    <h3>Letterboxd 403 Diagnostics</h3>
-    <ul>
-      <li>Observed HTTP 403 events: <b>{letterboxd_403_diagnostics.observed_403_events}</b></li>
-      <li>Unique TMDB IDs impacted by 403: <b>{letterboxd_403_diagnostics.unique_tmdb_ids}</b></li>
-      <li>Probable automated-block signals: <b>{letterboxd_403_diagnostics.probable_automated_block_events}</b></li>
-      <li>Cooldown/block events: <b>{letterboxd_403_diagnostics.cooldown_events}</b></li>
-      <li>Session refresh failures: <b>{letterboxd_403_diagnostics.session_refresh_errors}</b></li>
-      <li>Session refresh non-200 responses: <b>{letterboxd_403_diagnostics.session_refresh_http_errors}</b></li>
-      <li>Unique Cloudflare Ray IDs observed: <b>{letterboxd_403_diagnostics.unique_cf_rays}</b></li>
-      <li>Interpretation: {escape(letterboxd_403_interpretation)}</li>
-    </ul>
-    <h3>Letterboxd CF-Ray Samples</h3>
-    <ul>{letterboxd_403_cf_ray_items}</ul>
-    <h3>Letterboxd Mitigation Settings</h3>
-    <ul>
-      <li>HTTP concurrency: <b>{LETTERBOXD_HTTP_CONCURRENCY}</b></li>
-      <li>Minimum request interval: <b>{LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS:.2f}s</b></li>
-      <li>HTTP 403 retry attempts: <b>{LETTERBOXD_HTTP_403_RETRY_ATTEMPTS}</b></li>
-      <li>HTTP 403 streak threshold for cooldown: <b>{LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD}</b></li>
-      <li>Cooldown window after detected block: <b>{LETTERBOXD_CF_BLOCK_SECONDS:.0f}s</b></li>
-      <li>Automatic session refresh-on-403: <b>enabled</b></li>
-      <li>Persistent cookie jar across Letterboxd requests: <b>enabled</b></li>
-    </ul>
-    <h3>Sync Safety Guardrail</h3>
-    <ul>
-      <li>Deletion threshold: <b>{scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE}</b> consecutive misses.</li>
-      <li>Active source presences: <b>{presence_health.active_presence_count}</b></li>
-      <li>Inactive source presences: <b>{presence_health.inactive_presence_count}</b></li>
-      <li>Pending delete on next miss: <b>{presence_health.pending_delete_count}</b></li>
-    </ul>
-    <h3>Pending Delete By Stream</h3>
-    <ul>{pending_delete_items}</ul>
-    <h3>Slowest Streams</h3>
-    <ul>{slowest_stream_items}</ul>
     <h3>TMDB Miss Titles (Top)</h3>
     <ul>{tmdb_miss_title_items}</ul>
     <h3>Low-Confidence TMDB Matches</h3>
     <ul>{low_confidence_items}</ul>
     <h3>Error Stages</h3>
     <ul>{error_stage_items}</ul>
-    <h3>New Movies In Future Showtimes</h3>
-    <ul>{new_movie_items}</ul>
     <h3>Per-Stream Run Details</h3>
     <ul>{run_detail_items}</ul>
     <h3>Per Cinema Scraper Detail</h3>
@@ -1560,19 +1413,13 @@ def _render_recap_html(
     <ul>{letterboxd_failure_items}</ul>
     <h3>TMDB ID Not Found</h3>
     <ul>{tmdb_miss_items}</ul>
-    <h3>Showtimes No Longer Found (Future Only)</h3>
-    <ul>{deleted_items}</ul>
-    <h3>Missing Cinemas</h3>
-    <ul>{missing_cinema_items}</ul>
-    <h3>Missing Cinema Insert Failures</h3>
-    <ul>{missing_cinema_insert_failure_items}</ul>
     <h3>Errors</h3>
     <ul>{error_items}</ul>
-    <p>Attachments include TMDB lookups, Letterboxd failures, Letterboxd 403 diagnostics, and full run details.</p>
+    <p>Attachments include TMDB lookups, Letterboxd failures, and full run details.</p>
     """
 
 
-def _send_recap_email(
+def _store_run_recap(
     *,
     started_at,
     finished_at,
@@ -1582,6 +1429,7 @@ def _send_recap_email(
     before_snapshot: FutureSnapshot,
     after_snapshot: FutureSnapshot,
 ) -> None:
+    """Render this run's recap and persist it for the daily aggregated email."""
     tmdb_misses = [lookup for lookup in tmdb_lookups if lookup["tmdb_id"] is None]
 
     deleted_showtimes = _dedupe_deleted_showtimes(summary.deleted_showtimes)
@@ -1625,17 +1473,8 @@ def _send_recap_email(
         )
     cinema_name_by_id = _load_cinema_name_by_id()
     letterboxd_failure_counts = _letterboxd_failure_breakdown(letterboxd_failures)
-    letterboxd_403_diagnostics = _letterboxd_403_diagnostics(letterboxd_failures)
-    slowest_run_details = sorted(
-        [
-            detail
-            for detail in scrape_run_details
-            if detail.duration_seconds is not None
-        ],
-        key=lambda detail: detail.duration_seconds or 0.0,
-        reverse=True,
-    )[:15]
-    presence_health = _load_presence_health_snapshot()
+    recovered_presence_count = scrape_sync_service.consume_recovered_presence_count()
+    one_time_miss_details = _load_one_time_miss_details()
     error_stage_counts = _error_stage_counts(errors)
 
     new_future_showtime_ids = after_snapshot.showtime_ids - before_snapshot.showtime_ids
@@ -1664,14 +1503,13 @@ def _send_recap_email(
         cinema_scraper_details=cinema_scraper_details,
         cinema_scraper_status_counts=cinema_scraper_status_counts,
         cinema_name_by_id=cinema_name_by_id,
-        slowest_run_details=slowest_run_details,
-        presence_health=presence_health,
+        recovered_presence_count=recovered_presence_count,
+        one_time_miss_details=one_time_miss_details,
         tmdb_miss_titles=tmdb_miss_titles,
         low_confidence_lookups=low_confidence_lookups,
         low_confidence_threshold=TMDB_LOW_CONFIDENCE_THRESHOLD,
         error_stage_counts=error_stage_counts,
         letterboxd_failure_counts=letterboxd_failure_counts,
-        letterboxd_403_diagnostics=letterboxd_403_diagnostics,
     )
 
     tmdb_low_confidence_compact = [
@@ -1753,56 +1591,25 @@ def _send_recap_email(
     letterboxd_failures_attachment_name = (
         f"letterboxd_failures_{started_at:%Y%m%d_%H%M%S}.json"
     )
-    letterboxd_403_diagnostics_attachment_data = _compact_json_bytes(
-        {
-            "observed_403_events": letterboxd_403_diagnostics.observed_403_events,
-            "unique_tmdb_ids": letterboxd_403_diagnostics.unique_tmdb_ids,
-            "probable_automated_block_events": (
-                letterboxd_403_diagnostics.probable_automated_block_events
-            ),
-            "cooldown_events": letterboxd_403_diagnostics.cooldown_events,
-            "session_refresh_errors": (
-                letterboxd_403_diagnostics.session_refresh_errors
-            ),
-            "session_refresh_http_errors": (
-                letterboxd_403_diagnostics.session_refresh_http_errors
-            ),
-            "unique_cf_rays": letterboxd_403_diagnostics.unique_cf_rays,
-            "sample_cf_rays": letterboxd_403_diagnostics.sample_cf_rays,
-            "mitigation_settings": {
-                "http_concurrency": LETTERBOXD_HTTP_CONCURRENCY,
-                "min_request_interval_seconds": (
-                    LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS
-                ),
-                "http_403_retry_attempts": LETTERBOXD_HTTP_403_RETRY_ATTEMPTS,
-                "http_403_streak_block_threshold": (
-                    LETTERBOXD_HTTP_403_STREAK_BLOCK_THRESHOLD
-                ),
-                "cooldown_seconds": LETTERBOXD_CF_BLOCK_SECONDS,
-                "session_refresh_on_403": True,
-                "persistent_cookie_jar": True,
-            },
-        }
-    )
-    letterboxd_403_diagnostics_attachment_name = (
-        f"letterboxd_403_diagnostics_{started_at:%Y%m%d_%H%M%S}.json"
-    )
-
-    presence_health_attachment_data = _compact_json_bytes(
+    one_time_misses_attachment_data = _compact_json_bytes(
         {
             "missing_streak_to_deactivate": (
                 scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE
             ),
-            "active_presence_count": presence_health.active_presence_count,
-            "inactive_presence_count": presence_health.inactive_presence_count,
-            "pending_delete_count": presence_health.pending_delete_count,
-            "pending_delete_by_stream": [
-                {"source_stream": source_stream, "count": count}
-                for source_stream, count in presence_health.pending_delete_by_stream
+            "recovered_presence_count": recovered_presence_count,
+            "one_time_misses": [
+                {
+                    "source_stream": detail.source_stream,
+                    "movie_title": detail.movie_title,
+                    "cinema_name": detail.cinema_name,
+                    "showtime_datetime": detail.showtime_datetime.isoformat(),
+                    "showtime_id": detail.showtime_id,
+                }
+                for detail in one_time_miss_details
             ],
         }
     )
-    presence_health_attachment_name = f"presence_health_{started_at:%Y%m%d_%H%M%S}.json"
+    one_time_misses_attachment_name = f"one_time_misses_{started_at:%Y%m%d_%H%M%S}.json"
     missing_cinema_insert_failures_attachment_data = _compact_json_bytes(
         missing_cinema_insert_failures,
     )
@@ -1810,93 +1617,150 @@ def _send_recap_email(
         f"missing_cinema_insert_failures_{started_at:%Y%m%d_%H%M%S}.json"
     )
 
-    send_email(
-        email_to=RECAP_EMAIL_TO,
-        subject=(
-            "Cinema Scrape Recap "
-            f"{started_at:%Y-%m-%d %H:%M} -> {finished_at:%Y-%m-%d %H:%M}"
-        ),
-        html_content=html,
-        attachments=[
-            {
-                "filename": tmdb_lookup_attachment_name,
-                "data": tmdb_lookup_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": scrape_runs_attachment_name,
-                "data": scrape_runs_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": cinema_scraper_runs_attachment_name,
-                "data": cinema_scraper_runs_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": letterboxd_failures_attachment_name,
-                "data": letterboxd_failures_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": letterboxd_403_diagnostics_attachment_name,
-                "data": letterboxd_403_diagnostics_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": presence_health_attachment_name,
-                "data": presence_health_attachment_data,
-                "mime_type": "application/json",
-            },
-            {
-                "filename": missing_cinema_insert_failures_attachment_name,
-                "data": missing_cinema_insert_failures_attachment_data,
-                "mime_type": "application/json",
-            },
-        ],
+    subject = (
+        "Cinema Scrape Recap "
+        f"{started_at:%Y-%m-%d %H:%M} -> {finished_at:%Y-%m-%d %H:%M}"
+    )
+    attachments = [
+        {
+            "filename": tmdb_lookup_attachment_name,
+            "data": tmdb_lookup_attachment_data,
+            "mime_type": "application/json",
+        },
+        {
+            "filename": scrape_runs_attachment_name,
+            "data": scrape_runs_attachment_data,
+            "mime_type": "application/json",
+        },
+        {
+            "filename": cinema_scraper_runs_attachment_name,
+            "data": cinema_scraper_runs_attachment_data,
+            "mime_type": "application/json",
+        },
+        {
+            "filename": letterboxd_failures_attachment_name,
+            "data": letterboxd_failures_attachment_data,
+            "mime_type": "application/json",
+        },
+        {
+            "filename": one_time_misses_attachment_name,
+            "data": one_time_misses_attachment_data,
+            "mime_type": "application/json",
+        },
+        {
+            "filename": missing_cinema_insert_failures_attachment_name,
+            "data": missing_cinema_insert_failures_attachment_data,
+            "mime_type": "application/json",
+        },
+    ]
+    _persist_run_recap(
+        started_at=started_at,
+        finished_at=finished_at,
+        subject=subject,
+        html=html,
+        attachments=attachments,
     )
 
 
-def _send_recap_email_with_timeout(
+def _persist_run_recap(
     *,
     started_at: datetime,
     finished_at: datetime,
-    summary: ScrapeExecutionSummary,
-    tmdb_lookups: list[dict[str, Any]],
-    letterboxd_failures: list[dict[str, Any]],
-    before_snapshot: FutureSnapshot,
-    after_snapshot: FutureSnapshot,
+    subject: str,
+    html: str,
+    attachments: list[dict[str, Any]],
 ) -> None:
-    timeout_seconds = max(1.0, float(settings.SCRAPE_RECAP_EMAIL_TIMEOUT_SECONDS))
-    done = threading.Event()
-    error_holder: dict[str, Exception] = {}
-
-    def _worker() -> None:
-        try:
-            _send_recap_email(
+    """Store this run's rendered recap + attachments for the daily digest."""
+    serialized_attachments = [
+        {
+            "filename": attachment["filename"],
+            "mime_type": attachment["mime_type"],
+            "data_b64": base64.b64encode(attachment["data"]).decode("ascii"),
+        }
+        for attachment in attachments
+    ]
+    with get_db_context() as session:
+        session.add(
+            ScrapeRecap(
                 started_at=started_at,
                 finished_at=finished_at,
-                summary=summary,
-                tmdb_lookups=tmdb_lookups,
-                letterboxd_failures=letterboxd_failures,
-                before_snapshot=before_snapshot,
-                after_snapshot=after_snapshot,
+                subject=subject,
+                html=html,
+                attachments_json=json.dumps(serialized_attachments),
             )
-        except Exception as exc:  # pragma: no cover - reported via error_holder
-            error_holder["error"] = exc
-        finally:
-            done.set()
-
-    thread = threading.Thread(target=_worker, name="scrape-recap-email", daemon=True)
-    thread.start()
-    if not done.wait(timeout_seconds):
-        logger.error(
-            "Timed out sending scrape recap email after %.1fs; continuing shutdown.",
-            timeout_seconds,
         )
-        return
-    if "error" in error_holder:
-        raise error_holder["error"]
+        session.commit()
+
+
+def send_daily_recap() -> bool:
+    """Email one recap covering every scrape run stored in the last 24 hours.
+
+    Runs are rendered per-run (``_store_run_recap``) and stitched together here,
+    so the scrape can run several times a day while only one recap email is
+    sent. Sent recaps are deleted; stragglers older than the window are pruned
+    so a failed send can't let the table grow unbounded.
+    """
+    now = now_amsterdam_naive()
+    window_start = now - RECAP_AGGREGATION_WINDOW
+
+    with get_db_context() as session:
+        recaps = list(
+            session.exec(
+                select(ScrapeRecap)
+                .where(ScrapeRecap.started_at >= window_start)
+                .order_by(col(ScrapeRecap.started_at).asc())
+            ).all()
+        )
+        if not recaps:
+            logger.info("No scrape recaps stored in the last 24h; nothing to send.")
+            return False
+
+        first_started = recaps[0].started_at
+        last_finished = recaps[-1].finished_at
+        subject = (
+            f"Cinema Scrape Daily Recap {first_started:%Y-%m-%d %H:%M} -> "
+            f"{last_finished:%Y-%m-%d %H:%M} ({len(recaps)} run(s))"
+        )
+        sections = [
+            f"<h1>Daily scrape recap — {len(recaps)} run(s) in the last 24h</h1>"
+        ]
+        attachments: list[dict[str, Any]] = []
+        for recap in recaps:
+            sections.append(
+                "<hr/>"
+                f"<h1>Run {escape(recap.started_at.isoformat())} &rarr; "
+                f"{escape(recap.finished_at.isoformat())}</h1>"
+                f"{recap.html}"
+            )
+            for attachment in json.loads(recap.attachments_json):
+                attachments.append(
+                    {
+                        "filename": attachment["filename"],
+                        "data": base64.b64decode(attachment["data_b64"]),
+                        "mime_type": attachment["mime_type"],
+                    }
+                )
+        html = "".join(sections)
+        sent_ids = [recap.id for recap in recaps]
+
+    send_email(
+        email_to=RECAP_EMAIL_TO,
+        subject=subject,
+        html_content=html,
+        attachments=attachments,
+    )
+
+    with get_db_context() as session:
+        session.execute(delete(ScrapeRecap).where(col(ScrapeRecap.id).in_(sent_ids)))
+        # Prune any stragglers from earlier failed sends so the table stays small.
+        session.execute(
+            delete(ScrapeRecap).where(
+                col(ScrapeRecap.started_at) < now - 2 * RECAP_AGGREGATION_WINDOW
+            )
+        )
+        session.commit()
+    logger.info("Sent daily scrape recap covering %s run(s).", len(sent_ids))
+    return True
 
 
 def run() -> None:
@@ -2022,7 +1886,7 @@ def run() -> None:
                     exc_info=True,
                 )
             try:
-                _send_recap_email_with_timeout(
+                _store_run_recap(
                     started_at=started_at,
                     finished_at=finished_at,
                     summary=summary,
@@ -2031,9 +1895,9 @@ def run() -> None:
                     before_snapshot=before_snapshot,
                     after_snapshot=after_snapshot,
                 )
-                logger.info("Sent scrape recap email.")
+                logger.info("Stored scrape recap for the daily digest.")
             except Exception:
-                logger.error("Failed to send scrape recap email.", exc_info=True)
+                logger.error("Failed to store scrape recap.", exc_info=True)
 
     if fatal_error is not None:
         sys.exit(1)

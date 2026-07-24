@@ -1,4 +1,5 @@
 from datetime import datetime, time, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func
@@ -8,6 +9,7 @@ from sqlmodel import Session, Time, case, cast, col, delete, or_, select
 from app.core.enums import GoingStatus
 from app.core.security import get_password_hash, verify_password
 from app.crud import showtime_visibility as showtime_visibility_crud
+from app.crud.movie import apply_language_filter
 from app.inputs.movie import Filters
 from app.models.cinema_selection import CinemaSelection
 from app.models.friendship import FriendRequest, Friendship
@@ -325,6 +327,105 @@ def get_friends(*, session: Session, user_id: UUID) -> list[User]:
     return friends
 
 
+def _build_selected_showtimes_query(
+    *,
+    user_id: UUID,
+    viewer_id: UUID | None,
+    filters: Filters,
+    letterboxd_username: str | None,
+) -> tuple[Any, bool]:
+    """
+    Shared filter-application logic for get_selected_showtimes and
+    count_selected_showtimes. Every filter dimension must be applied here
+    exactly once so the two entry points can never drift out of sync.
+    """
+    stmt = (
+        select(Showtime)
+        .join(
+            ShowtimeSelection,
+            col(Showtime.id) == ShowtimeSelection.showtime_id,
+        )
+        .where(
+            ShowtimeSelection.user_id == user_id,
+            Showtime.datetime >= filters.snapshot_time,
+        )
+    )
+
+    if viewer_id is not None and viewer_id != user_id:
+        stmt = stmt.join(
+            ShowtimeVisibilityEffective,
+            (col(ShowtimeVisibilityEffective.owner_id) == user_id)
+            & (col(ShowtimeVisibilityEffective.showtime_id) == col(Showtime.id))
+            & (col(ShowtimeVisibilityEffective.viewer_id) == viewer_id),
+        )
+
+    if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
+        stmt = stmt.where(
+            col(ShowtimeSelection.going_status).in_(filters.selected_statuses)
+        )
+
+    if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
+        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+
+    if filters.days is not None and len(filters.days) > 0:
+        stmt = stmt.where(
+            day_bucket_date_clause(col(Showtime.datetime)).in_(filters.days)
+        )
+
+    if filters.time_ranges is not None and len(filters.time_ranges) > 0:
+        stmt = stmt.where(
+            or_(
+                *[
+                    time_range_clause(
+                        col(Showtime.datetime),
+                        col(Showtime.end_datetime),
+                        tr.start,
+                        tr.end,
+                    )
+                    for tr in filters.time_ranges
+                ]
+            )
+        )
+
+    has_languages_filter = (
+        filters.selected_languages is not None and len(filters.selected_languages) > 0
+    )
+
+    if (
+        filters.query
+        or filters.watchlist_only
+        or filters.runtime_min is not None
+        or filters.runtime_max is not None
+        or has_languages_filter
+    ):
+        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
+
+    if filters.query:
+        pattern = f"%{filters.query}%"
+        stmt = stmt.where(
+            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
+        )
+
+    if filters.runtime_min is not None:
+        stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
+
+    if filters.runtime_max is not None:
+        stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
+
+    if has_languages_filter:
+        stmt = apply_language_filter(stmt, filters=filters)
+
+    if filters.watchlist_only:
+        if letterboxd_username is None:
+            return stmt, True
+        stmt = stmt.join(
+            WatchlistSelection,
+            col(WatchlistSelection.movie_id) == col(Showtime.movie_id),
+        ).where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
+
+    return stmt, False
+
+
 def get_selected_showtimes(
     *,
     session: Session,
@@ -344,81 +445,14 @@ def get_selected_showtimes(
     Returns:
         list[Showtime]: A list of Showtime objects that the user has selected.
     """
-    stmt = (
-        select(Showtime)
-        .join(
-            ShowtimeSelection,
-            col(Showtime.id) == ShowtimeSelection.showtime_id,
-        )
-        .where(
-            ShowtimeSelection.user_id == user_id,
-            Showtime.datetime >= filters.snapshot_time,
-        )
+    stmt, force_empty = _build_selected_showtimes_query(
+        user_id=user_id,
+        viewer_id=viewer_id,
+        filters=filters,
+        letterboxd_username=letterboxd_username,
     )
-
-    if viewer_id is not None and viewer_id != user_id:
-        stmt = stmt.join(
-            ShowtimeVisibilityEffective,
-            (col(ShowtimeVisibilityEffective.owner_id) == user_id)
-            & (col(ShowtimeVisibilityEffective.showtime_id) == col(Showtime.id))
-            & (col(ShowtimeVisibilityEffective.viewer_id) == viewer_id),
-        )
-
-    if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
-        stmt = stmt.where(
-            col(ShowtimeSelection.going_status).in_(filters.selected_statuses)
-        )
-
-    if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
-
-    if filters.days is not None and len(filters.days) > 0:
-        stmt = stmt.where(
-            day_bucket_date_clause(col(Showtime.datetime)).in_(filters.days)
-        )
-
-    if filters.time_ranges is not None and len(filters.time_ranges) > 0:
-        stmt = stmt.where(
-            or_(
-                *[
-                    time_range_clause(
-                        col(Showtime.datetime),
-                        col(Showtime.end_datetime),
-                        tr.start,
-                        tr.end,
-                    )
-                    for tr in filters.time_ranges
-                ]
-            )
-        )
-
-    if (
-        filters.query
-        or filters.watchlist_only
-        or filters.runtime_min is not None
-        or filters.runtime_max is not None
-    ):
-        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
-
-    if filters.query:
-        pattern = f"%{filters.query}%"
-        stmt = stmt.where(
-            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
-        )
-
-    if filters.runtime_min is not None:
-        stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
-
-    if filters.runtime_max is not None:
-        stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
-
-    if filters.watchlist_only:
-        if letterboxd_username is None:
-            return []
-        stmt = stmt.join(
-            WatchlistSelection,
-            col(WatchlistSelection.movie_id) == col(Showtime.movie_id),
-        ).where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
+    if force_empty:
+        return []
 
     stmt = stmt.order_by(col(Showtime.datetime)).limit(limit).offset(offset)
     showtimes = list(session.exec(stmt).all())
@@ -433,81 +467,14 @@ def count_selected_showtimes(
     filters: Filters,
     letterboxd_username: str | None = None,
 ) -> int:
-    stmt = (
-        select(Showtime)
-        .join(
-            ShowtimeSelection,
-            col(Showtime.id) == ShowtimeSelection.showtime_id,
-        )
-        .where(
-            ShowtimeSelection.user_id == user_id,
-            Showtime.datetime >= filters.snapshot_time,
-        )
+    stmt, force_empty = _build_selected_showtimes_query(
+        user_id=user_id,
+        viewer_id=viewer_id,
+        filters=filters,
+        letterboxd_username=letterboxd_username,
     )
-
-    if viewer_id is not None and viewer_id != user_id:
-        stmt = stmt.join(
-            ShowtimeVisibilityEffective,
-            (col(ShowtimeVisibilityEffective.owner_id) == user_id)
-            & (col(ShowtimeVisibilityEffective.showtime_id) == col(Showtime.id))
-            & (col(ShowtimeVisibilityEffective.viewer_id) == viewer_id),
-        )
-
-    if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
-        stmt = stmt.where(
-            col(ShowtimeSelection.going_status).in_(filters.selected_statuses)
-        )
-
-    if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
-
-    if filters.days is not None and len(filters.days) > 0:
-        stmt = stmt.where(
-            day_bucket_date_clause(col(Showtime.datetime)).in_(filters.days)
-        )
-
-    if filters.time_ranges is not None and len(filters.time_ranges) > 0:
-        stmt = stmt.where(
-            or_(
-                *[
-                    time_range_clause(
-                        col(Showtime.datetime),
-                        col(Showtime.end_datetime),
-                        tr.start,
-                        tr.end,
-                    )
-                    for tr in filters.time_ranges
-                ]
-            )
-        )
-
-    if (
-        filters.query
-        or filters.watchlist_only
-        or filters.runtime_min is not None
-        or filters.runtime_max is not None
-    ):
-        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
-
-    if filters.query:
-        pattern = f"%{filters.query}%"
-        stmt = stmt.where(
-            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
-        )
-
-    if filters.runtime_min is not None:
-        stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
-
-    if filters.runtime_max is not None:
-        stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
-
-    if filters.watchlist_only:
-        if letterboxd_username is None:
-            return 0
-        stmt = stmt.join(
-            WatchlistSelection,
-            col(WatchlistSelection.movie_id) == col(Showtime.movie_id),
-        ).where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
+    if force_empty:
+        return 0
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     return session.execute(count_stmt).scalar_one()

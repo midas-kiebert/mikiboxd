@@ -8,11 +8,9 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
-from app.core.enums import FilterPresetScope, NotificationType, ShowtimePingSort
+from app.core.enums import NotificationType, ShowtimePingSort
 from app.crud import cinema as cinemas_crud
 from app.crud import cinema_preset as cinema_presets_crud
-from app.crud import filter_preset as filter_presets_crud
-from app.crud import friend_group as friend_groups_crud
 from app.crud import friendship as friendship_crud
 from app.crud import notification as notification_crud
 from app.crud import push_token as push_tokens_crud
@@ -28,16 +26,12 @@ from app.exceptions.user_exceptions import (
     InvalidUsername,
 )
 from app.models.cinema_preset import CinemaPreset
-from app.models.filter_preset import FilterPreset
-from app.models.friend_group import FriendGroup
 from app.models.push_token import PushToken
 from app.models.saved_preset import SavedPreset
 from app.models.showtime import Showtime
 from app.models.user import User, UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
-from app.schemas.filter_preset import FilterPresetCreate, FilterPresetPublic
-from app.schemas.friend_group import FriendGroupCreate, FriendGroupPublic
-from app.schemas.notification import NotificationFeedItem
+from app.schemas.notification import NotificationFeedItem, NotificationFeedType
 from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
@@ -51,41 +45,14 @@ logger = getLogger(__name__)
 NOTIFICATION_MAX_AGE = timedelta(days=30)
 
 # Maps stored notification types to the strings the client feed expects.
-_NOTIFICATION_FEED_TYPES = {
+_NOTIFICATION_FEED_TYPES: dict[NotificationType, NotificationFeedType] = {
     NotificationType.FRIEND_SHOWTIME_MATCH: "friend_showtime_match",
     NotificationType.INVITE_RESPONSE: "invite_response",
     NotificationType.FRIEND_REQUEST_ACCEPTED: "friend_request_accepted",
 }
 
-DEFAULT_FILTER_PRESET_IDS = {
-    FilterPresetScope.SHOWTIMES: UUID("00000000-0000-0000-0000-000000000001"),
-    FilterPresetScope.MOVIES: UUID("00000000-0000-0000-0000-000000000002"),
-}
 DEFAULT_CINEMA_PRESET_ID = UUID("00000000-0000-0000-0000-000000000003")
 DEFAULT_CINEMA_PRESET_NAME = "All Cinemas"
-
-
-def _build_default_filter_preset(scope: FilterPresetScope) -> FilterPresetPublic:
-    now = now_amsterdam_naive()
-    return FilterPresetPublic.model_validate(
-        {
-            "id": DEFAULT_FILTER_PRESET_IDS[scope],
-            "name": "Default",
-            "scope": scope,
-            "is_default": True,
-            "is_favorite": False,
-            "filters": {
-                "selected_showtime_filter": "all",
-                "showtime_audience": "including-friends",
-                "watchlist_only": False,
-                "days": None,
-                "time_ranges": None,
-                "runtime_ranges": None,
-            },
-            "created_at": now,
-            "updated_at": now,
-        }
-    )
 
 
 def update_me(
@@ -203,173 +170,13 @@ def delete_push_token_for_user(
     return True
 
 
-def _to_filter_preset_public(preset: FilterPreset) -> FilterPresetPublic:
-    return FilterPresetPublic.model_validate(
-        {
-            "id": preset.id,
-            "name": preset.name,
-            "scope": preset.scope,
-            "is_default": preset.is_default,
-            "is_favorite": preset.is_favorite,
-            "filters": preset.filters,
-            "created_at": preset.created_at,
-            "updated_at": preset.updated_at,
-        }
-    )
-
-
-def list_filter_presets(
-    *,
-    session: Session,
-    user_id: UUID,
-    scope: FilterPresetScope,
-) -> list[FilterPresetPublic]:
-    presets = filter_presets_crud.get_visible_presets(
-        session=session,
-        user_id=user_id,
-        scope=scope,
-    )
-    public_presets = [_to_filter_preset_public(preset) for preset in presets]
-    has_named_default = any(
-        preset.is_default and preset.name.strip().lower() == "default"
-        for preset in public_presets
-    )
-    if not has_named_default:
-        public_presets.insert(0, _build_default_filter_preset(scope))
-    return public_presets
-
-
-def save_filter_preset(
-    *,
-    session: Session,
-    user_id: UUID,
-    payload: FilterPresetCreate,
-) -> FilterPresetPublic:
-    now = now_amsterdam_naive()
-    preset_name = payload.name.strip()
-    filters = payload.filters.model_dump(mode="json")
-    should_set_favorite = payload.is_favorite is True
-    existing = filter_presets_crud.get_user_preset_by_name(
-        session=session,
-        user_id=user_id,
-        scope=payload.scope,
-        name=preset_name,
-    )
-
-    if should_set_favorite:
-        filter_presets_crud.clear_user_favorite_preset(
-            session=session,
-            user_id=user_id,
-            scope=payload.scope,
-        )
-
-    if existing is None:
-        preset = filter_presets_crud.create_preset(
-            session=session,
-            user_id=user_id,
-            name=preset_name,
-            scope=payload.scope,
-            filters=filters,
-            is_favorite=should_set_favorite,
-            now=now,
-        )
-    else:
-        preset = filter_presets_crud.update_preset(
-            session=session,
-            preset=existing,
-            filters=filters,
-            is_favorite=payload.is_favorite,
-            now=now,
-        )
-
-    session.commit()
-    return _to_filter_preset_public(preset)
-
-
-def delete_filter_preset(
-    *,
-    session: Session,
-    user_id: UUID,
-    preset_id: UUID,
-) -> bool:
-    deleted = filter_presets_crud.delete_user_preset(
-        session=session,
-        user_id=user_id,
-        preset_id=preset_id,
-    )
-    if deleted:
-        session.commit()
-    return deleted
-
-
-def get_favorite_filter_preset(
-    *,
-    session: Session,
-    user_id: UUID,
-    scope: FilterPresetScope,
-) -> FilterPresetPublic | None:
-    preset = filter_presets_crud.get_user_favorite_preset(
-        session=session,
-        user_id=user_id,
-        scope=scope,
-    )
-    if preset is None:
-        return None
-    return _to_filter_preset_public(preset)
-
-
-def set_favorite_filter_preset(
-    *,
-    session: Session,
-    user_id: UUID,
-    preset_id: UUID,
-) -> FilterPresetPublic | None:
-    now = now_amsterdam_naive()
-    preset = filter_presets_crud.get_user_preset_by_id(
-        session=session,
-        user_id=user_id,
-        preset_id=preset_id,
-    )
-    if preset is None:
-        return None
-
-    filter_presets_crud.clear_user_favorite_preset(
-        session=session,
-        user_id=user_id,
-        scope=preset.scope,
-    )
-    favorite = filter_presets_crud.set_preset_favorite(
-        session=session,
-        preset=preset,
-        is_favorite=True,
-        now=now,
-    )
-    session.commit()
-    return _to_filter_preset_public(favorite)
-
-
-def clear_favorite_filter_preset(
-    *,
-    session: Session,
-    user_id: UUID,
-    scope: FilterPresetScope,
-) -> None:
-    filter_presets_crud.clear_user_favorite_preset(
-        session=session,
-        user_id=user_id,
-        scope=scope,
-    )
-    session.commit()
-
-
 def _to_saved_preset_public(preset: SavedPreset) -> SavedPresetPublic:
     return SavedPresetPublic.model_validate(
         {
             "id": preset.id,
             "name": preset.name,
-            "scope": preset.scope,
             "is_favorite": preset.is_favorite,
-            "included_fields": preset.included_fields,
+            "untouched_fields": preset.untouched_fields,
             "filters": preset.filters,
             "cinema_ids": preset.cinema_ids,
             "created_at": preset.created_at,
@@ -382,12 +189,10 @@ def list_saved_presets(
     *,
     session: Session,
     user_id: UUID,
-    scope: FilterPresetScope,
 ) -> list[SavedPresetPublic]:
     presets = saved_presets_crud.list_user_presets(
         session=session,
         user_id=user_id,
-        scope=scope,
     )
     return [_to_saved_preset_public(preset) for preset in presets]
 
@@ -406,7 +211,6 @@ def save_saved_preset(
     existing = saved_presets_crud.get_user_preset_by_name(
         session=session,
         user_id=user_id,
-        scope=payload.scope,
         name=preset_name,
     )
 
@@ -414,7 +218,6 @@ def save_saved_preset(
         saved_presets_crud.clear_user_favorite_preset(
             session=session,
             user_id=user_id,
-            scope=payload.scope,
         )
 
     if existing is None:
@@ -422,8 +225,7 @@ def save_saved_preset(
             session=session,
             user_id=user_id,
             name=preset_name,
-            scope=payload.scope,
-            included_fields=payload.included_fields,
+            untouched_fields=payload.untouched_fields,
             filters=filters,
             cinema_ids=cinema_ids,
             is_favorite=should_set_favorite,
@@ -433,7 +235,7 @@ def save_saved_preset(
         preset = saved_presets_crud.update_preset(
             session=session,
             preset=existing,
-            included_fields=payload.included_fields,
+            untouched_fields=payload.untouched_fields,
             filters=filters,
             cinema_ids=cinema_ids,
             is_favorite=payload.is_favorite,
@@ -464,12 +266,10 @@ def get_favorite_saved_preset(
     *,
     session: Session,
     user_id: UUID,
-    scope: FilterPresetScope,
 ) -> SavedPresetPublic | None:
     preset = saved_presets_crud.get_user_favorite_preset(
         session=session,
         user_id=user_id,
-        scope=scope,
     )
     if preset is None:
         return None
@@ -494,7 +294,6 @@ def set_favorite_saved_preset(
     saved_presets_crud.clear_user_favorite_preset(
         session=session,
         user_id=user_id,
-        scope=preset.scope,
     )
     favorite = saved_presets_crud.set_preset_favorite(
         session=session,
@@ -510,12 +309,10 @@ def clear_favorite_saved_preset(
     *,
     session: Session,
     user_id: UUID,
-    scope: FilterPresetScope,
 ) -> None:
     saved_presets_crud.clear_user_favorite_preset(
         session=session,
         user_id=user_id,
-        scope=scope,
     )
     session.commit()
 
@@ -689,342 +486,6 @@ def clear_favorite_cinema_preset(
     cinema_presets_crud.clear_user_favorite_preset(
         session=session,
         user_id=user_id,
-    )
-    session.commit()
-
-
-def _to_friend_group_public(
-    *,
-    group: FriendGroup,
-    friend_ids: list[UUID],
-) -> FriendGroupPublic:
-    return FriendGroupPublic.model_validate(
-        {
-            "id": group.id,
-            "name": group.name,
-            "friend_ids": sorted(friend_ids, key=str),
-            "is_favorite": group.is_favorite,
-            "created_at": group.created_at,
-            "updated_at": group.updated_at,
-        }
-    )
-
-
-def _normalize_friend_ids(friend_ids: list[UUID]) -> list[UUID]:
-    return sorted(set(friend_ids), key=str)
-
-
-def _find_group_with_same_members(
-    *,
-    session: Session,
-    user_id: UUID,
-    friend_ids: list[UUID],
-    exclude_group_id: UUID | None = None,
-    all_friend_ids: set[UUID] | None = None,
-) -> FriendGroup | None:
-    target_member_ids = set(_normalize_friend_ids(friend_ids))
-    if len(target_member_ids) == 0:
-        return None
-
-    groups = friend_groups_crud.list_user_groups(
-        session=session,
-        user_id=user_id,
-    )
-    for group in groups:
-        if exclude_group_id is not None and group.id == exclude_group_id:
-            continue
-        group_member_ids = set(
-            friend_groups_crud.get_group_member_ids(
-                session=session,
-                group_id=group.id,
-            )
-        )
-        if all_friend_ids is not None:
-            group_member_ids &= all_friend_ids
-        if group_member_ids == target_member_ids:
-            return group
-    return None
-
-
-def _sanitize_group_member_ids(
-    *,
-    session: Session,
-    group: FriendGroup,
-    all_friend_ids: set[UUID],
-    now: datetime,
-) -> tuple[list[UUID], bool]:
-    group_member_ids = set(
-        friend_groups_crud.get_group_member_ids(
-            session=session,
-            group_id=group.id,
-        )
-    )
-    normalized_friend_ids = sorted(group_member_ids & all_friend_ids, key=str)
-    if len(group_member_ids) == len(normalized_friend_ids):
-        return sorted(group_member_ids, key=str), False
-
-    friend_groups_crud.replace_group_members(
-        session=session,
-        group=group,
-        friend_ids=normalized_friend_ids,
-        now=now,
-    )
-    group.updated_at = now
-    session.add(group)
-    return normalized_friend_ids, True
-
-
-def list_friend_groups(
-    *,
-    session: Session,
-    user_id: UUID,
-) -> list[FriendGroupPublic]:
-    all_friend_ids = {
-        friend.id for friend in users_crud.get_friends(session=session, user_id=user_id)
-    }
-    now = now_amsterdam_naive()
-    groups = friend_groups_crud.list_user_groups(
-        session=session,
-        user_id=user_id,
-    )
-    sanitized_groups: list[tuple[FriendGroup, list[UUID], bool]] = []
-    had_updates = False
-    for group in groups:
-        friend_ids, was_updated = _sanitize_group_member_ids(
-            session=session,
-            group=group,
-            all_friend_ids=all_friend_ids,
-            now=now,
-        )
-        if was_updated:
-            had_updates = True
-        if len(friend_ids) == 0:
-            session.delete(group)
-            had_updates = True
-            continue
-        sanitized_groups.append((group, friend_ids, was_updated))
-
-    groups_by_member_key: dict[
-        tuple[UUID, ...], list[tuple[FriendGroup, list[UUID], bool]]
-    ] = {}
-    for entry in sanitized_groups:
-        _, friend_ids, _ = entry
-        groups_by_member_key.setdefault(tuple(friend_ids), []).append(entry)
-
-    retained_group_ids: set[UUID] = set()
-    for grouped_entries in groups_by_member_key.values():
-        if len(grouped_entries) == 1:
-            retained_group_ids.add(grouped_entries[0][0].id)
-            continue
-
-        # If a shrinkage creates a duplicate, prefer a non-updated group.
-        # Tie-break deterministically by earliest creation time.
-        non_updated_entries = [entry for entry in grouped_entries if not entry[2]]
-        candidate_entries = non_updated_entries or grouped_entries
-        preferred_entry = min(
-            candidate_entries,
-            key=lambda entry: (entry[0].created_at, str(entry[0].id)),
-        )
-        retained_group_ids.add(preferred_entry[0].id)
-        for entry in grouped_entries:
-            group, _, _ = entry
-            if group.id == preferred_entry[0].id:
-                continue
-            session.delete(group)
-            had_updates = True
-
-    public_groups: list[FriendGroupPublic] = []
-    for group, friend_ids, _ in sanitized_groups:
-        if group.id not in retained_group_ids:
-            continue
-        public_groups.append(
-            _to_friend_group_public(
-                group=group,
-                friend_ids=friend_ids,
-            )
-        )
-
-    if had_updates:
-        showtime_visibility_crud.rebuild_effective_visibility_for_owner(
-            session=session,
-            owner_id=user_id,
-        )
-        session.commit()
-
-    return public_groups
-
-
-def save_friend_group(
-    *,
-    session: Session,
-    user_id: UUID,
-    payload: FriendGroupCreate,
-) -> FriendGroupPublic:
-    now = now_amsterdam_naive()
-    group_name = payload.name.strip()
-    friend_ids = _normalize_friend_ids(payload.friend_ids)
-    should_set_favorite = payload.is_favorite is True
-
-    all_friend_ids = {
-        friend.id for friend in users_crud.get_friends(session=session, user_id=user_id)
-    }
-    invalid_friend_ids = [
-        friend_id for friend_id in friend_ids if friend_id not in all_friend_ids
-    ]
-    if invalid_friend_ids:
-        raise ValueError("Friend group contains users who are not your friends.")
-    if len(friend_ids) == 0:
-        raise ValueError("Friend group must contain at least one friend.")
-
-    existing = friend_groups_crud.get_user_group_by_name(
-        session=session,
-        user_id=user_id,
-        name=group_name,
-    )
-    duplicate_group = _find_group_with_same_members(
-        session=session,
-        user_id=user_id,
-        friend_ids=friend_ids,
-        exclude_group_id=existing.id if existing is not None else None,
-        all_friend_ids=all_friend_ids,
-    )
-    if duplicate_group is not None:
-        raise ValueError("A friend group with the same members already exists.")
-
-    if should_set_favorite:
-        friend_groups_crud.clear_user_favorite_group(
-            session=session,
-            user_id=user_id,
-        )
-
-    if existing is None:
-        group = friend_groups_crud.create_group(
-            session=session,
-            user_id=user_id,
-            name=group_name,
-            is_favorite=should_set_favorite,
-            now=now,
-        )
-    else:
-        group = friend_groups_crud.update_group(
-            session=session,
-            group=existing,
-            is_favorite=payload.is_favorite,
-            now=now,
-        )
-
-    friend_groups_crud.replace_group_members(
-        session=session,
-        group=group,
-        friend_ids=friend_ids,
-        now=now,
-    )
-
-    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
-        session=session,
-        owner_id=user_id,
-    )
-    session.commit()
-    return _to_friend_group_public(group=group, friend_ids=friend_ids)
-
-
-def delete_friend_group(
-    *,
-    session: Session,
-    user_id: UUID,
-    group_id: UUID,
-) -> bool:
-    deleted = friend_groups_crud.delete_group(
-        session=session,
-        user_id=user_id,
-        group_id=group_id,
-    )
-    if deleted:
-        showtime_visibility_crud.rebuild_effective_visibility_for_owner(
-            session=session,
-            owner_id=user_id,
-        )
-        session.commit()
-    return deleted
-
-
-def get_favorite_friend_group(
-    *,
-    session: Session,
-    user_id: UUID,
-) -> FriendGroupPublic | None:
-    groups = list_friend_groups(
-        session=session,
-        user_id=user_id,
-    )
-    for group in groups:
-        if group.is_favorite:
-            return group
-    return None
-
-
-def set_favorite_friend_group(
-    *,
-    session: Session,
-    user_id: UUID,
-    group_id: UUID,
-) -> FriendGroupPublic | None:
-    now = now_amsterdam_naive()
-    group = friend_groups_crud.get_user_group_by_id(
-        session=session,
-        user_id=user_id,
-        group_id=group_id,
-    )
-    if group is None:
-        return None
-
-    friend_groups_crud.clear_user_favorite_group(
-        session=session,
-        user_id=user_id,
-    )
-    favorite = friend_groups_crud.set_group_favorite(
-        session=session,
-        group=group,
-        is_favorite=True,
-        now=now,
-    )
-    all_friend_ids = {
-        friend.id for friend in users_crud.get_friends(session=session, user_id=user_id)
-    }
-    friend_ids, _ = _sanitize_group_member_ids(
-        session=session,
-        group=favorite,
-        all_friend_ids=all_friend_ids,
-        now=now,
-    )
-    if len(friend_ids) == 0:
-        session.delete(favorite)
-        showtime_visibility_crud.rebuild_effective_visibility_for_owner(
-            session=session,
-            owner_id=user_id,
-        )
-        session.commit()
-        return None
-    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
-        session=session,
-        owner_id=user_id,
-    )
-    session.commit()
-    return _to_friend_group_public(group=favorite, friend_ids=friend_ids)
-
-
-def clear_favorite_friend_group(
-    *,
-    session: Session,
-    user_id: UUID,
-) -> None:
-    friend_groups_crud.clear_user_favorite_group(
-        session=session,
-        user_id=user_id,
-    )
-    showtime_visibility_crud.rebuild_effective_visibility_for_owner(
-        session=session,
-        owner_id=user_id,
     )
     session.commit()
 
@@ -1249,14 +710,31 @@ def dismiss_received_showtime_ping(
     user_id: UUID,
     ping_id: int,
 ) -> bool:
+    ping = showtime_ping_crud.get_showtime_ping_by_id(session=session, ping_id=ping_id)
     dismissed = showtime_ping_crud.dismiss_received_showtime_ping(
         session=session,
         ping_id=ping_id,
         receiver_id=user_id,
         dismissed_at=now_amsterdam_naive(),
     )
-    if dismissed:
-        session.commit()
+    if dismissed and ping is not None:
+        # Dismissing drops the dismisser from the inviter's active invite group,
+        # which can also drop their co-invitees out of each other's visibility —
+        # rebuild the whole group, not just the dismisser.
+        try:
+            showtime_visibility_crud.rebuild_effective_visibility_for_showtime_participants(
+                session=session,
+                showtime_id=ping.showtime_id,
+            )
+            showtime_visibility_crud.rebuild_effective_visibility_for_showtime(
+                session=session,
+                owner_id=user_id,
+                showtime_id=ping.showtime_id,
+            )
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise AppError from e
     return dismissed
 
 

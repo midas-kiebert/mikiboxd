@@ -2,7 +2,8 @@
  * Mobile showtimes feature component: Showtimes Screen.
  */
 import React from "react";
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
+import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { type ShowtimeLoggedIn } from "shared";
 
@@ -17,6 +18,7 @@ import FilterPills, {
   type FilterPillLongPressPosition,
 } from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 /**
  * Rendered at the bottom of any paginated list once all pages are loaded.
@@ -37,6 +39,8 @@ type ShowtimesListContentProps = {
   onRefresh: () => void | Promise<void>;
   emptyText?: string;
   openModalOptions?: OpenOptions;
+  /** Carry the showtimes-tab filters over when long-pressing into the movie page. */
+  inheritFiltersOnMovieNav?: boolean;
 };
 
 export function ShowtimesListContent({
@@ -50,6 +54,7 @@ export function ShowtimesListContent({
   onRefresh,
   emptyText = "No showtimes found",
   openModalOptions,
+  inheritFiltersOnMovieNav = false,
 }: ShowtimesListContentProps) {
   const router = useRouter();
   const colors = useThemeColors();
@@ -64,20 +69,20 @@ export function ShowtimesListContent({
         </View>
       );
     }
-    if (!hasNextPage && !isLoading && !isFetching && showtimes.length > 0) {
+    if (!hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0) {
       return <ListEndFooter label="No more showtimes" />;
     }
     return null;
   };
 
   const renderEmpty = () => {
-    if (isLoading || isFetching) {
+    if (isLoading || isFetching || refreshing) {
       // Skeleton cards (rather than a lone spinner) so the list keeps its shape
       // while data loads instead of popping in.
       return (
         <View>
           {[0, 1, 2, 3, 4].map((i) => (
-            <View key={i} style={[styles.skeletonBone, styles.skeletonCard]} />
+            <Skeleton key={i} style={styles.skeletonCard} />
           ))}
         </View>
       );
@@ -89,15 +94,29 @@ export function ShowtimesListContent({
     );
   };
 
+  // While pull-to-refresh is running, clear the list so it visibly reloads into
+  // skeletons and back — otherwise an unchanged result looks like nothing
+  // happened. The fresh data renders the moment `refreshing` flips back to false.
+  const data = refreshing ? [] : showtimes;
+
   return (
     <View style={styles.container}>
       <FlatList
-        data={showtimes}
+        data={data}
         renderItem={({ item }) => (
           <ShowtimeCard
             showtime={item}
             onPress={(showtime) => openShowtimeModal(showtime, openModalOptions)}
-            onLongPress={(showtime) => router.push(`/movie/${showtime.movie.id}`)}
+            onLongPress={(showtime) =>
+              router.push({
+                pathname: "/movie/[id]",
+                params: {
+                  id: String(showtime.movie.id),
+                  cinemaId: String(showtime.cinema.id),
+                  ...(inheritFiltersOnMovieNav ? { inheritFilters: "1" } : {}),
+                },
+              })
+            }
           />
         )}
         keyExtractor={(item) => item.id.toString()}
@@ -110,7 +129,7 @@ export function ShowtimesListContent({
         }}
         onEndReachedThreshold={2}
         refreshing={isLoading}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />
     </View>
   );
@@ -140,8 +159,8 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   searchQuery: string;
   onSearchChange: (value: string) => void;
   // Legacy pill-based filters — omit when using filterRow slot instead
-  filters?: ReadonlyArray<FilterOption<TFilterId>>;
-  activeFilterIds?: ReadonlyArray<TFilterId>;
+  filters?: readonly FilterOption<TFilterId>[];
+  activeFilterIds?: readonly TFilterId[];
   onToggleFilter?: (id: TFilterId, position?: FilterPillLongPressPosition) => void;
   onLongPressFilter?: (
     id: TFilterId,
@@ -153,6 +172,7 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   listContent?: React.ReactNode;
   emptyText?: string;
   openModalOptions?: OpenOptions;
+  inheritFiltersOnMovieNav?: boolean;
 };
 
 export default function ShowtimesScreen<TFilterId extends string = string>({
@@ -177,6 +197,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   listContent,
   emptyText = "No showtimes found",
   openModalOptions,
+  inheritFiltersOnMovieNav,
 }: ShowtimesScreenProps<TFilterId>) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -214,6 +235,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
           onRefresh={onRefresh}
           emptyText={emptyText}
           openModalOptions={openModalOptions}
+          inheritFiltersOnMovieNav={inheritFiltersOnMovieNav}
         />
       )}
     </TopSafeAreaView>
@@ -244,15 +266,15 @@ export function ShowtimesScreenSkeleton({
         showBackButton={topBarShowBackButton}
       />
       <View style={styles.skeletonSearch}>
-        <View style={styles.skeletonSearchBar} />
+        <Skeleton style={styles.skeletonSearchBar} />
       </View>
       <View style={styles.skeletonFilterRow}>
-        <View style={[styles.skeletonBone, { height: 32, width: 90, borderRadius: 18 }]} />
-        <View style={[styles.skeletonBone, { height: 32, width: 72, borderRadius: 18 }]} />
+        <Skeleton style={{ height: 32, width: 90, borderRadius: 18 }} />
+        <Skeleton style={{ height: 32, width: 72, borderRadius: 18 }} />
       </View>
       <View style={styles.listContent}>
         {[0, 1, 2, 3, 4].map((i) => (
-          <View key={i} style={[styles.skeletonBone, styles.skeletonCard]} />
+          <Skeleton key={i} style={styles.skeletonCard} />
         ))}
       </View>
     </TopSafeAreaView>
@@ -268,9 +290,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     listContent: {
       paddingTop: 12,
       paddingHorizontal: 16,
-    },
-    skeletonBone: {
-      backgroundColor: colors.posterPlaceholder,
     },
     skeletonSearch: {
       paddingHorizontal: 16,

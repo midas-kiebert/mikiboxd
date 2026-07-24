@@ -32,12 +32,12 @@ export type FilterPillLongPressPosition = {
 };
 
 type FilterPillsProps<TId extends string = string> = {
-  filters: ReadonlyArray<FilterOption<TId>>;
+  filters: readonly FilterOption<TId>[];
   // For "single select" mode you pass a real id; for "multi active" mode most screens pass "".
   selectedId: TId | "";
   onSelect: (id: TId, position?: FilterPillLongPressPosition) => void;
   onLongPressSelect?: (id: TId, position: FilterPillLongPressPosition) => boolean | void;
-  activeIds?: ReadonlyArray<TId>;
+  activeIds?: readonly TId[];
   compoundRightToggle?: CompoundRightToggle;
 };
 

@@ -23,13 +23,31 @@ _TIMEZONE = ZoneInfo("Europe/Amsterdam")
 
 
 def _scrape_data() -> None:
-    """Run the nightly scrape — fetches showtimes for all cinemas and syncs them to the DB."""
+    """Run a scrape — fetches showtimes for all cinemas and syncs them to the DB.
+
+    Runs every 6 hours. Each run stores its recap; ``_send_daily_scrape_recap``
+    emails them together once a day.
+    """
     from app.scraping.runner import run
 
     try:
         run()
     except Exception:
-        logger.exception("Failed to run nightly scrape job")
+        logger.exception("Failed to run scrape job")
+
+
+def _send_daily_scrape_recap() -> None:
+    """Email one recap covering every scrape run in the last 24 hours.
+
+    Runs daily. Errors are caught so a single failure does not stop the
+    scheduler.
+    """
+    from app.scraping.runner import send_daily_recap
+
+    try:
+        send_daily_recap()
+    except Exception:
+        logger.exception("Failed to send daily scrape recap")
 
 
 def _send_interested_showtime_reminders() -> None:
@@ -89,12 +107,57 @@ def _purge_stale_notifications() -> None:
         logger.exception("Failed to run notification purge job")
 
 
+def _refresh_watchlist_digest_queue() -> None:
+    """Detect movies that just became newly available for the watchlist digest.
+
+    Runs daily, after the nightly scrape. Populates the digest queue that
+    `_send_watchlist_digests` reads from; each movie is queued at most once,
+    ever. Errors are caught so a single failure does not stop the scheduler.
+    """
+    from app.api.deps import get_db_context
+    from app.services import watchlist_digest
+
+    try:
+        with get_db_context() as session:
+            queued_count = watchlist_digest.refresh_digest_queue(session=session)
+        if queued_count > 0:
+            logger.info("Queued %s newly available movies for the digest", queued_count)
+    except Exception:
+        logger.exception("Failed to run watchlist digest queue refresh job")
+
+
+def _send_watchlist_digests() -> None:
+    """Email users movies on their watchlist (or list override) that just got a showtime.
+
+    Runs daily, after the queue refresh. Daily-frequency users are sent every
+    pending movie every run; weekly-or-urgent users are held back until either
+    a pending showtime is within 3 days or it's been over a week since their
+    last digest. Outside production this only reaches superusers. Errors are
+    caught so a single failure does not stop the scheduler.
+    """
+    from app.api.deps import get_db_context
+    from app.services import watchlist_digest
+
+    try:
+        with get_db_context() as session:
+            sent_count = watchlist_digest.send_due_digests(session=session)
+        if sent_count > 0:
+            logger.info("Sent %s watchlist digest emails", sent_count)
+    except Exception:
+        logger.exception("Failed to run watchlist digest job")
+
+
 if __name__ == "__main__":
     scheduler = BlockingScheduler()
     scheduler.add_job(
         func=_scrape_data,
-        trigger=CronTrigger(hour=3, minute=0, timezone=_TIMEZONE),
-        id="nightly_scrape",
+        trigger=CronTrigger(hour="0,6,12,18", minute=0, timezone=_TIMEZONE),
+        id="scrape_data",
+    )
+    scheduler.add_job(
+        func=_send_daily_scrape_recap,
+        trigger=CronTrigger(hour=9, minute=0, timezone=_TIMEZONE),
+        id="send_daily_scrape_recap",
     )
     scheduler.add_job(
         func=_send_interested_showtime_reminders,
@@ -110,5 +173,15 @@ if __name__ == "__main__":
         func=_sync_curated_letterboxd_lists,
         trigger=CronTrigger(day_of_week="mon", hour=5, minute=0, timezone=_TIMEZONE),
         id="sync_curated_letterboxd_lists",
+    )
+    scheduler.add_job(
+        func=_refresh_watchlist_digest_queue,
+        trigger=CronTrigger(hour=7, minute=0, timezone=_TIMEZONE),
+        id="refresh_watchlist_digest_queue",
+    )
+    scheduler.add_job(
+        func=_send_watchlist_digests,
+        trigger=CronTrigger(hour=8, minute=0, timezone=_TIMEZONE),
+        id="send_watchlist_digests",
     )
     scheduler.start()

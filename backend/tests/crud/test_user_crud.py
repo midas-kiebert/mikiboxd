@@ -7,12 +7,13 @@ from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlmodel import Session
 
-from app.core.enums import GoingStatus
+from app.core.enums import GoingStatus, Language
 from app.core.security import verify_password
 from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtime_crud
 from app.crud import user as user_crud
 from app.inputs.movie import Filters
+from app.models.movie import Movie
 from app.models.showtime import Showtime
 from app.models.user import User, UserCreate, UserUpdate
 from app.utils import now_amsterdam_naive
@@ -588,6 +589,85 @@ def test_get_selected_showtimes_filters_by_runtime(
     assert showtime_short not in selected_showtimes
     assert showtime_match in selected_showtimes
     assert showtime_long not in selected_showtimes
+
+
+def test_get_selected_showtimes_filters_by_selected_languages(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    showtime_factory: Callable[..., Showtime],
+    movie_factory: Callable[..., Movie],
+):
+    snapshot_time = now_amsterdam_naive() - timedelta(minutes=1)
+    user = user_factory()
+
+    # Regression case: "Army of Shadows" - French audio with English subtitles
+    # must NOT match a Dutch-only language filter.
+    movie_french = movie_factory(original_language="fr")
+    movie_dutch = movie_factory(original_language="nl")
+
+    showtime_french = showtime_factory(movie=movie_french, subtitles=["en"])
+    showtime_dutch = showtime_factory(movie=movie_dutch, subtitles=["en", "nl"])
+
+    for showtime in (showtime_french, showtime_dutch):
+        showtime_crud.add_showtime_selection(
+            session=db_transaction,
+            showtime_id=showtime.id,
+            user_id=user.id,
+            going_status=GoingStatus.GOING,
+        )
+
+    selected_showtimes = user_crud.get_selected_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        viewer_id=user.id,
+        limit=10,
+        offset=0,
+        filters=Filters(
+            snapshot_time=snapshot_time,
+            selected_languages=[Language.DUTCH],
+        ),
+    )
+
+    assert showtime_dutch in selected_showtimes
+    assert showtime_french not in selected_showtimes
+
+
+def test_count_selected_showtimes_filters_by_selected_languages(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    showtime_factory: Callable[..., Showtime],
+    movie_factory: Callable[..., Movie],
+):
+    snapshot_time = now_amsterdam_naive() - timedelta(minutes=1)
+    user = user_factory()
+
+    movie_french = movie_factory(original_language="fr")
+    movie_dutch = movie_factory(original_language="nl")
+
+    showtime_french = showtime_factory(movie=movie_french, subtitles=["en"])
+    showtime_dutch = showtime_factory(movie=movie_dutch, subtitles=["en", "nl"])
+
+    for showtime in (showtime_french, showtime_dutch):
+        showtime_crud.add_showtime_selection(
+            session=db_transaction,
+            showtime_id=showtime.id,
+            user_id=user.id,
+            going_status=GoingStatus.GOING,
+        )
+
+    count = user_crud.count_selected_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        viewer_id=user.id,
+        filters=Filters(
+            snapshot_time=snapshot_time,
+            selected_languages=[Language.DUTCH],
+        ),
+    )
+
+    assert count == 1
 
 
 # def test_is_user_going_to_movie(

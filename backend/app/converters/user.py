@@ -58,6 +58,12 @@ def to_me(user: User) -> UserMe:
         watched_last_synced=(
             user.letterboxd.last_watched_sync if user.letterboxd else None
         ),
+        notify_watchlist_digest_enabled=user.notify_watchlist_digest_enabled,
+        notify_watchlist_digest_frequency=user.notify_watchlist_digest_frequency,
+        notify_watchlist_digest_list_id=user.notify_watchlist_digest_list_id,
+        notify_watchlist_digest_cinema_preset_id=(
+            user.notify_watchlist_digest_cinema_preset_id
+        ),
     )
 
 
@@ -66,6 +72,7 @@ def to_with_friend_status(
     *,
     session: Session,
     current_user: UUID,
+    sharing_friend_ids: set[UUID] | None = None,
 ) -> UserWithFriendStatus:
     """
     Converts a User object to a UserWithFriendStatus object, including friendship status
@@ -75,12 +82,20 @@ def to_with_friend_status(
         user (User): The User object to convert.
         session (Session): The SQLAlchemy session for database operations.
         current_user (UUID): The ID of the current user.
+        sharing_friend_ids (set[UUID] | None): The friends the current user
+            shares their status with (i.e. not opted out), pre-loaded by the
+            caller to avoid a per-user query. When None, it is loaded here.
     Returns:
         UserWithFriendStatus: The converted UserWithFriendStatus object with friendship details.
     Raises:
         ValidationError: If the user does not match the expected model.
     """
     User.model_validate(user)
+    if sharing_friend_ids is None:
+        sharing_friend_ids = friendship_crud.get_status_sharing_friend_ids(
+            session=session,
+            owner_id=current_user,
+        )
     is_friend = friendship_crud.are_users_friends(
         session=session,
         user_id=current_user,
@@ -103,6 +118,8 @@ def to_with_friend_status(
         is_friend=is_friend,
         sent_request=sent_request,
         received_request=received_request,
+        # Sharing by default: only opted-out friends are absent from the set.
+        shares_status=(not is_friend) or (user.id in sharing_friend_ids),
     )
 
 

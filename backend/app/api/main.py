@@ -7,6 +7,7 @@ FastAPI app in `app/main.py` under the `/api/` prefix.
 from fastapi import APIRouter
 
 from app.api.routes import (
+    admin,
     cinemas,
     friends,
     login,
@@ -26,3 +27,4 @@ api_router.include_router(showtimes.router)
 api_router.include_router(friends.router)
 api_router.include_router(me.router)
 api_router.include_router(cinemas.router)
+api_router.include_router(admin.router)

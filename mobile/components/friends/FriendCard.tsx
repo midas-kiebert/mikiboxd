@@ -1,18 +1,21 @@
 /**
  * Mobile friends feature component: Friend Card.
  */
+import { useEffect, useState } from "react";
 import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
-import type { UserWithFriendStatus } from "shared";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  FriendsService,
-  type FriendsRemoveFriendData,
-  type FriendsAcceptFriendRequestData,
-  type FriendsSendFriendRequestData,
-  type FriendsCancelFriendRequestData,
-  type FriendsDeclineFriendRequestData,
+import { FriendsService } from "shared";
+import type {
+  UserWithFriendStatus,
+  FriendsRemoveFriendData,
+  FriendsAcceptFriendRequestData,
+  FriendsSendFriendRequestData,
+  FriendsCancelFriendRequestData,
+  FriendsDeclineFriendRequestData,
+  FriendsSetFriendStatusSharingData,
 } from "shared";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -92,6 +95,38 @@ export default function FriendCard({ user }: FriendCardProps) {
       Alert.alert("Error", "Could not cancel friend request.");
     },
   });
+
+  // Optimistic status-sharing state so the toggle flips the instant it is tapped.
+  const [sharesStatus, setSharesStatus] = useState(user.shares_status);
+  useEffect(() => {
+    setSharesStatus(user.shares_status);
+  }, [user.shares_status]);
+
+  const setStatusSharingMutation = useMutation({
+    mutationFn: (data: FriendsSetFriendStatusSharingData) =>
+      FriendsService.setFriendStatusSharing(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      // Visibility of your status to this friend may have changed.
+      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
+      queryClient.invalidateQueries({ queryKey: ["movie"] });
+      queryClient.invalidateQueries({ queryKey: ["movies"] });
+    },
+    onError: (error) => {
+      setSharesStatus(user.shares_status);
+      console.error("Error updating status sharing:", error);
+      Alert.alert("Error", "Could not update status sharing.");
+    },
+  });
+
+  const handleToggleStatusSharing = () => {
+    const next = !sharesStatus;
+    setSharesStatus(next);
+    setStatusSharingMutation.mutate({
+      friendId: user.id,
+      requestBody: { shares_status: next },
+    });
+  };
 
   const isBusy =
     removeFriendMutation.isPending ||
@@ -188,6 +223,35 @@ export default function FriendCard({ user }: FriendCardProps) {
             </View>
           ) : null}
         </View>
+        {user.is_friend ? (
+          <TouchableOpacity
+            style={[styles.shareToggle, !sharesStatus && styles.shareToggleOff]}
+            onPress={(event) => {
+              event.stopPropagation();
+              handleToggleStatusSharing();
+            }}
+            disabled={isBusy}
+            activeOpacity={0.7}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: sharesStatus }}
+            accessibilityLabel={
+              sharesStatus
+                ? "Showing your status to this friend. Tap to hide."
+                : "Hiding your status from this friend. Tap to show."
+            }
+          >
+            <MaterialIcons
+              name={sharesStatus ? "visibility" : "visibility-off"}
+              size={15}
+              color={sharesStatus ? colors.green.secondary : colors.textSecondary}
+            />
+            <ThemedText
+              style={[styles.shareToggleText, { color: sharesStatus ? colors.green.secondary : colors.textSecondary }]}
+            >
+              {sharesStatus ? "Shows your status" : "Status hidden"}
+            </ThemedText>
+          </TouchableOpacity>
+        ) : null}
       </View>
       <View style={styles.actions}>
         {actions.map((action) => {
@@ -258,6 +322,27 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 16,
       fontWeight: "700",
       color: colors.text,
+    },
+    shareToggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      alignSelf: "flex-start",
+      marginTop: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.green.secondary,
+      backgroundColor: colors.green.primary,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    shareToggleOff: {
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.pillBackground,
+    },
+    shareToggleText: {
+      fontSize: 11,
+      fontWeight: "700",
     },
     badge: {
       borderWidth: 1,

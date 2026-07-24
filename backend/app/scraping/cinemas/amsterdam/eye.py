@@ -52,6 +52,15 @@ class Response(BaseModel):
 CINEMA = "Eye"
 
 
+def _eye_subtitles(original_language: str | None) -> list[str] | None:
+    # Eye's English ("eyeEnglish") programme is curated for English-speaking
+    # audiences, so non-English films are screened with English subtitles.
+    # English-language films don't state their subtitling, so it stays unknown.
+    if original_language is None:
+        return None
+    return ["en"] if original_language.lower() != "en" else None
+
+
 def clean_title(title: str) -> str:
     title = title.lower()
     title = re.sub(r"\(.*\)", "", title)  # Remove everything in parentheses
@@ -186,6 +195,7 @@ class EyeScraper(BaseCinemaScraper):
             )
 
         movies_by_production_id: dict[int, MovieCreate] = {}
+        subtitles_by_production_id: dict[int, list[str] | None] = {}
         max_workers = min(len(movie_inputs), self.item_concurrency()) or 1
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_production_id = {
@@ -197,35 +207,38 @@ class EyeScraper(BaseCinemaScraper):
             for future in as_completed(future_to_production_id):
                 production_id = future_to_production_id[future]
                 try:
-                    movie = future.result()
+                    result = future.result()
                 except Exception:
                     logger.exception(
                         f"Failed to process Eye production {production_id}"
                     )
                     continue
-                if movie is None:
+                if result is None:
                     continue
+                movie, subtitles = result
                 movies_by_production_id[production_id] = movie
+                subtitles_by_production_id[production_id] = subtitles
 
         movies_by_id: dict[int, MovieCreate] = {}
         showtimes: list[ShowtimeCreate] = []
         for show in valid_shows:
             production = show.production[0]
-            movie = movies_by_production_id.get(production.id)
-            if movie is None:
+            cached_movie = movies_by_production_id.get(production.id)
+            if cached_movie is None:
                 continue
             start_datetime = datetime.fromisoformat(show.startDateTime).replace(
                 tzinfo=None
             )
             showtimes.append(
                 ShowtimeCreate(
-                    movie_id=movie.id,
+                    movie_id=cached_movie.id,
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
                     ticket_link=show.ticketUrl,
+                    subtitles=subtitles_by_production_id.get(production.id),
                 )
             )
-            movies_by_id[movie.id] = movie
+            movies_by_id[cached_movie.id] = cached_movie
 
         observed_presences: list[tuple[str, int]] = []
         with get_db_context() as session:
@@ -241,18 +254,19 @@ class EyeScraper(BaseCinemaScraper):
                     showtime_create=showtime_create,
                     commit=False,
                 )
-                source_event_key = scrape_sync_service.fallback_source_event_key(
+                source_event_key = scrape_sync_service.showtime_identity_event_key(
                     movie_id=showtime_create.movie_id,
                     cinema_id=showtime_create.cinema_id,
                     dt=showtime_create.datetime,
-                    ticket_link=showtime_create.ticket_link,
                 )
                 observed_presences.append((source_event_key, showtime.id))
             session.commit()
         return observed_presences
 
 
-def get_movie(title_query: str, url: str) -> MovieCreate | None:
+def get_movie(
+    title_query: str, url: str
+) -> tuple[MovieCreate, list[str] | None] | None:
     # logger.trace(f"Processing movie: {title_query}")
     response = requests.get(url)
     response.raise_for_status()
@@ -312,7 +326,7 @@ def get_movie(title_query: str, url: str) -> MovieCreate | None:
     tmdb_directors = (
         tmdb_details.directors if tmdb_details is not None else list(directors)
     )
-    return MovieCreate(
+    movie = MovieCreate(
         id=int(tmdb_id),
         title=tmdb_details.title if tmdb_details is not None else title_query,
         letterboxd_slug=None,
@@ -327,6 +341,10 @@ def get_movie(title_query: str, url: str) -> MovieCreate | None:
             tmdb_details.enriched_at if tmdb_details is not None else None
         ),
     )
+    subtitles = _eye_subtitles(
+        tmdb_details.original_language if tmdb_details is not None else None
+    )
+    return movie, subtitles
 
 
 QUERY = """

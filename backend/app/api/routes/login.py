@@ -4,12 +4,13 @@ import logging
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import status as http_status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.deps import SessionDep
 from app.core.config import settings
+from app.core.enums import AnalyticsEventName
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -18,6 +19,7 @@ from app.core.security import (
     get_password_hash,
     verify_password_reset_token,
 )
+from app.crud import analytics_event as analytics_event_crud
 from app.crud import user as users_crud
 from app.mailer import EmailDeliveryError, generate_reset_password_email, send_email
 from app.models.auth_schemas import Message, NewPassword, RefreshTokenRequest, Token
@@ -41,7 +43,9 @@ def _build_token(user_id: object) -> Token:
 
 @router.post("/login/access-token")
 def login_access_token(
-    session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
+    request: Request,
+    session: SessionDep,
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
     """Authenticate a user and return a JWT access + refresh token pair.
 
@@ -64,6 +68,13 @@ def login_access_token(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Inactive user",
         )
+    analytics_event_crud.create_event(
+        session=session,
+        user_id=user.id,
+        name=AnalyticsEventName.LOGIN,
+        platform=request.headers.get("X-Client-Platform"),
+    )
+    session.commit()
     return _build_token(user.id)
 
 

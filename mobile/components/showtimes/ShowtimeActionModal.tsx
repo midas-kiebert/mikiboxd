@@ -24,6 +24,7 @@ import {
   Linking,
   Modal,
   Platform,
+  ScrollView,
   Share,
   StyleSheet,
   TextInput,
@@ -53,17 +54,31 @@ import {
   type SentShowtimePingPublic,
   type ShowtimeLoggedIn,
   type UserPublic,
+  type VisibilityMode,
 } from "shared";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
+import useTrackEvent from "shared/hooks/useTrackEvent";
 
 import CinemaPill from "@/components/badges/CinemaPill";
+import {
+  getVisibilityModeMeta,
+  VISIBILITY_MODE_ORDER,
+} from "@/components/showtimes/visibility-mode";
+import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
+import FriendInviteRow, { type FriendWatchStatus } from "@/components/friends/FriendInviteRow";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 import { formatSeatLabel } from "@/utils/seat-label";
 import { buildShowtimePingUrl } from "@/constants/ping-link";
+import {
+  UNKNOWN_METADATA_PLACEHOLDER,
+  isSyntheticMovieId,
+} from "@/constants/synthetic-movies";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { formatLanguageCode } from "@/utils/language";
 import * as Clipboard from "expo-clipboard";
 import { buildCinevilleCardNumber, loadCinevilleCardDigits } from "@/utils/cineville-card";
 
@@ -87,6 +102,21 @@ export type ShowtimeInvite = {
 
 type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
 
+type ReportReason =
+  | "incorrect_movie"
+  | "incorrect_time"
+  | "does_not_exist"
+  | "duplicate"
+  | "wrong_subtitles";
+
+const REPORT_REASON_OPTIONS: { value: ReportReason; label: string }[] = [
+  { value: "incorrect_movie", label: "Wrong movie" },
+  { value: "incorrect_time", label: "Wrong time" },
+  { value: "wrong_subtitles", label: "Wrong subtitles" },
+  { value: "does_not_exist", label: "Doesn't exist" },
+  { value: "duplicate", label: "Duplicate" },
+];
+
 type ShowtimeActionModalProps = {
   visible: boolean;
   showtime: ShowtimeLoggedIn | null;
@@ -108,6 +138,8 @@ type ShowtimeActionModalProps = {
   disabledCinemaId?: number;
   /** Disables friend badge navigation for this user when already on their page. */
   disabledUserId?: string;
+  /** Carries the showtimes-tab filters over to the movie page when navigating there. */
+  inheritFilters?: boolean;
 };
 
 // ─── Seat input helpers ───────────────────────────────────────────────────────
@@ -165,13 +197,13 @@ const getUniqueSenderNames = (senders: UserPublic[]): string[] =>
 
 const formatInvitedYou = (senders: UserPublic[]): string => {
   const names = getUniqueSenderNames(senders);
-  if (names.length <= 1) {
-    return `${names[0] ?? "A friend"} has invited you to this showtime.`;
-  }
-  if (names.length === 2) {
-    return `${names[0]} and ${names[1]} have invited you to this showtime.`;
-  }
-  return `${names[0]} and ${names.length - 1} others have invited you to this showtime.`;
+  const inviter =
+    names.length <= 1
+      ? (names[0] ?? "A friend")
+      : names.length === 2
+        ? `${names[0]} and ${names[1]}`
+        : `${names[0]} and ${names.length - 1} others`;
+  return `${inviter} invited you.`;
 };
 
 export default function ShowtimeActionModal({
@@ -187,6 +219,7 @@ export default function ShowtimeActionModal({
   disableMovieNavigation = false,
   disabledCinemaId,
   disabledUserId,
+  inheritFilters = false,
 }: ShowtimeActionModalProps) {
   const { top: topInset, bottom: bottomInset } = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -198,6 +231,7 @@ export default function ShowtimeActionModal({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
   const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>(["currentUser"]);
+  const { trackEvent } = useTrackEvent();
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const scrollViewRef = useRef<any>(null);
@@ -221,12 +255,26 @@ export default function ShowtimeActionModal({
   const [seatRowDraft, setSeatRowDraft] = useState("");
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
+  const [isReportDialogVisible, setIsReportDialogVisible] = useState(false);
+  const [isVisibilityExpanded, setIsVisibilityExpanded] = useState(false);
+  // Which "watchlisted/watched by friends" popup is open, if any.
+  const [watchModalKind, setWatchModalKind] = useState<"watchlisted" | "watched" | null>(null);
+  // Custom fast fade for the watch modal — RN's built-in Modal animationType="fade"
+  // has a fixed, slow native duration that can't be sped up via props.
+  const watchModalOpacity = useRef(new Animated.Value(0)).current;
 
   // Caret rotation for the invite-friends toggle (native thread, like FiltersModal).
   const caretRotation = useRef(new Animated.Value(0)).current;
   const caretSpin = useMemo(
     () => caretRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }),
     [caretRotation]
+  );
+  // Same native-thread caret rotation for the visibility dropdown toggle.
+  const visibilityCaretRotation = useRef(new Animated.Value(0)).current;
+  const visibilityCaretSpin = useMemo(
+    () =>
+      visibilityCaretRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }),
+    [visibilityCaretRotation]
   );
 
   const selectedShowtimeId = showtime?.id ?? null;
@@ -268,9 +316,13 @@ export default function ShowtimeActionModal({
       setInviteListReady(false);
       setPingSearchQuery("");
       setIsSeatDialogVisible(false);
+      setIsReportDialogVisible(false);
+      setWatchModalKind(null);
+      setIsVisibilityExpanded(false);
       caretRotation.setValue(0);
+      visibilityCaretRotation.setValue(0);
     }
-  }, [visible, caretRotation]);
+  }, [visible, caretRotation, visibilityCaretRotation]);
 
 
   useEffect(() => {
@@ -303,6 +355,7 @@ export default function ShowtimeActionModal({
       ShowtimesService.pingFriendForShowtime({ showtimeId, friendId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sentPingsQueryKey });
+      trackEvent("invite_sent");
     },
     onError: (error) => {
       const detail =
@@ -316,6 +369,28 @@ export default function ShowtimeActionModal({
     },
   });
 
+  const { mutate: reportShowtimeIssue, isPending: isSubmittingReport } = useMutation({
+    mutationFn: ({
+      showtimeId,
+      reason,
+    }: {
+      showtimeId: number;
+      reason: ReportReason;
+    }) => ShowtimesService.reportShowtime({ showtimeId, requestBody: { reason } }),
+    onSuccess: () => {
+      setIsReportDialogVisible(false);
+      Alert.alert("Thanks!", "We'll take a look at this showtime.");
+    },
+    onError: () => {
+      Alert.alert("Error", "Could not submit the report. Please try again.");
+    },
+  });
+
+  const handleSubmitReport = (reason: ReportReason) => {
+    if (!showtime) return;
+    reportShowtimeIssue({ showtimeId: showtime.id, reason });
+  };
+
   const { mutate: uninviteFriend, isPending: isUninviting } = useMutation({
     mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
       ShowtimesService.uninviteFriendFromShowtime({ showtimeId, friendId }),
@@ -328,6 +403,78 @@ export default function ShowtimeActionModal({
       Alert.alert("Error", "Could not cancel invite.");
     },
   });
+
+  // ─── Visibility mode ───────────────────────────────────────────────────────
+  const visibilityQueryKey = useMemo(
+    () => ["showtimes", "visibility", selectedShowtimeId] as const,
+    [selectedShowtimeId]
+  );
+  const { data: visibility } = useQuery({
+    // Loaded whenever the sheet is open so the user can set who sees their
+    // status before choosing a status.
+    queryKey: visibilityQueryKey,
+    enabled: sheetDataEnabled,
+    queryFn: () =>
+      ShowtimesService.getShowtimeVisibility({ showtimeId: selectedShowtimeId as number }),
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
+  });
+
+  const { mutate: updateVisibilityMode } = useMutation({
+    mutationFn: ({ showtimeId, mode }: { showtimeId: number; mode: VisibilityMode }) =>
+      ShowtimesService.updateShowtimeVisibility({ showtimeId, requestBody: { mode } }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(visibilityQueryKey, updated);
+      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
+      queryClient.invalidateQueries({ queryKey: ["movie"] });
+      queryClient.invalidateQueries({ queryKey: ["movies"] });
+    },
+    onError: () => {
+      Alert.alert("Error", "Could not update who can see your status.");
+    },
+  });
+
+  const handleToggleVisibilityExpanded = useCallback(() => {
+    triggerSelectionHaptic();
+    const next = !isVisibilityExpanded;
+    // Rotate the caret on the native thread, same as the invite-friends toggle.
+    Animated.timing(visibilityCaretRotation, {
+      toValue: next ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+    LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
+    setIsVisibilityExpanded(next);
+  }, [isVisibilityExpanded, visibilityCaretRotation]);
+
+  const handleVisibilityModeSelect = useCallback(
+    (mode: VisibilityMode) => {
+      LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
+      Animated.timing(visibilityCaretRotation, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+      setIsVisibilityExpanded(false);
+      if (!showtime || mode === visibility?.mode) return;
+      triggerSelectionHaptic();
+      // Optimistically reflect the new mode before the request lands.
+      queryClient.setQueryData(visibilityQueryKey, (prev: typeof visibility) =>
+        prev ? { ...prev, mode } : prev
+      );
+      updateVisibilityMode({ showtimeId: showtime.id, mode });
+    },
+    [
+      showtime,
+      visibility?.mode,
+      queryClient,
+      visibilityQueryKey,
+      updateVisibilityMode,
+      visibilityCaretRotation,
+    ]
+  );
+
+  const visibilityMeta = visibility ? getVisibilityModeMeta(visibility.mode, colors) : null;
 
   // ─── Seat handling ─────────────────────────────────────────────────────────
   const normalizedSeatRowDraft = seatRowDraft.trim() || null;
@@ -386,6 +533,24 @@ export default function ShowtimeActionModal({
     setIsSeatDialogVisible(false);
   }, [isSeatDialogVisible, shouldShowSeatButton]);
 
+  useEffect(() => {
+    if (!watchModalKind) return;
+    watchModalOpacity.setValue(0);
+    Animated.timing(watchModalOpacity, {
+      toValue: 1,
+      duration: 120,
+      useNativeDriver: true,
+    }).start();
+  }, [watchModalKind, watchModalOpacity]);
+
+  const handleCloseWatchModal = useCallback(() => {
+    Animated.timing(watchModalOpacity, {
+      toValue: 0,
+      duration: 120,
+      useNativeDriver: true,
+    }).start(() => setWatchModalKind(null));
+  }, [watchModalOpacity]);
+
   const handleStatusPress = (going: GoingStatus) => {
     if (!showtime || isUpdatingStatus) return;
     triggerSelectionHaptic();
@@ -399,6 +564,15 @@ export default function ShowtimeActionModal({
       return;
     }
     handleStatusPress("NOT_GOING");
+  };
+
+  const handleDismissInvitePress = () => {
+    if (!onDismissInvite) return;
+    triggerSelectionHaptic();
+    Alert.alert("Dismiss invite?", "Are you sure you want to dismiss this invitation?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Dismiss", style: "destructive", onPress: () => onDismissInvite() },
+    ]);
   };
 
   const handleOpenTicketLink = async () => {
@@ -418,7 +592,14 @@ export default function ShowtimeActionModal({
   const handleGoToMoviePage = () => {
     if (!showtime) return;
     bottomSheetModalRef.current?.close();
-    router.push(`/movie/${showtime.movie.id}`);
+    router.push({
+      pathname: "/movie/[id]",
+      params: {
+        id: String(showtime.movie.id),
+        cinemaId: String(showtime.cinema.id),
+        ...(inheritFilters ? { inheritFilters: "1" } : {}),
+      },
+    });
   };
 
 
@@ -513,6 +694,29 @@ export default function ShowtimeActionModal({
     [sentPings]
   );
 
+  const friendsWatchlisted = useMemo(
+    () => showtime?.friends_watchlisted ?? [],
+    [showtime?.friends_watchlisted]
+  );
+  const friendsWatched = useMemo(
+    () => showtime?.friends_watched ?? [],
+    [showtime?.friends_watched]
+  );
+  const watchlistedIds = useMemo(
+    () => new Set(friendsWatchlisted.map((friend) => friend.id)),
+    [friendsWatchlisted]
+  );
+  const watchedIds = useMemo(
+    () => new Set(friendsWatched.map((friend) => friend.id)),
+    [friendsWatched]
+  );
+  // Watched takes precedence over watchlisted for the single per-friend icon.
+  const getWatchStatus = useCallback(
+    (friendId: string): FriendWatchStatus =>
+      watchedIds.has(friendId) ? "watched" : watchlistedIds.has(friendId) ? "watchlisted" : null,
+    [watchedIds, watchlistedIds]
+  );
+
   const friendsForPing = useMemo(() => {
     const availabilityRank: Record<FriendPingAvailability, number> = {
       eligible: 0,
@@ -533,13 +737,26 @@ export default function ShowtimeActionModal({
           id: friend.id,
           label: friend.display_name?.trim() || "Friend",
           availability,
+          watchStatus: getWatchStatus(friend.id),
+          isWatchlisted: watchlistedIds.has(friend.id),
         };
       })
       .sort((left, right) => {
+        // Friends who have the film watchlisted float to the top.
+        if (left.isWatchlisted !== right.isWatchlisted) {
+          return left.isWatchlisted ? -1 : 1;
+        }
         const rankDiff = availabilityRank[left.availability] - availabilityRank[right.availability];
         return rankDiff !== 0 ? rankDiff : left.label.localeCompare(right.label);
       });
-  }, [friends, friendsGoingIds, friendsInterestedIds, pingedReceiverIds]);
+  }, [
+    friends,
+    friendsGoingIds,
+    friendsInterestedIds,
+    pingedReceiverIds,
+    getWatchStatus,
+    watchlistedIds,
+  ]);
 
   // The list shows friends you can still invite + those who already set a
   // going/interested status (muted); already-pinged friends live in the summary.
@@ -578,18 +795,63 @@ export default function ShowtimeActionModal({
     });
   };
 
+  const originalTitle =
+    showtime?.movie.original_title &&
+    showtime.movie.original_title.trim() !== showtime.movie.title.trim()
+      ? showtime.movie.original_title.trim()
+      : null;
+  const spokenLanguage = formatLanguageCode(showtime?.movie.original_language);
+
+  const coInvitedFriends = showtime?.co_invited_friends ?? [];
   const invitedYouLabel = hasInvite ? formatInvitedYou(invite!.senders) : null;
+
+  // The "Invited" tab merges who you've invited (with their respond status)
+  // and who your inviter(s) also invited (your co-invitees) — each row says
+  // who's responsible for the invite, "you" taking priority when both apply.
+  const invitedTabEntries = useMemo(() => {
+    const sentEntries = sentPings.map((ping) => ({
+      key: `sent-${ping.id}`,
+      userId: ping.receiver_id,
+      name: ping.receiver_name,
+      invitedByLabel: "Invited by you",
+      statusLabel: ping.dismissed_at ? "Dismissed" : ping.seen_at ? "Seen" : "Pending",
+      statusColor: ping.dismissed_at
+        ? colors.red.secondary
+        : ping.seen_at
+          ? colors.green.secondary
+          : colors.textSecondary,
+      canUninvite: true,
+    }));
+    const coInvitedEntries = coInvitedFriends.map((entry) => ({
+      key: `co-${entry.friend.id}`,
+      userId: entry.friend.id,
+      name: entry.friend.display_name?.trim() || "Friend",
+      invitedByLabel: `Invited by ${entry.inviter.display_name?.trim() || "a friend"}`,
+      statusLabel: null,
+      statusColor: colors.textSecondary,
+      canUninvite: false,
+    }));
+    return [...sentEntries, ...coInvitedEntries];
+  }, [sentPings, coInvitedFriends, colors]);
   const showtimeStartsAt = showtime ? DateTime.fromISO(showtime.datetime) : null;
   const dateLabel = showtimeStartsAt?.isValid ? showtimeStartsAt.toFormat("cccc d LLLL") : null;
+  const isSyntheticMovie = showtime ? isSyntheticMovieId(showtime.movie.id) : false;
   const durationMinutes = showtime?.movie.duration ?? null;
+  const durationLabel = durationMinutes
+    ? `${durationMinutes} min`
+    : isSyntheticMovie
+      ? `${UNKNOWN_METADATA_PLACEHOLDER} min`
+      : null;
   const timeRangeLabel = showtime
     ? formatShowtimeTimeRange(showtime.datetime, showtime.end_datetime)
     : null;
-  const timeLabel =
-    timeRangeLabel && durationMinutes
-      ? `${timeRangeLabel} • ${durationMinutes} min`
-      : timeRangeLabel;
+  const timeLabel = timeRangeLabel
+    ? [timeRangeLabel, durationLabel, spokenLanguage].filter(Boolean).join(" • ")
+    : null;
 
+  // The pending-invite badge itself is intentionally not shown in this modal —
+  // the "Invited" section below already lists who you've invited and their
+  // status — so audience visibility is based on going/interested only.
   const hasAudience =
     (showtime?.friends_going.length ?? 0) > 0 ||
     (showtime?.friends_interested.length ?? 0) > 0;
@@ -710,11 +972,21 @@ export default function ShowtimeActionModal({
                 <ThemedText style={styles.movieTitle} numberOfLines={3}>
                   {showtime.movie.title}
                 </ThemedText>
+                {originalTitle ? (
+                  <ThemedText style={styles.originalTitle} numberOfLines={2}>
+                    {originalTitle}
+                  </ThemedText>
+                ) : null}
                 {showtime.movie.directors && showtime.movie.directors.length > 0 ? (
                   <ThemedText style={styles.directorText} numberOfLines={1}>
                     <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
                     {showtime.movie.directors.join(", ")}
                     {showtime.movie.release_year ? ` (${showtime.movie.release_year})` : null}
+                  </ThemedText>
+                ) : isSyntheticMovie ? (
+                  <ThemedText style={styles.directorText} numberOfLines={1}>
+                    <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
+                    {`${UNKNOWN_METADATA_PLACEHOLDER} (${UNKNOWN_METADATA_PLACEHOLDER})`}
                   </ThemedText>
                 ) : null}
                 {dateLabel ? (
@@ -725,6 +997,7 @@ export default function ShowtimeActionModal({
                 ) : null}
                 <View style={styles.cinemaBadgeRow}>
                   <CinemaPill cinema={showtime.cinema} disabledIfSameId={disabledCinemaId} />
+                  <SubtitlesBadges subtitles={showtime.subtitles} />
                 </View>
               </View>
               <TouchableOpacity
@@ -737,8 +1010,19 @@ export default function ShowtimeActionModal({
               </TouchableOpacity>
             </View>
 
-            {/* Friends going / interested */}
+            {/* Friends going / interested, with the report link anchored just
+                above its top divider — absolutely positioned so it doesn't
+                claim any extra vertical space in the layout. */}
             <View style={[styles.audienceBox, !hasAudience && styles.audienceBoxEmpty]}>
+              <TouchableOpacity
+                style={styles.reportLink}
+                onPress={() => setIsReportDialogVisible(true)}
+                hitSlop={8}
+                activeOpacity={0.6}
+              >
+                <MaterialIcons name="flag" size={11} color={colors.textSecondary} />
+                <ThemedText style={styles.reportLinkText}>Report</ThemedText>
+              </TouchableOpacity>
               {hasAudience ? (
                 <FriendBadges
                   friendsGoing={showtime.friends_going}
@@ -755,11 +1039,71 @@ export default function ShowtimeActionModal({
               )}
             </View>
 
-            {/* Optional "X invited you" banner */}
+            {/* Friends' Letterboxd relationship to this film */}
+            <View style={styles.watchButtonsRow}>
+              {(
+                [
+                  {
+                    kind: "watchlisted" as const,
+                    icon: "schedule" as const,
+                    accent: colors.orange.secondary,
+                    count: friendsWatchlisted.length,
+                    label:
+                      friendsWatchlisted.length > 0
+                        ? `Watchlisted by ${friendsWatchlisted.length}`
+                        : "No friends watchlisted",
+                  },
+                  {
+                    kind: "watched" as const,
+                    icon: "visibility" as const,
+                    accent: colors.green.secondary,
+                    count: friendsWatched.length,
+                    label:
+                      friendsWatched.length > 0
+                        ? `Watched by ${friendsWatched.length}`
+                        : "No friends watched",
+                  },
+                ]
+              ).map((item) => (
+                <TouchableOpacity
+                  key={item.kind}
+                  style={[styles.watchButton, item.count === 0 && styles.watchButtonEmpty]}
+                  onPress={() => {
+                    triggerSelectionHaptic();
+                    setWatchModalKind(item.kind);
+                  }}
+                  disabled={item.count === 0}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons
+                    name={item.icon}
+                    size={13}
+                    color={item.count > 0 ? item.accent : colors.textSecondary}
+                  />
+                  <ThemedText style={styles.watchButtonText} numberOfLines={1}>
+                    {item.label}
+                  </ThemedText>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Optional "X invited you." banner */}
             {invitedYouLabel ? (
-              <View style={styles.invitedYouBanner}>
-                <MaterialIcons name="mail-outline" size={16} color={colors.blue.secondary} />
-                <ThemedText style={styles.invitedYouText}>{invitedYouLabel}</ThemedText>
+              <View style={styles.invitedYouBannerWrap}>
+                <View style={styles.invitedYouBanner}>
+                  <MaterialIcons name="mail-outline" size={16} color={colors.blue.secondary} />
+                  <ThemedText style={styles.invitedYouText}>{invitedYouLabel}</ThemedText>
+                  {onDismissInvite ? (
+                    <TouchableOpacity
+                      onPress={handleDismissInvitePress}
+                      disabled={isDismissingInvite}
+                      hitSlop={8}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="close" size={18} color={colors.blue.secondary} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               </View>
             ) : null}
 
@@ -783,7 +1127,7 @@ export default function ShowtimeActionModal({
                 >
                   <MaterialIcons
                     name={option.icon}
-                    size={22}
+                    size={20}
                     color={option.selected ? option.palette.secondary : colors.textSecondary}
                   />
                   <ThemedText
@@ -806,7 +1150,7 @@ export default function ShowtimeActionModal({
                 disabled={!currentUser?.id}
                 activeOpacity={0.85}
               >
-                <MaterialIcons name="share" size={20} color={colors.textSecondary} />
+                <MaterialIcons name="share" size={18} color={colors.textSecondary} />
                 <ThemedText style={styles.ctaIconButtonText}>Share</ThemedText>
               </TouchableOpacity>
               {!disableMovieNavigation ? (
@@ -815,7 +1159,7 @@ export default function ShowtimeActionModal({
                   onPress={handleGoToMoviePage}
                   activeOpacity={0.85}
                 >
-                  <MaterialIcons name="format-list-bulleted" size={20} color={colors.textSecondary} />
+                  <MaterialIcons name="format-list-bulleted" size={18} color={colors.textSecondary} />
                   <ThemedText style={styles.ctaIconButtonText}>All showtimes</ThemedText>
                 </TouchableOpacity>
               ) : null}
@@ -825,7 +1169,7 @@ export default function ShowtimeActionModal({
                   onPress={handleOpenTicketLink}
                   activeOpacity={0.85}
                 >
-                  <MaterialIcons name="local-activity" size={20} color={colors.textSecondary} />
+                  <MaterialIcons name="local-activity" size={18} color={colors.textSecondary} />
                   <ThemedText style={styles.ctaIconButtonText}>Get ticket</ThemedText>
                 </TouchableOpacity>
               ) : null}
@@ -837,7 +1181,7 @@ export default function ShowtimeActionModal({
                 >
                   <MaterialIcons
                     name="event-seat"
-                    size={20}
+                    size={18}
                     color={isSeatConfigured ? colors.green.secondary : colors.textSecondary}
                   />
                   <ThemedText
@@ -850,6 +1194,67 @@ export default function ShowtimeActionModal({
               ) : null}
             </View>
 
+            {/* Who can see your status for this showtime — inline dropdown.
+                The section (and its header height) renders as soon as the showtime
+                does, even before the visibility query resolves, with a skeleton
+                badge in place of the real one — otherwise the row pops in once the
+                fetch lands and visibly shifts everything below it (worse on Android). */}
+            <View style={styles.visibilitySection}>
+              <TouchableOpacity
+                style={styles.visibilityHeader}
+                onPress={handleToggleVisibilityExpanded}
+                activeOpacity={0.8}
+                disabled={!visibilityMeta}
+              >
+                <ThemedText style={styles.visibilityHeaderLabel}>Status visible to</ThemedText>
+                {visibilityMeta ? (
+                  <View style={[styles.visibilityValue, { backgroundColor: visibilityMeta.color }]}>
+                    <MaterialIcons name={visibilityMeta.icon} size={13} color={colors.pillActiveText} />
+                    <ThemedText style={styles.visibilityValueText}>{visibilityMeta.label}</ThemedText>
+                  </View>
+                ) : (
+                  <Skeleton style={[styles.visibilityValue, styles.visibilityValueSkeleton]} />
+                )}
+                <Animated.View style={{ transform: [{ rotate: visibilityCaretSpin }] }}>
+                  <MaterialIcons name="expand-more" size={20} color={colors.textSecondary} />
+                </Animated.View>
+              </TouchableOpacity>
+              {visibility && isVisibilityExpanded ? (
+                <View style={styles.visibilityOptions}>
+                  {VISIBILITY_MODE_ORDER.map((mode) => {
+                    const optionMeta = getVisibilityModeMeta(mode, colors);
+                    const isSelected = mode === visibility.mode;
+                    return (
+                      <TouchableOpacity
+                        key={mode}
+                        style={[
+                          styles.visibilityOption,
+                          isSelected && { borderColor: optionMeta.color, backgroundColor: colors.pillBackground },
+                        ]}
+                        onPress={() => handleVisibilityModeSelect(mode)}
+                        activeOpacity={0.8}
+                      >
+                        <View style={[styles.visibilityOptionIcon, { backgroundColor: optionMeta.color }]}>
+                          <MaterialIcons name={optionMeta.icon} size={15} color={colors.pillActiveText} />
+                        </View>
+                        <View style={styles.visibilityOptionText}>
+                          <ThemedText style={styles.visibilityOptionLabel}>{optionMeta.label}</ThemedText>
+                          <ThemedText style={styles.visibilityOptionDescription}>
+                            {optionMeta.description}
+                          </ThemedText>
+                        </View>
+                        <MaterialIcons
+                          name={isSelected ? "radio-button-checked" : "radio-button-unchecked"}
+                          size={20}
+                          color={isSelected ? optionMeta.color : colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
+
             {/* Who you've invited */}
             <View
               style={styles.invitedSection}
@@ -858,37 +1263,34 @@ export default function ShowtimeActionModal({
               }}
             >
               <ThemedText style={styles.sectionLabel}>Invited</ThemedText>
-              {sentPings.length === 0 ? (
+              {invitedTabEntries.length === 0 ? (
                 <ThemedText style={styles.invitedEmptyText}>
                   You haven&apos;t invited anyone yet.
                 </ThemedText>
               ) : (
                 <View style={styles.invitedList}>
-                  {sentPings.map((ping) => {
-                    const statusLabel = ping.dismissed_at
-                      ? "Dismissed"
-                      : ping.seen_at
-                        ? "Seen"
-                        : "Pending";
-                    const statusColor = ping.dismissed_at
-                      ? colors.red.secondary
-                      : ping.seen_at
-                        ? colors.green.secondary
-                        : colors.textSecondary;
-                    return (
-                      <View key={ping.id} style={styles.invitedRow}>
-                        <MaterialIcons name="person" size={14} color={colors.textSecondary} />
+                  {invitedTabEntries.map((entry) => (
+                    <View key={entry.key} style={styles.invitedRow}>
+                      <MaterialIcons name="person" size={14} color={colors.textSecondary} />
+                      <View style={styles.invitedRowTextCol}>
                         <ThemedText style={styles.invitedRowName} numberOfLines={1}>
-                          {ping.receiver_name}
+                          {entry.name}
                         </ThemedText>
-                        <ThemedText style={[styles.invitedRowStatus, { color: statusColor }]}>
-                          {statusLabel}
+                        <ThemedText style={styles.invitedRowAttribution} numberOfLines={1}>
+                          {entry.invitedByLabel}
                         </ThemedText>
+                      </View>
+                      {entry.statusLabel ? (
+                        <ThemedText style={[styles.invitedRowStatus, { color: entry.statusColor }]}>
+                          {entry.statusLabel}
+                        </ThemedText>
+                      ) : null}
+                      {entry.canUninvite ? (
                         <TouchableOpacity
                           style={styles.uninviteButton}
                           onPress={() => {
                             if (!showtime) return;
-                            uninviteFriend({ showtimeId: showtime.id, friendId: ping.receiver_id });
+                            uninviteFriend({ showtimeId: showtime.id, friendId: entry.userId });
                           }}
                           disabled={isUninviting}
                           hitSlop={6}
@@ -896,9 +1298,9 @@ export default function ShowtimeActionModal({
                         >
                           <MaterialIcons name="close" size={14} color={colors.textSecondary} />
                         </TouchableOpacity>
-                      </View>
-                    );
-                  })}
+                      ) : null}
+                    </View>
+                  ))}
                 </View>
               )}
             </View>
@@ -956,31 +1358,16 @@ export default function ShowtimeActionModal({
                                 ? "Interested"
                                 : null;
                           return (
-                            <TouchableOpacity
+                            <FriendInviteRow
                               key={friend.id}
-                              style={[styles.friendRow, isHighlighted && styles.friendRowHighlighted]}
+                              name={friend.label}
+                              watchStatus={friend.watchStatus}
+                              statusLabel={statusLabel}
+                              mode="invite"
+                              highlighted={isHighlighted}
                               disabled={!isEligible || isPingingFriend}
-                              onPress={() => handlePingFriend(friend.id)}
-                              activeOpacity={0.7}
-                            >
-                              <ThemedText
-                                style={[styles.friendName, !isEligible && styles.friendNameMuted]}
-                                numberOfLines={1}
-                              >
-                                {friend.label}
-                              </ThemedText>
-                              {isHighlighted ? (
-                                <MaterialIcons
-                                  name="keyboard-return"
-                                  size={16}
-                                  color={colors.blue.secondary}
-                                />
-                              ) : statusLabel ? (
-                                <ThemedText style={styles.friendStatusText}>{statusLabel}</ThemedText>
-                              ) : (
-                                <MaterialIcons name="add" size={18} color={colors.blue.secondary} />
-                              )}
-                            </TouchableOpacity>
+                              onInvite={() => handlePingFriend(friend.id)}
+                            />
                           );
                         })}
                       </View>
@@ -1058,6 +1445,124 @@ export default function ShowtimeActionModal({
           </View>
         </View>
       </Modal>
+
+      {/* Report an issue with this showtime */}
+      <Modal
+        transparent
+        statusBarTranslucent
+        visible={isReportDialogVisible}
+        animationType="fade"
+        onRequestClose={() => setIsReportDialogVisible(false)}
+      >
+        <View style={styles.seatDialogBackdrop}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setIsReportDialogVisible(false)}
+          />
+          <View style={styles.seatDialogCard}>
+            <ThemedText style={styles.seatDialogTitle}>Report an issue</ThemedText>
+            <ThemedText style={styles.reportDialogSubtitle}>
+              What&apos;s wrong with this showtime?
+            </ThemedText>
+            <View style={styles.reportReasonList}>
+              {REPORT_REASON_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={styles.reportReasonOption}
+                  onPress={() => handleSubmitReport(option.value)}
+                  disabled={isSubmittingReport}
+                  activeOpacity={0.7}
+                >
+                  <ThemedText style={styles.reportReasonOptionText}>{option.label}</ThemedText>
+                  <MaterialIcons name="chevron-right" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity
+              style={styles.reportCancelButton}
+              onPress={() => setIsReportDialogVisible(false)}
+              activeOpacity={0.8}
+            >
+              <ThemedText style={styles.reportCancelButtonText}>Cancel</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Friends who watchlisted / watched this film, with an invite affordance */}
+      <Modal
+        transparent
+        statusBarTranslucent
+        visible={watchModalKind !== null}
+        animationType="none"
+        onRequestClose={handleCloseWatchModal}
+      >
+        <Animated.View style={[styles.seatDialogBackdrop, { opacity: watchModalOpacity }]}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={handleCloseWatchModal}
+          />
+          <View style={styles.watchModalCard}>
+            {(() => {
+              const watchFriends =
+                watchModalKind === "watched" ? friendsWatched : friendsWatchlisted;
+              const verb = watchModalKind === "watched" ? "Watched" : "Watchlisted";
+              const title = `${verb} by ${watchFriends.length} friend${
+                watchFriends.length === 1 ? "" : "s"
+              }`;
+              return (
+                <>
+                  <View style={styles.watchModalHeader}>
+                    <ThemedText style={styles.watchModalTitle}>{title}</ThemedText>
+                    <TouchableOpacity
+                      onPress={handleCloseWatchModal}
+                      hitSlop={8}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="close" size={18} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView
+                    style={styles.watchModalScroll}
+                    contentContainerStyle={styles.watchModalList}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {watchFriends.map((friend) => {
+                      const availability: FriendPingAvailability = friendsGoingIds.has(friend.id)
+                        ? "going"
+                        : friendsInterestedIds.has(friend.id)
+                          ? "interested"
+                          : pingedReceiverIds.has(friend.id)
+                            ? "pinged"
+                            : "eligible";
+                      const statusLabel =
+                        availability === "going"
+                          ? "Going"
+                          : availability === "interested"
+                            ? "Interested"
+                            : null;
+                      return (
+                        <FriendInviteRow
+                          key={friend.id}
+                          name={friend.display_name?.trim() || "Friend"}
+                          watchStatus={watchModalKind}
+                          statusLabel={statusLabel}
+                          mode="invite"
+                          invited={availability === "pinged"}
+                          disabled={availability !== "eligible" || isPingingFriend}
+                          onInvite={() => handlePingFriend(friend.id)}
+                        />
+                      );
+                    })}
+                  </ScrollView>
+                </>
+              );
+            })()}
+          </View>
+        </Animated.View>
+      </Modal>
     </BottomSheetModal>
   );
 }
@@ -1091,7 +1596,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderTopRightRadius: 16,
     },
     scroll: { flex: 1, backgroundColor: "transparent" },
-    scrollContent: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 32, gap: 14, flexGrow: 1 },
+    scrollContent: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 32, gap: 11, flexGrow: 1 },
 
     loadingState: { alignItems: "center", justifyContent: "center", paddingVertical: 60 },
     loadingErrorText: { fontSize: 14, color: colors.textSecondary },
@@ -1104,12 +1609,25 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.posterPlaceholder,
     },
     summaryInfo: { flex: 1, gap: 1 },
-    movieTitle: { fontSize: 19, fontWeight: "800", color: colors.text, paddingRight: 36 },
+    movieTitle: {
+      fontSize: 19,
+      lineHeight: 22,
+      fontWeight: "800",
+      color: colors.text,
+      paddingRight: 36,
+    },
+    originalTitle: {
+      fontSize: 12,
+      lineHeight: 14,
+      color: colors.textSecondary,
+      fontStyle: "italic",
+      marginTop: 0,
+    },
     directorText: { fontSize: 10, color: colors.textSecondary, marginTop: -4 },
     directorLabel: { fontSize: 9, fontWeight: "800", letterSpacing: 0.6, color: colors.textSecondary },
     dateText: { fontSize: 12.5, fontWeight: "600", color: colors.text, marginTop: -4 },
     timeText: { fontSize: 12.5, color: colors.textSecondary, marginTop: -4 },
-    cinemaBadgeRow: { flexDirection: "row", alignItems: "center" },
+    cinemaBadgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     movieLinksRow: { flexDirection: "row", gap: 6, marginTop: 2 },
     movieLinkChip: {
       paddingHorizontal: 9,
@@ -1133,6 +1651,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
 
     audienceBox: {
+      position: "relative",
       minHeight: 42,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderBottomWidth: StyleSheet.hairlineWidth,
@@ -1146,27 +1665,68 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
       textAlign: "center",
     },
+    reportLink: {
+      position: "absolute",
+      top: -21,
+      right: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      paddingVertical: 1,
+      paddingHorizontal: 4,
+    },
+    reportLinkText: {
+      fontSize: 10.5,
+      fontWeight: "600",
+      color: colors.textSecondary,
+      opacity: 0.8,
+    },
 
+    watchButtonsRow: { flexDirection: "row", gap: 6 },
+    watchButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.background,
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+    },
+    watchButtonEmpty: { opacity: 0.5 },
+    watchButtonText: {
+      flexShrink: 1,
+      fontSize: 11,
+      fontWeight: "600",
+      color: colors.textSecondary,
+    },
+
+    invitedYouBannerWrap: {
+      borderRadius: 12,
+      backgroundColor: colors.blue.primary,
+      overflow: "hidden",
+    },
     invitedYouBanner: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
       paddingVertical: 10,
       paddingHorizontal: 12,
-      borderRadius: 12,
-      backgroundColor: colors.blue.primary,
     },
     invitedYouText: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.text },
 
     statusRow: { flexDirection: "row", gap: 8 },
     statusButton: {
       flex: 1,
-      gap: 5,
+      gap: 3,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.pillBackground,
-      paddingVertical: 10,
+      paddingVertical: 5,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -1176,16 +1736,84 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       shadowOffset: { width: 0, height: 2 },
       elevation: 3,
     },
-    statusButtonText: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
+    statusButtonText: { fontSize: 12, fontWeight: "700", color: colors.textSecondary },
 
+    visibilitySection: {
+      gap: 8,
+    },
+    visibilityHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 4,
+      paddingHorizontal: 2,
+    },
+    visibilityHeaderLabel: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    visibilityValue: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderRadius: 8,
+      paddingVertical: 3,
+      paddingHorizontal: 8,
+    },
+    visibilityValueSkeleton: {
+      width: 78,
+      height: 19,
+      backgroundColor: colors.pillBackground,
+    },
+    visibilityValueText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.pillActiveText,
+    },
+    visibilityOptions: {
+      gap: 8,
+    },
+    visibilityOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      borderRadius: 11,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingVertical: 9,
+      paddingHorizontal: 12,
+    },
+    visibilityOptionIcon: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    visibilityOptionText: {
+      flex: 1,
+      gap: 2,
+    },
+    visibilityOptionLabel: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    visibilityOptionDescription: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
     ctaRow: { flexDirection: "row", gap: 8 },
     ctaIconButton: {
-      gap: 4,
+      gap: 3,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      paddingTop: 11,
-      paddingBottom: 7,
+      paddingTop: 5,
+      paddingBottom: 4,
       paddingHorizontal: 14,
       alignItems: "center",
       justifyContent: "center",
@@ -1217,7 +1845,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingHorizontal: 10,
       paddingVertical: 8,
     },
-    invitedRowName: { flex: 1, fontSize: 13, fontWeight: "500", color: colors.text },
+    invitedRowTextCol: { flex: 1, gap: 1 },
+    invitedRowName: { fontSize: 13, fontWeight: "500", color: colors.text },
+    invitedRowAttribution: { fontSize: 11, color: colors.textSecondary },
     invitedRowStatus: { fontSize: 11, fontWeight: "600" },
     uninviteButton: {
       padding: 2,
@@ -1228,7 +1858,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      paddingVertical: 11,
+      paddingVertical: 9,
       paddingHorizontal: 12,
       borderRadius: 12,
       backgroundColor: colors.blue.primary,
@@ -1238,20 +1868,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     invitePanel: { gap: 10, paddingTop: 2 },
     inviteLoader: { alignItems: "center", paddingVertical: 20 },
     inviteEmptyText: { fontSize: 13, color: colors.textSecondary, paddingVertical: 6 },
-    inviteList: { gap: 2 },
-    friendRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-      borderRadius: 8,
-      paddingHorizontal: 8,
-      paddingVertical: 11,
-    },
-    friendRowHighlighted: { backgroundColor: colors.blue.primary },
-    friendName: { flexShrink: 1, fontSize: 14, fontWeight: "500", color: colors.text },
-    friendNameMuted: { color: colors.textSecondary },
-    friendStatusText: { fontSize: 11, fontWeight: "700", color: colors.textSecondary },
+    inviteList: { gap: 6 },
     inviteEndSpacer: { paddingTop: 16, alignItems: "center" },
     inviteEndMark: { width: 28, height: 3, borderRadius: 2, backgroundColor: colors.divider },
     inviteSearchRow: {
@@ -1313,4 +1930,50 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     seatSaveButtonDisabled: { opacity: 0.5 },
     seatSaveButtonText: { fontSize: 13, fontWeight: "700", color: colors.pillActiveText },
+
+    reportDialogSubtitle: { fontSize: 13, color: colors.textSecondary, marginTop: -4 },
+    reportReasonList: { gap: 2 },
+    reportReasonOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderRadius: 9,
+      paddingVertical: 11,
+      paddingHorizontal: 10,
+    },
+    reportReasonOptionText: { fontSize: 14, fontWeight: "600", color: colors.text },
+    reportCancelButton: {
+      minHeight: 38,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.pillBackground,
+    },
+    reportCancelButtonText: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
+
+    watchModalCard: {
+      width: "100%",
+      maxWidth: 380,
+      maxHeight: "70%",
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.background,
+      padding: 14,
+      gap: 10,
+      shadowColor: "#000",
+      shadowOpacity: 0.2,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 9,
+    },
+    watchModalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    watchModalTitle: { flex: 1, fontSize: 16, fontWeight: "700", color: colors.text },
+    watchModalScroll: { flexGrow: 0 },
+    watchModalList: { gap: 6, paddingBottom: 2 },
   });

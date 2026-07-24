@@ -6,13 +6,13 @@ import { useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
-  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MeService } from 'shared';
@@ -27,17 +27,17 @@ import { useThemeColors } from '@/hooks/use-theme-color';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import FriendCard from '@/components/friends/FriendCard';
+import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import FilterPills from '@/components/filters/FilterPills';
-import FriendGroupsScreen from './friend-groups';
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
-type FriendsTabId = 'users' | 'received' | 'sent' | 'friends' | 'groups';
+type FriendsTabId = 'users' | 'received' | 'sent' | 'friends';
 type FriendsTabMeta = {
   emptyText: string;
 };
 
-const TAB_META: Record<Exclude<FriendsTabId, 'groups'>, FriendsTabMeta> = {
+const TAB_META: Record<FriendsTabId, FriendsTabMeta> = {
   users: {
     emptyText: 'No users found',
   },
@@ -73,8 +73,7 @@ export default function FriendsScreen() {
     return normalizedTab === 'received' ||
       normalizedTab === 'sent' ||
       normalizedTab === 'friends' ||
-      normalizedTab === 'users' ||
-      normalizedTab === 'groups'
+      normalizedTab === 'users'
       ? normalizedTab
       : null;
   }, [tab]);
@@ -176,8 +175,6 @@ export default function FriendsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['users', 'sentRequests'] });
     } else if (activeTab === 'friends') {
       await queryClient.invalidateQueries({ queryKey: ['users', 'friends'] });
-    } else if (activeTab === 'groups') {
-      await queryClient.invalidateQueries({ queryKey: ['friend-groups'] });
     }
     setRefreshing(false);
   };
@@ -196,7 +193,6 @@ export default function FriendsScreen() {
       { id: 'received', label: 'Requests Received', badgeCount: received.length },
       { id: 'sent', label: 'Requests Sent' },
       { id: 'friends', label: 'Friends' },
-      { id: 'groups', label: 'Friend Groups' },
     ],
     [received.length]
   );
@@ -216,19 +212,13 @@ export default function FriendsScreen() {
         <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder={searchPlaceholder} />
       </View>
 
-      {activeTab === 'groups' ? (
-        <FriendGroupsScreen
-          embedded
-          searchQuery={searchQuery}
-          onSearchQueryChange={setSearchQuery}
-        />
-      ) : activeTab === 'users' ? (
+      {activeTab === 'users' ? (
         <FlatList
-          data={displayedUsers}
+          data={hasUserSearch && refreshing ? [] : displayedUsers}
           keyExtractor={(item) => `user-${item.id}`}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           renderItem={({ item }) => <FriendCard user={item} />}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           onEndReached={handleLoadMore}
@@ -262,10 +252,8 @@ export default function FriendsScreen() {
                   </TouchableOpacity>
                 ) : null}
               </View>
-            ) : isFetchingUsers ? (
-              <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={colors.tint} />
-              </View>
+            ) : isFetchingUsers || refreshing ? (
+              <SkeletonRows height={64} />
             ) : (
               <View style={styles.emptyCard}>
                 <ThemedText style={styles.emptyText}>{TAB_META.users.emptyText}</ThemedText>
@@ -284,11 +272,13 @@ export default function FriendsScreen() {
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         >
           {activeTab === 'received' ? (
             <View style={styles.section}>
-              {isFetchingReceived && displayedReceived.length === 0 ? (
+              {refreshing ? (
+                <SkeletonRows height={64} />
+              ) : isFetchingReceived && displayedReceived.length === 0 ? (
                 <View style={styles.centerContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />
                 </View>
@@ -312,7 +302,9 @@ export default function FriendsScreen() {
 
           {activeTab === 'sent' ? (
             <View style={styles.section}>
-              {isFetchingSent && displayedSent.length === 0 ? (
+              {refreshing ? (
+                <SkeletonRows height={64} />
+              ) : isFetchingSent && displayedSent.length === 0 ? (
                 <View style={styles.centerContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />
                 </View>
@@ -336,7 +328,9 @@ export default function FriendsScreen() {
 
           {activeTab === 'friends' ? (
             <View style={styles.section}>
-              {isFetchingFriends && displayedFriends.length === 0 ? (
+              {refreshing ? (
+                <SkeletonRows height={64} />
+              ) : isFetchingFriends && displayedFriends.length === 0 ? (
                 <View style={styles.centerContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />
                 </View>

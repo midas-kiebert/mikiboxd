@@ -50,6 +50,7 @@ Legend:
 - [x] `routes/cinemas.py` — Cinema listing endpoints
 - [x] `routes/users.py` — User lookup endpoints (admin + public profiles)
 - [x] `routes/utils.py` — Utility endpoints (health check, TMDB cache override)
+- [ ] `routes/admin.py` — Superuser-only endpoints (analytics overview, movie/showtime moderation, showtime reports)
 
 ---
 
@@ -63,22 +64,27 @@ Legend:
 - [x] `cinema.py` — Cinema venue (name, city, coords, seating preset)
 - [x] `cinema_selection.py` — Which cinemas a user has selected
 - [x] `cinema_preset.py` — Saved named sets of cinema selections
-- [x] `movie.py` — Movie metadata (title, duration, genres, TMDB ID, poster)
+- [x] `movie.py` — Movie metadata (title, duration, genres, poster). Positive id = TMDB id; negative id = synthetic listing (e.g. sneak preview) via `sneak_preview_movie()` / `is_synthetic_movie_id`
 - [x] `showtime.py` — Individual screening (datetime, cinema, movie, ticket link)
 - [x] `showtime_selection.py` — User's going/interested status on a showtime
 - [x] `showtime_ping.py` — Notification sent to a friend about a showtime
 - [x] `notification.py` — Notification-centre entry (match / invite-response / request-accepted)
-- [x] `showtime_visibility.py` — Visibility settings (who can see your going status)
+- [x] `showtime_visibility.py` — Per-showtime visibility mode + effective-visibility cache
 - [x] `showtime_source_presence.py` — Tracks which scraper provided a showtime
 - [x] `scrape_run.py` — Metadata about each scraping execution
-- [x] `friendship.py` — Accepted friend relationships
+- [x] `scrape_recap.py` — Stored per-run scrape recap (stitched into one daily email)
+- [x] `friendship.py` — Accepted friend relationships (+ per-friend `shares_status`)
 - [x] `filter_preset.py` — Saved filter configurations (movies or showtimes scope)
-- [x] `friend_group.py` — Named groups of friends for visibility rules
+- ~~`friend_group.py`~~ — deleted (friend groups retired in the visibility overhaul)
 - [x] `letterboxd.py` — Cached Letterboxd watchlist data per user
 - [x] `watchlist_selection.py` — Movies on a user's watchlist
 - [x] `push_token.py` — FCM device tokens for push notifications
 - [x] `tmdb_lookup_cache.py` — Cache of title → TMDB ID resolutions
 - [x] `city.py` — City (currently Amsterdam only)
+- [ ] `watchlist_digest_queue_entry.py` — Movies newly available for the watchlist digest (queued once, ever)
+- [ ] `watchlist_digest_notified_movie.py` — Per-user record of movies already sent/seen in the digest
+- [ ] `analytics_event.py` — Single usage-analytics event (name + free-form properties)
+- [ ] `showtime_report.py` — User-submitted report that a showtime is wrong
 
 ---
 
@@ -94,12 +100,17 @@ Legend:
 - [ ] `showtime.py` — Showtime response shape (with selections, visibility)
 - [ ] `showtime_ping.py` — Ping response shape
 - [x] `notification.py` — Merged notification-centre feed item shape
-- [ ] `showtime_visibility.py` — Visibility settings response shape
+- [x] `showtime_visibility.py` — Per-showtime visibility mode response shape
 - [ ] `cinema_preset.py` — Cinema preset response shape
 - [ ] `filter_preset.py` — Filter preset response shape
-- [ ] `friend_group.py` — Friend group response shape
+- [x] `friendship.py` — Friend status-sharing toggle request shape
 - [ ] `push_token.py` — Push token registration shape
 - [ ] `city.py` — City response shape
+- [ ] `analytics_event.py` — Event create/public response shapes
+- [ ] `analytics_dashboard.py` — Admin analytics-overview response shape
+- [x] `scrape_monitor.py` — Admin scrape-run/recap response shapes (deltas + anomaly flags)
+- [ ] `showtime_report.py` — Showtime report create/update/admin-view shapes
+- [ ] `admin.py` — Admin movie/showtime moderation request/response shapes
 
 ---
 
@@ -112,17 +123,19 @@ Legend:
 - [ ] `user.py` — User queries, create, update, password check ⚠️ Large (652 LOC)
 - [ ] `movie.py` — Movie queries with filtering ⚠️ Large (599 LOC)
 - [ ] `showtime.py` — Showtime queries, upserts, reconciliation ⚠️ Large (518 LOC)
-- [ ] `showtime_visibility.py` — Visibility calculation via SQL joins ⚠️ Large (604 LOC)
+- [x] `showtime_visibility.py` — Effective-visibility cache from mode + status-sharing + pings (incl. co-invitees)
 - [ ] `showtime_ping.py` — Ping queries and creation
 - [x] `notification.py` — Notification-centre row queries (upsert, feed, decay)
-- [ ] `friendship.py` — Friend request and friendship queries
-- [ ] `friend_group.py` — Friend group CRUD
+- [ ] `friendship.py` — Friend request and friendship queries (+ status-sharing)
+- ~~`friend_group.py`~~ — deleted (friend groups retired)
 - [ ] `cinema.py` — Cinema queries
 - [ ] `cinema_preset.py` — Cinema preset CRUD
 - [ ] `filter_preset.py` — Filter preset CRUD
 - [ ] `watchlist.py` — Watchlist selection CRUD
 - [ ] `push_token.py` — Push token registration and lookup
 - [ ] `city.py` — City queries
+- [ ] `analytics_event.py` — Event creation and dashboard aggregation queries
+- [ ] `showtime_report.py` — Report creation, listing (joined), status updates
 
 ---
 
@@ -140,6 +153,8 @@ Legend:
 - [ ] `users.py` — User management (admin operations)
 - [ ] `watchlist.py` — Watchlist sync logic
 - [ ] `scrape_sync.py` — Triggers scraping from the API layer
+- [ ] `analytics_dashboard.py` — Aggregates AnalyticsEvent/Notification/ShowtimePing/User data for the admin overview
+- [x] `scrape_monitor.py` — Read-only aggregation of ScrapeRun/ScrapeRecap for the admin scrape monitor (deltas + anomaly flags)
 
 ---
 
@@ -176,11 +191,14 @@ Legend:
 
 - [ ] `runner.py` — Main scraping orchestrator ⚠️ Very large (2042 LOC) — needs splitting
 - [ ] `scrape.py` — Executes a single scraper and stores results
+- [x] `cineville_client.py` — Shared Cineville POST helper with 429/5xx retry + backoff
 - [ ] `base_cinema_scraper.py` — Abstract base class for cinema scrapers ⚠️ Too thin (18 LOC)
 - [ ] `date_conversion.py` — Date/time parsing helpers for scrapers
 - [ ] `get_movies.py` — Fetches movies from the DB for enrichment
 - [ ] `get_showtimes.py` — Fetches showtimes from the DB for enrichment
 - [ ] `logger.py` — Scraping-specific log configuration
+- [x] `subtitles.py` — Parses cinema subtitle metadata (Dutch free text) into ISO-639-1 codes for `Showtime.subtitles`
+- [ ] `title_hints.py` — Subtitle/year hints recoverable from a raw scraped title/slug
 - [ ] `tmdb.py` — TMDB API client ⚠️ Large (1411 LOC)
 - [ ] `tmdb_lookup.py` — TMDB movie resolution + fuzzy matching ⚠️ Large (1470 LOC)
 - [ ] `tmdb_config.py` — TMDB configuration constants
@@ -197,6 +215,19 @@ Legend:
 - [ ] `cinemas/amsterdam/lab111.py` — Lab111 scraper
 - [ ] `cinemas/amsterdam/themovies.py` — The Movies scraper
 - [ ] `cinemas/amsterdam/fchyena.py` — FC Hyena scraper
+- [ ] `cinemas/amsterdam/studiok.py` — Studio/K scraper
+- [ ] `cinemas/amsterdam/rialto.py` — Rialto De Pijp + Rialto VU scraper
+
+**Cinema scrapers — Rotterdam:**
+- [ ] `cinemas/rotterdam/kinorotterdam.py` — KINO scraper (Eagerly)
+
+**Cinema scrapers — Utrecht:**
+- [ ] `cinemas/utrecht/hartlooper.py` — Louis Hartlooper Complex scraper (Eagerly)
+- [ ] `cinemas/utrecht/slachtstraat.py` — Slachtstraat scraper (Eagerly)
+- [ ] `cinemas/utrecht/springhaver.py` — Springhaver scraper (Eagerly)
+
+**Cinema scrapers — Haarlem:**
+- [ ] `cinemas/haarlem/filmkoepel.py` — Filmkoepel scraper (Eagerly)
 
 **Cinema scrapers — Generic:**
 - [ ] `cinemas/generic/eagerly.py` — Eagerly-based generic scraper
@@ -230,13 +261,15 @@ Legend:
 - [ ] Add tests for `services/showtimes.py` (visibility logic)
 - [ ] Add tests for `crud/showtime_visibility.py`
 - [ ] Add tests for `crud/user.py` (time-range filtering)
+- [ ] `tests/api/test_admin.py` — Admin route gating, analytics overview, movie/showtime moderation, showtime reports
 
 ---
 
 ## Frontend — Entry & Config (`frontend/src/`)
 
 - [ ] `main.tsx` — App entry point, React Query setup, Axios interceptors
-- [ ] `theme.tsx` — Chakra UI theme customisation
+- [x] `theme.tsx` — Chakra UI theme: app `semanticTokens` (light+dark) from `theme/tokens.ts`, plus `ui.main` + button recipe
+- [x] `theme/tokens.ts` — Generates Chakra `app.*` semantic color tokens from `shared/theme/colors.ts` (matches the mobile palette, no drift)
 - [ ] `constants.ts` — App-wide constants
 - [ ] `types.ts` — Custom TypeScript types (beyond auto-generated API types)
 - [ ] `utils.ts` — Frontend utility functions
@@ -264,11 +297,15 @@ Legend:
 - [ ] `cinema-showtimes.$cinemaId.tsx` — Showtimes for a specific cinema
 - [ ] `friend-showtimes.tsx` — Friend showtimes wrapper
 - [ ] `friend-showtimes.$friendId.tsx` — Showtimes for a specific friend
-- [ ] `friend-groups.tsx` — Friend groups management
+- ~~`friend-groups.tsx`~~ — deleted (friend groups retired; web parity pending)
 - [ ] `add-friend.$receiverId.tsx` — Add a friend by ID (deep link)
 - [ ] `ping.$showtimeId.$sender.tsx` — Ping deep link handler
 - [ ] `forbidden.tsx` — 403 page
 - [ ] `routeTree.gen.ts` — Auto-generated (do not edit manually)
+- [ ] `_layout/admin/index.tsx` — Superuser analytics overview page
+- [ ] `_layout/admin/movies.tsx` — Superuser movie-record / TMDB-cache editor page
+- [ ] `_layout/admin/showtimes.tsx` — Superuser showtime moderation page
+- [ ] `_layout/admin/reports.tsx` — Superuser showtime-report triage page
 
 ---
 
@@ -277,8 +314,10 @@ Legend:
 **Common (shared UI):**
 - [ ] `Layout.tsx` — Page layout wrapper
 - [ ] `Navbar.tsx` — Top navigation bar
-- [ ] `Sidebar.tsx` + `SidebarItems.tsx` — Desktop sidebar
-- [ ] `BottomNavBar.tsx` — Mobile bottom navigation
+- [ ] `Sidebar.tsx` + `SidebarItems.tsx` — Desktop sidebar (legacy; still used by standalone MoviePage, replaced by NavRail elsewhere)
+- [x] `NavRail.tsx` — Slim desktop icon nav rail (app-parity rebuild); replaces Sidebar in `_layout`
+- [x] `nav-items.ts` — Shared nav entry list used by NavRail + BottomNavBar
+- [x] `BottomNavBar.tsx` — Mobile-web bottom navigation (now app-token themed, shares nav-items.ts)
 - [ ] `TopBar.tsx` — Mobile top bar
 - [ ] `UserMenu.tsx` — User avatar dropdown
 - [ ] `Page.tsx` — Page container with consistent padding
@@ -313,15 +352,24 @@ Legend:
 - [ ] `MovieLinks.tsx` — External links (TMDB, Letterboxd, etc.)
 - [ ] `MoviePoster.tsx` — Large poster
 - [ ] `MovieTitle.tsx` + `OriginalTitle.tsx` + `ReleaseYear.tsx` — Title block
+- [ ] `ReportShowtimeButton.tsx` — "Report an issue" dialog (incorrect movie/time, etc.)
 
-**Showtimes:**
-- [ ] `ShowtimesPage.tsx` — Showtimes list page
-- [ ] `MainShowtimesPage.tsx` — Main (all-cinemas) showtimes view
+**Showtimes (app-parity rebuild):**
+- [ ] `ShowtimesPage.tsx` — Per-user showtimes list page
+- [x] `MainShowtimesPage.tsx` — Main showtimes view: 3-zone master-detail (filters | list | detail drawer)
 - [ ] `MyShowtimesPage.tsx` — User's own upcoming showtimes
-- [ ] `Showtimes.tsx` — Showtime list rendering
-- [ ] `ShowtimeCard.tsx` — Individual showtime card
-- [ ] `ShowtimeInfoBox.tsx` — Showtime metadata
-- [ ] `DatetimeCard.tsx` — Date/time display
+- [x] `Showtimes.tsx` — Showtime card list (optional select/onSelect for the detail drawer)
+- [x] `ShowtimeCard.tsx` — Showtime card redesigned to match the app (date column, badges, status tint, selected ring)
+- [x] `ShowtimeDetailDrawer.tsx` — Right slide-over: set status, audience, invite banner, movie link
+- [x] `useUpdateShowtimeStatus.ts` — Going-status mutation with optimistic list patch (candidate to share with mobile)
+- [x] `badges/CinemaPill.tsx` + `badges/FriendBadges.tsx` + `badges/SubtitlesBadges.tsx` — Card badges ported from the app
+- ~~`ShowtimeInfoBox.tsx`~~ + ~~`DatetimeCard.tsx`~~ — deleted (folded into the new ShowtimeCard)
+
+**Filters (`components/Filters/`, app-parity rebuild):**
+- [x] `FiltersSidebar.tsx` — Always-open desktop filters panel (status, days, subtitles/language, group-by, watchlist, cinemas; time/runtime/lists/presets to come)
+- [x] `useShowtimeFilters.ts` — Showtimes-filter state over the shared `useSession*` hooks + derived query filters
+- [x] `cinema-grouping.ts` — Group cinemas by city (≥3 → own section, else "Other cinemas"), ported from the app's CinemaFilterModal
+- [x] `CinemaFilterSection.tsx` — Grouped cinema chips with per-city + global select-all
 
 **Friends:**
 - [ ] `FriendsPage.tsx` — Friends list page
@@ -344,6 +392,13 @@ Legend:
 **UI primitives (`components/ui/`):**
 - [ ] Review generated Chakra UI wrappers — understand what each one does
 
+**Admin (`components/Admin/`):**
+- [ ] `AdminGuard.tsx` — Renders Forbidden for non-superusers
+- [ ] `AdminOverview.tsx` — Analytics overview (logins, feature usage, invite/notification rates)
+- [ ] `AdminMovies.tsx` — Movie-record edit form + TMDB lookup-cache override form
+- [ ] `AdminShowtimes.tsx` — Showtime search, inline edit, delete
+- [ ] `AdminReports.tsx` — Showtime-report triage (resolve/dismiss)
+
 ---
 
 ## Frontend — Hooks
@@ -352,6 +407,7 @@ Legend:
 - [ ] `useCustomToast.ts` — Toast notification helper
 - [ ] `useInfiniteScroll.ts` — Infinite scroll detection
 - [ ] `useIsMobile.ts` — Responsive breakpoint detection
+- [x] `useThemeColors.ts` — Raw app palette for the active light/dark mode (web mirror of the mobile hook), for dynamic colors that aren't static tokens
 
 **Shared data hooks (`shared/hooks/`):**
 - [ ] `useAuth.ts` — Login, logout, token management
@@ -376,6 +432,7 @@ Legend:
 - [ ] `useSessionShowtimeAudience.ts` — Session-level audience filter (mobile no longer uses the Only You / Including Friends distinction; web may still use this)
 - [ ] `useSessionShowtimeFilter.ts` — Combined session filter state
 - [ ] `useSessionWatchlistOnly.ts` — Session-level watchlist toggle
+- [ ] `useTrackEvent.ts` — Fire-and-forget POST /me/events for usage analytics (web + mobile)
 
 ---
 
@@ -385,6 +442,9 @@ Legend:
 - [ ] `types.ts` — Shared TypeScript types across web and mobile
 - [ ] `utils.ts` — Shared utility functions
 - [ ] `client/` — Auto-generated OpenAPI client (do not edit manually)
+- [ ] `authRefresh.ts` — Axios interceptor: transparently refreshes the access token on 401 (moved from `mobile/utils/auth-refresh.ts` so web shares it too)
+- [x] `theme/colors.ts` — Single source for the app color palette, light + dark (moved out of `mobile/constants/theme.ts`; mobile re-exports it, web builds Chakra tokens from it)
+- [x] `filters/day-filter-utils.ts` — Day-selection token model + API resolution, shared by web + mobile (moved out of `mobile/components/filters/`, which now re-exports it)
 
 ---
 
@@ -418,7 +478,7 @@ Legend:
 
 - [ ] Error handling: are all services using domain exceptions consistently?
 - [ ] Logging: is Loguru used consistently throughout?
-- [ ] Auth: plan for refresh tokens (access token currently 90 days)
+- [x] Auth: refresh tokens implemented (30 min access / 90 day refresh); both web and mobile now auto-refresh via `shared/authRefresh.ts`
 - [ ] Test coverage: reach 80%+ on services and CRUD
 - [ ] Frontend tests: set up Vitest + React Testing Library
 - [ ] API rate limiting: evaluate adding slowapi

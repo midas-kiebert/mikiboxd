@@ -12,7 +12,7 @@ import { StrictMode } from "react"
 import ReactDOM from "react-dom/client"
 import { routeTree } from "./routeTree.gen"
 
-import { ApiError, OpenAPI } from "shared"
+import { ApiError, OpenAPI, installAuthRefreshInterceptor } from "shared"
 import { setStorage, storage } from "shared/storage"
 import { CustomProvider } from "./components/ui/provider"
 
@@ -32,17 +32,29 @@ OpenAPI.BASE = import.meta.env.VITE_API_URL
 OpenAPI.TOKEN = async () => {
   return (await storage.getItem("access_token")) || ""
 }
+// Lets the backend attribute logins/events to a platform without any
+// per-request client code (see AnalyticsEventName.LOGIN in login.py).
+OpenAPI.HEADERS = { "X-Client-Platform": "web" }
 
 const router = createRouter({
   routeTree,
   scrollRestoration: true,
 })
 
+const handleAuthFailure = () => {
+  router.navigate({ to: "/login" })
+}
+
+// Before a 401 becomes a logout, try to transparently refresh the access token.
+// Only a failed refresh falls through to handleAuthFailure above.
+installAuthRefreshInterceptor(handleAuthFailure)
+
 // Centralized API error handling keeps auth redirects consistent for every query/mutation.
 const handleApiError = async (error: Error) => {
   if (error instanceof ApiError && error.status === 401) {
     await storage.removeItem("access_token")
-    router.navigate({ to: "/login" })
+    await storage.removeItem("refresh_token")
+    handleAuthFailure()
   } else if (error instanceof ApiError && error.status === 403) {
     router.navigate({ to: "/forbidden", replace: true })
   }

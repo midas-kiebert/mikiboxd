@@ -5,11 +5,11 @@ import { Outlet, createRootRoute } from "@tanstack/react-router"
 import React, { Suspense, useEffect, useState } from "react"
 
 import NotFound from "@/components/Common/NotFound"
-import { Box, CloseButton, Flex, Link, Text } from "@chakra-ui/react"
 import {
   PAGE_NOTICE_BANNER_HEIGHT_PX,
   PAGE_NOTICE_BANNER_OFFSET_CSS_VAR,
 } from "@/constants"
+import { Box, CloseButton, Flex, Link, Text } from "@chakra-ui/react"
 
 const BETA_NOTICE_DISMISSED_KEY = "betaNoticeDismissed"
 
@@ -86,8 +86,9 @@ const loadDevtools = () =>
     }
   })
 
-const TanStackDevtools =
-  import.meta.env.DEV ? React.lazy(loadDevtools) : () => null
+const TanStackDevtools = import.meta.env.DEV
+  ? React.lazy(loadDevtools)
+  : () => null
 
 export const Route = createRootRoute({
   component: () => {

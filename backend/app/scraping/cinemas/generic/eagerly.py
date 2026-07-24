@@ -8,10 +8,16 @@ import requests
 
 from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
-from app.models.movie import MovieCreate
+from app.models.movie import (
+    MovieCreate,
+    is_sneak_preview_title,
+    sneak_preview_movie,
+)
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
+from app.scraping.subtitles import parse_subtitle_label
+from app.scraping.title_hints import parse_year_hint_from_title
 from app.scraping.tmdb_lookup import find_tmdb_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
 from app.services import movies as movies_service
@@ -31,7 +37,13 @@ def clean_title(title: str) -> str:
 
 
 class GenericEagerlyScraper(BaseCinemaScraper):
-    def __init__(self, cinema: str, url_base: str, theatre_filter: str = "") -> None:
+    def __init__(
+        self,
+        cinema: str,
+        url_base: str,
+        theatre_filter: str = "",
+        subtitle_venue_aliases: list[str] | None = None,
+    ) -> None:
         self.cinema = cinema
         with get_db_context() as session:
             self.cinema_id = cinema_crud.get_cinema_id_by_name(
@@ -44,17 +56,19 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         self.url_base = url_base
         self.url = f"{url_base}/fk-feed/agenda"
         self.theatre_filter = theatre_filter  # For Leiden
+        # Louis Hartlooper Complex and Springhaver share a subtitle label that
+        # states a different language per venue, e.g.
+        # "Nederlands (LHC), English (Springhaver)". Each venue reads only its
+        # own clause via these aliases.
+        self.subtitle_venue_aliases = subtitle_venue_aliases
 
-    def _process_movie_entry(
+    def _resolve_movie_via_tmdb(
         self,
         *,
         slug: str,
+        title_query: str,
         value: dict[str, Any],
-    ) -> tuple[MovieCreate, list[ShowtimeCreate]] | None:
-        if not value.get("times"):
-            return None
-
-        title_query = clean_title(slug)
+    ) -> MovieCreate | None:
         directors_raw = value.get("director_name")
         directors_value = (
             directors_raw.get("value") if isinstance(directors_raw, dict) else None
@@ -70,10 +84,13 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         if isinstance(starring_short, str) and starring_short:
             actor = sub(r"\s*\([^)]*\)", "", starring_short.split(",")[0].strip())
 
+        year = parse_year_hint_from_title(slug)
+
         tmdb_id = find_tmdb_id(
             title_query=title_query,
             director_names=directors,
             actor_name=actor,
+            year=year,
         )
         if not tmdb_id:
             logger.warning(f"No TMDB ID found for {title_query}, skipping")
@@ -93,13 +110,13 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         tmdb_directors = (
             tmdb_details.directors if tmdb_details is not None else list(directors)
         )
-        movie = MovieCreate(
+        return MovieCreate(
             id=int(tmdb_id),
             title=tmdb_title,
             letterboxd_slug=None,
             directors=tmdb_directors if tmdb_directors else None,
             release_year=(
-                tmdb_details.release_year if tmdb_details is not None else None
+                tmdb_details.release_year if tmdb_details is not None else year
             ),
             duration=(
                 tmdb_details.runtime_minutes if tmdb_details is not None else None
@@ -113,6 +130,36 @@ class GenericEagerlyScraper(BaseCinemaScraper):
             tmdb_last_enriched_at=(
                 tmdb_details.enriched_at if tmdb_details is not None else None
             ),
+        )
+
+    def _process_movie_entry(
+        self,
+        *,
+        slug: str,
+        value: dict[str, Any],
+    ) -> tuple[MovieCreate, list[ShowtimeCreate]] | None:
+        if not value.get("times"):
+            return None
+
+        title_query = clean_title(slug)
+        movie: MovieCreate | None
+        if is_sneak_preview_title(slug) or is_sneak_preview_title(title_query):
+            movie = sneak_preview_movie()
+        else:
+            movie = self._resolve_movie_via_tmdb(
+                slug=slug, title_query=title_query, value=value
+            )
+            if movie is None:
+                return None
+
+        # The feed exposes subtitles under the (misnamed) "language" key, e.g.
+        # {"label": "Ondertitels", "value": "Nederlands"}.
+        language_meta = value.get("language")
+        subtitle_value = (
+            language_meta.get("value") if isinstance(language_meta, dict) else None
+        )
+        subtitles = parse_subtitle_label(
+            subtitle_value, venue_aliases=self.subtitle_venue_aliases
         )
 
         showtimes: list[ShowtimeCreate] = []
@@ -129,10 +176,11 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                     datetime=date,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,
+                    subtitles=subtitles,
                 )
             )
 
-        logger.debug(f"Resolved TMDB id {tmdb_id} for {movie.title}")
+        logger.debug(f"Resolved movie {movie.id} for {movie.title}")
         return movie, showtimes
 
     def scrape(self) -> list[tuple[str, int]]:
@@ -191,11 +239,10 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                     showtime_create=showtime_create,
                     commit=False,
                 )
-                source_event_key = scrape_sync_service.fallback_source_event_key(
+                source_event_key = scrape_sync_service.showtime_identity_event_key(
                     movie_id=showtime_create.movie_id,
                     cinema_id=showtime_create.cinema_id,
                     dt=showtime_create.datetime,
-                    ticket_link=showtime_create.ticket_link,
                 )
                 observed_presences.append((source_event_key, showtime.id))
             session.commit()

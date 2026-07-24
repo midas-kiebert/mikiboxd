@@ -3,11 +3,14 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import HTMLResponse
 
 from app.api.deps import (
     CurrentUser,
     SessionDep,
 )
+from app.core.security import verify_watchlist_digest_unsubscribe_token
+from app.crud import user as users_crud
 from app.inputs.movie import Filters, get_filters
 from app.models.user import UserRegister
 from app.schemas.showtime import ShowtimeLoggedIn
@@ -15,6 +18,24 @@ from app.schemas.user import UserPublic, UserWithFriendStatus
 from app.services import users as users_service
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/unsubscribe-watchlist-digest", response_class=HTMLResponse)
+def unsubscribe_watchlist_digest(session: SessionDep, token: str) -> HTMLResponse:
+    """One-click unsubscribe from watchlist digest emails, linked from the email itself.
+
+    No authentication — the signed token in the link is what proves the
+    request is for that specific user's account.
+    """
+    email = verify_watchlist_digest_unsubscribe_token(token)
+    if email is None:
+        return HTMLResponse("<p>This unsubscribe link is invalid.</p>", status_code=400)
+    user = users_crud.get_user_by_email(session=session, email=email)
+    if user is not None and user.notify_watchlist_digest_enabled:
+        user.notify_watchlist_digest_enabled = False
+        session.add(user)
+        session.commit()
+    return HTMLResponse("<p>You will no longer receive watchlist digest emails.</p>")
 
 
 @router.get("/search", response_model=list[UserWithFriendStatus])

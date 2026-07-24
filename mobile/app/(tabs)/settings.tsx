@@ -4,7 +4,7 @@
 import { Alert, Linking, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import {
@@ -22,10 +22,13 @@ import { type ThemePreference, useThemePreference } from '@/utils/theme-preferen
 import useAuth from 'shared/hooks/useAuth';
 import {
   MeService,
+  type CinemaPresetPublic,
+  type DigestFrequency,
   type NotificationChannel,
   type UpdatePassword,
   type UserUpdate,
 } from 'shared';
+import { useFetchLetterboxdLists } from 'shared/hooks/useLetterboxdLists';
 import { emailPattern, usernameMaxLength, usernamePattern } from 'shared/utils';
 import {
   registerPushTokenForCurrentDevice,
@@ -151,6 +154,24 @@ export default function SettingsScreen() {
   // Identifies which notification channel is currently updating.
   const [pendingNotificationChannel, setPendingNotificationChannel] =
     useState<NotificationChannelPreferenceKey | null>(null);
+  // Local state for the watchlist new-showtime email digest setting.
+  const [digestEnabled, setDigestEnabled] = useState(false);
+  const [digestFrequency, setDigestFrequency] =
+    useState<DigestFrequency>('weekly_or_urgent');
+  const [digestListId, setDigestListId] = useState<string | null>(null);
+  // null = follow the favorite cinema preset; a uuid = pin a specific preset.
+  const [digestCinemaPresetId, setDigestCinemaPresetId] = useState<string | null>(null);
+  const [digestAdvancedOpen, setDigestAdvancedOpen] = useState(false);
+  const [isUpdatingDigest, setIsUpdatingDigest] = useState(false);
+  // Lists and cinema presets are only needed once the advanced picker is opened.
+  const { data: digestLists = [] } = useFetchLetterboxdLists(digestAdvancedOpen);
+  const { data: cinemaPresets = [] } = useQuery<CinemaPresetPublic[]>({
+    queryKey: ['cinema-presets'],
+    queryFn: () => MeService.getCinemaPresets(),
+    enabled: digestAdvancedOpen,
+  });
+  // The preset the digest follows when no specific one is pinned.
+  const favoriteCinemaPreset = cinemaPresets.find((preset) => preset.is_favorite);
   // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   // Cineville card number (9 digits only, CP$ prefix is added automatically).
@@ -171,6 +192,18 @@ export default function SettingsScreen() {
     setNotificationPreferences(buildNotificationPreferencesState(user));
     setNotificationChannels(buildNotificationChannelsState(user));
   }, [user]);
+
+  useEffect(() => {
+    setDigestEnabled(!!user?.notify_watchlist_digest_enabled);
+    setDigestFrequency(user?.notify_watchlist_digest_frequency ?? 'weekly_or_urgent');
+    setDigestListId(user?.notify_watchlist_digest_list_id ?? null);
+    setDigestCinemaPresetId(user?.notify_watchlist_digest_cinema_preset_id ?? null);
+  }, [
+    user?.notify_watchlist_digest_enabled,
+    user?.notify_watchlist_digest_frequency,
+    user?.notify_watchlist_digest_list_id,
+    user?.notify_watchlist_digest_cinema_preset_id,
+  ]);
 
   // Load the saved Cineville card digits from device storage.
   useEffect(() => {
@@ -440,6 +473,63 @@ export default function SettingsScreen() {
     }
   };
 
+  // Applies a watchlist-digest field optimistically, then persists it; rolls back on failure.
+  const handleDigestUpdate = async (
+    data: UserUpdate,
+    applyOptimistic: () => void,
+    rollback: () => void
+  ) => {
+    applyOptimistic();
+    try {
+      setIsUpdatingDigest(true);
+      await notificationPreferenceMutation.mutateAsync(data);
+    } catch (error) {
+      rollback();
+      console.error('Error updating watchlist digest settings:', error);
+      Alert.alert('Error', 'Could not update watchlist digest settings.');
+    } finally {
+      setIsUpdatingDigest(false);
+    }
+  };
+
+  const handleDigestToggle = (enabled: boolean) => {
+    const previous = digestEnabled;
+    void handleDigestUpdate(
+      { notify_watchlist_digest_enabled: enabled },
+      () => setDigestEnabled(enabled),
+      () => setDigestEnabled(previous)
+    );
+  };
+
+  const handleDigestFrequencyChange = (frequency: DigestFrequency) => {
+    if (frequency === digestFrequency) return;
+    const previous = digestFrequency;
+    void handleDigestUpdate(
+      { notify_watchlist_digest_frequency: frequency },
+      () => setDigestFrequency(frequency),
+      () => setDigestFrequency(previous)
+    );
+  };
+
+  const handleDigestListChange = (listId: string | null) => {
+    if (listId === digestListId) return;
+    const previous = digestListId;
+    void handleDigestUpdate(
+      { notify_watchlist_digest_list_id: listId },
+      () => setDigestListId(listId),
+      () => setDigestListId(previous)
+    );
+  };
+
+  const handleDigestCinemaPresetChange = (presetId: string | null) => {
+    if (presetId === digestCinemaPresetId) return;
+    const previous = digestCinemaPresetId;
+    void handleDigestUpdate(
+      { notify_watchlist_digest_cinema_preset_id: presetId },
+      () => setDigestCinemaPresetId(presetId),
+      () => setDigestCinemaPresetId(previous)
+    );
+  };
 
   const handleSaveCinevilleCard = async () => {
     const trimmed = cinevilleDigits.trim();
@@ -748,6 +838,169 @@ export default function SettingsScreen() {
                 </View>
               </View>
             ))}
+            <View style={styles.notificationToggleRow}>
+              <View style={styles.notificationToggleHeader}>
+                <View style={styles.notificationToggleTextContainer}>
+                  <ThemedText style={styles.notificationToggleTitle}>Watchlist digest</ThemedText>
+                  <ThemedText style={styles.notificationToggleDescription}>
+                    Email me when a watchlisted movie gets a showtime it didn&apos;t have before.
+                  </ThemedText>
+                </View>
+                <Switch
+                  value={digestEnabled}
+                  onValueChange={(value) => handleDigestToggle(value)}
+                  disabled={!user || isUpdatingDigest}
+                  trackColor={{ false: colors.divider, true: colors.tint }}
+                  thumbColor="#ffffff"
+                />
+              </View>
+              <View style={styles.notificationChannelRow}>
+                <ThemedText style={styles.notificationChannelLabel}>Frequency</ThemedText>
+                <View style={styles.notificationChannelPill}>
+                  <TouchableOpacity
+                    style={[
+                      styles.notificationChannelOption,
+                      styles.notificationChannelOptionLeft,
+                      digestFrequency === 'daily' && styles.notificationChannelOptionActive,
+                    ]}
+                    onPress={() => handleDigestFrequencyChange('daily')}
+                    disabled={!user || isUpdatingDigest}
+                    activeOpacity={0.8}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.notificationChannelOptionText,
+                        digestFrequency === 'daily' && styles.notificationChannelOptionTextActive,
+                      ]}
+                    >
+                      Daily
+                    </ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.notificationChannelOption,
+                      styles.notificationChannelOptionRight,
+                      digestFrequency === 'weekly_or_urgent' &&
+                        styles.notificationChannelOptionActive,
+                    ]}
+                    onPress={() => handleDigestFrequencyChange('weekly_or_urgent')}
+                    disabled={!user || isUpdatingDigest}
+                    activeOpacity={0.8}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.notificationChannelOptionText,
+                        digestFrequency === 'weekly_or_urgent' &&
+                          styles.notificationChannelOptionTextActive,
+                      ]}
+                    >
+                      Smart
+                    </ThemedText>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setDigestAdvancedOpen((previous) => !previous)}
+                activeOpacity={0.8}
+              >
+                <ThemedText style={styles.digestAdvancedToggle}>
+                  {digestAdvancedOpen ? 'Hide advanced' : 'Advanced: list & cinemas'}
+                </ThemedText>
+              </TouchableOpacity>
+              {digestAdvancedOpen ? (
+                <>
+                  <ThemedText style={styles.notificationChannelLabel}>Source</ThemedText>
+                  <View style={styles.digestListOptions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.digestListOption,
+                        digestListId === null && styles.digestListOptionActive,
+                      ]}
+                      onPress={() => handleDigestListChange(null)}
+                      disabled={!user || isUpdatingDigest}
+                      activeOpacity={0.8}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.digestListOptionText,
+                          digestListId === null && styles.digestListOptionTextActive,
+                        ]}
+                      >
+                        My watchlist
+                      </ThemedText>
+                    </TouchableOpacity>
+                    {digestLists.map((list) => (
+                      <TouchableOpacity
+                        key={list.id}
+                        style={[
+                          styles.digestListOption,
+                          digestListId === list.id && styles.digestListOptionActive,
+                        ]}
+                        onPress={() => handleDigestListChange(list.id)}
+                        disabled={!user || isUpdatingDigest}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText
+                          style={[
+                            styles.digestListOptionText,
+                            digestListId === list.id && styles.digestListOptionTextActive,
+                          ]}
+                        >
+                          {list.title ?? list.list_slug}
+                          {list.is_curated ? ' (curated)' : ''}
+                        </ThemedText>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <ThemedText style={styles.notificationChannelLabel}>Cinemas</ThemedText>
+                  <View style={styles.digestListOptions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.digestListOption,
+                        digestCinemaPresetId === null && styles.digestListOptionActive,
+                      ]}
+                      onPress={() => handleDigestCinemaPresetChange(null)}
+                      disabled={!user || isUpdatingDigest}
+                      activeOpacity={0.8}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.digestListOptionText,
+                          digestCinemaPresetId === null && styles.digestListOptionTextActive,
+                        ]}
+                      >
+                        {favoriteCinemaPreset
+                          ? `Default (${favoriteCinemaPreset.name})`
+                          : 'All cinemas'}
+                      </ThemedText>
+                    </TouchableOpacity>
+                    {cinemaPresets.map((preset) => (
+                      <TouchableOpacity
+                        key={preset.id}
+                        style={[
+                          styles.digestListOption,
+                          digestCinemaPresetId === preset.id && styles.digestListOptionActive,
+                        ]}
+                        onPress={() => handleDigestCinemaPresetChange(preset.id)}
+                        disabled={!user || isUpdatingDigest}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText
+                          style={[
+                            styles.digestListOptionText,
+                            digestCinemaPresetId === preset.id &&
+                              styles.digestListOptionTextActive,
+                          ]}
+                        >
+                          {preset.name}
+                          {preset.is_favorite ? ' (favorite)' : ''}
+                        </ThemedText>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              ) : null}
+            </View>
             {notificationPermissionStatus === 'denied' ? (
               <TouchableOpacity
                 style={styles.secondaryButton}
@@ -949,6 +1202,34 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.textSecondary,
     },
     notificationChannelOptionTextActive: {
+      color: '#ffffff',
+    },
+    digestAdvancedToggle: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.tint,
+    },
+    digestListOptions: {
+      gap: 6,
+    },
+    digestListOption: {
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      backgroundColor: colors.pillBackground,
+    },
+    digestListOptionActive: {
+      borderColor: colors.tint,
+      backgroundColor: colors.tint,
+    },
+    digestListOptionText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    digestListOptionTextActive: {
       color: '#ffffff',
     },
     cinevilleInputRow: {

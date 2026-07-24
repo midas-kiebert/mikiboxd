@@ -211,7 +211,7 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     setIsSavePresetDialogVisible(false);
     setSaveAsFavorite(false);
     setPage(initialPage);
-  }, [visible, selectedCinemas]);
+  }, [visible, selectedCinemas, initialPage]);
 
   const presetsQueryKey = useMemo(() => ["cinema-presets"] as const, []);
   const { data: presets = [], isLoading: isPresetsLoading } = useQuery({

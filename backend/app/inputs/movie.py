@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException, Query
 from pydantic import BaseModel
 
-from app.core.enums import GoingStatus, TimeOfDay
+from app.core.enums import GoingStatus, Language, SearchField, TimeOfDay
 from app.utils import now_amsterdam_naive
 
 
@@ -18,6 +18,7 @@ class TimeRange(BaseModel):
 
 class Filters(BaseModel):
     query: str | None = None
+    search_field: SearchField = SearchField.TITLE
     snapshot_time: datetime
     # Movie-set filters combine as: keep a movie when it is in the UNION of every
     # "include" set (watchlist / watched / included lists) — if any include is
@@ -34,6 +35,7 @@ class Filters(BaseModel):
     runtime_min: int | None = None
     runtime_max: int | None = None
     selected_statuses: list[GoingStatus] | None = None
+    selected_languages: list[Language] | None = None
 
 
 def parse_time_ranges(value: str) -> TimeRange:
@@ -57,6 +59,10 @@ def time_range_from_time_of_day(value: TimeOfDay) -> TimeRange:
 
 def get_filters(
     query: Annotated[str | None, Query()] = None,
+    search_field: Annotated[
+        SearchField,
+        Query(description="Which attribute `query` is matched against"),
+    ] = SearchField.TITLE,
     snapshot_time: Annotated[
         datetime | None,
         Query(description="Only show showtimes after this moment"),
@@ -120,6 +126,16 @@ def get_filters(
             description="Maximum movie runtime in minutes",
         ),
     ] = None,
+    selected_languages: Annotated[
+        list[Language] | None,
+        Query(
+            alias="selected_languages",
+            description=(
+                "Keep movies whose main spoken language is one of these, and "
+                "only showtimes with matching subtitles"
+            ),
+        ),
+    ] = None,
 ) -> Filters:
     if snapshot_time is None:
         snapshot_time = now_amsterdam_naive()
@@ -142,6 +158,7 @@ def get_filters(
 
     return Filters(
         query=query,
+        search_field=search_field,
         snapshot_time=snapshot_time,
         watchlist_only=watchlist_only,
         watchlist_exclude=watchlist_exclude,
@@ -155,4 +172,5 @@ def get_filters(
         selected_statuses=selected_statuses,
         list_ids=selected_list_ids,
         exclude_list_ids=exclude_list_ids,
+        selected_languages=selected_languages,
     )

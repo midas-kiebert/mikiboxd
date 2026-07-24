@@ -20,6 +20,10 @@ class ShowtimeBase(SQLModel):
     end_datetime: dt.datetime | None = None
     ticket_link: str | None = None
     subtitles: list[str] | None = Field(sa_column=Column(ARRAY(String)), default=None)
+    # Exact source stream this showtime was last (re-)scraped from, e.g.
+    # "cinema_scraper:kriterion" or "cineville:xxx" — same naming convention
+    # as ShowtimeSourcePresence.source_stream, denormalized here for display.
+    scrape_source: str | None = None
 
 
 # Properties to receive on showtime creation

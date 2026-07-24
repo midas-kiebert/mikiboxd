@@ -5,6 +5,7 @@ Every route here requires get_current_active_superuser — see the existing
 """
 
 import datetime as dt
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi import status as http_status
@@ -14,9 +15,16 @@ from app.core.enums import ShowtimeReportStatus
 from app.crud import movie as movie_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_report as showtime_report_crud
+from app.crud import user as user_crud
 from app.models.auth_schemas import Message
 from app.models.movie import MovieUpdate
-from app.schemas.admin import AdminMoviePublic, AdminShowtimePublic, AdminShowtimeUpdate
+from app.models.user import is_report_banned
+from app.schemas.admin import (
+    AdminMoviePublic,
+    AdminShowtimePublic,
+    AdminShowtimeUpdate,
+    UserReportBanUpdate,
+)
 from app.schemas.analytics_dashboard import AnalyticsOverview
 from app.schemas.scrape_monitor import (
     ScrapeMonitorResponse,
@@ -162,15 +170,18 @@ def list_showtime_reports(
             cinema_name=cinema.name,
             cinema_url=cinema.url,
             showtime_datetime=showtime.datetime,
+            ticket_link=showtime.ticket_link,
             reporter_id=reporter.id,
             reporter_email=reporter.email,
+            reporter_report_banned=is_report_banned(reporter),
             reason=report.reason,
             message=report.message,
             status=report.status,
             created_at=report.created_at,
             resolved_at=report.resolved_at,
+            report_count=report_count,
         )
-        for report, showtime, movie, cinema, reporter in rows
+        for report, showtime, movie, cinema, reporter, report_count in rows
     ]
 
 
@@ -191,6 +202,24 @@ def update_showtime_report(
     )
     session.commit()
     return Message(message="Report updated successfully")
+
+
+@router.patch("/users/{user_id}/report-ban", response_model=Message)
+def update_user_report_ban(
+    *, session: SessionDep, user_id: UUID, payload: UserReportBanUpdate
+) -> Message:
+    user = user_crud.get_user_by_id(session=session, user_id=user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    user_crud.set_report_ban(
+        db_user=user, banned=payload.banned, duration_days=payload.duration_days
+    )
+    session.commit()
+    return Message(
+        message="User banned from reporting" if payload.banned else "User unbanned"
+    )
 
 
 # --- Scrape monitor -------------------------------------------------------

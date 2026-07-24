@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, func, select
 
 from app.core.enums import ShowtimeReportReason, ShowtimeReportStatus
 from app.models.cinema import Cinema
@@ -36,9 +36,14 @@ def get_report_by_id(*, session: Session, report_id: int) -> ShowtimeReport | No
 
 def list_reports(
     *, session: Session, status: ShowtimeReportStatus | None
-) -> list[tuple[ShowtimeReport, Showtime, Movie, Cinema, User]]:
+) -> list[tuple[ShowtimeReport, Showtime, Movie, Cinema, User, int]]:
+    report_count = (
+        func.count()
+        .over(partition_by=col(ShowtimeReport.showtime_id))
+        .label("report_count")
+    )
     stmt = (
-        select(ShowtimeReport, Showtime, Movie, Cinema, User)  # type: ignore[call-overload]
+        select(ShowtimeReport, Showtime, Movie, Cinema, User, report_count)  # type: ignore[call-overload]
         .join(Showtime, Showtime.id == ShowtimeReport.showtime_id)
         .join(Movie, Movie.id == Showtime.movie_id)
         .join(Cinema, Cinema.id == Showtime.cinema_id)

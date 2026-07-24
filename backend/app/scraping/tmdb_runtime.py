@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 from app.api.deps import get_db_context
 from app.models.tmdb_lookup_cache import TmdbLookupCache
 from app.scraping import tmdb_lookup as tmdb_core
+from app.services import movies as movies_service
 from app.utils import now_amsterdam_naive
 
 
@@ -57,11 +58,31 @@ def upsert_tmdb_lookup_cache_entry(
                     updated_at=now,
                 )
             )
-        else:
-            cached.tmdb_id = tmdb_id
-            cached.confidence = confidence
-            cached.updated_at = now
+            db_session.commit()
+            return
+
+        old_tmdb_id = cached.tmdb_id
+        cache_id = cached.id
+        cached.tmdb_id = tmdb_id
+        cached.confidence = confidence
+        cached.updated_at = now
         db_session.commit()
+
+        # A real correction (not first-time population): fix every movie
+        # this cache entry already produced, immediately.
+        if (
+            cache_id is not None
+            and old_tmdb_id is not None
+            and tmdb_id is not None
+            and old_tmdb_id != tmdb_id
+        ):
+            movies_service.reassign_movies_for_cache_correction(
+                session=db_session,
+                cache_id=cache_id,
+                old_tmdb_id=old_tmdb_id,
+                new_tmdb_id=tmdb_id,
+            )
+            db_session.commit()
 
     if session is not None:
         try:

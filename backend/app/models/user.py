@@ -7,6 +7,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlmodel import Column, Field, Relationship, SQLModel
 
 from app.core.enums import DigestFrequency, NotificationChannel
+from app.utils import now_amsterdam_naive
 
 if TYPE_CHECKING:
     from app.models.letterboxd import Letterboxd
@@ -114,6 +115,19 @@ class User(_UserBase, table=True):
     hashed_password: str
     # Drives the digest lookback window and prevents double-sends; not user-facing.
     notify_watchlist_digest_last_sent_at: datetime | None = Field(default=None)
+    # Moderation: blocks POST /showtimes/{id}/report. None expiry + banned=True
+    # means indefinite; a past expiry is treated as no-longer-banned.
+    report_banned: bool = Field(default=False)
+    report_ban_expires_at: datetime | None = Field(default=None)
     letterboxd: Optional["Letterboxd"] = Relationship(
         sa_relationship_kwargs={"lazy": "joined"},
     )
+
+
+def is_report_banned(user: User) -> bool:
+    """Whether `user` is currently blocked from reporting showtimes."""
+    if not user.report_banned:
+        return False
+    if user.report_ban_expires_at is None:
+        return True
+    return user.report_ban_expires_at > now_amsterdam_naive()

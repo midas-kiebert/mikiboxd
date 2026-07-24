@@ -140,6 +140,37 @@ def delete_showtime(*, session: Session, showtime: Showtime) -> None:
     session.delete(showtime)
 
 
+def get_showtimes_by_movie_id(*, session: Session, movie_id: int) -> list[Showtime]:
+    return list(session.exec(select(Showtime).where(Showtime.movie_id == movie_id)))
+
+
+def reassign_showtimes_movie(
+    *, session: Session, old_movie_id: int, new_movie_id: int
+) -> int:
+    """Move every showtime off `old_movie_id` onto `new_movie_id`.
+
+    Reassigned one row at a time (not a single bulk UPDATE) since the
+    (cinema_id, datetime, movie_id) unique constraint can already be
+    satisfied by an existing `new_movie_id` showtime — such conflicting rows
+    are left on the old id rather than aborting the whole correction.
+    """
+    reassigned = 0
+    for showtime in get_showtimes_by_movie_id(session=session, movie_id=old_movie_id):
+        conflict = session.exec(
+            select(Showtime).where(
+                Showtime.cinema_id == showtime.cinema_id,
+                Showtime.datetime == showtime.datetime,
+                Showtime.movie_id == new_movie_id,
+            )
+        ).first()
+        if conflict is not None:
+            continue
+        showtime.movie_id = new_movie_id
+        reassigned += 1
+    session.flush()
+    return reassigned
+
+
 def get_showtimes_by_ids(
     *,
     session: Session,

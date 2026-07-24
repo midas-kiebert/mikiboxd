@@ -769,3 +769,55 @@ def test_get_sent_and_received_friend_requests(
 
     assert user_3 in received_requests
     assert len(received_requests) == 1
+
+
+def test_set_report_ban_indefinite(*, user_factory: Callable[..., User]):
+    user = user_factory()
+
+    user_crud.set_report_ban(db_user=user, banned=True, duration_days=None)
+
+    assert user.report_banned is True
+    assert user.report_ban_expires_at is None
+
+
+def test_set_report_ban_with_duration_sets_future_expiry(
+    *, user_factory: Callable[..., User]
+):
+    user = user_factory()
+
+    before = now_amsterdam_naive()
+    user_crud.set_report_ban(db_user=user, banned=True, duration_days=5)
+    after = now_amsterdam_naive()
+
+    assert user.report_banned is True
+    assert user.report_ban_expires_at is not None
+    assert before + timedelta(days=5) <= user.report_ban_expires_at <= after + timedelta(
+        days=5
+    )
+
+
+def test_set_report_ban_unban_clears_both_fields(
+    *, user_factory: Callable[..., User]
+):
+    user = user_factory()
+    user.report_banned = True
+    user.report_ban_expires_at = now_amsterdam_naive() + timedelta(days=10)
+
+    user_crud.set_report_ban(db_user=user, banned=False, duration_days=None)
+
+    assert user.report_banned is False
+    assert user.report_ban_expires_at is None
+
+
+def test_set_report_ban_unban_clears_expiry_even_if_duration_passed(
+    *, user_factory: Callable[..., User]
+):
+    """Unbanning always clears the expiry, regardless of `duration_days`."""
+    user = user_factory()
+    user.report_banned = True
+    user.report_ban_expires_at = now_amsterdam_naive() + timedelta(days=10)
+
+    user_crud.set_report_ban(db_user=user, banned=False, duration_days=30)
+
+    assert user.report_banned is False
+    assert user.report_ban_expires_at is None

@@ -10,6 +10,7 @@ __all__ = [
     "AdminMoviePublic",
     "AdminShowtimeUpdate",
     "AdminShowtimePublic",
+    "UserReportBanUpdate",
 ]
 
 
@@ -37,3 +38,8 @@ class AdminShowtimePublic(SQLModel):
     cinema_id: int
     cinema_name: str
     cinema_url: str
+
+
+class UserReportBanUpdate(SQLModel):
+    banned: bool
+    duration_days: int | None = None

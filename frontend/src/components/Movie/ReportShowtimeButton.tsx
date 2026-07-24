@@ -24,6 +24,7 @@ import {
   type ShowtimeReportReason,
   ShowtimesService,
 } from "shared"
+import useAuth from "shared/hooks/useAuth"
 import { Field } from "../ui/field"
 
 const REASON_OPTIONS: { value: ShowtimeReportReason; label: string }[] = [
@@ -35,6 +36,7 @@ const REASON_OPTIONS: { value: ShowtimeReportReason; label: string }[] = [
 ]
 
 const ReportShowtimeButton = ({ showtimeId }: { showtimeId: number }) => {
+  const { user } = useAuth()
   const { showSuccessToast } = useCustomToast()
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState<ShowtimeReportReason>("incorrect_time")
@@ -53,6 +55,10 @@ const ReportShowtimeButton = ({ showtimeId }: { showtimeId: number }) => {
     },
     onError: (err: ApiError) => handleError(err),
   })
+
+  if (user && !user.can_report) {
+    return null
+  }
 
   return (
     <Dialog.Root open={open} onOpenChange={(e) => setOpen(e.open)}>

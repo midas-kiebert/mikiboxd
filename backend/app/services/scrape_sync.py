@@ -218,6 +218,9 @@ def _upsert_observed_presence(
         ShowtimeSourcePresence.source_event_key == observed.source_event_key,
     )
     existing = session.exec(stmt).first()
+    _stamp_scrape_source(
+        session=session, showtime_id=observed.showtime_id, source_stream=source_stream
+    )
     if existing is None:
         session.add(
             ShowtimeSourcePresence(
@@ -243,6 +246,16 @@ def _upsert_observed_presence(
     if previous_showtime_id != observed.showtime_id:
         return previous_showtime_id
     return None
+
+
+def _stamp_scrape_source(
+    *, session: Session, showtime_id: int, source_stream: str
+) -> None:
+    """Record the exact source stream a showtime was (re-)observed from, for
+    admin display — same source_stream naming as ShowtimeSourcePresence."""
+    showtime = session.get(Showtime, showtime_id)
+    if showtime is not None and showtime.scrape_source != source_stream:
+        showtime.scrape_source = source_stream
 
 
 def _mark_missing_for_unseen(

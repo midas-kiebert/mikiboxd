@@ -71,8 +71,8 @@ const TmdbCacheOverrideForm = ({
       <Stack gap={3} maxW="md">
         <Text fontSize="sm" color="gray.500">
           Fixes the cached TMDB lookup so future scrapes of this title resolve
-          correctly. Does not change movies already stored — use "Edit movie
-          record" on the Movies tab for that.
+          correctly, and immediately reassigns any already-scraped movies and
+          showtimes that used this exact cache entry onto the corrected TMDB ID.
         </Text>
         <Field label="Title as scraped">
           <Input {...register("title_query")} required />

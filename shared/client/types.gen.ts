@@ -476,6 +476,7 @@ export type ShowtimeInMovieLoggedIn = {
   ticket_link?: string | null
   subtitles?: Array<string> | null
   scrape_source?: string | null
+  tmdb_cache_id?: number | null
   id: number
   cinema: CinemaPublic
   friends_going: Array<UserPublic>
@@ -495,6 +496,7 @@ export type ShowtimeLoggedIn = {
   ticket_link?: string | null
   subtitles?: Array<string> | null
   scrape_source?: string | null
+  tmdb_cache_id?: number | null
   id: number
   movie: MovieInShowtime
   cinema: CinemaPublic

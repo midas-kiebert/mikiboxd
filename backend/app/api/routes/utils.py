@@ -1,10 +1,14 @@
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Field, SQLModel
 
 from app.api.deps import SessionDep, get_current_active_superuser
-from app.scraping.tmdb_runtime import upsert_tmdb_lookup_cache_entry
+from app.scraping.tmdb_runtime import (
+    correct_tmdb_lookup_cache_entry,
+    search_tmdb_lookup_cache_entries,
+    upsert_tmdb_lookup_cache_entry,
+)
 
 router = APIRouter(prefix="/utils", tags=["utils"])
 logger = logging.getLogger(__name__)
@@ -28,9 +32,68 @@ class TmdbCacheOverrideResponse(SQLModel):
     confidence: float | None
 
 
+class TmdbCacheSearchResult(SQLModel):
+    id: int
+    lookup_payload: str
+    tmdb_id: int | None
+    confidence: float | None
+
+
+class TmdbCacheCorrectionRequest(SQLModel):
+    cache_id: int
+    tmdb_id: int | None = None
+    confidence: float | None = None
+
+
 @router.get("/health-check/")
 async def health_check() -> bool:
     return True
+
+
+@router.get(
+    "/tmdb-cache/search/",
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def search_tmdb_cache_entries(
+    session: SessionDep,
+    title: str = Query(min_length=1),
+) -> list[TmdbCacheSearchResult]:
+    results = search_tmdb_lookup_cache_entries(title_query=title, session=session)
+    return [
+        TmdbCacheSearchResult(
+            id=entry.id,
+            lookup_payload=entry.lookup_payload,
+            tmdb_id=entry.tmdb_id,
+            confidence=entry.confidence,
+        )
+        for entry in results
+        if entry.id is not None
+    ]
+
+
+@router.post(
+    "/tmdb-cache/correct/",
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def correct_tmdb_cache_entry(
+    request: TmdbCacheCorrectionRequest,
+    session: SessionDep,
+) -> TmdbCacheOverrideResponse:
+    try:
+        result = correct_tmdb_lookup_cache_entry(
+            cache_id=request.cache_id,
+            tmdb_id=request.tmdb_id,
+            confidence=request.confidence,
+            session=session,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return TmdbCacheOverrideResponse(
+        lookup_hash=result.lookup_hash,
+        lookup_payload=result.lookup_payload,
+        tmdb_id=result.tmdb_id,
+        confidence=result.confidence,
+    )
 
 
 @router.post(

@@ -604,6 +604,12 @@ export type ShowtimeVisibilityUpdate = {
  */
 export type TimeOfDay = "MORNING" | "AFTERNOON" | "EVENING" | "NIGHT"
 
+export type TmdbCacheCorrectionRequest = {
+  cache_id: number
+  tmdb_id?: number | null
+  confidence?: number | null
+}
+
 export type TmdbCacheOverrideRequest = {
   title_query: string
   director_names?: Array<string>
@@ -617,6 +623,13 @@ export type TmdbCacheOverrideRequest = {
 
 export type TmdbCacheOverrideResponse = {
   lookup_hash: string
+  lookup_payload: string
+  tmdb_id: number | null
+  confidence: number | null
+}
+
+export type TmdbCacheSearchResult = {
+  id: number
   lookup_payload: string
   tmdb_id: number | null
   confidence: number | null
@@ -1654,6 +1667,18 @@ export type UsersGetUserSelectedShowtimesData = {
 export type UsersGetUserSelectedShowtimesResponse = Array<ShowtimeLoggedIn>
 
 export type UtilsHealthCheckResponse = boolean
+
+export type UtilsSearchTmdbCacheEntriesData = {
+  title: string
+}
+
+export type UtilsSearchTmdbCacheEntriesResponse = Array<TmdbCacheSearchResult>
+
+export type UtilsCorrectTmdbCacheEntryData = {
+  requestBody: TmdbCacheCorrectionRequest
+}
+
+export type UtilsCorrectTmdbCacheEntryResponse = TmdbCacheOverrideResponse
 
 export type UtilsOverrideTmdbCacheEntryData = {
   requestBody: TmdbCacheOverrideRequest

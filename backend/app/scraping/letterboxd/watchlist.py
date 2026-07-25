@@ -82,6 +82,8 @@ async def get_watchlist_async(username: str) -> list[str]:
         if count > 0 and not slugs_1:
             logger.error("No slugs found on the first page of watchlist.")
             raise scraper_exceptions.ScraperStructureError()
+        if not slugs_1:
+            return []
         perpage = len(slugs_1)
         total_pages = (count + perpage - 1) // perpage
 

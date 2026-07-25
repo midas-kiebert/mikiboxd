@@ -3,10 +3,11 @@ from uuid import UUID
 
 from sqlmodel import Session, select
 
-from app.core.enums import GoingStatus
+from app.core.enums import GoingStatus, VisibilityMode
 from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_ping as showtime_ping_crud
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.models.showtime import Showtime
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
@@ -23,6 +24,21 @@ def _effective_viewer_ids(
                 ShowtimeVisibilityEffective.showtime_id == showtime_id,
             )
         ).all()
+    )
+
+
+def _set_invited_only(
+    session: Session, *, owner_id: UUID, showtime_id: int
+) -> None:
+    """Opt the owner out of blanket ALL_FRIENDS status sharing so that plain
+    friendship alone doesn't grant visibility, isolating the chain-visibility
+    behaviour under test."""
+    showtime_visibility_crud.set_visibility_mode_for_showtime(
+        session=session,
+        owner_id=owner_id,
+        showtime_id=showtime_id,
+        mode=VisibilityMode.INVITED_ONLY,
+        now=now_amsterdam_naive(),
     )
 
 
@@ -68,6 +84,8 @@ def test_chain_visibility_inactive_before_connector_accepts(
         user_id=z.id,
         going_status=GoingStatus.GOING,
     )
+    _set_invited_only(db_transaction, owner_id=y.id, showtime_id=showtime.id)
+    _set_invited_only(db_transaction, owner_id=z.id, showtime_id=showtime.id)
     db_transaction.commit()
 
     assert z.id not in _effective_viewer_ids(db_transaction, y.id, showtime.id)
@@ -104,6 +122,8 @@ def test_chain_visibility_active_both_directions_once_connector_accepts(
         user_id=z.id,
         going_status=GoingStatus.GOING,
     )
+    _set_invited_only(db_transaction, owner_id=y.id, showtime_id=showtime.id)
+    _set_invited_only(db_transaction, owner_id=z.id, showtime_id=showtime.id)
     db_transaction.commit()
 
     # X accepts (INTERESTED is enough, doesn't need to be GOING).
@@ -156,6 +176,8 @@ def test_chain_visibility_cleared_when_connector_removes_selection(
         user_id=x.id,
         going_status=GoingStatus.GOING,
     )
+    _set_invited_only(db_transaction, owner_id=y.id, showtime_id=showtime.id)
+    _set_invited_only(db_transaction, owner_id=z.id, showtime_id=showtime.id)
     db_transaction.commit()
 
     # Sanity: chain visibility is active before X backs out.
@@ -206,6 +228,7 @@ def test_chain_visibility_is_capped_at_one_hop(
             user_id=user_id,
             going_status=GoingStatus.GOING,
         )
+    _set_invited_only(db_transaction, owner_id=y.id, showtime_id=showtime.id)
     db_transaction.commit()
 
     effective_for_y = _effective_viewer_ids(db_transaction, y.id, showtime.id)

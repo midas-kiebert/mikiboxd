@@ -9,6 +9,13 @@ import { useFetchNotificationUnseenCount } from "shared/hooks/useFetchNotificati
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useNotificationCenter } from "@/components/notifications/NotificationCenterProvider";
 
+/**
+ * Horizontal space (from the screen edge) taken by the back button / bell, which
+ * are absolutely positioned over the centred title. The title row pads itself by
+ * this much so a long title truncates instead of running under them.
+ */
+const SIDE_BUTTON_RESERVED_WIDTH = 50;
+
 type TopBarProps = {
   title?: string;
   titleSuffix?: string;
@@ -51,8 +58,14 @@ export default function TopBar({
         </TouchableOpacity>
       ) : null}
       <View style={styles.titleRow}>
-        <Text style={styles.title}>{title}</Text>
-        {titleSuffix ? <Text style={styles.titleSuffix}>{titleSuffix}</Text> : null}
+        <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+          {title}
+        </Text>
+        {titleSuffix ? (
+          <Text style={styles.titleSuffix} numberOfLines={1} ellipsizeMode="tail">
+            {titleSuffix}
+          </Text>
+        ) : null}
       </View>
       {showNotificationBell ? (
         <TouchableOpacity
@@ -66,7 +79,11 @@ export default function TopBar({
           <MaterialIcons name="notifications-none" size={24} color={colors.tint} />
           {showBadge ? (
             <View style={[styles.badge, { backgroundColor: colors.notificationBadge }]}>
-              <Text style={styles.badgeText}>{badgeLabel}</Text>
+              {/* Capped: the badge is a fixed 18pt circle, so unbounded font
+                  scaling pushes the count outside it. */}
+              <Text style={styles.badgeText} maxFontSizeMultiplier={1.2}>
+                {badgeLabel}
+              </Text>
             </View>
           ) : null}
         </TouchableOpacity>
@@ -125,11 +142,17 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 24,
       fontWeight: "bold",
       color: colors.tint,
+      flexShrink: 1,
     },
     titleRow: {
       flexDirection: "row",
       alignItems: "flex-end",
       columnGap: 4,
+      // The back button and bell are absolutely positioned over this row, so the
+      // title has to keep clear of them itself. Without this reservation a long
+      // cinema/friend name runs underneath both on ~360dp and narrower.
+      maxWidth: "100%",
+      paddingHorizontal: SIDE_BUTTON_RESERVED_WIDTH - 16,
     },
     titleSuffix: {
       fontSize: 15,
@@ -137,5 +160,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.tint,
       opacity: 0.85,
       paddingBottom: 2,
+      flexShrink: 1,
     },
   });

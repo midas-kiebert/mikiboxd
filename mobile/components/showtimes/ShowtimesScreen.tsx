@@ -6,6 +6,7 @@ import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { type ShowtimeLoggedIn } from "shared";
+import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 
 import { useRouter } from "expo-router";
 
@@ -60,6 +61,9 @@ export function ShowtimesListContent({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const { openShowtimeModal } = useShowtimeModal();
+  // Every card here opens the showtime sheet, so its visibility mode is
+  // fetched up front — otherwise the sheet's mode pill loads on open.
+  usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id));
 
   const renderFooter = () => {
     if (isFetchingNextPage) {
@@ -290,6 +294,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     listContent: {
       paddingTop: 12,
       paddingHorizontal: 16,
+      // Matches the movie feeds' padding: a list short enough not to render the
+      // end-of-list spacer would otherwise butt straight against the tab bar.
+      paddingBottom: 16,
     },
     skeletonSearch: {
       paddingHorizontal: 16,

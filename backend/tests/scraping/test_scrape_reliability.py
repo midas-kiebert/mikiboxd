@@ -122,6 +122,55 @@ def test_showtime_survives_two_misses_and_is_deleted_on_the_third(
     assert db_transaction.get(Showtime, keeper.id) is not None
 
 
+def test_showtime_that_already_started_never_accrues_misses(
+    *,
+    db_transaction,
+    cinema_factory: Callable[..., Cinema],
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+):
+    """Sources only list upcoming screenings, so a showtime that has already
+    started dropping out of the feed is expected and must not count as a miss —
+    otherwise every screening that simply happened marches to deletion and
+    swamps the recap's miss report.
+    """
+    now = now_amsterdam_naive()
+    cinema = cinema_factory()
+    movie = movie_factory()
+    keeper = showtime_factory(
+        cinema=cinema, movie=movie, datetime=now + timedelta(days=3)
+    )
+    # Recent enough that ORPHAN_DELETE_CUTOFF_DAYS would still allow deletion.
+    started = showtime_factory(
+        cinema=cinema, movie=movie, datetime=now - timedelta(hours=2)
+    )
+    stream = "cinema_scraper:test"
+
+    record_success_run(
+        session=db_transaction,
+        source_stream=stream,
+        observed_presences=[_observe(keeper), _observe(started)],
+    )
+
+    for _ in range(scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE + 1):
+        record_success_run(
+            session=db_transaction,
+            source_stream=stream,
+            observed_presences=[_observe(keeper)],
+        )
+
+    assert db_transaction.get(Showtime, started.id) is not None
+    presence = db_transaction.exec(
+        select(ShowtimeSourcePresence).where(
+            ShowtimeSourcePresence.source_stream == stream,
+            ShowtimeSourcePresence.showtime_id == started.id,
+        )
+    ).first()
+    assert presence is not None
+    assert presence.missing_streak == 0
+    assert presence.active is True
+
+
 def test_two_consecutive_empty_runs_stay_degraded_and_delete_nothing(
     *,
     db_transaction,

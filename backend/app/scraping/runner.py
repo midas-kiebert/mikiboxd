@@ -3,7 +3,7 @@ import json
 import re
 import sys
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from html import escape
@@ -72,12 +72,13 @@ class ScrapeRunDetail:
 
 
 @dataclass(frozen=True)
-class OneTimeMissDetail:
+class PendingMissDetail:
     source_stream: str
     movie_title: str
     cinema_name: str
     showtime_datetime: datetime
     showtime_id: int
+    missing_streak: int
 
 
 @dataclass
@@ -381,9 +382,19 @@ def _stream_display_name(source_stream: str, cinema_name_by_id: dict[int, str]) 
     return f"{source_stream} ({cinema_name})"
 
 
-def _load_one_time_miss_details() -> list[OneTimeMissDetail]:
-    """Presences missed exactly once: one more miss away from being deleted."""
-    threshold_minus_one = max(0, scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE - 1)
+def _load_pending_miss_details() -> list[PendingMissDetail]:
+    """Presences that have missed at least one run and are not deleted yet.
+
+    Every streak between 1 and MISSING_STREAK_TO_DEACTIVATE is reported, so a
+    source going flaky shows up on the first miss rather than only on the last
+    one before deletion (a presence at the threshold is deactivated, never
+    active, so no upper bound is needed here).
+
+    Only upcoming showtimes are reported — a presence for a screening that has
+    already happened can no longer be re-observed, so it is not at risk of being
+    wrongly deleted. Rows left at a non-zero streak from before
+    `_mark_missing_for_unseen` started skipping past showtimes are filtered here.
+    """
     try:
         with get_db_context() as session:
             rows = list(
@@ -397,25 +408,28 @@ def _load_one_time_miss_details() -> list[OneTimeMissDetail]:
                     .join(Cinema, col(Showtime.cinema_id) == col(Cinema.id))
                     .where(
                         col(ShowtimeSourcePresence.active).is_(True),
-                        ShowtimeSourcePresence.missing_streak == threshold_minus_one,
+                        ShowtimeSourcePresence.missing_streak > 0,
+                        Showtime.datetime >= now_amsterdam_naive(),
                     )
                 ).all()
             )
     except Exception as e:
-        logger.error(f"Failed to load one-time-miss details. Error: {e}")
+        logger.error(f"Failed to load pending-miss details. Error: {e}")
         return []
 
     details = [
-        OneTimeMissDetail(
+        PendingMissDetail(
             source_stream=presence.source_stream,
             movie_title=movie.title,
             cinema_name=cinema.name,
             showtime_datetime=showtime.datetime,
             showtime_id=showtime.id,
+            missing_streak=presence.missing_streak,
         )
         for presence, showtime, movie, cinema in rows
     ]
-    details.sort(key=lambda detail: detail.showtime_datetime)
+    # Closest to deletion first.
+    details.sort(key=lambda detail: (-detail.missing_streak, detail.showtime_datetime))
     return details
 
 
@@ -1209,7 +1223,7 @@ def _render_recap_html(
     cinema_scraper_status_counts: dict[str, int],
     cinema_name_by_id: dict[int, str],
     recovered_presence_count: int,
-    one_time_miss_details: list[OneTimeMissDetail],
+    pending_miss_details: list[PendingMissDetail],
     tmdb_miss_titles: list[tuple[str, int]],
     low_confidence_lookups: list[dict[str, Any]],
     low_confidence_threshold: float,
@@ -1298,15 +1312,26 @@ def _render_recap_html(
         )
         or "<li>None</li>"
     )
-    one_time_miss_items = (
+    deactivate_at = scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE
+    pending_miss_counts = Counter(
+        detail.missing_streak for detail in pending_miss_details
+    )
+    pending_miss_metric_items = "".join(
+        f"<li>Missed {streak}x "
+        f"({deactivate_at - streak} more from deletion): "
+        f"<b>{pending_miss_counts.get(streak, 0)}</b></li>"
+        for streak in range(1, deactivate_at)
+    )
+    pending_miss_items = (
         "".join(
             "<li>"
+            f"missed {detail.missing_streak}x | "
             f"{escape(detail.source_stream)} | "
             f"{escape(detail.movie_title)} "
             f"@ {escape(detail.cinema_name)} "
             f"({escape(detail.showtime_datetime.isoformat())}, showtime_id={detail.showtime_id})"
             "</li>"
-            for detail in one_time_miss_details
+            for detail in pending_miss_details
         )
         or "<li>None</li>"
     )
@@ -1368,7 +1393,7 @@ def _render_recap_html(
       <li>Future movies before run: <b>{future_movie_count_before}</b></li>
       <li>Future movies after run: <b>{future_movie_count_after}</b></li>
       <li>Previously missing, now seen again: <b>{recovered_presence_count}</b></li>
-      <li>One-time misses (one more miss from deletion): <b>{len(one_time_miss_details)}</b></li>
+      {pending_miss_metric_items}
     </ul>
     <p>Total TMDB lookups sent: <b>{len(tmdb_lookups)}</b></p>
     <p>TMDB cache hit rate: <b>{tmdb_hit_rate:.1f}%</b></p>
@@ -1385,8 +1410,8 @@ def _render_recap_html(
     <ul>{new_movie_items}</ul>
     <h3>Showtimes No Longer Found (Future Only)</h3>
     <ul>{deleted_items}</ul>
-    <h3>One-Time Misses</h3>
-    <ul>{one_time_miss_items}</ul>
+    <h3>Pending Misses (Upcoming Showtimes)</h3>
+    <ul>{pending_miss_items}</ul>
     <h3>Missing Cinemas</h3>
     <ul>{missing_cinema_items}</ul>
     <h3>Missing Cinema Insert Failures</h3>
@@ -1474,7 +1499,7 @@ def _store_run_recap(
     cinema_name_by_id = _load_cinema_name_by_id()
     letterboxd_failure_counts = _letterboxd_failure_breakdown(letterboxd_failures)
     recovered_presence_count = scrape_sync_service.consume_recovered_presence_count()
-    one_time_miss_details = _load_one_time_miss_details()
+    pending_miss_details = _load_pending_miss_details()
     error_stage_counts = _error_stage_counts(errors)
 
     new_future_showtime_ids = after_snapshot.showtime_ids - before_snapshot.showtime_ids
@@ -1504,7 +1529,7 @@ def _store_run_recap(
         cinema_scraper_status_counts=cinema_scraper_status_counts,
         cinema_name_by_id=cinema_name_by_id,
         recovered_presence_count=recovered_presence_count,
-        one_time_miss_details=one_time_miss_details,
+        pending_miss_details=pending_miss_details,
         tmdb_miss_titles=tmdb_miss_titles,
         low_confidence_lookups=low_confidence_lookups,
         low_confidence_threshold=TMDB_LOW_CONFIDENCE_THRESHOLD,
@@ -1591,25 +1616,34 @@ def _store_run_recap(
     letterboxd_failures_attachment_name = (
         f"letterboxd_failures_{started_at:%Y%m%d_%H%M%S}.json"
     )
-    one_time_misses_attachment_data = _compact_json_bytes(
+    pending_misses_attachment_data = _compact_json_bytes(
         {
             "missing_streak_to_deactivate": (
                 scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE
             ),
             "recovered_presence_count": recovered_presence_count,
-            "one_time_misses": [
+            "counts_by_missing_streak": {
+                str(streak): count
+                for streak, count in sorted(
+                    Counter(
+                        detail.missing_streak for detail in pending_miss_details
+                    ).items()
+                )
+            },
+            "pending_misses": [
                 {
                     "source_stream": detail.source_stream,
                     "movie_title": detail.movie_title,
                     "cinema_name": detail.cinema_name,
                     "showtime_datetime": detail.showtime_datetime.isoformat(),
                     "showtime_id": detail.showtime_id,
+                    "missing_streak": detail.missing_streak,
                 }
-                for detail in one_time_miss_details
+                for detail in pending_miss_details
             ],
         }
     )
-    one_time_misses_attachment_name = f"one_time_misses_{started_at:%Y%m%d_%H%M%S}.json"
+    pending_misses_attachment_name = f"pending_misses_{started_at:%Y%m%d_%H%M%S}.json"
     missing_cinema_insert_failures_attachment_data = _compact_json_bytes(
         missing_cinema_insert_failures,
     )
@@ -1643,8 +1677,8 @@ def _store_run_recap(
             "mime_type": "application/json",
         },
         {
-            "filename": one_time_misses_attachment_name,
-            "data": one_time_misses_attachment_data,
+            "filename": pending_misses_attachment_name,
+            "data": pending_misses_attachment_data,
             "mime_type": "application/json",
         },
         {

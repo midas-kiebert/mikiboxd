@@ -7,16 +7,24 @@ import { createStackNavigator, TransitionPresets, TransitionSpecs } from '@react
 import { Appearance, Easing, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-import { ApiError, OpenAPI, installAuthRefreshInterceptor } from 'shared';
+import {
+  ApiError,
+  OpenAPI,
+  installAuthRefreshInterceptor,
+  installUpdateRequiredInterceptor,
+  type UpdateRequiredInfo,
+} from 'shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage, setStorage } from 'shared/storage';
 import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
 import * as SystemUI from 'expo-system-ui';
 import * as SplashScreen from 'expo-splash-screen';
+import Constants from 'expo-constants';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import UpdateRequiredScreen from '@/components/layout/UpdateRequiredScreen';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
@@ -122,8 +130,13 @@ OpenAPI.TOKEN = async () => {
 }
 
 // Lets the backend attribute logins/events to a platform without any
-// per-request client code (see AnalyticsEventName.LOGIN in login.py).
-OpenAPI.HEADERS = { 'X-Client-Platform': Platform.OS };
+// per-request client code (see AnalyticsEventName.LOGIN in login.py), and
+// gate old builds if a breaking API change ever needs it — see
+// installUpdateRequiredInterceptor below and app/core/middleware.py.
+OpenAPI.HEADERS = {
+  'X-Client-Platform': Platform.OS,
+  'X-Client-Version': Constants.expoConfig?.version ?? '0.0.0',
+};
 
 let apiLoggingEnabled = false;
 if (__DEV__ && !apiLoggingEnabled) {
@@ -154,6 +167,15 @@ const handleUnauthorized = (error: unknown) => {
 // Only a failed refresh falls through to handleUnauthorized above.
 installAuthRefreshInterceptor(() => {
   onUnauthorized?.();
+});
+
+// When the backend 426s (this build is older than MIN_SUPPORTED_CLIENT_VERSION),
+// there's no recovering — every call will keep failing the same way. Route
+// straight to the blocking update screen instead of whatever the failed call
+// would otherwise have shown.
+let onUpdateRequired: ((info: UpdateRequiredInfo) => void) | null = null;
+installUpdateRequiredInterceptor((info) => {
+  onUpdateRequired?.(info);
 });
 
 const queryClient = new QueryClient({
@@ -197,6 +219,9 @@ function RootLayourContent() {
   const [themeReady, setThemeReady] = useState(false)
   const [warmupDone, setWarmupDone] = useState(false)
   const [splashVisible, setSplashVisible] = useState(true)
+  // Set once the backend 426s this build; renders UpdateRequiredScreen instead
+  // of the app shell for the rest of the session (see onUpdateRequired above).
+  const [updateRequiredInfo, setUpdateRequiredInfo] = useState<UpdateRequiredInfo | null>(null)
   const queryClient = useQueryClient();
   const hasHiddenNativeSplashRef = useRef(false)
   const { user } = useAuth();
@@ -248,6 +273,18 @@ function RootLayourContent() {
     }
     return () => {
       onUnauthorized = null
+    }
+  }, [])
+
+  useEffect(() => {
+    // Surface a 426 from the backend as a blocking update screen. Set once,
+    // never cleared — there's no build-version change mid-session that would
+    // make it stop applying.
+    onUpdateRequired = (info) => {
+      setUpdateRequiredInfo(info)
+    }
+    return () => {
+      onUpdateRequired = null
     }
   }, [])
 
@@ -418,6 +455,12 @@ function RootLayourContent() {
   // Reveal the app only once the shell is stable: theme resolved, auth known,
   // and critical caches warmed. The branded overlay covers everything until then.
   const appReady = themeReady && !isChecking && warmupDone;
+
+  // A 426 means every API call from here on fails the same way — show the
+  // blocking screen instead of the shell, regardless of auth/splash state.
+  if (updateRequiredInfo) {
+    return <UpdateRequiredScreen info={updateRequiredInfo} />;
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>

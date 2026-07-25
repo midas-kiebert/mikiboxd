@@ -186,12 +186,36 @@ def get_active_received_inviter_ids(
     showtime_id: int,
 ) -> set[UUID]:
     """Senders of the viewer's still-active (non-dismissed) invites for a showtime."""
-    stmt = select(ShowtimePing.sender_id).where(
-        ShowtimePing.showtime_id == showtime_id,
+    inviter_ids_by_showtime_id = get_active_received_inviter_ids_for_showtimes(
+        session=session,
+        receiver_id=receiver_id,
+        showtime_ids=[showtime_id],
+    )
+    return inviter_ids_by_showtime_id.get(showtime_id, set())
+
+
+def get_active_received_inviter_ids_for_showtimes(
+    *,
+    session: Session,
+    receiver_id: UUID,
+    showtime_ids: list[int],
+) -> dict[int, set[UUID]]:
+    """`get_active_received_inviter_ids` for many showtimes in one query.
+
+    Showtimes without an active received invite are absent from the result.
+    """
+    if len(showtime_ids) == 0:
+        return {}
+
+    stmt = select(ShowtimePing.showtime_id, ShowtimePing.sender_id).where(
+        col(ShowtimePing.showtime_id).in_(showtime_ids),
         ShowtimePing.receiver_id == receiver_id,
         col(ShowtimePing.dismissed_at).is_(None),
     )
-    return set(session.exec(stmt).all())
+    inviter_ids_by_showtime_id: dict[int, set[UUID]] = {}
+    for showtime_id, sender_id in session.exec(stmt).all():
+        inviter_ids_by_showtime_id.setdefault(showtime_id, set()).add(sender_id)
+    return inviter_ids_by_showtime_id
 
 
 def get_co_invited_user_ids(

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, FriendsService } from "shared";
@@ -77,7 +77,7 @@ export default function AddFriendScreen() {
   }, [normalizedReceiverId, requestMutation]);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <TopSafeAreaView style={styles.container}>
       <TopBar title="Add Friend" showBackButton />
       <View style={styles.content}>
         {state === "loading" ? (
@@ -115,7 +115,7 @@ export default function AddFriendScreen() {
           </>
         ) : null}
       </View>
-    </SafeAreaView>
+    </TopSafeAreaView>
   );
 }
 

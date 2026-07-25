@@ -264,9 +264,24 @@ def _mark_missing_for_unseen(
     source_stream: str,
     seen_keys: set[str],
 ) -> None:
-    stmt = select(ShowtimeSourcePresence).where(
-        ShowtimeSourcePresence.source_stream == source_stream,
-        col(ShowtimeSourcePresence.active).is_(True),
+    """Bump the missing streak of every active presence this run did not observe.
+
+    Presences whose showtime has already started are skipped: sources only list
+    upcoming screenings, so a past showtime dropping out of the feed is expected
+    rather than a signal. Counting those misses deactivated the presence of every
+    screening that simply happened, which swamped the recap's miss report (94% of
+    it on production) without ever protecting or deleting anything, since
+    `_delete_orphaned_managed_showtimes` ignores showtimes older than
+    ORPHAN_DELETE_CUTOFF_DAYS anyway.
+    """
+    stmt = (
+        select(ShowtimeSourcePresence)
+        .join(Showtime, col(Showtime.id) == col(ShowtimeSourcePresence.showtime_id))
+        .where(
+            ShowtimeSourcePresence.source_stream == source_stream,
+            col(ShowtimeSourcePresence.active).is_(True),
+            Showtime.datetime >= now_amsterdam_naive(),
+        )
     )
     presences = list(session.exec(stmt).all())
     for presence in presences:

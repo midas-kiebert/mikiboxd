@@ -50,7 +50,7 @@ export default function SelectionQuickPopover({
   onSelectOption,
   footerActionLabel,
   onPressFooterAction,
-  cardWidth = DEFAULT_CARD_WIDTH,
+  cardWidth: requestedCardWidth = DEFAULT_CARD_WIDTH,
 }: SelectionQuickPopoverProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -75,6 +75,8 @@ export default function SelectionQuickPopover({
   const anchorY = (anchor?.pageY ?? 0) - modalRootTop;
   const desiredTop = anchorY + CARD_ANCHOR_GAP + ARROW_SIZE / 2;
   const cardTop = Math.max(minTop, Math.min(desiredTop, maxTop));
+  // Shrink to fit rather than hang off the edge on narrow (~320dp) phones.
+  const cardWidth = Math.min(requestedCardWidth, screenWidth - CARD_HORIZONTAL_MARGIN * 2);
   const rawLeft = (anchor?.pageX ?? screenWidth / 2) - cardWidth / 2;
   const cardLeft = Math.max(
     CARD_HORIZONTAL_MARGIN,

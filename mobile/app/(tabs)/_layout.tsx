@@ -259,7 +259,9 @@ export default function TabLayout() {
               <IconSymbol size={28} name="calendar" color={color} />
               {showPingBadge ? (
                 <View style={[styles.badge, { backgroundColor: palette.notificationBadge }]}>
-                  <Text style={styles.badgeText}>{pingBadgeLabel}</Text>
+                  <Text style={styles.badgeText} maxFontSizeMultiplier={1.2}>
+                    {pingBadgeLabel}
+                  </Text>
                 </View>
               ) : null}
             </View>
@@ -276,7 +278,11 @@ export default function TabLayout() {
               {/* Small notification badge on top of the tab icon. */}
               {showFriendRequestsBadge ? (
                 <View style={[styles.badge, { backgroundColor: palette.notificationBadge }]}>
-                  <Text style={styles.badgeText}>{friendRequestsBadgeLabel}</Text>
+                  {/* Capped: the badge is a fixed 18pt circle, so unbounded
+                      font scaling pushes the count outside it. */}
+                  <Text style={styles.badgeText} maxFontSizeMultiplier={1.2}>
+                    {friendRequestsBadgeLabel}
+                  </Text>
                 </View>
               ) : null}
             </View>

@@ -29,6 +29,11 @@ const COMPACT_BADGE_ROW_HEIGHT = 14;
 const COMPACT_BADGE_ROW_GAP = 2;
 const COMPACT_BADGE_TOP_PADDING = 2;
 const MAX_COMPACT_BADGE_ROWS = 4;
+/**
+ * The date column stacks four lines (~93pt) inside a fixed {@link POSTER_HEIGHT}
+ * card, so it has ~1.2x of headroom before the text starts clipping.
+ */
+const DATE_COLUMN_MAX_FONT_SCALE = 1.2;
 
 const getCompactBadgeRowsForHeight = (height: number) => {
   const normalizedHeight = Math.max(0, height);
@@ -133,11 +138,20 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
         onPressOut={onLongPress ? handlePressOut : undefined}
         activeOpacity={0.8}
       >
+        {/* The card is a fixed POSTER_HEIGHT tall (the poster fills it), so this
+            column can't grow: cap font scaling here or the four stacked lines
+            clip at the OS's larger text sizes. */}
         <View style={[styles.dateColumn, dateColumnStatusStyle]}>
-          <ThemedText style={styles.weekday}>{weekday}</ThemedText>
-          <ThemedText style={styles.day}>{day}</ThemedText>
-          <ThemedText style={styles.month}>{month}</ThemedText>
-          <ThemedText style={styles.time}>
+          <ThemedText style={styles.weekday} maxFontSizeMultiplier={DATE_COLUMN_MAX_FONT_SCALE}>
+            {weekday}
+          </ThemedText>
+          <ThemedText style={styles.day} maxFontSizeMultiplier={DATE_COLUMN_MAX_FONT_SCALE}>
+            {day}
+          </ThemedText>
+          <ThemedText style={styles.month} maxFontSizeMultiplier={DATE_COLUMN_MAX_FONT_SCALE}>
+            {month}
+          </ThemedText>
+          <ThemedText style={styles.time} maxFontSizeMultiplier={DATE_COLUMN_MAX_FONT_SCALE}>
             <ThemedText style={styles.timeStart}>{startTime}</ThemedText>
             {endTime ? <ThemedText style={styles.timeEnd}>{`~${endTime}`}</ThemedText> : null}
           </ThemedText>

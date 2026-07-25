@@ -58,6 +58,10 @@ import {
 } from "shared";
 import useAuth from "shared/hooks/useAuth";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
+import {
+  showtimeVisibilityQueryKey,
+  useShowtimeVisibility,
+} from "shared/hooks/useShowtimeVisibility";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
 import CinemaPill from "@/components/badges/CinemaPill";
@@ -410,18 +414,15 @@ export default function ShowtimeActionModal({
 
   // ─── Visibility mode ───────────────────────────────────────────────────────
   const visibilityQueryKey = useMemo(
-    () => ["showtimes", "visibility", selectedShowtimeId] as const,
+    () => showtimeVisibilityQueryKey(selectedShowtimeId),
     [selectedShowtimeId]
   );
-  const { data: visibility } = useQuery({
-    // Loaded whenever the sheet is open so the user can set who sees their
-    // status before choosing a status.
-    queryKey: visibilityQueryKey,
+  // Usually already cached by the list that opened the sheet (see
+  // usePrefetchShowtimeVisibility), so the mode pill paints without a
+  // skeleton; this still revalidates in the background on every open.
+  const { data: visibility } = useShowtimeVisibility({
+    showtimeId: selectedShowtimeId,
     enabled: sheetDataEnabled,
-    queryFn: () =>
-      ShowtimesService.getShowtimeVisibility({ showtimeId: selectedShowtimeId as number }),
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
   });
 
   const { mutate: updateVisibilityMode } = useMutation({
@@ -1198,7 +1199,9 @@ export default function ShowtimeActionModal({
                   activeOpacity={0.85}
                 >
                   <MaterialIcons name="format-list-bulleted" size={18} color={colors.textSecondary} />
-                  <ThemedText style={styles.ctaIconButtonText}>All showtimes</ThemedText>
+                  <ThemedText style={styles.ctaIconButtonText} numberOfLines={1}>
+                    All showtimes
+                  </ThemedText>
                 </TouchableOpacity>
               ) : null}
               {hasTicketLink ? (
@@ -1208,7 +1211,9 @@ export default function ShowtimeActionModal({
                   activeOpacity={0.85}
                 >
                   <MaterialIcons name="local-activity" size={18} color={colors.textSecondary} />
-                  <ThemedText style={styles.ctaIconButtonText}>Get ticket</ThemedText>
+                  <ThemedText style={styles.ctaIconButtonText} numberOfLines={1}>
+                    Get ticket
+                  </ThemedText>
                 </TouchableOpacity>
               ) : null}
               {shouldShowSeatButton ? (
@@ -1852,6 +1857,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     ctaRow: { flexDirection: "row", gap: 8 },
     ctaIconButton: {
+      // Without flexShrink the three buttons ("All showtimes" / "Get ticket" /
+      // "Seat A-12") overflow their row at ~320-340dp and their labels wrap to
+      // two lines; shrinking lets the labels ellipsize instead.
+      flexShrink: 1,
       gap: 3,
       borderRadius: 12,
       borderWidth: 1,

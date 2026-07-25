@@ -21,6 +21,7 @@ import type { Language } from "shared/client";
 import type { MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
 import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
+import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
@@ -96,7 +97,8 @@ export default function MoviePage() {
           accessibilityLabel="Go back"
           onPress={() => router.back()}
           style={styles.compactBackButton}
-          hitSlop={8}
+          // 22pt icon + 12 each side clears the 44pt minimum touch target.
+          hitSlop={12}
           activeOpacity={0.6}
         >
           <MaterialIcons name="arrow-back" size={22} color={colors.textSecondary} />
@@ -286,6 +288,10 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
   });
 
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
+  // Each row here opens the showtime sheet, so its visibility mode is fetched
+  // up front — including for a showtime deep-linked via `targetShowtimeId`.
+  usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id));
+
   const showtimeSections = useMemo<MovieShowtimeSection[]>(() => {
     const sectionMap = new Map<string, MovieShowtimeSection>();
     const sectionOrder: string[] = [];

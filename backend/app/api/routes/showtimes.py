@@ -41,6 +41,9 @@ _cancelled_ping_ids_lock = threading.Lock()
 
 _PING_NOTIFICATION_DELAY_SECONDS = 0 if os.getenv("TESTING") == "true" else 5  # noqa: SIM210
 
+# Upper bound for one visibility prefetch request; clients chunk larger lists.
+_MAX_VISIBILITY_BATCH_SIZE = 200
+
 
 @router.put("/selection/{showtime_id}", response_model=ShowtimeLoggedIn)
 def update_showtime_selection(
@@ -273,6 +276,14 @@ def get_showtime_visibility_batch(
     current_user: CurrentUser,
     showtime_ids: list[int] = Query(default=[]),
 ) -> list[ShowtimeVisibilityPublic]:
+    """Visibility modes for many showtimes at once (used to prefetch a list)."""
+    if len(showtime_ids) > _MAX_VISIBILITY_BATCH_SIZE:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"At most {_MAX_VISIBILITY_BATCH_SIZE} showtime ids per request"
+            ),
+        )
     return showtimes_service.get_showtime_visibility_batch(
         session=session,
         showtime_ids=showtime_ids,

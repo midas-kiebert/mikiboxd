@@ -19,6 +19,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from app.api.main import api_router
 from app.core.config import settings
 from app.core.enums import Environment
+from app.core.middleware import ClientVersionGateMiddleware
 from app.exceptions.base import AppError
 
 logger = getLogger(__name__)
@@ -62,6 +63,10 @@ if settings.ENABLE_GZIP:
         minimum_size=settings.GZIP_MINIMUM_SIZE_BYTES,
         compresslevel=settings.GZIP_COMPRESS_LEVEL,
     )
+
+# Rejects requests from mobile builds older than MIN_SUPPORTED_CLIENT_VERSION.
+# A no-op while that setting is unset (see app/core/config.py).
+app.add_middleware(ClientVersionGateMiddleware)
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 

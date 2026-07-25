@@ -10,7 +10,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
 
@@ -64,11 +66,18 @@ export default function SignUpScreen() {
 
   // Render/output using the state and derived values prepared above.
   return (
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={styles.flex}
     >
-      <View style={styles.form}>
+      {/* Scrollable so the "Create account" button stays reachable: five fields
+          plus the keyboard is taller than an SE/360dp viewport. */}
+      <ScrollView
+        contentContainerStyle={styles.form}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.title}>Sign Up</Text>
 
         {error ? (
@@ -220,8 +229,9 @@ export default function SignUpScreen() {
             Already have an account? <Text style={styles.link}>Log In</Text>
           </Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -231,8 +241,13 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       flex: 1,
       backgroundColor: colors.background,
     },
-    form: {
+    flex: {
       flex: 1,
+    },
+    form: {
+      // flexGrow (not flex) so the form still centres when it fits, but the
+      // ScrollView can grow past the viewport when it doesn't.
+      flexGrow: 1,
       justifyContent: 'center',
       padding: 20,
     },

@@ -294,6 +294,7 @@ export default function ActiveFilterChips({
               style={styles.chip}
               onPress={item.onRemove}
               activeOpacity={0.75}
+              hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
             >
               <ThemedText style={styles.chipLabel} numberOfLines={1}>
                 {item.label}
@@ -388,6 +389,10 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       alignSelf: "center",
       borderWidth: 1,
       borderColor: colors.divider,
+      // Chips live in a horizontal ScrollView, so nothing else constrains them:
+      // a long label (e.g. a Letterboxd list title) would otherwise make one chip
+      // wider than the screen and push every other chip out of reach.
+      maxWidth: 180,
     },
     chipLabel: {
       fontSize: 12,

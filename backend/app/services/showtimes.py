@@ -507,6 +507,15 @@ def get_showtime_visibility_batch(
             showtime_ids=deduped_showtime_ids,
         )
     )
+    # Resolved for the whole batch at once — a per-showtime lookup here would
+    # make prefetching a list of showtimes O(n) queries.
+    default_modes_by_showtime_id = (
+        showtime_visibility_crud.get_owner_default_modes_for_showtimes(
+            session=session,
+            owner_id=actor_id,
+            showtime_ids=deduped_showtime_ids,
+        )
+    )
 
     visibility_payload: list[ShowtimeVisibilityPublic] = []
     for showtime_id in deduped_showtime_ids:
@@ -518,11 +527,7 @@ def get_showtime_visibility_batch(
         mode = (
             setting.mode
             if setting is not None
-            else showtime_visibility_crud.get_owner_default_mode_for_showtime(
-                session=session,
-                owner_id=actor_id,
-                showtime_id=showtime_id,
-            )
+            else default_modes_by_showtime_id[showtime_id]
         )
         visibility_payload.append(
             ShowtimeVisibilityPublic(

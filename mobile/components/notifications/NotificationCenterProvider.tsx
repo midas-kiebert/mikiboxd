@@ -13,6 +13,7 @@ import { useRouter } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FriendsService, MeService, type NotificationFeedItem } from "shared";
 import { useFetchNotifications } from "shared/hooks/useFetchNotifications";
+import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 
 import NotificationCenterSheet from "@/components/notifications/NotificationCenterSheet";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
@@ -41,6 +42,10 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
 
   const { data: notifications, isLoading } = useFetchNotifications({ enabled: visible });
   const items = useMemo(() => notifications ?? [], [notifications]);
+  // Showtime notifications open the sheet, which needs the visibility mode.
+  usePrefetchShowtimeVisibility(
+    items.flatMap((item) => (item.showtime ? [item.showtime.id] : []))
+  );
 
   const invalidateFeed = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["me", "notifications"] });

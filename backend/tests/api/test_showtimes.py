@@ -627,6 +627,19 @@ def test_showtime_visibility_batch_returns_payload_per_showtime(
     assert body[1]["mode"] == "ALL_FRIENDS"
 
 
+def test_showtime_visibility_batch_rejects_an_oversized_request(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    """Clients chunk their prefetches; an unbounded batch is refused."""
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/visibility/batch",
+        headers=normal_user_token_headers,
+        params=[("showtime_ids", showtime_id) for showtime_id in range(1, 1002)],
+    )
+    assert response.status_code == 422
+
+
 def test_showtime_visibility_is_scoped_per_showtime(
     client: TestClient,
     normal_user_token_headers: dict[str, str],

@@ -16,6 +16,8 @@ Legend:
 - [x] `db.py` — Engine creation, connection pool, `init_db` seeding
 - [x] `security.py` — JWT creation, password hashing/verification, password reset tokens (moved from `utils.py`)
 - [x] `enums.py` — App-wide enums (GoingStatus, TimeOfDay, etc.)
+- [x] `client_version.py` — Dotted-integer version parsing/comparison for the mobile update gate
+- [x] `middleware.py` — `ClientVersionGateMiddleware`: 426s requests from mobile builds older than `MIN_SUPPORTED_CLIENT_VERSION`
 
 ---
 
@@ -259,7 +261,7 @@ Legend:
 - [ ] `tests/fixtures/` — Test factories and shared fixtures
 - [ ] Add tests for `services/me.py`
 - [ ] Add tests for `services/showtimes.py` (visibility logic)
-- [ ] Add tests for `crud/showtime_visibility.py`
+- [ ] Add tests for `crud/showtime_visibility.py` (default-mode resolution covered by `tests/crud/test_showtime_visibility_defaults.py`)
 - [ ] Add tests for `crud/user.py` (time-range filtering)
 - [ ] `tests/api/test_admin.py` — Admin route gating, analytics overview, movie/showtime moderation, showtime reports
 
@@ -424,6 +426,7 @@ Legend:
 - [ ] `useFetchUsers.ts` — User search results
 - [ ] `useFetchReceivedRequests.ts` + `useFetchSentRequests.ts` — Pending requests
 - [ ] `useFetchShowtimePings.ts` + `useFetchUnseenShowtimePingCount.ts` — Pings
+- [x] `useShowtimeVisibility.ts` — Showtime visibility mode: per-showtime read plus a coalesced batch prefetch that seeds the cache so the showtime sheet opens without a loading state
 - [ ] `useFetchFavoriteFilterPreset.ts` — Saved filter preset
 - [ ] `useSessionCinemaSelections.ts` — Session-level cinema filter state
 - [ ] `useSessionDaySelections.ts` — Session-level day filter state
@@ -443,8 +446,15 @@ Legend:
 - [ ] `utils.ts` — Shared utility functions
 - [ ] `client/` — Auto-generated OpenAPI client (do not edit manually)
 - [ ] `authRefresh.ts` — Axios interceptor: transparently refreshes the access token on 401 (moved from `mobile/utils/auth-refresh.ts` so web shares it too)
+- [x] `updateRequired.ts` — Axios interceptor: surfaces the backend's 426 Upgrade Required (client-version gate) to the app as a callback
 - [x] `theme/colors.ts` — Single source for the app color palette, light + dark (moved out of `mobile/constants/theme.ts`; mobile re-exports it, web builds Chakra tokens from it)
 - [x] `filters/day-filter-utils.ts` — Day-selection token model + API resolution, shared by web + mobile (moved out of `mobile/components/filters/`, which now re-exports it)
+
+---
+
+## Mobile — Docs (`mobile/`)
+
+- [x] `RESPONSIVE_AUDIT.md` — Screen-by-screen responsive/layout audit against a device matrix (SE → tablet). Records every layout risk and inconsistency found, which were fixed, and which are left as recommendations because they need a product decision or a screen restructure. Findings 15-22 are the open items.
 
 ---
 

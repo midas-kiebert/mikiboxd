@@ -18,7 +18,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import type { Language } from "shared/client";
-import type { MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
+import type { MovieLoggedIn, ShowtimeInMovieLoggedIn, UserPublic } from "shared";
 import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
@@ -26,6 +26,11 @@ import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibilit
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
+import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
+import {
+  getFriendWatchKindMeta,
+  type FriendWatchKind,
+} from "@/components/friends/friend-watch-kind";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import { ListEndFooter } from "@/components/showtimes/ShowtimesScreen";
 import { SkeletonRows } from "@/components/ui/SkeletonRows";
@@ -53,6 +58,16 @@ import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-
 import { useDeferredMount } from "@/utils/use-deferred-mount";
 
 const SHOWTIMES_PAGE_SIZE = 20;
+
+/** Names shown on a watchlisted/watched line before the rest collapse into "+N". */
+const WATCH_SUMMARY_VISIBLE_NAMES = 2;
+
+const formatWatchSummaryNames = (friends: UserPublic[]) => {
+  const names = friends.map((friend) => friend.display_name?.trim() || "Friend");
+  const visible = names.slice(0, WATCH_SUMMARY_VISIBLE_NAMES);
+  const hiddenCount = names.length - visible.length;
+  return hiddenCount > 0 ? `${visible.join(", ")} +${hiddenCount}` : visible.join(", ");
+};
 
 type MovieShowtimeSection = {
   key: string;
@@ -146,7 +161,6 @@ function MovieSkeleton({ styles }: { styles: MovieStyles }) {
 function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContentProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
-  const router = useRouter();
   const isFetchingMoreRef = useRef(false);
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
@@ -155,6 +169,8 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
   const [filtersModalVisible, setFiltersModalVisible] = useState(false);
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Which "watchlisted/watched by friends" popup is open, if any.
+  const [watchModalKind, setWatchModalKind] = useState<FriendWatchKind | null>(null);
 
   // The tabs' filters (status/day/time/language) are page-scoped here: they only
   // carry over when `inheritFilters` says this page was opened from the
@@ -383,6 +399,18 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
     );
   }, [targetShowtimeId, showtimes, movie, openShowtimeModal, movieId]);
 
+  // Friends' Letterboxd relationship to this film. It belongs to the movie info,
+  // so it sits in the header next to the poster as one quiet line per non-empty
+  // relationship; the full lists live behind the popup.
+  const friendsWatchlisted = movie?.friends_watchlisted ?? [];
+  const friendsWatched = movie?.friends_watched ?? [];
+  const watchSummaries = (
+    [
+      { kind: "watchlisted" as const, friends: friendsWatchlisted },
+      { kind: "watched" as const, friends: friendsWatched },
+    ]
+  ).filter((summary) => summary.friends.length > 0);
+
   return (
     <>
       {isMovieLoading ? (
@@ -443,6 +471,33 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
                   {`${UNKNOWN_METADATA_PLACEHOLDER} min`}
                 </ThemedText>
               ) : null}
+              {watchSummaries.length > 0 ? (
+                <View style={styles.watchSummaryRows}>
+                  {watchSummaries.map((summary) => {
+                    const meta = getFriendWatchKindMeta(summary.kind, colors);
+                    return (
+                      <TouchableOpacity
+                        key={summary.kind}
+                        style={styles.watchSummaryChip}
+                        onPress={() => {
+                          triggerSelectionHaptic();
+                          setWatchModalKind(summary.kind);
+                        }}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${meta.title} by ${summary.friends.length} friend${
+                          summary.friends.length === 1 ? "" : "s"
+                        }`}
+                      >
+                        <MaterialIcons name={meta.icon} size={12} color={meta.accent} />
+                        <ThemedText style={styles.watchSummaryText} numberOfLines={1}>
+                          {formatWatchSummaryNames(summary.friends)}
+                        </ThemedText>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : null}
             </View>
           </View>
           <View style={styles.divider} />
@@ -486,59 +541,6 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
             sections={refreshing ? [] : showtimeSections}
             keyExtractor={(item) => item.id.toString()}
             stickySectionHeadersEnabled
-            ListHeaderComponent={
-              (movie.friends_watchlisted?.length ?? 0) > 0 ||
-              (movie.friends_watched?.length ?? 0) > 0 ? (
-                <View style={styles.friendWatchWrap}>
-                  {movie.friends_watchlisted && movie.friends_watchlisted.length > 0 ? (
-                    <View style={styles.friendWatchGroup}>
-                      <ThemedText style={styles.friendWatchLabel}>
-                        Watchlisted by {movie.friends_watchlisted.length} friend
-                        {movie.friends_watchlisted.length === 1 ? "" : "s"}
-                      </ThemedText>
-                      <View style={styles.friendWatchChipsRow}>
-                        {movie.friends_watchlisted.map((friend) => (
-                          <TouchableOpacity
-                            key={`wl-${friend.id}`}
-                            style={styles.friendWatchChip}
-                            onPress={() => router.push(`/friend-showtimes/${friend.id}`)}
-                            activeOpacity={0.7}
-                          >
-                            <MaterialIcons name="schedule" size={11} color={colors.orange.secondary} />
-                            <ThemedText style={styles.friendWatchChipText} numberOfLines={1}>
-                              {friend.display_name?.trim() || "Friend"}
-                            </ThemedText>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                  ) : null}
-                  {movie.friends_watched && movie.friends_watched.length > 0 ? (
-                    <View style={styles.friendWatchGroup}>
-                      <ThemedText style={styles.friendWatchLabel}>
-                        Watched by {movie.friends_watched.length} friend
-                        {movie.friends_watched.length === 1 ? "" : "s"}
-                      </ThemedText>
-                      <View style={styles.friendWatchChipsRow}>
-                        {movie.friends_watched.map((friend) => (
-                          <TouchableOpacity
-                            key={`wd-${friend.id}`}
-                            style={styles.friendWatchChip}
-                            onPress={() => router.push(`/friend-showtimes/${friend.id}`)}
-                            activeOpacity={0.7}
-                          >
-                            <MaterialIcons name="visibility" size={11} color={colors.green.secondary} />
-                            <ThemedText style={styles.friendWatchChipText} numberOfLines={1}>
-                              {friend.display_name?.trim() || "Friend"}
-                            </ThemedText>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                  ) : null}
-                </View>
-              ) : null
-            }
             renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
@@ -642,6 +644,12 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
       <CinemaFilterModal
         visible={cinemaModalVisible}
         onClose={() => setCinemaModalVisible(false)}
+      />
+      {/* Static list — a movie page has no single showtime to invite anyone to. */}
+      <FriendWatchListModal
+        kind={watchModalKind}
+        friends={watchModalKind === "watched" ? friendsWatched : friendsWatchlisted}
+        onClose={() => setWatchModalKind(null)}
       />
     </>
   );
@@ -752,41 +760,26 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       letterSpacing: 0.6,
       color: colors.textSecondary,
     },
-    friendWatchWrap: {
-      gap: 14,
+    watchSummaryRows: {
+      alignItems: "flex-start",
+      gap: 3,
+      marginTop: 3,
     },
-    friendWatchGroup: {
-      gap: 6,
-    },
-    friendWatchLabel: {
-      fontSize: 11,
-      fontWeight: "700",
-      letterSpacing: 0.4,
-      textTransform: "uppercase",
-      color: colors.textSecondary,
-    },
-    friendWatchChipsRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 6,
-    },
-    friendWatchChip: {
+    watchSummaryChip: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 4,
+      gap: 5,
+      maxWidth: "100%",
       borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
+      backgroundColor: colors.pillBackground,
       paddingHorizontal: 8,
-      paddingVertical: 4,
-      maxWidth: 140,
+      paddingVertical: 3,
     },
-    friendWatchChipText: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: colors.text,
+    watchSummaryText: {
       flexShrink: 1,
+      fontSize: 11,
+      fontWeight: "600",
+      color: colors.textSecondary,
     },
     dateGroupHeader: {
       marginTop: -6,

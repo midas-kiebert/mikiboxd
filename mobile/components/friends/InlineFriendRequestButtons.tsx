@@ -1,20 +1,13 @@
 /**
  * Compact icon-only friend-request controls for rows that already carry their
  * own name/attribution text (e.g. a showtime's "Invited" list) — a subtler
- * alternative to FriendCard's full pill-button treatment.
+ * alternative to FriendCard's labelled buttons.
  */
-import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { FriendsService } from "shared";
-import type {
-  UserWithFriendStatus,
-  FriendsAcceptFriendRequestData,
-  FriendsSendFriendRequestData,
-  FriendsCancelFriendRequestData,
-  FriendsDeclineFriendRequestData,
-} from "shared";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { UserWithFriendStatus } from "shared";
 
+import { useFriendActions } from "@/hooks/useFriendActions";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 type InlineFriendRequestButtonsProps = {
@@ -24,53 +17,7 @@ type InlineFriendRequestButtonsProps = {
 export default function InlineFriendRequestButtons({ user }: InlineFriendRequestButtonsProps) {
   const colors = useThemeColors();
   const styles = createStyles();
-  const queryClient = useQueryClient();
-
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["users"] });
-  };
-
-  const sendFriendRequestMutation = useMutation({
-    mutationFn: (data: FriendsSendFriendRequestData) => FriendsService.sendFriendRequest(data),
-    onSuccess: invalidate,
-    onError: (error) => {
-      console.error("Error sending friend request:", error);
-      Alert.alert("Error", "Could not send friend request.");
-    },
-  });
-
-  const acceptFriendRequestMutation = useMutation({
-    mutationFn: (data: FriendsAcceptFriendRequestData) => FriendsService.acceptFriendRequest(data),
-    onSuccess: invalidate,
-    onError: (error) => {
-      console.error("Error accepting friend request:", error);
-      Alert.alert("Error", "Could not accept friend request.");
-    },
-  });
-
-  const declineFriendRequestMutation = useMutation({
-    mutationFn: (data: FriendsDeclineFriendRequestData) => FriendsService.declineFriendRequest(data),
-    onSuccess: invalidate,
-    onError: (error) => {
-      console.error("Error declining friend request:", error);
-      Alert.alert("Error", "Could not decline friend request.");
-    },
-  });
-
-  const cancelFriendRequestMutation = useMutation({
-    mutationFn: (data: FriendsCancelFriendRequestData) => FriendsService.cancelFriendRequest(data),
-    onSuccess: invalidate,
-    onError: (error) => {
-      console.error("Error cancelling friend request:", error);
-      Alert.alert("Error", "Could not cancel friend request.");
-    },
-  });
-
-  const isBusy =
-    sendFriendRequestMutation.isPending ||
-    acceptFriendRequestMutation.isPending ||
-    declineFriendRequestMutation.isPending ||
-    cancelFriendRequestMutation.isPending;
+  const { sendRequest, acceptRequest, declineRequest, cancelRequest, isBusy } = useFriendActions();
 
   if (user.is_friend) {
     return null;
@@ -81,7 +28,7 @@ export default function InlineFriendRequestButtons({ user }: InlineFriendRequest
       <View style={styles.row}>
         <TouchableOpacity
           style={styles.iconButton}
-          onPress={() => declineFriendRequestMutation.mutate({ senderId: user.id })}
+          onPress={() => declineRequest(user.id)}
           disabled={isBusy}
           hitSlop={6}
           activeOpacity={0.6}
@@ -91,7 +38,7 @@ export default function InlineFriendRequestButtons({ user }: InlineFriendRequest
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.iconButton}
-          onPress={() => acceptFriendRequestMutation.mutate({ senderId: user.id })}
+          onPress={() => acceptRequest(user.id)}
           disabled={isBusy}
           hitSlop={6}
           activeOpacity={0.6}
@@ -107,7 +54,7 @@ export default function InlineFriendRequestButtons({ user }: InlineFriendRequest
     return (
       <TouchableOpacity
         style={styles.iconButton}
-        onPress={() => cancelFriendRequestMutation.mutate({ receiverId: user.id })}
+        onPress={() => cancelRequest(user.id)}
         disabled={isBusy}
         hitSlop={6}
         activeOpacity={0.6}
@@ -121,7 +68,7 @@ export default function InlineFriendRequestButtons({ user }: InlineFriendRequest
   return (
     <TouchableOpacity
       style={styles.iconButton}
-      onPress={() => sendFriendRequestMutation.mutate({ receiverId: user.id })}
+      onPress={() => sendRequest(user.id)}
       disabled={isBusy}
       hitSlop={6}
       activeOpacity={0.6}

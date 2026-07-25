@@ -32,6 +32,9 @@ import FilterPills from '@/components/filters/FilterPills';
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
+/** Friend rows carry the visibility control, so their skeleton is taller than a plain user row. */
+const FRIEND_ROW_SKELETON_HEIGHT = 104;
+
 type FriendsTabId = 'users' | 'received' | 'sent' | 'friends';
 type FriendsTabMeta = {
   emptyText: string;
@@ -219,7 +222,7 @@ export default function FriendsScreen() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-          renderItem={({ item }) => <FriendCard user={item} />}
+          renderItem={({ item }) => <FriendCard user={item} showStatusBadge />}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.4}
@@ -329,7 +332,7 @@ export default function FriendsScreen() {
           {activeTab === 'friends' ? (
             <View style={styles.section}>
               {refreshing ? (
-                <SkeletonRows height={64} />
+                <SkeletonRows height={FRIEND_ROW_SKELETON_HEIGHT} />
               ) : isFetchingFriends && displayedFriends.length === 0 ? (
                 <View style={styles.centerContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />

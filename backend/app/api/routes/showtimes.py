@@ -14,7 +14,12 @@ from app.core.config import settings
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_report as showtime_report_crud
 from app.inputs.movie import Filters, get_filters
-from app.mailer import EmailDeliveryError, generate_showtime_report_email, send_email
+from app.mailer import (
+    REPORT_NOTIFICATION_EMAIL,
+    EmailDeliveryError,
+    generate_showtime_report_email,
+    send_email,
+)
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime
 from app.models.user import is_report_banned
@@ -162,7 +167,7 @@ def _send_report_notification_email(
     )
     try:
         send_email(
-            email_to="report@mikino.nl",
+            email_to=REPORT_NOTIFICATION_EMAIL,
             subject=email_data.subject,
             html_content=email_data.html_content,
         )

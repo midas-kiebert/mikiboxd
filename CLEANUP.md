@@ -452,6 +452,24 @@ Legend:
 
 ---
 
+## Mobile — Components (`mobile/components/`)
+
+Only components created or reworked during the cleanup are listed here; the rest of
+`mobile/components/` predates this checklist.
+
+- [x] `ui/ConfirmDialog.tsx` — Reusable themed confirm dialog (fade + scale over a dimmed backdrop); the app-wide replacement for `Alert.alert` whenever the user is asked to decide something
+- [x] `friends/FriendVisibilityControl.tsx` — Per-friend "Can see your showtimes: Always / Only when invited" segmented control (writes `shares_status`)
+- [x] `friends/FriendCard.tsx` — Friends-tab row: initial avatar, relationship-aware primary/ghost actions, remove-friend confirm, inline visibility control
+- [x] `friends/InlineFriendRequestButtons.tsx` — Icon-only request controls for invite lists; now shares `useFriendActions` with `FriendCard`
+- [x] `friends/FriendListRow.tsx` — One person in a friend list: colored initial avatar, name, optional watch marker, and either a labelled "Invite" button (only the button invites, so a stray tap can't) or static/tappable display (renamed from `FriendInviteRow.tsx`, which invited on a whole-row tap behind a bare `+`)
+- [x] `friends/FriendWatchListModal.tsx` — Shared "Watchlisted" / "Watched" popup listing the friends behind the small markers; static on a movie page, with invite buttons when opened from a showtime
+- [x] `friends/friend-watch-kind.ts` — Icon/color/wording for the two Letterboxd relationships, so every screen marks watchlisted/watched identically
+- [x] `utils/avatar-color.ts` — Deterministic avatar tint + initial for a user id, shared by every list that draws a person as a colored circle
+- [x] `hooks/useFriendActions.ts` — The five friendship mutations (send/accept/decline/cancel/remove) with shared invalidation + error handling
+- [x] `hooks/useFriendStatusSharing.ts` — Debounced, serialized writes for the per-friend visibility setting; local intent wins over query data until the server agrees (the backend rebuilds all effective-visibility rows per write, so overlapping requests collide)
+
+---
+
 ## Mobile — Docs (`mobile/`)
 
 - [x] `RESPONSIVE_AUDIT.md` — Screen-by-screen responsive/layout audit against a device matrix (SE → tablet). Records every layout risk and inconsistency found, which were fixed, and which are left as recommendations because they need a product decision or a screen restructure. Findings 15-22 are the open items.

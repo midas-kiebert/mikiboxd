@@ -627,6 +627,19 @@ def test_showtime_visibility_batch_returns_payload_per_showtime(
     assert body[1]["mode"] == "ALL_FRIENDS"
 
 
+def test_showtime_visibility_batch_rejects_an_oversized_request(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    """Clients chunk their prefetches; an unbounded batch is refused."""
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/visibility/batch",
+        headers=normal_user_token_headers,
+        params=[("showtime_ids", showtime_id) for showtime_id in range(1, 1002)],
+    )
+    assert response.status_code == 422
+
+
 def test_showtime_visibility_is_scoped_per_showtime(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
@@ -1626,6 +1639,125 @@ def test_co_invitees_see_your_status_and_inherit_invite_only_default(
         co_invitee_id,
         bystander_id,
     }
+
+
+def test_non_friend_participants_surfaces_non_friends_from_invite_graph(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    """current_user -> connector (friend, accepted) -> stranger (non-friend).
+
+    The chain-connected stranger should show up in `non_friend_participants`
+    (identity-only), while the friend connector should not — they're already
+    covered by the friend-scoped visibility fields.
+    """
+    connector = user_factory()  # my friend, invited by me
+    stranger = user_factory()  # not my friend, invited by the connector
+    showtime = showtime_factory()
+    connector_id = connector.id
+    stranger_id = stranger.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=current_user_id, friend_id=connector_id
+    )
+    showtime_ping_crud.create_showtime_ping(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        sender_id=current_user_id,
+        receiver_id=connector_id,
+        created_at=now_amsterdam_naive(),
+    )
+    showtime_ping_crud.create_showtime_ping(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        sender_id=connector_id,
+        receiver_id=stranger_id,
+        created_at=now_amsterdam_naive(),
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=connector_id,
+        going_status=GoingStatus.GOING,
+    )
+    db_transaction.commit()
+
+    showtime_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}",
+        headers=normal_user_token_headers,
+    )
+    assert showtime_response.status_code == 200
+    non_friend_participant_ids = {
+        entry["user"]["id"]
+        for entry in showtime_response.json()["non_friend_participants"]
+    }
+    assert non_friend_participant_ids == {str(stranger_id)}
+
+
+def test_non_friend_participants_empty_without_chain_acceptance(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    """Before the connector accepts, the stranger isn't in the invite graph at
+    all (chain visibility is gated on the connector's selection)."""
+    connector = user_factory()
+    stranger = user_factory()
+    showtime = showtime_factory()
+    connector_id = connector.id
+    stranger_id = stranger.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=current_user_id, friend_id=connector_id
+    )
+    showtime_ping_crud.create_showtime_ping(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        sender_id=current_user_id,
+        receiver_id=connector_id,
+        created_at=now_amsterdam_naive(),
+    )
+    showtime_ping_crud.create_showtime_ping(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        sender_id=connector_id,
+        receiver_id=stranger_id,
+        created_at=now_amsterdam_naive(),
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
+    )
+    db_transaction.commit()
+    # Note: connector never accepted (no ShowtimeSelection for them).
+
+    showtime_response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}",
+        headers=normal_user_token_headers,
+    )
+    assert showtime_response.status_code == 200
+    non_friend_participant_ids = {
+        entry["user"]["id"]
+        for entry in showtime_response.json()["non_friend_participants"]
+    }
+    assert str(stranger_id) not in non_friend_participant_ids
 
 
 def test_report_showtime_is_blocked_for_report_banned_user(

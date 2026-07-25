@@ -31,6 +31,7 @@ from pydantic_core import MultiHostUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing_extensions import Self
 
+from app.core.client_version import parse_version
 from app.core.enums import Environment
 
 
@@ -235,6 +236,32 @@ class Settings(BaseSettings):
     TELEGRAM_USER_ID: int | None = None
     TELEGRAM_BOT_TOKEN: str | None = None
     ENABLE_TELEGRAM: bool = False
+
+    # -------------------------------------------------------------------------
+    # Client version gate
+    # -------------------------------------------------------------------------
+
+    # Lowest mobile app `version` (from app.json, sent as X-Client-Version) still
+    # allowed to call the API. Requests from an older native build get a 426
+    # Upgrade Required instead of hitting routes they don't understand — see
+    # app/core/client_version.py. `None` disables the gate entirely (every
+    # version is accepted), which is the default so this stays inert until a
+    # breaking mobile change actually needs it.
+    MIN_SUPPORTED_CLIENT_VERSION: str | None = None
+
+    # Store links surfaced in the 426 response so the app can deep-link straight
+    # to the update instead of hardcoding store URLs into the client.
+    APP_STORE_URL_IOS: HttpUrl | None = None
+    APP_STORE_URL_ANDROID: HttpUrl | None = HttpUrl(
+        "https://play.google.com/store/apps/details?id=com.midaskiebert.mikino"
+    )
+
+    @field_validator("MIN_SUPPORTED_CLIENT_VERSION")
+    @classmethod
+    def _validate_min_supported_client_version(cls, value: str | None) -> str | None:
+        if value is not None:
+            parse_version(value)  # raises ValueError if malformed
+        return value
 
     # -------------------------------------------------------------------------
     # Response compression

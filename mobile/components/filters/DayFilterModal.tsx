@@ -10,6 +10,7 @@ import {
   type ListRenderItem,
 } from "react-native";
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DateTime } from "luxon";
 
 import { ThemedText } from "@/components/themed-text";
@@ -204,6 +205,9 @@ export default function DayFilterModal({
 }: DayFilterModalProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  // The sheet is anchored to the bottom of the screen, so the footer sits on top
+  // of the home indicator / Android gesture bar without this.
+  const { bottom: bottomInset } = useSafeAreaInsets();
   const [localSelectedDaySet, setLocalSelectedDaySet] = useState<Set<string>>(
     () => new Set(canonicalizeDaySelections(selectedDays) ?? [])
   );
@@ -342,7 +346,7 @@ export default function DayFilterModal({
         removeClippedSubviews
         showsVerticalScrollIndicator={false}
       />
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(bottomInset, 10) }]}>
         <TouchableOpacity
           style={[
             styles.footerButton,
@@ -484,7 +488,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     dayCellPlaceholder: {
       width: "14.2857%",
-      height: 44,
+      // Must match dayCellWrapper's paddingTop + dayCell's height, or the first
+      // week of each month (the row with leading blanks) sits 6pt too low.
+      height: 38,
       marginTop: 8,
     },
     dayCell: {

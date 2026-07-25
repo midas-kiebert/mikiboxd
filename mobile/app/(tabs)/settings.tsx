@@ -601,7 +601,14 @@ export default function SettingsScreen() {
   return (
     <TopSafeAreaView style={styles.container}>
       <TopBar title="Settings" />
-      <ScrollView contentContainerStyle={styles.content}>
+      {/* automaticallyAdjustKeyboardInsets (iOS-only) keeps the focused field
+          above the keyboard — without it the password/Cineville fields near the
+          bottom of this long form are covered on a small phone. */}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>My profile</ThemedText>
           <View style={styles.card}>

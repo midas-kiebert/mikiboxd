@@ -227,6 +227,9 @@ export default function FilterPills<TId extends string = string>({
                 const { width, height } = event.nativeEvent.layout;
                 pillSizeByIdRef.current.set(item.id, { width, height });
               }}
+              // The pill itself is ~30pt tall; the row's own padding is the only
+              // thing between it and 44pt, so claim that space for touches too.
+              hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
               activeOpacity={1}
             >
               <View style={styles.pillContent}>
@@ -243,7 +246,7 @@ export default function FilterPills<TId extends string = string>({
               </View>
               {showBadge ? (
                 <View style={styles.badgeCorner}>
-                  <ThemedText style={styles.badgeText}>
+                  <ThemedText style={styles.badgeText} maxFontSizeMultiplier={1.2}>
                     {badgeText}
                   </ThemedText>
                 </View>

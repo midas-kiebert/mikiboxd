@@ -4,6 +4,7 @@
 import { Flex, HStack, IconButton, Link, Text } from "@chakra-ui/react"
 import { FaTicket } from "react-icons/fa6"
 import CinemaBadge from "../Common/CinemaBadge"
+import FriendBadges from "../Movies/FriendBadges"
 
 import type { ShowtimeInMovieLoggedIn } from "shared"
 
@@ -15,7 +16,8 @@ type ShowtimeRowProps = {
 export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   // unpack showtime data
-  const { datetime, cinema, going } = showtime
+  const { datetime, cinema, going, friends_going, friends_interested } =
+    showtime
 
   // Format time as "7:30 PM"
   const formattedTime = new Date(datetime).toLocaleTimeString(undefined, {
@@ -72,7 +74,10 @@ export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
 
         <CinemaBadge cinema={cinema} />
       </HStack>
-      <Flex flex="1" />
+      <Flex flex="1" justify="flex-end">
+        <FriendBadges friends={friends_going} goingStatus="GOING" />
+        <FriendBadges friends={friends_interested} goingStatus="INTERESTED" />
+      </Flex>
     </Flex>
   )
 }

@@ -1,32 +1,41 @@
 /**
  * Mobile friends feature component: Friend Card.
+ *
+ * One row per person in the Friends tab. The row adapts to the relationship:
+ * friends get an avatar, a tap target to their showtimes and the per-friend
+ * visibility control; everyone else gets a single clear request action.
  */
-import { useEffect, useState } from "react";
-import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
+import { useState } from "react";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
-import { FriendsService } from "shared";
-import type {
-  UserWithFriendStatus,
-  FriendsRemoveFriendData,
-  FriendsAcceptFriendRequestData,
-  FriendsSendFriendRequestData,
-  FriendsCancelFriendRequestData,
-  FriendsDeclineFriendRequestData,
-  FriendsSetFriendStatusSharingData,
-} from "shared";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { UserWithFriendStatus } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import FriendVisibilityControl from "@/components/friends/FriendVisibilityControl";
+import { useFriendActions } from "@/hooks/useFriendActions";
+import { useFriendStatusSharing } from "@/hooks/useFriendStatusSharing";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
+import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 
 type FriendCardProps = {
   user: UserWithFriendStatus;
+  /**
+   * Show the relationship label next to the name. Off by default because the
+   * Friends tabs already say what every row in them is; the mixed "All users"
+   * search results are the case that needs it.
+   */
+  showStatusBadge?: boolean;
 };
 
-type FriendActionKind = "positive" | "negative" | "neutral";
+/** Visual weight of a row action: one primary call to action, everything else quiet. */
+type FriendActionKind = "primary" | "ghost";
 type FriendAction = {
   label: string;
+  /** Only the primary action carries an icon — a second one crowds out the name. */
+  icon?: keyof typeof MaterialIcons.glyphMap;
   onPress: () => void;
   kind: FriendActionKind;
 };
@@ -34,169 +43,80 @@ type FriendAction = {
 const getFriendName = (friend: UserWithFriendStatus) =>
   friend.display_name?.trim() || "Friend";
 
-export default function FriendCard({ user }: FriendCardProps) {
+export default function FriendCard({ user, showStatusBadge = false }: FriendCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
   const colors = useThemeColors();
   const styles = createStyles(colors);
-  // React Query client used for cache updates and invalidation.
-  const queryClient = useQueryClient();
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["users"] });
-  };
+  const [isRemoveDialogVisible, setIsRemoveDialogVisible] = useState(false);
 
   // Data hooks keep this module synced with backend data and shared cache state.
-  const removeFriendMutation = useMutation({
-    mutationFn: (data: FriendsRemoveFriendData) => FriendsService.removeFriend(data),
-    onSuccess: invalidate,
-    onError: (error) => {
-      console.error("Error removing friend:", error);
-      Alert.alert("Error", "Could not remove friend.");
-    },
-  });
+  const { sendRequest, acceptRequest, declineRequest, cancelRequest, removeFriend, isBusy } =
+    useFriendActions();
 
-  // Send a new friend request to this user.
-  const sendFriendRequestMutation = useMutation({
-    mutationFn: (data: FriendsSendFriendRequestData) => FriendsService.sendFriendRequest(data),
-    onSuccess: invalidate,
-    onError: (error) => {
-      console.error("Error sending friend request:", error);
-      Alert.alert("Error", "Could not send friend request.");
-    },
-  });
+  // Paints the tapped value immediately; debounces and serializes the write.
+  const { sharesStatus, change: changeStatusSharing } = useFriendStatusSharing(
+    user.id,
+    user.shares_status
+  );
 
-  // Accept a received friend request.
-  const acceptFriendRequestMutation = useMutation({
-    mutationFn: (data: FriendsAcceptFriendRequestData) => FriendsService.acceptFriendRequest(data),
-    onSuccess: invalidate,
-    onError: (error) => {
-      console.error("Error accepting friend request:", error);
-      Alert.alert("Error", "Could not accept friend request.");
-    },
-  });
+  const friendName = getFriendName(user);
+  const avatarColors = getAvatarColors(user.id, colors);
 
-  // Decline a received friend request.
-  const declineFriendRequestMutation = useMutation({
-    mutationFn: (data: FriendsDeclineFriendRequestData) => FriendsService.declineFriendRequest(data),
-    onSuccess: invalidate,
-    onError: (error) => {
-      console.error("Error declining friend request:", error);
-      Alert.alert("Error", "Could not decline friend request.");
-    },
-  });
-
-  // Cancel a previously sent friend request.
-  const cancelFriendRequestMutation = useMutation({
-    mutationFn: (data: FriendsCancelFriendRequestData) => FriendsService.cancelFriendRequest(data),
-    onSuccess: invalidate,
-    onError: (error) => {
-      console.error("Error cancelling friend request:", error);
-      Alert.alert("Error", "Could not cancel friend request.");
-    },
-  });
-
-  // Optimistic status-sharing state so the toggle flips the instant it is tapped.
-  const [sharesStatus, setSharesStatus] = useState(user.shares_status);
-  useEffect(() => {
-    setSharesStatus(user.shares_status);
-  }, [user.shares_status]);
-
-  const setStatusSharingMutation = useMutation({
-    mutationFn: (data: FriendsSetFriendStatusSharingData) =>
-      FriendsService.setFriendStatusSharing(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
-      // Visibility of your status to this friend may have changed.
-      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
-      queryClient.invalidateQueries({ queryKey: ["movie"] });
-      queryClient.invalidateQueries({ queryKey: ["movies"] });
-    },
-    onError: (error) => {
-      setSharesStatus(user.shares_status);
-      console.error("Error updating status sharing:", error);
-      Alert.alert("Error", "Could not update status sharing.");
-    },
-  });
-
-  const handleToggleStatusSharing = () => {
-    const next = !sharesStatus;
-    setSharesStatus(next);
-    setStatusSharingMutation.mutate({
-      friendId: user.id,
-      requestBody: { shares_status: next },
-    });
+  const handleConfirmRemoveFriend = () => {
+    setIsRemoveDialogVisible(false);
+    removeFriend(user.id);
   };
 
-  const isBusy =
-    removeFriendMutation.isPending ||
-    sendFriendRequestMutation.isPending ||
-    acceptFriendRequestMutation.isPending ||
-    declineFriendRequestMutation.isPending ||
-    cancelFriendRequestMutation.isPending;
+  const runAction = (action: () => void) => {
+    triggerImpactHaptic();
+    action();
+  };
 
   let statusLabel: string | null = null;
-  let badgeBackgroundColor = colors.pillBackground;
-  let badgeTextColor = colors.pillText;
+  let statusColor = colors.textSecondary;
   let actions: FriendAction[] = [];
 
   if (user.is_friend) {
     statusLabel = "Friend";
-    badgeBackgroundColor = colors.green.primary;
-    badgeTextColor = colors.green.secondary;
-    actions = [
-      {
-        label: "Remove",
-        onPress: () => removeFriendMutation.mutate({ friendId: user.id }),
-        kind: "negative",
-      },
-    ];
+    statusColor = colors.green.secondary;
   } else if (user.received_request) {
-    statusLabel = "Request received";
-    badgeBackgroundColor = colors.orange.primary;
-    badgeTextColor = colors.orange.secondary;
+    statusLabel = "Sent you a request";
+    statusColor = colors.orange.secondary;
     actions = [
       {
         label: "Decline",
-        onPress: () => declineFriendRequestMutation.mutate({ senderId: user.id }),
-        kind: "negative",
+        onPress: () => runAction(() => declineRequest(user.id)),
+        kind: "ghost",
       },
       {
         label: "Accept",
-        onPress: () => acceptFriendRequestMutation.mutate({ senderId: user.id }),
-        kind: "positive",
+        icon: "check",
+        onPress: () => runAction(() => acceptRequest(user.id)),
+        kind: "primary",
       },
     ];
   } else if (user.sent_request) {
-    statusLabel = "Request sent";
-    badgeBackgroundColor = colors.orange.primary;
-    badgeTextColor = colors.orange.secondary;
+    statusLabel = "Request pending";
+    statusColor = colors.orange.secondary;
     actions = [
       {
         label: "Cancel",
-        onPress: () => cancelFriendRequestMutation.mutate({ receiverId: user.id }),
-        kind: "neutral",
+        onPress: () => runAction(() => cancelRequest(user.id)),
+        kind: "ghost",
       },
     ];
   } else {
     actions = [
       {
         label: "Add",
-        onPress: () => sendFriendRequestMutation.mutate({ receiverId: user.id }),
-        kind: "positive",
+        icon: "person-add-alt",
+        onPress: () => runAction(() => sendRequest(user.id)),
+        kind: "primary",
       },
     ];
   }
-
-  const getActionStyles = (kind: FriendActionKind) => {
-    if (kind === "positive") {
-      return [styles.actionButtonPositive, styles.actionTextPositive] as const;
-    }
-    if (kind === "negative") {
-      return [styles.actionButtonNegative, styles.actionTextNegative] as const;
-    }
-    return [styles.actionButtonNeutral, styles.actionTextNeutral] as const;
-  };
 
   const canOpenFriendShowtimes = user.is_friend && !isBusy;
 
@@ -205,203 +125,239 @@ export default function FriendCard({ user }: FriendCardProps) {
     router.push(`/friend-showtimes/${user.id}`);
   };
 
-  const cardContent = (
-    <>
+  const handleRemovePress = () => {
+    if (isBusy) return;
+    triggerSelectionHaptic();
+    setIsRemoveDialogVisible(true);
+  };
+
+  const header = (
+    <View style={styles.header}>
+      <View style={[styles.avatar, { backgroundColor: avatarColors.primary }]}>
+        <ThemedText style={[styles.avatarText, { color: avatarColors.secondary }]}>
+          {getAvatarInitial(friendName)}
+        </ThemedText>
+      </View>
       <View style={styles.info}>
-        <View style={styles.nameRow}>
-          <ThemedText style={styles.name} numberOfLines={1} ellipsizeMode="tail">
-            {getFriendName(user)}
-          </ThemedText>
-          {statusLabel ? (
-            <View
-              style={[
-                styles.badge,
-                { backgroundColor: badgeBackgroundColor, borderColor: badgeTextColor },
-              ]}
-            >
-              <ThemedText style={[styles.badgeText, { color: badgeTextColor }]}>{statusLabel}</ThemedText>
-            </View>
-          ) : null}
-        </View>
-        {user.is_friend ? (
-          <TouchableOpacity
-            style={[styles.shareToggle, !sharesStatus && styles.shareToggleOff]}
-            onPress={(event) => {
-              event.stopPropagation();
-              handleToggleStatusSharing();
-            }}
-            disabled={isBusy}
-            activeOpacity={0.7}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: sharesStatus }}
-            accessibilityLabel={
-              sharesStatus
-                ? "Showing your status to this friend. Tap to hide."
-                : "Hiding your status from this friend. Tap to show."
-            }
-          >
-            <MaterialIcons
-              name={sharesStatus ? "visibility" : "visibility-off"}
-              size={15}
-              color={sharesStatus ? colors.green.secondary : colors.textSecondary}
-            />
-            <ThemedText
-              style={[styles.shareToggleText, { color: sharesStatus ? colors.green.secondary : colors.textSecondary }]}
-            >
-              {sharesStatus ? "Shows your status" : "Status hidden"}
+        <ThemedText style={styles.name} numberOfLines={1} ellipsizeMode="tail">
+          {friendName}
+        </ThemedText>
+        {showStatusBadge && statusLabel ? (
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+            <ThemedText style={styles.statusText} numberOfLines={1}>
+              {statusLabel}
             </ThemedText>
-          </TouchableOpacity>
+          </View>
         ) : null}
       </View>
       <View style={styles.actions}>
         {actions.map((action) => {
-          const [buttonStyle, textStyle] = getActionStyles(action.kind);
+          const isPrimary = action.kind === "primary";
           return (
             <TouchableOpacity
               key={action.label}
-              style={[styles.actionButton, buttonStyle]}
+              style={[styles.actionButton, isPrimary ? styles.actionPrimary : styles.actionGhost]}
               onPress={(event) => {
                 event.stopPropagation();
                 action.onPress();
               }}
               disabled={isBusy}
-              activeOpacity={0.75}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`${action.label} ${friendName}`}
             >
-              <ThemedText style={[styles.actionText, textStyle]}>{action.label}</ThemedText>
+              {action.icon ? (
+                <MaterialIcons
+                  name={action.icon}
+                  size={15}
+                  color={isPrimary ? colors.pillActiveText : colors.textSecondary}
+                />
+              ) : null}
+              <ThemedText
+                style={[
+                  styles.actionText,
+                  isPrimary ? styles.actionTextPrimary : styles.actionTextGhost,
+                ]}
+              >
+                {action.label}
+              </ThemedText>
             </TouchableOpacity>
           );
         })}
+        {user.is_friend ? (
+          <>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={(event) => {
+                event.stopPropagation();
+                handleRemovePress();
+              }}
+              disabled={isBusy}
+              activeOpacity={0.7}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${friendName} as a friend`}
+            >
+              <MaterialIcons name="person-remove-alt-1" size={17} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
+          </>
+        ) : null}
       </View>
-    </>
+    </View>
   );
 
   // Render/output using the state and derived values prepared above.
+  const cardContent = (
+    <>
+      {header}
+      {user.is_friend ? (
+        <>
+          <View style={styles.divider} />
+          <FriendVisibilityControl
+            sharesStatus={sharesStatus}
+            onChange={changeStatusSharing}
+            disabled={isBusy}
+          />
+        </>
+      ) : null}
+    </>
+  );
+
+  const removeDialog = user.is_friend ? (
+    <ConfirmDialog
+      visible={isRemoveDialogVisible}
+      icon="person-remove-alt-1"
+      title={`Remove ${friendName}?`}
+      message="You will no longer see each other's showtimes, and neither of you can send invites until you are friends again."
+      confirmLabel="Remove"
+      cancelLabel="Cancel"
+      onConfirm={handleConfirmRemoveFriend}
+      onCancel={() => setIsRemoveDialogVisible(false)}
+    />
+  ) : null;
+
   if (!user.is_friend) {
     return <View style={[styles.card, isBusy && styles.cardDisabled]}>{cardContent}</View>;
   }
 
   return (
-    <TouchableOpacity
-      style={[styles.card, isBusy && styles.cardDisabled]}
-      activeOpacity={0.8}
-      onPress={handleOpenFriendShowtimes}
-      disabled={!canOpenFriendShowtimes}
-    >
-      {cardContent}
-    </TouchableOpacity>
+    <>
+      <TouchableOpacity
+        style={[styles.card, isBusy && styles.cardDisabled]}
+        activeOpacity={0.8}
+        onPress={handleOpenFriendShowtimes}
+        disabled={!canOpenFriendShowtimes}
+      >
+        {cardContent}
+      </TouchableOpacity>
+      {removeDialog}
+    </>
   );
 }
 
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
     card: {
-      flexDirection: "row",
-      alignItems: "center",
       backgroundColor: colors.cardBackground,
-      borderRadius: 12,
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      padding: 12,
-      gap: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+      gap: 10,
     },
     cardDisabled: {
       opacity: 0.6,
     },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    avatar: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarText: {
+      fontSize: 16,
+      fontWeight: "700",
+      lineHeight: 20,
+    },
     info: {
       flex: 1,
       minWidth: 0,
-      gap: 4,
-    },
-    nameRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
+      gap: 2,
     },
     name: {
-      flexShrink: 1,
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: "700",
       color: colors.text,
     },
-    shareToggle: {
+    statusRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
-      alignSelf: "flex-start",
-      marginTop: 6,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.green.secondary,
-      backgroundColor: colors.green.primary,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
     },
-    shareToggleOff: {
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.pillBackground,
-    },
-    shareToggleText: {
-      fontSize: 11,
-      fontWeight: "700",
-    },
-    badge: {
-      borderWidth: 1,
+    statusDot: {
+      width: 6,
+      height: 6,
       borderRadius: 3,
-      height: 16,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 6,
-      maxWidth: 140,
     },
-    badgeText: {
+    statusText: {
+      flexShrink: 1,
       fontSize: 11,
       fontWeight: "600",
-      lineHeight: 14,
+      color: colors.textSecondary,
     },
     actions: {
-      flexDirection: "column",
-      alignItems: "flex-end",
-      justifyContent: "center",
-      gap: 8,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
     },
     actionButton: {
-      minHeight: 34,
-      minWidth: 84,
-      paddingHorizontal: 14,
-      paddingVertical: 7,
-      borderRadius: 999,
-      borderWidth: 1,
+      flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
+      gap: 5,
+      minHeight: 34,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    actionPrimary: {
+      backgroundColor: colors.tint,
+      borderColor: colors.tint,
+    },
+    actionGhost: {
+      backgroundColor: "transparent",
+      borderColor: colors.cardBorder,
     },
     actionText: {
       fontSize: 13,
       fontWeight: "700",
     },
-    actionButtonPositive: {
-      backgroundColor: colors.green.primary,
-      borderColor: colors.green.secondary,
-      shadowColor: colors.green.secondary,
-      shadowOpacity: 0.15,
-      shadowRadius: 6,
-      shadowOffset: { width: 0, height: 2 },
-      elevation: 1,
+    actionTextPrimary: {
+      color: colors.pillActiveText,
     },
-    actionButtonNegative: {
-      backgroundColor: colors.red.primary,
-      borderColor: colors.red.secondary,
+    actionTextGhost: {
+      color: colors.textSecondary,
     },
-    actionButtonNeutral: {
-      backgroundColor: colors.pillBackground,
+    iconButton: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      borderWidth: 1,
       borderColor: colors.cardBorder,
+      alignItems: "center",
+      justifyContent: "center",
     },
-    actionTextPositive: {
-      color: colors.green.secondary,
-    },
-    actionTextNegative: {
-      color: colors.red.secondary,
-    },
-    actionTextNeutral: {
-      color: colors.text,
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.divider,
     },
   });

@@ -10,7 +10,9 @@ import {
     KeyboardAvoidingView,
     Platform,
     ActivityIndicator,
+    ScrollView,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { useForm, Controller } from 'react-hook-form'
 import useAuth from 'shared/hooks/useAuth'
@@ -82,11 +84,19 @@ export default function LoginScreen() {
 
     // Render/output using the state and derived values prepared above.
     return (
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.container}
+            style={styles.flex}
         >
-            <View style={styles.form}>
+            {/* Scrollable so the submit button stays reachable when the keyboard
+                takes half the screen on a small phone, or when the user's font
+                scale makes the form taller than the viewport. */}
+            <ScrollView
+                contentContainerStyle={styles.form}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            >
                 <Text style={styles.title}>Log In</Text>
 
                 {error && (
@@ -176,8 +186,9 @@ export default function LoginScreen() {
                         Don&apos;t have an account? <Text style={styles.link}>Sign Up</Text>
                     </Text>
                 </TouchableOpacity>
-            </View>
+            </ScrollView>
         </KeyboardAvoidingView>
+        </SafeAreaView>
     )
 }
 
@@ -187,8 +198,13 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
             flex: 1,
             backgroundColor: colors.background,
         },
-        form: {
+        flex: {
             flex: 1,
+        },
+        form: {
+            // flexGrow (not flex) so the form still centres when it fits, but the
+            // ScrollView can grow past the viewport when it doesn't.
+            flexGrow: 1,
             justifyContent: 'center',
             padding: 20,
         },

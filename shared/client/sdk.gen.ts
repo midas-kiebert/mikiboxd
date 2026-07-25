@@ -163,6 +163,10 @@ import type {
   UsersGetUserSelectedShowtimesData,
   UsersGetUserSelectedShowtimesResponse,
   UtilsHealthCheckResponse,
+  UtilsSearchTmdbCacheEntriesData,
+  UtilsSearchTmdbCacheEntriesResponse,
+  UtilsCorrectTmdbCacheEntryData,
+  UtilsCorrectTmdbCacheEntryResponse,
   UtilsOverrideTmdbCacheEntryData,
   UtilsOverrideTmdbCacheEntryResponse,
 } from "./types.gen"
@@ -1979,6 +1983,7 @@ export class ShowtimesService {
 
   /**
    * Get Showtime Visibility Batch
+   * Visibility modes for many showtimes at once (used to prefetch a list).
    * @param data The data for the request.
    * @param data.showtimeIds
    * @returns ShowtimeVisibilityPublic Successful Response
@@ -2351,6 +2356,49 @@ export class UtilsService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/utils/health-check/",
+    })
+  }
+
+  /**
+   * Search Tmdb Cache Entries
+   * @param data The data for the request.
+   * @param data.title
+   * @returns TmdbCacheSearchResult Successful Response
+   * @throws ApiError
+   */
+  public static searchTmdbCacheEntries(
+    data: UtilsSearchTmdbCacheEntriesData,
+  ): CancelablePromise<UtilsSearchTmdbCacheEntriesResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/utils/tmdb-cache/search/",
+      query: {
+        title: data.title,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Correct Tmdb Cache Entry
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns TmdbCacheOverrideResponse Successful Response
+   * @throws ApiError
+   */
+  public static correctTmdbCacheEntry(
+    data: UtilsCorrectTmdbCacheEntryData,
+  ): CancelablePromise<UtilsCorrectTmdbCacheEntryResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/utils/tmdb-cache/correct/",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
     })
   }
 

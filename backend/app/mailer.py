@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 BRAND_NAME = "MiKiNO"
 BRAND_LOGO_URL = "https://mikino.nl/assets/images/mikino-logo.png"
-REPORT_NOTIFICATION_EMAIL = "report@mikino.nl"
+REPORT_NOTIFICATION_EMAIL = "info@mikino.nl"
 
 
 @dataclass
@@ -163,7 +163,7 @@ def generate_showtime_report_email(
     message: str | None,
     reporter_email: str,
 ) -> EmailData:
-    """Generate the internal notification sent to report@mikino.nl on every report.
+    """Generate the internal notification sent to REPORT_NOTIFICATION_EMAIL on every report.
 
     Plain inline HTML rather than a Jinja template — this is an internal
     moderation notification, not a branded user-facing email.

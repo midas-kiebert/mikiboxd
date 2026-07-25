@@ -54,6 +54,11 @@ jobs:
           # SENTRY_DSN=${{ secrets.SENTRY_DSN }}
           EOF
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging build
+      - name: Stop staging app containers before the database copy
+        # The database is dropped and recreated below; the previous deploy's backend
+        # and scheduler would otherwise be forcibly disconnected mid-request, or act
+        # on a half-restored database.
+        run: docker compose -f docker-compose.yml --project-name mikiboxd-staging stop backend scheduler frontend adminer
       - name: Start staging database
         run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach db
       - name: Wait for staging database to be healthy
@@ -65,28 +70,50 @@ jobs:
             echo "waiting for staging db... ($i)"; sleep 2
           done
           echo "staging db did not become healthy" >&2; exit 1
-      - name: Copy production database into staging (excluding movie/showtime/pushtoken)
+      - name: Recreate the staging database
+        # The database is dropped rather than restored over with `pg_dump --clean`.
+        # Restoring over an existing database only works when its schema matches
+        # production's exactly, and it never did: excluding movie/showtime/pushtoken
+        # left their foreign keys in place, which blocked the drops of user, cinema
+        # and tmdblookupcache, so those tables were never refreshed from production
+        # at all, while every table holding a movie_id or showtime_id
+        # (showtimesourcepresence, notification, showtimeselection,
+        # showtimevisibilityeffective) received production's rows pointing at
+        # production's ids and had its foreign key silently fail to restore.
+        # Any other schema drift breaks it the same way.
         run: |
+          docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -c "DROP DATABASE IF EXISTS \"$POSTGRES_DB\" WITH (FORCE);" \
+            -c "CREATE DATABASE \"$POSTGRES_DB\";"
+      - name: Copy production database into staging
+        # Everything is copied, movie and showtime included, so ids stay consistent
+        # with the rows that reference them. pushtoken keeps its schema but not its
+        # rows: production device tokens must never reach staging.
+        run: |
+          set -o pipefail
           docker exec mikiboxd-db-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-            --clean --if-exists --no-owner --no-privileges \
-            --exclude-table=movie --exclude-table=showtime --exclude-table=pushtoken \
-            | docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            --no-owner --no-privileges \
+            --exclude-table-data=pushtoken \
+            | docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+                --single-transaction -v ON_ERROR_STOP=1
       - name: Wipe push tokens in staging (prod tokens must never live here)
         run: |
           docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "TRUNCATE TABLE pushtoken;"
-      - name: Seed movie/showtime tables from production only if empty
+      - name: Verify every production foreign key survived the copy
         run: |
-          MOVIE_COUNT=$(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM movie")
-          SHOWTIME_COUNT=$(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM showtime")
-          if [ "$MOVIE_COUNT" -eq 0 ] && [ "$SHOWTIME_COUNT" -eq 0 ]; then
-            echo "movie/showtime empty in staging, seeding from production"
-            docker exec mikiboxd-db-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-              --data-only --no-owner --no-privileges \
-              --table=movie --table=showtime \
-              | docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
-          else
-            echo "movie/showtime already populated in staging ($MOVIE_COUNT movies, $SHOWTIME_COUNT showtimes), leaving as-is"
+          set -o pipefail
+          docker exec mikiboxd-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+            "SELECT conname FROM pg_constraint WHERE contype = 'f'" | LC_ALL=C sort > /tmp/prod-fks.txt
+          docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+            "SELECT conname FROM pg_constraint WHERE contype = 'f'" | LC_ALL=C sort > /tmp/staging-fks.txt
+          MISSING=$(LC_ALL=C comm -23 /tmp/prod-fks.txt /tmp/staging-fks.txt)
+          if [ -n "$MISSING" ]; then
+            echo "foreign keys missing in staging after the copy:" >&2
+            echo "$MISSING" >&2
+            exit 1
           fi
+          echo "all $(wc -l < /tmp/prod-fks.txt) production foreign keys present in staging"
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach
       - name: Wait for staging backend to be healthy
         run: |

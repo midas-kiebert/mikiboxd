@@ -22,6 +22,7 @@ import {
   type ShowtimeLoggedIn,
   type UserPublic,
 } from "shared";
+import { prefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 
 import ShowtimeActionModal, { type ShowtimeInvite } from "@/components/showtimes/ShowtimeActionModal";
 
@@ -86,6 +87,10 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
       setCurrentShowtime(null);
       setIsLoadingById(true);
       setVisible(true);
+      // Deep links have no list to have prefetched the visibility mode, so it is
+      // fetched alongside the showtime rather than after it — the sheet's own
+      // query can only start once the showtime has arrived.
+      prefetchShowtimeVisibility(queryClient, [showtimeId]);
       void (async () => {
         try {
           const fetched = await ShowtimesService.getShowtimeById({ showtimeId });
@@ -101,7 +106,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    []
+    [queryClient]
   );
 
   const openShowtimeModalForInvite = useCallback(

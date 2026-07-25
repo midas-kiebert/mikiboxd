@@ -278,6 +278,23 @@ export type NewPassword = {
 }
 
 /**
+ * A non-friend in the viewer's invite graph for a showtime (identity only,
+ * no going/interested status — the client offers a friend-request control
+ * instead).
+ *
+ * Attribution mirrors `CoInvitedFriendPublic`'s "Invited by <inviter>"
+ * convention, plus the two direct cases: `invited_by_you` (the viewer
+ * invited them) and `invited_you` (they invited the viewer). At most one of
+ * `invited_by_you`, `invited_you`, `inviter` is set.
+ */
+export type NonFriendParticipantPublic = {
+  user: UserWithFriendStatus
+  invited_by_you?: boolean
+  invited_you?: boolean
+  inviter?: UserPublic | null
+}
+
+/**
  * The delivery mechanism for a notification sent to a user.
  */
 export type NotificationChannel = "push" | "email"
@@ -459,6 +476,7 @@ export type ShowtimeInMovieLoggedIn = {
   ticket_link?: string | null
   subtitles?: Array<string> | null
   scrape_source?: string | null
+  tmdb_cache_id?: number | null
   id: number
   cinema: CinemaPublic
   friends_going: Array<UserPublic>
@@ -478,6 +496,7 @@ export type ShowtimeLoggedIn = {
   ticket_link?: string | null
   subtitles?: Array<string> | null
   scrape_source?: string | null
+  tmdb_cache_id?: number | null
   id: number
   movie: MovieInShowtime
   cinema: CinemaPublic
@@ -492,6 +511,7 @@ export type ShowtimeLoggedIn = {
   pending_invited_friends?: Array<UserPublic>
   friends_watchlisted?: Array<UserPublic>
   friends_watched?: Array<UserPublic>
+  non_friend_participants?: Array<NonFriendParticipantPublic>
 }
 
 export type ShowtimePingPublic = {
@@ -586,6 +606,12 @@ export type ShowtimeVisibilityUpdate = {
  */
 export type TimeOfDay = "MORNING" | "AFTERNOON" | "EVENING" | "NIGHT"
 
+export type TmdbCacheCorrectionRequest = {
+  cache_id: number
+  tmdb_id?: number | null
+  confidence?: number | null
+}
+
 export type TmdbCacheOverrideRequest = {
   title_query: string
   director_names?: Array<string>
@@ -599,6 +625,13 @@ export type TmdbCacheOverrideRequest = {
 
 export type TmdbCacheOverrideResponse = {
   lookup_hash: string
+  lookup_payload: string
+  tmdb_id: number | null
+  confidence: number | null
+}
+
+export type TmdbCacheSearchResult = {
+  id: number
   lookup_payload: string
   tmdb_id: number | null
   confidence: number | null
@@ -1636,6 +1669,18 @@ export type UsersGetUserSelectedShowtimesData = {
 export type UsersGetUserSelectedShowtimesResponse = Array<ShowtimeLoggedIn>
 
 export type UtilsHealthCheckResponse = boolean
+
+export type UtilsSearchTmdbCacheEntriesData = {
+  title: string
+}
+
+export type UtilsSearchTmdbCacheEntriesResponse = Array<TmdbCacheSearchResult>
+
+export type UtilsCorrectTmdbCacheEntryData = {
+  requestBody: TmdbCacheCorrectionRequest
+}
+
+export type UtilsCorrectTmdbCacheEntryResponse = TmdbCacheOverrideResponse
 
 export type UtilsOverrideTmdbCacheEntryData = {
   requestBody: TmdbCacheOverrideRequest

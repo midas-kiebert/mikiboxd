@@ -273,15 +273,27 @@ def reassign_movies_for_cache_correction(
     old_tmdb_id: int,
     new_tmdb_id: int,
 ) -> None:
-    """After an admin corrects a TMDB lookup-cache entry, fix every movie
-    that cache entry produced: create/update the correct Movie, move all of
-    the old movie's showtimes onto it, and unlist the stale movie (kept, not
-    deleted, since watchlist/selection history may still reference it).
+    """After an admin corrects a TMDB lookup-cache entry, fix every showtime
+    that cache entry produced: create/update the correct Movie, move exactly
+    those showtimes onto it, and unlist the stale movie if nothing else
+    still references it (kept, not deleted, since watchlist/selection
+    history may still reference it).
+
+    Scoped by `showtime.tmdb_cache_id` rather than `Movie.tmdb_cache_id`: a
+    different, still-valid cache entry can resolve to the same old movie_id
+    (e.g. two cinemas' scrapers), and `Movie.tmdb_cache_id` only remembers
+    whichever cache entry upserted the Movie row last — so it can't be
+    trusted to gate or scope this correction.
     """
     if old_tmdb_id == new_tmdb_id:
         return
     old_movie = session.get(Movie, old_tmdb_id)
-    if old_movie is None or old_movie.tmdb_cache_id != cache_id:
+    if old_movie is None:
+        return
+    affected_showtimes = showtime_crud.get_showtimes_by_movie_and_cache(
+        session=session, movie_id=old_tmdb_id, cache_id=cache_id
+    )
+    if not affected_showtimes:
         return
 
     tmdb_details = get_tmdb_movie_details(new_tmdb_id)
@@ -327,9 +339,15 @@ def reassign_movies_for_cache_correction(
     )
     movies_crud.upsert_movie(session=session, movie_create=movie_create)
     showtime_crud.reassign_showtimes_movie(
-        session=session, old_movie_id=old_tmdb_id, new_movie_id=new_tmdb_id
+        session=session,
+        old_movie_id=old_tmdb_id,
+        new_movie_id=new_tmdb_id,
+        cache_id=cache_id,
     )
-    old_movie.currently_listed = False
+    if not showtime_crud.get_showtimes_by_movie_id(
+        session=session, movie_id=old_tmdb_id
+    ):
+        old_movie.currently_listed = False
     session.flush()
 
 

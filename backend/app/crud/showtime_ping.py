@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from sqlmodel import Session, col, select
 from app.core.enums import ShowtimePingSort
 from app.models.showtime import Showtime
 from app.models.showtime_ping import ShowtimePing
+from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
 
 
@@ -93,6 +95,94 @@ def get_ping_counterpart_ids_for_showtime(
     return set(sent_receiver_ids) | set(received_sender_ids)
 
 
+def _sent_receiver_ids(
+    *, session: Session, sender_id: UUID, showtime_id: int
+) -> set[UUID]:
+    return set(
+        session.exec(
+            select(ShowtimePing.receiver_id).where(
+                ShowtimePing.showtime_id == showtime_id,
+                ShowtimePing.sender_id == sender_id,
+            )
+        ).all()
+    )
+
+
+def _received_sender_ids(
+    *, session: Session, receiver_id: UUID, showtime_id: int
+) -> set[UUID]:
+    return set(
+        session.exec(
+            select(ShowtimePing.sender_id).where(
+                ShowtimePing.showtime_id == showtime_id,
+                ShowtimePing.receiver_id == receiver_id,
+            )
+        ).all()
+    )
+
+
+def get_chain_invited_user_ids_with_connector(
+    *,
+    session: Session,
+    viewer_id: UUID,
+    showtime_id: int,
+) -> dict[UUID, UUID]:
+    """One-hop chain: people connected to the viewer through an accepted connector,
+    mapped to the connector responsible for reaching each of them (deterministic
+    when more than one connector reaches the same person).
+
+    Forward: the viewer invited X, and X has accepted (going/interested) -> X's
+    own invitees become visible to the viewer, attributed to X.
+    Backward: X invited the viewer, and X has accepted -> whoever invited X
+    becomes visible to the viewer, attributed to X.
+
+    Unconditional once the connector has accepted (no mode/opt-out check on the
+    connector), matching how direct and co-invited visibility already ignore
+    mode and opt-out. Limited to one hop: a chain-invitee's own invitees are
+    not pulled in.
+    """
+    result: dict[UUID, UUID] = {}
+
+    forward_connectors = _sent_receiver_ids(
+        session=session, sender_id=viewer_id, showtime_id=showtime_id
+    )
+    backward_connectors = _received_sender_ids(
+        session=session, receiver_id=viewer_id, showtime_id=showtime_id
+    )
+
+    for connector_id in sorted(forward_connectors | backward_connectors, key=str):
+        if session.get(ShowtimeSelection, (connector_id, showtime_id)) is None:
+            continue
+        reached: set[UUID] = set()
+        if connector_id in forward_connectors:
+            reached |= _sent_receiver_ids(
+                session=session, sender_id=connector_id, showtime_id=showtime_id
+            )
+        if connector_id in backward_connectors:
+            reached |= _received_sender_ids(
+                session=session, receiver_id=connector_id, showtime_id=showtime_id
+            )
+        reached.discard(viewer_id)
+        for user_id in reached:
+            result.setdefault(user_id, connector_id)
+
+    return result
+
+
+def get_chain_invited_user_ids(
+    *,
+    session: Session,
+    viewer_id: UUID,
+    showtime_id: int,
+) -> set[UUID]:
+    """See `get_chain_invited_user_ids_with_connector` for the underlying relation."""
+    return set(
+        get_chain_invited_user_ids_with_connector(
+            session=session, viewer_id=viewer_id, showtime_id=showtime_id
+        )
+    )
+
+
 def get_active_received_inviter_ids(
     *,
     session: Session,
@@ -100,12 +190,36 @@ def get_active_received_inviter_ids(
     showtime_id: int,
 ) -> set[UUID]:
     """Senders of the viewer's still-active (non-dismissed) invites for a showtime."""
-    stmt = select(ShowtimePing.sender_id).where(
-        ShowtimePing.showtime_id == showtime_id,
+    inviter_ids_by_showtime_id = get_active_received_inviter_ids_for_showtimes(
+        session=session,
+        receiver_id=receiver_id,
+        showtime_ids=[showtime_id],
+    )
+    return inviter_ids_by_showtime_id.get(showtime_id, set())
+
+
+def get_active_received_inviter_ids_for_showtimes(
+    *,
+    session: Session,
+    receiver_id: UUID,
+    showtime_ids: list[int],
+) -> dict[int, set[UUID]]:
+    """`get_active_received_inviter_ids` for many showtimes in one query.
+
+    Showtimes without an active received invite are absent from the result.
+    """
+    if len(showtime_ids) == 0:
+        return {}
+
+    stmt = select(ShowtimePing.showtime_id, ShowtimePing.sender_id).where(
+        col(ShowtimePing.showtime_id).in_(showtime_ids),
         ShowtimePing.receiver_id == receiver_id,
         col(ShowtimePing.dismissed_at).is_(None),
     )
-    return set(session.exec(stmt).all())
+    inviter_ids_by_showtime_id: dict[int, set[UUID]] = {}
+    for showtime_id, sender_id in session.exec(stmt).all():
+        inviter_ids_by_showtime_id.setdefault(showtime_id, set()).add(sender_id)
+    return inviter_ids_by_showtime_id
 
 
 def get_co_invited_user_ids(
@@ -158,6 +272,82 @@ def get_co_invited_user_ids_with_inviter(
     for receiver_id, sender_id in session.exec(stmt).all():
         inviter_by_receiver.setdefault(receiver_id, sender_id)
     return inviter_by_receiver
+
+
+@dataclass(frozen=True)
+class ParticipantAttribution:
+    """Why a person shows up in the viewer's invite graph for a showtime.
+
+    Priority order when more than one relation applies: the viewer invited
+    them directly, they invited the viewer directly, a shared inviter invited
+    both of them (co-invited), or an accepted connector reaches them (chain).
+    `inviter_id` carries the attributed inviter for the latter two cases only
+    — the direct cases are already fully described by the two booleans.
+    """
+
+    invited_by_you: bool = False
+    invited_you: bool = False
+    inviter_id: UUID | None = None
+
+
+def get_related_participant_attribution_for_showtime(
+    *,
+    session: Session,
+    viewer_id: UUID,
+    showtime_id: int,
+) -> dict[UUID, ParticipantAttribution]:
+    """Everyone in the viewer's invite graph for a showtime, with attribution:
+    direct, co-invited, and one-hop chain connections, unfiltered by friendship.
+
+    This is the identity graph (who's part of the viewer's invite group and
+    why), as opposed to the friend-scoped status-visibility graph in
+    `showtime_visibility.py`.
+    """
+    direct_sent_ids = _sent_receiver_ids(
+        session=session, sender_id=viewer_id, showtime_id=showtime_id
+    )
+    direct_received_ids = _received_sender_ids(
+        session=session, receiver_id=viewer_id, showtime_id=showtime_id
+    )
+    co_invited_by_inviter = get_co_invited_user_ids_with_inviter(
+        session=session, viewer_id=viewer_id, showtime_id=showtime_id
+    )
+    chain_invited_by_connector = get_chain_invited_user_ids_with_connector(
+        session=session, viewer_id=viewer_id, showtime_id=showtime_id
+    )
+
+    result: dict[UUID, ParticipantAttribution] = {}
+    for user_id in direct_sent_ids:
+        result[user_id] = ParticipantAttribution(invited_by_you=True)
+    for user_id in direct_received_ids:
+        result.setdefault(user_id, ParticipantAttribution(invited_you=True))
+    for user_id, inviter_id in co_invited_by_inviter.items():
+        result.setdefault(user_id, ParticipantAttribution(inviter_id=inviter_id))
+    for user_id, connector_id in chain_invited_by_connector.items():
+        result.setdefault(user_id, ParticipantAttribution(inviter_id=connector_id))
+
+    result.pop(viewer_id, None)
+    return result
+
+
+def get_related_participant_ids_for_showtime(
+    *,
+    session: Session,
+    viewer_id: UUID,
+    showtime_id: int,
+) -> set[UUID]:
+    """Everyone in the viewer's invite graph for a showtime: direct, co-invited,
+    and one-hop chain connections, unfiltered by friendship.
+
+    This is the identity graph (who's part of the viewer's invite group),
+    as opposed to the friend-scoped status-visibility graph in
+    `showtime_visibility.py`.
+    """
+    return set(
+        get_related_participant_attribution_for_showtime(
+            session=session, viewer_id=viewer_id, showtime_id=showtime_id
+        )
+    )
 
 
 def get_showtime_participant_ids(

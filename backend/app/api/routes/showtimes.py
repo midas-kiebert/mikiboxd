@@ -14,7 +14,12 @@ from app.core.config import settings
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_report as showtime_report_crud
 from app.inputs.movie import Filters, get_filters
-from app.mailer import EmailDeliveryError, generate_showtime_report_email, send_email
+from app.mailer import (
+    REPORT_NOTIFICATION_EMAIL,
+    EmailDeliveryError,
+    generate_showtime_report_email,
+    send_email,
+)
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime
 from app.models.user import is_report_banned
@@ -40,6 +45,9 @@ _cancelled_ping_ids_lock = threading.Lock()
 
 
 _PING_NOTIFICATION_DELAY_SECONDS = 0 if os.getenv("TESTING") == "true" else 5  # noqa: SIM210
+
+# Upper bound for one visibility prefetch request; clients chunk larger lists.
+_MAX_VISIBILITY_BATCH_SIZE = 200
 
 
 @router.put("/selection/{showtime_id}", response_model=ShowtimeLoggedIn)
@@ -159,7 +167,7 @@ def _send_report_notification_email(
     )
     try:
         send_email(
-            email_to="report@mikino.nl",
+            email_to=REPORT_NOTIFICATION_EMAIL,
             subject=email_data.subject,
             html_content=email_data.html_content,
         )
@@ -273,6 +281,12 @@ def get_showtime_visibility_batch(
     current_user: CurrentUser,
     showtime_ids: list[int] = Query(default=[]),
 ) -> list[ShowtimeVisibilityPublic]:
+    """Visibility modes for many showtimes at once (used to prefetch a list)."""
+    if len(showtime_ids) > _MAX_VISIBILITY_BATCH_SIZE:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(f"At most {_MAX_VISIBILITY_BATCH_SIZE} showtime ids per request"),
+        )
     return showtimes_service.get_showtime_visibility_batch(
         session=session,
         showtime_ids=showtime_ids,

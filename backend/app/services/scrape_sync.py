@@ -264,9 +264,24 @@ def _mark_missing_for_unseen(
     source_stream: str,
     seen_keys: set[str],
 ) -> None:
-    stmt = select(ShowtimeSourcePresence).where(
-        ShowtimeSourcePresence.source_stream == source_stream,
-        col(ShowtimeSourcePresence.active).is_(True),
+    """Bump the missing streak of every active presence this run did not observe.
+
+    Presences whose showtime has already started are skipped: sources only list
+    upcoming screenings, so a past showtime dropping out of the feed is expected
+    rather than a signal. Counting those misses deactivated the presence of every
+    screening that simply happened, which swamped the recap's miss report (94% of
+    it on production) without ever protecting or deleting anything, since
+    `_delete_orphaned_managed_showtimes` ignores showtimes older than
+    ORPHAN_DELETE_CUTOFF_DAYS anyway.
+    """
+    stmt = (
+        select(ShowtimeSourcePresence)
+        .join(Showtime, col(Showtime.id) == col(ShowtimeSourcePresence.showtime_id))
+        .where(
+            ShowtimeSourcePresence.source_stream == source_stream,
+            col(ShowtimeSourcePresence.active).is_(True),
+            Showtime.datetime >= now_amsterdam_naive(),
+        )
     )
     presences = list(session.exec(stmt).all())
     for presence in presences:
@@ -402,6 +417,44 @@ def delete_old_showtimes(
     stmt_delete = delete(Showtime).where(col(Showtime.id).in_(showtime_ids_list))
     session.execute(stmt_delete)
     return deleted_showtimes
+
+
+def reconcile_trusted_scraper_misses(
+    *,
+    session: Session,
+    cinema_id: int,
+    observed_event_keys: set[str],
+) -> int:
+    """Deactivate this cinema's Cineville presences a trusted site scraper
+    didn't just observe.
+
+    Call only for scrapers listed in
+    ``app.scraping.trusted_scrapers.TRUSTED_SCRAPERS``, after a SUCCESS (not
+    DEGRADED) run: a Cineville showtime absent from the trusted site's own
+    listing is treated as a Cineville false positive and skips the normal
+    ``MISSING_STREAK_TO_DEACTIVATE`` grace period other sources get.
+    """
+    source_stream = f"cineville:{cinema_id}"
+    stmt = (
+        select(ShowtimeSourcePresence)
+        .join(Showtime, col(Showtime.id) == col(ShowtimeSourcePresence.showtime_id))
+        .where(
+            ShowtimeSourcePresence.source_stream == source_stream,
+            col(ShowtimeSourcePresence.active).is_(True),
+            Showtime.datetime >= now_amsterdam_naive(),
+        )
+    )
+    presences = list(session.exec(stmt).all())
+    deactivated = 0
+    for presence in presences:
+        if presence.source_event_key in observed_event_keys:
+            continue
+        presence.missing_streak = MISSING_STREAK_TO_DEACTIVATE
+        presence.active = False
+        deactivated += 1
+    if deactivated:
+        session.commit()
+    return deactivated
 
 
 def record_success_run(

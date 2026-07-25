@@ -447,6 +447,8 @@ def _parse_tmdb_movie_details(
     if isinstance(raw_genres, list):
         for genre in raw_genres:
             genre_id_raw = genre.get("id") if isinstance(genre, dict) else genre
+            if genre_id_raw is None:
+                continue
             try:
                 genre_id = int(genre_id_raw)
             except (TypeError, ValueError):

@@ -42,6 +42,7 @@ def _apply_upsert_update(
     showtime_create: ShowtimeCreate,
 ) -> None:
     existing_showtime.movie_id = showtime_create.movie_id
+    existing_showtime.tmdb_cache_id = showtime_create.tmdb_cache_id
     existing_showtime.datetime = showtime_create.datetime
     existing_showtime.ticket_link = showtime_create.ticket_link
     if showtime_create.end_datetime is not None:
@@ -507,6 +508,15 @@ def get_showtime_visibility_batch(
             showtime_ids=deduped_showtime_ids,
         )
     )
+    # Resolved for the whole batch at once — a per-showtime lookup here would
+    # make prefetching a list of showtimes O(n) queries.
+    default_modes_by_showtime_id = (
+        showtime_visibility_crud.get_owner_default_modes_for_showtimes(
+            session=session,
+            owner_id=actor_id,
+            showtime_ids=deduped_showtime_ids,
+        )
+    )
 
     visibility_payload: list[ShowtimeVisibilityPublic] = []
     for showtime_id in deduped_showtime_ids:
@@ -518,11 +528,7 @@ def get_showtime_visibility_batch(
         mode = (
             setting.mode
             if setting is not None
-            else showtime_visibility_crud.get_owner_default_mode_for_showtime(
-                session=session,
-                owner_id=actor_id,
-                showtime_id=showtime_id,
-            )
+            else default_modes_by_showtime_id[showtime_id]
         )
         visibility_payload.append(
             ShowtimeVisibilityPublic(
@@ -690,12 +696,15 @@ def upsert_showtime(
     session: Session,
     showtime_create: ShowtimeCreate,
     commit: bool = True,
-) -> Showtime:
+) -> Showtime | None:
     """
     Insert or update a showtime and return the resulting database row.
     Uses the same +/-1h time-shift heuristic as insert_showtime_if_not_exists.
     If the only close match differs by movie_id (for example after a TMDB cache
     correction), reassign that existing showtime to the new movie_id.
+
+    Returns None (creating nothing) if this exact showtime was previously
+    deleted by an admin from the reports page — see DeletedShowtime.
     """
     # Prefer exact unique match so metadata fallbacks (for example end_datetime)
     # can be applied on unchanged showtimes instead of hitting unique-violation
@@ -718,6 +727,14 @@ def upsert_showtime(
             showtime_create=showtime_create,
             delta=timedelta(hours=1),
         )
+    if existing_showtime is None and showtimes_crud.is_showtime_tombstoned(
+        session=session,
+        movie_id=showtime_create.movie_id,
+        cinema_id=showtime_create.cinema_id,
+        datetime=showtime_create.datetime,
+    ):
+        return None
+
     _apply_end_datetime_fallback(
         session=session,
         showtime_create=showtime_create,

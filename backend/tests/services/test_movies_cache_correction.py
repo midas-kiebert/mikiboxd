@@ -62,7 +62,7 @@ def test_reassign_movies_for_cache_correction_moves_showtimes_and_unlists_old_mo
     old_movie = movie_factory(tmdb_cache_id=cache.id, currently_listed=True)
     new_tmdb_id = old_movie.id + 100_000
     cinema = cinema_factory()
-    showtime = showtime_factory(cinema=cinema, movie=old_movie)
+    showtime = showtime_factory(cinema=cinema, movie=old_movie, tmdb_cache_id=cache.id)
 
     mocker.patch(
         "app.services.movies.get_tmdb_movie_details",
@@ -109,10 +109,13 @@ def test_reassign_movies_for_cache_correction_skips_conflicting_showtime(
         cinema=cinema, movie=new_movie, datetime=showtime_time
     )
     stale_conflicting_showtime = showtime_factory(
-        cinema=cinema, movie=old_movie, datetime=showtime_time
+        cinema=cinema, movie=old_movie, datetime=showtime_time, tmdb_cache_id=cache.id
     )
     movable_showtime = showtime_factory(
-        cinema=cinema, movie=old_movie, datetime=showtime_time + timedelta(hours=1)
+        cinema=cinema,
+        movie=old_movie,
+        datetime=showtime_time + timedelta(hours=1),
+        tmdb_cache_id=cache.id,
     )
 
     mocker.patch(
@@ -138,8 +141,9 @@ def test_reassign_movies_for_cache_correction_skips_conflicting_showtime(
     assert conflicting_showtime.movie_id == new_tmdb_id
 
     db_transaction.refresh(old_movie)
-    # Unlisted regardless of the partial reassignment.
-    assert old_movie.currently_listed is False
+    # Not unlisted: the conflicting showtime is still stuck on it, so
+    # hiding the movie would make that showtime vanish from listings.
+    assert old_movie.currently_listed is True
 
     remaining_old_showtimes = list(
         db_transaction.exec(
@@ -169,20 +173,20 @@ def test_reassign_movies_for_cache_correction_is_noop_when_ids_match(
     get_details.assert_not_called()
 
 
-def test_reassign_movies_for_cache_correction_is_noop_when_cache_id_mismatched(
+def test_reassign_movies_for_cache_correction_is_noop_when_no_showtimes_used_that_cache(
     *,
     db_transaction: Session,
     mocker,
     movie_factory,
     showtime_factory,
 ):
-    """A stale/superseded cache correction (the movie has since been
-    reassigned again, so its `tmdb_cache_id` no longer matches) must not
-    re-trigger a reassignment."""
+    """Correcting a cache entry that never produced a showtime under this
+    movie id (e.g. a fresh/first-time cache row, or one superseded before
+    any showtime referenced it) must not re-trigger a reassignment."""
     first_cache = _make_cache_row(db_transaction=db_transaction)
     second_cache = _make_cache_row(db_transaction=db_transaction)
     old_movie = movie_factory(tmdb_cache_id=second_cache.id, currently_listed=True)
-    showtime = showtime_factory(movie=old_movie)
+    showtime = showtime_factory(movie=old_movie, tmdb_cache_id=second_cache.id)
     get_details = mocker.patch("app.services.movies.get_tmdb_movie_details")
 
     movies_services.reassign_movies_for_cache_correction(
@@ -197,3 +201,56 @@ def test_reassign_movies_for_cache_correction_is_noop_when_cache_id_mismatched(
     db_transaction.refresh(showtime)
     assert old_movie.currently_listed is True
     assert showtime.movie_id == old_movie.id
+
+
+def test_reassign_movies_for_cache_correction_only_moves_showtimes_from_matching_cache(
+    *,
+    db_transaction: Session,
+    mocker,
+    cinema_factory,
+    movie_factory,
+    showtime_factory,
+):
+    """Two different cache entries (e.g. from two cinemas' scrapers) can
+    resolve to the same old movie id. Correcting one must only move the
+    showtimes it produced, leaving showtimes from the other — still
+    correctly identified — cache entry in place, and must not unlist a
+    movie that's still legitimately referenced."""
+    matching_cache = _make_cache_row(db_transaction=db_transaction)
+    other_cache = _make_cache_row(db_transaction=db_transaction)
+    old_movie = movie_factory(tmdb_cache_id=matching_cache.id, currently_listed=True)
+    new_tmdb_id = old_movie.id + 100_000
+    cinema = cinema_factory()
+    showtime_time = now_amsterdam_naive() + timedelta(days=2)
+    matching_showtime = showtime_factory(
+        cinema=cinema,
+        movie=old_movie,
+        datetime=showtime_time,
+        tmdb_cache_id=matching_cache.id,
+    )
+    other_showtime = showtime_factory(
+        cinema=cinema,
+        movie=old_movie,
+        datetime=showtime_time + timedelta(hours=1),
+        tmdb_cache_id=other_cache.id,
+    )
+
+    mocker.patch(
+        "app.services.movies.get_tmdb_movie_details",
+        return_value=_tmdb_details(),
+    )
+
+    movies_services.reassign_movies_for_cache_correction(
+        session=db_transaction,
+        cache_id=matching_cache.id,
+        old_tmdb_id=old_movie.id,
+        new_tmdb_id=new_tmdb_id,
+    )
+
+    db_transaction.refresh(matching_showtime)
+    db_transaction.refresh(other_showtime)
+    assert matching_showtime.movie_id == new_tmdb_id
+    assert other_showtime.movie_id == old_movie.id
+
+    db_transaction.refresh(old_movie)
+    assert old_movie.currently_listed is True

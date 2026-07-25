@@ -136,6 +136,7 @@ class KriterionScraper(BaseCinemaScraper):
             showtimes.append(
                 ShowtimeCreate(
                     movie_id=movie.id,
+                    tmdb_cache_id=movie.tmdb_cache_id,
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,
@@ -158,12 +159,13 @@ class KriterionScraper(BaseCinemaScraper):
                     showtime_create=showtime,
                     commit=False,
                 )
-                source_event_key = scrape_sync_service.showtime_identity_event_key(
-                    movie_id=showtime.movie_id,
-                    cinema_id=showtime.cinema_id,
-                    dt=showtime.datetime,
-                )
-                observed_presences.append((source_event_key, db_showtime.id))
+                if db_showtime is not None:
+                    source_event_key = scrape_sync_service.showtime_identity_event_key(
+                        movie_id=showtime.movie_id,
+                        cinema_id=showtime.cinema_id,
+                        dt=showtime.datetime,
+                    )
+                    observed_presences.append((source_event_key, db_showtime.id))
             session.commit()
         return observed_presences
 

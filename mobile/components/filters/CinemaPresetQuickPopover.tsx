@@ -140,14 +140,16 @@ export default function CinemaPresetQuickPopover({
   const anchorY = (anchor?.pageY ?? 0) - modalRootTop;
   const desiredTop = anchorY + CARD_ANCHOR_GAP + ARROW_SIZE / 2;
   const cardTop = Math.max(minTop, Math.min(desiredTop, maxTop));
-  const rawLeft = (anchor?.pageX ?? screenWidth / 2) - CARD_WIDTH / 2;
+  // Shrink to fit rather than hang off the edge on narrow (~320dp) phones.
+  const cardWidth = Math.min(CARD_WIDTH, screenWidth - CARD_HORIZONTAL_MARGIN * 2);
+  const rawLeft = (anchor?.pageX ?? screenWidth / 2) - cardWidth / 2;
   const cardLeft = Math.max(
     CARD_HORIZONTAL_MARGIN,
-    Math.min(rawLeft, screenWidth - CARD_WIDTH - CARD_HORIZONTAL_MARGIN)
+    Math.min(rawLeft, screenWidth - cardWidth - CARD_HORIZONTAL_MARGIN)
   );
   const arrowCenterX = Math.max(
     ARROW_SIDE_GUTTER,
-    Math.min((anchor?.pageX ?? screenWidth / 2) - cardLeft, CARD_WIDTH - ARROW_SIDE_GUTTER)
+    Math.min((anchor?.pageX ?? screenWidth / 2) - cardLeft, cardWidth - ARROW_SIDE_GUTTER)
   );
   const arrowLeft = arrowCenterX - ARROW_SIZE / 2;
   const cardAnimatedStyle = useMemo(
@@ -196,7 +198,7 @@ export default function CinemaPresetQuickPopover({
       <View ref={modalRootRef} style={styles.modalRoot} onLayout={updateModalRootTop}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <Animated.View
-          style={[styles.card, cardAnimatedStyle, { top: cardTop, left: cardLeft, width: CARD_WIDTH }]}
+          style={[styles.card, cardAnimatedStyle, { top: cardTop, left: cardLeft, width: cardWidth }]}
         >
           <View
             style={[

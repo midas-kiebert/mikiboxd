@@ -9,6 +9,7 @@ import { DateTime } from 'luxon';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { UsersService, type GoingStatus, type ShowtimeLoggedIn } from 'shared';
 import { useFetchUserShowtimes } from 'shared/hooks/useFetchUserShowtimes';
+import { usePrefetchShowtimeVisibility } from 'shared/hooks/useShowtimeVisibility';
 import useAuth from 'shared/hooks/useAuth';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
@@ -188,6 +189,9 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
   });
 
   const showtimes = useMemo(() => data?.pages.flat() ?? [], [data]);
+  // Cache who-can-see-your-status up front so the showtime sheet opens complete,
+  // in both the flat and the grouped-by-movie list.
+  usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id));
 
   // Client-side grouping by movie for the "group by movies" view.
   const movieSections = useMemo<MovieSection[]>(() => {

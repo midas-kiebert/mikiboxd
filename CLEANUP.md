@@ -16,6 +16,8 @@ Legend:
 - [x] `db.py` — Engine creation, connection pool, `init_db` seeding
 - [x] `security.py` — JWT creation, password hashing/verification, password reset tokens (moved from `utils.py`)
 - [x] `enums.py` — App-wide enums (GoingStatus, TimeOfDay, etc.)
+- [x] `client_version.py` — Dotted-integer version parsing/comparison for the mobile update gate
+- [x] `middleware.py` — `ClientVersionGateMiddleware`: 426s requests from mobile builds older than `MIN_SUPPORTED_CLIENT_VERSION`
 
 ---
 
@@ -259,7 +261,7 @@ Legend:
 - [ ] `tests/fixtures/` — Test factories and shared fixtures
 - [ ] Add tests for `services/me.py`
 - [ ] Add tests for `services/showtimes.py` (visibility logic)
-- [ ] Add tests for `crud/showtime_visibility.py`
+- [ ] Add tests for `crud/showtime_visibility.py` (default-mode resolution covered by `tests/crud/test_showtime_visibility_defaults.py`)
 - [ ] Add tests for `crud/user.py` (time-range filtering)
 - [ ] `tests/api/test_admin.py` — Admin route gating, analytics overview, movie/showtime moderation, showtime reports
 
@@ -424,6 +426,7 @@ Legend:
 - [ ] `useFetchUsers.ts` — User search results
 - [ ] `useFetchReceivedRequests.ts` + `useFetchSentRequests.ts` — Pending requests
 - [ ] `useFetchShowtimePings.ts` + `useFetchUnseenShowtimePingCount.ts` — Pings
+- [x] `useShowtimeVisibility.ts` — Showtime visibility mode: per-showtime read plus a coalesced batch prefetch that seeds the cache so the showtime sheet opens without a loading state
 - [ ] `useFetchFavoriteFilterPreset.ts` — Saved filter preset
 - [ ] `useSessionCinemaSelections.ts` — Session-level cinema filter state
 - [ ] `useSessionDaySelections.ts` — Session-level day filter state
@@ -443,8 +446,33 @@ Legend:
 - [ ] `utils.ts` — Shared utility functions
 - [ ] `client/` — Auto-generated OpenAPI client (do not edit manually)
 - [ ] `authRefresh.ts` — Axios interceptor: transparently refreshes the access token on 401 (moved from `mobile/utils/auth-refresh.ts` so web shares it too)
+- [x] `updateRequired.ts` — Axios interceptor: surfaces the backend's 426 Upgrade Required (client-version gate) to the app as a callback
 - [x] `theme/colors.ts` — Single source for the app color palette, light + dark (moved out of `mobile/constants/theme.ts`; mobile re-exports it, web builds Chakra tokens from it)
 - [x] `filters/day-filter-utils.ts` — Day-selection token model + API resolution, shared by web + mobile (moved out of `mobile/components/filters/`, which now re-exports it)
+
+---
+
+## Mobile — Components (`mobile/components/`)
+
+Only components created or reworked during the cleanup are listed here; the rest of
+`mobile/components/` predates this checklist.
+
+- [x] `ui/ConfirmDialog.tsx` — Reusable themed confirm dialog (fade + scale over a dimmed backdrop); the app-wide replacement for `Alert.alert` whenever the user is asked to decide something
+- [x] `friends/FriendVisibilityControl.tsx` — Per-friend "Can see your showtimes: Always / Only when invited" segmented control (writes `shares_status`)
+- [x] `friends/FriendCard.tsx` — Friends-tab row: initial avatar, relationship-aware primary/ghost actions, remove-friend confirm, inline visibility control
+- [x] `friends/InlineFriendRequestButtons.tsx` — Icon-only request controls for invite lists; now shares `useFriendActions` with `FriendCard`
+- [x] `friends/FriendListRow.tsx` — One person in a friend list: colored initial avatar, name, optional watch marker, and either a labelled "Invite" button (only the button invites, so a stray tap can't) or static/tappable display (renamed from `FriendInviteRow.tsx`, which invited on a whole-row tap behind a bare `+`)
+- [x] `friends/FriendWatchListModal.tsx` — Shared "Watchlisted" / "Watched" popup listing the friends behind the small markers; static on a movie page, with invite buttons when opened from a showtime
+- [x] `friends/friend-watch-kind.ts` — Icon/color/wording for the two Letterboxd relationships, so every screen marks watchlisted/watched identically
+- [x] `utils/avatar-color.ts` — Deterministic avatar tint + initial for a user id, shared by every list that draws a person as a colored circle
+- [x] `hooks/useFriendActions.ts` — The five friendship mutations (send/accept/decline/cancel/remove) with shared invalidation + error handling
+- [x] `hooks/useFriendStatusSharing.ts` — Debounced, serialized writes for the per-friend visibility setting; local intent wins over query data until the server agrees (the backend rebuilds all effective-visibility rows per write, so overlapping requests collide)
+
+---
+
+## Mobile — Docs (`mobile/`)
+
+- [x] `RESPONSIVE_AUDIT.md` — Screen-by-screen responsive/layout audit against a device matrix (SE → tablet). Records every layout risk and inconsistency found, which were fixed, and which are left as recommendations because they need a product decision or a screen restructure. Findings 15-22 are the open items.
 
 ---
 

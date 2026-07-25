@@ -285,9 +285,7 @@ def get_showtime_visibility_batch(
     if len(showtime_ids) > _MAX_VISIBILITY_BATCH_SIZE:
         raise HTTPException(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"At most {_MAX_VISIBILITY_BATCH_SIZE} showtime ids per request"
-            ),
+            detail=(f"At most {_MAX_VISIBILITY_BATCH_SIZE} showtime ids per request"),
         )
     return showtimes_service.get_showtime_visibility_batch(
         session=session,

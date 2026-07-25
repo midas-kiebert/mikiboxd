@@ -11,14 +11,14 @@ corrected cache entry instead of every showtime on the movie.
 Forward DDL is idempotent so a partial/replayed run on staging cannot wedge
 the backend.
 
-Revision ID: b1c2d3e4f5a6
+Revision ID: 36c9362fc3c0
 Revises: 627a211425b7
 Create Date: 2026-07-25 00:00:00.000000
 """
 
 from alembic import op
 
-revision = "b1c2d3e4f5a6"
+revision = "36c9362fc3c0"
 down_revision = "627a211425b7"
 branch_labels = None
 depends_on = None

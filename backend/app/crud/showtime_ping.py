@@ -95,7 +95,9 @@ def get_ping_counterpart_ids_for_showtime(
     return set(sent_receiver_ids) | set(received_sender_ids)
 
 
-def _sent_receiver_ids(*, session: Session, sender_id: UUID, showtime_id: int) -> set[UUID]:
+def _sent_receiver_ids(
+    *, session: Session, sender_id: UUID, showtime_id: int
+) -> set[UUID]:
     return set(
         session.exec(
             select(ShowtimePing.receiver_id).where(
@@ -106,7 +108,9 @@ def _sent_receiver_ids(*, session: Session, sender_id: UUID, showtime_id: int) -
     )
 
 
-def _received_sender_ids(*, session: Session, receiver_id: UUID, showtime_id: int) -> set[UUID]:
+def _received_sender_ids(
+    *, session: Session, receiver_id: UUID, showtime_id: int
+) -> set[UUID]:
     return set(
         session.exec(
             select(ShowtimePing.sender_id).where(

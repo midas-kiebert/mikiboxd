@@ -79,7 +79,9 @@ def parse_dutch_full_date(date_text: str, time_text: str) -> datetime | None:
         return None
     try:
         hour_str, minute_str = time_text.strip().split(":")
-        return datetime(int(year_str), month, int(day_str), int(hour_str), int(minute_str))
+        return datetime(
+            int(year_str), month, int(day_str), int(hour_str), int(minute_str)
+        )
     except ValueError:
         return None
 
@@ -141,7 +143,9 @@ class RialtoDePijpScraper(BaseCinemaScraper):
             select_text(soup, "div.at-show-property.at-show-director")
         )
         spoken_languages = (
-            split_names(select_text(soup, "div.at-show-property.at-show-spokenlanguage"))
+            split_names(
+                select_text(soup, "div.at-show-property.at-show-spokenlanguage")
+            )
             or None
         )
         subtitles = parse_subtitle_label(
@@ -218,10 +222,7 @@ class RialtoDePijpScraper(BaseCinemaScraper):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         paths = sorted(
-            {
-                str(a["href"])
-                for a in soup.find_all("a", href=self._SHOW_LINK_RE)
-            }
+            {str(a["href"]) for a in soup.find_all("a", href=self._SHOW_LINK_RE)}
         )
         if not paths:
             logger.debug(f"No shows found for {self.CINEMA}")
@@ -232,8 +233,7 @@ class RialtoDePijpScraper(BaseCinemaScraper):
         showtimes: list[ShowtimeCreate] = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_path = {
-                executor.submit(self._process_show_path, path): path
-                for path in paths
+                executor.submit(self._process_show_path, path): path for path in paths
             }
             for future in as_completed(future_to_path):
                 path = future_to_path[future]
@@ -257,18 +257,18 @@ class RialtoDePijpScraper(BaseCinemaScraper):
                     commit=False,
                 )
             for showtime_create in showtimes:
-                showtime = showtimes_services.upsert_showtime(
+                upserted_showtime = showtimes_services.upsert_showtime(
                     session=session,
                     showtime_create=showtime_create,
                     commit=False,
                 )
-                if showtime is not None:
+                if upserted_showtime is not None:
                     source_event_key = scrape_sync_service.showtime_identity_event_key(
                         movie_id=showtime_create.movie_id,
                         cinema_id=showtime_create.cinema_id,
                         dt=showtime_create.datetime,
                     )
-                    observed_presences.append((source_event_key, showtime.id))
+                    observed_presences.append((source_event_key, upserted_showtime.id))
             session.commit()
         return observed_presences
 
@@ -303,9 +303,10 @@ class RialtoVUScraper(BaseCinemaScraper):
         paths: dict[str, str] = {}
         page = 1
         while True:
+            params: dict[str, str | int] = {"type": "film", "page": page}
             response = requests.get(
                 f"{self.BASE_URL}/shows.php",
-                params={"type": "film", "page": page},
+                params=params,
                 timeout=15,
             )
             response.raise_for_status()
@@ -321,9 +322,18 @@ class RialtoVUScraper(BaseCinemaScraper):
         return list(paths.values())
 
     @staticmethod
-    def _extract_info_fields(soup: BeautifulSoup, label_re: re.Pattern[str]) -> dict[str, str]:
-        strong = soup.find("strong", string=label_re)
-        if not isinstance(strong, Tag) or not isinstance(strong.parent, Tag):
+    def _extract_info_fields(
+        soup: BeautifulSoup, label_re: re.Pattern[str]
+    ) -> dict[str, str]:
+        strong = next(
+            (
+                tag
+                for tag in soup.find_all("strong")
+                if isinstance(tag, Tag) and label_re.match(tag.get_text(strip=True))
+            ),
+            None,
+        )
+        if strong is None or not isinstance(strong.parent, Tag):
             return {}
         fields: dict[str, str] = {}
         current_label: str | None = None

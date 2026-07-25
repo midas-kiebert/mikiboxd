@@ -181,10 +181,28 @@ def get_showtimes_by_movie_id(*, session: Session, movie_id: int) -> list[Showti
     return list(session.exec(select(Showtime).where(Showtime.movie_id == movie_id)))
 
 
+def get_showtimes_by_movie_and_cache(
+    *, session: Session, movie_id: int, cache_id: int
+) -> list[Showtime]:
+    return list(
+        session.exec(
+            select(Showtime).where(
+                Showtime.movie_id == movie_id,
+                Showtime.tmdb_cache_id == cache_id,
+            )
+        )
+    )
+
+
 def reassign_showtimes_movie(
-    *, session: Session, old_movie_id: int, new_movie_id: int
+    *, session: Session, old_movie_id: int, new_movie_id: int, cache_id: int
 ) -> int:
-    """Move every showtime off `old_movie_id` onto `new_movie_id`.
+    """Move showtimes off `old_movie_id` onto `new_movie_id`.
+
+    Scoped to showtimes whose `tmdb_cache_id` matches the cache entry being
+    corrected — a different cache entry can resolve to the same movie_id
+    (e.g. two cinemas' scrapers), and those showtimes are still correctly
+    identified, so they must not be swept along.
 
     Reassigned one row at a time (not a single bulk UPDATE) since the
     (cinema_id, datetime, movie_id) unique constraint can already be
@@ -192,7 +210,9 @@ def reassign_showtimes_movie(
     are left on the old id rather than aborting the whole correction.
     """
     reassigned = 0
-    for showtime in get_showtimes_by_movie_id(session=session, movie_id=old_movie_id):
+    for showtime in get_showtimes_by_movie_and_cache(
+        session=session, movie_id=old_movie_id, cache_id=cache_id
+    ):
         conflict = session.exec(
             select(Showtime).where(
                 Showtime.cinema_id == showtime.cinema_id,

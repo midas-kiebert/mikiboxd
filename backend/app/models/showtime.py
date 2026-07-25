@@ -24,6 +24,12 @@ class ShowtimeBase(SQLModel):
     # "cinema_scraper:kriterion" or "cineville:xxx" — same naming convention
     # as ShowtimeSourcePresence.source_stream, denormalized here for display.
     scrape_source: str | None = None
+    # The TmdbLookupCache entry that resolved this showtime's movie, if any.
+    # Lets an admin cache correction reassign exactly the showtimes that came
+    # from that lookup, instead of every showtime on the movie — two cache
+    # entries (e.g. from different cinemas' scrapers) can otherwise resolve
+    # to the same movie_id, and only one of them wins Movie.tmdb_cache_id.
+    tmdb_cache_id: int | None = Field(default=None, foreign_key="tmdblookupcache.id")
 
 
 # Properties to receive on showtime creation

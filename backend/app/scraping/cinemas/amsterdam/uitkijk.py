@@ -131,6 +131,7 @@ class UitkijkScraper(BaseCinemaScraper):
             showtimes.append(
                 ShowtimeCreate(
                     movie_id=cached_movie.id,
+                    tmdb_cache_id=cached_movie.tmdb_cache_id,
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
                     ticket_link=f"https://www.uitkijk.nl/film/{show.slug}",

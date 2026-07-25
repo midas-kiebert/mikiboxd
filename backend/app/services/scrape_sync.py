@@ -419,6 +419,44 @@ def delete_old_showtimes(
     return deleted_showtimes
 
 
+def reconcile_trusted_scraper_misses(
+    *,
+    session: Session,
+    cinema_id: int,
+    observed_event_keys: set[str],
+) -> int:
+    """Deactivate this cinema's Cineville presences a trusted site scraper
+    didn't just observe.
+
+    Call only for scrapers listed in
+    ``app.scraping.trusted_scrapers.TRUSTED_SCRAPERS``, after a SUCCESS (not
+    DEGRADED) run: a Cineville showtime absent from the trusted site's own
+    listing is treated as a Cineville false positive and skips the normal
+    ``MISSING_STREAK_TO_DEACTIVATE`` grace period other sources get.
+    """
+    source_stream = f"cineville:{cinema_id}"
+    stmt = (
+        select(ShowtimeSourcePresence)
+        .join(Showtime, col(Showtime.id) == col(ShowtimeSourcePresence.showtime_id))
+        .where(
+            ShowtimeSourcePresence.source_stream == source_stream,
+            col(ShowtimeSourcePresence.active).is_(True),
+            Showtime.datetime >= now_amsterdam_naive(),
+        )
+    )
+    presences = list(session.exec(stmt).all())
+    deactivated = 0
+    for presence in presences:
+        if presence.source_event_key in observed_event_keys:
+            continue
+        presence.missing_streak = MISSING_STREAK_TO_DEACTIVATE
+        presence.active = False
+        deactivated += 1
+    if deactivated:
+        session.commit()
+    return deactivated
+
+
 def record_success_run(
     *,
     session: Session,

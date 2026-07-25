@@ -136,6 +136,7 @@ class KriterionScraper(BaseCinemaScraper):
             showtimes.append(
                 ShowtimeCreate(
                     movie_id=movie.id,
+                    tmdb_cache_id=movie.tmdb_cache_id,
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,

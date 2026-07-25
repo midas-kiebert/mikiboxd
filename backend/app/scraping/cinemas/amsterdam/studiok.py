@@ -24,8 +24,21 @@ from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_services
 
 CINEMA = "Studio/K"
-FILMS_URL = "https://studio-k.nu/films/"
+# The old /films/ overview page now 301s to the homepage; /specials/ ("Actueel")
+# is its replacement and lists the same currently-playing films.
+FILMS_URL = "https://studio-k.nu/specials/"
 FILM_SLUG_RE = re.compile(r"https://studio-k\.nu/film/([^\"'/]+)/")
+
+# studio-k.nu now returns 402 Payment Required to the default python-requests
+# User-Agent (bot protection); a browser User-Agent gets the real page.
+REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.8",
+}
 
 
 def extract_label_value(soup: BeautifulSoup, label: str) -> str | None:
@@ -84,7 +97,7 @@ class StudioKScraper(BaseCinemaScraper):
     ) -> tuple[MovieCreate, list[ShowtimeCreate]] | None:
         assert self.cinema_id is not None
         url = f"https://studio-k.nu/film/{slug}/"
-        response = requests.get(url, timeout=15)
+        response = requests.get(url, headers=REQUEST_HEADERS, timeout=15)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
@@ -165,6 +178,7 @@ class StudioKScraper(BaseCinemaScraper):
         showtimes = self._parse_showtimes(
             soup=soup,
             movie_id=movie.id,
+            tmdb_cache_id=movie.tmdb_cache_id,
             fallback_subtitles=fallback_subtitles,
             title_query=title_query,
         )
@@ -175,6 +189,7 @@ class StudioKScraper(BaseCinemaScraper):
         *,
         soup: BeautifulSoup,
         movie_id: int,
+        tmdb_cache_id: int | None,
         fallback_subtitles: list[str] | None,
         title_query: str,
     ) -> list[ShowtimeCreate]:
@@ -225,6 +240,7 @@ class StudioKScraper(BaseCinemaScraper):
                 showtimes.append(
                     ShowtimeCreate(
                         movie_id=movie_id,
+                        tmdb_cache_id=tmdb_cache_id,
                         datetime=showtime_dt,
                         cinema_id=self.cinema_id,
                         ticket_link=ticket_link,
@@ -235,7 +251,7 @@ class StudioKScraper(BaseCinemaScraper):
 
     def scrape(self) -> list[tuple[str, int]]:
         assert self.cinema_id is not None
-        response = requests.get(FILMS_URL, timeout=15)
+        response = requests.get(FILMS_URL, headers=REQUEST_HEADERS, timeout=15)
         response.raise_for_status()
 
         slugs = extract_film_slugs(response.text)

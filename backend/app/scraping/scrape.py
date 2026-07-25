@@ -19,6 +19,7 @@ from app.models.movie import (
     is_sneak_preview_title,
     sneak_preview_movie,
 )
+from app.models.scrape_run import ScrapeRunStatus
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.cinemas.amsterdam.eye import EyeScraper
@@ -38,6 +39,7 @@ from app.scraping.cinemas.utrecht.springhaver import SpringhaverScraper
 from app.scraping.logger import logger
 from app.scraping.tmdb_lookup import find_tmdb_id_async, get_tmdb_lookup_cache_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details_async
+from app.scraping.trusted_scrapers import TRUSTED_SCRAPERS
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
@@ -243,6 +245,7 @@ def _persist_cineville_results_batch(
                         ticket_link=showtime_data.ticket_url,
                         subtitles=showtime_data.subtitles,
                         movie_id=movie.id,
+                        tmdb_cache_id=movie.tmdb_cache_id,
                         cinema_id=cinema_id,
                     )
                     db_showtime = showtimes_service.upsert_showtime(
@@ -712,6 +715,19 @@ async def _run_single_cinema_scraper(
         logger.info(
             f"Cinema scraper sync for {source_stream}: status={status.value}, observed={len(observed)}, deleted={len(deleted_showtimes)}"
         )
+
+        if scraper_name in TRUSTED_SCRAPERS and status == ScrapeRunStatus.SUCCESS:
+            with get_db_context() as db_session:
+                invalidated = scrape_sync_service.reconcile_trusted_scraper_misses(
+                    session=db_session,
+                    cinema_id=cinema_id,
+                    observed_event_keys={pair[0] for pair in observed_pairs},
+                )
+            if invalidated:
+                logger.info(
+                    f"{scraper_name} is trusted over Cineville: invalidated "
+                    f"{invalidated} Cineville-only showtime(s) not on its own site."
+                )
     except Exception as e:
         missing_match = re.search(
             r"Cinema (.+?) not found in database",

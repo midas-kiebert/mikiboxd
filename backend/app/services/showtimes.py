@@ -42,6 +42,7 @@ def _apply_upsert_update(
     showtime_create: ShowtimeCreate,
 ) -> None:
     existing_showtime.movie_id = showtime_create.movie_id
+    existing_showtime.tmdb_cache_id = showtime_create.tmdb_cache_id
     existing_showtime.datetime = showtime_create.datetime
     existing_showtime.ticket_link = showtime_create.ticket_link
     if showtime_create.end_datetime is not None:

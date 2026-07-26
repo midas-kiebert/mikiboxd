@@ -48,6 +48,19 @@ type AppBottomSheetProps = {
   headerRight?: ReactNode;
   /** Defaults to true. Set false to temporarily lock the sheet (e.g. while saving). */
   enablePanDownToClose?: boolean;
+  /**
+   * Throw the sheet's content away when it closes instead of keeping it mounted.
+   *
+   * Needed by any sheet that can be opened *on top of* another one: @gorhom/portal
+   * fixes a sheet's stacking slot the first time it mounts and never reshuffles it
+   * (`addUpdatePortal` updates in place), so a sheet still mounted from an earlier
+   * standalone visit draws *behind* the sheet it was opened from. Re-mounting on
+   * every open appends it last, i.e. on top.
+   *
+   * The cost is a fresh render of the content on each open, so leave it off for
+   * sheets with expensive content that are never nested.
+   */
+  dismissWhenClosed?: boolean;
   /** Backdrop press behavior; defaults to "close". Use "none" to lock the sheet. */
   backdropPressBehavior?: "close" | "none";
   keyboardBehavior?: BottomSheetModalProps["keyboardBehavior"];
@@ -64,6 +77,7 @@ export default function AppBottomSheet({
   backgroundColor,
   headerRight,
   enablePanDownToClose = true,
+  dismissWhenClosed = false,
   backdropPressBehavior = "close",
   keyboardBehavior,
   children,
@@ -95,9 +109,15 @@ export default function AppBottomSheet({
       closedByGorhomRef.current = false;
       bottomSheetModalRef.current?.present();
     } else if (hasEverPresentedRef.current && !closedByGorhomRef.current) {
-      bottomSheetModalRef.current?.close();
+      // dismiss() animates down like close() does, but also unmounts the node —
+      // see `dismissWhenClosed`.
+      if (dismissWhenClosed) {
+        bottomSheetModalRef.current?.dismiss();
+      } else {
+        bottomSheetModalRef.current?.close();
+      }
     }
-  }, [visible]);
+  }, [visible, dismissWhenClosed]);
 
   useEffect(() => {
     if (!visible) return;
@@ -127,7 +147,10 @@ export default function AppBottomSheet({
       ref={bottomSheetModalRef}
       snapPoints={resolvedSnapPoints}
       enablePanDownToClose={enablePanDownToClose}
-      enableDismissOnClose={false}
+      // Swipe-down and backdrop presses close the sheet without going through
+      // the effect above, so they need the same unmount to keep the node's
+      // stacking slot fresh.
+      enableDismissOnClose={dismissWhenClosed}
       enableDynamicSizing={false}
       stackBehavior="push"
       keyboardBehavior={keyboardBehavior}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Language } from "shared/client";
 import { useFetchFavoriteSavedPreset } from "shared/hooks/useFetchFavoriteSavedPreset";
@@ -17,6 +17,7 @@ import { useSessionExcludeListIds } from "shared/hooks/useSessionExcludeListIds"
 import { useSessionWatchlistExclude } from "shared/hooks/useSessionWatchlistExclude";
 import { useSessionWatchedOnly } from "shared/hooks/useSessionWatchedOnly";
 
+import type { PageFilterPresetState } from "@/components/filters/filter-preset-utils";
 import {
   normalizeSingleRuntimeRangeSelection,
 } from "@/components/filters/runtime-range-utils";
@@ -359,4 +360,57 @@ export function useSharedTabFilters() {
     groupByMovie,
     setGroupByMovie,
   };
+}
+
+/**
+ * The current filter selection in the shape presets are built from, so callers
+ * that only want to read it (save it, or ask whether anything is set) do not
+ * each rebuild the mapping.
+ */
+export function useCurrentFilterPresetState(): PageFilterPresetState {
+  const {
+    selectedShowtimeFilter,
+    watchlistOnly,
+    watchlistExclude,
+    hideWatched,
+    watchedOnly,
+    selectedListIds,
+    excludeListIds,
+    selectedDays,
+    selectedTimeRanges,
+    selectedRuntimeRanges,
+    groupByMovie,
+    selectedLanguages,
+  } = useSharedTabFilters();
+
+  return useMemo(
+    () => ({
+      selected_showtime_filter: selectedShowtimeFilter,
+      watchlist_only: watchlistOnly,
+      watchlist_exclude: watchlistExclude,
+      hide_watched: hideWatched,
+      watched_only: watchedOnly,
+      selected_list_ids: [...selectedListIds],
+      exclude_list_ids: [...excludeListIds],
+      days: [...selectedDays],
+      time_ranges: [...selectedTimeRanges],
+      runtime_ranges: [...selectedRuntimeRanges],
+      group_by_movie: groupByMovie,
+      selected_languages: [...selectedLanguages],
+    }),
+    [
+      selectedShowtimeFilter,
+      watchlistOnly,
+      watchlistExclude,
+      hideWatched,
+      watchedOnly,
+      selectedListIds,
+      excludeListIds,
+      selectedDays,
+      selectedTimeRanges,
+      selectedRuntimeRanges,
+      groupByMovie,
+      selectedLanguages,
+    ]
+  );
 }

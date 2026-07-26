@@ -46,7 +46,7 @@ export default function FiltersRow({ onOpenModal, onApplyPreset }: FiltersRowPro
       <View style={styles.separator} />
 
       {/* Scrollable preset buttons */}
-      <SavedPresetChips onApply={onApplyPreset} variant="chips" />
+      <SavedPresetChips onApply={onApplyPreset} />
     </View>
   );
 }

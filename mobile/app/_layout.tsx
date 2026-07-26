@@ -29,6 +29,7 @@ import UpdateRequiredScreen from '@/components/layout/UpdateRequiredScreen';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { loadThemePreference, useThemePreference } from '@/utils/theme-preference';
+import { loadFeatureTips } from '@/utils/feature-tips';
 import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
 import AppSplash from '@/components/layout/AppSplash';
 import {
@@ -189,6 +190,9 @@ void SplashScreen.preventAutoHideAsync();
 // Tracked so the splash can wait for the saved theme before revealing the UI,
 // avoiding a dark→light (or vice-versa) recolour flash on launch.
 const themePreferenceReady = loadThemePreference();
+
+// Feature tips render nothing until this resolves, so the splash needn't wait.
+void loadFeatureTips();
 
 // Default foreground notification behavior for this app.
 Notifications.setNotificationHandler({

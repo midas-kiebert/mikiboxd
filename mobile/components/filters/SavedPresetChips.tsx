@@ -4,28 +4,20 @@ import { ScrollView as GHScrollView } from "react-native-gesture-handler";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import {
-  describeDisplayPreset,
-  type DisplayPreset,
-} from "@/components/filters/saved-presets";
+import { type DisplayPreset } from "@/components/filters/saved-presets";
 import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
-/** Placeholder pill widths shown while presets load (chips variant). */
+/** Placeholder pill widths shown while presets load. */
 const SKELETON_CHIP_WIDTHS = [78, 96, 64];
 
 type SavedPresetChipsProps = {
   onApply: (preset: DisplayPreset) => void;
-  /** "cards" = wrapping card grid (FiltersModal). "chips" = horizontal scroll pills (top bar). */
-  variant?: "cards" | "chips";
 };
 
-export default function SavedPresetChips({
-  onApply,
-  variant = "cards",
-}: SavedPresetChipsProps) {
+export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { presets, isLoading, remove } = useDisplayPresets();
@@ -49,42 +41,6 @@ export default function SavedPresetChips({
     );
   };
 
-  if (variant === "cards") {
-    if (isLoading || presets.length === 0) return null;
-    return (
-      <View style={styles.grid}>
-        {presets.map((preset) => {
-          const description = describeDisplayPreset(preset);
-          return (
-            <TouchableOpacity
-              key={preset.id}
-              style={styles.card}
-              onPress={() => handleApply(preset)}
-              onLongPress={() => confirmDelete(preset)}
-              delayLongPress={300}
-              activeOpacity={0.75}
-            >
-              <View style={styles.cardRow}>
-                <ThemedText style={styles.cardName} numberOfLines={2}>
-                  {preset.name}
-                </ThemedText>
-                {preset.isFavorite && (
-                  <MaterialIcons name="star" size={13} color={colors.yellow.secondary} />
-                )}
-              </View>
-              {description.length > 0 && (
-                <ThemedText style={styles.cardDesc} numberOfLines={3}>
-                  {description}
-                </ThemedText>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    );
-  }
-
-  // chips variant — horizontal scroll
   return <ChipsScroll presets={presets} isLoading={isLoading} onApply={handleApply} onLongPress={confirmDelete} styles={styles} colors={colors} />;
 }
 
@@ -164,28 +120,6 @@ function ChipsScroll({
 
 const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
   StyleSheet.create({
-    // cards variant
-    grid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      marginBottom: 10,
-    },
-    card: {
-      flexBasis: "47%",
-      flexGrow: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      borderRadius: 12,
-      borderWidth: 1.5,
-      borderColor: colors.divider,
-      backgroundColor: colors.cardBackground,
-      gap: 4,
-    },
-    cardRow: { flexDirection: "row", alignItems: "flex-start", gap: 4 },
-    cardName: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.text },
-    cardDesc: { fontSize: 10, color: colors.textSecondary, lineHeight: 13 },
-    // chips variant
     chipsWrapper: { flex: 1, position: "relative" },
     chipsContent: { gap: 8, alignItems: "center", paddingRight: 16 },
     scrollFadeRight: {

@@ -8,6 +8,7 @@ import { useFetchNotificationUnseenCount } from "shared/hooks/useFetchNotificati
 
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useNotificationCenter } from "@/components/notifications/NotificationCenterProvider";
+import { useUnseenSnoozedTipCount } from "@/utils/feature-tips";
 
 /**
  * Horizontal space (from the screen edge) taken by the back button / bell, which
@@ -39,8 +40,12 @@ export default function TopBar({
   const { data: unseenCount = 0 } = useFetchNotificationUnseenCount({
     enabled: showNotificationBell,
   });
-  const showBadge = unseenCount > 0;
-  const badgeLabel = unseenCount > 99 ? "99+" : String(unseenCount);
+  // Snoozed feature tips are local reminders that sit in the same feed, so they
+  // count towards the same badge.
+  const unseenTipCount = useUnseenSnoozedTipCount();
+  const totalUnseenCount = unseenCount + unseenTipCount;
+  const showBadge = totalUnseenCount > 0;
+  const badgeLabel = totalUnseenCount > 99 ? "99+" : String(totalUnseenCount);
 
   // Render/output using the state and derived values prepared above.
   return (

@@ -22,6 +22,7 @@ import SearchBar from '@/components/inputs/SearchBar';
 import FiltersRow from '@/components/filters/FiltersRow';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
+import FeatureTipsHost from '@/components/tips/FeatureTipsHost';
 import { ShowtimesListContent, ListEndFooter } from '@/components/showtimes/ShowtimesScreen';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import MovieCard from '@/components/movies/MovieCard';
@@ -386,6 +387,8 @@ export default function MainShowtimesScreen() {
           inheritFiltersOnMovieNav
         />
       )}
+      {/* Renders nothing inline: the tip, if any, is a modal over the screen. */}
+      <FeatureTipsHost />
     </TopSafeAreaView>
   );
 }

@@ -24,12 +24,10 @@ import {
   LayoutAnimation,
   Linking,
   Modal,
-  Platform,
   Share,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  UIManager,
   useColorScheme,
   useWindowDimensions,
   View,
@@ -88,24 +86,12 @@ import {
   isSyntheticMovieId,
 } from "@/constants/synthetic-movies";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
+import { EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatLanguageCode } from "@/utils/language";
 import * as Clipboard from "expo-clipboard";
 import { buildCinevilleCardNumber, loadCinevilleCardDigits } from "@/utils/cineville-card";
-
-// LayoutAnimation needs an explicit opt-in on Android (on by default on iOS).
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-// Smooth height tween for the invite-friends expand/collapse "swipe open".
-const EXPAND_LAYOUT_ANIMATION = {
-  duration: 220,
-  create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
-  update: { type: LayoutAnimation.Types.easeInEaseOut },
-  delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
-};
 
 export type ShowtimeInvite = {
   senders: UserPublic[];

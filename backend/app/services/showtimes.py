@@ -365,6 +365,12 @@ def _create_showtime_ping(
     if existing_ping is not None:
         raise ShowtimePingAlreadySentError()
 
+    sender_status = user_crud.get_showtime_going_status(
+        session=session,
+        showtime_id=showtime_id,
+        user_id=sender_id,
+    )
+
     try:
         showtime_ping_crud.create_showtime_ping(
             session=session,
@@ -373,6 +379,15 @@ def _create_showtime_ping(
             receiver_id=receiver_id,
             created_at=now_amsterdam_naive(),
         )
+        if sender_status != GoingStatus.GOING:
+            # Sending an invite implies interest, unless the sender is
+            # already going.
+            showtimes_crud.add_showtime_selection(
+                session=session,
+                showtime_id=showtime_id,
+                user_id=sender_id,
+                going_status=GoingStatus.INTERESTED,
+            )
         # A new ping reshapes the whole invite group's visibility (endpoints,
         # co-invitees, and invitees inheriting the inviter's privacy).
         showtime_visibility_crud.rebuild_effective_visibility_for_showtime_participants(

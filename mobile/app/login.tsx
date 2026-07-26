@@ -11,6 +11,7 @@ import {
     Platform,
     ActivityIndicator,
     ScrollView,
+    Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
@@ -109,7 +110,10 @@ export default function LoginScreen() {
             const { GoogleSignin } = getGoogleSignin()
             await GoogleSignin.hasPlayServices()
             const response = await GoogleSignin.signIn()
-            if (response.type !== 'success' || !response.data.idToken) return
+            if (response.type !== 'success' || !response.data.idToken) {
+                Alert.alert('Google sign-in debug', `type=${response.type}, idToken=${response.type === 'success' ? String(!!response.data.idToken) : 'n/a'}`)
+                return
+            }
             const { needsUsername } = await socialLoginMutation.mutateAsync({
                 provider: 'google',
                 token: response.data.idToken,
@@ -129,6 +133,7 @@ export default function LoginScreen() {
             const code = (googleError as { code?: string })?.code
             if (code === statusCodes.SIGN_IN_CANCELLED) return
             console.log('Google sign-in error', googleError)
+            Alert.alert('Google sign-in debug', `code=${code ?? 'none'}\n${String(googleError)}`)
             // Error handled by useAuth for API failures; silently ignored otherwise.
         }
     }

@@ -78,6 +78,19 @@ module.exports = ({ config }) => {
       "@react-native-google-signin/google-signin",
       ...(googleIosUrlScheme ? [{ iosUrlScheme: googleIosUrlScheme }] : []),
     ],
+    [
+      "expo-build-properties",
+      {
+        ios: {
+          useModularHeaders: true,
+          extraPods: [
+            { name: "GoogleUtilities", modular_headers: true },
+            { name: "RecaptchaInterop", modular_headers: true },
+            { name: "AppCheckCore", modular_headers: true },
+          ],
+        },
+      },
+    ],
   ]
 
   const baseConfig = {

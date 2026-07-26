@@ -1,14 +1,15 @@
 /**
- * One row in the notification centre. Presentational: the provider owns the data
- * and the dismiss / accept / decline handlers. Renders an icon + accent per type,
- * a title/subtitle, a relative timestamp, and either a dismiss button or (for
- * received friend requests) inline Accept / Deny buttons.
+ * One backend feed item in the notification centre. Presentational: the provider
+ * owns the data and the dismiss / accept / decline handlers. Maps the item to an
+ * icon, accent and wording, then hands it to the shared row layout; received
+ * friend requests add inline Accept / Deny buttons.
  */
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { DateTime } from "luxon";
 import type { NotificationFeedItem } from "shared";
 
+import NotificationRowLayout from "@/components/notifications/NotificationRowLayout";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
@@ -98,12 +99,6 @@ const buildPresentation = (item: NotificationFeedItem, colors: ThemeColors): Pre
   }
 };
 
-const formatRelativeTime = (isoString: string): string => {
-  const parsed = DateTime.fromISO(isoString);
-  if (!parsed.isValid) return "";
-  return parsed.toRelative({ style: "short" }) ?? "";
-};
-
 export default function NotificationRow({
   item,
   onPress,
@@ -117,124 +112,58 @@ export default function NotificationRow({
   const styles = createStyles(colors);
   const presentation = buildPresentation(item, colors);
   const isFriendRequest = item.type === "friend_request_received";
-  const isUnseen = item.seen_at === null;
-  const relativeTime = formatRelativeTime(item.created_at);
-
-  const content = (
-    <View style={styles.row}>
-      <View style={[styles.iconCircle, { backgroundColor: presentation.accent.primary }]}>
-        <MaterialIcons name={presentation.icon} size={18} color={presentation.accent.secondary} />
-      </View>
-      <View style={styles.body}>
-        <Text style={styles.title} numberOfLines={2}>
-          {presentation.title}
-        </Text>
-        {presentation.subtitle ? (
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {presentation.subtitle}
-          </Text>
-        ) : null}
-        {isFriendRequest ? (
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: colors.green.primary }]}
-              onPress={() => onAccept(item)}
-              disabled={isAccepting || isDeclining}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Accept friend request"
-            >
-              {isAccepting ? (
-                <ActivityIndicator size="small" color={colors.green.secondary} />
-              ) : (
-                <Text style={[styles.actionLabel, { color: colors.green.secondary }]}>Accept</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: colors.pillBackground }]}
-              onPress={() => onDecline(item)}
-              disabled={isAccepting || isDeclining}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Decline friend request"
-            >
-              {isDeclining ? (
-                <ActivityIndicator size="small" color={colors.textSecondary} />
-              ) : (
-                <Text style={[styles.actionLabel, { color: colors.textSecondary }]}>Deny</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.trailing}>
-        {relativeTime ? <Text style={styles.time}>{relativeTime}</Text> : null}
-        {isUnseen ? <View style={[styles.unseenDot, { backgroundColor: colors.tint }]} /> : null}
-        {!isFriendRequest ? (
-          <TouchableOpacity
-            onPress={() => onDismiss(item)}
-            hitSlop={8}
-            activeOpacity={0.6}
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss notification"
-          >
-            <MaterialIcons name="close" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    </View>
-  );
-
-  if (isFriendRequest) {
-    return <View style={styles.container}>{content}</View>;
-  }
 
   return (
-    <TouchableOpacity
-      style={styles.container}
-      onPress={() => onPress(item)}
-      activeOpacity={0.7}
-      accessibilityRole="button"
+    <NotificationRowLayout
+      icon={presentation.icon}
+      accent={presentation.accent}
+      title={presentation.title}
+      subtitle={presentation.subtitle}
+      timestamp={item.created_at}
+      isUnseen={item.seen_at === null}
+      // Friend requests are answered by their own buttons, so the row itself
+      // is inert and carries no ✕.
+      onPress={isFriendRequest ? undefined : () => onPress(item)}
+      onDismiss={isFriendRequest ? undefined : () => onDismiss(item)}
     >
-      {content}
-    </TouchableOpacity>
+      {isFriendRequest ? (
+        <View style={styles.actions}>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.green.primary }]}
+            onPress={() => onAccept(item)}
+            disabled={isAccepting || isDeclining}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Accept friend request"
+          >
+            {isAccepting ? (
+              <ActivityIndicator size="small" color={colors.green.secondary} />
+            ) : (
+              <Text style={[styles.actionLabel, { color: colors.green.secondary }]}>Accept</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.pillBackground }]}
+            onPress={() => onDecline(item)}
+            disabled={isAccepting || isDeclining}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Decline friend request"
+          >
+            {isDeclining ? (
+              <ActivityIndicator size="small" color={colors.textSecondary} />
+            ) : (
+              <Text style={[styles.actionLabel, { color: colors.textSecondary }]}>Deny</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </NotificationRowLayout>
   );
 }
 
 const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
-    container: {
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.divider,
-      backgroundColor: colors.background,
-    },
-    row: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 12,
-    },
-    iconCircle: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    body: {
-      flex: 1,
-      gap: 2,
-    },
-    title: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: colors.text,
-    },
-    subtitle: {
-      fontSize: 13,
-      color: colors.textSecondary,
-    },
     actions: {
       flexDirection: "row",
       gap: 8,
@@ -251,18 +180,5 @@ const createStyles = (colors: ThemeColors) =>
     actionLabel: {
       fontSize: 13,
       fontWeight: "700",
-    },
-    trailing: {
-      alignItems: "flex-end",
-      gap: 6,
-    },
-    time: {
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    unseenDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
     },
   });

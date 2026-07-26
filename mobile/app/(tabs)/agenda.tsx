@@ -53,7 +53,7 @@ function AgendaToggle({
       activeOpacity={0.7}
       accessibilityRole="switch"
       accessibilityState={{ checked: active }}
-      accessibilityLabel={`${active ? "Hide" : "Show"} ${label.toLowerCase()}`}
+      accessibilityLabel={`${label} ${active ? "included" : "excluded"}`}
       style={[
         styles.toggle,
         active
@@ -72,7 +72,7 @@ function AgendaToggle({
           { color: active ? accent.secondary : colors.textSecondary },
         ]}
       >
-        {label}
+        {label} {active ? "Included" : "Excluded"}
       </ThemedText>
     </TouchableOpacity>
   );

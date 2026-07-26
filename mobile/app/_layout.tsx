@@ -21,6 +21,7 @@ import * as Notifications from 'expo-notifications';
 import * as SystemUI from 'expo-system-ui';
 import * as SplashScreen from 'expo-splash-screen';
 import Constants from 'expo-constants';
+import { getGoogleSignin, isGoogleSignInAvailable } from '@/utils/google-signin';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -29,6 +30,9 @@ import UpdateRequiredScreen from '@/components/layout/UpdateRequiredScreen';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { loadThemePreference, useThemePreference } from '@/utils/theme-preference';
+import { loadFeatureTips } from '@/utils/feature-tips';
+import { loadIntroState } from '@/utils/intro';
+import IntroHost from '@/components/intro/IntroHost';
 import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
 import AppSplash from '@/components/layout/AppSplash';
 import {
@@ -66,6 +70,15 @@ export const unstable_settings = {
 // never cleared early — no blank, identical on iOS and Android.
 const { Navigator: JsStackNavigator } = createStackNavigator();
 const JsStack = withLayoutContext(JsStackNavigator);
+
+// Configured once at startup so GoogleSignin.signIn() is ready wherever a
+// sign-in button is rendered. webClientId sets the ID token audience, which
+// the backend checks against settings.GOOGLE_CLIENT_IDS. Skipped entirely in
+// Expo Go, which doesn't bundle this native module.
+const googleWebClientId = Constants.expoConfig?.extra?.googleWebClientId as string | undefined;
+if (isGoogleSignInAvailable && googleWebClientId) {
+  getGoogleSignin().GoogleSignin.configure({ webClientId: googleWebClientId });
+}
 
 setStorage({
   // Route shared storage calls through SecureStore on native devices.
@@ -189,6 +202,13 @@ void SplashScreen.preventAutoHideAsync();
 // Tracked so the splash can wait for the saved theme before revealing the UI,
 // avoiding a dark→light (or vice-versa) recolour flash on launch.
 const themePreferenceReady = loadThemePreference();
+
+// Feature tips render nothing until this resolves, so the splash needn't wait.
+void loadFeatureTips();
+
+// Same for the first-run intro: it only starts once this says an account was
+// created on this device, which is well after the splash is gone.
+void loadIntroState();
 
 // Default foreground notification behavior for this app.
 Notifications.setNotificationHandler({
@@ -503,6 +523,9 @@ function RootLayourContent() {
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
         </>
       )}
+      {/* Only once the splash is gone: the intro is a Modal, which would
+          otherwise cover the splash overlay it is meant to follow. */}
+      {!splashVisible && isAuthenticated && <IntroHost />}
       {splashVisible && (
         <AppSplash
           active={!appReady}

@@ -7,6 +7,7 @@
  * presets a hint takes their place, opening the Filters modal where presets
  * are saved.
  */
+import type { Ref } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
@@ -19,9 +20,18 @@ import { triggerSelectionHaptic } from "@/utils/long-press";
 export type FiltersRowProps = {
   onOpenModal: () => void;
   onApplyPreset: (preset: DisplayPreset) => void;
+  /**
+   * Handed out so the first-run intro can measure the Filters button and
+   * highlight it in place (see `IntroFiltersSpotlight`).
+   */
+  filtersButtonRef?: Ref<View>;
 };
 
-export default function FiltersRow({ onOpenModal, onApplyPreset }: FiltersRowProps) {
+export default function FiltersRow({
+  onOpenModal,
+  onApplyPreset,
+  filtersButtonRef,
+}: FiltersRowProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
 
@@ -29,6 +39,7 @@ export default function FiltersRow({ onOpenModal, onApplyPreset }: FiltersRowPro
     <View style={styles.container}>
       {/* Pinned Filters button — never scrolls away */}
       <TouchableOpacity
+        ref={filtersButtonRef}
         style={[styles.pill, styles.filtersPill]}
         onPress={() => {
           triggerSelectionHaptic();
@@ -46,7 +57,7 @@ export default function FiltersRow({ onOpenModal, onApplyPreset }: FiltersRowPro
       <View style={styles.separator} />
 
       {/* Scrollable preset buttons */}
-      <SavedPresetChips onApply={onApplyPreset} variant="chips" />
+      <SavedPresetChips onApply={onApplyPreset} />
     </View>
   );
 }

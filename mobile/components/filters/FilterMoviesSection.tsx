@@ -1,5 +1,9 @@
 /**
- * "Filter movies" section of the Filters modal.
+ * Body of the "Movie Filters" section of the Filters modal (the collapsible
+ * `FilterSection` wrapper supplies the heading).
+ *
+ * Without a Letterboxd username the watchlist/watched cards have nothing to
+ * work with, so their place is taken by a prompt for that username.
  *
  * Every movie-set filter lives here as a card you can set to Include or Exclude:
  * the Letterboxd watchlist / watched, plus Letterboxd *lists* (curated ones such
@@ -23,6 +27,8 @@ import {
   useLetterboxdListMutations,
 } from "shared/hooks/useLetterboxdLists";
 
+import { FilterSubLabel } from "@/components/filters/FilterSection";
+import LetterboxdUsernamePrompt from "@/components/filters/LetterboxdUsernamePrompt";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useOptimisticValue } from "@/hooks/useOptimisticValue";
@@ -183,9 +189,8 @@ export default function FilterMoviesSection({
 
   return (
     <>
-      <SubLabel label="Filter movies" colors={colors} />
-
-      {canUseWatchlistFilter && (
+      <FilterSubLabel label="Watchlist & watched" isFirst />
+      {canUseWatchlistFilter ? (
         <>
           <FilterItemCard
             title="Watchlist"
@@ -208,10 +213,12 @@ export default function FilterMoviesSection({
             colors={colors}
           />
         </>
+      ) : (
+        <LetterboxdUsernamePrompt />
       )}
 
       {/* Curated lists */}
-      <MiniLabel label="Curated lists" colors={colors} />
+      <FilterSubLabel label="Curated lists" />
       {listsLoading && curatedLists.length === 0 ? (
         <ActivityIndicator color={colors.tint} style={{ marginVertical: 8 }} />
       ) : (
@@ -229,7 +236,7 @@ export default function FilterMoviesSection({
       )}
 
       {/* Custom lists */}
-      <MiniLabel label="Your lists" colors={colors} />
+      <FilterSubLabel label="Your lists" />
       {customLists.map((list) => (
         <ListItemCard
           key={list.id}
@@ -449,31 +456,6 @@ function Segment({
       <MaterialIcons name={icon} size={15} color={fg} />
       <ThemedText style={[styles.segmentLabel, { color: fg }]}>{label}</ThemedText>
     </Pressable>
-  );
-}
-
-function SubLabel({ label, colors }: { label: string; colors: Colors }) {
-  return (
-    <ThemedText
-      style={{
-        color: colors.textSecondary,
-        fontSize: 11,
-        fontWeight: "600",
-        textTransform: "uppercase",
-        letterSpacing: 0.6,
-        marginBottom: 7,
-      }}
-    >
-      {label}
-    </ThemedText>
-  );
-}
-
-function MiniLabel({ label, colors }: { label: string; colors: Colors }) {
-  return (
-    <ThemedText style={{ color: colors.text, fontSize: 13, fontWeight: "600", marginTop: 14, marginBottom: 8 }}>
-      {label}
-    </ThemedText>
   );
 }
 

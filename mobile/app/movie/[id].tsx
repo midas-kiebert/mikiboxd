@@ -18,7 +18,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import type { Language } from "shared/client";
-import type { MovieLoggedIn, ShowtimeInMovieLoggedIn, UserPublic } from "shared";
+import type { MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
 import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
@@ -59,15 +59,8 @@ import { useDeferredMount } from "@/utils/use-deferred-mount";
 
 const SHOWTIMES_PAGE_SIZE = 20;
 
-/** Names shown on a watchlisted/watched line before the rest collapse into "+N". */
-const WATCH_SUMMARY_VISIBLE_NAMES = 2;
-
-const formatWatchSummaryNames = (friends: UserPublic[]) => {
-  const names = friends.map((friend) => friend.display_name?.trim() || "Friend");
-  const visible = names.slice(0, WATCH_SUMMARY_VISIBLE_NAMES);
-  const hiddenCount = names.length - visible.length;
-  return hiddenCount > 0 ? `${visible.join(", ")} +${hiddenCount}` : visible.join(", ");
-};
+/** Horizontal gap between the watchlisted/watched markers. */
+const WATCH_MARKER_GAP = 8;
 
 type MovieShowtimeSection = {
   key: string;
@@ -359,6 +352,11 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
 
   const isSynthetic = movie ? isSyntheticMovieId(movie.id) : false;
 
+  const runtimeLanguageLabel =
+    [movie?.duration ? `${movie.duration} min` : null, formatLanguageCode(movie?.original_language)]
+      .filter(Boolean)
+      .join("  ·  ") || (isSynthetic ? `${UNKNOWN_METADATA_PLACEHOLDER} min` : "");
+
   const letterboxdSlug = movie?.letterboxd_slug?.trim() ?? "";
   const letterboxdSearchQuery = movie?.title
     ? `${movie.title}${movie.release_year ? ` ${movie.release_year}` : ""}`
@@ -399,17 +397,20 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
     );
   }, [targetShowtimeId, showtimes, movie, openShowtimeModal, movieId]);
 
-  // Friends' Letterboxd relationship to this film. It belongs to the movie info,
-  // so it sits in the header next to the poster as one quiet line per non-empty
-  // relationship; the full lists live behind the popup.
+  // Friends' Letterboxd relationship to this film — same markers as the showtime
+  // sheet: icon + count only, in their own right-hand column of the header.
+  // Tapping one opens the list, which is where the relationship is spelled out.
+  // Only the non-empty relationships get a marker.
   const friendsWatchlisted = movie?.friends_watchlisted ?? [];
   const friendsWatched = movie?.friends_watched ?? [];
-  const watchSummaries = (
+  const watchMarkers = (
     [
-      { kind: "watchlisted" as const, friends: friendsWatchlisted },
-      { kind: "watched" as const, friends: friendsWatched },
+      { kind: "watchlisted" as const, count: friendsWatchlisted.length },
+      { kind: "watched" as const, count: friendsWatched.length },
     ]
-  ).filter((summary) => summary.friends.length > 0);
+  )
+    .filter((entry) => entry.count > 0)
+    .map((entry) => ({ ...entry, meta: getFriendWatchKindMeta(entry.kind, colors) }));
 
   return (
     <>
@@ -457,45 +458,50 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
                   {movie.cast.slice(0, 3).join(", ")}
                 </ThemedText>
               ) : null}
-              {movie.duration || formatLanguageCode(movie.original_language) ? (
-                <ThemedText style={styles.metaText} numberOfLines={1}>
-                  {[
-                    movie.duration ? `${movie.duration} min` : null,
-                    formatLanguageCode(movie.original_language),
-                  ]
-                    .filter(Boolean)
-                    .join("  ·  ")}
-                </ThemedText>
-              ) : isSynthetic ? (
-                <ThemedText style={styles.metaText} numberOfLines={1}>
-                  {`${UNKNOWN_METADATA_PLACEHOLDER} min`}
-                </ThemedText>
-              ) : null}
-              {watchSummaries.length > 0 ? (
-                <View style={styles.watchSummaryRows}>
-                  {watchSummaries.map((summary) => {
-                    const meta = getFriendWatchKindMeta(summary.kind, colors);
-                    return (
-                      <TouchableOpacity
-                        key={summary.kind}
-                        style={styles.watchSummaryChip}
-                        onPress={() => {
-                          triggerSelectionHaptic();
-                          setWatchModalKind(summary.kind);
-                        }}
-                        activeOpacity={0.7}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${meta.title} by ${summary.friends.length} friend${
-                          summary.friends.length === 1 ? "" : "s"
-                        }`}
-                      >
-                        <MaterialIcons name={meta.icon} size={12} color={meta.accent} />
-                        <ThemedText style={styles.watchSummaryText} numberOfLines={1}>
-                          {formatWatchSummaryNames(summary.friends)}
-                        </ThemedText>
-                      </TouchableOpacity>
-                    );
-                  })}
+              {/* Bottom line of the header: runtime · language on the left, the
+                  watch markers pushed to the right. They ride along on an
+                  existing line rather than claiming a column of their own, so
+                  the title and director keep the full width and the header
+                  gains no height. */}
+              {runtimeLanguageLabel || watchMarkers.length > 0 ? (
+                <View style={styles.metaFooterRow}>
+                  <ThemedText style={styles.metaFooterText} numberOfLines={1}>
+                    {runtimeLanguageLabel}
+                  </ThemedText>
+                  {watchMarkers.length > 0 ? (
+                    <View style={styles.watchMarkers}>
+                      {watchMarkers.map((marker) => (
+                        <TouchableOpacity
+                          key={marker.kind}
+                          style={styles.watchMarker}
+                          onPress={() => {
+                            triggerSelectionHaptic();
+                            setWatchModalKind(marker.kind);
+                          }}
+                          // Half the row gap each, so the pills' touch areas meet
+                          // without overlapping — the pill itself is only ~21pt tall.
+                          hitSlop={{
+                            top: 8,
+                            bottom: 8,
+                            left: WATCH_MARKER_GAP / 2,
+                            right: WATCH_MARKER_GAP / 2,
+                          }}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${marker.meta.title} by ${marker.count} friend${
+                            marker.count === 1 ? "" : "s"
+                          }`}
+                        >
+                          <MaterialIcons
+                            name={marker.meta.icon}
+                            size={13}
+                            color={marker.meta.accent}
+                          />
+                          <ThemedText style={styles.watchMarkerCount}>{marker.count}</ThemedText>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
             </View>
@@ -728,7 +734,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     summaryInfo: {
       flex: 1,
-      gap: 5,
+      gap: 1,
     },
     movieTitle: {
       fontSize: 22,
@@ -760,23 +766,41 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       letterSpacing: 0.6,
       color: colors.textSecondary,
     },
-    watchSummaryRows: {
-      alignItems: "flex-start",
-      gap: 3,
-      marginTop: 3,
-    },
-    watchSummaryChip: {
+    metaFooterRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 5,
-      maxWidth: "100%",
-      borderRadius: 999,
-      backgroundColor: colors.pillBackground,
-      paddingHorizontal: 8,
-      paddingVertical: 3,
+      gap: 8,
     },
-    watchSummaryText: {
-      flexShrink: 1,
+    metaFooterText: {
+      flex: 1,
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    // Negative vertical margin so the ~21pt pills sit inside the 15pt text line
+    // they share instead of stretching the header — they overhang into the
+    // 5pt gaps above and below, which hold nothing but background.
+    watchMarkers: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: WATCH_MARKER_GAP,
+      marginVertical: -3,
+    },
+    // Neutral pill; only the icon carries the watchlisted/watched colour, so the
+    // markers read as a quiet aside rather than a call to act. Same pill as
+    // ShowtimeActionModal's, minus its `minWidth` — that keeps the sheet's
+    // vertical stack from going ragged, and here it would only steal width from
+    // the runtime line sharing the row.
+    watchMarker: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+      borderRadius: 999,
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      backgroundColor: colors.pillBackground,
+    },
+    watchMarkerCount: {
       fontSize: 11,
       fontWeight: "600",
       color: colors.textSecondary,

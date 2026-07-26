@@ -1,14 +1,19 @@
 /**
- * Mobile filter UI component: Day Filter Modal.
+ * Calendar sheet behind the Filters modal's "Select specific dates" row.
+ *
+ * Only the calendar: the relative days and the weekdays are picked inline in
+ * DaysFilterSection, so this sheet exists purely for dates those shortcuts
+ * cannot express. It still *shows* today/tomorrow/the day after as selected
+ * (they are relative tokens, not ISO dates) so a day is never drawn unselected
+ * while it is in fact being filtered on — and tapping such a day clears the
+ * relative token behind it. Weekday tokens are left untouched, both on screen
+ * and by "Clear dates".
+ *
+ * Changes are applied when the sheet closes, matching how the Filters modal
+ * commits the rest of the filter state.
  */
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Platform,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-  type ListRenderItem,
-} from "react-native";
+import { StyleSheet, TouchableOpacity, View, type ListRenderItem } from "react-native";
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DateTime } from "luxon";
@@ -18,13 +23,12 @@ import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import {
   AMSTERDAM_ZONE,
   RELATIVE_DAY_OPTIONS,
-  WEEKDAY_DAY_OPTIONS,
   canonicalizeDaySelections,
   isIsoDaySelection,
 } from "@/components/filters/day-filter-utils";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
-type DayFilterModalProps = {
+type SpecificDatesModalProps = {
   visible: boolean;
   onClose: () => void;
   selectedDays: string[];
@@ -44,6 +48,11 @@ type CalendarMonth = {
 
 const DAY_RANGE = 180;
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+const RELATIVE_TOKENS = new Set<string>(RELATIVE_DAY_OPTIONS.map((option) => option.token));
+
+/** A day this sheet owns: an explicit date, or one of the relative tokens it draws. */
+const isDateSelection = (value: string) => isIsoDaySelection(value) || RELATIVE_TOKENS.has(value);
 
 const selectionsMatch = (left: string[], right: string[]) => {
   if (left.length !== right.length) return false;
@@ -92,51 +101,13 @@ function buildCalendarMonths(startIso: string): CalendarMonth[] {
   });
 }
 
-type DayModalStyles = ReturnType<typeof createStyles>;
-
-type DayShortcutChipProps = {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-  compact?: boolean;
-  styles: DayModalStyles;
-};
-
-const DayShortcutChip = memo(function DayShortcutChip({
-  label,
-  selected,
-  onPress,
-  compact = false,
-  styles,
-}: DayShortcutChipProps) {
-  return (
-    <TouchableOpacity
-      style={[
-        styles.shortcutChip,
-        compact && styles.weekdayShortcutChip,
-        selected && styles.shortcutChipSelected,
-      ]}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      <ThemedText
-        style={[
-          styles.shortcutChipText,
-          compact && styles.weekdayShortcutChipText,
-          selected && styles.shortcutChipTextSelected,
-        ]}
-      >
-        {label}
-      </ThemedText>
-    </TouchableOpacity>
-  );
-});
+type CalendarStyles = ReturnType<typeof createStyles>;
 
 type DayCellProps = {
   cell: CalendarDay | null;
   isSelected: boolean;
   onToggleDay: (day: string) => void;
-  styles: DayModalStyles;
+  styles: CalendarStyles;
 };
 
 const DayCell = memo(function DayCell({ cell, isSelected, onToggleDay, styles }: DayCellProps) {
@@ -163,7 +134,7 @@ type CalendarMonthSectionProps = {
   month: CalendarMonth;
   selectedDaySet: Set<string>;
   onToggleDay: (day: string) => void;
-  styles: DayModalStyles;
+  styles: CalendarStyles;
 };
 
 const CalendarMonthSection = memo(function CalendarMonthSection({
@@ -197,12 +168,12 @@ const CalendarMonthSection = memo(function CalendarMonthSection({
   );
 });
 
-export default function DayFilterModal({
+export default function SpecificDatesModal({
   visible,
   onClose,
   selectedDays,
   onChange,
-}: DayFilterModalProps) {
+}: SpecificDatesModalProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   // The sheet is anchored to the bottom of the screen, so the footer sits on top
@@ -251,23 +222,37 @@ export default function DayFilterModal({
     return byIsoDay;
   }, [todayKey]);
 
-  const handleToggleDay = useCallback((day: string) => {
-    setLocalSelectedDaySet((current) => {
-      const next = new Set(current);
-      const linkedRelativeToken = relativeTokenByIsoDay.get(day);
-      const isSelected =
-        next.has(day) || (linkedRelativeToken !== undefined && next.has(linkedRelativeToken));
-      if (isSelected) {
-        next.delete(day);
-        if (linkedRelativeToken !== undefined) next.delete(linkedRelativeToken);
-      } else {
-        next.add(day);
-      }
-      return next;
-    });
-  }, [relativeTokenByIsoDay]);
+  const handleToggleDay = useCallback(
+    (day: string) => {
+      setLocalSelectedDaySet((current) => {
+        const next = new Set(current);
+        const linkedRelativeToken = relativeTokenByIsoDay.get(day);
+        const isSelected =
+          next.has(day) || (linkedRelativeToken !== undefined && next.has(linkedRelativeToken));
+        if (isSelected) {
+          next.delete(day);
+          if (linkedRelativeToken !== undefined) next.delete(linkedRelativeToken);
+        } else {
+          next.add(day);
+        }
+        return next;
+      });
+    },
+    [relativeTokenByIsoDay]
+  );
 
-  const handleClear = useCallback(() => setLocalSelectedDaySet(new Set()), []);
+  // Clears only what this sheet shows; the weekdays picked in the section
+  // behind it are not this button's to throw away.
+  const handleClearDates = useCallback(() => {
+    setLocalSelectedDaySet(
+      (current) => new Set(Array.from(current).filter((day) => !isDateSelection(day)))
+    );
+  }, []);
+
+  const hasDateSelections = useMemo(
+    () => Array.from(localSelectedDaySet).some(isDateSelection),
+    [localSelectedDaySet]
+  );
 
   const handleClose = useCallback(() => {
     const nextSelectedDays = canonicalizeDaySelections(Array.from(localSelectedDaySet)) ?? [];
@@ -291,55 +276,13 @@ export default function DayFilterModal({
   );
 
   return (
-    <AppBottomSheet
-      visible={visible}
-      onClose={handleClose}
-      onBack={onClose}
-      title="Days"
-    >
-        <BottomSheetFlatList
+    <AppBottomSheet visible={visible} onClose={handleClose} onBack={onClose} title="Specific dates">
+      <BottomSheetFlatList
         style={styles.mainContent}
         contentContainerStyle={styles.content}
         data={calendarMonths}
         keyExtractor={(item) => item.key}
         renderItem={renderMonth}
-        ListHeaderComponent={
-          <View style={styles.shortcutSections}>
-            <View style={styles.shortcutSection}>
-              <ThemedText style={styles.shortcutSectionTitle}>Relative Days</ThemedText>
-              <ThemedText style={styles.shortcutSectionSubtitle}>
-                These stay relative when saved in presets.
-              </ThemedText>
-              <View style={styles.shortcutChipWrap}>
-                {RELATIVE_DAY_OPTIONS.map((option) => (
-                  <DayShortcutChip
-                    key={option.token}
-                    label={option.label}
-                    selected={localSelectedDaySet.has(option.token)}
-                    onPress={() => handleToggleDay(option.token)}
-                    styles={styles}
-                  />
-                ))}
-              </View>
-            </View>
-            <View style={styles.shortcutSection}>
-              <ThemedText style={styles.shortcutSectionTitle}>Days of Week</ThemedText>
-              <View style={styles.weekdayShortcutChipWrap}>
-                {WEEKDAY_DAY_OPTIONS.map((option) => (
-                  <DayShortcutChip
-                    key={option.token}
-                    label={option.shortLabel}
-                    selected={localSelectedDaySet.has(option.token)}
-                    onPress={() => handleToggleDay(option.token)}
-                    compact
-                    styles={styles}
-                  />
-                ))}
-              </View>
-            </View>
-          </View>
-        }
-        ListHeaderComponentStyle={styles.shortcutHeader}
         initialNumToRender={2}
         maxToRenderPerBatch={2}
         windowSize={5}
@@ -348,31 +291,23 @@ export default function DayFilterModal({
       />
       <View style={[styles.footer, { paddingBottom: Math.max(bottomInset, 10) }]}>
         <TouchableOpacity
-          style={[
-            styles.footerButton,
-            styles.footerButtonSubtle,
-            localSelectedDaySet.size === 0 && styles.footerButtonDisabled,
-          ]}
-          onPress={handleClear}
+          style={[styles.footerButton, !hasDateSelections && styles.footerButtonDisabled]}
+          onPress={handleClearDates}
           activeOpacity={0.8}
-          disabled={localSelectedDaySet.size === 0}
+          disabled={!hasDateSelections}
         >
           <ThemedText
-            style={[
-              styles.footerButtonText,
-              styles.footerButtonTextSubtle,
-              localSelectedDaySet.size === 0 && styles.footerButtonTextDisabled,
-            ]}
+            style={[styles.footerButtonText, !hasDateSelections && styles.footerButtonTextDisabled]}
           >
-            Clear
+            Clear dates
           </ThemedText>
         </TouchableOpacity>
-        </View>
+      </View>
     </AppBottomSheet>
   );
 }
 
-const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
+const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
   StyleSheet.create({
     mainContent: {
       flex: 1,
@@ -381,71 +316,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       padding: 16,
       paddingBottom: 20,
       gap: 16,
-    },
-    shortcutHeader: {
-      marginBottom: 12,
-    },
-    shortcutSections: {
-      gap: 10,
-    },
-    shortcutSection: {
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-      gap: 10,
-    },
-    shortcutSectionTitle: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    shortcutSectionSubtitle: {
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    shortcutChipWrap: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-    },
-    weekdayShortcutChipWrap: {
-      flexDirection: "row",
-      flexWrap: "nowrap",
-      gap: 4,
-    },
-    shortcutChip: {
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.divider,
-      backgroundColor: colors.background,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-    },
-    weekdayShortcutChip: {
-      flex: 1,
-      minWidth: 0,
-      paddingHorizontal: 6,
-      paddingVertical: 5,
-      borderRadius: 10,
-    },
-    shortcutChipSelected: {
-      borderColor: colors.tint,
-      backgroundColor: colors.tint,
-    },
-    shortcutChipText: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    weekdayShortcutChipText: {
-      fontSize: Platform.OS === "ios" ? 10 : 11,
-      textAlign: "center",
-    },
-    shortcutChipTextSelected: {
-      color: colors.pillActiveText,
     },
     monthSection: {
       borderRadius: 14,
@@ -529,8 +399,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderWidth: 1,
       alignItems: "center",
       justifyContent: "center",
-    },
-    footerButtonSubtle: {
       backgroundColor: colors.cardBackground,
       borderColor: colors.divider,
     },
@@ -540,8 +408,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     footerButtonText: {
       fontSize: 13,
       fontWeight: "700",
-    },
-    footerButtonTextSubtle: {
       color: colors.textSecondary,
     },
     footerButtonTextDisabled: {

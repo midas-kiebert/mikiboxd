@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, case, cast, col, delete, or_, select
 
-from app.core.enums import GoingStatus
+from app.core.enums import GoingStatus, SocialProvider
 from app.core.security import get_password_hash, verify_password
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud.movie import apply_language_filter
@@ -161,6 +161,68 @@ def get_user_by_display_name(*, session: Session, display_name: str) -> User | N
     return session_user
 
 
+def _social_sub_column(provider: SocialProvider):
+    return User.apple_sub if provider is SocialProvider.APPLE else User.google_sub
+
+
+def get_user_by_social_sub(
+    *, session: Session, provider: SocialProvider, provider_sub: str
+) -> User | None:
+    statement = select(User).where(_social_sub_column(provider) == provider_sub)
+    return session.exec(statement).one_or_none()
+
+
+def get_or_create_social_user(
+    *,
+    session: Session,
+    provider: SocialProvider,
+    provider_sub: str,
+    email: str,
+    display_name: str | None,
+) -> tuple[User, bool]:
+    """
+    Get the user for a verified social identity, creating or linking one if needed.
+
+    Parameters:
+        session (Session): The database session.
+        provider (SocialProvider): Which identity provider issued the token.
+        provider_sub (str): The provider's stable subject identifier for the user.
+        email (str): The verified email address from the provider's token.
+        display_name (str | None): Only applied when a new user is created —
+            never overwrites an existing user's display name on later logins.
+    Returns:
+        tuple[User, bool]: The user, and whether it was newly created.
+    """
+    existing = get_user_by_social_sub(
+        session=session, provider=provider, provider_sub=provider_sub
+    )
+    if existing:
+        return existing, False
+
+    # Same email, different provider (or a pre-existing password account) —
+    # link this provider to it rather than creating a duplicate account.
+    by_email = get_user_by_email(session=session, email=email)
+    if by_email:
+        if provider is SocialProvider.APPLE:
+            by_email.apple_sub = provider_sub
+        else:
+            by_email.google_sub = provider_sub
+        session.add(by_email)
+        session.flush()
+        return by_email, False
+
+    db_obj = User(
+        email=email,
+        display_name=display_name,
+        hashed_password=None,
+        apple_sub=provider_sub if provider is SocialProvider.APPLE else None,
+        google_sub=provider_sub if provider is SocialProvider.GOOGLE else None,
+    )
+    session.add(db_obj)
+    session.flush()  # Check for unique constraints
+    return db_obj, True
+
+
 def create_user(
     *,
     session: Session,
@@ -291,6 +353,10 @@ def authenticate(*, session: Session, email: str, password: str) -> User | None:
     """
     db_user = get_user_by_email(session=session, email=email)
     if not db_user:
+        return None
+    if db_user.hashed_password is None:
+        # Social-only account (e.g. signed up via Apple/Google) — has no
+        # password to check against.
         return None
     if not verify_password(password, db_user.hashed_password):
         return None

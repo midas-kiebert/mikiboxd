@@ -52,6 +52,7 @@ jobs:
           SMTP_SSL=False
           SMTP_PORT=587
           # SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+          GOOGLE_CLIENT_IDS=431188931459-qmiraea4nmnafn3c2akg8vhjch35virq.apps.googleusercontent.com,431188931459-nmhhqnre4ib6eul5quf421n6b6unu3f3.apps.googleusercontent.com,431188931459-bk25fu3s4ahsc0i7lkffkgn8cfebn4ru.apps.googleusercontent.com
           EOF
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging build
       - name: Stop staging app containers before the database copy

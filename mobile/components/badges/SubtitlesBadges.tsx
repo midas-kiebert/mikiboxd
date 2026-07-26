@@ -17,6 +17,12 @@ const SUBTITLE_LABELS_BY_CODE: ReadonlyArray<readonly [string, string]> = [
   ["en", "ENG SUBS"],
 ];
 
+// Compact variant is used in dense rows (e.g. movie card showtimes) where space is tight.
+const COMPACT_SUBTITLE_LABELS_BY_CODE: ReadonlyArray<readonly [string, string]> = [
+  ["nl", "NL"],
+  ["en", "ENG"],
+];
+
 export default function SubtitlesBadges({ subtitles, variant = "default" }: SubtitlesBadgesProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -27,7 +33,8 @@ export default function SubtitlesBadges({ subtitles, variant = "default" }: Subt
   const containerStyle = isCompact ? styles.compactContainer : styles.defaultContainer;
   const textStyle = isCompact ? styles.compactText : styles.defaultText;
 
-  const labels = SUBTITLE_LABELS_BY_CODE.filter(([code]) => subtitles.includes(code)).map(
+  const labelsByCode = isCompact ? COMPACT_SUBTITLE_LABELS_BY_CODE : SUBTITLE_LABELS_BY_CODE;
+  const labels = labelsByCode.filter(([code]) => subtitles.includes(code)).map(
     ([, label]) => label
   );
 

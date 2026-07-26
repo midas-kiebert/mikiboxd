@@ -47,6 +47,8 @@ import type {
   FriendsRemoveFriendResponse,
   LoginLoginAccessTokenData,
   LoginLoginAccessTokenResponse,
+  LoginLoginSocialTokenData,
+  LoginLoginSocialTokenResponse,
   LoginRefreshAccessTokenData,
   LoginRefreshAccessTokenResponse,
   LoginRecoverPasswordData,
@@ -683,6 +685,34 @@ export class LoginService {
       url: "/api/v1/login/access-token",
       formData: data.formData,
       mediaType: "application/x-www-form-urlencoded",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Login Social Token
+   * Authenticate (or create) a user via a verified Apple/Google identity token.
+   *
+   * The client obtains a provider identity/ID token natively (Sign in with
+   * Apple / Google Sign-In) and posts it here. On first sign-in for a given
+   * provider identity this creates a new account (or links to an existing
+   * account with the same verified email); returns the same access + refresh
+   * token pair as password login either way.
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns SocialLoginResponse Successful Response
+   * @throws ApiError
+   */
+  public static loginSocialToken(
+    data: LoginLoginSocialTokenData,
+  ): CancelablePromise<LoginLoginSocialTokenResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/login/social-token",
+      body: data.requestBody,
+      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },

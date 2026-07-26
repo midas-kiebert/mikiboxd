@@ -24,12 +24,10 @@ import {
   LayoutAnimation,
   Linking,
   Modal,
-  Platform,
   Share,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  UIManager,
   useColorScheme,
   useWindowDimensions,
   View,
@@ -88,28 +86,29 @@ import {
   isSyntheticMovieId,
 } from "@/constants/synthetic-movies";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
+import { EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatLanguageCode } from "@/utils/language";
 import * as Clipboard from "expo-clipboard";
 import { buildCinevilleCardNumber, loadCinevilleCardDigits } from "@/utils/cineville-card";
 
-// LayoutAnimation needs an explicit opt-in on Android (on by default on iOS).
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-// Smooth height tween for the invite-friends expand/collapse "swipe open".
-const EXPAND_LAYOUT_ANIMATION = {
-  duration: 220,
-  create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
-  update: { type: LayoutAnimation.Types.easeInEaseOut },
-  delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
-};
-
 export type ShowtimeInvite = {
   senders: UserPublic[];
   pingIds: number[];
+};
+
+/** The controls the first-run intro's tour can point at. */
+export type ShowtimeSheetTourTarget = "interested" | "going" | "invite";
+
+export type ShowtimeSheetTour = {
+  /** Which control the tour is on; the sheet scrolls it into view. */
+  target: ShowtimeSheetTourTarget;
+  /**
+   * Where that control ended up, in window coordinates, once the sheet and the
+   * scroll have settled. Drives the spotlight drawn over the sheet.
+   */
+  onTargetRect: (rect: { x: number; y: number; width: number; height: number }) => void;
 };
 
 type FriendPingAvailability = "eligible" | "pinged" | "going" | "interested";
@@ -152,6 +151,12 @@ type ShowtimeActionModalProps = {
   disabledUserId?: string;
   /** Carries the showtimes-tab filters over to the movie page when navigating there. */
   inheritFilters?: boolean;
+  /**
+   * Set by the first-run intro: renders the sheet as a showcase over mock data
+   * — no requests, no gestures — and reports where the tour's current target
+   * sits so the intro can spotlight it.
+   */
+  tour?: ShowtimeSheetTour | null;
 };
 
 // ─── Seat input helpers ───────────────────────────────────────────────────────
@@ -168,6 +173,13 @@ type SeatInputConfig = {
 const CLOSE_BUTTON_SIZE = 30;
 const CLOSE_BUTTON_TOP = -10;
 const WATCH_MARKER_GAP = 8;
+
+/**
+ * How long the tour waits before reading a target's position: long enough for
+ * the sheet's entry animation and any scroll to have finished. Measured twice,
+ * because a first-open sheet settles later than a scroll within an open one.
+ */
+const TOUR_MEASURE_DELAYS_MS = [450, 1000];
 
 const SEAT_UNKNOWN_PATTERN = /^(?:\d{1,2}|[A-Za-z])$/;
 const SEAT_DIGITS_PATTERN = /^\d{1,2}$/;
@@ -240,6 +252,7 @@ export default function ShowtimeActionModal({
   disabledCinemaId,
   disabledUserId,
   inheritFilters = false,
+  tour = null,
 }: ShowtimeActionModalProps) {
   const { top: topInset, bottom: bottomInset } = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -304,7 +317,21 @@ export default function ShowtimeActionModal({
   );
 
   const selectedShowtimeId = showtime?.id ?? null;
-  const sheetDataEnabled = visible && selectedShowtimeId !== null;
+  // The tour runs on mock data: every request it could make would be about a
+  // showtime that does not exist, and the answers are already invented.
+  const isTour = tour !== null;
+  const sheetDataEnabled = visible && selectedShowtimeId !== null && !isTour;
+
+  // Window positions of the controls the tour explains, read on demand rather
+  // than on layout: layout fires while the sheet is still rising, so it would
+  // report where a button was on the way up.
+  const tourTargetRefs = useRef<Record<ShowtimeSheetTourTarget, View | null>>({
+    interested: null,
+    going: null,
+    invite: null,
+  });
+  const tourTarget = tour?.target ?? null;
+  const onTourTargetRect = tour?.onTargetRect;
 
   const handleSheetChange = useCallback(
     (index: number) => {
@@ -334,6 +361,33 @@ export default function ShowtimeActionModal({
     });
     return () => sub.remove();
   }, [visible, onClose]);
+
+  // Held in a ref so re-measuring depends on which target the tour is on, not
+  // on the identity of the callback that receives it.
+  const onTourTargetRectRef = useRef(onTourTargetRect);
+  useEffect(() => {
+    onTourTargetRectRef.current = onTourTargetRect;
+  }, [onTourTargetRect]);
+
+  // Bring the tour's current target into view, then report where it landed.
+  useEffect(() => {
+    if (!visible || tourTarget === null) return;
+    // The invite toggle is the last thing in the sheet; the status buttons are
+    // in the part that is on screen the moment the sheet opens.
+    if (tourTarget === "invite") {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    } else {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    }
+    const timers = TOUR_MEASURE_DELAYS_MS.map((delay) =>
+      setTimeout(() => {
+        tourTargetRefs.current[tourTarget]?.measureInWindow((x, y, width, height) => {
+          onTourTargetRectRef.current?.({ x, y, width, height });
+        });
+      }, delay)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [tourTarget, visible]);
 
   // Reset transient UI when the sheet closes or switches showtime.
   useEffect(() => {
@@ -936,6 +990,7 @@ export default function ShowtimeActionModal({
       selected: isNotGoingSelected,
       disabled: notGoingActsAsDismiss ? isDismissingInvite : isUpdatingStatus,
       onPress: handleNotGoingPress,
+      tourTarget: null,
     },
     {
       key: "INTERESTED" as const,
@@ -945,6 +1000,7 @@ export default function ShowtimeActionModal({
       selected: isInterestedSelected,
       disabled: isUpdatingStatus,
       onPress: () => handleStatusPress("INTERESTED"),
+      tourTarget: "interested" as const,
     },
     {
       key: "GOING" as const,
@@ -954,6 +1010,7 @@ export default function ShowtimeActionModal({
       selected: isGoingSelected,
       disabled: isUpdatingStatus,
       onPress: () => handleStatusPress("GOING"),
+      tourTarget: "going" as const,
     },
   ];
 
@@ -964,17 +1021,18 @@ export default function ShowtimeActionModal({
         disappearsOnIndex={-1}
         appearsOnIndex={0}
         opacity={0.45}
-        pressBehavior="close"
+        // The tour drives the sheet; a tap outside must not dismiss it.
+        pressBehavior={isTour ? "none" : "close"}
       />
     ),
-    []
+    [isTour]
   );
 
   return (
     <BottomSheetModal
       ref={bottomSheetModalRef}
       snapPoints={snapPoints}
-      enablePanDownToClose
+      enablePanDownToClose={!isTour}
       enableDismissOnClose={false}
       enableDynamicSizing={false}
       animationConfigs={{ duration: 220 }}
@@ -996,6 +1054,8 @@ export default function ShowtimeActionModal({
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 32 + bottomInset }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        // The tour scrolls the sheet itself, one target at a time.
+        scrollEnabled={!isTour}
       >
         {/* Status tint, pinned to the top of the content so it scrolls away. */}
         {tintPalette ? (
@@ -1184,6 +1244,10 @@ export default function ShowtimeActionModal({
               {statusOptions.map((option) => (
                 <TouchableOpacity
                   key={option.key}
+                  ref={(node) => {
+                    if (!option.tourTarget) return;
+                    tourTargetRefs.current[option.tourTarget] = node;
+                  }}
                   style={[
                     styles.statusButton,
                     option.selected && {
@@ -1404,6 +1468,9 @@ export default function ShowtimeActionModal({
 
             {/* Invite friends (collapsible, blue invite coding) */}
             <TouchableOpacity
+              ref={(node) => {
+                tourTargetRefs.current.invite = node;
+              }}
               style={styles.inviteToggle}
               onPress={toggleInviteFriends}
               activeOpacity={0.85}

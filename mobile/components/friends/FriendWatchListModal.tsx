@@ -5,7 +5,9 @@
  * — that is the information the icon left out.
  *
  * Static by default (the movie page has no single showtime to invite anyone to);
- * pass `invite` to give each row the showtime sheet's invite button.
+ * pass `invite` to give each row the showtime sheet's invite button. The
+ * "watched" list stays static even then — those friends have already seen the
+ * film, so inviting them to a screening of it isn't the point of that list.
  */
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
@@ -95,6 +97,9 @@ export default function FriendWatchListModal({
 
   const renderedFriends = rendered.friends;
   const meta = getFriendWatchKindMeta(rendered.kind, colors);
+  // Keyed off the held kind, not the prop: on close the prop is already null, so
+  // deciding this at the call site would flash invite buttons through the fade.
+  const rowInvite = rendered.kind === "watched" ? undefined : invite;
   const countLabel = `${renderedFriends.length} friend${renderedFriends.length === 1 ? "" : "s"}`;
 
   return (
@@ -120,17 +125,17 @@ export default function FriendWatchListModal({
             showsVerticalScrollIndicator={false}
           >
             {renderedFriends.map((friend) => {
-              const inviteState = invite?.getState(friend.id);
+              const inviteState = rowInvite?.getState(friend.id);
               return (
                 <FriendListRow
                   key={friend.id}
                   userId={friend.id}
                   name={getFriendName(friend)}
-                  mode={invite ? "invite" : "display"}
+                  mode={rowInvite ? "invite" : "display"}
                   statusLabel={inviteState?.statusLabel ?? null}
                   invited={inviteState?.invited ?? false}
                   disabled={inviteState?.disabled ?? false}
-                  onInvite={invite ? () => invite.onInvite(friend.id) : undefined}
+                  onInvite={rowInvite ? () => rowInvite.onInvite(friend.id) : undefined}
                 />
               );
             })}

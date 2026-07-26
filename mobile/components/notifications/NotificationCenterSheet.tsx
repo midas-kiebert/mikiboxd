@@ -10,15 +10,19 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NotificationFeedItem } from "shared";
 
+import FeatureTipNotificationRow from "@/components/notifications/FeatureTipNotificationRow";
 import NotificationRow from "@/components/notifications/NotificationRow";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import type { FeatureTipId, SnoozedTip } from "@/utils/feature-tips";
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
 
 type NotificationCenterSheetProps = {
   visible: boolean;
   items: NotificationFeedItem[];
+  /** Locally snoozed feature tips, listed above the backend feed. */
+  tips: readonly SnoozedTip[];
   isLoading: boolean;
   pendingAcceptId: string | null;
   pendingDeclineId: string | null;
@@ -27,11 +31,14 @@ type NotificationCenterSheetProps = {
   onDismiss: (item: NotificationFeedItem) => void;
   onAccept: (item: NotificationFeedItem) => void;
   onDecline: (item: NotificationFeedItem) => void;
+  onTipPress: (id: FeatureTipId) => void;
+  onTipDismiss: (id: FeatureTipId) => void;
 };
 
 export default function NotificationCenterSheet({
   visible,
   items,
+  tips,
   isLoading,
   pendingAcceptId,
   pendingDeclineId,
@@ -40,6 +47,8 @@ export default function NotificationCenterSheet({
   onDismiss,
   onAccept,
   onDecline,
+  onTipPress,
+  onTipDismiss,
 }: NotificationCenterSheetProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -51,28 +60,38 @@ export default function NotificationCenterSheet({
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + bottomInset }]}
         showsVerticalScrollIndicator={false}
       >
-        {isLoading && items.length === 0 ? (
+        {isLoading && items.length === 0 && tips.length === 0 ? (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={colors.tint} />
           </View>
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && tips.length === 0 ? (
           <View style={styles.centered}>
             <MaterialIcons name="notifications-none" size={40} color={colors.textSecondary} />
             <Text style={styles.emptyText}>You&apos;re all caught up</Text>
           </View>
         ) : (
-          items.map((item) => (
-            <NotificationRow
-              key={`${item.source}-${item.id}`}
-              item={item}
-              onPress={onItemPress}
-              onDismiss={onDismiss}
-              onAccept={onAccept}
-              onDecline={onDecline}
-              isAccepting={pendingAcceptId === item.id}
-              isDeclining={pendingDeclineId === item.id}
-            />
-          ))
+          <>
+            {tips.map((tip) => (
+              <FeatureTipNotificationRow
+                key={`tip-${tip.id}`}
+                tip={tip}
+                onPress={onTipPress}
+                onDismiss={onTipDismiss}
+              />
+            ))}
+            {items.map((item) => (
+              <NotificationRow
+                key={`${item.source}-${item.id}`}
+                item={item}
+                onPress={onItemPress}
+                onDismiss={onDismiss}
+                onAccept={onAccept}
+                onDecline={onDecline}
+                isAccepting={pendingAcceptId === item.id}
+                isDeclining={pendingDeclineId === item.id}
+              />
+            ))}
+          </>
         )}
       </BottomSheetScrollView>
     </AppBottomSheet>

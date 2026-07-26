@@ -17,6 +17,14 @@ import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibilit
 
 import NotificationCenterSheet from "@/components/notifications/NotificationCenterSheet";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
+import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
+import {
+  dismissSnoozedTip,
+  type FeatureTipId,
+  markSnoozedTipsSeen,
+  reopenTip,
+  useSnoozedTips,
+} from "@/utils/feature-tips";
 
 type NotificationCenterContextValue = {
   openNotificationCenter: () => void;
@@ -40,8 +48,13 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
   const [pendingAcceptId, setPendingAcceptId] = useState<string | null>(null);
   const [pendingDeclineId, setPendingDeclineId] = useState<string | null>(null);
 
+  // Lets anything that must be the only thing on screen hold off while the
+  // centre is open (currently the intro's filters highlight).
+  useRegisterBlockingOverlay(visible);
+
   const { data: notifications, isLoading } = useFetchNotifications({ enabled: visible });
   const items = useMemo(() => notifications ?? [], [notifications]);
+  const snoozedTips = useSnoozedTips();
   // Showtime notifications open the sheet, which needs the visibility mode.
   usePrefetchShowtimeVisibility(
     items.flatMap((item) => (item.showtime ? [item.showtime.id] : []))
@@ -65,9 +78,12 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
     },
   });
 
-  // Clear the bell badge as soon as the centre is opened.
+  // Clear the bell badge as soon as the centre is opened. The badge counts both
+  // backend notifications and local tip reminders, so both are marked.
   useEffect(() => {
-    if (visible) markSeen();
+    if (!visible) return;
+    markSeen();
+    markSnoozedTipsSeen();
     // Fire once per open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -137,6 +153,17 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
     [openShowtimeModalById, router]
   );
 
+  // Reopening puts the tip dialog back on screen. Its host lives on the main
+  // showtimes tab, so get the user there first: the bell is on every screen.
+  const handleTipPress = useCallback(
+    (id: FeatureTipId) => {
+      setVisible(false);
+      reopenTip(id);
+      router.replace("/(tabs)");
+    },
+    [router]
+  );
+
   const value = useMemo<NotificationCenterContextValue>(
     () => ({ openNotificationCenter, closeNotificationCenter }),
     [openNotificationCenter, closeNotificationCenter]
@@ -148,6 +175,7 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       <NotificationCenterSheet
         visible={visible}
         items={items}
+        tips={snoozedTips}
         isLoading={isLoading}
         pendingAcceptId={pendingAcceptId}
         pendingDeclineId={pendingDeclineId}
@@ -156,6 +184,8 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
         onDismiss={dismissNotification}
         onAccept={acceptRequest}
         onDecline={declineRequest}
+        onTipPress={handleTipPress}
+        onTipDismiss={dismissSnoozedTip}
       />
     </NotificationCenterContext.Provider>
   );

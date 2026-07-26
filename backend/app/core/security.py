@@ -18,13 +18,16 @@ Password hashing overview:
     compares the result to the stored hash.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Any
 
 import jwt
 from passlib.context import CryptContext
 
 from app.core.config import settings
+from app.core.enums import SocialProvider
 
 # bcrypt is the recommended algorithm — it is deliberately slow, making
 # brute-force attacks expensive. "deprecated=auto" will warn if older schemes
@@ -160,3 +163,97 @@ def verify_watchlist_digest_unsubscribe_token(token: str) -> str | None:
         return None
     sub = decoded.get("sub")
     return str(sub) if sub is not None else None
+
+
+# -----------------------------------------------------------------------------
+# Social sign-in (Sign in with Apple / Google) token verification
+# -----------------------------------------------------------------------------
+#
+# Unlike the app's own JWTs above, these tokens are signed by the provider, not
+# by us — verification means fetching the provider's public keys (JWKS) and
+# checking the signature, issuer, audience, and expiry.
+
+_APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
+_APPLE_ISSUER = "https://appleid.apple.com"
+_GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
+_GOOGLE_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
+
+
+class InvalidSocialToken(Exception):
+    """Raised when a provider identity/ID token fails verification."""
+
+
+@dataclass
+class SocialClaims:
+    sub: str
+    email: str
+
+
+@lru_cache(maxsize=2)
+def _jwk_client(jwks_url: str) -> jwt.PyJWKClient:
+    return jwt.PyJWKClient(jwks_url)
+
+
+def _decode_social_token(
+    token: str, *, jwks_url: str, audience: str | list[str]
+) -> dict[str, Any]:
+    try:
+        signing_key = _jwk_client(jwks_url).get_signing_key_from_jwt(token)
+        return jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=audience,
+        )
+    except jwt.exceptions.PyJWTError as e:
+        raise InvalidSocialToken(str(e)) from e
+
+
+def _claims_from_payload(payload: dict[str, Any]) -> SocialClaims:
+    # Both providers only guarantee the email belongs to the user when
+    # email_verified is true — an unverified email must not be trusted for
+    # account linking/creation.
+    email = payload.get("email")
+    email_verified = payload.get("email_verified")
+    if not email or str(email_verified).lower() not in ("true", "1"):
+        raise InvalidSocialToken("Token does not contain a verified email")
+    sub = payload.get("sub")
+    if not sub:
+        raise InvalidSocialToken("Token is missing a subject claim")
+    return SocialClaims(sub=str(sub), email=str(email))
+
+
+def verify_apple_identity_token(token: str) -> SocialClaims:
+    """Verify a Sign in with Apple identity token and return its claims.
+
+    Raises InvalidSocialToken if the token is invalid, expired, or its
+    audience doesn't match this app's bundle ID.
+    """
+    payload = _decode_social_token(
+        token, jwks_url=_APPLE_JWKS_URL, audience=settings.APPLE_CLIENT_ID
+    )
+    if payload.get("iss") != _APPLE_ISSUER:
+        raise InvalidSocialToken("Unexpected issuer for Apple identity token")
+    return _claims_from_payload(payload)
+
+
+def verify_google_id_token(token: str) -> SocialClaims:
+    """Verify a Google Sign-In ID token and return its claims.
+
+    Raises InvalidSocialToken if the token is invalid, expired, or its
+    audience doesn't match one of the configured Google OAuth client IDs.
+    """
+    audiences = settings.GOOGLE_CLIENT_IDS
+    payload = _decode_social_token(
+        token, jwks_url=_GOOGLE_JWKS_URL, audience=list(audiences)
+    )
+    if payload.get("iss") not in _GOOGLE_ISSUERS:
+        raise InvalidSocialToken("Unexpected issuer for Google ID token")
+    return _claims_from_payload(payload)
+
+
+def verify_social_token(provider: SocialProvider, token: str) -> SocialClaims:
+    """Dispatch to the right provider's verification function."""
+    if provider is SocialProvider.APPLE:
+        return verify_apple_identity_token(token)
+    return verify_google_id_token(token)

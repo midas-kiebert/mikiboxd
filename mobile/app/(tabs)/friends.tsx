@@ -7,9 +7,7 @@ import {
   ActivityIndicator,
   FlatList,
   ScrollView,
-  Share,
   StyleSheet,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
@@ -27,6 +25,7 @@ import { useThemeColors } from '@/hooks/use-theme-color';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import FriendCard from '@/components/friends/FriendCard';
+import ShareInviteLinkButton from '@/components/friends/ShareInviteLinkButton';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import FilterPills from '@/components/filters/FilterPills';
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
@@ -152,18 +151,6 @@ export default function FriendsScreen() {
     [currentUser?.display_name]
   );
 
-  const handleShareInviteLink = async () => {
-    if (!inviteUrl) return;
-    try {
-      await Share.share({
-        message: `Add me on MiKiNO: ${inviteUrl}`,
-        url: inviteUrl,
-      });
-    } catch (error) {
-      console.error('Error sharing friend invite link:', error);
-    }
-  };
-
   // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -245,15 +232,7 @@ export default function FriendsScreen() {
                 <ThemedText style={styles.inviteText}>
                   Ask a friend to scan this code, or share your invite link.
                 </ThemedText>
-                {inviteUrl ? (
-                  <TouchableOpacity
-                    style={styles.inviteShareButton}
-                    onPress={handleShareInviteLink}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText style={styles.inviteShareButtonText}>Share Invite Link</ThemedText>
-                  </TouchableOpacity>
-                ) : null}
+                <ShareInviteLinkButton inviteUrl={inviteUrl} />
               </View>
             ) : isFetchingUsers || refreshing ? (
               <SkeletonRows height={64} />
@@ -437,19 +416,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       fontSize: 13,
       color: colors.textSecondary,
       textAlign: 'center',
-    },
-    inviteShareButton: {
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.tint,
-      backgroundColor: colors.tint,
-      paddingHorizontal: 14,
-      paddingVertical: 9,
-    },
-    inviteShareButtonText: {
-      color: colors.pillActiveText,
-      fontSize: 13,
-      fontWeight: '700',
     },
     emptyText: {
       fontSize: 14,

@@ -14,6 +14,7 @@ import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import { getSelectedStatusesFromShowtimeFilter } from '@/components/filters/shared-tab-filters';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
+import { useRegisterBlockingOverlay } from '@/utils/blocking-overlays';
 
 type OpenConfig = { showGroupByMovie?: boolean; showPresets?: boolean };
 
@@ -36,6 +37,10 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   const [showGroupByMovie, setShowGroupByMovieConfig] = useState(false);
   const [showPresets, setShowPresetsConfig] = useState(false);
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
+
+  // Lets anything that must be the only thing on screen hold off while either
+  // sheet is up (currently the intro's filters highlight).
+  useRegisterBlockingOverlay(visible || cinemaModalVisible);
 
   const {
     selectedShowtimeFilter,

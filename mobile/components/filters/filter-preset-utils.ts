@@ -61,6 +61,43 @@ export const normalizeFilters = (filters: PageFilterPresetState): PageFilterPres
 export const serializeFilters = (filters: PageFilterPresetState): string =>
   JSON.stringify(normalizeFilters(filters));
 
+/**
+ * Whether the user has narrowed anything down. Cinemas are excluded on purpose:
+ * a cinema selection is always present, so counting it would make this true for
+ * everyone. Audience is excluded too, since it has a non-empty default.
+ */
+export const hasAnyActiveFilter = (filters: PageFilterPresetState): boolean => {
+  const normalized = normalizeFilters(filters);
+  return (
+    (normalized.selected_showtime_filter !== null &&
+      normalized.selected_showtime_filter !== "all") ||
+    Boolean(normalized.watchlist_only) ||
+    Boolean(normalized.watchlist_exclude) ||
+    Boolean(normalized.hide_watched) ||
+    Boolean(normalized.watched_only) ||
+    Boolean(normalized.group_by_movie) ||
+    (normalized.selected_list_ids?.length ?? 0) > 0 ||
+    (normalized.exclude_list_ids?.length ?? 0) > 0 ||
+    (normalized.days?.length ?? 0) > 0 ||
+    (normalized.time_ranges?.length ?? 0) > 0 ||
+    (normalized.runtime_ranges?.length ?? 0) > 0 ||
+    (normalized.selected_languages?.length ?? 0) > 0
+  );
+};
+
+/**
+ * Whether applying these filters needs a Letterboxd username: watchlist and
+ * watched-status filters read from the user's Letterboxd data, so they are
+ * meaningless (and hidden from the active-filter row) without one.
+ */
+export const presetRequiresLetterboxd = (filters: PageFilterPresetState): boolean =>
+  Boolean(
+    filters.watchlist_only ||
+      filters.watchlist_exclude ||
+      filters.hide_watched ||
+      filters.watched_only
+  );
+
 export const normalizeFiltersForSave = (filters: PageFilterPresetState): SavedPresetFilters => {
   const normalized = normalizeFilters(filters);
   return {

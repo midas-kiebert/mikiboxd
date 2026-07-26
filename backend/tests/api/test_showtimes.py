@@ -10,6 +10,7 @@ from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
+from app.crud import user as user_crud
 from app.models.showtime_ping import ShowtimePing
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
@@ -206,6 +207,135 @@ def test_ping_friend_for_showtime_rejects_duplicate_ping(
     )
 
 
+def test_ping_friend_for_showtime_marks_sender_interested(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+    mocker,
+) -> None:
+    """Sending an invite with no prior selection sets the sender to INTERESTED."""
+    friend = user_factory()
+    showtime = showtime_factory()
+    friend_id = friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    db_transaction.commit()
+
+    mocker.patch("app.services.push_notifications.notify_user_on_showtime_ping")
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping/{friend_id}",
+        headers=normal_user_token_headers,
+    )
+    assert response.status_code == 200
+
+    db_transaction.expire_all()
+    sender_status = user_crud.get_showtime_going_status(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+    )
+    assert sender_status == GoingStatus.INTERESTED
+
+
+def test_ping_friend_for_showtime_keeps_sender_interested(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+    mocker,
+) -> None:
+    """If the sender already selected INTERESTED, sending an invite stays a no-op."""
+    friend = user_factory()
+    showtime = showtime_factory()
+    friend_id = friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.INTERESTED,
+    )
+    db_transaction.commit()
+
+    mocker.patch("app.services.push_notifications.notify_user_on_showtime_ping")
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping/{friend_id}",
+        headers=normal_user_token_headers,
+    )
+    assert response.status_code == 200
+
+    db_transaction.expire_all()
+    sender_status = user_crud.get_showtime_going_status(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+    )
+    assert sender_status == GoingStatus.INTERESTED
+
+
+def test_ping_friend_for_showtime_does_not_downgrade_going_sender(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+    mocker,
+) -> None:
+    """If the sender is already GOING, sending an invite must not downgrade them."""
+    friend = user_factory()
+    showtime = showtime_factory()
+    friend_id = friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+        going_status=GoingStatus.GOING,
+    )
+    db_transaction.commit()
+
+    mocker.patch("app.services.push_notifications.notify_user_on_showtime_ping")
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping/{friend_id}",
+        headers=normal_user_token_headers,
+    )
+    assert response.status_code == 200
+
+    db_transaction.expire_all()
+    sender_status = user_crud.get_showtime_going_status(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=current_user_id,
+    )
+    assert sender_status == GoingStatus.GOING
+
+
 def test_get_pinged_friend_ids_for_showtime(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
@@ -269,6 +399,70 @@ def test_receive_ping_from_link_allows_non_friend_sender(
         )
     ).one_or_none()
     assert stored_ping is not None
+
+
+def test_receive_ping_from_link_marks_sender_interested(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    """Receiving an invite via link also marks the (link) sender as INTERESTED."""
+    sender = user_factory(display_name="Link Sender Interested")
+    showtime = showtime_factory()
+    sender_id = sender.id
+    showtime_id = showtime.id
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        headers=normal_user_token_headers,
+    )
+    assert response.status_code == 200
+
+    db_transaction.expire_all()
+    sender_status = user_crud.get_showtime_going_status(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=sender_id,
+    )
+    assert sender_status == GoingStatus.INTERESTED
+
+
+def test_receive_ping_from_link_does_not_downgrade_going_sender(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    """If the link sender is already GOING, receiving the ping must not downgrade them."""
+    sender = user_factory(display_name="Link Sender Going")
+    showtime = showtime_factory()
+    sender_id = sender.id
+    showtime_id = showtime.id
+
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=sender_id,
+        going_status=GoingStatus.GOING,
+    )
+    db_transaction.commit()
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        headers=normal_user_token_headers,
+    )
+    assert response.status_code == 200
+
+    db_transaction.expire_all()
+    sender_status = user_crud.get_showtime_going_status(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=sender_id,
+    )
+    assert sender_status == GoingStatus.GOING
 
 
 def test_receive_ping_from_link_accepts_display_name_identifier(

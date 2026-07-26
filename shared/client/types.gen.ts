@@ -56,6 +56,8 @@ export type AnalyticsEventName =
   | "preset_used"
   | "invite_sent"
   | "notification_clicked"
+  | "tip_shown"
+  | "tip_reacted"
 
 export type AnalyticsOverview = {
   window_days: number
@@ -597,6 +599,27 @@ export type ShowtimeVisibilityUpdate = {
   mode: VisibilityMode
 }
 
+export type SocialLoginRequest = {
+  provider: SocialProvider
+  token: string
+  display_name?: string | null
+}
+
+export type SocialLoginResponse = {
+  access_token: string
+  refresh_token: string
+  /**
+   * Type of the token, usually 'bearer'
+   */
+  token_type?: string
+  needs_username?: boolean
+}
+
+/**
+ * Third-party identity provider for social sign-in.
+ */
+export type SocialProvider = "apple" | "google"
+
 /**
  * Coarse time-of-day bucket used for showtime filtering.
  *
@@ -892,6 +915,12 @@ export type LoginLoginAccessTokenData = {
 }
 
 export type LoginLoginAccessTokenResponse = Token
+
+export type LoginLoginSocialTokenData = {
+  requestBody: SocialLoginRequest
+}
+
+export type LoginLoginSocialTokenResponse = SocialLoginResponse
 
 export type LoginRefreshAccessTokenData = {
   requestBody: RefreshTokenRequest

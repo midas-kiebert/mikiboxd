@@ -387,7 +387,7 @@ export const summarizeCurrentSelections = (args: {
   if (args.showRuntime) {
     rows.push({
       dimension: "runtime_ranges",
-      title: "Runtime",
+      title: "Movie Length",
       valueLabel: formatRuntimePillLabel(runtimeRanges),
       active: runtimeRanges.length > 0,
     });

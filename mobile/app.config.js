@@ -62,8 +62,31 @@ module.exports = ({ config }) => {
     }
   }
 
+  // The iOS URL scheme is the reversed-DNS form of the Google iOS OAuth
+  // client ID (from Google Cloud Console), e.g.
+  // "com.googleusercontent.apps.1234567890-abc123". Sign-in on iOS silently
+  // fails to return to the app without it, but it's harmless to omit locally
+  // before the client ID exists.
+  const googleIosUrlScheme = process.env.GOOGLE_IOS_URL_SCHEME
+  // The Web OAuth client ID — used as `webClientId` when configuring
+  // GoogleSignin at app startup, and as the token audience the backend checks.
+  const googleWebClientId = process.env.GOOGLE_WEB_CLIENT_ID
+
+  const plugins = [
+    ...(config.plugins || []),
+    [
+      "@react-native-google-signin/google-signin",
+      ...(googleIosUrlScheme ? [{ iosUrlScheme: googleIosUrlScheme }] : []),
+    ],
+  ]
+
   const baseConfig = {
     ...config,
+    plugins,
+    extra: {
+      ...config.extra,
+      ...(googleWebClientId ? { googleWebClientId } : {}),
+    },
     android: {
       ...androidWithoutGoogleServices,
       ...(resolvedGoogleServicesFile ? { googleServicesFile: resolvedGoogleServicesFile } : {}),

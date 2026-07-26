@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MiKiNO</title>
+    <meta
+      name="description"
+      content="MiKiNO helps you discover what's playing at cinemas in your city, keep track of what you want to see, and coordinate showtimes with friends."
+    />
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --text: #0f172a;
+        --muted: #475569;
+        --card: #ffffff;
+        --border: #e2e8f0;
+        --accent: #0b6bcb;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+      }
+      .wrap {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 32px;
+        text-align: center;
+      }
+      .logo {
+        width: 96px;
+        height: 96px;
+        border-radius: 20px;
+        margin-bottom: 16px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 32px;
+      }
+      p {
+        color: var(--muted);
+        text-align: left;
+      }
+      .lede {
+        text-align: center;
+        font-size: 18px;
+      }
+      .cta {
+        display: inline-block;
+        margin: 8px 8px 0;
+        padding: 12px 24px;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #ffffff;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .cta.secondary {
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid var(--accent);
+      }
+      .links {
+        margin-top: 28px;
+        font-size: 14px;
+      }
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <article class="card">
+        <img
+          class="logo"
+          src="/assets/images/mikino-logo.png"
+          alt="MiKiNO logo"
+        />
+        <h1>MiKiNO</h1>
+        <p class="lede">
+          Discover what's playing at cinemas in your city, keep track of the
+          movies you want to see, and coordinate showtimes with friends.
+        </p>
+        <p>
+          MiKiNO aggregates showtimes from cinemas near you so you can browse,
+          filter, and find something to watch. Save movies to your watchlist,
+          see when friends are going to the same showing, and get notified
+          about screenings you care about.
+        </p>
+        <p>
+          You can create a MiKiNO account with your email address, or sign in
+          with your Google or Apple account for faster, one-tap access — we
+          only use this to identify your account and never post or share
+          anything on your behalf.
+        </p>
+        <a class="cta" href="/login">Open MiKiNO</a>
+        <a class="cta secondary" href="/beta">Get the app</a>
+        <p class="links">
+          <a href="/privacy-policy.html">Privacy Policy</a>
+        </p>
+      </article>
+    </main>
+  </body>
+</html>

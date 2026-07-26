@@ -83,8 +83,15 @@ function Login() {
           height="auto"
           maxW="2xs"
           alignSelf="center"
-          mb={4}
+          mb={2}
         />
+        <Text fontSize="2xl" fontWeight="bold" textAlign="center">
+          MiKiNO
+        </Text>
+        <Text color="gray.500" textAlign="center" mb={2}>
+          Discover what's playing at cinemas in your city, and coordinate
+          showtimes with friends.
+        </Text>
         <Field invalid={!!errors.username} errorText={errors.username?.message}>
           <InputGroup w="100%" startElement={<FiMail />}>
             <Input

@@ -257,7 +257,9 @@ def update_password_me(
     *, session: SessionDep, body: UpdatePassword, current_user: CurrentUser
 ) -> Message:
     """Change the authenticated user's password. Requires the current password to be provided."""
-    if not verify_password(body.current_password, current_user.hashed_password):
+    if current_user.hashed_password is None or not verify_password(
+        body.current_password, current_user.hashed_password
+    ):
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Incorrect password",

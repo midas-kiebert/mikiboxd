@@ -1,8 +1,8 @@
 /**
  * Expo Router screen/module for (tabs) / index. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, StyleSheet, type View } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
@@ -23,6 +23,7 @@ import FiltersRow from '@/components/filters/FiltersRow';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import FeatureTipsHost from '@/components/tips/FeatureTipsHost';
+import IntroFiltersSpotlight from '@/components/intro/IntroFiltersSpotlight';
 import { ShowtimesListContent, ListEndFooter } from '@/components/showtimes/ShowtimesScreen';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import MovieCard from '@/components/movies/MovieCard';
@@ -33,6 +34,8 @@ import {
   getSelectedStatusesFromShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
 import { useThemeColors } from '@/hooks/use-theme-color';
+import { useIsAnyBlockingOverlayOpen } from '@/utils/blocking-overlays';
+import { useIntroPhase } from '@/utils/intro';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 
@@ -48,6 +51,10 @@ export default function MainShowtimesScreen() {
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
   const isFocused = useIsFocused();
   const queryClient = useQueryClient();
+  // The intro's last step highlights this screen's Filters button in place.
+  const filtersButtonRef = useRef<View>(null);
+  const introPhase = useIntroPhase();
+  const isAnyBlockingOverlayOpen = useIsAnyBlockingOverlayOpen();
 
   const {
     selectedShowtimeFilter,
@@ -257,10 +264,28 @@ export default function MainShowtimesScreen() {
     });
   };
 
+  const handleOpenFiltersModal = () =>
+    openFiltersModal({ showGroupByMovie: true, showPresets: true });
+
   const filtersRowProps = {
-    onOpenModal: () => openFiltersModal({ showGroupByMovie: true, showPresets: true }),
+    onOpenModal: handleOpenFiltersModal,
     onApplyPreset: handleApplyPreset,
+    filtersButtonRef,
   };
+
+  // The last intro step waits for this screen to actually have something on it:
+  // highlighting a filter button above an empty list would explain nothing. It
+  // also waits for a clear screen — `isFocused` covers a pushed page, and the
+  // overlay register covers the sheets that open over this one, which are
+  // windows rather than routes.
+  const hasLoadedFeed = groupByMovie
+    ? !moviesLoading && movies.length > 0
+    : !showtimesLoading && !isFilterTransitionLoading && showtimes.length > 0;
+  const isShowingIntroFiltersSpotlight =
+    introPhase === 'filters-spotlight' &&
+    isFocused &&
+    !isAnyBlockingOverlayOpen &&
+    hasLoadedFeed;
 
   const activeChipsProps = {
     groupByMovie,
@@ -389,6 +414,12 @@ export default function MainShowtimesScreen() {
       )}
       {/* Renders nothing inline: the tip, if any, is a modal over the screen. */}
       <FeatureTipsHost />
+      {isShowingIntroFiltersSpotlight ? (
+        <IntroFiltersSpotlight
+          targetRef={filtersButtonRef}
+          onOpenFilters={handleOpenFiltersModal}
+        />
+      ) : null}
     </TopSafeAreaView>
   );
 }

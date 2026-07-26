@@ -160,6 +160,8 @@ class AnalyticsEventName(str, Enum):
     PRESET_USED = "preset_used"
     INVITE_SENT = "invite_sent"
     NOTIFICATION_CLICKED = "notification_clicked"
+    TIP_SHOWN = "tip_shown"
+    TIP_REACTED = "tip_reacted"
 
 
 @unique
@@ -181,3 +183,11 @@ class ShowtimeReportStatus(str, Enum):
     OPEN = "open"
     RESOLVED = "resolved"
     DISMISSED = "dismissed"
+
+
+@unique
+class SocialProvider(str, Enum):
+    """Third-party identity provider for social sign-in."""
+
+    APPLE = "apple"
+    GOOGLE = "google"

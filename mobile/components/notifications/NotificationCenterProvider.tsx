@@ -17,6 +17,7 @@ import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibilit
 
 import NotificationCenterSheet from "@/components/notifications/NotificationCenterSheet";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
+import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
 import {
   dismissSnoozedTip,
   type FeatureTipId,
@@ -46,6 +47,10 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
   const [visible, setVisible] = useState(false);
   const [pendingAcceptId, setPendingAcceptId] = useState<string | null>(null);
   const [pendingDeclineId, setPendingDeclineId] = useState<string | null>(null);
+
+  // Lets anything that must be the only thing on screen hold off while the
+  // centre is open (currently the intro's filters highlight).
+  useRegisterBlockingOverlay(visible);
 
   const { data: notifications, isLoading } = useFetchNotifications({ enabled: visible });
   const items = useMemo(() => notifications ?? [], [notifications]);

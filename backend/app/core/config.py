@@ -108,6 +108,21 @@ class Settings(BaseSettings):
     EMAIL_RESET_TOKEN_EXPIRE_HOURS: int = 48
 
     # -------------------------------------------------------------------------
+    # Social sign-in
+    # -------------------------------------------------------------------------
+
+    # The app's bundle ID — native Sign in with Apple issues identity tokens
+    # with this as the `aud` claim (no separate OAuth client is needed).
+    APPLE_CLIENT_ID: str = "com.midaskiebert.mikino"
+
+    # Accepted audiences for Google ID tokens: the iOS, Android, and Web OAuth
+    # client IDs from Google Cloud Console. The mobile app requests an ID token
+    # scoped to the Web client (`webClientId`), so that one is the one that
+    # actually appears as `aud` — but all are accepted since GoogleSignin
+    # configuration variants can vary this.
+    GOOGLE_CLIENT_IDS: Annotated[list[str] | str, BeforeValidator(_parse_cors)] = []
+
+    # -------------------------------------------------------------------------
     # CORS
     # -------------------------------------------------------------------------
 

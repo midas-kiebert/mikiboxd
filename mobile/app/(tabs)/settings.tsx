@@ -23,6 +23,7 @@ import {
   useDismissedTipCount,
   useFeatureTipsEnabled,
 } from '@/utils/feature-tips';
+import { startIntro } from '@/utils/intro';
 import useAuth from 'shared/hooks/useAuth';
 import {
   MeService,
@@ -62,6 +63,10 @@ export default function SettingsScreen() {
   const queryClient = useQueryClient();
   // Data hooks keep this module synced with backend data and shared cache state.
   const { user, logout } = useAuth(undefined, () => router.replace('/login'));
+  // The intro normally runs once, for a brand-new account. Superusers get the
+  // replay button in release builds too, so it can be checked on a real device
+  // without making an account for every run.
+  const canReplayIntro = __DEV__ || Boolean(user?.is_superuser);
 
   // Editable form state for profile fields.
   const [profile, setProfile] = useState<ProfileState>({
@@ -503,6 +508,21 @@ export default function SettingsScreen() {
             ) : null}
           </View>
         </View>
+
+        {canReplayIntro ? (
+          <View style={styles.section}>
+            <ThemedText style={styles.sectionTitle}>Developer</ThemedText>
+            <View style={styles.card}>
+              <ThemedText style={styles.helperText}>
+                Replays the first-run intro from page one. The last step (the Filters highlight)
+                appears on the showtimes tab once its list has loaded.
+              </ThemedText>
+              <TouchableOpacity style={styles.secondaryButton} onPress={startIntro}>
+                <ThemedText style={styles.secondaryButtonText}>Replay the intro</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Cineville</ThemedText>

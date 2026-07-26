@@ -15,12 +15,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { useForm, Controller } from 'react-hook-form'
+import * as AppleAuthentication from 'expo-apple-authentication'
+import { getGoogleSignin, isGoogleSignInAvailable } from '@/utils/google-signin'
 import useAuth from 'shared/hooks/useAuth'
 import type { Body_login_login_access_token as AccessToken } from 'shared'
-import { storage } from 'shared/storage'
 import { useThemeColors } from '@/hooks/use-theme-color'
-import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications'
-import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link'
+import { completeLogin } from '@/utils/complete-login'
+import { markIntroPending } from '@/utils/intro'
 
 export default function LoginScreen() {
     // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -29,7 +30,7 @@ export default function LoginScreen() {
     const colors = useThemeColors()
     const styles = createStyles(colors)
     // useAuth centralizes token storage and error mapping for auth screens.
-    const { loginMutation, error, resetError } = useAuth(
+    const { loginMutation, socialLoginMutation, error, resetError } = useAuth(
         undefined,
         () => router.replace('/login') // onLogout
     )
@@ -57,28 +58,78 @@ export default function LoginScreen() {
             // `mutateAsync` throws on failure so the catch block can handle unknown errors.
             console.log("About to call login mutation")
             await loginMutation.mutateAsync(data)
-            try {
-                // Redundant with tab onboarding by design: this catches edge cases
-                // where Android permission/token flow is skipped during initial mount.
-                await registerPushTokenForCurrentDevice({ force: true })
-            } catch (notificationError) {
-                console.error('Error initializing push notifications after login:', notificationError)
-            }
-            // Resume any deep link the user opened while logged out. Navigating to
-            // the stored path re-mounts the target screen, which re-runs its own
-            // side effects (e.g. /ping registers the invite, /add-friend sends the
-            // request), so no special-casing per route is needed here.
-            const pendingDeepLinkPath = await storage.getItem(PENDING_DEEP_LINK_PATH_KEY)
-            if (pendingDeepLinkPath) {
-                await storage.removeItem(PENDING_DEEP_LINK_PATH_KEY)
-                router.replace(pendingDeepLinkPath as never)
-                return
-            }
-            router.replace('/(tabs)')
+            await completeLogin(router)
             console.log("loginMutation successful")
         } catch (error) {
             console.log("UNKNOWN ERROR", error)
             // Error handled by useAuth
+        }
+    }
+
+    const handleAppleSignIn = async () => {
+        resetError()
+        try {
+            const credential = await AppleAuthentication.signInAsync({
+                requestedScopes: [
+                    AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+                    AppleAuthentication.AppleAuthenticationScope.EMAIL,
+                ],
+            })
+            if (!credential.identityToken) return
+            // fullName is only populated on the very first authorization for a
+            // given app, so this only sets the display name on account creation.
+            const displayName = credential.fullName
+                ? [credential.fullName.givenName, credential.fullName.familyName]
+                    .filter(Boolean)
+                    .join(' ')
+                : undefined
+            const { needsUsername } = await socialLoginMutation.mutateAsync({
+                provider: 'apple',
+                token: credential.identityToken,
+                display_name: displayName || null,
+            })
+            if (needsUsername) {
+                // No username yet means the backend just created this account.
+                markIntroPending()
+                router.replace({ pathname: '/pick-username', params: { suggestion: displayName ?? '' } })
+                return
+            }
+            await completeLogin(router)
+        } catch (appleError: unknown) {
+            if ((appleError as { code?: string })?.code === 'ERR_REQUEST_CANCELED') return
+            console.log('Apple sign-in error', appleError)
+            // Error handled by useAuth for API failures; silently ignored otherwise.
+        }
+    }
+
+    const handleGoogleSignIn = async () => {
+        if (!isGoogleSignInAvailable) return
+        resetError()
+        try {
+            const { GoogleSignin } = getGoogleSignin()
+            await GoogleSignin.hasPlayServices()
+            const response = await GoogleSignin.signIn()
+            if (response.type !== 'success' || !response.data.idToken) return
+            const { needsUsername } = await socialLoginMutation.mutateAsync({
+                provider: 'google',
+                token: response.data.idToken,
+                display_name: response.data.user.name || null,
+            })
+            if (needsUsername) {
+                markIntroPending()
+                router.replace({
+                    pathname: '/pick-username',
+                    params: { suggestion: response.data.user.name ?? '' },
+                })
+                return
+            }
+            await completeLogin(router)
+        } catch (googleError: unknown) {
+            const { statusCodes } = getGoogleSignin()
+            const code = (googleError as { code?: string })?.code
+            if (code === statusCodes.SIGN_IN_CANCELLED) return
+            console.log('Google sign-in error', googleError)
+            // Error handled by useAuth for API failures; silently ignored otherwise.
         }
     }
 
@@ -104,6 +155,30 @@ export default function LoginScreen() {
                         <Text style={styles.errorText}>{error}</Text>
                     </View>
                 )}
+
+                {/* One-tap sign-in/sign-up: no navigation to /signup needed for either
+                    provider, since the backend creates the account on first use. */}
+                {Platform.OS === 'ios' && (
+                    <AppleAuthentication.AppleAuthenticationButton
+                        buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                        buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                        cornerRadius={8}
+                        style={styles.appleButton}
+                        onPress={handleAppleSignIn}
+                    />
+                )}
+
+                {isGoogleSignInAvailable && (
+                    <TouchableOpacity style={styles.googleButton} onPress={handleGoogleSignIn}>
+                        <Text style={styles.googleButtonText}>Continue with Google</Text>
+                    </TouchableOpacity>
+                )}
+
+                <View style={styles.dividerRow}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>or continue with email</Text>
+                    <View style={styles.dividerLine} />
+                </View>
 
                 {/* Email field uses Controller so validation and input stay in sync. */}
                 <Controller
@@ -186,6 +261,18 @@ export default function LoginScreen() {
                         Don&apos;t have an account? <Text style={styles.link}>Sign Up</Text>
                     </Text>
                 </TouchableOpacity>
+
+                {/* Dev-only shortcut: lets the pick-username screen be reached and
+                    tested straight from Expo Go, without a real Apple/Google sign-in. */}
+                {__DEV__ && (
+                    <TouchableOpacity
+                        onPress={() =>
+                            router.push({ pathname: '/pick-username', params: { suggestion: 'Jan de Vries' } })
+                        }
+                    >
+                        <Text style={styles.devLink}>[dev] Preview pick-username screen</Text>
+                    </TouchableOpacity>
+                )}
             </ScrollView>
         </KeyboardAvoidingView>
         </SafeAreaView>
@@ -214,6 +301,40 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
             marginBottom: 40,
             textAlign: 'center',
             color: colors.text,
+        },
+        appleButton: {
+            height: 48,
+            marginBottom: 12,
+        },
+        googleButton: {
+            height: 48,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: colors.cardBorder,
+            backgroundColor: colors.cardBackground,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 20,
+        },
+        googleButtonText: {
+            color: colors.text,
+            fontSize: 16,
+            fontWeight: '600',
+        },
+        dividerRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginBottom: 20,
+        },
+        dividerLine: {
+            flex: 1,
+            height: 1,
+            backgroundColor: colors.cardBorder,
+        },
+        dividerText: {
+            marginHorizontal: 10,
+            color: colors.textSecondary,
+            fontSize: 13,
         },
         inputContainer: {
             marginBottom: 20,
@@ -262,6 +383,12 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
             marginBottom: 8,
             alignSelf: 'flex-start',
             fontWeight: '600',
+        },
+        devLink: {
+            textAlign: 'center',
+            marginTop: 16,
+            color: colors.textSecondary,
+            fontSize: 12,
         },
         errorContainer: {
             backgroundColor: colors.red.primary,

@@ -7,6 +7,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { type DisplayPreset } from "@/components/filters/saved-presets";
 import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
 import { Skeleton } from "@/components/ui/Skeleton";
+import FilterPresetTip from "@/components/tips/FilterPresetTip";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
@@ -22,6 +23,7 @@ export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { presets, isLoading, remove } = useDisplayPresets();
   const { trackEvent } = useTrackEvent();
+  const [isTipVisible, setIsTipVisible] = useState(false);
 
   const handleApply = (preset: DisplayPreset) => {
     triggerSelectionHaptic();
@@ -41,7 +43,27 @@ export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
     );
   };
 
-  return <ChipsScroll presets={presets} isLoading={isLoading} onApply={handleApply} onLongPress={confirmDelete} styles={styles} colors={colors} />;
+  const handleOpenTip = () => {
+    triggerSelectionHaptic();
+    setIsTipVisible(true);
+  };
+
+  return (
+    <>
+      <ChipsScroll
+        presets={presets}
+        isLoading={isLoading}
+        onApply={handleApply}
+        onLongPress={confirmDelete}
+        onOpenTip={handleOpenTip}
+        styles={styles}
+        colors={colors}
+      />
+      {isTipVisible ? (
+        <FilterPresetTip isPreview onClose={() => setIsTipVisible(false)} />
+      ) : null}
+    </>
+  );
 }
 
 function ChipsScroll({
@@ -49,6 +71,7 @@ function ChipsScroll({
   isLoading,
   onApply,
   onLongPress,
+  onOpenTip,
   styles,
   colors,
 }: {
@@ -56,6 +79,7 @@ function ChipsScroll({
   isLoading: boolean;
   onApply: (preset: DisplayPreset) => void;
   onLongPress: (preset: DisplayPreset) => void;
+  onOpenTip: () => void;
   styles: ReturnType<typeof createStyles>;
   colors: ReturnType<typeof useThemeColors>;
 }) {
@@ -104,9 +128,19 @@ function ChipsScroll({
           </TouchableOpacity>
         ))}
         {!isLoading && presets.length === 0 && (
-          <ThemedText style={styles.hintText}>
-            Your saved presets will appear here
-          </ThemedText>
+          <TouchableOpacity
+            style={styles.hintRow}
+            onPress={onOpenTip}
+            hitSlop={8}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="What are saved presets?"
+          >
+            <ThemedText style={styles.hintText}>
+              Your saved presets will appear here
+            </ThemedText>
+            <MaterialIcons name="info-outline" size={14} color={colors.textSecondary} />
+          </TouchableOpacity>
         )}
       </GHScrollView>
       {hasMoreRight && (
@@ -146,5 +180,6 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderRadius: 18,
       backgroundColor: colors.posterPlaceholder,
     },
+    hintRow: { flexDirection: "row", alignItems: "center", gap: 5 },
     hintText: { fontSize: 12, color: colors.textSecondary },
   });

@@ -39,6 +39,7 @@ export default function LetterboxdUsernameTip() {
   if (savedUsername) {
     return (
       <FeatureTipModal
+        tipId="letterboxd-username"
         icon="check-circle"
         title="Letterboxd username saved"
         message="Your watchlist will sync shortly. After that you can filter showtimes down to your watchlist, or hide films you have already seen."
@@ -51,6 +52,7 @@ export default function LetterboxdUsernameTip() {
 
   return (
     <FeatureTipModal
+      tipId="letterboxd-username"
       icon="bookmark-added"
       title="Connect your Letterboxd watchlist"
       message="Add your Letterboxd username to MiKiNO to use your watchlist as a filter, or to hide films you have already seen."

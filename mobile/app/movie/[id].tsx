@@ -734,7 +734,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     summaryInfo: {
       flex: 1,
-      gap: 5,
+      gap: 1,
     },
     movieTitle: {
       fontSize: 22,

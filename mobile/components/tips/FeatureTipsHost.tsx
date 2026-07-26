@@ -1,22 +1,27 @@
 /**
- * Renders at most one feature tip. Candidates are listed most-useful-first and
- * `useFirstVisibleTip` applies the dismissal rules, so the user is never handed
- * a stack of nags.
+ * Renders at most one feature tip. Candidates are listed in priority order —
+ * cinemas, friends, notifications, Letterboxd, filter presets — and
+ * `rollForFeatureTip` applies eligibility, dismissal, per-tip cooldowns and a
+ * random chance, so the user is never handed a stack of nags and does not see
+ * a tip on every single app open.
+ *
+ * The roll happens once per session, a short delay after all the eligibility
+ * data has actually loaded (not just once eligibility looks true), so nothing
+ * flashes up mid-load or the instant the app opens.
  *
  * To add a tip: give it an id in `utils/feature-tips`, compute its eligibility
  * here as a top-level hook call (never inside a loop — rules of hooks), add it
- * to the candidate list, and render its component below.
+ * to the candidate list in priority order, and render its component below.
  */
+import { useEffect, useState } from "react";
 import { useIsFocused } from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
 import useAuth from "shared/hooks/useAuth";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
-import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
+import { useFetchSentRequests } from "shared/hooks/useFetchSentRequests";
 
 import { useCinemaPresets } from "@/components/filters/cinema-presets";
-import { hasAnyActiveFilter } from "@/components/filters/filter-preset-utils";
 import {
   displayPresetsQueryKey,
   fetchDisplayPresets,
@@ -30,68 +35,94 @@ import {
   useSystemNotificationPermission,
   wantsPushNotifications,
 } from "@/hooks/useNotificationPreferences";
-import { useCurrentFilterPresetState } from "@/hooks/useSharedTabFilters";
-import { useFirstVisibleTip } from "@/utils/feature-tips";
+import { rollForFeatureTip, useFirstVisibleTip } from "@/utils/feature-tips";
+import { useIsIntroActive } from "@/utils/intro";
+
+/** Give the app a moment to settle before nagging, even once data is ready. */
+const TIP_ROLL_DELAY_MS = 1500;
 
 export default function FeatureTipsHost() {
   const { user } = useAuth();
   // The host lives inside a tab screen that stays mounted when the user leaves
   // it, and the tip is a blocking dialog, so it must not outlive the screen.
   const isFocused = useIsFocused();
+  // A first-time user is being walked through these very features right now;
+  // a tip on top of the intro would be nagging about something in progress.
+  const isIntroActive = useIsIntroActive();
   const { status: permissionStatus, isGranted: isPermissionGranted } =
     useSystemNotificationPermission();
   const { data: cinemas } = useFetchCinemas();
   const { data: friends } = useFetchFriends({ enabled: Boolean(user) });
-  const { data: favoriteCinemaIds } = useFetchSelectedCinemas();
-  const { selections: sessionCinemaIds } = useSessionCinemaSelections();
+  const { data: sentRequests } = useFetchSentRequests({ enabled: Boolean(user) });
   const { data: cinemaPresets } = useCinemaPresets({ enabled: Boolean(user) });
   const { data: filterPresets } = useQuery({
     queryKey: displayPresetsQueryKey,
     queryFn: () => fetchDisplayPresets(),
     enabled: Boolean(user),
   });
-  const currentFilters = useCurrentFilterPresetState();
 
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
 
-  // Someone actively filtering has a combination worth keeping; someone with a
-  // clean slate has nothing to save yet and would only be nagged.
-  const shouldSuggestFilterPreset =
-    filterPresets !== undefined &&
-    filterPresets.length === 0 &&
-    hasAnyActiveFilter(currentFilters);
-
-  // Someone who has narrowed their cinemas down already understands the filter;
-  // the tip is for the user still browsing every cinema in the country, and
-  // only while they have no preset to fall back on.
-  const selectedCinemaCount = (sessionCinemaIds ?? favoriteCinemaIds ?? []).length;
-  const hasNarrowedCinemas =
-    selectedCinemaCount > 0 && selectedCinemaCount < (cinemas?.length ?? 0);
+  // Once a preset exists the user has found the feature; that stays true even
+  // if every preset is later deleted, so this never re-checks preset count
+  // after the first save (see `retireCinemaPresetTip`, called on save).
   const shouldSuggestCinemaPreset =
-    Boolean(cinemas?.length) &&
-    cinemaPresets !== undefined &&
-    cinemaPresets.length === 0 &&
-    !hasNarrowedCinemas;
+    Boolean(cinemas?.length) && cinemaPresets !== undefined && cinemaPresets.length === 0;
+  const shouldSuggestAddFriends =
+    friends !== undefined && sentRequests !== undefined &&
+    friends.length === 0 && sentRequests.length === 0;
   // Only nag about the system block when the user actually asked for a push.
   // Someone who turned every notification off, or routed them all to email,
   // made that choice deliberately and does not need permission at all.
   const isBlockedFromNotifications =
     permissionStatus !== null && !isPermissionGranted && wantsPushNotifications(user);
+  const shouldSuggestFilterPreset = filterPresets !== undefined && filterPresets.length === 0;
 
-  const visibleTipId = useFirstVisibleTip([
-    // Nothing to suggest until the user is actually loaded and logged in.
-    { id: "letterboxd-username", isEligible: Boolean(user) && !hasLetterboxdUsername },
-    { id: "add-friends", isEligible: Boolean(user) && friends !== undefined && friends.length === 0 },
-    { id: "notification-permission", isEligible: Boolean(user) && isBlockedFromNotifications },
-    { id: "cinema-presets", isEligible: Boolean(user) && shouldSuggestCinemaPreset },
-    { id: "filter-presets", isEligible: Boolean(user) && shouldSuggestFilterPreset },
+  // Everything a candidate below reads must have actually resolved before the
+  // one-shot roll happens, so eligibility reflects real data rather than a
+  // momentary "still loading" false.
+  const dataReady =
+    Boolean(user) &&
+    cinemas !== undefined &&
+    friends !== undefined &&
+    sentRequests !== undefined &&
+    cinemaPresets !== undefined &&
+    filterPresets !== undefined &&
+    permissionStatus !== null;
+
+  const [readyToRoll, setReadyToRoll] = useState(false);
+  useEffect(() => {
+    if (!dataReady || isIntroActive) return;
+    const timer = setTimeout(() => setReadyToRoll(true), TIP_ROLL_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [dataReady, isIntroActive]);
+
+  useEffect(() => {
+    if (!readyToRoll) return;
+    rollForFeatureTip([
+      // Priority order: cinemas, friends, notifications, Letterboxd, filters.
+      { id: "cinema-presets", isEligible: shouldSuggestCinemaPreset },
+      { id: "add-friends", isEligible: shouldSuggestAddFriends },
+      { id: "notification-permission", isEligible: isBlockedFromNotifications },
+      { id: "letterboxd-username", isEligible: !hasLetterboxdUsername },
+      { id: "filter-presets", isEligible: shouldSuggestFilterPreset },
+    ]);
+  }, [
+    readyToRoll,
+    shouldSuggestCinemaPreset,
+    shouldSuggestAddFriends,
+    isBlockedFromNotifications,
+    hasLetterboxdUsername,
+    shouldSuggestFilterPreset,
   ]);
 
-  if (!isFocused) return null;
-  if (visibleTipId === "letterboxd-username") return <LetterboxdUsernameTip />;
+  const visibleTipId = useFirstVisibleTip();
+
+  if (!isFocused || isIntroActive) return null;
+  if (visibleTipId === "cinema-presets") return <CinemaPresetTip />;
   if (visibleTipId === "add-friends") return <AddFriendsTip />;
   if (visibleTipId === "notification-permission") return <NotificationPermissionTip />;
-  if (visibleTipId === "cinema-presets") return <CinemaPresetTip />;
+  if (visibleTipId === "letterboxd-username") return <LetterboxdUsernameTip />;
   if (visibleTipId === "filter-presets") return <FilterPresetTip />;
   return null;
 }

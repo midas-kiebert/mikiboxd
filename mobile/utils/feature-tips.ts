@@ -14,11 +14,17 @@
  * suggestion the user waved away is recoverable rather than gone. Those
  * reminders are session-scoped too: after a restart the tip itself is back.
  *
+ * On top of dismissal, `rollForFeatureTip` caps *how often* a tip can appear
+ * at all: at most one attempt per app session, gated by a per-tip cooldown
+ * (`TIP_COOLDOWN_MS`, persisted) and a random chance (`TIP_SHOW_CHANCE`), so
+ * even an eligible, undismissed tip does not nag on every single open.
+ *
  * Modelled on `theme-preference.ts`: a module-level store with subscribers, so
  * every mounted tip reacts to a change without needing a provider.
  */
 import { useCallback, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { MeService } from 'shared';
 
 export type FeatureTipId =
   | 'letterboxd-username'
@@ -48,10 +54,54 @@ export const FORCED_TIP_ID: FeatureTipId | null = null;
  * can be reviewed at once instead of triggering each tip for real. Set to
  * `false` once the notification-centre rows have been checked.
  */
-const SEED_ALL_TIP_NOTIFICATIONS = true;
+const SEED_ALL_TIP_NOTIFICATIONS = false;
 
 const ENABLED_STORAGE_KEY = 'feature_tips_enabled_v1';
 const DISMISSED_STORAGE_KEY = 'feature_tips_dismissed_v1';
+const LAST_SHOWN_STORAGE_KEY = 'feature_tips_last_shown_v1';
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const THREE_DAYS_MS = 3 * ONE_DAY_MS;
+
+/**
+ * Minimum time between two showings of the same tip, so a snoozed tip does not
+ * simply reappear on the very next app open. Letterboxd and filter presets get
+ * a longer cooldown: both are low-urgency, easy-to-ignore nudges compared to
+ * friends/cinemas/notifications, so they earn the user's attention less often.
+ */
+const TIP_COOLDOWN_MS: Record<FeatureTipId, number> = {
+  'cinema-presets': ONE_DAY_MS,
+  'add-friends': ONE_DAY_MS,
+  'notification-permission': ONE_DAY_MS,
+  'letterboxd-username': THREE_DAYS_MS,
+  'filter-presets': THREE_DAYS_MS,
+};
+
+/**
+ * Even when a tip is eligible and off cooldown, it only actually appears this
+ * often — so opening the app doesn't reliably nag the user every single time.
+ */
+const TIP_SHOW_CHANCE = 0.2;
+
+/** How the user responded once a tip was actually shown. */
+export type TipReaction = 'dismissed' | 'dont_show_again' | 'interacted';
+
+/**
+ * Best-effort usage analytics for tips: how often each one is actually shown,
+ * and what the user did with it. Never allowed to affect the tip itself, so
+ * failures are swallowed rather than surfaced.
+ */
+const trackTipShown = (id: FeatureTipId): void => {
+  MeService.recordEvent({
+    requestBody: { name: 'tip_shown', properties: { tip_id: id } },
+  }).catch(() => {});
+};
+
+export const trackTipReaction = (id: FeatureTipId, reaction: TipReaction): void => {
+  MeService.recordEvent({
+    requestBody: { name: 'tip_reacted', properties: { tip_id: id, reaction } },
+  }).catch(() => {});
+};
 
 /** A tip the user closed, now sitting in the notification centre. */
 export type SnoozedTip = {
@@ -78,6 +128,15 @@ type FeatureTipsState = {
    * underlying condition is no longer (or was never really) true.
    */
   forcedTipId: FeatureTipId | null;
+  /** When each tip last actually appeared on screen, for the cooldown. */
+  lastShownAt: Partial<Record<FeatureTipId, number>>;
+  /**
+   * The app makes at most one attempt to surface a tip per session. `rollDone`
+   * flips true the moment that attempt happens (win or lose); `activeTipId` is
+   * which tip, if any, actually won the roll and should stay on screen.
+   */
+  rollDone: boolean;
+  activeTipId: FeatureTipId | null;
 };
 
 let state: FeatureTipsState = {
@@ -87,6 +146,9 @@ let state: FeatureTipsState = {
   snoozedTips: [],
   isLoaded: false,
   forcedTipId: null,
+  lastShownAt: {},
+  rollDone: false,
+  activeTipId: null,
 };
 
 const subscribers = new Set<() => void>();
@@ -114,16 +176,42 @@ const persistDismissed = (ids: ReadonlySet<FeatureTipId>): void => {
   SecureStore.setItemAsync(DISMISSED_STORAGE_KEY, JSON.stringify([...ids])).catch(() => {});
 };
 
+const parseLastShownAt = (raw: string | null): Partial<Record<FeatureTipId, number>> => {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return {};
+    const entries = Object.entries(parsed as Record<string, unknown>).filter(
+      (entry): entry is [FeatureTipId, number] =>
+        FEATURE_TIP_IDS.includes(entry[0] as FeatureTipId) && typeof entry[1] === 'number'
+    );
+    return Object.fromEntries(entries);
+  } catch {
+    return {};
+  }
+};
+
+const persistLastShownAt = (lastShownAt: Partial<Record<FeatureTipId, number>>): void => {
+  SecureStore.setItemAsync(LAST_SHOWN_STORAGE_KEY, JSON.stringify(lastShownAt)).catch(() => {});
+};
+
+const isInCooldown = (id: FeatureTipId): boolean => {
+  const lastShown = state.lastShownAt[id];
+  return lastShown !== undefined && Date.now() - lastShown < TIP_COOLDOWN_MS[id];
+};
+
 /** Read the stored tip state into memory. Called once on app start. */
 export const loadFeatureTips = async (): Promise<void> => {
-  const [storedEnabled, storedDismissed] = await Promise.all([
+  const [storedEnabled, storedDismissed, storedLastShown] = await Promise.all([
     SecureStore.getItemAsync(ENABLED_STORAGE_KEY).catch(() => null),
     SecureStore.getItemAsync(DISMISSED_STORAGE_KEY).catch(() => null),
+    SecureStore.getItemAsync(LAST_SHOWN_STORAGE_KEY).catch(() => null),
   ]);
   update({
     // Anything other than an explicit opt-out means tips are on.
     enabled: storedEnabled !== 'false',
     dismissedForever: parseDismissed(storedDismissed),
+    lastShownAt: parseLastShownAt(storedLastShown),
     snoozedTips: SEED_ALL_TIP_NOTIFICATIONS
       ? FEATURE_TIP_IDS.map((id) => ({ id, snoozedAt: new Date().toISOString(), seen: false }))
       : [],
@@ -143,6 +231,7 @@ export const dismissTipForever = (id: FeatureTipId): void => {
     // A retired tip leaves no reminder behind.
     snoozedTips: state.snoozedTips.filter((tip) => tip.id !== id),
     forcedTipId: state.forcedTipId === id ? null : state.forcedTipId,
+    activeTipId: state.activeTipId === id ? null : state.activeTipId,
   });
   persistDismissed(dismissedForever);
 };
@@ -156,6 +245,7 @@ export const snoozeTip = (id: FeatureTipId): void => {
       ...state.snoozedTips.filter((tip) => tip.id !== id),
     ],
     forcedTipId: state.forcedTipId === id ? null : state.forcedTipId,
+    activeTipId: state.activeTipId === id ? null : state.activeTipId,
   });
 };
 
@@ -172,6 +262,18 @@ export const reopenTip = (id: FeatureTipId): void => {
     snoozedTips: state.snoozedTips.filter((tip) => tip.id !== id),
     forcedTipId: id,
   });
+  trackTipShown(id);
+};
+
+/**
+ * A cinema preset was just saved (from the tip itself or anywhere else, e.g.
+ * the cinema filter's own "save preset" flow): the user has now found the
+ * feature on their own, so the tip retires for good, even if every preset is
+ * later deleted.
+ */
+export const retireCinemaPresetTip = (): void => {
+  if (state.dismissedForever.has('cinema-presets')) return;
+  dismissTipForever('cinema-presets');
 };
 
 /** The reminder's ✕: drop the reminder, leave the tip hidden. */
@@ -231,13 +333,50 @@ export type FeatureTipCandidate = {
 };
 
 /**
- * Picks the one tip to show, so the user is never handed a stack of nags.
- * Candidates are checked in order — pass them most-useful-first.
+ * The one chance per session to surface a tip. Call this once eligibility data
+ * has actually loaded (not just once eligibility is *true*) and a short delay
+ * has passed, so a tip never flashes up mid-load or the instant the app opens.
+ *
+ * Candidates should be passed most-useful-first (priority order); the first
+ * one that is eligible, not permanently dismissed, not snoozed this session,
+ * and off cooldown is the only one considered. Even then, it only actually
+ * shows `TIP_SHOW_CHANCE` of the time — most opens show nothing at all.
+ *
+ * Safe to call more than once (e.g. on every render): a no-op once the
+ * session's roll has already happened.
  */
-export const useFirstVisibleTip = (
-  candidates: readonly FeatureTipCandidate[]
-): FeatureTipId | null => {
-  const { enabled, dismissedForever, hiddenThisSession, forcedTipId, isLoaded } =
+export const rollForFeatureTip = (candidates: readonly FeatureTipCandidate[]): void => {
+  if (state.rollDone || !state.isLoaded) return;
+  if (!state.enabled) {
+    update({ rollDone: true });
+    return;
+  }
+
+  const winner = candidates.find(
+    (candidate) =>
+      candidate.isEligible &&
+      !state.dismissedForever.has(candidate.id) &&
+      !state.hiddenThisSession.has(candidate.id) &&
+      !isInCooldown(candidate.id)
+  );
+
+  if (winner && Math.random() < TIP_SHOW_CHANCE) {
+    const lastShownAt = { ...state.lastShownAt, [winner.id]: Date.now() };
+    update({ rollDone: true, activeTipId: winner.id, lastShownAt });
+    persistLastShownAt(lastShownAt);
+    trackTipShown(winner.id);
+    return;
+  }
+  update({ rollDone: true });
+};
+
+/**
+ * Which tip, if any, should be on screen right now. Reflects the dev override,
+ * a notification-centre reopen, or whichever tip (if any) won this session's
+ * one roll via `rollForFeatureTip`.
+ */
+export const useFirstVisibleTip = (): FeatureTipId | null => {
+  const { enabled, hiddenThisSession, forcedTipId, activeTipId, isLoaded } =
     useFeatureTipsState();
 
   if (!isLoaded) return null;
@@ -249,14 +388,8 @@ export const useFirstVisibleTip = (
   // reminder may not correspond to a still-true real eligibility condition.
   if (forcedTipId) return hiddenThisSession.has(forcedTipId) ? null : forcedTipId;
   if (!enabled) return null;
-
-  const match = candidates.find(
-    (candidate) =>
-      candidate.isEligible &&
-      !dismissedForever.has(candidate.id) &&
-      !hiddenThisSession.has(candidate.id)
-  );
-  return match?.id ?? null;
+  if (activeTipId && !hiddenThisSession.has(activeTipId)) return activeTipId;
+  return null;
 };
 
 /**

@@ -37,6 +37,10 @@
       "android": {
         "buildType": "app-bundle"
       }
+    },
+    "production-device": {
+      "extends": "production",
+      "distribution": "internal"
     }
   },
   "submit": {

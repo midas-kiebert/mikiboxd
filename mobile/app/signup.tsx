@@ -15,11 +15,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { getGoogleSignin, isGoogleSignInAvailable } from '@/utils/google-signin';
 
 import useAuth from 'shared/hooks/useAuth';
 import type { UserRegister } from 'shared';
 import { usernameMaxLength, usernamePattern } from 'shared/utils';
 import { useThemeColors } from '@/hooks/use-theme-color';
+import { completeLogin } from '@/utils/complete-login';
+import { markIntroPending } from '@/utils/intro';
 
 type SignUpForm = UserRegister & {
   confirm_password: string;
@@ -32,7 +36,7 @@ export default function SignUpScreen() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   // Data hooks keep this module synced with backend data and shared cache state.
-  const { signUpMutation, error, resetError } = useAuth(
+  const { signUpMutation, socialLoginMutation, error, resetError } = useAuth(
     () => router.replace('/login'),
     () => router.replace('/login')
   );
@@ -62,6 +66,78 @@ export default function SignUpScreen() {
       email: data.email,
       password: data.password,
     });
+    // A brand-new account: the first-run intro is owed. Recorded here rather
+    // than after login, which every returning user goes through too, and it
+    // survives the trip via the login screen this path ends on.
+    markIntroPending();
+  };
+
+  // Social sign-in logs the user in directly (the backend creates the
+  // account on first use), unlike the email path above which still requires
+  // a separate login step.
+  const handleAppleSignIn = async () => {
+    resetError();
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) return;
+      const displayName = credential.fullName
+        ? [credential.fullName.givenName, credential.fullName.familyName]
+            .filter(Boolean)
+            .join(' ')
+        : undefined;
+      const { needsUsername } = await socialLoginMutation.mutateAsync({
+        provider: 'apple',
+        token: credential.identityToken,
+        display_name: displayName || null,
+      });
+      if (needsUsername) {
+        // No username yet means the backend just created this account.
+        markIntroPending();
+        router.replace({ pathname: '/pick-username', params: { suggestion: displayName ?? '' } });
+        return;
+      }
+      await completeLogin(router);
+    } catch (appleError: unknown) {
+      if ((appleError as { code?: string })?.code === 'ERR_REQUEST_CANCELED') return;
+      console.log('Apple sign-in error', appleError);
+      // Error handled by useAuth for API failures; silently ignored otherwise.
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (!isGoogleSignInAvailable) return;
+    resetError();
+    try {
+      const { GoogleSignin } = getGoogleSignin();
+      await GoogleSignin.hasPlayServices();
+      const response = await GoogleSignin.signIn();
+      if (response.type !== 'success' || !response.data.idToken) return;
+      const { needsUsername } = await socialLoginMutation.mutateAsync({
+        provider: 'google',
+        token: response.data.idToken,
+        display_name: response.data.user.name || null,
+      });
+      if (needsUsername) {
+        markIntroPending();
+        router.replace({
+          pathname: '/pick-username',
+          params: { suggestion: response.data.user.name ?? '' },
+        });
+        return;
+      }
+      await completeLogin(router);
+    } catch (googleError: unknown) {
+      const { statusCodes } = getGoogleSignin();
+      const code = (googleError as { code?: string })?.code;
+      if (code === statusCodes.SIGN_IN_CANCELLED) return;
+      console.log('Google sign-in error', googleError);
+      // Error handled by useAuth for API failures; silently ignored otherwise.
+    }
   };
 
   // Render/output using the state and derived values prepared above.
@@ -85,6 +161,28 @@ export default function SignUpScreen() {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : null}
+
+        {Platform.OS === 'ios' && (
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
+            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+            cornerRadius={8}
+            style={styles.appleButton}
+            onPress={handleAppleSignIn}
+          />
+        )}
+
+        {isGoogleSignInAvailable && (
+          <TouchableOpacity style={styles.googleButton} onPress={handleGoogleSignIn}>
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
+          </TouchableOpacity>
+        )}
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or sign up with email</Text>
+          <View style={styles.dividerLine} />
+        </View>
 
         {/* Username helps other users identify this account in social screens. */}
         <Controller
@@ -257,6 +355,40 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       marginBottom: 30,
       textAlign: 'center',
       color: colors.text,
+    },
+    appleButton: {
+      height: 48,
+      marginBottom: 12,
+    },
+    googleButton: {
+      height: 48,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 20,
+    },
+    googleButtonText: {
+      color: colors.text,
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    dividerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.cardBorder,
+    },
+    dividerText: {
+      marginHorizontal: 10,
+      color: colors.textSecondary,
+      fontSize: 13,
     },
     inputContainer: {
       marginBottom: 16,

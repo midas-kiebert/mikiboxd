@@ -45,6 +45,7 @@ import {
 } from "@/components/filters/cinema-preset-order";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
+import { retireCinemaPresetTip } from "@/utils/feature-tips";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type CinemaFilterModalProps = {
@@ -158,6 +159,7 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
       setSaveAsFavorite(false);
       setIsSavePresetDialogVisible(false);
       invalidateCinemaPresets(queryClient);
+      retireCinemaPresetTip();
     },
     onError: () => {
       setPresetError("Could not save cinema preset. Please try again.");

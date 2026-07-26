@@ -12,18 +12,28 @@ from app.api.deps import SessionDep
 from app.core.config import settings
 from app.core.enums import AnalyticsEventName
 from app.core.security import (
+    InvalidSocialToken,
     create_access_token,
     create_refresh_token,
     decode_refresh_token,
     generate_password_reset_token,
     get_password_hash,
     verify_password_reset_token,
+    verify_social_token,
 )
 from app.crud import analytics_event as analytics_event_crud
 from app.crud import user as users_crud
 from app.mailer import EmailDeliveryError, generate_reset_password_email, send_email
-from app.models.auth_schemas import Message, NewPassword, RefreshTokenRequest, Token
+from app.models.auth_schemas import (
+    Message,
+    NewPassword,
+    RefreshTokenRequest,
+    SocialLoginRequest,
+    SocialLoginResponse,
+    Token,
+)
 from app.models.user import User
+from app.validators.username import is_valid_username
 
 router = APIRouter(tags=["login"])
 logger = logging.getLogger(__name__)
@@ -76,6 +86,56 @@ def login_access_token(
     )
     session.commit()
     return _build_token(user.id)
+
+
+@router.post("/login/social-token")
+def login_social_token(
+    request: Request,
+    session: SessionDep,
+    body: SocialLoginRequest,
+) -> SocialLoginResponse:
+    """Authenticate (or create) a user via a verified Apple/Google identity token.
+
+    The client obtains a provider identity/ID token natively (Sign in with
+    Apple / Google Sign-In) and posts it here. On first sign-in for a given
+    provider identity this creates a new account (or links to an existing
+    account with the same verified email); returns the same access + refresh
+    token pair as password login either way.
+    """
+    try:
+        claims = verify_social_token(body.provider, body.token)
+    except InvalidSocialToken as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid {body.provider.value} token: {e}",
+        ) from e
+
+    user, is_new = users_crud.get_or_create_social_user(
+        session=session,
+        provider=body.provider,
+        provider_sub=claims.sub,
+        email=claims.email,
+        display_name=body.display_name,
+    )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Inactive user",
+        )
+    analytics_event_crud.create_event(
+        session=session,
+        user_id=user.id,
+        name=AnalyticsEventName.LOGIN,
+        platform=request.headers.get("X-Client-Platform"),
+    )
+    session.commit()
+    needs_username = user.display_name is None or not is_valid_username(
+        user.display_name
+    )
+    return SocialLoginResponse(
+        **_build_token(user.id).model_dump(),
+        needs_username=needs_username,
+    )
 
 
 @router.post("/login/refresh-token")

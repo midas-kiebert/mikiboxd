@@ -33,7 +33,7 @@ import FeatureTipModal, { FEATURE_TIP_COMPACT_PADDING } from "@/components/tips/
 import { ThemedText } from "@/components/themed-text";
 import NamePromptDialog from "@/components/ui/NamePromptDialog";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { useDismissTip } from "@/utils/feature-tips";
+import { retireCinemaPresetTip, useDismissTip } from "@/utils/feature-tips";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 /**
@@ -92,6 +92,7 @@ export default function CinemaPresetTip() {
       // rather than making them open the filter and pick the preset again.
       setSessionCinemaIds(sortCinemaIds(requestBody.cinema_ids));
       invalidateCinemaPresets(queryClient);
+      retireCinemaPresetTip();
     },
     onError: (error) => {
       console.error("Error saving cinema preset from tip:", error);
@@ -159,6 +160,7 @@ export default function CinemaPresetTip() {
   if (savedPreset) {
     return (
       <FeatureTipModal
+        tipId="cinema-presets"
         icon="check-circle"
         title="Preset saved"
         message={`"${savedPreset.name}" now covers ${savedPreset.cinemaCount} cinema${
@@ -173,6 +175,7 @@ export default function CinemaPresetTip() {
 
   return (
     <FeatureTipModal
+      tipId="cinema-presets"
       icon="theaters"
       title="Select your favorite cinemas"
       density="compact"

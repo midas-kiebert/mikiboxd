@@ -85,6 +85,19 @@ export const hasAnyActiveFilter = (filters: PageFilterPresetState): boolean => {
   );
 };
 
+/**
+ * Whether applying these filters needs a Letterboxd username: watchlist and
+ * watched-status filters read from the user's Letterboxd data, so they are
+ * meaningless (and hidden from the active-filter row) without one.
+ */
+export const presetRequiresLetterboxd = (filters: PageFilterPresetState): boolean =>
+  Boolean(
+    filters.watchlist_only ||
+      filters.watchlist_exclude ||
+      filters.hide_watched ||
+      filters.watched_only
+  );
+
 export const normalizeFiltersForSave = (filters: PageFilterPresetState): SavedPresetFilters => {
   const normalized = normalizeFilters(filters);
   return {

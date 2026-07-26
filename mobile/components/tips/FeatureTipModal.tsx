@@ -25,6 +25,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { type FeatureTipId, trackTipReaction } from "@/utils/feature-tips";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 const FADE_IN_MS = 160;
@@ -37,6 +38,8 @@ const FADE_OUT_MS = 130;
 export const FEATURE_TIP_COMPACT_PADDING = 18;
 
 type FeatureTipModalProps = {
+  /** Which tip this is, for the shown/reacted analytics events. */
+  tipId: FeatureTipId;
   icon: keyof typeof MaterialIcons.glyphMap;
   title: string;
   /** Omit when the title says it all and a subtitle would only pad the dialog. */
@@ -58,11 +61,18 @@ type FeatureTipModalProps = {
   isActionBusy?: boolean;
   /** True when the action finishes the tip, so pressing it also closes. */
   closeOnAction?: boolean;
+  /**
+   * Hides the "Don't show this again" toggle. Set when the tip was opened as
+   * on-demand help (e.g. an info icon) rather than a proactive suggestion —
+   * there is no future nag to opt out of.
+   */
+  hideDismissForever?: boolean;
   /** Receives the state of the "Don't show this again" toggle. */
   onDismiss: (dismissForever: boolean) => void;
 };
 
 export default function FeatureTipModal({
+  tipId,
   icon,
   title,
   message,
@@ -75,6 +85,7 @@ export default function FeatureTipModal({
   isActionDisabled = false,
   isActionBusy = false,
   closeOnAction = false,
+  hideDismissForever = false,
   onDismiss,
 }: FeatureTipModalProps) {
   // Read flow: local state first, then the handlers, then the JSX.
@@ -94,6 +105,10 @@ export default function FeatureTipModal({
   // the host keeps a forced tip (see FORCED_TIP_ID) mounted forever, and a
   // faded-out Modal still swallows every touch on the screen behind it.
   const [isDismissed, setIsDismissed] = useState(false);
+  // Once the user has pressed the primary action, that is the reaction worth
+  // recording — the close that follows (including `closeOnAction`'s own call)
+  // is just the dialog tidying itself away, not a separate dismissal.
+  const didInteract = useRef(false);
 
   useEffect(() => {
     Animated.timing(anim, {
@@ -115,11 +130,18 @@ export default function FeatureTipModal({
       useNativeDriver: true,
     }).start(() => {
       setIsDismissed(true);
+      if (!didInteract.current) {
+        trackTipReaction(tipId, shouldNeverShowAgain ? "dont_show_again" : "dismissed");
+      }
       onDismiss(shouldNeverShowAgain);
     });
-  }, [anim, isClosing, onDismiss, shouldNeverShowAgain]);
+  }, [anim, isClosing, onDismiss, shouldNeverShowAgain, tipId]);
 
   const handleAction = useCallback(() => {
+    if (onAction) {
+      didInteract.current = true;
+      trackTipReaction(tipId, "interacted");
+    }
     if (closeOnAction) {
       // `close` fires the haptic itself, and runs `onDismiss` only once the
       // dialog is off screen — so an action that opens something else can hang
@@ -130,7 +152,7 @@ export default function FeatureTipModal({
     }
     triggerSelectionHaptic();
     onAction?.();
-  }, [close, closeOnAction, onAction]);
+  }, [close, closeOnAction, onAction, tipId]);
 
   const handleToggleHelp = useCallback(() => {
     triggerSelectionHaptic();
@@ -222,24 +244,26 @@ export default function FeatureTipModal({
 
             {/* Deliberately quiet: always reachable, but never competing with
                 the action above it. */}
-            <TouchableOpacity
-              style={styles.neverRow}
-              onPress={handleToggleNeverShowAgain}
-              activeOpacity={0.7}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: shouldNeverShowAgain }}
-            >
-              <MaterialIcons
-                name={shouldNeverShowAgain ? "check-box" : "check-box-outline-blank"}
-                size={15}
-                color={shouldNeverShowAgain ? colors.tint : colors.textSecondary}
-              />
-              <ThemedText
-                style={[styles.neverLabel, shouldNeverShowAgain && styles.neverLabelActive]}
+            {hideDismissForever ? null : (
+              <TouchableOpacity
+                style={styles.neverRow}
+                onPress={handleToggleNeverShowAgain}
+                activeOpacity={0.7}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: shouldNeverShowAgain }}
               >
-                Don&apos;t show this again
-              </ThemedText>
-            </TouchableOpacity>
+                <MaterialIcons
+                  name={shouldNeverShowAgain ? "check-box" : "check-box-outline-blank"}
+                  size={15}
+                  color={shouldNeverShowAgain ? colors.tint : colors.textSecondary}
+                />
+                <ThemedText
+                  style={[styles.neverLabel, shouldNeverShowAgain && styles.neverLabelActive]}
+                >
+                  Don&apos;t show this again
+                </ThemedText>
+              </TouchableOpacity>
+            )}
           </Animated.View>
         </KeyboardAvoidingView>
       </Animated.View>

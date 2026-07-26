@@ -7,6 +7,8 @@ are simple data containers with no route-layer or service-layer concerns.
 from pydantic import EmailStr
 from sqlmodel import Field, SQLModel
 
+from app.core.enums import SocialProvider
+
 
 class UserUpdateMe(SQLModel):
     display_name: str | None = Field(default=None, max_length=255)
@@ -51,3 +53,20 @@ class TokenPayload(SQLModel):
 class NewPassword(SQLModel):
     token: str
     new_password: str = Field(min_length=1, max_length=255)
+
+
+# Request body for POST /login/social-token
+class SocialLoginRequest(SQLModel):
+    provider: SocialProvider
+    token: str
+    # Only used the first time an account is created — ignored on subsequent
+    # logins so it never overwrites a display name the user has since edited.
+    display_name: str | None = Field(default=None, max_length=255)
+
+
+# Response body for POST /login/social-token
+class SocialLoginResponse(Token):
+    # True when the account has no display name that satisfies the app's
+    # username rules yet — the client should send the user to pick one
+    # before letting them into the app.
+    needs_username: bool = False

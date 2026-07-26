@@ -8,6 +8,7 @@ import {
   type ApiError,
   LoginService,
   type MeGetCurrentUserResponse,
+  type SocialLoginRequest,
   type UserRegister,
   UsersService,
   MeService
@@ -69,6 +70,27 @@ const useAuth = (onLoginSuccess?: () => void, onLogout?: () => void): AuthHook =
     },
   })
 
+  const socialLogin = async (data: SocialLoginRequest) => {
+    const response = await LoginService.loginSocialToken({
+      requestBody: data,
+    })
+    await storage.setItem("access_token", response.access_token)
+    await storage.setItem("refresh_token", response.refresh_token)
+    setIsAuthenticated(true)
+    return { needsUsername: response.needs_username ?? false }
+  }
+
+  const socialLoginMutation = useMutation({
+    mutationFn: socialLogin,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["currentUser"] })
+      if (onLoginSuccess) onLoginSuccess()
+    },
+    onError: (err: ApiError) => {
+      setError(handleError(err))
+    },
+  })
+
   const logout = async () => {
     await storage.removeItem("access_token")
     await storage.removeItem("refresh_token")
@@ -80,6 +102,7 @@ const useAuth = (onLoginSuccess?: () => void, onLogout?: () => void): AuthHook =
   return {
     signUpMutation,
     loginMutation,
+    socialLoginMutation,
     logout,
     user,
     error,

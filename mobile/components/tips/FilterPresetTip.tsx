@@ -9,10 +9,11 @@
  *
  * Eligibility lives in `FeatureTipsHost`; this component renders and saves.
  */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -34,12 +35,16 @@ import {
   buildSavedPresetCreate,
   displayPresetsQueryKey,
 } from "@/components/filters/saved-presets";
-import { hasAnyActiveFilter } from "@/components/filters/filter-preset-utils";
+import {
+  hasAnyActiveFilter,
+  presetRequiresLetterboxd,
+} from "@/components/filters/filter-preset-utils";
 import FeatureTipModal, { FEATURE_TIP_COMPACT_PADDING } from "@/components/tips/FeatureTipModal";
 import { ThemedText } from "@/components/themed-text";
 import NamePromptDialog from "@/components/ui/NamePromptDialog";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useCurrentFilterPresetState } from "@/hooks/useSharedTabFilters";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 import { useDismissTip } from "@/utils/feature-tips";
 
 /** Identifies the "save what I have right now" row, which has no fixed name. */
@@ -52,9 +57,22 @@ type PresetRow = {
   icon: keyof typeof MaterialIcons.glyphMap;
   /** Null when the row has to ask for a name before it can be built. */
   build: (() => SavedPresetCreate) | null;
+  /** True when applying this preset needs a Letterboxd username the user hasn't set. */
+  needsLetterboxdUsername: boolean;
 };
 
-export default function FilterPresetTip() {
+type FilterPresetTipProps = {
+  /**
+   * Opened as on-demand help (e.g. the info icon next to the empty saved-
+   * presets row) rather than as a proactive suggestion: hides "Don't show
+   * this again" and closes locally instead of touching the tip's dismissal
+   * state.
+   */
+  isPreview?: boolean;
+  onClose?: () => void;
+};
+
+export default function FilterPresetTip({ isPreview = false, onClose }: FilterPresetTipProps) {
   // Read flow: data hooks first, then handlers, then the JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -74,6 +92,39 @@ export default function FilterPresetTip() {
   // Opening the filters has to wait for the dialog to be gone, so the intent is
   // parked here and acted on from the dismissal.
   const shouldOpenFilters = useRef(false);
+
+  // A quiet, non-blocking note shown when the user taps a greyed-out "Add" for
+  // a preset that needs a Letterboxd username. Fades in and back out on its
+  // own rather than opening another dialog, so it never steals focus.
+  const [isLetterboxdNoticeVisible, setIsLetterboxdNoticeVisible] = useState(false);
+  const letterboxdNoticeAnim = useRef(new Animated.Value(0)).current;
+  const letterboxdNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showLetterboxdNotice = useCallback(() => {
+    triggerSelectionHaptic();
+    setIsLetterboxdNoticeVisible(true);
+    if (letterboxdNoticeTimer.current) clearTimeout(letterboxdNoticeTimer.current);
+    letterboxdNoticeAnim.stopAnimation();
+    Animated.timing(letterboxdNoticeAnim, {
+      toValue: 1,
+      duration: 160,
+      useNativeDriver: true,
+    }).start();
+    letterboxdNoticeTimer.current = setTimeout(() => {
+      Animated.timing(letterboxdNoticeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => setIsLetterboxdNoticeVisible(false));
+    }, 2200);
+  }, [letterboxdNoticeAnim]);
+
+  useEffect(
+    () => () => {
+      if (letterboxdNoticeTimer.current) clearTimeout(letterboxdNoticeTimer.current);
+    },
+    []
+  );
 
   const allCinemaIds = useMemo(() => (cinemas ?? []).map((cinema) => cinema.id), [cinemas]);
   const listIds = useMemo(
@@ -111,6 +162,10 @@ export default function FilterPresetTip() {
       summary: preset.summary,
       icon: preset.icon,
       build: () => buildPremadeSavedPreset({ preset, allCinemaIds, listIds }),
+      // The user could not have picked a watchlist/watched-status filter
+      // without a Letterboxd username in the first place, so only the
+      // premade suggestions need this check.
+      needsLetterboxdUsername: presetRequiresLetterboxd(preset.filters) && !hasLetterboxdUsername,
     }));
 
     if (!hasAnyActiveFilter(currentFilters)) return premadeRows;
@@ -122,20 +177,25 @@ export default function FilterPresetTip() {
         summary: "Save the selection you have set right now",
         icon: "bookmark-add" as const,
         build: null,
+        needsLetterboxdUsername: false,
       },
       ...premadeRows,
     ];
-  }, [allCinemaIds, currentFilters, listIds]);
+  }, [allCinemaIds, currentFilters, hasLetterboxdUsername, listIds]);
 
   const handleAddRow = useCallback(
     (row: PresetRow) => {
+      if (row.needsLetterboxdUsername) {
+        showLetterboxdNotice();
+        return;
+      }
       if (!row.build) {
         setIsNamingCurrentFilters(true);
         return;
       }
       savePreset(row.id, row.build());
     },
-    [savePreset]
+    [savePreset, showLetterboxdNotice]
   );
 
   const handleNameCurrentFilters = useCallback(
@@ -163,25 +223,35 @@ export default function FilterPresetTip() {
 
   const handleDismiss = useCallback(
     (dismissForever: boolean) => {
-      dismissTip(dismissForever);
+      if (isPreview) {
+        onClose?.();
+      } else {
+        dismissTip(dismissForever);
+      }
       if (!shouldOpenFilters.current) return;
       openFiltersModal({ showGroupByMovie: true, showPresets: true });
     },
-    [dismissTip, openFiltersModal]
+    [dismissTip, isPreview, onClose, openFiltersModal]
   );
 
   // Render/output using the state and handlers prepared above.
   return (
     <FeatureTipModal
+      tipId="filter-presets"
       icon="tune"
       title="Save your filters as a preset"
       message="Presets remember a set of filters so you can apply them again in one tap."
       density="compact"
-      actionLabel="Open filters"
+      actionLabel="Choose your own filters"
       onAction={handleOpenFilters}
       closeOnAction
+      hideDismissForever={isPreview}
       onDismiss={handleDismiss}
     >
+      {/* Relative wrapper so the notice below can float over the list as an
+          overlay instead of a sibling — an absolute child never affects a
+          parent's size, so the card can't resize when it appears. */}
+      <View style={styles.listWrapper}>
       <ScrollView
         style={styles.listBox}
         contentContainerStyle={styles.listContent}
@@ -216,13 +286,21 @@ export default function FilterPresetTip() {
                 style={[
                   styles.addButton,
                   isSaved && styles.addButtonSaved,
-                  isBlocked && styles.addButtonBlocked,
+                  (isBlocked || row.needsLetterboxdUsername) && styles.addButtonBlocked,
                 ]}
                 onPress={() => handleAddRow(row)}
+                // Deliberately still pressable when it needs a Letterboxd
+                // username: the tap is how the user learns why it's greyed out.
                 disabled={isSaved || isPending || saveMutation.isPending}
                 activeOpacity={0.85}
                 accessibilityRole="button"
-                accessibilityLabel={isSaved ? `${row.name} added` : `Add ${row.name}`}
+                accessibilityLabel={
+                  isSaved
+                    ? `${row.name} added`
+                    : row.needsLetterboxdUsername
+                      ? `Add ${row.name}, needs a Letterboxd username`
+                      : `Add ${row.name}`
+                }
               >
                 {isPending ? (
                   <ActivityIndicator size="small" color={colors.pillActiveText} />
@@ -243,6 +321,23 @@ export default function FilterPresetTip() {
           );
         })}
       </ScrollView>
+
+      {/* Absolutely positioned overlay: floats over the bottom of the list
+          instead of a sibling in flow, so the card can never resize when it
+          appears or disappears. `pointerEvents="none"` lets scrolling and
+          taps pass straight through to the list underneath. */}
+      {isLetterboxdNoticeVisible ? (
+        <Animated.View
+          style={[styles.letterboxdNotice, { opacity: letterboxdNoticeAnim }]}
+          pointerEvents="none"
+        >
+          <MaterialIcons name="info-outline" size={13} color={colors.textSecondary} />
+          <ThemedText style={styles.letterboxdNoticeText}>
+            Add your Letterboxd username to use this preset
+          </ThemedText>
+        </Animated.View>
+      ) : null}
+      </View>
 
       {/* Nested rather than a sibling: iOS is unreliable about presenting two
           modals from the same level, and this one has to sit over the tip. */}
@@ -272,6 +367,35 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     listContent: {
       paddingHorizontal: FEATURE_TIP_COMPACT_PADDING,
+    },
+    // Establishes the positioning context for the floating notice below.
+    listWrapper: {
+      position: "relative",
+    },
+    letterboxdNotice: {
+      position: "absolute",
+      left: 10,
+      right: 10,
+      bottom: 8,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: colors.cardBackground,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.divider,
+      shadowColor: "#000",
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 4,
+    },
+    letterboxdNoticeText: {
+      fontSize: 11,
+      color: colors.textSecondary,
     },
     row: {
       flexDirection: "row",

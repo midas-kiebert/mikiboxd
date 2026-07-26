@@ -45,6 +45,7 @@ export default function NotificationPermissionTip() {
   if (isSystemPermissionGranted) {
     return (
       <FeatureTipModal
+        tipId="notification-permission"
         icon="notifications-active"
         title="Notifications are on"
         message="Choose what you want to hear about, and whether it arrives as a push notification or by email."
@@ -61,6 +62,7 @@ export default function NotificationPermissionTip() {
 
   return (
     <FeatureTipModal
+      tipId="notification-permission"
       icon="notifications-off"
       title="Notifications are blocked"
       message="Your device is not letting MiKiNO send notifications, so invites from friends and reminders for showtimes you are interested in will not reach you."

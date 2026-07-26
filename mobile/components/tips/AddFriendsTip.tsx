@@ -57,6 +57,7 @@ export default function AddFriendsTip() {
   // Render/output using the state and derived values prepared above.
   return (
     <FeatureTipModal
+      tipId="add-friends"
       icon="group-add"
       title="Add your friends"
       message="See each other's showtimes, send invites, and keep track of who's going where."
@@ -65,7 +66,6 @@ export default function AddFriendsTip() {
       onDismiss={dismissTip}
     >
       <View style={styles.searchSection}>
-        <ThemedText style={styles.searchLabel}>Search for someone</ThemedText>
         <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search users" />
         {hasQuery ? (
           isSearching ? (
@@ -97,9 +97,6 @@ export default function AddFriendsTip() {
             <ActivityIndicator size="large" color={colors.tint} />
           </View>
         )}
-        <ThemedText style={styles.inviteText}>
-          Or let a friend scan this, or share your invite link.
-        </ThemedText>
         <ShareInviteLinkButton inviteUrl={inviteUrl} />
       </View>
     </FeatureTipModal>
@@ -115,9 +112,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.background,
       alignItems: "center",
       justifyContent: "center",
-      paddingVertical: 16,
-      paddingHorizontal: 12,
-      gap: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 10,
+      gap: 8,
     },
     inviteUsername: {
       fontSize: 14,
@@ -127,7 +124,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     qrWrapper: {
       borderRadius: 12,
-      padding: 10,
+      padding: 6,
       backgroundColor: "#ffffff",
       borderWidth: 1,
       borderColor: colors.divider,
@@ -140,23 +137,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "center",
       justifyContent: "center",
     },
-    inviteText: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      textAlign: "center",
-    },
     searchSection: {
       gap: 8,
       // SearchBar carries its own horizontal padding, meant for full-bleed
       // screens; cancel it out so it lines up with the rest of the dialog.
       marginHorizontal: -24,
-    },
-    searchLabel: {
-      paddingHorizontal: 24,
-      fontSize: 13,
-      fontWeight: "600",
-      color: colors.textSecondary,
-      textAlign: "center",
     },
     searchStatus: {
       paddingVertical: 10,

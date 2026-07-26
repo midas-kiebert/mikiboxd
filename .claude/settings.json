@@ -116,7 +116,8 @@
       "Bash(curl -s -o /dev/null -w \"boot: %{http_code}\\\\n\" http://localhost:5199/)",
       "Bash(pkill -9 -f \"vite --port 5198\")",
       "Bash(kill -9 226391 290349)",
-      "Bash(git switch *)"
+      "Bash(git switch *)",
+      "Bash(python -m alembic heads)"
     ]
   }
 }

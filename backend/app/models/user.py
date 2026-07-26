@@ -112,7 +112,12 @@ class UserUpdate(SQLModel):
 # Database model, database table inferred from class name
 class User(_UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    hashed_password: str
+    # None for social-only accounts (signed up via Apple/Google, never set a password).
+    hashed_password: str | None = None
+    # Provider subject identifiers for social sign-in. Nullable/unique: a user has
+    # at most one linked identity per provider, and most users will have zero or one.
+    apple_sub: str | None = Field(default=None, unique=True, index=True)
+    google_sub: str | None = Field(default=None, unique=True, index=True)
     # Drives the digest lookback window and prevents double-sends; not user-facing.
     notify_watchlist_digest_last_sent_at: datetime | None = Field(default=None)
     # Moderation: blocks POST /showtimes/{id}/report. None expiry + banned=True

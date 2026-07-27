@@ -64,8 +64,14 @@ export default function IntroFlow() {
 
   const layerOpacity = useRef(new Animated.Value(1)).current;
   const chromeOpacity = useRef(new Animated.Value(0)).current;
-  const pageOpacity = useRef(new Animated.Value(0)).current;
-  const pageShift = useRef(new Animated.Value(PAGE_SHIFT)).current;
+  // The first page is painted outright, not faded in. The Modal takes the
+  // screen instantly and fills it with `containerOpaque`, so a page starting at
+  // zero meant a beat of bare background before anything appeared — read as the
+  // walkthrough flashing up, vanishing and coming back. Only the page *changes*
+  // below are animated; `hasEnteredRef` is what tells the two apart.
+  const pageOpacity = useRef(new Animated.Value(1)).current;
+  const pageShift = useRef(new Animated.Value(0)).current;
+  const hasEnteredRef = useRef(false);
   // Guards the exit against a second tap landing mid-fade.
   const isLeavingRef = useRef(false);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -100,6 +106,13 @@ export default function IntroFlow() {
     // callback. Started from there, the fade-in ran against the page that was
     // still mounted, so the *previous* page visibly faded back in for a frame or
     // two before React swapped in the new one. That was the flash.
+    if (!hasEnteredRef.current) {
+      // First page: already at rest (see the refs above). There is nothing to
+      // transition *from*, and animating anyway is what made entering the
+      // walkthrough flicker.
+      hasEnteredRef.current = true;
+      return;
+    }
     pageOpacity.setValue(0);
     pageShift.setValue(PAGE_SHIFT);
     const enter = Animated.parallel([

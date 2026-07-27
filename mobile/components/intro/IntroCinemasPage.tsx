@@ -22,12 +22,16 @@ import { sortCinemaIds } from "@/components/filters/cinema-grouping";
 import { invalidateCinemaPresets } from "@/components/filters/cinema-presets";
 import IntroPageShell from "@/components/intro/IntroPageShell";
 import { ThemedText } from "@/components/themed-text";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { retireCinemaPresetTip } from "@/utils/feature-tips";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 /** The name the first preset gets, since the intro does not stop to ask. */
 const DEFAULT_PRESET_NAME = "Favorites";
+
+/** Placeholder rows drawn while the cinema list is still in flight. */
+const SKELETON_ROW_COUNT = 8;
 
 export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
   // Read flow: local state and data hooks first, then handlers, then the JSX.
@@ -40,6 +44,11 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
   const { setSelections: setSessionCinemaIds } = useSessionCinemaSelections();
 
   const cinemaList = useMemo(() => cinemas ?? [], [cinemas]);
+  // The list is normally prefetched before this page is mounted (see
+  // `IntroHost`), so this is the slow-network case only. It still matters:
+  // without it the very first thing a new account saw was "0 of 0 selected"
+  // over an empty box, which then popped into a full list.
+  const isCinemaListLoading = cinemas === undefined;
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(
     () => new Set(favoriteCinemaIds ?? [])
   );
@@ -122,10 +131,14 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
       onSecondary={onDone}
     >
       <View style={styles.pickerHeader}>
-        <ThemedText style={styles.count}>
-          {selectedCount} of {cinemaList.length} selected
-        </ThemedText>
-        {selectedCount > 0 ? (
+        {isCinemaListLoading ? (
+          <Skeleton style={styles.countSkeleton} />
+        ) : (
+          <ThemedText style={styles.count}>
+            {selectedCount} of {cinemaList.length} selected
+          </ThemedText>
+        )}
+        {!isCinemaListLoading && selectedCount > 0 ? (
           <TouchableOpacity
             onPress={handleClearAll}
             activeOpacity={0.7}
@@ -139,14 +152,23 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
       <ScrollView
         style={styles.pickerBox}
         contentContainerStyle={styles.pickerContent}
-        showsVerticalScrollIndicator
+        showsVerticalScrollIndicator={!isCinemaListLoading}
+        scrollEnabled={!isCinemaListLoading}
       >
-        <CinemaPickerList
-          cinemas={cinemaList}
-          selectedIds={selectedIds}
-          onToggleCinema={handleToggleCinema}
-          onSelectCinemas={handleSelectCinemas}
-        />
+        {isCinemaListLoading ? (
+          <View style={styles.skeletonList}>
+            {Array.from({ length: SKELETON_ROW_COUNT }, (_unused, index) => (
+              <Skeleton key={index} style={styles.skeletonRow} />
+            ))}
+          </View>
+        ) : (
+          <CinemaPickerList
+            cinemas={cinemaList}
+            selectedIds={selectedIds}
+            onToggleCinema={handleToggleCinema}
+            onSelectCinemas={handleSelectCinemas}
+          />
+        )}
       </ScrollView>
     </IntroPageShell>
   );
@@ -165,6 +187,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "600",
       color: colors.textSecondary,
     },
+    // Same footprint as the "N of M selected" line it stands in for, so the
+    // header does not change height when the real count lands.
+    countSkeleton: {
+      height: 15,
+      width: 120,
+      borderRadius: 4,
+    },
     clearAll: {
       fontSize: 13,
       fontWeight: "700",
@@ -182,5 +211,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     pickerContent: {
       paddingHorizontal: 24,
       paddingVertical: 12,
+    },
+    skeletonList: {
+      gap: 14,
+    },
+    skeletonRow: {
+      height: 20,
+      borderRadius: 5,
     },
   });

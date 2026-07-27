@@ -42,6 +42,8 @@ import {
   fetchDisplayPresets,
   loadDisplayPresetOrder,
 } from '@/components/filters/saved-presets';
+import { prefetchCinemas } from 'shared/hooks/useFetchCinemas';
+import { prefetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { ShowtimeModalProvider, useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
 import { NotificationCenterProvider } from '@/components/notifications/NotificationCenterProvider';
 import {
@@ -333,6 +335,12 @@ function RootLayourContent() {
         queryKey: displayPresetOrderQueryKey,
         queryFn: () => loadDisplayPresetOrder(),
       }),
+      // The intro's first page is a full-screen cinema picker, and the cinema
+      // filter needs the same list. Fetched here rather than when either one
+      // mounts, so they open on a complete list instead of an empty box that
+      // fills in a second later.
+      prefetchCinemas(queryClient),
+      prefetchSelectedCinemas(queryClient),
     ]);
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
     void Promise.race([warm, timeout]).then(() => {

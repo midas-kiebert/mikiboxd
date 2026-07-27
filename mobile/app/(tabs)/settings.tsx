@@ -37,6 +37,7 @@ import {
   useFeatureTipsEnabled,
 } from '@/utils/feature-tips';
 import { startIntro } from '@/utils/intro';
+import { markSignedOut } from '@/utils/auth-session';
 import useAuth from 'shared/hooks/useAuth';
 import {
   MeService,
@@ -75,7 +76,13 @@ export default function SettingsScreen() {
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
   // Data hooks keep this module synced with backend data and shared cache state.
-  const { user, logout } = useAuth(undefined, () => router.replace('/login'));
+  // markSignedOut and the navigation go together, in that order: the route
+  // guard has to agree the session is over before it sees us on /login, or it
+  // will bounce straight back into the tabs. See utils/auth-session.ts.
+  const { user, logout } = useAuth(undefined, () => {
+    markSignedOut();
+    router.replace('/login');
+  });
   // The intro normally runs once, for a brand-new account. Superusers get the
   // replay button in release builds too, so it can be checked on a real device
   // without making an account for every run.
@@ -123,6 +130,9 @@ export default function SettingsScreen() {
   // tap to reach account deletion.
   const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
   const dangerCaretRotation = useRef(new Animated.Value(0)).current;
+  // The ScrollView is scrolled to the end once the danger zone expands, so the
+  // newly revealed card is never left cut off below the fold.
+  const scrollViewRef = useRef<ScrollView>(null);
   const dangerCaretSpin = useMemo(
     () => dangerCaretRotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }),
     [dangerCaretRotation]
@@ -135,8 +145,11 @@ export default function SettingsScreen() {
       duration: EXPAND_DURATION_MS,
       useNativeDriver: true,
     }).start();
-    if (!next) LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
+    LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
     setIsDangerZoneOpen(next);
+    if (next) {
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), EXPAND_DURATION_MS);
+    }
   }, [isDangerZoneOpen, dangerCaretRotation]);
   // Whether the account already has a password set (false for social-only sign-in).
   const hasPassword = user?.has_password ?? true;
@@ -393,6 +406,7 @@ export default function SettingsScreen() {
           above the keyboard — without it the password/Cineville fields near the
           bottom of this long form are covered on a small phone. */}
       <ScrollView
+        ref={scrollViewRef}
         contentContainerStyle={styles.content}
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
@@ -471,33 +485,6 @@ export default function SettingsScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>Tips</ThemedText>
-          <View style={styles.card}>
-            <View style={styles.notificationToggleHeader}>
-              <View style={styles.notificationToggleTextContainer}>
-                <ThemedText style={styles.notificationToggleTitle}>Feature tips</ThemedText>
-                <ThemedText style={styles.notificationToggleDescription}>
-                  Occasional reminders about features you are not using yet.
-                </ThemedText>
-              </View>
-              <Switch
-                value={featureTipsEnabled}
-                onValueChange={setFeatureTipsEnabled}
-                trackColor={{ false: colors.divider, true: colors.tint }}
-                thumbColor="#ffffff"
-              />
-            </View>
-            {dismissedTipCount > 0 ? (
-              <TouchableOpacity style={styles.secondaryButton} onPress={restoreDismissedTips}>
-                <ThemedText style={styles.secondaryButtonText}>
-                  {`Show the ${dismissedTipCount} hidden tip${dismissedTipCount === 1 ? '' : 's'} again`}
-                </ThemedText>
-              </TouchableOpacity>
-            ) : null}
           </View>
         </View>
 
@@ -742,6 +729,33 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Tips</ThemedText>
+          <View style={styles.card}>
+            <View style={styles.notificationToggleHeader}>
+              <View style={styles.notificationToggleTextContainer}>
+                <ThemedText style={styles.notificationToggleTitle}>Feature tips</ThemedText>
+                <ThemedText style={styles.notificationToggleDescription}>
+                  Occasional reminders about features you are not using yet.
+                </ThemedText>
+              </View>
+              <Switch
+                value={featureTipsEnabled}
+                onValueChange={setFeatureTipsEnabled}
+                trackColor={{ false: colors.divider, true: colors.tint }}
+                thumbColor="#ffffff"
+              />
+            </View>
+            {dismissedTipCount > 0 ? (
+              <TouchableOpacity style={styles.secondaryButton} onPress={restoreDismissedTips}>
+                <ThemedText style={styles.secondaryButtonText}>
+                  {`Show the ${dismissedTipCount} hidden tip${dismissedTipCount === 1 ? '' : 's'} again`}
+                </ThemedText>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>{hasPassword ? 'Password' : 'Add password'}</ThemedText>
           <View style={styles.card}>
             {hasPassword ? (
@@ -808,6 +822,19 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>About</ThemedText>
+          <View style={styles.card}>
+            <ThemedText style={styles.helperText}>
+              This product uses the TMDB API but is not endorsed or certified by TMDB.
+            </ThemedText>
+            <ThemedText style={styles.helperText}>
+              MiKiNO is not affiliated with Letterboxd, Cineville, or any of the cinemas listed in
+              the app.
+            </ThemedText>
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <TouchableOpacity
             style={styles.dangerZoneHeader}
             onPress={toggleDangerZone}
@@ -850,6 +877,9 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     },
     content: {
       padding: 16,
+      // Extra bottom room so the expanded danger zone card is never left
+      // clipped under the tab bar / home indicator.
+      paddingBottom: 48,
       gap: 20,
     },
     section: {

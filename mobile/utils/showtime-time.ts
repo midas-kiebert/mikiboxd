@@ -1,18 +1,21 @@
 import { DateTime } from "luxon";
 
+import { UNKNOWN_METADATA_PLACEHOLDER } from "@/constants/synthetic-movies";
+
 export const formatShowtimeTimeRange = (
   startDatetime: string,
-  endDatetime?: string | null
+  endDatetime?: string | null,
+  isSyntheticMovie?: boolean
 ) => {
   const startTime = DateTime.fromISO(startDatetime).toFormat("HH:mm");
-  if (!endDatetime) {
-    return startTime;
+  const end = endDatetime ? DateTime.fromISO(endDatetime) : null;
+  if (end?.isValid) {
+    return `${startTime}~${end.toFormat("HH:mm")}`;
   }
 
-  const end = DateTime.fromISO(endDatetime);
-  if (!end.isValid) {
-    return startTime;
+  if (isSyntheticMovie) {
+    return `${startTime}~${UNKNOWN_METADATA_PLACEHOLDER}`;
   }
 
-  return `${startTime}~${end.toFormat("HH:mm")}`;
+  return startTime;
 };

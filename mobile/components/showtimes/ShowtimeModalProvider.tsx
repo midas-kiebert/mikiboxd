@@ -67,8 +67,8 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
   const openRequestIdRef = useRef(0);
 
   // Lets anything that must be the only thing on screen hold off while the
-  // sheet is up (currently the intro's filters highlight).
-  useRegisterBlockingOverlay(visible);
+  // sheet is up, or close it outright (currently the intro's filters highlight).
+  useRegisterBlockingOverlay(visible, () => setVisible(false));
 
   const openShowtimeModal = useCallback(
     (showtime: ShowtimeLoggedIn, options?: OpenOptions) => {

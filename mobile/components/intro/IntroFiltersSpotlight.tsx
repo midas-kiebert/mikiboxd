@@ -10,7 +10,7 @@
  * Unlike the showtime tour, the highlighted control here is real: tapping it
  * opens the filters for real, which is the whole point of pointing at it.
  */
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Modal, type View } from "react-native";
 
 import SpotlightOverlay, { type SpotlightRect } from "@/components/intro/SpotlightOverlay";
@@ -31,6 +31,13 @@ const MEASURE_DELAY_MS = 300;
  */
 const FILTERS_HANDOFF_DELAY_MS = 250;
 
+/**
+ * If the Filters button cannot be measured at all (it has gone, or the screen
+ * re-laid out under us), there is nothing to point at and no step to show —
+ * so the intro is ended rather than left parked in its last phase forever.
+ */
+const MEASURE_TIMEOUT_MS = 1200;
+
 type IntroFiltersSpotlightProps = {
   /** The Filters pill on the showtimes screen. */
   targetRef: RefObject<View | null>;
@@ -43,18 +50,35 @@ export default function IntroFiltersSpotlight({
   onOpenFilters,
 }: IntroFiltersSpotlightProps) {
   const [targetRect, setTargetRect] = useState<SpotlightRect | null>(null);
+  const targetRectRef = useRef<SpotlightRect | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      measureForSpotlight(targetRef.current, setTargetRect);
+    const measureTimer = setTimeout(() => {
+      measureForSpotlight(targetRef.current, (rect) => {
+        targetRectRef.current = rect;
+        setTargetRect(rect);
+      });
     }, MEASURE_DELAY_MS);
-    return () => clearTimeout(timer);
+    const timeoutTimer = setTimeout(() => {
+      if (targetRectRef.current) return;
+      endIntro();
+    }, MEASURE_DELAY_MS + MEASURE_TIMEOUT_MS);
+    return () => {
+      clearTimeout(measureTimer);
+      clearTimeout(timeoutTimer);
+    };
   }, [targetRef]);
 
   const handleOpenFilters = () => {
     endIntro();
     setTimeout(onOpenFilters, FILTERS_HANDOFF_DELAY_MS);
   };
+
+  // Nothing is shown until the button has been found. Presenting first and
+  // measuring after meant the caption rendered pinned to the top of the screen
+  // (its fallback when there is no hole to sit beside) and then jumped down to
+  // the button once the measurement landed, a frame or two later.
+  if (!targetRect) return null;
 
   return (
     // A window of its own: the highlight has to cover the tab bar too, which a

@@ -11,6 +11,7 @@ import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibilit
 import { useRouter } from "expo-router";
 
 import { ThemedText } from "@/components/themed-text";
+import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useShowtimeModal, type OpenOptions } from "@/components/showtimes/ShowtimeModalProvider";
 import TopBar from "@/components/layout/TopBar";
@@ -58,6 +59,16 @@ export function ShowtimesListContent({
   inheritFiltersOnMovieNav = false,
 }: ShowtimesListContentProps) {
   const router = useRouter();
+  const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimeLoggedIn) =>
+    router.push({
+      pathname: "/movie/[id]",
+      params: {
+        id: String(showtime.movie.id),
+        cinemaId: String(showtime.cinema.id),
+        ...(inheritFiltersOnMovieNav ? { inheritFilters: "1" } : {}),
+      },
+    })
+  );
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const { openShowtimeModal } = useShowtimeModal();
@@ -111,16 +122,7 @@ export function ShowtimesListContent({
           <ShowtimeCard
             showtime={item}
             onPress={(showtime) => openShowtimeModal(showtime, openModalOptions)}
-            onLongPress={(showtime) =>
-              router.push({
-                pathname: "/movie/[id]",
-                params: {
-                  id: String(showtime.movie.id),
-                  cinemaId: String(showtime.cinema.id),
-                  ...(inheritFiltersOnMovieNav ? { inheritFilters: "1" } : {}),
-                },
-              })
-            }
+            onLongPress={goToMovieFromLongPress}
           />
         )}
         keyExtractor={(item) => item.id.toString()}

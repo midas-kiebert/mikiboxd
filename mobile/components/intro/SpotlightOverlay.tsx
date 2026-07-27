@@ -42,8 +42,11 @@ const PULSE_DURATION_MS = 950;
 type SpotlightOverlayProps = {
   /**
    * Where the highlighted control is. Null while it is still being measured:
-   * the screen dims and the caption shows, but nothing is cut out yet, so the
-   * overlay never flashes a hole in the wrong place.
+   * the screen dims but nothing is cut out yet, so the overlay never flashes a
+   * hole in the wrong place. An auto-placed caption is held back too, since
+   * where it belongs is a function of the hole it does not have yet — a caller
+   * that wants words on screen throughout should pin them with
+   * `captionPlacement="top"`, which does not depend on the measurement.
    */
   target: SpotlightRect | null;
   /**
@@ -99,9 +102,12 @@ export default function SpotlightOverlay({
     };
   }, [target, windowHeight, windowWidth]);
 
+  // An auto-placed caption has nowhere to go until the target is measured, so
+  // it waits rather than showing up somewhere it will have to move from.
+  const isCaptionReady = captionPlacement === "top" || hole !== null;
+
   // Auto-placed captions go wherever there is more room, so they never land on
-  // top of the very thing they are pointing at. An unmeasured target has no
-  // room to compare, so it falls back to the top.
+  // top of the very thing they are pointing at.
   const captionPosition = useMemo(() => {
     const pinnedToTop = { top: insets.top + CAPTION_TOP_OFFSET };
     if (captionPlacement === "top" || !hole) return pinnedToTop;
@@ -213,31 +219,33 @@ export default function SpotlightOverlay({
         <View style={[styles.dim, StyleSheet.absoluteFillObject]} />
       )}
 
-      <View style={[styles.caption, captionPosition]}>
-        <ThemedText style={styles.title}>{title}</ThemedText>
-        {message ? <ThemedText style={styles.message}>{message}</ThemedText> : null}
-        <View style={styles.actions}>
-          {stepLabel ? <ThemedText style={styles.stepLabel}>{stepLabel}</ThemedText> : null}
-          {secondaryLabel && onSecondary ? (
+      {isCaptionReady ? (
+        <View style={[styles.caption, captionPosition]}>
+          <ThemedText style={styles.title}>{title}</ThemedText>
+          {message ? <ThemedText style={styles.message}>{message}</ThemedText> : null}
+          <View style={styles.actions}>
+            {stepLabel ? <ThemedText style={styles.stepLabel}>{stepLabel}</ThemedText> : null}
+            {secondaryLabel && onSecondary ? (
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={handleSecondary}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+              >
+                <ThemedText style={styles.secondaryLabel}>{secondaryLabel}</ThemedText>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={handleSecondary}
-              activeOpacity={0.7}
+              style={styles.primaryButton}
+              onPress={handlePrimary}
+              activeOpacity={0.85}
               accessibilityRole="button"
             >
-              <ThemedText style={styles.secondaryLabel}>{secondaryLabel}</ThemedText>
+              <ThemedText style={styles.primaryLabel}>{primaryLabel}</ThemedText>
             </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={handlePrimary}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-          >
-            <ThemedText style={styles.primaryLabel}>{primaryLabel}</ThemedText>
-          </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      ) : null}
     </View>
   );
 }

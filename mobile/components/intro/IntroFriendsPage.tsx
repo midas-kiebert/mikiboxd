@@ -10,11 +10,10 @@ import { useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { MeService } from "shared";
-import { useFetchUsers } from "shared/hooks/useFetchUsers";
 import QRCode from "react-native-qrcode-svg";
 
-import FriendCard from "@/components/friends/FriendCard";
 import ShareInviteLinkButton from "@/components/friends/ShareInviteLinkButton";
+import UserSearchResults from "@/components/friends/UserSearchResults";
 import SearchBar from "@/components/inputs/SearchBar";
 import IntroPageShell from "@/components/intro/IntroPageShell";
 import { ThemedText } from "@/components/themed-text";
@@ -30,17 +29,10 @@ export default function IntroFriendsPage({ onDone }: { onDone: () => void }) {
   const styles = createStyles(colors);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const normalizedQuery = searchQuery.trim();
-  const hasQuery = normalizedQuery.length > 0;
 
   const { data: currentUser } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => MeService.getCurrentUser(),
-  });
-  const { data: usersData, isFetching: isSearching } = useFetchUsers({
-    limit: SEARCH_RESULT_LIMIT,
-    filters: { query: normalizedQuery },
-    enabled: hasQuery,
   });
 
   const inviteUrl = useMemo(
@@ -51,7 +43,6 @@ export default function IntroFriendsPage({ onDone }: { onDone: () => void }) {
     () => currentUser?.display_name?.trim() || null,
     [currentUser?.display_name]
   );
-  const results = useMemo(() => usersData?.pages[0] ?? [], [usersData]);
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -67,23 +58,18 @@ export default function IntroFriendsPage({ onDone }: { onDone: () => void }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.searchSection}>
-          <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search users" />
-          {hasQuery ? (
-            isSearching ? (
-              <View style={styles.searchStatus}>
-                <ActivityIndicator size="small" color={colors.tint} />
-              </View>
-            ) : results.length === 0 ? (
-              <ThemedText style={styles.searchStatusText}>No users found</ThemedText>
-            ) : (
-              <View style={styles.results}>
-                {results.map((user) => (
-                  <FriendCard key={user.id} user={user} showStatusBadge />
-                ))}
-              </View>
-            )
-          ) : null}
+        {/* Grouped so the results hang off the search box, rather than picking
+            up the gap that separates it from the invite card below. */}
+        <View>
+          {/* Unpadded: this page owns its own gutter, and the search box has to
+              line up with the invite card below it rather than sit wider. */}
+          <SearchBar
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search for a friend"
+            containerStyle={styles.searchBar}
+          />
+          <UserSearchResults query={searchQuery} limit={SEARCH_RESULT_LIMIT} />
         </View>
 
         <View style={styles.inviteCard}>
@@ -118,25 +104,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 14,
       paddingBottom: 8,
     },
-    searchSection: {
-      gap: 8,
-      // SearchBar carries its own horizontal padding, meant for full-bleed
-      // screens; cancel it out so it lines up with the rest of the page.
-      marginHorizontal: -24,
-    },
-    searchStatus: {
-      paddingVertical: 10,
-      alignItems: "center",
-    },
-    searchStatusText: {
-      paddingHorizontal: 24,
-      fontSize: 13,
-      color: colors.textSecondary,
-      textAlign: "center",
-    },
-    results: {
-      paddingHorizontal: 24,
-      gap: 8,
+    searchBar: {
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+      backgroundColor: "transparent",
     },
     inviteCard: {
       borderRadius: 12,

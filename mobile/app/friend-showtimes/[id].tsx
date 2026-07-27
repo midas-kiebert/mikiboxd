@@ -24,11 +24,14 @@ import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import { useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { ThemedText } from '@/components/themed-text';
+import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 import { triggerLongPressHaptic } from '@/utils/long-press';
+import PosterPlaceholder from '@/components/ui/PosterPlaceholder';
+import { isSyntheticMovieId } from '@/constants/synthetic-movies';
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
@@ -44,6 +47,7 @@ const getFriendTitle = (displayName: string | null | undefined) => {
 
 type MovieSection = {
   key: string;
+  movieId: number;
   title: string;
   posterLink: string | null | undefined;
   data: ShowtimeLoggedIn[];
@@ -62,6 +66,12 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
+  const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimeLoggedIn) =>
+    router.push({
+      pathname: "/movie/[id]",
+      params: { id: String(showtime.movie.id), cinemaId: String(showtime.cinema.id) },
+    })
+  );
   const { openShowtimeModal } = useShowtimeModal();
   const { user } = useAuth();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
@@ -200,7 +210,13 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     for (const showtime of showtimes) {
       const movie = showtime.movie;
       if (!map.has(movie.id)) {
-        map.set(movie.id, { key: String(movie.id), title: movie.title, posterLink: movie.poster_link, data: [] });
+        map.set(movie.id, {
+          key: String(movie.id),
+          movieId: movie.id,
+          title: movie.title,
+          posterLink: movie.poster_link,
+          data: [],
+        });
       }
       map.get(movie.id)!.data.push(showtime);
     }
@@ -279,6 +295,8 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         <View style={styles.movieSectionHeader}>
           {section.posterLink ? (
             <Image source={{ uri: section.posterLink }} style={styles.movieSectionPoster} />
+          ) : isSyntheticMovieId(section.movieId) ? (
+            <PosterPlaceholder style={styles.movieSectionPoster} glyphSize={16} />
           ) : null}
           <ThemedText style={styles.movieSectionTitle} numberOfLines={2}>{section.title}</ThemedText>
         </View>
@@ -287,12 +305,7 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         <ShowtimeCard
           showtime={item}
           onPress={(st) => openShowtimeModal(st, { openedFrom: { userId: userId ?? undefined } })}
-          onLongPress={(st) =>
-            router.push({
-              pathname: "/movie/[id]",
-              params: { id: String(st.movie.id), cinemaId: String(st.cinema.id) },
-            })
-          }
+          onLongPress={goToMovieFromLongPress}
         />
       )}
       contentContainerStyle={styles.movieSectionContent}

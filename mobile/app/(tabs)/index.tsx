@@ -37,12 +37,19 @@ import { useThemeColors } from '@/hooks/use-theme-color';
 import { useIsAnyBlockingOverlayOpen } from '@/utils/blocking-overlays';
 import { useIntroPhase } from '@/utils/intro';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
+import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 
 export default function MainShowtimesScreen() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
+  const goToMovieFromCard = useSingleFireNavigation((movieId: number) =>
+    router.push({
+      pathname: '/movie/[id]',
+      params: { id: String(movieId), inheritFilters: '1' },
+    })
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [searchField, setSearchField] = useState<SearchField>('title');
   const [isFilterTransitionLoading, setIsFilterTransitionLoading] = useState(false);
@@ -368,12 +375,7 @@ export default function MainShowtimesScreen() {
           renderItem={({ item }) => (
             <MovieCard
               movie={item}
-              onPress={(movie) =>
-                router.push({
-                  pathname: "/movie/[id]",
-                  params: { id: String(movie.id), inheritFilters: "1" },
-                })
-              }
+              onPress={(movie) => goToMovieFromCard(movie.id)}
             />
           )}
           keyExtractor={(item) => item.id.toString()}

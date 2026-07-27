@@ -34,11 +34,13 @@ import {
 } from '@/components/filters/shared-tab-filters';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
+import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import MovieCard from '@/components/movies/MovieCard';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 
 export default function MovieScreen() {
   const router = useRouter();
+  const goToMovie = useSingleFireNavigation((movieId: number) => router.push(`/movie/${movieId}`));
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const [searchQuery, setSearchQuery] = useState('');
@@ -277,7 +279,7 @@ export default function MovieScreen() {
       <FlatList
         data={visibleMovies}
         renderItem={({ item }) => (
-          <MovieCard movie={item} onPress={(movie) => router.push(`/movie/${movie.id}`)} />
+          <MovieCard movie={item} onPress={(movie) => goToMovie(movie.id)} />
         )}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.movieFeed}

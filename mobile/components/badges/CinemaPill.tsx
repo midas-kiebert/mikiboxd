@@ -12,6 +12,7 @@ import { useRouter } from "expo-router";
 import type { CinemaPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
+import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 type CinemaColorKey =
@@ -46,6 +47,12 @@ const CINEMA_PILL_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 export default function CinemaPill({ cinema, variant = "default", disabledIfSameId }: CinemaPillProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
+  const goToCinemaShowtimes = useSingleFireNavigation((c: CinemaPublic) =>
+    router.push({
+      pathname: "/cinema-showtimes/[id]",
+      params: { id: c.id.toString(), name: c.name, city: c.city.name },
+    })
+  );
   const colors = useThemeColors();
   const styles = createStyles(colors);
   // Size variant keeps the same badge logic reusable in compact rows and full cards.
@@ -89,10 +96,7 @@ export default function CinemaPill({ cinema, variant = "default", disabledIfSame
   const handlePress = (event: GestureResponderEvent) => {
     if (isDisabled) return;
     event.stopPropagation();
-    router.push({
-      pathname: "/cinema-showtimes/[id]",
-      params: { id: cinema.id.toString(), name: cinema.name, city: cinema.city.name },
-    });
+    goToCinemaShowtimes(cinema);
   };
 
   // Render/output using the state and derived values prepared above.

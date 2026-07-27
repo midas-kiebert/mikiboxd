@@ -35,6 +35,7 @@ import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import { ListEndFooter } from "@/components/showtimes/ShowtimesScreen";
 import { SkeletonRows } from "@/components/ui/SkeletonRows";
 import { Skeleton } from "@/components/ui/Skeleton";
+import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 import FiltersModal from "@/components/filters/FiltersModal";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
@@ -429,7 +430,11 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
               activeOpacity={0.85}
               disabled={!letterboxdUrl}
             >
-              <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
+              {isSynthetic ? (
+                <PosterPlaceholder style={styles.poster} glyphSize={40} />
+              ) : (
+                <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
+              )}
             </TouchableOpacity>
             <View style={styles.summaryInfo}>
               <ThemedText style={styles.movieTitle} numberOfLines={3}>
@@ -586,6 +591,7 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
                       showFriends
                       alignCinemaRight
                       showDate={false}
+                      isSyntheticMovie={isSynthetic}
                     />
                   </View>
                 </TouchableOpacity>

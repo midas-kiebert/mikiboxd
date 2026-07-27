@@ -26,6 +26,7 @@ import { getRuntimeBoundsFromSelections } from "@/components/filters/runtime-ran
 import {
   getSelectedStatusesFromShowtimeFilter,
 } from "@/components/filters/shared-tab-filters";
+import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
 import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
@@ -69,6 +70,12 @@ function CinemaShowtimesContent() {
   }>();
   const routeCinemaId = useMemo(() => Number(getRouteParam(id)), [id]);
   const cinemaId = Number.isFinite(routeCinemaId) && routeCinemaId > 0 ? routeCinemaId : -1;
+  const goToMovieFromCard = useSingleFireNavigation((movieId: number) =>
+    router.push({
+      pathname: "/movie/[id]",
+      params: { id: String(movieId), cinemaId: String(cinemaId) },
+    })
+  );
   const routeCinemaName = useMemo(() => getRouteParam(name)?.trim() ?? "", [name]);
   const routeCityName = useMemo(() => getRouteParam(city)?.trim() ?? "", [city]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -308,12 +315,7 @@ function CinemaShowtimesContent() {
       renderItem={({ item }) => (
         <MovieCard
           movie={item}
-          onPress={(movie) =>
-            router.push({
-              pathname: "/movie/[id]",
-              params: { id: String(movie.id), cinemaId: String(cinemaId) },
-            })
-          }
+          onPress={(movie) => goToMovieFromCard(movie.id)}
         />
       )}
       keyExtractor={(item) => item.id.toString()}

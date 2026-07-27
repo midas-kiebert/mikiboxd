@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import type { UserPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
+import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 type FriendBadgesProps = {
@@ -119,6 +120,9 @@ const FriendBadge = ({
   isPending,
 }: FriendBadgeProps & { isPending?: boolean }) => {
   const router = useRouter();
+  const goToFriendShowtimes = useSingleFireNavigation((id: string) =>
+    router.push(`/friend-showtimes/${id}`)
+  );
   const sizeStyles: VariantStyles =
     variant === "compact"
       ? {
@@ -138,7 +142,7 @@ const FriendBadge = ({
     if (disabledUserId !== undefined && friendId === disabledUserId) return;
     event.stopPropagation();
     onNavigate?.();
-    router.push(`/friend-showtimes/${friendId}`);
+    goToFriendShowtimes(friendId);
   };
 
   return (

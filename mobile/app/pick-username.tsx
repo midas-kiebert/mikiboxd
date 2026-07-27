@@ -1,29 +1,29 @@
 /**
  * Expo Router screen/module for pick-username. It controls navigation and screen-level state for this route.
  */
-import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useEffect, useRef } from 'react'
+import { StyleSheet, TextInput, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Controller, useForm } from 'react-hook-form'
 import { useMutation } from '@tanstack/react-query'
 import { MeService, type ApiError, type UserUpdate } from 'shared'
 import { handleError, usernameMaxLength, usernamePattern } from 'shared/utils'
-import { useThemeColors } from '@/hooks/use-theme-color'
+
+import AuthPrimaryButton from '@/components/auth/AuthPrimaryButton'
+import AuthScreenShell from '@/components/auth/AuthScreenShell'
+import AuthTextField from '@/components/auth/AuthTextField'
 import { completeLogin } from '@/utils/complete-login'
 
 type PickUsernameForm = {
     display_name: string
 }
+
+/**
+ * The keyboard is worth opening for a one-field screen, but not while the
+ * screen is still sliding in: focusing during the transition makes the card
+ * animate and the window resize at the same time, and the two fight visibly.
+ */
+const AUTOFOCUS_DELAY_MS = 420
 
 // A raw provider name (e.g. Apple's "Jan de Vries") isn't a valid app
 // username — strip anything outside [A-Za-z0-9_] and truncate, purely as a
@@ -34,10 +34,10 @@ function suggestUsername(rawName: string | undefined): string {
 }
 
 export default function PickUsernameScreen() {
+    // Read flow: local state and data hooks first, then handlers, then the JSX screen.
     const router = useRouter()
     const { suggestion } = useLocalSearchParams<{ suggestion?: string }>()
-    const colors = useThemeColors()
-    const styles = createStyles(colors)
+    const inputRef = useRef<TextInput>(null)
 
     const {
         control,
@@ -52,7 +52,13 @@ export default function PickUsernameScreen() {
         mutationFn: (data: UserUpdate) => MeService.updateUserMe({ requestBody: data }),
     })
 
+    useEffect(() => {
+        const timer = setTimeout(() => inputRef.current?.focus(), AUTOFOCUS_DELAY_MS)
+        return () => clearTimeout(timer)
+    }, [])
+
     const onSubmit = async (data: PickUsernameForm) => {
+        if (isSubmitting || updateUsernameMutation.isPending) return
         try {
             await updateUsernameMutation.mutateAsync({ display_name: data.display_name })
             await completeLogin(router)
@@ -61,163 +67,58 @@ export default function PickUsernameScreen() {
         }
     }
 
+    // Wrapped so both the button and the keyboard's Go key call the same thing,
+    // without either having to care that it returns a promise.
+    const submitForm = () => {
+        void handleSubmit(onSubmit)()
+    }
+
+    // Render/output using the state and derived values prepared above.
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.flex}
-            >
-                <ScrollView
-                    contentContainerStyle={styles.form}
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
-                >
-                    <View style={styles.badge}>
-                        <Text style={styles.badgeText}>🎬</Text>
-                    </View>
-                    <Text style={styles.title}>Pick a username</Text>
-                    <Text style={styles.subtitle}>
-                        This is how friends will find and recognize you in the app.
-                    </Text>
+        <AuthScreenShell
+            title="Pick a username"
+            subtitle="This is how friends will find and recognize you in the app."
+        >
+            <View style={styles.form}>
+                <Controller
+                    control={control}
+                    name="display_name"
+                    rules={{
+                        required: 'Username is required',
+                        pattern: usernamePattern,
+                    }}
+                    render={({ field: { onChange, onBlur, value } }) => (
+                        <AuthTextField
+                            ref={inputRef}
+                            label="Username"
+                            placeholder="Username"
+                            error={errors.display_name?.message}
+                            hint="4-15 characters. Letters, numbers, and underscores only."
+                            onBlur={onBlur}
+                            onChangeText={onChange}
+                            value={value}
+                            autoCapitalize="none"
+                            autoComplete="off"
+                            autoCorrect={false}
+                            maxLength={usernameMaxLength}
+                            returnKeyType="go"
+                            onSubmitEditing={submitForm}
+                        />
+                    )}
+                />
 
-                    <Controller
-                        control={control}
-                        name="display_name"
-                        rules={{
-                            required: 'Username is required',
-                            pattern: usernamePattern,
-                        }}
-                        render={({ field: { onChange, onBlur, value } }) => (
-                            <View style={styles.inputContainer}>
-                                <TextInput
-                                    style={[styles.input, errors.display_name && styles.inputError]}
-                                    placeholder="Username"
-                                    placeholderTextColor={colors.textSecondary}
-                                    onBlur={onBlur}
-                                    onChangeText={onChange}
-                                    value={value}
-                                    autoCapitalize="none"
-                                    autoComplete="off"
-                                    autoCorrect={false}
-                                    maxLength={usernameMaxLength}
-                                    selectionColor={colors.tint}
-                                    autoFocus
-                                />
-                                {errors.display_name ? (
-                                    <Text style={styles.fieldError}>{errors.display_name.message}</Text>
-                                ) : (
-                                    <Text style={styles.hint}>
-                                        4-15 characters. Letters, numbers, and underscores only.
-                                    </Text>
-                                )}
-                            </View>
-                        )}
-                    />
-
-                    <TouchableOpacity
-                        style={[
-                            styles.button,
-                            (isSubmitting || updateUsernameMutation.isPending) && styles.buttonDisabled,
-                        ]}
-                        onPress={handleSubmit(onSubmit)}
-                        disabled={isSubmitting || updateUsernameMutation.isPending}
-                    >
-                        {isSubmitting || updateUsernameMutation.isPending ? (
-                            <ActivityIndicator color={colors.pillActiveText} />
-                        ) : (
-                            <Text style={styles.buttonText}>Continue</Text>
-                        )}
-                    </TouchableOpacity>
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
+                <AuthPrimaryButton
+                    label="Continue"
+                    onPress={submitForm}
+                    isBusy={isSubmitting || updateUsernameMutation.isPending}
+                />
+            </View>
+        </AuthScreenShell>
     )
 }
 
-const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =>
-    StyleSheet.create({
-        container: {
-            flex: 1,
-            backgroundColor: colors.background,
-        },
-        flex: {
-            flex: 1,
-        },
-        form: {
-            flexGrow: 1,
-            justifyContent: 'center',
-            padding: 20,
-        },
-        badge: {
-            alignSelf: 'center',
-            width: 64,
-            height: 64,
-            borderRadius: 32,
-            backgroundColor: colors.cardBackground,
-            borderWidth: 1,
-            borderColor: colors.cardBorder,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 20,
-        },
-        badgeText: {
-            fontSize: 28,
-        },
-        title: {
-            fontSize: 28,
-            fontWeight: 'bold',
-            marginBottom: 8,
-            textAlign: 'center',
-            color: colors.text,
-        },
-        subtitle: {
-            textAlign: 'center',
-            color: colors.textSecondary,
-            marginBottom: 28,
-            fontSize: 14,
-            paddingHorizontal: 12,
-        },
-        inputContainer: {
-            marginBottom: 20,
-        },
-        input: {
-            borderWidth: 1,
-            borderColor: colors.cardBorder,
-            borderRadius: 8,
-            padding: 15,
-            fontSize: 16,
-            color: colors.text,
-            backgroundColor: colors.cardBackground,
-            textAlign: 'center',
-        },
-        inputError: {
-            borderColor: colors.red.secondary,
-        },
-        fieldError: {
-            color: colors.red.secondary,
-            fontSize: 12,
-            marginTop: 6,
-            textAlign: 'center',
-        },
-        hint: {
-            color: colors.textSecondary,
-            fontSize: 12,
-            marginTop: 6,
-            textAlign: 'center',
-        },
-        button: {
-            backgroundColor: colors.tint,
-            borderRadius: 8,
-            padding: 15,
-            alignItems: 'center',
-            marginTop: 8,
-        },
-        buttonDisabled: {
-            opacity: 0.6,
-        },
-        buttonText: {
-            color: colors.pillActiveText,
-            fontSize: 16,
-            fontWeight: '600',
-        },
-    })
+const styles = StyleSheet.create({
+    form: {
+        gap: 18,
+    },
+})

@@ -12,9 +12,16 @@
  * The final filters highlight is not part of this flow at all: it belongs to
  * the showtimes screen, which is the only thing that knows when its list is up
  * (see `IntroFiltersSpotlight`).
+ *
+ * The Modal takes the screen instantly (`animationType="none"`) and animates its
+ * *contents* in instead. Fading the window itself meant whatever it was covering
+ * — the splash on a cold start, the login screen sliding away to the tabs after
+ * a sign-up — was visible through it for the length of the fade. Leaving is the
+ * opposite case and does fade, since by then the app underneath is what the user
+ * is meant to be looking at.
  */
-import { useCallback, useMemo, useState } from "react";
-import { Modal, StyleSheet, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Easing, Modal, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import IntroCinemasPage from "@/components/intro/IntroCinemasPage";
@@ -25,11 +32,23 @@ import IntroShowtimeTour, { SHOWTIME_TOUR_STEPS } from "@/components/intro/Intro
 import type { SpotlightRect } from "@/components/intro/SpotlightOverlay";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { closeAllBlockingOverlays } from "@/utils/blocking-overlays";
 import { completeIntroPages, endIntro, INTRO_PAGE_ORDER } from "@/utils/intro";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 /** Space above and below the progress/skip row, on top of the safe area. */
 const CHROME_VERTICAL_PADDING = 12;
+
+/** The contents settling in once the Modal has taken the screen. */
+const ENTRANCE_DURATION_MS = 280;
+/** Leaving the current page. Short: this is the response to a tap. */
+const PAGE_EXIT_MS = 130;
+/** The next page arriving. Longer than the exit so it reads as a settle. */
+const PAGE_ENTER_MS = 220;
+/** How far a page slides as it changes, in points. Enough to suggest forward motion. */
+const PAGE_SHIFT = 14;
+/** The whole walkthrough fading out to reveal the app behind it. */
+const EXIT_DURATION_MS = 240;
 
 export default function IntroFlow() {
   // Read flow: local state first, then the handlers, then the JSX.
@@ -43,22 +62,117 @@ export default function IntroFlow() {
   // would be pointing at the wrong button until the new measurement lands.
   const [tourTargetRect, setTourTargetRect] = useState<SpotlightRect | null>(null);
 
+  const layerOpacity = useRef(new Animated.Value(1)).current;
+  const chromeOpacity = useRef(new Animated.Value(0)).current;
+  const pageOpacity = useRef(new Animated.Value(0)).current;
+  const pageShift = useRef(new Animated.Value(PAGE_SHIFT)).current;
+  // Guards the exit against a second tap landing mid-fade.
+  const isLeavingRef = useRef(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+
   const pageId = INTRO_PAGE_ORDER[pageIndex];
   const isTourPage = pageId === "showtime-tour";
+
+  useEffect(() => {
+    // The walkthrough takes over the whole screen, so anything already open is
+    // closed rather than covered — a filters sheet left up before the intro
+    // started (or before a replay from Settings) would otherwise still be
+    // sitting there when it ended, underneath the highlight that is supposed to
+    // be telling the user to open it.
+    closeAllBlockingOverlays();
+  }, []);
+
+  useEffect(() => {
+    // The window is already opaque; this is only its chrome arriving.
+    const entrance = Animated.timing(chromeOpacity, {
+      toValue: 1,
+      duration: ENTRANCE_DURATION_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    entrance.start();
+    return () => entrance.stop();
+  }, [chromeOpacity]);
+
+  useEffect(() => {
+    // Runs after the commit that put this page on screen — which is the whole
+    // point of it being an effect rather than the tail of the exit animation's
+    // callback. Started from there, the fade-in ran against the page that was
+    // still mounted, so the *previous* page visibly faded back in for a frame or
+    // two before React swapped in the new one. That was the flash.
+    pageOpacity.setValue(0);
+    pageShift.setValue(PAGE_SHIFT);
+    const enter = Animated.parallel([
+      Animated.timing(pageOpacity, {
+        toValue: 1,
+        duration: PAGE_ENTER_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(pageShift, {
+        toValue: 0,
+        duration: PAGE_ENTER_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]);
+    enter.start();
+    return () => enter.stop();
+  }, [pageIndex, pageOpacity, pageShift]);
+
+  /** Fades the current page out, then hands the swap to the effect above. */
+  const transitionToPage = useCallback(
+    (applyChange: () => void) => {
+      Animated.parallel([
+        Animated.timing(pageOpacity, {
+          toValue: 0,
+          duration: PAGE_EXIT_MS,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pageShift, {
+          toValue: -PAGE_SHIFT,
+          duration: PAGE_EXIT_MS,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (!finished) return;
+        applyChange();
+      });
+    },
+    [pageOpacity, pageShift]
+  );
+
+  /** Fades the whole walkthrough out, then hands over to whatever comes next. */
+  const leaveIntro = useCallback(
+    (finish: () => void) => {
+      if (isLeavingRef.current) return;
+      isLeavingRef.current = true;
+      setIsLeaving(true);
+      Animated.timing(layerOpacity, {
+        toValue: 0,
+        duration: EXIT_DURATION_MS,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start(() => finish());
+    },
+    [layerOpacity]
+  );
 
   const handleNextPage = useCallback(() => {
     if (pageIndex >= INTRO_PAGE_ORDER.length - 1) {
       // Last page done: the showtimes screen owes the filters highlight.
-      completeIntroPages();
+      leaveIntro(completeIntroPages);
       return;
     }
-    setPageIndex(pageIndex + 1);
-  }, [pageIndex]);
+    transitionToPage(() => setPageIndex(pageIndex + 1));
+  }, [leaveIntro, pageIndex, transitionToPage]);
 
   const handleSkip = useCallback(() => {
     triggerSelectionHaptic();
-    endIntro();
-  }, []);
+    leaveIntro(endIntro);
+  }, [leaveIntro]);
 
   const handleNextTourStep = useCallback(() => {
     if (tourStepIndex >= SHOWTIME_TOUR_STEPS.length - 1) {
@@ -81,12 +195,20 @@ export default function IntroFlow() {
   return (
     <>
       {/* Outside the Modal below, which is a window above it. */}
-      <IntroShowtimeSheet visible={isTourPage} tour={tour} />
+      <IntroShowtimeSheet visible={isTourPage && !isLeaving} tour={tour} />
 
-      <Modal transparent statusBarTranslucent visible animationType="fade" onRequestClose={handleSkip}>
+      <Modal transparent statusBarTranslucent visible animationType="none" onRequestClose={handleSkip}>
         {/* No padding of its own: the spotlight below is positioned from
             window coordinates, so its coordinate space has to be the window. */}
-        <View style={[styles.container, !isTourPage && styles.containerOpaque]}>
+        <Animated.View
+          style={[
+            styles.container,
+            !isTourPage && styles.containerOpaque,
+            { opacity: layerOpacity },
+          ]}
+          // Nothing is tappable once it has started leaving.
+          pointerEvents={isLeaving ? "none" : "auto"}
+        >
           {isTourPage ? (
             <IntroShowtimeTour
               stepIndex={tourStepIndex}
@@ -97,7 +219,12 @@ export default function IntroFlow() {
 
           {/* Last sibling on the tour page, so it paints and takes taps above
               the overlay's dim panes. */}
-          <View style={[styles.chrome, { paddingTop: insets.top + CHROME_VERTICAL_PADDING }]}>
+          <Animated.View
+            style={[
+              styles.chrome,
+              { paddingTop: insets.top + CHROME_VERTICAL_PADDING, opacity: chromeOpacity },
+            ]}
+          >
             <View style={styles.progress}>
               {INTRO_PAGE_ORDER.map((id, index) => (
                 <View
@@ -121,16 +248,25 @@ export default function IntroFlow() {
                 Skip tutorial
               </ThemedText>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
 
           {!isTourPage ? (
-            <View style={[styles.page, { paddingBottom: insets.bottom }]}>
+            <Animated.View
+              style={[
+                styles.page,
+                {
+                  paddingBottom: insets.bottom,
+                  opacity: pageOpacity,
+                  transform: [{ translateX: pageShift }],
+                },
+              ]}
+            >
               {pageId === "cinemas" ? <IntroCinemasPage onDone={handleNextPage} /> : null}
               {pageId === "letterboxd" ? <IntroLetterboxdPage onDone={handleNextPage} /> : null}
               {pageId === "friends" ? <IntroFriendsPage onDone={handleNextPage} /> : null}
-            </View>
+            </Animated.View>
           ) : null}
-        </View>
+        </Animated.View>
       </Modal>
     </>
   );

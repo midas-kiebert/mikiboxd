@@ -6,8 +6,9 @@
  * every field below it by a pixel on every tap. Validation messages are tweened
  * in for the same reason (see `useLayoutAnimatedValue`).
  */
-import { forwardRef, useState } from "react";
+import { forwardRef, useRef, useState } from "react";
 import {
+  Platform,
   StyleSheet,
   TextInput,
   type TextInputProps,
@@ -17,6 +18,7 @@ import {
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
+import { useAuthScroll } from "@/components/auth/AuthScreenShell";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useLayoutAnimatedValue } from "@/hooks/useLayoutAnimatedValue";
 
@@ -38,12 +40,16 @@ const AuthTextField = forwardRef<TextInput, AuthTextFieldProps>(function AuthTex
   const styles = createStyles(colors);
   const [isFocused, setIsFocused] = useState(false);
   const [isSecureHidden, setIsSecureHidden] = useState(true);
+  const authScroll = useAuthScroll();
+  // Separate from `ref` (which callers use to chain focus between fields):
+  // this measures the field's own position to scroll it into view.
+  const fieldRef = useRef<View>(null);
 
   const message = useLayoutAnimatedValue(error ?? hint ?? null);
   const isErrorMessage = Boolean(error);
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} ref={fieldRef}>
       <ThemedText style={styles.label}>{label}</ThemedText>
       <View
         style={[
@@ -62,6 +68,12 @@ const AuthTextField = forwardRef<TextInput, AuthTextFieldProps>(function AuthTex
           onFocus={(event) => {
             setIsFocused(true);
             onFocus?.(event);
+            // iOS gets this from `automaticallyAdjustKeyboardInsets` on the
+            // ScrollView itself; Android has no native equivalent under
+            // edge-to-edge, so ask the shell to scroll this field into view.
+            if (Platform.OS === "android") {
+              authScroll?.scrollToFocusedInput(fieldRef);
+            }
           }}
           onBlur={(event) => {
             setIsFocused(false);

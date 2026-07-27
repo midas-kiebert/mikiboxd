@@ -10,14 +10,40 @@
  * appears and disappears under the user: it is tweened in rather than inserted,
  * so a failed login does not shunt the whole form up a line.
  */
-import type { ReactNode } from "react";
-import { Image, Platform, ScrollView, StyleSheet, View } from "react-native";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { Dimensions, Image, Keyboard, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useLayoutAnimatedValue } from "@/hooks/useLayoutAnimatedValue";
+
+type AuthScrollContextValue = {
+  /** Scrolls the focused field above the keyboard; a no-op on iOS, which
+   * already gets this from `automaticallyAdjustKeyboardInsets` below. */
+  scrollToFocusedInput: (fieldRef: RefObject<View | null>) => void;
+};
+
+const AuthScrollContext = createContext<AuthScrollContextValue | null>(null);
+
+/** Lets `AuthTextField` ask the enclosing shell to bring it into view on focus. */
+export function useAuthScroll() {
+  return useContext(AuthScrollContext);
+}
+
+// Matches `styles.content.paddingVertical` below — kept as a constant rather
+// than read off the StyleSheet object, since `StyleSheet.create` can return
+// an opaque numeric id for its styles rather than the plain object.
+const CONTENT_VERTICAL_PADDING = 18;
 
 type AuthScreenShellProps = {
   title: string;
@@ -41,27 +67,101 @@ export default function AuthScreenShell({
   const styles = createStyles(colors);
   // Tweens the banner in and out instead of inserting it under the user.
   const visibleError = useLayoutAnimatedValue(error ?? null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  // Tracked by hand because we need "how far have we already scrolled" to
+  // turn a field's on-screen position into a scrollTo offset.
+  const scrollOffsetRef = useRef(0);
+  // The field most recently focused; re-read once the keyboard height below
+  // is actually known, since focus can fire before `keyboardDidShow` does.
+  const pendingFieldRef = useRef<RefObject<View | null> | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // The padding below is driven off this, not `keyboardHeight` directly, and
+  // only ever grows: shrinking it back down when the keyboard closes was
+  // what caused the scroll offset to clamp abruptly, including when the
+  // keyboard closed because the user scrolled it away rather than dismissing
+  // it directly. Simpler to just always leave the room to scroll into once
+  // the keyboard has been seen at all, at the cost of some empty space below
+  // the form when the keyboard is closed.
+  const [scrollPadding, setScrollPadding] = useState(0);
+
+  // Android has `edgeToEdgeEnabled` on (app.json), which disables the classic
+  // adjustResize window-resize the ScrollView here used to rely on — the
+  // window never shrinks, so the ScrollView never gains the extra scroll
+  // range a resize would have given it, and a `scrollTo` past the content's
+  // natural height just clamps back to 0. Tracking the keyboard's own height
+  // and padding the content by that much gives the ScrollView real room to
+  // scroll into. `automaticallyAdjustKeyboardInsets` gets iOS this for free.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const showSubscription = Keyboard.addListener("keyboardDidShow", (keyboardEvent) => {
+      const height = keyboardEvent.endCoordinates.height;
+      setKeyboardHeight(height);
+      setScrollPadding((current) => Math.max(current, height));
+    });
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  // `measureLayout`/`UIManager.measureLayout` are both off the table under
+  // the New Architecture (`newArchEnabled` in app.json) — they throw at
+  // runtime. `.measure()` (page coordinates) is still supported, so the
+  // scroll offset is computed by hand instead of asking the ScrollView to
+  // do it via a relative measurement.
+  //
+  // Measuring is deferred a beat: the extra bottom padding that gives the
+  // ScrollView room to scroll into is itself a state update, and measuring
+  // the field before that padding has actually been laid out on the native
+  // side under-scrolls it (using the field's pre-padding position).
+  const scrollFieldIntoView = (fieldRef: RefObject<View | null>) => {
+    setTimeout(() => {
+      fieldRef.current?.measure((_x, _y, _width, fieldHeight, _pageX, pageY) => {
+        const screenHeight = Dimensions.get("window").height;
+        // Generous margin: Android's own suggestion/autofill strip sits on
+        // top of the keyboard proper and isn't part of `endCoordinates.height`.
+        const visibleBottom = screenHeight - keyboardHeight - 56;
+        const fieldBottom = pageY + fieldHeight;
+        if (fieldBottom <= visibleBottom) return;
+        const targetOffset = scrollOffsetRef.current + (fieldBottom - visibleBottom);
+        scrollViewRef.current?.scrollTo({ y: Math.max(targetOffset, 0), animated: true });
+      });
+    }, 100);
+  };
+
+  const scrollToFocusedInput = (fieldRef: RefObject<View | null>) => {
+    pendingFieldRef.current = fieldRef;
+    // If the keyboard is already up (switching between fields), scroll now;
+    // otherwise wait for the `keyboardHeight` effect below, once it's known.
+    if (keyboardHeight > 0) scrollFieldIntoView(fieldRef);
+  };
+
+  useEffect(() => {
+    if (keyboardHeight > 0 && pendingFieldRef.current) {
+      scrollFieldIntoView(pendingFieldRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyboardHeight]);
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      {/* Scrollable so the submit button stays reachable when the keyboard
-          takes half the screen on a small phone, or when the user's font scale
-          makes the form taller than the viewport.
-
-          `automaticallyAdjustKeyboardInsets` rather than a KeyboardAvoidingView
-          — the same thing the Settings form uses. Wrapping in a KAV only ever
-          made room *below* the form; it never scrolled to the field the user
-          had actually tapped, so on a short screen the password or confirm
-          field could still be sitting under the keyboard with no way to reach
-          it. iOS handles both natively here. Android is left alone: the window
-          already resizes (adjustResize), which turns the content into
-          scrollable overflow and brings the focused input into view. */}
       <ScrollView
-        contentContainerStyle={styles.content}
+        ref={scrollViewRef}
+        contentContainerStyle={[
+          styles.content,
+          scrollPadding > 0 && { paddingBottom: CONTENT_VERTICAL_PADDING + scrollPadding },
+        ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
         showsVerticalScrollIndicator={false}
+        onScroll={(event) => {
+          scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
         <View style={styles.header}>
           {/* The same mark the splash shows, so the hand-off from launch to
@@ -82,7 +182,9 @@ export default function AuthScreenShell({
           </View>
         ) : null}
 
-        {children}
+        <AuthScrollContext.Provider value={{ scrollToFocusedInput }}>
+          {children}
+        </AuthScrollContext.Provider>
 
         {footer ? <View style={styles.footer}>{footer}</View> : null}
       </ScrollView>
@@ -102,7 +204,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flexGrow: 1,
       justifyContent: "center",
       paddingHorizontal: 24,
-      paddingVertical: 18,
+      paddingVertical: CONTENT_VERTICAL_PADDING,
     },
     // Sized to leave the form itself on screen: the sign-up form is four fields
     // and two provider buttons, and a header that took a third of the viewport

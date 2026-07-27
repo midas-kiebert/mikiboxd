@@ -33,14 +33,16 @@ type ShowtimeRowProps = {
   alignCinemaRight?: boolean;
   showDate?: boolean;
   subtitlesAfterCinema?: boolean;
+  isSyntheticMovie?: boolean;
 };
 
 const formatShowtime = (
   datetime: string,
   endDatetime: string | null | undefined,
-  showDate: boolean
+  showDate: boolean,
+  isSyntheticMovie: boolean
 ) => {
-  const timeLabel = formatShowtimeTimeRange(datetime, endDatetime);
+  const timeLabel = formatShowtimeTimeRange(datetime, endDatetime, isSyntheticMovie);
   if (!showDate) return timeLabel;
   const dateFormat = "ccc d LLL";
   const dateLabel = DateTime.fromISO(datetime).toFormat(dateFormat);
@@ -54,6 +56,7 @@ export default function ShowtimeRow({
   alignCinemaRight = false,
   showDate = true,
   subtitlesAfterCinema = false,
+  isSyntheticMovie = false,
 }: ShowtimeRowProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
@@ -79,7 +82,7 @@ export default function ShowtimeRow({
           ]}
           numberOfLines={1}
         >
-          {formatShowtime(showtime.datetime, showtime.end_datetime, showDate)}
+          {formatShowtime(showtime.datetime, showtime.end_datetime, showDate, isSyntheticMovie)}
         </ThemedText>
         {subtitlesAfterCinema ? (
           <>

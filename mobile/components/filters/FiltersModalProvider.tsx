@@ -39,8 +39,12 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
 
   // Lets anything that must be the only thing on screen hold off while either
-  // sheet is up (currently the intro's filters highlight).
-  useRegisterBlockingOverlay(visible || cinemaModalVisible);
+  // sheet is up — or close them outright (the intro's filters highlight does
+  // both: it waits for a clear screen, and the walkthrough clears it first).
+  useRegisterBlockingOverlay(visible || cinemaModalVisible, () => {
+    setVisible(false);
+    setCinemaModalVisible(false);
+  });
 
   const {
     selectedShowtimeFilter,

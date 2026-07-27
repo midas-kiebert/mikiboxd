@@ -8,6 +8,14 @@ from sqlmodel import Column, Field, SQLModel
 
 from app.utils import now_amsterdam_naive
 
+# The "every cinema" preset every user is offered. It has no row: it is
+# synthesised per request by `me.list_cinema_presets`, so anything that stores
+# this id has to special-case it rather than look it up. Lives on the model
+# rather than in the service so consumers (the watchlist digest) can recognise
+# it without importing the whole `me` service.
+DEFAULT_CINEMA_PRESET_ID = uuid.UUID("00000000-0000-0000-0000-000000000003")
+DEFAULT_CINEMA_PRESET_NAME = "All Cinemas"
+
 
 class CinemaPreset(SQLModel, table=True):
     __table_args__ = (

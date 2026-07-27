@@ -3,7 +3,6 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   SectionList,
   Image,
   StyleSheet,
@@ -32,9 +31,10 @@ import {
   type FriendWatchKind,
 } from "@/components/friends/friend-watch-kind";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
-import { ListEndFooter } from "@/components/showtimes/ShowtimesScreen";
 import { SkeletonRows } from "@/components/ui/SkeletonRows";
+import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
+import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 import FiltersModal from "@/components/filters/FiltersModal";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
@@ -61,6 +61,8 @@ const SHOWTIMES_PAGE_SIZE = 20;
 
 /** Horizontal gap between the watchlisted/watched markers. */
 const WATCH_MARKER_GAP = 8;
+/** A marker pill: 13pt icon/11pt count plus its 3pt vertical padding. */
+const WATCH_MARKER_HEIGHT = 21;
 
 type MovieShowtimeSection = {
   key: string;
@@ -429,7 +431,11 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
               activeOpacity={0.85}
               disabled={!letterboxdUrl}
             >
-              <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
+              {isSynthetic ? (
+                <PosterPlaceholder style={styles.poster} glyphSize={40} />
+              ) : (
+                <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
+              )}
             </TouchableOpacity>
             <View style={styles.summaryInfo}>
               <ThemedText style={styles.movieTitle} numberOfLines={3}>
@@ -586,6 +592,7 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
                       showFriends
                       alignCinemaRight
                       showDate={false}
+                      isSyntheticMovie={isSynthetic}
                     />
                   </View>
                 </TouchableOpacity>
@@ -608,15 +615,7 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
                 <ThemedText style={styles.noShowtimes}>No upcoming showtimes</ThemedText>
               )
             }
-            ListFooterComponent={
-              isFetchingNextPage ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color={colors.tint} />
-                </View>
-              ) : !hasNextPage && !isShowtimesLoading && !refreshing && showtimes.length > 0 ? (
-                <ListEndFooter label="No more showtimes" />
-              ) : null
-            }
+            ListFooterComponent={<LoadMoreFooter loading={isFetchingNextPage} size="small" />}
           />
         </>
       )}
@@ -719,10 +718,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       justifyContent: "center",
       padding: 24,
     },
-    loadingContainer: {
-      paddingVertical: 16,
-      alignItems: "center",
-    },
     errorText: {
       color: colors.textSecondary,
     },
@@ -766,24 +761,33 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       letterSpacing: 0.6,
       color: colors.textSecondary,
     },
+    // The markers own this row outright: `minHeight` reserves the pills' full
+    // height and `marginTop` keeps them clear of the line above. They used to
+    // be pulled 3pt into the gaps on either side, on the assumption those gaps
+    // were 5pt — `summaryInfo` sets `gap: 1`, so the pills overhung the line
+    // above by 2pt and collided with a two-line director credit (which is what
+    // sits there whenever the film has no cast listed).
     metaFooterRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
+      minHeight: WATCH_MARKER_HEIGHT,
+      marginTop: 3,
     },
+    // Shrinks and truncates so a long runtime/language line can never squeeze
+    // the markers out of the row.
     metaFooterText: {
       flex: 1,
+      flexShrink: 1,
+      minWidth: 0,
       fontSize: 12,
       color: colors.textSecondary,
     },
-    // Negative vertical margin so the ~21pt pills sit inside the 15pt text line
-    // they share instead of stretching the header — they overhang into the
-    // 5pt gaps above and below, which hold nothing but background.
     watchMarkers: {
       flexDirection: "row",
       alignItems: "center",
       gap: WATCH_MARKER_GAP,
-      marginVertical: -3,
+      flexShrink: 0,
     },
     // Neutral pill; only the icon carries the watchlisted/watched colour, so the
     // markers read as a quiet aside rather than a call to act. Same pill as

@@ -16,6 +16,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import FriendVisibilityControl from "@/components/friends/FriendVisibilityControl";
 import { useFriendActions } from "@/hooks/useFriendActions";
 import { useFriendStatusSharing } from "@/hooks/useFriendStatusSharing";
+import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
@@ -46,6 +47,9 @@ const getFriendName = (friend: UserWithFriendStatus) =>
 export default function FriendCard({ user, showStatusBadge = false }: FriendCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
+  const goToFriendShowtimes = useSingleFireNavigation((userId: string) =>
+    router.push(`/friend-showtimes/${userId}`)
+  );
   const colors = useThemeColors();
   const styles = createStyles(colors);
 
@@ -122,7 +126,7 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
 
   const handleOpenFriendShowtimes = () => {
     if (!canOpenFriendShowtimes) return;
-    router.push(`/friend-showtimes/${user.id}`);
+    goToFriendShowtimes(user.id);
   };
 
   const handleRemovePress = () => {

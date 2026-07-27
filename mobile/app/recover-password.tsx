@@ -1,26 +1,20 @@
 /**
  * Expo Router screen/module for recover-password. It controls navigation and screen-level state for this route.
  */
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
 import { useMutation } from '@tanstack/react-query';
 
 import { LoginService } from 'shared';
+import AuthPrimaryButton from '@/components/auth/AuthPrimaryButton';
+import AuthScreenShell from '@/components/auth/AuthScreenShell';
+import AuthTextField from '@/components/auth/AuthTextField';
+import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
+import { EMAIL_PATTERN } from '@/constants/auth';
 
 type RecoverPasswordForm = {
   email: string;
@@ -36,12 +30,14 @@ export default function RecoverPasswordScreen() {
   const styles = createStyles(colors);
   // Seconds remaining before the user can retry sending another email.
   const [cooldown, setCooldown] = useState(0);
+  // The address the last successful send went to, so the confirmation can name it.
+  const [sentToEmail, setSentToEmail] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Data hooks keep this module synced with backend data and shared cache state.
   const {
     control,
     handleSubmit,
-    reset,
     formState: { errors, isSubmitting },
   } = useForm<RecoverPasswordForm>({
     defaultValues: { email: '' },
@@ -61,170 +57,158 @@ export default function RecoverPasswordScreen() {
       LoginService.recoverPassword({
         email: data.email,
       }),
-    onSuccess: () => {
-      Alert.alert('Success', 'Password recovery email sent successfully.');
-      reset();
+    // Confirmed in place rather than through a native alert the user has to
+    // dismiss before they can see the screen it was talking about.
+    onSuccess: (_data, variables) => {
+      setSentToEmail(variables.email);
     },
     onError: (error) => {
       console.error('Error recovering password:', error);
-      Alert.alert('Error', 'Could not send password recovery email.');
+      setErrorMessage('Could not send the recovery email. Please try again.');
       setCooldown(0);
     },
   });
 
   const onSubmit = async (data: RecoverPasswordForm) => {
     // Guard against repeated taps while cooldown is active.
-    if (cooldown > 0) return;
+    if (cooldown > 0 || isSubmitting || recoverPasswordMutation.isPending) return;
+    setErrorMessage(null);
     setCooldown(COOLDOWN_SECONDS);
-    await recoverPasswordMutation.mutateAsync(data);
+    try {
+      await recoverPasswordMutation.mutateAsync(data);
+    } catch {
+      // Handled in onError above.
+    }
   };
+
+  // Wrapped so both the button and the keyboard's Go key call the same thing,
+  // without either having to care that it returns a promise.
+  const submitForm = () => {
+    void handleSubmit(onSubmit)();
+  };
+
+  const isBusy = isSubmitting || recoverPasswordMutation.isPending;
 
   // Render/output using the state and derived values prepared above.
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.flex}
+    <AuthScreenShell
+      title="Password recovery"
+      subtitle="We'll email a reset link to the address on your account."
+      error={errorMessage}
+      footer={
+        <TouchableOpacity
+          onPress={() => router.replace('/login')}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+        >
+          <ThemedText style={styles.linkText}>
+            Back to <ThemedText style={styles.link}>Log In</ThemedText>
+          </ThemedText>
+        </TouchableOpacity>
+      }
     >
-      {/* Scrollable so the send button stays reachable with the keyboard up. */}
-      <ScrollView
-        contentContainerStyle={styles.form}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.title}>Password Recovery</Text>
-        <Text style={styles.subtitle}>
-          A password recovery email will be sent to the registered account.
-        </Text>
-
-        <Controller
-          control={control}
-          name="email"
-          rules={{
-            required: 'Email is required',
-            pattern: {
-              value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-              message: 'Invalid email address',
-            },
-          }}
-          render={({ field: { onChange, onBlur, value } }) => (
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={[styles.input, errors.email && styles.inputError]}
-                placeholder="Email"
-                placeholderTextColor={colors.textSecondary}
+      {sentToEmail ? (
+        <View style={styles.sentPanel}>
+          <MaterialIcons name="mark-email-read" size={26} color={colors.green.secondary} />
+          <ThemedText style={styles.sentTitle}>Check your inbox</ThemedText>
+          <ThemedText style={styles.sentText}>
+            If an account exists for {sentToEmail}, a reset link is on its way.
+          </ThemedText>
+          <TouchableOpacity
+            onPress={() => setSentToEmail(null)}
+            disabled={cooldown > 0}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+          >
+            <ThemedText style={[styles.resendLink, cooldown > 0 && styles.resendLinkDisabled]}>
+              {cooldown > 0 ? `You can try again in ${cooldown}s` : 'Use a different address'}
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.form}>
+          <Controller
+            control={control}
+            name="email"
+            rules={{
+              required: 'Email is required',
+              pattern: {
+                value: EMAIL_PATTERN,
+                message: 'Invalid email address',
+              },
+            }}
+            render={({ field: { onChange, onBlur, value } }) => (
+              <AuthTextField
+                label="Email"
+                placeholder="you@example.com"
+                error={errors.email?.message}
                 onBlur={onBlur}
                 onChangeText={onChange}
                 value={value}
                 autoCapitalize="none"
+                autoCorrect={false}
                 keyboardType="email-address"
                 autoComplete="email"
-                selectionColor={colors.tint}
+                returnKeyType="go"
+                onSubmitEditing={submitForm}
               />
-              {errors.email ? <Text style={styles.fieldError}>{errors.email.message}</Text> : null}
-            </View>
-          )}
-        />
+            )}
+          />
 
-        <TouchableOpacity
-          style={[
-            styles.button,
-            (recoverPasswordMutation.isPending || isSubmitting || cooldown > 0) && styles.buttonDisabled,
-          ]}
-          onPress={handleSubmit(onSubmit)}
-          disabled={recoverPasswordMutation.isPending || isSubmitting || cooldown > 0}
-        >
-          {recoverPasswordMutation.isPending || isSubmitting ? (
-            <ActivityIndicator color={colors.pillActiveText} />
-          ) : (
-            <Text style={styles.buttonText}>
-              {cooldown > 0 ? `Please wait ${cooldown}s` : 'Send Recovery Email'}
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => router.replace('/login')}>
-          <Text style={styles.linkText}>
-            Back to <Text style={styles.link}>Log In</Text>
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
-    </SafeAreaView>
+          <AuthPrimaryButton
+            label={cooldown > 0 ? `Please wait ${cooldown}s` : 'Send recovery email'}
+            onPress={submitForm}
+            isBusy={isBusy}
+            isDisabled={cooldown > 0}
+          />
+        </View>
+      )}
+    </AuthScreenShell>
   );
 }
 
 const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =>
   StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    flex: {
-      flex: 1,
-    },
     form: {
-      // flexGrow (not flex) so the form still centres when it fits, but the
-      // ScrollView can grow past the viewport when it doesn't.
-      flexGrow: 1,
-      justifyContent: 'center',
+      gap: 18,
+    },
+    sentPanel: {
+      alignItems: 'center',
+      gap: 8,
       padding: 20,
-    },
-    title: {
-      fontSize: 32,
-      fontWeight: 'bold',
-      marginBottom: 10,
-      textAlign: 'center',
-      color: colors.text,
-    },
-    subtitle: {
-      textAlign: 'center',
-      color: colors.textSecondary,
-      marginBottom: 24,
-      fontSize: 14,
-    },
-    inputContainer: {
-      marginBottom: 16,
-    },
-    input: {
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      borderRadius: 8,
-      padding: 15,
-      fontSize: 16,
-      color: colors.text,
       backgroundColor: colors.cardBackground,
     },
-    inputError: {
-      borderColor: colors.red.secondary,
+    sentTitle: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: colors.text,
     },
-    fieldError: {
-      color: colors.red.secondary,
-      fontSize: 12,
-      marginTop: 5,
+    sentText: {
+      fontSize: 14,
+      lineHeight: 20,
+      textAlign: 'center',
+      color: colors.textSecondary,
     },
-    button: {
-      backgroundColor: colors.tint,
-      borderRadius: 8,
-      padding: 15,
-      alignItems: 'center',
-      marginTop: 8,
-    },
-    buttonDisabled: {
-      opacity: 0.6,
-    },
-    buttonText: {
-      color: colors.pillActiveText,
-      fontSize: 16,
+    resendLink: {
+      paddingTop: 6,
+      fontSize: 13,
       fontWeight: '600',
+      color: colors.tint,
+    },
+    resendLinkDisabled: {
+      color: colors.textSecondary,
     },
     linkText: {
       textAlign: 'center',
-      marginTop: 20,
+      fontSize: 14,
       color: colors.textSecondary,
     },
     link: {
+      fontSize: 14,
       color: colors.tint,
-      fontWeight: '600',
+      fontWeight: '700',
     },
   });

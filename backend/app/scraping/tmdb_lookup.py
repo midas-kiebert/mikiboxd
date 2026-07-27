@@ -12,7 +12,7 @@ import aiohttp
 import requests
 from requests.adapters import HTTPAdapter
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlmodel import select
+from sqlmodel import col, select
 from urllib3.util.retry import Retry
 
 from app.api.deps import get_db_context
@@ -560,11 +560,61 @@ def _get_cached_tmdb_id(
         return False, None
 
 
+def _get_manual_override_for_title(
+    *,
+    title_query: str,
+) -> TmdbLookupResult | None:
+    """The TMDB id an admin pinned for this title, if there is one.
+
+    Consulted only after the exact payload has missed the cache. The cache key
+    hashes the whole lookup payload — cast, runtime and spoken languages
+    included — and every one of those comes from the cinema's listing, so a
+    reordered cast list or a newly-filled-in runtime produces a brand-new key.
+    Without this, that turned a hand-corrected film straight back into a fresh
+    network lookup that re-derived the same wrong id, and the correction looked
+    like it had reverted.
+
+    Matched on the normalized title alone: everything else in the payload is
+    exactly the volatile part being worked around, and an admin correcting
+    "title X resolves to TMDB id N" means it for the film, not for one listing's
+    metadata. The newest correction wins if a title somehow has two.
+    """
+    global _tmdb_cache_available
+    if _tmdb_cache_available is False or not title_query:
+        return None
+    try:
+        with get_db_context() as session:
+            stmt = (
+                select(TmdbLookupCache)
+                .where(
+                    col(TmdbLookupCache.is_manual_override).is_(True),
+                    col(TmdbLookupCache.title_query) == title_query,
+                    col(TmdbLookupCache.tmdb_id).is_not(None),
+                )
+                .order_by(col(TmdbLookupCache.updated_at).desc())
+            )
+            override = session.exec(stmt).first()
+            _tmdb_cache_available = True
+            if override is None:
+                return None
+            return TmdbLookupResult(
+                tmdb_id=override.tmdb_id,
+                confidence=override.confidence,
+            )
+    except SQLAlchemyError:
+        if _tmdb_cache_available is not False:
+            logger.debug("TMDB cache unavailable; skipping manual-override lookup.")
+        _tmdb_cache_available = False
+        return None
+
+
 def _store_cached_tmdb_id(
     *,
     payload_json: str,
     payload_hash: str,
     lookup_result: TmdbLookupResult,
+    title_query: str | None = None,
+    is_manual_override: bool = False,
 ) -> None:
     """Persist a lookup result in the database cache for future TMDB ID lookups."""
     global _tmdb_cache_available
@@ -583,16 +633,35 @@ def _store_cached_tmdb_id(
                     TmdbLookupCache(
                         lookup_hash=payload_hash,
                         lookup_payload=payload_json,
+                        title_query=title_query,
                         tmdb_id=lookup_result.tmdb_id,
                         confidence=lookup_result.confidence,
+                        is_manual_override=is_manual_override,
                         created_at=now,
                         updated_at=now,
                     )
                 )
+            elif cached.is_manual_override and not is_manual_override:
+                # An admin decided what this row resolves to. An automated
+                # lookup reaching here at all means it raced past the read (two
+                # workers, or the in-memory cache having been reset), and the
+                # whole point of the flag is that it does not get to win.
+                logger.info(
+                    "Keeping manual TMDB override %s for hash=%s; "
+                    "not overwriting with automated result %s.",
+                    cached.tmdb_id,
+                    payload_hash[:8],
+                    lookup_result.tmdb_id,
+                )
+                return
             else:
                 cached.tmdb_id = lookup_result.tmdb_id
                 cached.confidence = lookup_result.confidence
                 cached.updated_at = now
+                if title_query is not None:
+                    cached.title_query = title_query
+                if is_manual_override:
+                    cached.is_manual_override = True
             session.commit()
             _tmdb_cache_available = True
     except IntegrityError:
@@ -1257,7 +1326,15 @@ def find_tmdb_id(
         normalized_title_variants = _payload_string_list(payload, "title_variants")
         normalized_directors = _payload_string_list(payload, "director_names")
         normalized_actors = _payload_string_list(payload, "actor_names")
-        lookup_result = _find_tmdb_id_uncached(
+        # A miss here does not necessarily mean this film has never been
+        # resolved — only that this exact payload has not been. Honour a manual
+        # correction for the same title before going to the network, or the
+        # network will happily re-derive the very id an admin already rejected.
+        override_result = _get_manual_override_for_title(
+            title_query=normalized_title_query
+        )
+        is_from_override = override_result is not None
+        lookup_result = override_result or _find_tmdb_id_uncached(
             title_query=normalized_title_query,
             title_variants=normalized_title_variants,
             director_names=normalized_directors,
@@ -1266,10 +1343,15 @@ def find_tmdb_id(
             duration_minutes=_payload_int(payload, "duration_minutes"),
             spoken_languages=_payload_string_list(payload, "spoken_languages"),
         )
+        # An override-derived row is itself an override: the drifted payload is
+        # now the one the scraper will keep hitting, and it must not be
+        # relitigated on the next run either.
         _store_cached_tmdb_id(
             payload_json=payload_json,
             payload_hash=lookup_hash,
             lookup_result=lookup_result,
+            title_query=normalized_title_query,
+            is_manual_override=is_from_override,
         )
         set_memory_lookup_cache(
             payload_json=payload_json,
@@ -1425,7 +1507,14 @@ async def find_tmdb_id_async(
         normalized_title_variants = _payload_string_list(payload, "title_variants")
         normalized_directors = _payload_string_list(payload, "director_names")
         normalized_actors = _payload_string_list(payload, "actor_names")
-        lookup_result = await _find_tmdb_id_uncached_async(
+        # See the sync path: a payload miss is not proof the film is unresolved,
+        # so a manual correction for the same title wins over a fresh lookup.
+        override_result = await asyncio.to_thread(
+            _get_manual_override_for_title,
+            title_query=normalized_title_query,
+        )
+        is_from_override = override_result is not None
+        lookup_result = override_result or await _find_tmdb_id_uncached_async(
             session=session,
             title_query=normalized_title_query,
             title_variants=normalized_title_variants,
@@ -1441,6 +1530,8 @@ async def find_tmdb_id_async(
             payload_json=payload_json,
             payload_hash=lookup_hash,
             lookup_result=lookup_result,
+            title_query=normalized_title_query,
+            is_manual_override=is_from_override,
         )
         set_memory_lookup_cache(
             payload_json=payload_json,

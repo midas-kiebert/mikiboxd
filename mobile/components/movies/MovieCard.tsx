@@ -17,6 +17,8 @@ import { ThemedText } from "@/components/themed-text";
 import FriendBadges from "@/components/badges/FriendBadges";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
+import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
+import { isSyntheticMovieId } from "@/constants/synthetic-movies";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 type MovieCardProps = {
@@ -80,13 +82,18 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
       : movie.going === "INTERESTED"
         ? styles.movieCardGlowInterested
         : undefined;
+  const isSynthetic = isSyntheticMovieId(movie.id);
 
   // Render/output using the state and derived values prepared above.
   return (
     <View style={[styles.movieCardGlow, cardGlowStyle]}>
       {/* Whole card is tappable so users can quickly jump to the full movie detail screen. */}
       <TouchableOpacity style={[styles.movieCard, cardStatusStyle]} onPress={() => onPress?.(movie)}>
-        <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
+        {isSynthetic ? (
+          <PosterPlaceholder style={styles.poster} glyphSize={36} />
+        ) : (
+          <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
+        )}
         <View style={styles.movieInfo}>
           <ThemedText
             style={styles.movieTitle}
@@ -112,6 +119,7 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
                       showtime={showtime}
                       variant="compact"
                       subtitlesAfterCinema
+                      isSyntheticMovie={isSynthetic}
                     />
                   ))}
                 </View>

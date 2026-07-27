@@ -1,4 +1,4 @@
-import { useInfiniteQuery, UseInfiniteQueryResult } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { UsersService, UsersSearchUsersResponse } from "../client";
 import { InfiniteData } from "@tanstack/react-query";
 
@@ -10,6 +10,14 @@ type useFetchUsersProps = {
     limit: number;
     filters?: UserFilters;
     enabled?: boolean;
+    /**
+     * Keep the results of the previous query on screen while the next one is in
+     * flight, instead of emptying out to `undefined` on every keystroke. Callers
+     * that render the results inline (rather than in a list with its own loading
+     * state) want this: without it the block collapses to a spinner and back for
+     * every character typed, and everything below it jumps up and down.
+     */
+    keepPreviousResults?: boolean;
 };
 
 
@@ -17,6 +25,7 @@ export function useFetchUsers(
     {
         limit = 20,
         enabled = true,
+        keepPreviousResults = false,
         filters = {
             query: ""
         }
@@ -25,6 +34,7 @@ export function useFetchUsers(
     const result = useInfiniteQuery<UsersSearchUsersResponse, Error, InfiniteData<UsersSearchUsersResponse>, [string, UserFilters], number>({
         queryKey: ["users", filters],
         enabled,
+        placeholderData: keepPreviousResults ? keepPreviousData : undefined,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,

@@ -37,6 +37,7 @@ import {
   useFeatureTipsEnabled,
 } from '@/utils/feature-tips';
 import { startIntro } from '@/utils/intro';
+import { markSignedOut } from '@/utils/auth-session';
 import useAuth from 'shared/hooks/useAuth';
 import {
   MeService,
@@ -49,6 +50,7 @@ import { useFetchLetterboxdLists } from 'shared/hooks/useLetterboxdLists';
 import { emailPattern, usernameMaxLength, usernamePattern } from 'shared/utils';
 import { unregisterPushTokenForCurrentDevice } from '@/utils/push-notifications';
 import NotificationPreferenceList from '@/components/notifications/NotificationPreferenceList';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 
 type ProfileState = {
@@ -75,7 +77,13 @@ export default function SettingsScreen() {
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
   // Data hooks keep this module synced with backend data and shared cache state.
-  const { user, logout } = useAuth(undefined, () => router.replace('/login'));
+  // markSignedOut and the navigation go together, in that order: the route
+  // guard has to agree the session is over before it sees us on /login, or it
+  // will bounce straight back into the tabs. See utils/auth-session.ts.
+  const { user, logout } = useAuth(undefined, () => {
+    markSignedOut();
+    router.replace('/login');
+  });
   // The intro normally runs once, for a brand-new account. Superusers get the
   // replay button in release builds too, so it can be checked on a real device
   // without making an account for every run.
@@ -114,15 +122,33 @@ export default function SettingsScreen() {
   });
   // The preset the digest follows when no specific one is pinned.
   const favoriteCinemaPreset = cinemaPresets.find((preset) => preset.is_favorite);
+  // The backend prepends a synthetic "All Cinemas" preset to every list, and it
+  // is not a real row — `_resolve_digest_cinema_ids` cannot look it up, so
+  // picking it did nothing except sit next to this section's own "all cinemas"
+  // option as a case-mismatched duplicate. The sentinel below already covers
+  // it, so it is dropped here rather than offered twice.
+  const selectableCinemaPresets = useMemo(
+    () => cinemaPresets.filter((preset) => !preset.is_default),
+    [cinemaPresets]
+  );
   // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   // Cineville card number (9 digits only, CP$ prefix is added automatically).
   const [cinevilleDigits, setCinevilleDigits] = useState('');
   const [isSavingCineville, setIsSavingCineville] = useState(false);
+  // Confirmations for the two irreversible actions on this screen. Themed
+  // dialogs rather than Alert.alert, which is app-wide reserved for pure error
+  // toasts — a native alert is the one surface in the app that ignores the
+  // user's light/dark choice.
+  const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
+  const [isLogoutDialogVisible, setIsLogoutDialogVisible] = useState(false);
   // The danger zone is collapsed by default so it takes an extra, deliberate
   // tap to reach account deletion.
   const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
   const dangerCaretRotation = useRef(new Animated.Value(0)).current;
+  // The ScrollView is scrolled to the end once the danger zone expands, so the
+  // newly revealed card is never left cut off below the fold.
+  const scrollViewRef = useRef<ScrollView>(null);
   const dangerCaretSpin = useMemo(
     () => dangerCaretRotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }),
     [dangerCaretRotation]
@@ -135,8 +161,11 @@ export default function SettingsScreen() {
       duration: EXPAND_DURATION_MS,
       useNativeDriver: true,
     }).start();
-    if (!next) LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
+    LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
     setIsDangerZoneOpen(next);
+    if (next) {
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), EXPAND_DURATION_MS);
+    }
   }, [isDangerZoneOpen, dangerCaretRotation]);
   // Whether the account already has a password set (false for social-only sign-in).
   const hasPassword = user?.has_password ?? true;
@@ -268,39 +297,23 @@ export default function SettingsScreen() {
   };
 
   // Run a confirmed destructive action and handle the result.
-  const handleDeleteAccount = () => {
-    Alert.alert(
-      'Delete account',
-      'This will permanently delete your account. This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate() },
-      ]
-    );
+  const handleConfirmDeleteAccount = () => {
+    setIsDeleteDialogVisible(false);
+    deleteMutation.mutate();
   };
 
   // Confirm logout and clear the local auth session.
-  const handleLogout = () => {
-    Alert.alert(
-      'Log out',
-      'Are you sure you want to log out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log out',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setIsLoggingOut(true);
-              await unregisterPushTokenForCurrentDevice();
-              await logout();
-            } finally {
-              setIsLoggingOut(false);
-            }
-          },
-        },
-      ]
-    );
+  const handleConfirmLogout = async () => {
+    setIsLogoutDialogVisible(false);
+    try {
+      // Painted before the request goes out, so the button reflects the tap
+      // rather than the round trip.
+      setIsLoggingOut(true);
+      await unregisterPushTokenForCurrentDevice();
+      await logout();
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   // Applies a watchlist-digest field optimistically, then persists it; rolls back on failure.
@@ -393,6 +406,7 @@ export default function SettingsScreen() {
           above the keyboard — without it the password/Cineville fields near the
           bottom of this long form are covered on a small phone. */}
       <ScrollView
+        ref={scrollViewRef}
         contentContainerStyle={styles.content}
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
@@ -474,33 +488,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>Tips</ThemedText>
-          <View style={styles.card}>
-            <View style={styles.notificationToggleHeader}>
-              <View style={styles.notificationToggleTextContainer}>
-                <ThemedText style={styles.notificationToggleTitle}>Feature tips</ThemedText>
-                <ThemedText style={styles.notificationToggleDescription}>
-                  Occasional reminders about features you are not using yet.
-                </ThemedText>
-              </View>
-              <Switch
-                value={featureTipsEnabled}
-                onValueChange={setFeatureTipsEnabled}
-                trackColor={{ false: colors.divider, true: colors.tint }}
-                thumbColor="#ffffff"
-              />
-            </View>
-            {dismissedTipCount > 0 ? (
-              <TouchableOpacity style={styles.secondaryButton} onPress={restoreDismissedTips}>
-                <ThemedText style={styles.secondaryButtonText}>
-                  {`Show the ${dismissedTipCount} hidden tip${dismissedTipCount === 1 ? '' : 's'} again`}
-                </ThemedText>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </View>
-
         {canReplayIntro ? (
           <View style={styles.section}>
             <ThemedText style={styles.sectionTitle}>Developer</ThemedText>
@@ -574,12 +561,15 @@ export default function SettingsScreen() {
                     Email me when a watchlisted movie gets a showtime it didn&apos;t have before.
                   </ThemedText>
                 </View>
+                {/* No thumbColor override: a hardcoded white grip vanished
+                    against the light theme's near-white "off" track (and lost
+                    its iOS drop shadow). The platform default follows the
+                    app's scheme, which _layout pushes to the native layer. */}
                 <Switch
                   value={digestEnabled}
                   onValueChange={(value) => handleDigestToggle(value)}
                   disabled={!user || isUpdatingDigest}
                   trackColor={{ false: colors.divider, true: colors.tint }}
-                  thumbColor="#ffffff"
                 />
               </View>
               <View style={styles.notificationChannelRow}>
@@ -702,7 +692,7 @@ export default function SettingsScreen() {
                           : 'All cinemas'}
                       </ThemedText>
                     </TouchableOpacity>
-                    {cinemaPresets.map((preset) => (
+                    {selectableCinemaPresets.map((preset) => (
                       <TouchableOpacity
                         key={preset.id}
                         style={[
@@ -736,6 +726,32 @@ export default function SettingsScreen() {
                 activeOpacity={0.8}
               >
                 <ThemedText style={styles.secondaryButtonText}>Open system notification settings</ThemedText>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Tips</ThemedText>
+          <View style={styles.card}>
+            <View style={styles.notificationToggleHeader}>
+              <View style={styles.notificationToggleTextContainer}>
+                <ThemedText style={styles.notificationToggleTitle}>Feature tips</ThemedText>
+                <ThemedText style={styles.notificationToggleDescription}>
+                  Occasional reminders about features you are not using yet.
+                </ThemedText>
+              </View>
+              <Switch
+                value={featureTipsEnabled}
+                onValueChange={setFeatureTipsEnabled}
+                trackColor={{ false: colors.divider, true: colors.tint }}
+              />
+            </View>
+            {dismissedTipCount > 0 ? (
+              <TouchableOpacity style={styles.secondaryButton} onPress={restoreDismissedTips}>
+                <ThemedText style={styles.secondaryButtonText}>
+                  {`Show the ${dismissedTipCount} hidden tip${dismissedTipCount === 1 ? '' : 's'} again`}
+                </ThemedText>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -797,13 +813,26 @@ export default function SettingsScreen() {
           <View style={styles.card}>
             <TouchableOpacity
               style={[styles.secondaryButton, isLoggingOut && styles.buttonDisabled]}
-              onPress={handleLogout}
+              onPress={() => setIsLogoutDialogVisible(true)}
               disabled={isLoggingOut}
             >
               <ThemedText style={styles.secondaryButtonText}>
                 {isLoggingOut ? 'Logging out...' : 'Log out'}
               </ThemedText>
             </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>About</ThemedText>
+          <View style={styles.card}>
+            <ThemedText style={styles.helperText}>
+              This product uses the TMDB API but is not endorsed or certified by TMDB.
+            </ThemedText>
+            <ThemedText style={styles.helperText}>
+              MiKiNO is not affiliated with Letterboxd, Cineville, or any of the cinemas listed in
+              the app.
+            </ThemedText>
           </View>
         </View>
 
@@ -821,14 +850,17 @@ export default function SettingsScreen() {
             </Animated.View>
           </TouchableOpacity>
           {isDangerZoneOpen ? (
-            <View style={styles.card}>
-              <ThemedText style={styles.helperText}>
-                Permanently delete your account and all associated data.
+            <View style={[styles.card, styles.dangerCard]}>
+              <ThemedText style={styles.dangerHelperText}>
+                Permanently delete your account and all associated data. Your friends,
+                showtime selections and invites go with it. This cannot be undone.
               </ThemedText>
               <TouchableOpacity
                 style={[styles.dangerButton, deleteMutation.isPending && styles.buttonDisabled]}
-                onPress={handleDeleteAccount}
+                onPress={() => setIsDeleteDialogVisible(true)}
                 disabled={deleteMutation.isPending}
+                activeOpacity={0.8}
+                accessibilityRole="button"
               >
                 <ThemedText style={styles.dangerButtonText}>
                   {deleteMutation.isPending ? 'Deleting...' : 'Delete account'}
@@ -838,6 +870,26 @@ export default function SettingsScreen() {
           ) : null}
         </View>
       </ScrollView>
+      <ConfirmDialog
+        visible={isLogoutDialogVisible}
+        icon="logout"
+        title="Log out?"
+        message="You will need to sign in again on this device."
+        confirmLabel="Log out"
+        cancelLabel="Cancel"
+        onConfirm={() => void handleConfirmLogout()}
+        onCancel={() => setIsLogoutDialogVisible(false)}
+      />
+      <ConfirmDialog
+        visible={isDeleteDialogVisible}
+        icon="delete-forever"
+        title="Delete account?"
+        message="This permanently deletes your account and everything in it. It cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDeleteAccount}
+        onCancel={() => setIsDeleteDialogVisible(false)}
+      />
     </TopSafeAreaView>
   );
 }
@@ -850,6 +902,10 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     },
     content: {
       padding: 16,
+      // Extra bottom room so the expanded danger zone card is never left
+      // clipped under the tab bar / home indicator, and so its button is not
+      // pressed up against the edge of the screen once it has scrolled to.
+      paddingBottom: 72,
       gap: 20,
     },
     section: {
@@ -860,10 +916,14 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       fontWeight: '700',
       color: colors.text,
     },
+    // A bare text+caret row was a cramped target at the very bottom of a long
+    // form. Padded out to a full-height row so it can be hit without aiming.
     dangerZoneHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      minHeight: 48,
+      paddingHorizontal: 4,
     },
     card: {
       backgroundColor: colors.cardBackground,
@@ -895,7 +955,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       alignItems: 'center',
     },
     primaryButtonText: {
-      color: '#fff',
+      color: colors.pillActiveText,
       fontWeight: '700',
     },
     secondaryButton: {
@@ -911,14 +971,30 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.text,
       fontWeight: '700',
     },
+    // Roomier than the shared card: this is the one place in Settings where a
+    // mis-tap is unrecoverable, so the explanation and the button each get
+    // space of their own instead of being packed into a 12pt box.
+    dangerCard: {
+      padding: 18,
+      gap: 16,
+      borderColor: colors.red.secondary,
+    },
+    dangerHelperText: {
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.textSecondary,
+    },
     dangerButton: {
-      marginTop: 4,
       backgroundColor: colors.red.primary,
-      paddingVertical: 10,
-      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.red.secondary,
+      paddingVertical: 14,
+      borderRadius: 12,
       alignItems: 'center',
+      justifyContent: 'center',
     },
     dangerButtonText: {
+      fontSize: 15,
       color: colors.red.secondary,
       fontWeight: '700',
     },
@@ -999,7 +1075,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.textSecondary,
     },
     notificationChannelOptionTextActive: {
-      color: '#ffffff',
+      color: colors.pillActiveText,
     },
     digestAdvancedToggle: {
       fontSize: 12,
@@ -1027,7 +1103,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.text,
     },
     digestListOptionTextActive: {
-      color: '#ffffff',
+      color: colors.pillActiveText,
     },
     cinevilleInputRow: {
       flexDirection: 'row',
@@ -1081,6 +1157,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.textSecondary,
     },
     appearanceOptionTextActive: {
-      color: '#ffffff',
+      color: colors.pillActiveText,
     },
   });

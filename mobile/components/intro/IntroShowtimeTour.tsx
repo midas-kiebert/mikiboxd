@@ -59,6 +59,9 @@ export default function IntroShowtimeTour({
       // Pinned up top: the spotlight moves down the sheet from step to step,
       // and text that moved with it would be read three times over.
       captionPlacement="top"
+      // One overlay serves all three steps, so it has to be told when the step
+      // changed — otherwise only the first one animates in.
+      stepKey={stepIndex}
       title={step.title}
       message={step.message}
       stepLabel={`${stepIndex + 1} of ${SHOWTIME_TOUR_STEPS.length}`}

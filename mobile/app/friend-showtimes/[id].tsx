@@ -2,7 +2,7 @@
  * Expo Router screen/module for friend-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Image, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { DateTime } from 'luxon';
@@ -13,7 +13,7 @@ import { usePrefetchShowtimeVisibility } from 'shared/hooks/useShowtimeVisibilit
 import useAuth from 'shared/hooks/useAuth';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
-import ShowtimesScreen, { ListEndFooter, ShowtimesScreenSkeleton } from '@/components/showtimes/ShowtimesScreen';
+import ShowtimesScreen, { ShowtimesScreenSkeleton } from '@/components/showtimes/ShowtimesScreen';
 import { useDeferredMount } from '@/utils/use-deferred-mount';
 import FiltersButtonRow from '@/components/filters/FiltersButtonRow';
 import FiltersModal from '@/components/filters/FiltersModal';
@@ -21,14 +21,18 @@ import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import ShowtimeCard from '@/components/showtimes/ShowtimeCard';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
+import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
 import { useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { ThemedText } from '@/components/themed-text';
+import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 import { triggerLongPressHaptic } from '@/utils/long-press';
+import PosterPlaceholder from '@/components/ui/PosterPlaceholder';
+import { isSyntheticMovieId } from '@/constants/synthetic-movies';
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
@@ -44,6 +48,7 @@ const getFriendTitle = (displayName: string | null | undefined) => {
 
 type MovieSection = {
   key: string;
+  movieId: number;
   title: string;
   posterLink: string | null | undefined;
   data: ShowtimeLoggedIn[];
@@ -62,6 +67,12 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
+  const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimeLoggedIn) =>
+    router.push({
+      pathname: "/movie/[id]",
+      params: { id: String(showtime.movie.id), cinemaId: String(showtime.cinema.id) },
+    })
+  );
   const { openShowtimeModal } = useShowtimeModal();
   const { user } = useAuth();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
@@ -200,7 +211,13 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
     for (const showtime of showtimes) {
       const movie = showtime.movie;
       if (!map.has(movie.id)) {
-        map.set(movie.id, { key: String(movie.id), title: movie.title, posterLink: movie.poster_link, data: [] });
+        map.set(movie.id, {
+          key: String(movie.id),
+          movieId: movie.id,
+          title: movie.title,
+          posterLink: movie.poster_link,
+          data: [],
+        });
       }
       map.get(movie.id)!.data.push(showtime);
     }
@@ -279,6 +296,8 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         <View style={styles.movieSectionHeader}>
           {section.posterLink ? (
             <Image source={{ uri: section.posterLink }} style={styles.movieSectionPoster} />
+          ) : isSyntheticMovieId(section.movieId) ? (
+            <PosterPlaceholder style={styles.movieSectionPoster} glyphSize={16} />
           ) : null}
           <ThemedText style={styles.movieSectionTitle} numberOfLines={2}>{section.title}</ThemedText>
         </View>
@@ -287,12 +306,7 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         <ShowtimeCard
           showtime={item}
           onPress={(st) => openShowtimeModal(st, { openedFrom: { userId: userId ?? undefined } })}
-          onLongPress={(st) =>
-            router.push({
-              pathname: "/movie/[id]",
-              params: { id: String(st.movie.id), cinemaId: String(st.cinema.id) },
-            })
-          }
+          onLongPress={goToMovieFromLongPress}
         />
       )}
       contentContainerStyle={styles.movieSectionContent}
@@ -306,15 +320,7 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
           </View>
         )
       }
-      ListFooterComponent={
-        isFetchingNextPage ? (
-          <View style={styles.footerLoader}>
-            <ActivityIndicator size="small" color={colors.tint} />
-          </View>
-        ) : !hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0 ? (
-          <ListEndFooter label="No more showtimes" />
-        ) : null
-      }
+      ListFooterComponent={<LoadMoreFooter loading={isFetchingNextPage} size="small" />}
       onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
       onEndReachedThreshold={2}
       refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
@@ -467,5 +473,4 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
     },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },
-    footerLoader: { paddingVertical: 20, alignItems: 'center' },
   });

@@ -11,7 +11,7 @@
  *
  * Eligibility lives in `FeatureTipsHost`; this component renders and saves.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -23,7 +23,6 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MeService, type CinemaPresetCreate } from "shared";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
-import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import CinemaPickerList from "@/components/filters/CinemaPickerList";
@@ -57,30 +56,19 @@ export default function CinemaPresetTip() {
   const { height: windowHeight } = useWindowDimensions();
 
   const { data: cinemas } = useFetchCinemas();
-  const { data: favoriteCinemaIds } = useFetchSelectedCinemas();
-  const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
-    useSessionCinemaSelections();
+  const { setSelections: setSessionCinemaIds } = useSessionCinemaSelections();
 
   const cinemaList = useMemo(() => cinemas ?? [], [cinemas]);
-  const currentCinemaIds = sessionCinemaIds ?? favoriteCinemaIds;
 
-  const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(
-    () => new Set(currentCinemaIds ?? [])
-  );
+  // Deliberately starts empty rather than from what the user is currently
+  // browsing: the tip asks them to pick the cinemas worth saving as a preset,
+  // and anything pre-ticked reads as a choice already made — which they then
+  // have to undo.
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
   const [isNamingPreset, setIsNamingPreset] = useState(false);
   // Saving normally makes the tip ineligible, but the confirmation is shown
   // anyway so the dialog never disappears the moment the user presses save.
   const [savedPreset, setSavedPreset] = useState<SavedPreset | null>(null);
-
-  // The selection the tip starts from is whatever the user is already browsing,
-  // which usually only arrives after the first render. Seeded once, so a later
-  // refetch never wipes out edits the user has made in the meantime.
-  const hasSeededSelection = useRef(currentCinemaIds !== undefined);
-  useEffect(() => {
-    if (hasSeededSelection.current || currentCinemaIds === undefined) return;
-    hasSeededSelection.current = true;
-    setSelectedIds(new Set(currentCinemaIds));
-  }, [currentCinemaIds]);
 
   const saveMutation = useMutation({
     mutationFn: (requestBody: CinemaPresetCreate) =>

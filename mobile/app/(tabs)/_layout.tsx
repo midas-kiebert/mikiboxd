@@ -231,10 +231,18 @@ export default function TabLayout() {
     <FiltersModalProvider>
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: palette.tint,
+        tabBarActiveTintColor: palette.tabIconSelected,
+        // Without this, React Navigation falls back to the navigation theme's
+        // text colour for unselected tabs — near-black on the light theme, so
+        // the selected tab barely stood out from the other four.
+        tabBarInactiveTintColor: palette.tabIconDefault,
         headerShown: false,
         tabBarButton: HapticTab,
         sceneStyle: { backgroundColor: palette.background },
+        tabBarStyle: {
+          backgroundColor: palette.background,
+          borderTopColor: palette.divider,
+        },
       }}>
       <Tabs.Screen
         name="settings"

@@ -34,7 +34,6 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
-  BottomSheetBackdrop,
   type BottomSheetBackdropProps,
   BottomSheetModal,
   BottomSheetScrollView,
@@ -71,12 +70,14 @@ import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import FriendListRow, { type FriendWatchStatus } from "@/components/friends/FriendListRow";
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
+import SheetBackdrop from "@/components/sheets/SheetBackdrop";
 import {
   getFriendWatchKindMeta,
   type FriendWatchKind,
 } from "@/components/friends/friend-watch-kind";
 import InlineFriendRequestButtons from "@/components/friends/InlineFriendRequestButtons";
 import { ThemedText } from "@/components/themed-text";
+import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 import { formatSeatLabel } from "@/utils/seat-label";
@@ -89,6 +90,7 @@ import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 import { Skeleton } from "@/components/ui/Skeleton";
+import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
 import { formatLanguageCode } from "@/utils/language";
 import { measureForSpotlight } from "@/utils/spotlight-measure";
 import * as Clipboard from "expo-clipboard";
@@ -270,6 +272,17 @@ export default function ShowtimeActionModal({
   const { top: topInset, bottom: bottomInset } = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const router = useRouter();
+  const goToMoviePage = useSingleFireNavigation(
+    (movieId: number, cinemaId: number) =>
+      router.push({
+        pathname: "/movie/[id]",
+        params: {
+          id: String(movieId),
+          cinemaId: String(cinemaId),
+          ...(inheritFilters ? { inheritFilters: "1" } : {}),
+        },
+      })
+  );
   // Generous trailing space so the invite section can always be scrolled to the
   // top, even after typing shrinks the friend list (so the view doesn't jump).
   const inviteScrollPadding = Math.round(windowHeight * 0.6);
@@ -698,14 +711,7 @@ export default function ShowtimeActionModal({
   const handleGoToMoviePage = () => {
     if (!showtime) return;
     onClose();
-    router.push({
-      pathname: "/movie/[id]",
-      params: {
-        id: String(showtime.movie.id),
-        cinemaId: String(showtime.cinema.id),
-        ...(inheritFilters ? { inheritFilters: "1" } : {}),
-      },
-    });
+    goToMoviePage(showtime.movie.id, showtime.cinema.id);
   };
 
 
@@ -994,7 +1000,7 @@ export default function ShowtimeActionModal({
       ? `${UNKNOWN_METADATA_PLACEHOLDER} min`
       : null;
   const timeRangeLabel = showtime
-    ? formatShowtimeTimeRange(showtime.datetime, showtime.end_datetime)
+    ? formatShowtimeTimeRange(showtime.datetime, showtime.end_datetime, isSyntheticMovie)
     : null;
   const timeLabel = timeRangeLabel
     ? [timeRangeLabel, durationLabel, spokenLanguage].filter(Boolean).join(" • ")
@@ -1042,14 +1048,8 @@ export default function ShowtimeActionModal({
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.45}
-        // The tour drives the sheet; a tap outside must not dismiss it.
-        pressBehavior={isTour ? "none" : "close"}
-      />
+      // The tour drives the sheet; a tap outside must not dismiss it.
+      <SheetBackdrop {...props} pressBehavior={isTour ? "none" : "close"} />
     ),
     [isTour]
   );
@@ -1116,16 +1116,24 @@ export default function ShowtimeActionModal({
             {/* Header: poster + title + date + time·runtime + cinema badge */}
             <View style={styles.summaryRow}>
               {disableMovieNavigation ? (
-                <Image
-                  source={{ uri: showtime.movie.poster_link ?? undefined }}
-                  style={styles.poster}
-                />
-              ) : (
-                <TouchableOpacity onPress={handleGoToMoviePage} activeOpacity={0.85}>
+                isSyntheticMovie ? (
+                  <PosterPlaceholder style={styles.poster} glyphSize={34} />
+                ) : (
                   <Image
                     source={{ uri: showtime.movie.poster_link ?? undefined }}
                     style={styles.poster}
                   />
+                )
+              ) : (
+                <TouchableOpacity onPress={handleGoToMoviePage} activeOpacity={0.85}>
+                  {isSyntheticMovie ? (
+                    <PosterPlaceholder style={styles.poster} glyphSize={34} />
+                  ) : (
+                    <Image
+                      source={{ uri: showtime.movie.poster_link ?? undefined }}
+                      style={styles.poster}
+                    />
+                  )}
                 </TouchableOpacity>
               )}
               <View style={styles.summaryInfo}>
@@ -1785,7 +1793,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 8,
       backgroundColor: colors.posterPlaceholder,
     },
-    summaryInfo: { flex: 1, gap: 1 },
+    // `minWidth: 0` so a long unbroken title or director credit shrinks and
+    // ellipsises instead of pushing the watch-marker column out of the row.
+    summaryInfo: { flex: 1, minWidth: 0, gap: 1 },
     movieTitle: {
       fontSize: 19,
       lineHeight: 22,
@@ -1868,6 +1878,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "flex-end",
       gap: WATCH_MARKER_GAP,
       paddingTop: CLOSE_BUTTON_TOP + CLOSE_BUTTON_SIZE + WATCH_MARKER_GAP,
+      // Never gives up width to the text column beside it: the pills are the
+      // whole point of the column, and half a pill is worse than a truncated
+      // director credit.
+      flexShrink: 0,
     },
     // Neutral pill; only the icon carries the watchlisted/watched colour, so the
     // markers read as a quiet aside next to the title rather than a call to act.

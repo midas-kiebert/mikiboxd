@@ -39,6 +39,7 @@ from app.core.enums import DigestFrequency, Environment, GoingStatus
 from app.crud import cinema_preset as cinema_preset_crud
 from app.crud import movie_set_filters
 from app.mailer import EmailDeliveryError, generate_watchlist_digest_email, send_email
+from app.models.cinema_preset import DEFAULT_CINEMA_PRESET_ID
 from app.models.movie import Movie
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
@@ -180,6 +181,13 @@ def _resolve_digest_cinema_ids(*, session: Session, user: User) -> list[int]:
     back to the favorite — the column carries no DB-level foreign key.
     """
     preset_id = user.notify_watchlist_digest_cinema_preset_id
+    if preset_id == DEFAULT_CINEMA_PRESET_ID:
+        # The "All Cinemas" preset is synthesised per request by
+        # `list_cinema_presets` and has no row to look up, so this used to fall
+        # through to the favorite — quietly restricting a digest the user had
+        # asked to cover everything. The mobile picker no longer offers it, but
+        # accounts that chose it while it did still carry the id.
+        return []
     if preset_id is not None:
         preset = cinema_preset_crud.get_user_preset_by_id(
             session=session, user_id=user.id, preset_id=preset_id

@@ -2,7 +2,7 @@
  * Mobile showtimes feature component: Showtimes Screen.
  */
 import React from "react";
-import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { type ShowtimeLoggedIn } from "shared";
@@ -11,6 +11,7 @@ import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibilit
 import { useRouter } from "expo-router";
 
 import { ThemedText } from "@/components/themed-text";
+import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useShowtimeModal, type OpenOptions } from "@/components/showtimes/ShowtimeModalProvider";
 import TopBar from "@/components/layout/TopBar";
@@ -19,15 +20,8 @@ import FilterPills, {
   type FilterPillLongPressPosition,
 } from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
+import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
-
-/**
- * Rendered at the bottom of any paginated list once all pages are loaded.
- * Intentionally just empty scroll space — no end-of-list marker.
- */
-export function ListEndFooter(_props: { label?: string }) {
-  return <View style={{ height: 64 }} />;
-}
 
 type ShowtimesListContentProps = {
   showtimes: ShowtimeLoggedIn[];
@@ -58,6 +52,16 @@ export function ShowtimesListContent({
   inheritFiltersOnMovieNav = false,
 }: ShowtimesListContentProps) {
   const router = useRouter();
+  const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimeLoggedIn) =>
+    router.push({
+      pathname: "/movie/[id]",
+      params: {
+        id: String(showtime.movie.id),
+        cinemaId: String(showtime.cinema.id),
+        ...(inheritFiltersOnMovieNav ? { inheritFilters: "1" } : {}),
+      },
+    })
+  );
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const { openShowtimeModal } = useShowtimeModal();
@@ -65,19 +69,9 @@ export function ShowtimesListContent({
   // fetched up front — otherwise the sheet's mode pill loads on open.
   usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id));
 
-  const renderFooter = () => {
-    if (isFetchingNextPage) {
-      return (
-        <View style={styles.footerLoader}>
-          <ActivityIndicator size="large" color={colors.tint} />
-        </View>
-      );
-    }
-    if (!hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0) {
-      return <ListEndFooter label="No more showtimes" />;
-    }
-    return null;
-  };
+  // Always mounted at a fixed height: it doubles as the list's end spacer, so
+  // reaching the bottom never changes the layout under the user's scroll.
+  const renderFooter = () => <LoadMoreFooter loading={isFetchingNextPage} />;
 
   const renderEmpty = () => {
     if (isLoading || isFetching || refreshing) {
@@ -111,16 +105,7 @@ export function ShowtimesListContent({
           <ShowtimeCard
             showtime={item}
             onPress={(showtime) => openShowtimeModal(showtime, openModalOptions)}
-            onLongPress={(showtime) =>
-              router.push({
-                pathname: "/movie/[id]",
-                params: {
-                  id: String(showtime.movie.id),
-                  cinemaId: String(showtime.cinema.id),
-                  ...(inheritFiltersOnMovieNav ? { inheritFilters: "1" } : {}),
-                },
-              })
-            }
+            onLongPress={goToMovieFromLongPress}
           />
         )}
         keyExtractor={(item) => item.id.toString()}
@@ -129,7 +114,7 @@ export function ShowtimesListContent({
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
         onEndReached={() => {
-          if (hasNextPage) onLoadMore();
+          if (hasNextPage && !isFetchingNextPage) onLoadMore();
         }}
         onEndReachedThreshold={2}
         refreshing={isLoading}
@@ -217,6 +202,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         value={searchQuery}
         onChangeText={onSearchChange}
         placeholder="Search showtimes"
+        clearOnAndroidBack
       />
       {filterRow ?? (
         <FilterPills
@@ -318,10 +304,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       height: 112,
       borderRadius: 12,
       marginBottom: 16,
-    },
-    footerLoader: {
-      paddingVertical: 20,
-      alignItems: "center",
     },
     centerContainer: {
       paddingVertical: 40,

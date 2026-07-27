@@ -7,7 +7,7 @@
  * pattern in ShowtimeModalProvider. Showtime-related items open the showtime
  * modal in place; friend-request-accepted opens the Friends tab.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useRouter } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -48,10 +48,18 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
   const [visible, setVisible] = useState(false);
   const [pendingAcceptId, setPendingAcceptId] = useState<string | null>(null);
   const [pendingDeclineId, setPendingDeclineId] = useState<string | null>(null);
+  // Guards against a double-tap firing an item's navigation twice before the
+  // sheet closes; this provider is mounted once at the app root rather than
+  // per-screen, so it resets on open instead of on screen focus.
+  const hasNavigatedRef = useRef(false);
+  useEffect(() => {
+    if (visible) hasNavigatedRef.current = false;
+  }, [visible]);
 
   // Lets anything that must be the only thing on screen hold off while the
-  // centre is open (currently the intro's filters highlight).
-  useRegisterBlockingOverlay(visible);
+  // centre is open, or close it outright (currently the intro's filters
+  // highlight).
+  useRegisterBlockingOverlay(visible, () => setVisible(false));
 
   // The intro is its own blocking walkthrough; opened underneath it (e.g. a
   // bell tap right as the intro takes over), it would otherwise just be
@@ -149,6 +157,8 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
 
   const handleItemPress = useCallback(
     (item: NotificationFeedItem) => {
+      if (hasNavigatedRef.current) return;
+      hasNavigatedRef.current = true;
       if (item.showtime) {
         setVisible(false);
         openShowtimeModalById(item.showtime.id);

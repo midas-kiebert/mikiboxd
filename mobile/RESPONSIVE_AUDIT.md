@@ -319,10 +319,11 @@ the app have materially different hit areas.
 
 **Severity:** nitpick.
 
-The 64pt `ListEndFooter` masks this most of the time, but it only renders when
-`!hasNextPage && showtimes.length > 0` — so a short filtered result set butts
-straight against the tab bar while the same screen in group-by-movie mode has
-16pt of air.
+The list footer masked this most of the time, but back then it only rendered
+when `!hasNextPage && showtimes.length > 0` — so a short filtered result set
+butted straight against the tab bar while the same screen in group-by-movie
+mode had 16pt of air. (`LoadMoreFooter` now always reserves its row, so it
+also serves as the end spacer.)
 
 **Fixed.** Added `paddingBottom: 16` to `listContent`. The remaining 12-vs-16
 top-padding difference is left alone: it is small, deliberate-looking, and

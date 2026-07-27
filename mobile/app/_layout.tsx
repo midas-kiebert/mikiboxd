@@ -32,6 +32,7 @@ import { Colors } from '@/constants/theme';
 import { loadThemePreference, useThemePreference } from '@/utils/theme-preference';
 import { loadFeatureTips } from '@/utils/feature-tips';
 import { loadIntroState, useIsIntroActive } from '@/utils/intro';
+import { loadAuthSession, markSignedOut, useAuthStatus } from '@/utils/auth-session';
 import IntroHost from '@/components/intro/IntroHost';
 import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
 import AppSplash from '@/components/layout/AppSplash';
@@ -41,6 +42,8 @@ import {
   fetchDisplayPresets,
   loadDisplayPresetOrder,
 } from '@/components/filters/saved-presets';
+import { prefetchCinemas } from 'shared/hooks/useFetchCinemas';
+import { prefetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { ShowtimeModalProvider, useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
 import { NotificationCenterProvider } from '@/components/notifications/NotificationCenterProvider';
 import {
@@ -169,17 +172,16 @@ if (__DEV__ && !apiLoggingEnabled) {
 // token is invalid/expired (or was issued by a different backend). Clear it and
 // let the component-level redirect send the user back to login, rather than
 // leaving them stuck on a blank screen that re-fires 401s forever.
-let onUnauthorized: (() => void) | null = null;
 const handleUnauthorized = (error: unknown) => {
   if (!(error instanceof ApiError) || error.status !== 401) return;
   void storage.removeItem('access_token');
-  onUnauthorized?.();
+  markSignedOut();
 };
 
 // Before a 401 becomes a logout, try to transparently refresh the access token.
 // Only a failed refresh falls through to handleUnauthorized above.
 installAuthRefreshInterceptor(() => {
-  onUnauthorized?.();
+  markSignedOut();
 });
 
 // When the backend 426s (this build is older than MIN_SUPPORTED_CLIENT_VERSION),
@@ -210,6 +212,10 @@ void loadFeatureTips();
 // created on this device, which is well after the splash is gone.
 void loadIntroState();
 
+// The one and only read of the stored token. Everything after this point is
+// announced synchronously by whoever signs in or out — see `auth-session.ts`.
+void loadAuthSession();
+
 // Default foreground notification behavior for this app.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -230,10 +236,12 @@ function RootLayourContent() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const palette = Colors[colorScheme ?? 'light'];
-  // Tracks whether auth state is still being resolved.
-  const [isChecking, setIsChecking] = useState(true)
-  // Tracks whether a valid access token exists.
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  // Single source of truth for "is there a session", shared with the screens
+  // that start and end one so this never disagrees with them mid-navigation.
+  const authStatus = useAuthStatus()
+  // True only until the stored token has been read once, at startup.
+  const isChecking = authStatus === 'unknown'
+  const isAuthenticated = authStatus === 'signed-in'
   // Splash gating: theme loaded, critical caches warmed, and whether the
   // branded overlay is still mounted.
   const [themeReady, setThemeReady] = useState(false)
@@ -249,8 +257,6 @@ function RootLayourContent() {
   const { trackEvent } = useTrackEvent();
   // Lets notification taps open the showtime modal in place instead of navigating.
   const { openShowtimeModalById } = useShowtimeModal();
-  // Keeps the previous token for dev logging without causing rerenders.
-  const lastTokenRef = useRef<string | null>(null)
   // Prevent duplicate handling when the same notification response is replayed.
   const handledNotificationResponsesRef = useRef<Set<string>>(new Set())
   // A notification tapped mid-walkthrough would otherwise navigate or open the
@@ -270,47 +276,12 @@ function RootLayourContent() {
     runPendingRoute()
   }, [isIntroActive])
 
-  // Shared auth check used on mount and whenever route segments change.
-  const checkAuth = useCallback(async (shouldBlock = false) => {
-    if (shouldBlock) setIsChecking(true)
-    try {
-      const token = await SecureStore.getItemAsync('access_token')
-      if (__DEV__ && token !== lastTokenRef.current) {
-        console.log('Checked auth token:', token)
-        lastTokenRef.current = token
-      }
-      setIsAuthenticated(!!token)
-    } catch {
-      setIsAuthenticated(false)
-    } finally {
-      if (shouldBlock) setIsChecking(false)
-    }
-  }, [])
-
   useEffect(() => {
     // Pre-load detail route modules so first navigation to each is instant.
     void import('./movie/[id]');
     void import('./friend-showtimes/[id]');
     void import('./cinema-showtimes/[id]');
   }, []);
-
-  useEffect(() => {
-    // Initial blocking auth check before routing users.
-    checkAuth(true)
-  }, [checkAuth])
-
-  useEffect(() => {
-    // Let the query/mutation caches force a logout when the API returns 401
-    // (the stored token has been removed by then). Flipping auth state here
-    // triggers the redirect-to-login effect below.
-    onUnauthorized = () => {
-      lastTokenRef.current = null
-      setIsAuthenticated(false)
-    }
-    return () => {
-      onUnauthorized = null
-    }
-  }, [])
 
   useEffect(() => {
     // Surface a 426 from the backend as a blocking update screen. Set once,
@@ -350,6 +321,13 @@ function RootLayourContent() {
     // populated rather than streaming in. Bounded by a timeout so a slow network
     // never delays launch — the chips fall back to their own skeletons.
     if (isChecking) return;
+    // The cinema list is public and identical for everyone, so it is pulled on
+    // every launch — signed out included. That is the whole point: a brand-new
+    // account reaches the intro's cinema picker seconds after the signup form,
+    // and starting the fetch only once a session exists left it staring at
+    // skeletons. Started while the login/signup screen is still on screen, it is
+    // already in cache by the time the picker mounts.
+    void prefetchCinemas(queryClient);
     if (!isAuthenticated) {
       setWarmupDone(true);
       return;
@@ -364,6 +342,9 @@ function RootLayourContent() {
         queryKey: displayPresetOrderQueryKey,
         queryFn: () => loadDisplayPresetOrder(),
       }),
+      // Companion to the unconditional cinema prefetch above: which of those
+      // cinemas this account already has picked.
+      prefetchSelectedCinemas(queryClient),
     ]);
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));
     void Promise.race([warm, timeout]).then(() => {
@@ -376,20 +357,33 @@ function RootLayourContent() {
 
   useEffect(() => {
     if (isChecking) return
-    // Re-check auth after navigation to catch token changes from other flows.
-    checkAuth(false)
-  }, [segments, checkAuth, isChecking])
-
-  useEffect(() => {
-    if (isChecking) return
 
     const segmentPath = segments as unknown as string[]
     const rootSegment = segmentPath[0]
-    // Only these route groups require an authenticated session.
-    const authRoutes = new Set(['(tabs)', 'movie', 'friend-showtimes', 'cinema-showtimes', 'add-friend', 'ping', 'pick-username'])
-    const inAuthGroup = rootSegment ? authRoutes.has(rootSegment) : false
+    // No segment means the navigator has not mounted yet, so there is no route
+    // to classify — and nothing may navigate before the root layout is up
+    // (`router.replace` throws outright). This used to be unreachable only by
+    // luck: the session was resolved by an async token read, which always landed
+    // a tick or two after mount. It is read once at module load now, so on a
+    // fast start this effect runs in the very same commit the navigator is
+    // still rendering in, and the "authenticated but not in an auth route"
+    // branch below fired against a navigator that did not exist.
+    if (!rootSegment) return
 
-    if (!isAuthenticated && inAuthGroup) {
+    // Two explicit lists rather than one and its inverse. A route that is in
+    // neither is left alone, which is what `pick-username` needs: it is reached
+    // *while* signing in, so it must neither demand a session it is halfway to
+    // establishing nor be treated as a signed-out screen to be redirected away
+    // from once one exists.
+    const authRoutes = new Set(['(tabs)', 'movie', 'friend-showtimes', 'cinema-showtimes', 'add-friend', 'ping'])
+    const signedOutRoutes = new Set(['login', 'signup', 'recover-password'])
+    // Protected in release builds — the real flow only ever arrives already
+    // signed in. In dev it stays neutral so the login screen's "Preview
+    // pick-username screen" shortcut, taken while signed out, is not bounced
+    // straight back to /login.
+    if (!__DEV__) authRoutes.add('pick-username')
+
+    if (!isAuthenticated && authRoutes.has(rootSegment)) {
       // User is not authenticated but trying to access protected routes
       console.log('Redirecting to login because user is not authenticated')
       // Remember the deep link (everything except the plain tabs home) so the
@@ -398,7 +392,7 @@ function RootLayourContent() {
         void storage.setItem(PENDING_DEEP_LINK_PATH_KEY, pathname)
       }
       router.replace('/login')
-    } else if (isAuthenticated && !inAuthGroup) {
+    } else if (isAuthenticated && signedOutRoutes.has(rootSegment)) {
       console.log('Redirecting to home because user is authenticated')
       router.replace('/(tabs)')
     }
@@ -554,9 +548,13 @@ function RootLayourContent() {
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
         </>
       )}
-      {/* Only once the splash is gone: the intro is a Modal, which would
-          otherwise cover the splash overlay it is meant to follow. */}
-      {!splashVisible && isAuthenticated && <IntroHost />}
+      {/* Deliberately not gated on the splash being gone. The intro is a Modal,
+          so it draws above the splash overlay rather than below it — which is
+          the point: on a launch that owes the intro it goes up while the splash
+          is still opaque, and the splash then fades out behind it. Waiting for
+          the splash instead meant the app itself was revealed for a beat before
+          the walkthrough covered it back up. */}
+      {isAuthenticated && <IntroHost />}
       {splashVisible && (
         <AppSplash
           active={!appReady}

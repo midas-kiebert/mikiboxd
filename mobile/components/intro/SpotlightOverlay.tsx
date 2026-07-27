@@ -14,7 +14,14 @@
  * a window of their own (see `IntroFiltersSpotlight`) wrap it in one themselves.
  */
 import { useEffect, useMemo, useRef } from "react";
-import { Animated, StyleSheet, TouchableOpacity, useWindowDimensions, View } from "react-native";
+import {
+  Animated,
+  Easing,
+  StyleSheet,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
@@ -38,12 +45,19 @@ const CAPTION_SIDE_MARGIN = 20;
 /** Clears the intro's own progress/skip row when the caption is pinned up top. */
 const CAPTION_TOP_OFFSET = 56;
 const PULSE_DURATION_MS = 950;
+/** The caption card and ring settling in at the start of each step. */
+const STEP_ENTER_MS = 260;
+/** How far the caption rises as it arrives, in points. */
+const CAPTION_ENTER_SHIFT = 10;
 
 type SpotlightOverlayProps = {
   /**
    * Where the highlighted control is. Null while it is still being measured:
-   * the screen dims and the caption shows, but nothing is cut out yet, so the
-   * overlay never flashes a hole in the wrong place.
+   * the screen dims but nothing is cut out yet, so the overlay never flashes a
+   * hole in the wrong place. An auto-placed caption is held back too, since
+   * where it belongs is a function of the hole it does not have yet — a caller
+   * that wants words on screen throughout should pin them with
+   * `captionPlacement="top"`, which does not depend on the measurement.
    */
   target: SpotlightRect | null;
   /**
@@ -52,6 +66,14 @@ type SpotlightOverlayProps = {
    * moves between steps, so the words stay put instead of jumping around.
    */
   captionPlacement?: "auto" | "top";
+  /**
+   * Identifies the step being shown. A multi-step caller (the showtime tour)
+   * keeps one overlay mounted and only swaps the words and the target, so
+   * without this the second and third steps arrived with no animation at all
+   * while the first appeared to animate — that was just the overlay mounting.
+   * Change it per step and the caption and ring settle in each time.
+   */
+  stepKey?: string | number;
   title: string;
   message?: string;
   /** e.g. "1 of 3", shown quietly next to the buttons. */
@@ -70,6 +92,7 @@ type SpotlightOverlayProps = {
 export default function SpotlightOverlay({
   target,
   captionPlacement = "auto",
+  stepKey,
   title,
   message,
   stepLabel,
@@ -87,7 +110,7 @@ export default function SpotlightOverlay({
 
   // The hole, padded and clipped to the screen so a control at the very edge
   // cannot push a pane to a negative size.
-  const hole = useMemo(() => {
+  const measuredHole = useMemo(() => {
     if (!target) return null;
     const left = Math.max(0, target.x - HOLE_PADDING);
     const top = Math.max(0, target.y - HOLE_PADDING);
@@ -99,9 +122,24 @@ export default function SpotlightOverlay({
     };
   }, [target, windowHeight, windowWidth]);
 
+  // A multi-step caller clears the target on every step change, so between
+  // steps there is a frame or more with nothing measured. Falling back to the
+  // previous hole keeps the spotlight on the last control until the next one is
+  // found, instead of blacking the whole screen out in between. The very first
+  // measurement has no previous hole, which is the case the null is really for:
+  // better a plain dim than a hole in the wrong place.
+  const lastHoleRef = useRef<typeof measuredHole>(null);
+  useEffect(() => {
+    if (measuredHole) lastHoleRef.current = measuredHole;
+  }, [measuredHole]);
+  const hole = measuredHole ?? lastHoleRef.current;
+
+  // An auto-placed caption has nowhere to go until the target is measured, so
+  // it waits rather than showing up somewhere it will have to move from.
+  const isCaptionReady = captionPlacement === "top" || hole !== null;
+
   // Auto-placed captions go wherever there is more room, so they never land on
-  // top of the very thing they are pointing at. An unmeasured target has no
-  // room to compare, so it falls back to the top.
+  // top of the very thing they are pointing at.
   const captionPosition = useMemo(() => {
     const pinnedToTop = { top: insets.top + CAPTION_TOP_OFFSET };
     if (captionPlacement === "top" || !hole) return pinnedToTop;
@@ -132,9 +170,56 @@ export default function SpotlightOverlay({
     return () => animation.stop();
   }, [pulse]);
 
+  // Both restart per step, so every step in a tour arrives the same way the
+  // first one does rather than snapping into place. They are separate because
+  // they wait on different things: the caption only needs somewhere to sit
+  // (immediate when pinned to the top), while the ring needs the new control to
+  // have been measured — otherwise it would fade up over the previous one.
+  const hasMeasuredTarget = measuredHole !== null;
+  const captionEnter = useRef(new Animated.Value(0)).current;
+  const ringEnter = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    captionEnter.setValue(0);
+    if (!isCaptionReady) return;
+    const animation = Animated.timing(captionEnter, {
+      toValue: 1,
+      duration: STEP_ENTER_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [captionEnter, isCaptionReady, stepKey]);
+
+  useEffect(() => {
+    ringEnter.setValue(0);
+    if (!hasMeasuredTarget) return;
+    const animation = Animated.timing(ringEnter, {
+      toValue: 1,
+      duration: STEP_ENTER_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [hasMeasuredTarget, ringEnter, stepKey]);
+
+  const captionShift = useMemo(
+    () =>
+      captionEnter.interpolate({
+        inputRange: [0, 1],
+        outputRange: [CAPTION_ENTER_SHIFT, 0],
+      }),
+    [captionEnter]
+  );
   const ringOpacity = useMemo(
-    () => pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }),
-    [pulse]
+    () =>
+      Animated.multiply(
+        ringEnter,
+        pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] })
+      ),
+    [pulse, ringEnter]
   );
   const ringScale = useMemo(
     () => pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] }),
@@ -213,31 +298,39 @@ export default function SpotlightOverlay({
         <View style={[styles.dim, StyleSheet.absoluteFillObject]} />
       )}
 
-      <View style={[styles.caption, captionPosition]}>
-        <ThemedText style={styles.title}>{title}</ThemedText>
-        {message ? <ThemedText style={styles.message}>{message}</ThemedText> : null}
-        <View style={styles.actions}>
-          {stepLabel ? <ThemedText style={styles.stepLabel}>{stepLabel}</ThemedText> : null}
-          {secondaryLabel && onSecondary ? (
+      {isCaptionReady ? (
+        <Animated.View
+          style={[
+            styles.caption,
+            captionPosition,
+            { opacity: captionEnter, transform: [{ translateY: captionShift }] },
+          ]}
+        >
+          <ThemedText style={styles.title}>{title}</ThemedText>
+          {message ? <ThemedText style={styles.message}>{message}</ThemedText> : null}
+          <View style={styles.actions}>
+            {stepLabel ? <ThemedText style={styles.stepLabel}>{stepLabel}</ThemedText> : null}
+            {secondaryLabel && onSecondary ? (
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={handleSecondary}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+              >
+                <ThemedText style={styles.secondaryLabel}>{secondaryLabel}</ThemedText>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={handleSecondary}
-              activeOpacity={0.7}
+              style={styles.primaryButton}
+              onPress={handlePrimary}
+              activeOpacity={0.85}
               accessibilityRole="button"
             >
-              <ThemedText style={styles.secondaryLabel}>{secondaryLabel}</ThemedText>
+              <ThemedText style={styles.primaryLabel}>{primaryLabel}</ThemedText>
             </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={handlePrimary}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-          >
-            <ThemedText style={styles.primaryLabel}>{primaryLabel}</ThemedText>
-          </TouchableOpacity>
-        </View>
-      </View>
+          </View>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }

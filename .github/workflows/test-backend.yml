@@ -55,6 +55,15 @@ jobs:
           version: "0.4.15"
           enable-cache: true
       - run: docker compose down -v --remove-orphans
+      - name: Pull images
+        # Docker Hub intermittently times out on GitHub runners; retry before failing the job.
+        run: |
+          for attempt in 1 2 3; do
+            docker compose pull db mailcatcher && exit 0
+            echo "Pull attempt $attempt failed, retrying in $((attempt * 15))s..."
+            sleep $((attempt * 15))
+          done
+          exit 1
       - run: docker compose up -d db mailcatcher
       - name: Migrate DB
         run: uv run bash scripts/prestart.sh

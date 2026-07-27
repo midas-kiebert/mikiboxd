@@ -1,3 +1,4 @@
+import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -15,6 +16,71 @@ from app.utils import now_amsterdam_naive
 def consume_tmdb_lookup_events() -> list[dict[str, Any]]:
     """Return and clear in-process TMDB lookup audit events."""
     return tmdb_core.consume_tmdb_lookup_events()
+
+
+def _title_query_from_payload(lookup_payload: str) -> str | None:
+    """Recover a row's normalized title from its stored payload.
+
+    Only needed for rows written before `title_query` became a column; the
+    migration backfills the same value, so this is the belt to its braces.
+    """
+    try:
+        payload = json.loads(lookup_payload)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get("title_query")
+    return value if isinstance(value, str) and value else None
+
+
+def _propagate_correction_to_sibling_entries(
+    *,
+    db_session: Session,
+    corrected_cache_id: int,
+    title_query: str | None,
+    old_tmdb_id: int,
+    new_tmdb_id: int,
+) -> None:
+    """Apply a correction to the other cache rows for the same film.
+
+    One film routinely owns several cache rows: the key hashes the whole lookup
+    payload, and the cast list, runtime and spoken languages in it come from the
+    cinema's listing, so any of them changing mints a new row. Correcting one
+    row therefore left the drifted siblings still pointing at the wrong id, and
+    the next scrape hit one of *those* — a cache hit, so nothing re-resolved and
+    nothing was overwritten, yet the film came back wrong. That is what made a
+    fixed film look like it had reverted.
+
+    Only rows that agree with the corrected one — same normalized title, same
+    (wrong) TMDB id — are touched, and each is flagged as an override so an
+    automated run cannot undo it. Rows an admin has separately decided on are
+    left alone by the `old_tmdb_id` match.
+    """
+    if title_query is None or old_tmdb_id == new_tmdb_id:
+        return
+    siblings = db_session.exec(
+        select(TmdbLookupCache).where(
+            col(TmdbLookupCache.title_query) == title_query,
+            col(TmdbLookupCache.tmdb_id) == old_tmdb_id,
+            col(TmdbLookupCache.id) != corrected_cache_id,
+        )
+    ).all()
+    for sibling in siblings:
+        sibling_id = sibling.id
+        if sibling_id is None:
+            continue
+        sibling.tmdb_id = new_tmdb_id
+        sibling.is_manual_override = True
+        sibling.updated_at = now_amsterdam_naive()
+        db_session.commit()
+        movies_service.reassign_movies_for_cache_correction(
+            session=db_session,
+            cache_id=sibling_id,
+            old_tmdb_id=old_tmdb_id,
+            new_tmdb_id=new_tmdb_id,
+        )
+        db_session.commit()
 
 
 def upsert_tmdb_lookup_cache_entry(
@@ -40,6 +106,7 @@ def upsert_tmdb_lookup_cache_entry(
     )
     payload_json = tmdb_core.payload_to_canonical_json(payload)
     payload_hash = tmdb_core.payload_hash(payload_json)
+    normalized_title_query = str(payload.get("title_query", title_query))
     now = now_amsterdam_naive()
 
     def upsert_in_session(db_session: Session) -> None:
@@ -53,8 +120,11 @@ def upsert_tmdb_lookup_cache_entry(
                 TmdbLookupCache(
                     lookup_hash=payload_hash,
                     lookup_payload=payload_json,
+                    title_query=normalized_title_query,
                     tmdb_id=tmdb_id,
                     confidence=confidence,
+                    # A human said so, so no later scraper run may undo it.
+                    is_manual_override=True,
                     created_at=now,
                     updated_at=now,
                 )
@@ -66,6 +136,8 @@ def upsert_tmdb_lookup_cache_entry(
         cache_id = cached.id
         cached.tmdb_id = tmdb_id
         cached.confidence = confidence
+        cached.title_query = normalized_title_query
+        cached.is_manual_override = True
         cached.updated_at = now
         db_session.commit()
 
@@ -84,6 +156,13 @@ def upsert_tmdb_lookup_cache_entry(
                 new_tmdb_id=tmdb_id,
             )
             db_session.commit()
+            _propagate_correction_to_sibling_entries(
+                db_session=db_session,
+                corrected_cache_id=cache_id,
+                title_query=normalized_title_query,
+                old_tmdb_id=old_tmdb_id,
+                new_tmdb_id=tmdb_id,
+            )
 
     if session is not None:
         try:
@@ -171,6 +250,13 @@ def correct_tmdb_lookup_cache_entry(
         old_tmdb_id = cached.tmdb_id
         cached.tmdb_id = tmdb_id
         cached.confidence = confidence
+        # Flagged so no later automated lookup overwrites this row, and so a
+        # scrape whose payload has drifted (a reordered cast list, a runtime
+        # that has since been filled in) can still find the decision by title
+        # instead of resolving the film from scratch and getting it wrong again.
+        cached.is_manual_override = True
+        if cached.title_query is None:
+            cached.title_query = _title_query_from_payload(cached.lookup_payload)
         cached.updated_at = now
         db_session.commit()
 
@@ -182,6 +268,13 @@ def correct_tmdb_lookup_cache_entry(
                 new_tmdb_id=tmdb_id,
             )
             db_session.commit()
+            _propagate_correction_to_sibling_entries(
+                db_session=db_session,
+                corrected_cache_id=cache_id,
+                title_query=cached.title_query,
+                old_tmdb_id=old_tmdb_id,
+                new_tmdb_id=tmdb_id,
+            )
 
         tmdb_core.set_memory_lookup_cache(
             payload_json=cached.lookup_payload,

@@ -4,18 +4,21 @@
  * place: scan/share the user's own invite QR code, or search for a person
  * directly.
  *
+ * Deliberately the same layout, search box and results block as the intro's
+ * friends page — they ask for the same thing, and only one of them should ever
+ * be seen, so any difference between the two would read as a bug.
+ *
  * Eligibility lives in `FeatureTipsHost`; this component only renders.
  */
 import { useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { MeService } from "shared";
-import { useFetchUsers } from "shared/hooks/useFetchUsers";
 import QRCode from "react-native-qrcode-svg";
 
 import FeatureTipModal from "@/components/tips/FeatureTipModal";
-import FriendCard from "@/components/friends/FriendCard";
 import ShareInviteLinkButton from "@/components/friends/ShareInviteLinkButton";
+import UserSearchResults from "@/components/friends/UserSearchResults";
 import SearchBar from "@/components/inputs/SearchBar";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -23,6 +26,7 @@ import { buildFriendInviteUrl } from "@/constants/friend-invite";
 import { useDismissTip } from "@/utils/feature-tips";
 
 const SEARCH_RESULT_LIMIT = 5;
+const QR_CODE_SIZE = 160;
 
 export default function AddFriendsTip() {
   // Read flow: local state and data hooks first, then handlers, then the JSX.
@@ -31,17 +35,10 @@ export default function AddFriendsTip() {
   const dismissTip = useDismissTip("add-friends");
 
   const [searchQuery, setSearchQuery] = useState("");
-  const normalizedQuery = searchQuery.trim();
-  const hasQuery = normalizedQuery.length > 0;
 
   const { data: currentUser } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => MeService.getCurrentUser(),
-  });
-  const { data: usersData, isFetching: isSearching } = useFetchUsers({
-    limit: SEARCH_RESULT_LIMIT,
-    filters: { query: normalizedQuery },
-    enabled: hasQuery,
   });
 
   const inviteUrl = useMemo(
@@ -52,7 +49,6 @@ export default function AddFriendsTip() {
     () => currentUser?.display_name?.trim() || null,
     [currentUser?.display_name]
   );
-  const results = useMemo(() => usersData?.pages[0] ?? [], [usersData]);
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -65,23 +61,18 @@ export default function AddFriendsTip() {
       closeOnAction
       onDismiss={dismissTip}
     >
-      <View style={styles.searchSection}>
-        <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search users" />
-        {hasQuery ? (
-          isSearching ? (
-            <View style={styles.searchStatus}>
-              <ActivityIndicator size="small" color={colors.tint} />
-            </View>
-          ) : results.length === 0 ? (
-            <ThemedText style={styles.searchStatusText}>No users found</ThemedText>
-          ) : (
-            <View style={styles.results}>
-              {results.map((user) => (
-                <FriendCard key={user.id} user={user} showStatusBadge />
-              ))}
-            </View>
-          )
-        ) : null}
+      {/* Grouped so the results hang off the search box rather than picking up
+          the dialog's own spacing. */}
+      <View>
+        {/* Unpadded: the dialog owns its gutter, and the search box has to line
+            up with the invite card below it rather than sit wider. */}
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search for a friend"
+          containerStyle={styles.searchBar}
+        />
+        <UserSearchResults query={searchQuery} limit={SEARCH_RESULT_LIMIT} />
       </View>
 
       <View style={styles.inviteCard}>
@@ -90,7 +81,12 @@ export default function AddFriendsTip() {
         ) : null}
         {inviteUrl ? (
           <View style={styles.qrWrapper}>
-            <QRCode value={inviteUrl} size={160} backgroundColor="#ffffff" color="#111111" />
+            <QRCode
+              value={inviteUrl}
+              size={QR_CODE_SIZE}
+              backgroundColor="#ffffff"
+              color="#111111"
+            />
           </View>
         ) : (
           <View style={styles.qrLoadingWrapper}>
@@ -105,6 +101,11 @@ export default function AddFriendsTip() {
 
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
+    searchBar: {
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+      backgroundColor: "transparent",
+    },
     inviteCard: {
       borderRadius: 12,
       borderWidth: 1,
@@ -130,31 +131,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderColor: colors.divider,
     },
     qrLoadingWrapper: {
-      width: 160,
-      height: 160,
+      width: QR_CODE_SIZE,
+      height: QR_CODE_SIZE,
       borderRadius: 12,
       backgroundColor: colors.pillBackground,
       alignItems: "center",
       justifyContent: "center",
-    },
-    searchSection: {
-      gap: 8,
-      // SearchBar carries its own horizontal padding, meant for full-bleed
-      // screens; cancel it out so it lines up with the rest of the dialog.
-      marginHorizontal: -24,
-    },
-    searchStatus: {
-      paddingVertical: 10,
-      alignItems: "center",
-    },
-    searchStatusText: {
-      paddingHorizontal: 18,
-      fontSize: 13,
-      color: colors.textSecondary,
-      textAlign: "center",
-    },
-    results: {
-      paddingHorizontal: 24,
-      gap: 8,
     },
   });

@@ -93,8 +93,8 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
         The authenticated User object.
 
     Raises:
-        HTTPException 401: If the token is missing, expired, or tampered with.
-        HTTPException 404: If the user ID in the token no longer exists in the DB.
+        HTTPException 401: If the token is missing, expired, tampered with, or
+            names a user that no longer exists in the DB.
         HTTPException 400: If the user account has been deactivated.
     """
     try:
@@ -119,7 +119,19 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
 
     user = session.get(User, token_data.sub)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        # A 401 rather than a 404, because this is a dead credential, not a
+        # missing resource: the token decodes fine but names a user that no
+        # longer exists (deleted account, or a staging DB reseeded from prod
+        # under a session that was signed in before the reseed). As a 404 the
+        # client could not tell it apart from a genuinely missing resource, so
+        # it kept retrying with a token that would never work again and the app
+        # was stuck — unable to reach a state from which it could even log out.
+        # 401 puts it on the refresh path, and /login/refresh-token rejects a
+        # missing user too, so the session clears and the app returns to login.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return user

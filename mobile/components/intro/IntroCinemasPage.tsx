@@ -9,12 +9,11 @@
  * Saving also applies the selection to this session and retires the cinema
  * preset tip, so the user is never nudged towards a feature they just used.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MeService, type CinemaPresetCreate } from "shared";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
-import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import CinemaPickerList from "@/components/filters/CinemaPickerList";
@@ -22,12 +21,16 @@ import { sortCinemaIds } from "@/components/filters/cinema-grouping";
 import { invalidateCinemaPresets } from "@/components/filters/cinema-presets";
 import IntroPageShell from "@/components/intro/IntroPageShell";
 import { ThemedText } from "@/components/themed-text";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { retireCinemaPresetTip } from "@/utils/feature-tips";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 /** The name the first preset gets, since the intro does not stop to ask. */
 const DEFAULT_PRESET_NAME = "Favorites";
+
+/** Placeholder rows drawn while the cinema list is still in flight. */
+const SKELETON_ROW_COUNT = 8;
 
 export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
   // Read flow: local state and data hooks first, then handlers, then the JSX.
@@ -36,22 +39,18 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
   const queryClient = useQueryClient();
 
   const { data: cinemas } = useFetchCinemas();
-  const { data: favoriteCinemaIds } = useFetchSelectedCinemas();
   const { setSelections: setSessionCinemaIds } = useSessionCinemaSelections();
 
   const cinemaList = useMemo(() => cinemas ?? [], [cinemas]);
-  const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(
-    () => new Set(favoriteCinemaIds ?? [])
-  );
-
-  // The account's stored selection usually lands after the first render. Seeded
-  // once, so a later refetch cannot wipe out what the user has picked since.
-  const hasSeededSelection = useRef(favoriteCinemaIds !== undefined);
-  useEffect(() => {
-    if (hasSeededSelection.current || favoriteCinemaIds === undefined) return;
-    hasSeededSelection.current = true;
-    setSelectedIds(new Set(favoriteCinemaIds));
-  }, [favoriteCinemaIds]);
+  // The list is normally prefetched before this page is mounted (see
+  // `IntroHost`), so this is the slow-network case only. It still matters:
+  // without it the very first thing a new account saw was "0 of 0 selected"
+  // over an empty box, which then popped into a full list.
+  const isCinemaListLoading = cinemas === undefined;
+  // Deliberately starts empty rather than seeded from the account's stored
+  // selection: the page asks the user to pick their cinemas, and anything
+  // pre-ticked reads as a choice already made — which they then have to undo.
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
 
   const saveMutation = useMutation({
     mutationFn: (requestBody: CinemaPresetCreate) =>
@@ -122,10 +121,14 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
       onSecondary={onDone}
     >
       <View style={styles.pickerHeader}>
-        <ThemedText style={styles.count}>
-          {selectedCount} of {cinemaList.length} selected
-        </ThemedText>
-        {selectedCount > 0 ? (
+        {isCinemaListLoading ? (
+          <Skeleton style={styles.countSkeleton} />
+        ) : (
+          <ThemedText style={styles.count}>
+            {selectedCount} of {cinemaList.length} selected
+          </ThemedText>
+        )}
+        {!isCinemaListLoading && selectedCount > 0 ? (
           <TouchableOpacity
             onPress={handleClearAll}
             activeOpacity={0.7}
@@ -139,14 +142,23 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
       <ScrollView
         style={styles.pickerBox}
         contentContainerStyle={styles.pickerContent}
-        showsVerticalScrollIndicator
+        showsVerticalScrollIndicator={!isCinemaListLoading}
+        scrollEnabled={!isCinemaListLoading}
       >
-        <CinemaPickerList
-          cinemas={cinemaList}
-          selectedIds={selectedIds}
-          onToggleCinema={handleToggleCinema}
-          onSelectCinemas={handleSelectCinemas}
-        />
+        {isCinemaListLoading ? (
+          <View style={styles.skeletonList}>
+            {Array.from({ length: SKELETON_ROW_COUNT }, (_unused, index) => (
+              <Skeleton key={index} style={styles.skeletonRow} />
+            ))}
+          </View>
+        ) : (
+          <CinemaPickerList
+            cinemas={cinemaList}
+            selectedIds={selectedIds}
+            onToggleCinema={handleToggleCinema}
+            onSelectCinemas={handleSelectCinemas}
+          />
+        )}
       </ScrollView>
     </IntroPageShell>
   );
@@ -165,6 +177,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "600",
       color: colors.textSecondary,
     },
+    // Same footprint as the "N of M selected" line it stands in for, so the
+    // header does not change height when the real count lands.
+    countSkeleton: {
+      height: 15,
+      width: 120,
+      borderRadius: 4,
+    },
     clearAll: {
       fontSize: 13,
       fontWeight: "700",
@@ -182,5 +201,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     pickerContent: {
       paddingHorizontal: 24,
       paddingVertical: 12,
+    },
+    skeletonList: {
+      gap: 14,
+    },
+    skeletonRow: {
+      height: 20,
+      borderRadius: 5,
     },
   });

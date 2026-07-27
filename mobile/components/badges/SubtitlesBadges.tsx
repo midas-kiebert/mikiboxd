@@ -14,13 +14,13 @@ type SubtitlesBadgesProps = {
 // Fixed render order; codes match app.core.enums.Language on the backend.
 const SUBTITLE_LABELS_BY_CODE: ReadonlyArray<readonly [string, string]> = [
   ["nl", "NL SUBS"],
-  ["en", "ENG SUBS"],
+  ["en", "EN SUBS"],
 ];
 
 // Compact variant is used in dense rows (e.g. movie card showtimes) where space is tight.
 const COMPACT_SUBTITLE_LABELS_BY_CODE: ReadonlyArray<readonly [string, string]> = [
   ["nl", "NL"],
-  ["en", "ENG"],
+  ["en", "EN"],
 ];
 
 export default function SubtitlesBadges({ subtitles, variant = "default" }: SubtitlesBadgesProps) {

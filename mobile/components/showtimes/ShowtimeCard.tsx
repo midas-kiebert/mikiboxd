@@ -12,7 +12,10 @@ import CinemaPill from "@/components/badges/CinemaPill";
 import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
+import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
+import { UNKNOWN_METADATA_PLACEHOLDER, isSyntheticMovieId } from "@/constants/synthetic-movies";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import {
   GLOBAL_LONG_PRESS_DELAY_MS,
   triggerLongPressHaptic,
@@ -47,6 +50,7 @@ const getCompactBadgeRowsForHeight = (height: number) => {
 export default function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
+  const goToMovie = useSingleFireNavigation((movieId: number) => router.push(`/movie/${movieId}`));
   const suppressNextPressRef = useRef(false);
   const [friendBadgeAreaHeight, setFriendBadgeAreaHeight] = useState(0);
   // Read the active theme color tokens used by this screen/component.
@@ -62,8 +66,13 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const day = date.toFormat("d");
   const month = date.toFormat("LLL");
   const startTime = date.toFormat("HH:mm");
+  const isSyntheticMovie = isSyntheticMovieId(showtime.movie.id);
   const endDate = showtime.end_datetime ? DateTime.fromISO(showtime.end_datetime) : null;
-  const endTime = endDate?.isValid ? endDate.toFormat("HH:mm") : null;
+  const endTime = endDate?.isValid
+    ? endDate.toFormat("HH:mm")
+    : isSyntheticMovie
+      ? UNKNOWN_METADATA_PLACEHOLDER
+      : null;
   // Invited-only = you've been invited but haven't responded yet → blue.
   // Going / interested take precedence over the invite tint.
   const isInvitedOnly =
@@ -109,7 +118,7 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
       onPress(showtime);
       return;
     }
-    router.push(`/movie/${showtime.movie.id}`);
+    goToMovie(showtime.movie.id);
   };
 
   const handleLongPress = () => {
@@ -156,10 +165,11 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
             {endTime ? <ThemedText style={styles.timeEnd}>{`~${endTime}`}</ThemedText> : null}
           </ThemedText>
         </View>
-        <Image
-          source={{ uri: showtime.movie.poster_link ?? undefined }}
-          style={styles.poster}
-        />
+        {isSyntheticMovie ? (
+          <PosterPlaceholder style={styles.poster} glyphSize={28} />
+        ) : (
+          <Image source={{ uri: showtime.movie.poster_link ?? undefined }} style={styles.poster} />
+        )}
         <View style={styles.info}>
           <View style={styles.titleRow}>
             <View style={styles.titleColumn}>

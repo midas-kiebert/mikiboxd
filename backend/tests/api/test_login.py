@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
+from app.api.routes.login import _build_token
 from app.core.config import settings
 from app.core.enums import SocialProvider
 from app.core.security import InvalidSocialToken, SocialClaims
@@ -87,6 +88,39 @@ def test_refresh_with_garbage_token_is_unauthorized(client: TestClient) -> None:
         json={"refresh_token": "not-a-real-token"},
     )
     assert r.status_code == 401
+
+
+def test_token_for_deleted_user_is_unauthorized_not_not_found(
+    client: TestClient, db_transaction: Session
+) -> None:
+    """A token naming a user that no longer exists is a dead credential (401).
+
+    It used to be a 404, which the client could not tell apart from a genuinely
+    missing resource: it never cleared the session, so the app retried forever
+    with a token that could never work and could not even reach its own logout.
+    Staging hits this on every deploy, because its DB is reseeded from prod.
+    """
+    user = user_crud.create_user(
+        session=db_transaction,
+        user_create=UserCreate(email=random_email(), password=random_lower_string()),
+    )
+    tokens = _build_token(user.id)
+    db_transaction.delete(user)
+    db_transaction.commit()
+
+    r = client.get(
+        f"{settings.API_V1_STR}/me",
+        headers={"Authorization": f"Bearer {tokens.access_token}"},
+    )
+    assert r.status_code == 401, r.text
+
+    # And the refresh path agrees, so the client gives up and returns to login
+    # instead of refreshing its way into the same wall.
+    refreshed = client.post(
+        f"{settings.API_V1_STR}/login/refresh-token",
+        json={"refresh_token": tokens.refresh_token},
+    )
+    assert refreshed.status_code == 401, refreshed.text
 
 
 # -----------------------------------------------------------------------------

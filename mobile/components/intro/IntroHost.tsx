@@ -15,8 +15,8 @@
  * starts: a resumed deep link or another tab reached first would otherwise be
  * whatever's revealed once the walkthrough ends.
  */
-import { useEffect } from "react";
-import { useRouter, useSegments } from "expo-router";
+import { useEffect, useState } from "react";
+import { useNavigationContainerRef, useRouter, useSegments } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { prefetchCinemas } from "shared/hooks/useFetchCinemas";
 import { prefetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
@@ -37,8 +37,31 @@ export default function IntroHost() {
   const isOwed = useIsIntroOwed();
   const segments = useSegments();
   const router = useRouter();
+  const navigationRef = useNavigationContainerRef();
   const queryClient = useQueryClient();
   const isInTabs = (segments as unknown as string[])[0] === TABS_SEGMENT;
+
+  // expo-router throws on any navigation until the root NavigationContainer
+  // reports ready. That flag is set by an effect in ExpoRoot — an ancestor of
+  // this component — and React flushes descendant effects before ancestor ones,
+  // so on the first mount our redirect effect below would always run a beat too
+  // early. Subscribing here re-runs it once the container is genuinely ready.
+  // `useRootNavigationState().key` is not a substitute: it comes from the router
+  // store, which is populated before the container mounts.
+  const [isNavigationReady, setIsNavigationReady] = useState(
+    () => navigationRef?.isReady() ?? false,
+  );
+
+  useEffect(() => {
+    if (isNavigationReady) return;
+    if (navigationRef?.isReady()) {
+      setIsNavigationReady(true);
+      return;
+    }
+    return navigationRef?.addListener("state", () => {
+      if (navigationRef.isReady()) setIsNavigationReady(true);
+    });
+  }, [navigationRef, isNavigationReady]);
 
   useEffect(() => {
     // The walkthrough opens on a full-screen cinema picker. Fetching that list
@@ -55,11 +78,11 @@ export default function IntroHost() {
   useEffect(() => {
     // A no-op unless an account was created on this device and never
     // introduced. Waits for the stored flag, which usually lands after mount.
-    if (!isLoaded || !isInTabs) return;
+    if (!isNavigationReady || !isLoaded || !isInTabs) return;
     if (startIntroIfPending()) {
       router.replace("/(tabs)");
     }
-  }, [isInTabs, isLoaded, router]);
+  }, [isInTabs, isLoaded, isNavigationReady, router]);
 
   if (phase !== "pages") return null;
   return <IntroFlow />;

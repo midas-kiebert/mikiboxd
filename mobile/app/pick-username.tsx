@@ -7,6 +7,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Controller, useForm } from 'react-hook-form'
 import { useMutation } from '@tanstack/react-query'
 import { MeService, type ApiError, type UserUpdate } from 'shared'
+import useAuth from 'shared/hooks/useAuth'
 import { handleError, usernameMaxLength, usernamePattern } from 'shared/utils'
 
 import AuthPrimaryButton from '@/components/auth/AuthPrimaryButton'
@@ -38,6 +39,7 @@ export default function PickUsernameScreen() {
     const router = useRouter()
     const { suggestion } = useLocalSearchParams<{ suggestion?: string }>()
     const inputRef = useRef<TextInput>(null)
+    const { user } = useAuth()
 
     const {
         control,
@@ -51,6 +53,18 @@ export default function PickUsernameScreen() {
     const updateUsernameMutation = useMutation({
         mutationFn: (data: UserUpdate) => MeService.updateUserMe({ requestBody: data }),
     })
+
+    // Belt and braces on top of the backend's `needs_username`: this screen is
+    // only ever for an account that has no username, so one that turns out to
+    // have one is sent straight on rather than asked to pick a second. Positive
+    // check only — an unloaded/absent user is not treated as "has a username",
+    // which would bounce the very accounts this screen exists for. Left out in
+    // __DEV__ so the login screen's preview shortcut still opens it.
+    const existingUsername = user?.display_name?.trim()
+    useEffect(() => {
+        if (__DEV__ || !existingUsername) return
+        void completeLogin(router)
+    }, [existingUsername, router])
 
     useEffect(() => {
         const timer = setTimeout(() => inputRef.current?.focus(), AUTOFOCUS_DELAY_MS)

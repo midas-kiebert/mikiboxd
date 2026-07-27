@@ -33,7 +33,6 @@ from app.models.auth_schemas import (
     Token,
 )
 from app.models.user import User
-from app.validators.username import is_valid_username
 
 router = APIRouter(tags=["login"])
 logger = logging.getLogger(__name__)
@@ -128,8 +127,18 @@ def login_social_token(
         platform=request.headers.get("X-Client-Platform"),
     )
     session.commit()
-    needs_username = user.display_name is None or not is_valid_username(
-        user.display_name
+    # Strictly "this account has no username yet" — which, given
+    # `get_or_create_social_user` deliberately leaves display_name unset, means
+    # "this provider identity just created an account". It must NOT also mean
+    # "has a username the current rules would reject": an older account whose
+    # display_name predates USERNAME_MIN_LENGTH / the [A-Za-z0-9_] rule (or a
+    # password account linking a provider to the same email) already has a
+    # username, and sending it to /pick-username on every social sign-in also
+    # replayed the first-run intro at it, since the client treats this flag as
+    # "brand-new account". Legacy names are fixed in Settings, which validates
+    # on change; this endpoint is not the place to force it.
+    needs_username = (
+        user.display_name is None or user.display_name.strip() == ""
     )
     return SocialLoginResponse(
         **_build_token(user.id).model_dump(),

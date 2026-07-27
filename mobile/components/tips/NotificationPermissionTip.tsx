@@ -18,7 +18,7 @@ import {
   openSystemSettings,
   useNotificationPreferences,
 } from "@/hooks/useNotificationPreferences";
-import { useDismissTip } from "@/utils/feature-tips";
+import { closeTip, dismissTipForever, useDismissTip } from "@/utils/feature-tips";
 
 export default function NotificationPermissionTip() {
   // Read flow: data hooks first, then handlers, then the JSX.
@@ -27,6 +27,17 @@ export default function NotificationPermissionTip() {
   const dismissTip = useDismissTip("notification-permission");
   const controller = useNotificationPreferences();
   const { canAskSystemPermission, isSystemPermissionGranted, requestSystemPermission } = controller;
+
+  // Permission is already granted, so this dialog has nothing left to remind
+  // the user about: closing it should not leave a bell reminder or count as a
+  // "hidden tip" — only an explicit "don't show this again" is recorded.
+  const handleDismissGranted = useCallback((dismissForever: boolean) => {
+    if (dismissForever) {
+      dismissTipForever("notification-permission");
+      return;
+    }
+    closeTip("notification-permission");
+  }, []);
 
   const handleAllow = useCallback(() => {
     // Once the OS has stopped asking, the prompt never appears again and the
@@ -51,7 +62,7 @@ export default function NotificationPermissionTip() {
         message="Choose what you want to hear about, and whether it arrives as a push notification or by email."
         actionLabel="Done"
         closeOnAction
-        onDismiss={dismissTip}
+        onDismiss={handleDismissGranted}
       >
         <View style={styles.preferences}>
           <NotificationPreferenceList controller={controller} />

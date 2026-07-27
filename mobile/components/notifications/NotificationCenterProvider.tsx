@@ -25,6 +25,7 @@ import {
   reopenTip,
   useSnoozedTips,
 } from "@/utils/feature-tips";
+import { useIsIntroActive } from "@/utils/intro";
 
 type NotificationCenterContextValue = {
   openNotificationCenter: () => void;
@@ -51,6 +52,14 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
   // Lets anything that must be the only thing on screen hold off while the
   // centre is open (currently the intro's filters highlight).
   useRegisterBlockingOverlay(visible);
+
+  // The intro is its own blocking walkthrough; opened underneath it (e.g. a
+  // bell tap right as the intro takes over), it would otherwise just be
+  // sitting there, revealed once the intro ends instead of closed like it was.
+  const isIntroActive = useIsIntroActive();
+  useEffect(() => {
+    if (isIntroActive) setVisible(false);
+  }, [isIntroActive]);
 
   const { data: notifications, isLoading } = useFetchNotifications({ enabled: visible });
   const items = useMemo(() => notifications ?? [], [notifications]);

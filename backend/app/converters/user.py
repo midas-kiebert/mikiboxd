@@ -65,6 +65,7 @@ def to_me(user: User) -> UserMe:
             user.notify_watchlist_digest_cinema_preset_id
         ),
         can_report=not is_report_banned(user),
+        has_password=user.hashed_password is not None,
     )
 
 

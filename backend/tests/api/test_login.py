@@ -103,11 +103,8 @@ def _post_social_token(
     *,
     provider: str = "apple",
     token: str = "irrelevant",
-    display_name: str | None = None,
 ) -> object:
     payload: dict[str, str] = {"provider": provider, "token": token}
-    if display_name is not None:
-        payload["display_name"] = display_name
     return client.post(f"{settings.API_V1_STR}/login/social-token", json=payload)
 
 
@@ -123,11 +120,12 @@ def test_social_token_creates_new_apple_user(
         lambda provider, token: SocialClaims(sub=sub, email=email),
     )
 
-    r = _post_social_token(client, provider="apple", display_name="Alice")
+    r = _post_social_token(client, provider="apple")
     assert r.status_code == 200, r.text
     tokens = r.json()
     assert tokens["access_token"]
     assert tokens["refresh_token"]
+    assert tokens["needs_username"] is True
 
     user = user_crud.get_user_by_social_sub(
         session=db_transaction, provider=SocialProvider.APPLE, provider_sub=sub
@@ -136,7 +134,7 @@ def test_social_token_creates_new_apple_user(
     assert user.email == email
     assert user.apple_sub == sub
     assert user.hashed_password is None
-    assert user.display_name == "Alice"
+    assert user.display_name is None
 
 
 def test_social_token_returning_user_reuses_account(
@@ -224,8 +222,9 @@ def test_social_token_new_user_no_display_name_needs_username(
 
 
 @pytest.mark.usefixtures("db_transaction")
-def test_social_token_new_user_with_valid_display_name_no_username_needed(
+def test_social_token_returning_user_who_already_picked_username_no_username_needed(
     client: TestClient,
+    db_transaction: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     email = random_email()
@@ -235,44 +234,19 @@ def test_social_token_new_user_with_valid_display_name_no_username_needed(
         lambda provider, token: SocialClaims(sub=sub, email=email),
     )
 
-    r = _post_social_token(client, provider="apple", display_name="alice123")
-    assert r.status_code == 200, r.text
-    assert r.json()["needs_username"] is False
-
-
-@pytest.mark.usefixtures("db_transaction")
-def test_social_token_new_user_with_invalid_display_name_needs_username(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    email = random_email()
-    sub = f"apple-{uuid.uuid4()}"
-    monkeypatch.setattr(
-        "app.api.routes.login.verify_social_token",
-        lambda provider, token: SocialClaims(sub=sub, email=email),
-    )
-
-    # "Jan de Vries" has spaces and is more than 15 characters long.
-    r = _post_social_token(client, provider="apple", display_name="Jan de Vries")
-    assert r.status_code == 200, r.text
-    assert r.json()["needs_username"] is True
-
-
-@pytest.mark.usefixtures("db_transaction")
-def test_social_token_returning_user_with_valid_display_name_no_username_needed(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    email = random_email()
-    sub = f"apple-{uuid.uuid4()}"
-    monkeypatch.setattr(
-        "app.api.routes.login.verify_social_token",
-        lambda provider, token: SocialClaims(sub=sub, email=email),
-    )
-
-    first = _post_social_token(client, provider="apple", display_name="alice123")
+    first = _post_social_token(client, provider="apple")
     assert first.status_code == 200, first.text
-    assert first.json()["needs_username"] is False
+    assert first.json()["needs_username"] is True
+
+    # Simulates the client completing the pick-username screen after account
+    # creation, via the normal /me update path (not exercised here).
+    user = user_crud.get_user_by_social_sub(
+        session=db_transaction, provider=SocialProvider.APPLE, provider_sub=sub
+    )
+    assert user is not None
+    user.display_name = "alice123"
+    db_transaction.add(user)
+    db_transaction.flush()
 
     second = _post_social_token(client, provider="apple")
     assert second.status_code == 200, second.text
@@ -329,7 +303,6 @@ def test_social_token_inactive_user_rejected(
         provider=SocialProvider.APPLE,
         provider_sub=sub,
         email=email,
-        display_name=None,
     )
     assert is_new
     user.is_active = False
@@ -356,7 +329,6 @@ def test_authenticate_returns_none_for_social_only_account(
         provider=SocialProvider.GOOGLE,
         provider_sub=f"google-{uuid.uuid4()}",
         email=email,
-        display_name=None,
     )
 
     result = user_crud.authenticate(
@@ -374,7 +346,6 @@ def test_social_only_account_cannot_login_via_password_endpoint(
         provider=SocialProvider.APPLE,
         provider_sub=f"apple-{uuid.uuid4()}",
         email=email,
-        display_name=None,
     )
 
     r = client.post(

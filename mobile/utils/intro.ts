@@ -96,10 +96,13 @@ export const markIntroPending = (): void => {
 /**
  * Start the intro if this device just created an account. Safe to call on every
  * render: a no-op once the intro is running, and once it has been dealt with.
+ * Returns whether it actually started, so a caller that also needs to land the
+ * user on a known screen before the walkthrough begins knows when to bother.
  */
-export const startIntroIfPending = (): void => {
-  if (!state.isLoaded || !state.isPending || state.phase !== 'idle') return;
+export const startIntroIfPending = (): boolean => {
+  if (!state.isLoaded || !state.isPending || state.phase !== 'idle') return false;
   update({ phase: 'pages' });
+  return true;
 };
 
 /** Developer override: replay the intro from the Settings screen. */
@@ -152,3 +155,19 @@ export const useIsIntroLoaded = (): boolean => useIntroState().isLoaded;
  * highlight. Feature tips stay out of the way until this is false.
  */
 export const useIsIntroActive = (): boolean => useIntroState().phase !== 'idle';
+
+/**
+ * True from the moment an account is marked for the intro until the whole
+ * thing — pages and the final filters highlight both — is done. Unlike
+ * `useIsIntroActive`, this also covers the brief window right after signup
+ * where `isPending` is set but `IntroHost` hasn't flipped the phase to
+ * `pages` yet, which matters for anything that has to wait for the intro to
+ * be entirely out of the way before it does its own first thing (e.g. asking
+ * for notification permission).
+ */
+export const isIntroOwed = (): boolean => state.isPending || state.phase !== 'idle';
+
+export const useIsIntroOwed = (): boolean => {
+  const introState = useIntroState();
+  return introState.isPending || introState.phase !== 'idle';
+};

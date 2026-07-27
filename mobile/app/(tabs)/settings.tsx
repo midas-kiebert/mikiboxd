@@ -1,8 +1,21 @@
 /**
  * Expo Router screen/module for (tabs) / settings. It controls navigation and screen-level state for this route.
  */
-import { Alert, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
-import { useEffect, useState } from 'react';
+import {
+  Alert,
+  Animated,
+  LayoutAnimation,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { EXPAND_DURATION_MS, EXPAND_LAYOUT_ANIMATION } from '@/utils/expand-animation';
+import { triggerSelectionHaptic } from '@/utils/long-press';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -106,6 +119,27 @@ export default function SettingsScreen() {
   // Cineville card number (9 digits only, CP$ prefix is added automatically).
   const [cinevilleDigits, setCinevilleDigits] = useState('');
   const [isSavingCineville, setIsSavingCineville] = useState(false);
+  // The danger zone is collapsed by default so it takes an extra, deliberate
+  // tap to reach account deletion.
+  const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
+  const dangerCaretRotation = useRef(new Animated.Value(0)).current;
+  const dangerCaretSpin = useMemo(
+    () => dangerCaretRotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }),
+    [dangerCaretRotation]
+  );
+  const toggleDangerZone = useCallback(() => {
+    triggerSelectionHaptic();
+    const next = !isDangerZoneOpen;
+    Animated.timing(dangerCaretRotation, {
+      toValue: next ? 1 : 0,
+      duration: EXPAND_DURATION_MS,
+      useNativeDriver: true,
+    }).start();
+    if (!next) LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
+    setIsDangerZoneOpen(next);
+  }, [isDangerZoneOpen, dangerCaretRotation]);
+  // Whether the account already has a password set (false for social-only sign-in).
+  const hasPassword = user?.has_password ?? true;
 
   // Populate editable form state once user data has loaded.
   useEffect(() => {
@@ -214,7 +248,7 @@ export default function SettingsScreen() {
 
   // Keep password validation local so users get immediate feedback.
   const handlePasswordSave = () => {
-    if (!passwords.current_password || !passwords.new_password) {
+    if ((hasPassword && !passwords.current_password) || !passwords.new_password) {
       Alert.alert('Missing fields', 'Please fill in all password fields.');
       return;
     }
@@ -228,7 +262,7 @@ export default function SettingsScreen() {
     }
 
     passwordMutation.mutate({
-      current_password: passwords.current_password,
+      current_password: hasPassword ? passwords.current_password : null,
       new_password: passwords.new_password,
     });
   };
@@ -411,48 +445,6 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>Password</ThemedText>
-          <View style={styles.card}>
-            <ThemedText style={styles.label}>Current password</ThemedText>
-            <TextInput
-              style={styles.input}
-              value={passwords.current_password}
-              onChangeText={(value) => setPasswords((prev) => ({ ...prev, current_password: value }))}
-              placeholder="Current password"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry
-            />
-            <ThemedText style={styles.label}>New password</ThemedText>
-            <TextInput
-              style={styles.input}
-              value={passwords.new_password}
-              onChangeText={(value) => setPasswords((prev) => ({ ...prev, new_password: value }))}
-              placeholder="New password"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry
-            />
-            <ThemedText style={styles.label}>Confirm password</ThemedText>
-            <TextInput
-              style={styles.input}
-              value={passwords.confirm_password}
-              onChangeText={(value) => setPasswords((prev) => ({ ...prev, confirm_password: value }))}
-              placeholder="Confirm password"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry
-            />
-            <TouchableOpacity
-              style={[styles.primaryButton, isPasswordSaving && styles.buttonDisabled]}
-              onPress={handlePasswordSave}
-              disabled={isPasswordSaving}
-            >
-              <ThemedText style={styles.primaryButtonText}>
-                {isPasswordSaving ? 'Saving...' : 'Update password'}
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Appearance</ThemedText>
           <View style={styles.card}>
             <View style={styles.appearanceRow}>
@@ -517,7 +509,16 @@ export default function SettingsScreen() {
                 Replays the first-run intro from page one. The last step (the Filters highlight)
                 appears on the showtimes tab once its list has loaded.
               </ThemedText>
-              <TouchableOpacity style={styles.secondaryButton} onPress={startIntro}>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => {
+                  // Settings is its own tab; land on showtimes first so the
+                  // walkthrough starts and ends in the same place it would
+                  // for a real first run.
+                  router.replace('/(tabs)');
+                  startIntro();
+                }}
+              >
                 <ThemedText style={styles.secondaryButtonText}>Replay the intro</ThemedText>
               </TouchableOpacity>
             </View>
@@ -741,6 +742,57 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>{hasPassword ? 'Password' : 'Add password'}</ThemedText>
+          <View style={styles.card}>
+            {hasPassword ? (
+              <>
+                <ThemedText style={styles.label}>Current password</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  value={passwords.current_password}
+                  onChangeText={(value) => setPasswords((prev) => ({ ...prev, current_password: value }))}
+                  placeholder="Current password"
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                />
+              </>
+            ) : (
+              <ThemedText style={styles.helperText}>
+                Your account signed in with Apple or Google and has no password yet. Add
+                one to also be able to log in with your email.
+              </ThemedText>
+            )}
+            <ThemedText style={styles.label}>New password</ThemedText>
+            <TextInput
+              style={styles.input}
+              value={passwords.new_password}
+              onChangeText={(value) => setPasswords((prev) => ({ ...prev, new_password: value }))}
+              placeholder="New password"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry
+            />
+            <ThemedText style={styles.label}>Confirm password</ThemedText>
+            <TextInput
+              style={styles.input}
+              value={passwords.confirm_password}
+              onChangeText={(value) => setPasswords((prev) => ({ ...prev, confirm_password: value }))}
+              placeholder="Confirm password"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry
+            />
+            <TouchableOpacity
+              style={[styles.primaryButton, isPasswordSaving && styles.buttonDisabled]}
+              onPress={handlePasswordSave}
+              disabled={isPasswordSaving}
+            >
+              <ThemedText style={styles.primaryButtonText}>
+                {isPasswordSaving ? 'Saving...' : hasPassword ? 'Update password' : 'Add password'}
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Account</ThemedText>
           <View style={styles.card}>
             <TouchableOpacity
@@ -756,21 +808,34 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>Danger zone</ThemedText>
-          <View style={styles.card}>
-            <ThemedText style={styles.helperText}>
-              Permanently delete your account and all associated data.
-            </ThemedText>
-            <TouchableOpacity
-              style={[styles.dangerButton, deleteMutation.isPending && styles.buttonDisabled]}
-              onPress={handleDeleteAccount}
-              disabled={deleteMutation.isPending}
-            >
-              <ThemedText style={styles.dangerButtonText}>
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete account'}
+          <TouchableOpacity
+            style={styles.dangerZoneHeader}
+            onPress={toggleDangerZone}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: isDangerZoneOpen }}
+          >
+            <ThemedText style={styles.sectionTitle}>Danger zone</ThemedText>
+            <Animated.View style={{ transform: [{ rotate: dangerCaretSpin }] }}>
+              <MaterialIcons name="expand-more" size={22} color={colors.textSecondary} />
+            </Animated.View>
+          </TouchableOpacity>
+          {isDangerZoneOpen ? (
+            <View style={styles.card}>
+              <ThemedText style={styles.helperText}>
+                Permanently delete your account and all associated data.
               </ThemedText>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                style={[styles.dangerButton, deleteMutation.isPending && styles.buttonDisabled]}
+                onPress={handleDeleteAccount}
+                disabled={deleteMutation.isPending}
+              >
+                <ThemedText style={styles.dangerButtonText}>
+                  {deleteMutation.isPending ? 'Deleting...' : 'Delete account'}
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </TopSafeAreaView>
@@ -794,6 +859,11 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       fontSize: 16,
       fontWeight: '700',
       color: colors.text,
+    },
+    dangerZoneHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
     },
     card: {
       backgroundColor: colors.cardBackground,

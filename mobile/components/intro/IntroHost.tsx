@@ -10,10 +10,13 @@
  * It waits for the user to actually be in the tabs before starting: a social
  * sign-in is authenticated while still on the "pick a username" screen, and an
  * intro over that would be covering a form the user has to fill in. Only the
- * start is gated — once running, the intro stays put wherever the app goes.
+ * start is gated — once running, the intro stays put wherever the app goes,
+ * which is exactly why it forces the showtimes tab the moment it actually
+ * starts: a resumed deep link or another tab reached first would otherwise be
+ * whatever's revealed once the walkthrough ends.
  */
 import { useEffect } from "react";
-import { useSegments } from "expo-router";
+import { useRouter, useSegments } from "expo-router";
 
 import IntroFlow from "@/components/intro/IntroFlow";
 import { startIntroIfPending, useIntroPhase, useIsIntroLoaded } from "@/utils/intro";
@@ -24,14 +27,17 @@ export default function IntroHost() {
   const phase = useIntroPhase();
   const isLoaded = useIsIntroLoaded();
   const segments = useSegments();
+  const router = useRouter();
   const isInTabs = (segments as unknown as string[])[0] === TABS_SEGMENT;
 
   useEffect(() => {
     // A no-op unless an account was created on this device and never
     // introduced. Waits for the stored flag, which usually lands after mount.
     if (!isLoaded || !isInTabs) return;
-    startIntroIfPending();
-  }, [isInTabs, isLoaded]);
+    if (startIntroIfPending()) {
+      router.replace("/(tabs)");
+    }
+  }, [isInTabs, isLoaded, router]);
 
   if (phase !== "pages") return null;
   return <IntroFlow />;

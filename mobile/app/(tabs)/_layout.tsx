@@ -24,6 +24,7 @@ import {
   registerPushTokenForCurrentDevice,
 } from '@/utils/push-notifications';
 import { FiltersModalProvider } from '@/components/filters/FiltersModalProvider';
+import { useIsIntroOwed } from '@/utils/intro';
 
 const NOTIFICATION_PERMISSION_PROMPTED_KEY = 'mobile.notifications.permission_prompted_v3';
 const NOTIFICATION_PREFS_INITIALIZED_KEY = 'mobile.notifications.preferences_initialized_v1';
@@ -54,6 +55,10 @@ export default function TabLayout() {
   const pingBadgeLabel = unseenPingCount > 99 ? '99+' : String(unseenPingCount);
   const isSyncingWatchlistRef = useRef(false);
   const lastRegisteredUserIdRef = useRef<string | null>(null);
+  // A brand-new account still owes the intro, including the final filters
+  // highlight; the OS permission prompt this effect can trigger waits for
+  // both to be done, so a first run isn't interrupted by it.
+  const isIntroOwed = useIsIntroOwed();
 
   // Keep server watchlist state in sync when entering or returning to the app.
   useEffect(() => {
@@ -143,9 +148,10 @@ export default function TabLayout() {
     void syncStaleLists();
   }, [queryClient, user, letterboxdLists]);
 
-  // Ask for notification permission right after login (when user context is available).
+  // Ask for notification permission once the user is known and the intro (if
+  // any is owed) has fully finished, filters highlight included.
   useEffect(() => {
-    if (!user) return;
+    if (!user || isIntroOwed) return;
 
     const maybePromptForNotificationPermission = async () => {
       const currentUserId = String(user.id);
@@ -181,7 +187,7 @@ export default function TabLayout() {
     return () => {
       clearTimeout(timeout);
     };
-  }, [user]);
+  }, [user, isIntroOwed]);
 
   // Initialize default notification toggles once per user after profile data is loaded.
   useEffect(() => {

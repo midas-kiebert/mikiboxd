@@ -236,6 +236,19 @@ export const dismissTipForever = (id: FeatureTipId): void => {
   persistDismissed(dismissedForever);
 };
 
+/**
+ * Closing the dialog when there is nothing left for it to remind the user
+ * about (e.g. the notification-permission tip, closed while permission is
+ * already granted): just hides it, leaving no reminder in the bell and not
+ * adding to the "hidden tips" count in Settings — there is nothing to undo.
+ */
+export const closeTip = (id: FeatureTipId): void => {
+  update({
+    forcedTipId: state.forcedTipId === id ? null : state.forcedTipId,
+    activeTipId: state.activeTipId === id ? null : state.activeTipId,
+  });
+};
+
 /** Closing the dialog: hide the tip and leave a reminder in the bell. */
 export const snoozeTip = (id: FeatureTipId): void => {
   update({

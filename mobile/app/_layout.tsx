@@ -31,7 +31,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { loadThemePreference, useThemePreference } from '@/utils/theme-preference';
 import { loadFeatureTips } from '@/utils/feature-tips';
-import { loadIntroState } from '@/utils/intro';
+import { loadIntroState, useIsIntroActive } from '@/utils/intro';
 import IntroHost from '@/components/intro/IntroHost';
 import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
 import AppSplash from '@/components/layout/AppSplash';
@@ -253,6 +253,22 @@ function RootLayourContent() {
   const lastTokenRef = useRef<string | null>(null)
   // Prevent duplicate handling when the same notification response is replayed.
   const handledNotificationResponsesRef = useRef<Set<string>>(new Set())
+  // A notification tapped mid-walkthrough would otherwise navigate or open the
+  // showtime modal right underneath the intro, which only reveals it once the
+  // intro ends — so its routing waits for the intro to be out of the way.
+  const isIntroActive = useIsIntroActive()
+  const isIntroActiveRef = useRef(isIntroActive)
+  useEffect(() => {
+    isIntroActiveRef.current = isIntroActive
+  }, [isIntroActive])
+  const pendingNotificationRouteRef = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    if (isIntroActive) return
+    const runPendingRoute = pendingNotificationRouteRef.current
+    if (!runPendingRoute) return
+    pendingNotificationRouteRef.current = null
+    runPendingRoute()
+  }, [isIntroActive])
 
   // Shared auth check used on mount and whenever route segments change.
   const checkAuth = useCallback(async (shouldBlock = false) => {
@@ -370,7 +386,7 @@ function RootLayourContent() {
     const segmentPath = segments as unknown as string[]
     const rootSegment = segmentPath[0]
     // Only these route groups require an authenticated session.
-    const authRoutes = new Set(['(tabs)', 'movie', 'friend-showtimes', 'cinema-showtimes', 'add-friend', 'ping'])
+    const authRoutes = new Set(['(tabs)', 'movie', 'friend-showtimes', 'cinema-showtimes', 'add-friend', 'ping', 'pick-username'])
     const inAuthGroup = rootSegment ? authRoutes.has(rootSegment) : false
 
     if (!isAuthenticated && inAuthGroup) {
@@ -412,13 +428,22 @@ function RootLayourContent() {
         // Showtime notifications open the modal in place (no page-jumping);
         // everything else still navigates via the resolved route.
         const modalShowtimeId = getModalShowtimeIdFromNotification(data)
-        if (modalShowtimeId !== null) {
-          openShowtimeModalById(modalShowtimeId)
-        } else {
-          const route = resolveNotificationRoute(data)
-          if (route) {
-            router.push(route)
+        const runRoute = () => {
+          if (modalShowtimeId !== null) {
+            openShowtimeModalById(modalShowtimeId)
+          } else {
+            const route = resolveNotificationRoute(data)
+            if (route) {
+              router.push(route)
+            }
           }
+        }
+        // Mid-intro, this would open/navigate right underneath the walkthrough
+        // and only be revealed once it ends. Hold it until the intro is done.
+        if (isIntroActiveRef.current) {
+          pendingNotificationRouteRef.current = runRoute
+        } else {
+          runRoute()
         }
       }
 
@@ -487,6 +512,12 @@ function RootLayourContent() {
       {!isChecking && (
         <>
       <JsStack
+        // isAuthenticated is already resolved by the time this mounts (gated
+        // on !isChecking above), so open directly on the right screen instead
+        // of always defaulting to (tabs) and letting the auth-guard effect
+        // below redirect afterwards — that redirect used to be visible as a
+        // flash of (tabs) sliding away into /login on a logged-out cold start.
+        initialRouteName={isAuthenticated ? '(tabs)' : 'login'}
         screenOptions={{
           headerShown: false,
           // iOS-style card slide with the previous-screen parallax, run in JS so

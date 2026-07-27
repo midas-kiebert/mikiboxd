@@ -11,14 +11,7 @@
  * so a failed login does not shunt the whole form up a line.
  */
 import type { ReactNode } from "react";
-import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Image, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
@@ -51,45 +44,48 @@ export default function AuthScreenShell({
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        // Android already resizes the window for the keyboard (adjustResize).
-        // Asking KeyboardAvoidingView to do it again on top of that makes the
-        // form jump twice for one keyboard.
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      {/* Scrollable so the submit button stays reachable when the keyboard
+          takes half the screen on a small phone, or when the user's font scale
+          makes the form taller than the viewport.
+
+          `automaticallyAdjustKeyboardInsets` rather than a KeyboardAvoidingView
+          — the same thing the Settings form uses. Wrapping in a KAV only ever
+          made room *below* the form; it never scrolled to the field the user
+          had actually tapped, so on a short screen the password or confirm
+          field could still be sitting under the keyboard with no way to reach
+          it. iOS handles both natively here. Android is left alone: the window
+          already resizes (adjustResize), which turns the content into
+          scrollable overflow and brings the focused input into view. */}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Scrollable so the submit button stays reachable when the keyboard
-            takes half the screen on a small phone, or when the user's font
-            scale makes the form taller than the viewport. */}
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.header}>
-            {/* The same mark the splash shows, so the hand-off from launch to
-                this screen is the same logo rather than a second one. */}
-            <Image
-              source={require("../../assets/images/splash-icon.png")}
-              style={styles.brandMark}
-              resizeMode="contain"
-            />
-            <ThemedText style={styles.title}>{title}</ThemedText>
-            {subtitle ? <ThemedText style={styles.subtitle}>{subtitle}</ThemedText> : null}
+        <View style={styles.header}>
+          {/* The same mark the splash shows, so the hand-off from launch to
+              this screen is the same logo rather than a second one. */}
+          <Image
+            source={require("../../assets/images/splash-icon.png")}
+            style={styles.brandMark}
+            resizeMode="contain"
+          />
+          <ThemedText style={styles.title}>{title}</ThemedText>
+          {subtitle ? <ThemedText style={styles.subtitle}>{subtitle}</ThemedText> : null}
+        </View>
+
+        {visibleError ? (
+          <View style={styles.errorBanner}>
+            <MaterialIcons name="error-outline" size={18} color={colors.red.secondary} />
+            <ThemedText style={styles.errorText}>{visibleError}</ThemedText>
           </View>
+        ) : null}
 
-          {visibleError ? (
-            <View style={styles.errorBanner}>
-              <MaterialIcons name="error-outline" size={18} color={colors.red.secondary} />
-              <ThemedText style={styles.errorText}>{visibleError}</ThemedText>
-            </View>
-          ) : null}
+        {children}
 
-          {children}
-
-          {footer ? <View style={styles.footer}>{footer}</View> : null}
-        </ScrollView>
-      </KeyboardAvoidingView>
+        {footer ? <View style={styles.footer}>{footer}</View> : null}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -99,9 +95,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     container: {
       flex: 1,
       backgroundColor: colors.background,
-    },
-    flex: {
-      flex: 1,
     },
     content: {
       // flexGrow (not flex) so the form still centres when it fits, but the

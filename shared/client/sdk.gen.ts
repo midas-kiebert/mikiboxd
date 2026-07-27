@@ -1045,7 +1045,10 @@ export class MeService {
 
   /**
    * Update Password Me
-   * Change the authenticated user's password. Requires the current password to be provided.
+   * Change the authenticated user's password, or set one for the first time.
+   *
+   * Accounts with no password yet (social-only sign-in) may set one without
+   * providing current_password; accounts that already have one must confirm it.
    * @param data The data for the request.
    * @param data.requestBody
    * @returns Message Successful Response

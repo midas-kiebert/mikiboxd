@@ -178,7 +178,6 @@ def get_or_create_social_user(
     provider: SocialProvider,
     provider_sub: str,
     email: str,
-    display_name: str | None,
 ) -> tuple[User, bool]:
     """
     Get the user for a verified social identity, creating or linking one if needed.
@@ -188,8 +187,6 @@ def get_or_create_social_user(
         provider (SocialProvider): Which identity provider issued the token.
         provider_sub (str): The provider's stable subject identifier for the user.
         email (str): The verified email address from the provider's token.
-        display_name (str | None): Only applied when a new user is created —
-            never overwrites an existing user's display name on later logins.
     Returns:
         tuple[User, bool]: The user, and whether it was newly created.
     """
@@ -211,15 +208,19 @@ def get_or_create_social_user(
         session.flush()
         return by_email, False
 
+    # display_name is left unset so this always routes through the
+    # pick-username screen — display_name doubles as the public username and
+    # has no DB-level unique constraint, so a provider-supplied name (e.g.
+    # "Jan de Vries") could otherwise silently collide with an existing user.
     db_obj = User(
         email=email,
-        display_name=display_name,
+        display_name=None,
         hashed_password=None,
         apple_sub=provider_sub if provider is SocialProvider.APPLE else None,
         google_sub=provider_sub if provider is SocialProvider.GOOGLE else None,
     )
     session.add(db_obj)
-    session.flush()  # Check for unique constraints
+    session.flush()  # Check for unique constraints (email, apple_sub, google_sub)
     return db_obj, True
 
 

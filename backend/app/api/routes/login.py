@@ -115,7 +115,6 @@ def login_social_token(
         provider=body.provider,
         provider_sub=claims.sub,
         email=claims.email,
-        display_name=body.display_name,
     )
     if not user.is_active:
         raise HTTPException(

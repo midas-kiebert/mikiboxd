@@ -602,7 +602,6 @@ export type ShowtimeVisibilityUpdate = {
 export type SocialLoginRequest = {
   provider: SocialProvider
   token: string
-  display_name?: string | null
 }
 
 export type SocialLoginResponse = {
@@ -670,7 +669,7 @@ export type Token = {
 }
 
 export type UpdatePassword = {
-  current_password: string
+  current_password?: string | null
   new_password: string
 }
 
@@ -701,6 +700,7 @@ export type UserMe = {
   notify_watchlist_digest_list_id: string | null
   notify_watchlist_digest_cinema_preset_id: string | null
   can_report: boolean
+  has_password: boolean
 }
 
 export type UserPublic = {

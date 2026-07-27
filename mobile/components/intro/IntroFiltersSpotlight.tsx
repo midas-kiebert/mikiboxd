@@ -15,12 +15,14 @@ import { Modal, type View } from "react-native";
 
 import SpotlightOverlay, { type SpotlightRect } from "@/components/intro/SpotlightOverlay";
 import { endIntro } from "@/utils/intro";
+import { measureForSpotlight } from "@/utils/spotlight-measure";
 
 /**
  * The screen behind has just finished loading its list; give it a moment to
- * settle before measuring, so the button is not caught mid-layout.
+ * settle before measuring, so the button is not caught mid-layout. Short
+ * enough that the highlight still feels immediate.
  */
-const MEASURE_DELAY_MS = 600;
+const MEASURE_DELAY_MS = 300;
 
 /**
  * The filters open in a bottom sheet, which lives under this overlay's window —
@@ -44,9 +46,7 @@ export default function IntroFiltersSpotlight({
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      targetRef.current?.measureInWindow((x, y, width, height) => {
-        setTargetRect({ x, y, width, height });
-      });
+      measureForSpotlight(targetRef.current, setTargetRect);
     }, MEASURE_DELAY_MS);
     return () => clearTimeout(timer);
   }, [targetRef]);

@@ -90,8 +90,9 @@ import { EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatLanguageCode } from "@/utils/language";
+import { measureForSpotlight } from "@/utils/spotlight-measure";
 import * as Clipboard from "expo-clipboard";
-import { buildCinevilleCardNumber, loadCinevilleCardDigits } from "@/utils/cineville-card";
+import { loadCinevilleCardDigits } from "@/utils/cineville-card";
 
 export type ShowtimeInvite = {
   senders: UserPublic[];
@@ -175,11 +176,23 @@ const CLOSE_BUTTON_TOP = -10;
 const WATCH_MARKER_GAP = 8;
 
 /**
- * How long the tour waits before reading a target's position: long enough for
- * the sheet's entry animation and any scroll to have finished. Measured twice,
- * because a first-open sheet settles later than a scroll within an open one.
+ * How long the tour waits before reading its first target's position: long
+ * enough for the sheet's entry animation (`animationConfigs` below is 220ms)
+ * to have finished, with a small safety margin. Only applies to the very
+ * first step after the sheet opens — see `SUBSEQUENT_TOUR_MEASURE_DELAYS_MS`
+ * for every step after that, where the sheet is already open and there is no
+ * entry animation left to wait out.
  */
-const TOUR_MEASURE_DELAYS_MS = [450, 1000];
+const TOUR_MEASURE_DELAYS_MS = [300, 600];
+
+/**
+ * How long later steps wait: the sheet is already open, so there is nothing
+ * to settle except a possible `scrollTo`/`scrollToEnd` — and most steps don't
+ * even trigger one, since they're already scrolled to the top. Near-instant,
+ * with one late correction in case that step's scroll was real (the "invite"
+ * step is the only one that is).
+ */
+const SUBSEQUENT_TOUR_MEASURE_DELAYS_MS = [0, 300];
 
 const SEAT_UNKNOWN_PATTERN = /^(?:\d{1,2}|[A-Za-z])$/;
 const SEAT_DIGITS_PATTERN = /^\d{1,2}$/;
@@ -369,9 +382,19 @@ export default function ShowtimeActionModal({
     onTourTargetRectRef.current = onTourTargetRect;
   }, [onTourTargetRect]);
 
+  // Whether this presentation of the sheet has already measured a target
+  // once: false right after the sheet opens (so the first step waits out its
+  // entry animation), true from then on (so later steps don't).
+  const hasMeasuredTourTargetRef = useRef(false);
+  useEffect(() => {
+    if (!visible) hasMeasuredTourTargetRef.current = false;
+  }, [visible]);
+
   // Bring the tour's current target into view, then report where it landed.
   useEffect(() => {
     if (!visible || tourTarget === null) return;
+    const isFirstMeasureThisOpen = !hasMeasuredTourTargetRef.current;
+    hasMeasuredTourTargetRef.current = true;
     // The invite toggle is the last thing in the sheet; the status buttons are
     // in the part that is on screen the moment the sheet opens.
     if (tourTarget === "invite") {
@@ -379,10 +402,13 @@ export default function ShowtimeActionModal({
     } else {
       scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     }
-    const timers = TOUR_MEASURE_DELAYS_MS.map((delay) =>
+    const delays = isFirstMeasureThisOpen
+      ? TOUR_MEASURE_DELAYS_MS
+      : SUBSEQUENT_TOUR_MEASURE_DELAYS_MS;
+    const timers = delays.map((delay) =>
       setTimeout(() => {
-        tourTargetRefs.current[tourTarget]?.measureInWindow((x, y, width, height) => {
-          onTourTargetRectRef.current?.({ x, y, width, height });
+        measureForSpotlight(tourTargetRefs.current[tourTarget], (rect) => {
+          onTourTargetRectRef.current?.(rect);
         });
       }, delay)
     );
@@ -661,7 +687,7 @@ export default function ShowtimeActionModal({
     if (showtime?.cinema?.cineville) {
       const digits = await loadCinevilleCardDigits();
       if (digits) {
-        await Clipboard.setStringAsync(buildCinevilleCardNumber(digits));
+        await Clipboard.setStringAsync(digits);
       }
     }
     if (await Linking.canOpenURL(ticketLink)) {

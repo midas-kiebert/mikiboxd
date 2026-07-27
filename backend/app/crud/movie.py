@@ -221,6 +221,12 @@ def upsert_movie(*, session: Session, movie_create: MovieCreate) -> Movie:
         and db_obj.original_language is not None
     ):
         movie_data.pop("original_language", None)
+    # A transient/skipped TMDB fetch must not wipe previously-enriched cast
+    # or director data back to NULL.
+    if movie_data.get("cast") is None and db_obj.cast is not None:
+        movie_data.pop("cast", None)
+    if movie_data.get("directors") is None and db_obj.directors is not None:
+        movie_data.pop("directors", None)
     db_obj.sqlmodel_update(movie_data)
     return db_obj
 

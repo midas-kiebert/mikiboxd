@@ -16,6 +16,3 @@ export const loadCinevilleCardDigits = async (): Promise<string | null> => {
 export const deleteCinevilleCard = async (): Promise<void> => {
   await SecureStore.deleteItemAsync(STORAGE_KEY);
 };
-
-export const buildCinevilleCardNumber = (digits: string): string =>
-  `${CINEVILLE_PREFIX}${digits}`;

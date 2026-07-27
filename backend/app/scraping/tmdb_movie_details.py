@@ -42,7 +42,7 @@ def _movie_to_tmdb_details(movie: Movie) -> tmdb_core.TmdbMovieDetails | None:
             _normalize_language_codes(movie.languages) if movie.languages else None
         ),
         runtime_minutes=movie.duration,
-        cast_names=None,
+        cast_names=list(movie.cast) if movie.cast else None,
         enriched_at=movie.tmdb_last_enriched_at,
         genre_ids=None,
     )

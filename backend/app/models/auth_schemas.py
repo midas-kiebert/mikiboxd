@@ -17,7 +17,8 @@ class UserUpdateMe(SQLModel):
 
 
 class UpdatePassword(SQLModel):
-    current_password: str = Field(min_length=1, max_length=255)
+    # None for accounts with no password yet (social-only sign-in) adding their first one.
+    current_password: str | None = Field(default=None, min_length=1, max_length=255)
     new_password: str = Field(min_length=1, max_length=255)
 
 
@@ -59,9 +60,6 @@ class NewPassword(SQLModel):
 class SocialLoginRequest(SQLModel):
     provider: SocialProvider
     token: str
-    # Only used the first time an account is created — ignored on subsequent
-    # logins so it never overwrites a display name the user has since edited.
-    display_name: str | None = Field(default=None, max_length=255)
 
 
 # Response body for POST /login/social-token

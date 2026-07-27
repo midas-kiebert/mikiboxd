@@ -26,9 +26,9 @@ from app.exceptions.user_exceptions import (
     InvalidUsername,
 )
 from app.models.cinema_preset import (
+    CinemaPreset,
     DEFAULT_CINEMA_PRESET_ID,
     DEFAULT_CINEMA_PRESET_NAME,
-    CinemaPreset,
 )
 from app.models.push_token import PushToken
 from app.models.saved_preset import SavedPreset

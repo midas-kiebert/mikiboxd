@@ -78,6 +78,10 @@ type FriendsSection = {
   data: UserWithFriendStatus[];
 };
 
+/** Stable empty list for the loading/refreshing state, so SectionList's item
+ *  type is still inferred from `FriendsSection` rather than from `never[]`. */
+const EMPTY_SECTIONS: FriendsSection[] = [];
+
 export default function FriendsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
@@ -309,7 +313,7 @@ export default function FriendsScreen() {
         />
       ) : (
         <SectionList
-          sections={refreshing || isLoadingFriendsView ? [] : sections}
+          sections={refreshing || isLoadingFriendsView ? EMPTY_SECTIONS : sections}
           keyExtractor={(item) => `friend-row-${item.id}`}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}

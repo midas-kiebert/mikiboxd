@@ -13,7 +13,7 @@ import { usePrefetchShowtimeVisibility } from 'shared/hooks/useShowtimeVisibilit
 import useAuth from 'shared/hooks/useAuth';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
-import ShowtimesScreen, { ListEndFooter, ShowtimesScreenSkeleton } from '@/components/showtimes/ShowtimesScreen';
+import ShowtimesScreen, { ShowtimesScreenSkeleton } from '@/components/showtimes/ShowtimesScreen';
 import { useDeferredMount } from '@/utils/use-deferred-mount';
 import FiltersButtonRow from '@/components/filters/FiltersButtonRow';
 import FiltersModal from '@/components/filters/FiltersModal';
@@ -320,14 +320,7 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
           </View>
         )
       }
-      ListFooterComponent={
-        <>
-          <LoadMoreFooter loading={isFetchingNextPage} size="small" />
-          {!hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0 ? (
-            <ListEndFooter label="No more showtimes" />
-          ) : null}
-        </>
-      }
+      ListFooterComponent={<LoadMoreFooter loading={isFetchingNextPage} size="small" />}
       onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
       onEndReachedThreshold={2}
       refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}

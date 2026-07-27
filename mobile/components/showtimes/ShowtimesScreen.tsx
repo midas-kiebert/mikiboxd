@@ -23,14 +23,6 @@ import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
 
-/**
- * Rendered at the bottom of any paginated list once all pages are loaded.
- * Intentionally just empty scroll space — no end-of-list marker.
- */
-export function ListEndFooter(_props: { label?: string }) {
-  return <View style={{ height: 64 }} />;
-}
-
 type ShowtimesListContentProps = {
   showtimes: ShowtimeLoggedIn[];
   isLoading: boolean;
@@ -77,16 +69,9 @@ export function ShowtimesListContent({
   // fetched up front — otherwise the sheet's mode pill loads on open.
   usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id));
 
-  // The loader is always mounted so it can collapse rather than disappear —
-  // that instant loss of a row is what made a loaded page snap into place.
-  const renderFooter = () => (
-    <>
-      <LoadMoreFooter loading={isFetchingNextPage} />
-      {!hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0 ? (
-        <ListEndFooter label="No more showtimes" />
-      ) : null}
-    </>
-  );
+  // Always mounted at a fixed height: it doubles as the list's end spacer, so
+  // reaching the bottom never changes the layout under the user's scroll.
+  const renderFooter = () => <LoadMoreFooter loading={isFetchingNextPage} />;
 
   const renderEmpty = () => {
     if (isLoading || isFetching || refreshing) {
@@ -129,7 +114,7 @@ export function ShowtimesListContent({
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
         onEndReached={() => {
-          if (hasNextPage) onLoadMore();
+          if (hasNextPage && !isFetchingNextPage) onLoadMore();
         }}
         onEndReachedThreshold={2}
         refreshing={isLoading}

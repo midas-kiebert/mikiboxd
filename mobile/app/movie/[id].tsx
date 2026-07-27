@@ -31,7 +31,6 @@ import {
   type FriendWatchKind,
 } from "@/components/friends/friend-watch-kind";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
-import { ListEndFooter } from "@/components/showtimes/ShowtimesScreen";
 import { SkeletonRows } from "@/components/ui/SkeletonRows";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -616,14 +615,7 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
                 <ThemedText style={styles.noShowtimes}>No upcoming showtimes</ThemedText>
               )
             }
-            ListFooterComponent={
-              <>
-                <LoadMoreFooter loading={isFetchingNextPage} size="small" />
-                {!hasNextPage && !isShowtimesLoading && !refreshing && showtimes.length > 0 ? (
-                  <ListEndFooter label="No more showtimes" />
-                ) : null}
-              </>
-            }
+            ListFooterComponent={<LoadMoreFooter loading={isFetchingNextPage} size="small" />}
           />
         </>
       )}

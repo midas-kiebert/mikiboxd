@@ -9,12 +9,11 @@
  * Saving also applies the selection to this session and retires the cinema
  * preset tip, so the user is never nudged towards a feature they just used.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MeService, type CinemaPresetCreate } from "shared";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
-import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import CinemaPickerList from "@/components/filters/CinemaPickerList";
@@ -40,7 +39,6 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
   const queryClient = useQueryClient();
 
   const { data: cinemas } = useFetchCinemas();
-  const { data: favoriteCinemaIds } = useFetchSelectedCinemas();
   const { setSelections: setSessionCinemaIds } = useSessionCinemaSelections();
 
   const cinemaList = useMemo(() => cinemas ?? [], [cinemas]);
@@ -49,18 +47,10 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
   // without it the very first thing a new account saw was "0 of 0 selected"
   // over an empty box, which then popped into a full list.
   const isCinemaListLoading = cinemas === undefined;
-  const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(
-    () => new Set(favoriteCinemaIds ?? [])
-  );
-
-  // The account's stored selection usually lands after the first render. Seeded
-  // once, so a later refetch cannot wipe out what the user has picked since.
-  const hasSeededSelection = useRef(favoriteCinemaIds !== undefined);
-  useEffect(() => {
-    if (hasSeededSelection.current || favoriteCinemaIds === undefined) return;
-    hasSeededSelection.current = true;
-    setSelectedIds(new Set(favoriteCinemaIds));
-  }, [favoriteCinemaIds]);
+  // Deliberately starts empty rather than seeded from the account's stored
+  // selection: the page asks the user to pick their cinemas, and anything
+  // pre-ticked reads as a choice already made — which they then have to undo.
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
 
   const saveMutation = useMutation({
     mutationFn: (requestBody: CinemaPresetCreate) =>

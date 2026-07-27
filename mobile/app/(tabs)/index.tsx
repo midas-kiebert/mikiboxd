@@ -2,7 +2,7 @@
  * Expo Router screen/module for (tabs) / index. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, type View } from 'react-native';
+import { FlatList, StyleSheet, type View } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { DateTime } from 'luxon';
 import { useQueryClient } from '@tanstack/react-query';
@@ -24,7 +24,8 @@ import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import FeatureTipsHost from '@/components/tips/FeatureTipsHost';
 import IntroFiltersSpotlight from '@/components/intro/IntroFiltersSpotlight';
-import { ShowtimesListContent, ListEndFooter } from '@/components/showtimes/ShowtimesScreen';
+import { ShowtimesListContent } from '@/components/showtimes/ShowtimesScreen';
+import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import MovieCard from '@/components/movies/MovieCard';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
@@ -383,15 +384,7 @@ export default function MainShowtimesScreen() {
           contentContainerStyle={styles.movieFeed}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={renderMoviesEmpty}
-          ListFooterComponent={
-            moviesFetchingNextPage ? (
-              <ThemedView style={styles.footerLoader}>
-                <ActivityIndicator size="large" color={colors.tint} />
-              </ThemedView>
-            ) : !moviesHasNextPage && !moviesLoading && !moviesFetching && !refreshing && movies.length > 0 ? (
-              <ListEndFooter label="No more movies" />
-            ) : null
-          }
+          ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} />}
           onEndReached={() => {
             if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
           }}
@@ -431,7 +424,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     movieFeed: { padding: 16 },
-    footerLoader: { paddingVertical: 20, alignItems: 'center' },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });

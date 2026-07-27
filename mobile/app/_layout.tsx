@@ -321,6 +321,13 @@ function RootLayourContent() {
     // populated rather than streaming in. Bounded by a timeout so a slow network
     // never delays launch — the chips fall back to their own skeletons.
     if (isChecking) return;
+    // The cinema list is public and identical for everyone, so it is pulled on
+    // every launch — signed out included. That is the whole point: a brand-new
+    // account reaches the intro's cinema picker seconds after the signup form,
+    // and starting the fetch only once a session exists left it staring at
+    // skeletons. Started while the login/signup screen is still on screen, it is
+    // already in cache by the time the picker mounts.
+    void prefetchCinemas(queryClient);
     if (!isAuthenticated) {
       setWarmupDone(true);
       return;
@@ -335,11 +342,8 @@ function RootLayourContent() {
         queryKey: displayPresetOrderQueryKey,
         queryFn: () => loadDisplayPresetOrder(),
       }),
-      // The intro's first page is a full-screen cinema picker, and the cinema
-      // filter needs the same list. Fetched here rather than when either one
-      // mounts, so they open on a complete list instead of an empty box that
-      // fills in a second later.
-      prefetchCinemas(queryClient),
+      // Companion to the unconditional cinema prefetch above: which of those
+      // cinemas this account already has picked.
       prefetchSelectedCinemas(queryClient),
     ]);
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1500));

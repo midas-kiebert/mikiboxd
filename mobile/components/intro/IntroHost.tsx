@@ -19,7 +19,6 @@ import { useEffect, useState } from "react";
 import { useNavigationContainerRef, useRouter, useSegments } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { prefetchCinemas } from "shared/hooks/useFetchCinemas";
-import { prefetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 
 import IntroFlow from "@/components/intro/IntroFlow";
 import {
@@ -72,7 +71,6 @@ export default function IntroHost() {
     // that reaches here before the warm-up did.
     if (!isOwed) return;
     void prefetchCinemas(queryClient);
-    void prefetchSelectedCinemas(queryClient);
   }, [isOwed, queryClient]);
 
   useEffect(() => {

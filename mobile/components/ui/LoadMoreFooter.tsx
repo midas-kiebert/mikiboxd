@@ -1,18 +1,18 @@
 /**
- * The spinner at the bottom of a paginated list, which collapses instead of
- * vanishing.
+ * The spinner at the bottom of a paginated list.
  *
- * A plain `{loading ? <ActivityIndicator/> : null}` footer takes a whole row of
- * height out of the list the instant the next page resolves, so everything
- * above it snaps upward on the same frame the new rows appear — the list looks
- * like it jumped rather than grew. Tweening the footer's own height and opacity
- * turns that into one continuous movement: the new rows are already in place
- * while the spinner's row closes up under them.
+ * The footer always occupies its full height, whether or not it is spinning —
+ * only the spinner itself fades. Animating the *height* (or rendering the
+ * spinner conditionally) is what made pagination feel janky: with no reserved
+ * space the list ends flush with the last row, so a fast scroll hits a hard
+ * stop, the appearing spinner then grows space below the current offset (you
+ * have to scroll again to see it), and its collapse yanks the offset back up
+ * because the content it was scrolled into no longer exists. A constant-height
+ * footer removes the layout change entirely: the spinner is already on screen
+ * when the list bottoms out, and the new page simply appears above it.
  *
- * Height is animated directly rather than via `AnimatedHeight` because there is
- * nothing to measure — the spinner is a fixed size — and because the fade has
- * to run *with* the collapse. Handing `AnimatedHeight` a null child would
- * collapse an empty gap after the spinner had already blinked out.
+ * The reserved row doubles as the list's end spacer, so callers don't need a
+ * separate one.
  */
 import { useEffect, useRef } from "react";
 import { ActivityIndicator, Animated, Easing, StyleSheet } from "react-native";
@@ -23,7 +23,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 const FOOTER_HEIGHT: Record<"small" | "large", number> = { small: 56, large: 76 };
 /** Appearing is a response to the user reaching the end — it should keep up. */
 const SHOW_DURATION_MS = 160;
-/** Leaving is the part that used to snap, so it gets the longer half. */
+/** Fading out is slow enough to read as the page settling, not as a blink. */
 const HIDE_DURATION_MS = 260;
 
 type LoadMoreFooterProps = {
@@ -34,34 +34,22 @@ type LoadMoreFooterProps = {
 
 export default function LoadMoreFooter({ loading, size = "large" }: LoadMoreFooterProps) {
   const colors = useThemeColors();
-  // One value drives both height and opacity, so the row closes and the spinner
-  // fades on the same curve instead of one after the other.
-  const progress = useRef(new Animated.Value(loading ? 1 : 0)).current;
+  const opacity = useRef(new Animated.Value(loading ? 1 : 0)).current;
 
   useEffect(() => {
-    const animation = Animated.timing(progress, {
+    const animation = Animated.timing(opacity, {
       toValue: loading ? 1 : 0,
       duration: loading ? SHOW_DURATION_MS : HIDE_DURATION_MS,
       easing: Easing.out(Easing.cubic),
-      // Height is a layout property; it cannot run on the native driver.
-      useNativeDriver: false,
+      useNativeDriver: true,
     });
     animation.start();
     return () => animation.stop();
-  }, [loading, progress]);
+  }, [loading, opacity]);
 
   return (
     <Animated.View
-      style={[
-        styles.footer,
-        {
-          height: progress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, FOOTER_HEIGHT[size]],
-          }),
-          opacity: progress,
-        },
-      ]}
+      style={[styles.footer, { height: FOOTER_HEIGHT[size], opacity }]}
       pointerEvents="none"
     >
       <ActivityIndicator size={size} color={colors.tint} />

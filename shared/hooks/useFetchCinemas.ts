@@ -25,7 +25,11 @@ export const useFetchCinemas = (): UseQueryResult<CinemasGetAllCinemasResponse, 
         refetchOnWindowFocus: false,
         queryFn: fetchCinemas,
         staleTime: 0,
-        gcTime: 5 * 60 * 1000, // 5 minutes
+        // Long, because the list is warmed at launch and then sat on: the intro's
+        // picker can be a good few minutes behind the prefetch (signup, social
+        // sign-in, picking a username), and a 5-minute window threw the warm list
+        // away right before the one screen it was fetched for.
+        gcTime: 30 * 60 * 1000, // 30 minutes
     });
 
     return result;

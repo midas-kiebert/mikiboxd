@@ -50,6 +50,7 @@ import { useFetchLetterboxdLists } from 'shared/hooks/useLetterboxdLists';
 import { emailPattern, usernameMaxLength, usernamePattern } from 'shared/utils';
 import { unregisterPushTokenForCurrentDevice } from '@/utils/push-notifications';
 import NotificationPreferenceList from '@/components/notifications/NotificationPreferenceList';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 
 type ProfileState = {
@@ -121,11 +122,26 @@ export default function SettingsScreen() {
   });
   // The preset the digest follows when no specific one is pinned.
   const favoriteCinemaPreset = cinemaPresets.find((preset) => preset.is_favorite);
+  // The backend prepends a synthetic "All Cinemas" preset to every list, and it
+  // is not a real row — `_resolve_digest_cinema_ids` cannot look it up, so
+  // picking it did nothing except sit next to this section's own "all cinemas"
+  // option as a case-mismatched duplicate. The sentinel below already covers
+  // it, so it is dropped here rather than offered twice.
+  const selectableCinemaPresets = useMemo(
+    () => cinemaPresets.filter((preset) => !preset.is_default),
+    [cinemaPresets]
+  );
   // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   // Cineville card number (9 digits only, CP$ prefix is added automatically).
   const [cinevilleDigits, setCinevilleDigits] = useState('');
   const [isSavingCineville, setIsSavingCineville] = useState(false);
+  // Confirmations for the two irreversible actions on this screen. Themed
+  // dialogs rather than Alert.alert, which is app-wide reserved for pure error
+  // toasts — a native alert is the one surface in the app that ignores the
+  // user's light/dark choice.
+  const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
+  const [isLogoutDialogVisible, setIsLogoutDialogVisible] = useState(false);
   // The danger zone is collapsed by default so it takes an extra, deliberate
   // tap to reach account deletion.
   const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
@@ -281,39 +297,23 @@ export default function SettingsScreen() {
   };
 
   // Run a confirmed destructive action and handle the result.
-  const handleDeleteAccount = () => {
-    Alert.alert(
-      'Delete account',
-      'This will permanently delete your account. This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate() },
-      ]
-    );
+  const handleConfirmDeleteAccount = () => {
+    setIsDeleteDialogVisible(false);
+    deleteMutation.mutate();
   };
 
   // Confirm logout and clear the local auth session.
-  const handleLogout = () => {
-    Alert.alert(
-      'Log out',
-      'Are you sure you want to log out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log out',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setIsLoggingOut(true);
-              await unregisterPushTokenForCurrentDevice();
-              await logout();
-            } finally {
-              setIsLoggingOut(false);
-            }
-          },
-        },
-      ]
-    );
+  const handleConfirmLogout = async () => {
+    setIsLogoutDialogVisible(false);
+    try {
+      // Painted before the request goes out, so the button reflects the tap
+      // rather than the round trip.
+      setIsLoggingOut(true);
+      await unregisterPushTokenForCurrentDevice();
+      await logout();
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   // Applies a watchlist-digest field optimistically, then persists it; rolls back on failure.
@@ -692,7 +692,7 @@ export default function SettingsScreen() {
                           : 'All cinemas'}
                       </ThemedText>
                     </TouchableOpacity>
-                    {cinemaPresets.map((preset) => (
+                    {selectableCinemaPresets.map((preset) => (
                       <TouchableOpacity
                         key={preset.id}
                         style={[
@@ -813,7 +813,7 @@ export default function SettingsScreen() {
           <View style={styles.card}>
             <TouchableOpacity
               style={[styles.secondaryButton, isLoggingOut && styles.buttonDisabled]}
-              onPress={handleLogout}
+              onPress={() => setIsLogoutDialogVisible(true)}
               disabled={isLoggingOut}
             >
               <ThemedText style={styles.secondaryButtonText}>
@@ -850,14 +850,17 @@ export default function SettingsScreen() {
             </Animated.View>
           </TouchableOpacity>
           {isDangerZoneOpen ? (
-            <View style={styles.card}>
-              <ThemedText style={styles.helperText}>
-                Permanently delete your account and all associated data.
+            <View style={[styles.card, styles.dangerCard]}>
+              <ThemedText style={styles.dangerHelperText}>
+                Permanently delete your account and all associated data. Your friends,
+                showtime selections and invites go with it. This cannot be undone.
               </ThemedText>
               <TouchableOpacity
                 style={[styles.dangerButton, deleteMutation.isPending && styles.buttonDisabled]}
-                onPress={handleDeleteAccount}
+                onPress={() => setIsDeleteDialogVisible(true)}
                 disabled={deleteMutation.isPending}
+                activeOpacity={0.8}
+                accessibilityRole="button"
               >
                 <ThemedText style={styles.dangerButtonText}>
                   {deleteMutation.isPending ? 'Deleting...' : 'Delete account'}
@@ -867,6 +870,26 @@ export default function SettingsScreen() {
           ) : null}
         </View>
       </ScrollView>
+      <ConfirmDialog
+        visible={isLogoutDialogVisible}
+        icon="logout"
+        title="Log out?"
+        message="You will need to sign in again on this device."
+        confirmLabel="Log out"
+        cancelLabel="Cancel"
+        onConfirm={() => void handleConfirmLogout()}
+        onCancel={() => setIsLogoutDialogVisible(false)}
+      />
+      <ConfirmDialog
+        visible={isDeleteDialogVisible}
+        icon="delete-forever"
+        title="Delete account?"
+        message="This permanently deletes your account and everything in it. It cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDeleteAccount}
+        onCancel={() => setIsDeleteDialogVisible(false)}
+      />
     </TopSafeAreaView>
   );
 }
@@ -880,8 +903,9 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     content: {
       padding: 16,
       // Extra bottom room so the expanded danger zone card is never left
-      // clipped under the tab bar / home indicator.
-      paddingBottom: 48,
+      // clipped under the tab bar / home indicator, and so its button is not
+      // pressed up against the edge of the screen once it has scrolled to.
+      paddingBottom: 72,
       gap: 20,
     },
     section: {
@@ -892,10 +916,14 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       fontWeight: '700',
       color: colors.text,
     },
+    // A bare text+caret row was a cramped target at the very bottom of a long
+    // form. Padded out to a full-height row so it can be hit without aiming.
     dangerZoneHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      minHeight: 48,
+      paddingHorizontal: 4,
     },
     card: {
       backgroundColor: colors.cardBackground,
@@ -943,14 +971,30 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.text,
       fontWeight: '700',
     },
+    // Roomier than the shared card: this is the one place in Settings where a
+    // mis-tap is unrecoverable, so the explanation and the button each get
+    // space of their own instead of being packed into a 12pt box.
+    dangerCard: {
+      padding: 18,
+      gap: 16,
+      borderColor: colors.red.secondary,
+    },
+    dangerHelperText: {
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.textSecondary,
+    },
     dangerButton: {
-      marginTop: 4,
       backgroundColor: colors.red.primary,
-      paddingVertical: 10,
-      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.red.secondary,
+      paddingVertical: 14,
+      borderRadius: 12,
       alignItems: 'center',
+      justifyContent: 'center',
     },
     dangerButtonText: {
+      fontSize: 15,
       color: colors.red.secondary,
       fontWeight: '700',
     },

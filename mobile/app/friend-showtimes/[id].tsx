@@ -2,7 +2,7 @@
  * Expo Router screen/module for friend-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Image, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { DateTime } from 'luxon';
@@ -21,6 +21,7 @@ import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import ShowtimeCard from '@/components/showtimes/ShowtimeCard';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
+import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
 import { useShowtimeModal } from '@/components/showtimes/ShowtimeModalProvider';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { ThemedText } from '@/components/themed-text';
@@ -320,13 +321,12 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
         )
       }
       ListFooterComponent={
-        isFetchingNextPage ? (
-          <View style={styles.footerLoader}>
-            <ActivityIndicator size="small" color={colors.tint} />
-          </View>
-        ) : !hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0 ? (
-          <ListEndFooter label="No more showtimes" />
-        ) : null
+        <>
+          <LoadMoreFooter loading={isFetchingNextPage} size="small" />
+          {!hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0 ? (
+            <ListEndFooter label="No more showtimes" />
+          ) : null}
+        </>
       }
       onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
       onEndReachedThreshold={2}
@@ -480,5 +480,4 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
     },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },
-    footerLoader: { paddingVertical: 20, alignItems: 'center' },
   });

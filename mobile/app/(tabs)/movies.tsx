@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   StyleSheet,
   FlatList,
-  ActivityIndicator,
 } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
@@ -20,6 +19,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
+import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import FiltersRow from '@/components/filters/FiltersRow';
@@ -175,12 +175,9 @@ export default function MovieScreen() {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
   };
 
-  const renderFooter = () =>
-    isFetchingNextPage ? (
-      <ThemedView style={styles.footerLoader}>
-        <ActivityIndicator size="large" color={colors.tint} />
-      </ThemedView>
-    ) : null;
+  // Always mounted: the footer collapses instead of vanishing, so a loaded
+  // page glides into place rather than snapping up a whole row.
+  const renderFooter = () => <LoadMoreFooter loading={isFetchingNextPage} />;
 
   const renderEmpty = () => {
     if (isLoading || isFetching || refreshing) {
@@ -298,7 +295,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     movieFeed: { padding: 16 },
-    footerLoader: { paddingVertical: 20, alignItems: 'center' },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });

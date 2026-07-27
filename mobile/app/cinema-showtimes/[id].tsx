@@ -2,7 +2,7 @@
  * Expo Router screen/module for cinema-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import { DateTime } from "luxon";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -20,6 +20,7 @@ import FiltersModal from "@/components/filters/FiltersModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
 import MovieCard from "@/components/movies/MovieCard";
 import { SkeletonRows } from "@/components/ui/SkeletonRows";
+import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { ThemedText } from "@/components/themed-text";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
 import { getRuntimeBoundsFromSelections } from "@/components/filters/runtime-range-utils";
@@ -330,13 +331,7 @@ function CinemaShowtimesContent() {
           </View>
         )
       }
-      ListFooterComponent={
-        moviesFetchingNextPage ? (
-          <View style={styles.footerLoader}>
-            <ActivityIndicator size="small" color={colors.tint} />
-          </View>
-        ) : null
-      }
+      ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} size="small" />}
       onEndReached={() => {
         if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
       }}
@@ -441,7 +436,6 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
   StyleSheet.create({
     flex: { flex: 1 },
     movieFeed: { padding: 16 },
-    footerLoader: { paddingVertical: 20, alignItems: "center" },
     centerContainer: { paddingVertical: 40, alignItems: "center" },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });

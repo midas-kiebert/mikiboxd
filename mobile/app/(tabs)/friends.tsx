@@ -27,6 +27,7 @@ import SearchBar from '@/components/inputs/SearchBar';
 import FriendCard from '@/components/friends/FriendCard';
 import ShareInviteLinkButton from '@/components/friends/ShareInviteLinkButton';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
+import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
 import FilterPills from '@/components/filters/FilterPills';
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
@@ -242,13 +243,7 @@ export default function FriendsScreen() {
               </View>
             )
           }
-          ListFooterComponent={
-            isFetchingNextPage ? (
-              <View style={styles.centerContainer}>
-                <ActivityIndicator size="small" color={colors.tint} />
-              </View>
-            ) : null
-          }
+          ListFooterComponent={<LoadMoreFooter loading={isFetchingNextPage} size="small" />}
         />
       ) : (
         <ScrollView

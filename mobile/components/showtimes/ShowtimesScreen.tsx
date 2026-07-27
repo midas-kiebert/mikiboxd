@@ -2,7 +2,7 @@
  * Mobile showtimes feature component: Showtimes Screen.
  */
 import React from "react";
-import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { type ShowtimeLoggedIn } from "shared";
@@ -20,6 +20,7 @@ import FilterPills, {
   type FilterPillLongPressPosition,
 } from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
+import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
 
 /**
@@ -76,19 +77,16 @@ export function ShowtimesListContent({
   // fetched up front — otherwise the sheet's mode pill loads on open.
   usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id));
 
-  const renderFooter = () => {
-    if (isFetchingNextPage) {
-      return (
-        <View style={styles.footerLoader}>
-          <ActivityIndicator size="large" color={colors.tint} />
-        </View>
-      );
-    }
-    if (!hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0) {
-      return <ListEndFooter label="No more showtimes" />;
-    }
-    return null;
-  };
+  // The loader is always mounted so it can collapse rather than disappear —
+  // that instant loss of a row is what made a loaded page snap into place.
+  const renderFooter = () => (
+    <>
+      <LoadMoreFooter loading={isFetchingNextPage} />
+      {!hasNextPage && !isLoading && !isFetching && !refreshing && showtimes.length > 0 ? (
+        <ListEndFooter label="No more showtimes" />
+      ) : null}
+    </>
+  );
 
   const renderEmpty = () => {
     if (isLoading || isFetching || refreshing) {
@@ -320,10 +318,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       height: 112,
       borderRadius: 12,
       marginBottom: 16,
-    },
-    footerLoader: {
-      paddingVertical: 20,
-      alignItems: "center",
     },
     centerContainer: {
       paddingVertical: 40,

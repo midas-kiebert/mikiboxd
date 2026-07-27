@@ -3,7 +3,6 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   SectionList,
   Image,
   StyleSheet,
@@ -34,6 +33,7 @@ import {
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import { ListEndFooter } from "@/components/showtimes/ShowtimesScreen";
 import { SkeletonRows } from "@/components/ui/SkeletonRows";
+import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
 import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
@@ -615,13 +615,12 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
               )
             }
             ListFooterComponent={
-              isFetchingNextPage ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color={colors.tint} />
-                </View>
-              ) : !hasNextPage && !isShowtimesLoading && !refreshing && showtimes.length > 0 ? (
-                <ListEndFooter label="No more showtimes" />
-              ) : null
+              <>
+                <LoadMoreFooter loading={isFetchingNextPage} size="small" />
+                {!hasNextPage && !isShowtimesLoading && !refreshing && showtimes.length > 0 ? (
+                  <ListEndFooter label="No more showtimes" />
+                ) : null}
+              </>
             }
           />
         </>
@@ -724,10 +723,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "center",
       justifyContent: "center",
       padding: 24,
-    },
-    loadingContainer: {
-      paddingVertical: 16,
-      alignItems: "center",
     },
     errorText: {
       color: colors.textSecondary,

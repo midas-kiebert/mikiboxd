@@ -62,6 +62,8 @@ const SHOWTIMES_PAGE_SIZE = 20;
 
 /** Horizontal gap between the watchlisted/watched markers. */
 const WATCH_MARKER_GAP = 8;
+/** A marker pill: 13pt icon/11pt count plus its 3pt vertical padding. */
+const WATCH_MARKER_HEIGHT = 21;
 
 type MovieShowtimeSection = {
   key: string;
@@ -767,24 +769,33 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       letterSpacing: 0.6,
       color: colors.textSecondary,
     },
+    // The markers own this row outright: `minHeight` reserves the pills' full
+    // height and `marginTop` keeps them clear of the line above. They used to
+    // be pulled 3pt into the gaps on either side, on the assumption those gaps
+    // were 5pt — `summaryInfo` sets `gap: 1`, so the pills overhung the line
+    // above by 2pt and collided with a two-line director credit (which is what
+    // sits there whenever the film has no cast listed).
     metaFooterRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
+      minHeight: WATCH_MARKER_HEIGHT,
+      marginTop: 3,
     },
+    // Shrinks and truncates so a long runtime/language line can never squeeze
+    // the markers out of the row.
     metaFooterText: {
       flex: 1,
+      flexShrink: 1,
+      minWidth: 0,
       fontSize: 12,
       color: colors.textSecondary,
     },
-    // Negative vertical margin so the ~21pt pills sit inside the 15pt text line
-    // they share instead of stretching the header — they overhang into the
-    // 5pt gaps above and below, which hold nothing but background.
     watchMarkers: {
       flexDirection: "row",
       alignItems: "center",
       gap: WATCH_MARKER_GAP,
-      marginVertical: -3,
+      flexShrink: 0,
     },
     // Neutral pill; only the icon carries the watchlisted/watched colour, so the
     // markers read as a quiet aside rather than a call to act. Same pill as

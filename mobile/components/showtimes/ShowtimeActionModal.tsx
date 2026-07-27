@@ -1799,7 +1799,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 8,
       backgroundColor: colors.posterPlaceholder,
     },
-    summaryInfo: { flex: 1, gap: 1 },
+    // `minWidth: 0` so a long unbroken title or director credit shrinks and
+    // ellipsises instead of pushing the watch-marker column out of the row.
+    summaryInfo: { flex: 1, minWidth: 0, gap: 1 },
     movieTitle: {
       fontSize: 19,
       lineHeight: 22,
@@ -1882,6 +1884,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "flex-end",
       gap: WATCH_MARKER_GAP,
       paddingTop: CLOSE_BUTTON_TOP + CLOSE_BUTTON_SIZE + WATCH_MARKER_GAP,
+      // Never gives up width to the text column beside it: the pills are the
+      // whole point of the column, and half a pill is worse than a truncated
+      // director credit.
+      flexShrink: 0,
     },
     // Neutral pill; only the icon carries the watchlisted/watched colour, so the
     // markers read as a quiet aside next to the title rather than a call to act.

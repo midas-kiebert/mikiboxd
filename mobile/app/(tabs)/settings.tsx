@@ -561,12 +561,15 @@ export default function SettingsScreen() {
                     Email me when a watchlisted movie gets a showtime it didn&apos;t have before.
                   </ThemedText>
                 </View>
+                {/* No thumbColor override: a hardcoded white grip vanished
+                    against the light theme's near-white "off" track (and lost
+                    its iOS drop shadow). The platform default follows the
+                    app's scheme, which _layout pushes to the native layer. */}
                 <Switch
                   value={digestEnabled}
                   onValueChange={(value) => handleDigestToggle(value)}
                   disabled={!user || isUpdatingDigest}
                   trackColor={{ false: colors.divider, true: colors.tint }}
-                  thumbColor="#ffffff"
                 />
               </View>
               <View style={styles.notificationChannelRow}>
@@ -742,7 +745,6 @@ export default function SettingsScreen() {
                 value={featureTipsEnabled}
                 onValueChange={setFeatureTipsEnabled}
                 trackColor={{ false: colors.divider, true: colors.tint }}
-                thumbColor="#ffffff"
               />
             </View>
             {dismissedTipCount > 0 ? (
@@ -925,7 +927,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       alignItems: 'center',
     },
     primaryButtonText: {
-      color: '#fff',
+      color: colors.pillActiveText,
       fontWeight: '700',
     },
     secondaryButton: {
@@ -1029,7 +1031,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.textSecondary,
     },
     notificationChannelOptionTextActive: {
-      color: '#ffffff',
+      color: colors.pillActiveText,
     },
     digestAdvancedToggle: {
       fontSize: 12,
@@ -1057,7 +1059,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.text,
     },
     digestListOptionTextActive: {
-      color: '#ffffff',
+      color: colors.pillActiveText,
     },
     cinevilleInputRow: {
       flexDirection: 'row',
@@ -1111,6 +1113,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.textSecondary,
     },
     appearanceOptionTextActive: {
-      color: '#ffffff',
+      color: colors.pillActiveText,
     },
   });

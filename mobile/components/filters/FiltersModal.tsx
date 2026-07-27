@@ -600,9 +600,10 @@ function Divider({ colors }: { colors: ReturnType<typeof useThemeColors> }) {
 }
 
 function CountSkeleton() {
-  return (
-    <Skeleton style={{ height: 20, width: 140, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.5)" }} />
-  );
+  // No backgroundColor override: Skeleton's own themed fill is the only one
+  // that shows up in both schemes. A hardcoded translucent white was invisible
+  // against the light theme's white card.
+  return <Skeleton style={{ height: 20, width: 140, borderRadius: 6 }} />;
 }
 
 function Pill({ label, active, onPress, colors, style, icon }: { label: string; active: boolean; onPress: () => void; colors: ReturnType<typeof useThemeColors>; style?: object; icon?: keyof typeof MaterialIcons.glyphMap }) {

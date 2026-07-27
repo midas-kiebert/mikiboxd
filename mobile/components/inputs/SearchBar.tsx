@@ -7,12 +7,14 @@
  * instead, because a dropdown attaches to its bottom edge and a pill cannot
  * line up with a list of rows.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  BackHandler,
   Easing,
   LayoutChangeEvent,
   Modal,
+  Platform,
   StyleProp,
   StyleSheet,
   TextInput,
@@ -21,6 +23,7 @@ import {
   ViewStyle,
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useIsFocused } from "@react-navigation/native";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -41,7 +44,42 @@ type SearchBarProps = {
    * side.
    */
   containerStyle?: StyleProp<ViewStyle>;
+  /**
+   * Android hardware back empties the field instead of leaving the screen,
+   * while there is anything in it. Opt-in, and only correct for a search bar
+   * that belongs to a navigator screen — see {@link AndroidBackClear}. The
+   * copies rendered inside overlays (the intro's friends page, the add-friends
+   * tip) leave it off: back there belongs to the overlay.
+   */
+  clearOnAndroidBack?: boolean;
 };
+
+/**
+ * Turns Android's back press into "clear the search" for as long as the search
+ * bar owns the screen.
+ *
+ * Rendered (and therefore subscribed) only while the field has something in it
+ * and its screen is focused. Both halves matter: an empty bar must not sit
+ * between the user and back, and a tab's search bar stays mounted while a
+ * detail screen is pushed over it — without the focus check, a query left on
+ * the showtimes tab would silently eat back on the movie page.
+ */
+function AndroidBackClear({ onClear }: { onClear: () => void }) {
+  const isFocused = useIsFocused();
+
+  useEffect(() => {
+    if (!isFocused) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      onClear();
+      // Handled: the press is spent on the field, and the next one — with
+      // nothing left to clear — navigates as usual.
+      return true;
+    });
+    return () => subscription.remove();
+  }, [isFocused, onClear]);
+
+  return null;
+}
 
 const SEARCH_FIELD_OPTIONS: { id: SearchField; label: string }[] = [
   { id: "title", label: "Title" },
@@ -77,6 +115,7 @@ export default function SearchBar({
   searchField,
   onChangeSearchField,
   containerStyle,
+  clearOnAndroidBack = false,
 }: SearchBarProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   // Theme-aware colors keep this input readable in both light and dark modes.
@@ -173,9 +212,19 @@ export default function SearchBar({
     inputRef.current?.focus();
   };
 
+  // Same clear, minus the focus grab: someone pressing back is on their way out
+  // of the search, so pulling the keyboard back up would be the opposite of
+  // what they asked for.
+  const handleClearFromBack = useCallback(() => {
+    onChangeText("");
+  }, [onChangeText]);
+
   // Render/output using the state and derived values prepared above.
   return (
     <View style={[styles.container, containerStyle]}>
+      {clearOnAndroidBack && hasValue && Platform.OS === "android" ? (
+        <AndroidBackClear onClear={handleClearFromBack} />
+      ) : null}
       <View ref={boxRef} collapsable={false} onLayout={handleBoxLayout} style={styles.inputBoxWrap}>
         <Animated.View
           style={[

@@ -217,6 +217,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         value={searchQuery}
         onChangeText={onSearchChange}
         placeholder="Search showtimes"
+        clearOnAndroidBack
       />
       {filterRow ?? (
         <FilterPills

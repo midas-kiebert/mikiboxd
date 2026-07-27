@@ -366,6 +366,7 @@ export default function MainShowtimesScreen() {
         onChangeText={setSearchQuery}
         searchField={searchField}
         onChangeSearchField={setSearchField}
+        clearOnAndroidBack
       />
       <FiltersRow {...filtersRowProps} />
       <ActiveFilterChips {...activeChipsProps} />

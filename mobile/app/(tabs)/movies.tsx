@@ -224,6 +224,7 @@ export default function MovieScreen() {
         onChangeText={setSearchQuery}
         searchField={searchField}
         onChangeSearchField={setSearchField}
+        clearOnAndroidBack
       />
       <FiltersRow
         onOpenModal={() => openFiltersModal({ showGroupByMovie: false })}

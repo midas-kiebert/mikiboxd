@@ -200,7 +200,12 @@ export default function FriendsScreen() {
         onSelect={handleSelectTab}
       />
       <View style={styles.searchBarContainer}>
-        <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder={searchPlaceholder} />
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder={searchPlaceholder}
+          clearOnAndroidBack
+        />
       </View>
 
       {activeTab === 'users' ? (

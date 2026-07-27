@@ -1,19 +1,36 @@
 /**
  * Expo Router screen/module for (tabs) / friends. It controls navigation and screen-level state for this route.
+ *
+ * Two modes, not four tabs. The screen used to open on a row of four pills —
+ * All Users / Requests Received / Requests Sent / Friends — which made the
+ * thing almost every visit is for (your friends) one of four equal-looking
+ * options, and hid the one thing that is actually waiting on you (someone has
+ * asked to be your friend) behind a pill you had to know to press.
+ *
+ * Now "Friends" is a single scrollable list with incoming requests sectioned at
+ * the top, your friends under them, and anything you have sent trailing at the
+ * bottom — the whole state of your friendships in one scroll, with a pending
+ * request impossible to miss. "Find people" is a different job (search
+ * strangers, or show them your QR code), so it gets its own mode rather than a
+ * pill in among the rest.
+ *
+ * Every row is a `FriendCard`, which already adapts to the relationship, so a
+ * request row carries Accept/Decline and a friend row carries the per-friend
+ * visibility control without this screen knowing the difference.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
-  ScrollView,
+  SectionList,
   StyleSheet,
   View,
 } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { MeService } from 'shared';
+import { MeService, type UserWithFriendStatus } from 'shared';
 import { useFetchUsers } from 'shared/hooks/useFetchUsers';
 import { useFetchFriends } from 'shared/hooks/useFetchFriends';
 import { useFetchReceivedRequests } from 'shared/hooks/useFetchReceivedRequests';
@@ -28,31 +45,37 @@ import FriendCard from '@/components/friends/FriendCard';
 import ShareInviteLinkButton from '@/components/friends/ShareInviteLinkButton';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
-import FilterPills from '@/components/filters/FilterPills';
+import SegmentedControl, { type SegmentedOption } from '@/components/ui/SegmentedControl';
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 
 /** Friend rows carry the visibility control, so their skeleton is taller than a plain user row. */
 const FRIEND_ROW_SKELETON_HEIGHT = 104;
+/** The QR plate is a fixed size, so its loading state has to match it exactly. */
+const QR_SIZE = 210;
 
-type FriendsTabId = 'users' | 'received' | 'sent' | 'friends';
-type FriendsTabMeta = {
-  emptyText: string;
+type FriendsMode = 'friends' | 'discover';
+
+const MODE_OPTIONS: readonly SegmentedOption<FriendsMode>[] = [
+  { value: 'friends', label: 'Friends', icon: 'people' },
+  { value: 'discover', label: 'Find people', icon: 'person-search' },
+];
+
+/** Which mode a `?tab=` deep link lands in. The old pill ids still resolve. */
+const MODE_BY_DEEP_LINK_TAB: Record<string, FriendsMode> = {
+  users: 'discover',
+  received: 'friends',
+  sent: 'friends',
+  friends: 'friends',
 };
 
-const TAB_META: Record<FriendsTabId, FriendsTabMeta> = {
-  users: {
-    emptyText: 'No users found',
-  },
-  received: {
-    emptyText: 'No requests received',
-  },
-  sent: {
-    emptyText: 'No requests sent',
-  },
-  friends: {
-    emptyText: 'No friends yet',
-  },
+type FriendsSection = {
+  key: 'received' | 'friends' | 'sent';
+  title: string;
+  count: number;
+  /** Sets a section apart when it needs answering rather than just reading. */
+  isCallToAction?: boolean;
+  data: UserWithFriendStatus[];
 };
 
 export default function FriendsScreen() {
@@ -69,23 +92,21 @@ export default function FriendsScreen() {
   const hasUserSearch = normalizedSearchQuery.length > 0;
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
-  // Keeps track of the currently selected tab on this screen.
   const { tab } = useLocalSearchParams<{ tab?: string | string[] }>();
-  const requestedTab = useMemo((): FriendsTabId | null => {
+  const requestedMode = useMemo((): FriendsMode | null => {
     const normalizedTab = Array.isArray(tab) ? tab[0] : tab;
-    return normalizedTab === 'received' ||
-      normalizedTab === 'sent' ||
-      normalizedTab === 'friends' ||
-      normalizedTab === 'users'
-      ? normalizedTab
-      : null;
+    return normalizedTab ? (MODE_BY_DEEP_LINK_TAB[normalizedTab] ?? null) : null;
   }, [tab]);
-  const [activeTab, setActiveTab] = useState<FriendsTabId>(requestedTab ?? 'users');
+  // Friends first: it is what almost every visit is for, and it is where a
+  // pending request now surfaces without having to be looked for.
+  const [mode, setMode] = useState<FriendsMode>(requestedMode ?? 'friends');
 
   useEffect(() => {
-    if (requestedTab === null) return;
-    setActiveTab(requestedTab);
-  }, [requestedTab]);
+    if (requestedMode === null) return;
+    setMode(requestedMode);
+  }, [requestedMode]);
+
+  const isDiscovering = mode === 'discover';
 
   // Build the filter payload from current UI selections.
   const userFilters = useMemo(
@@ -93,7 +114,7 @@ export default function FriendsScreen() {
     [normalizedSearchQuery]
   );
 
-  // "All users" is the only tab that needs infinite pagination.
+  // Searching strangers is the only list here that needs pagination.
   const {
     data: usersData,
     fetchNextPage,
@@ -103,16 +124,14 @@ export default function FriendsScreen() {
   } = useFetchUsers({
     limit: 20,
     filters: userFilters,
-    enabled: activeTab === 'users' && hasUserSearch,
+    enabled: isDiscovering && hasUserSearch,
   });
 
   const { data: friendsData, isFetching: isFetchingFriends } = useFetchFriends({
-    enabled: activeTab === 'friends',
+    enabled: !isDiscovering,
   });
   const { data: receivedRequests, isFetching: isFetchingReceived } = useFetchReceivedRequests();
-  const { data: sentRequests, isFetching: isFetchingSent } = useFetchSentRequests({
-    enabled: activeTab === 'sent',
-  });
+  const { data: sentRequests } = useFetchSentRequests({ enabled: !isDiscovering });
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => MeService.getCurrentUser(),
@@ -130,19 +149,47 @@ export default function FriendsScreen() {
       (value ?? '').toLowerCase().includes(normalizedSearchQueryLower),
     [normalizedSearchQueryLower]
   );
-  const displayedReceived = useMemo(
-    () => received.filter((user) => matchName(user.display_name)),
-    [received, matchName]
-  );
-  const displayedSent = useMemo(
-    () => sent.filter((user) => matchName(user.display_name)),
-    [sent, matchName]
-  );
-  const displayedFriends = useMemo(
-    () => friends.filter((user) => matchName(user.display_name)),
-    [friends, matchName]
-  );
-  const searchPlaceholder = activeTab === 'users' ? 'Search users' : 'Search friends';
+
+  // The search box narrows whatever is already on screen, so a name typed while
+  // looking at your friends filters all three sections at once rather than
+  // sending you off to search strangers.
+  const sections = useMemo((): FriendsSection[] => {
+    const displayedReceived = received.filter((user) => matchName(user.display_name));
+    const displayedFriends = friends.filter((user) => matchName(user.display_name));
+    const displayedSent = sent.filter((user) => matchName(user.display_name));
+    const built: FriendsSection[] = [];
+    if (displayedReceived.length > 0) {
+      built.push({
+        key: 'received',
+        title: 'Wants to be friends',
+        count: displayedReceived.length,
+        isCallToAction: true,
+        data: displayedReceived,
+      });
+    }
+    // Always present, even at zero: it is the section the user came for, and
+    // its footer is where the "no friends yet" prompt lives.
+    built.push({
+      key: 'friends',
+      title: 'Your friends',
+      count: displayedFriends.length,
+      data: displayedFriends,
+    });
+    if (displayedSent.length > 0) {
+      built.push({
+        key: 'sent',
+        title: 'Requests you sent',
+        count: displayedSent.length,
+        data: displayedSent,
+      });
+    }
+    return built;
+  }, [friends, matchName, received, sent]);
+
+  const isLoadingFriendsView =
+    (isFetchingFriends || isFetchingReceived) && friends.length === 0 && received.length === 0;
+
+  const searchPlaceholder = isDiscovering ? 'Search everyone' : 'Search your friends';
   const inviteUrl = useMemo(
     () => (currentUser?.id ? buildFriendInviteUrl(currentUser.id) : null),
     [currentUser?.id]
@@ -155,19 +202,24 @@ export default function FriendsScreen() {
   // Refresh the current dataset and reset any stale pagination state.
   const handleRefresh = async () => {
     setRefreshing(true);
-    // Refresh only the currently visible tab to keep network usage predictable.
-    if (activeTab === 'users') {
-      if (hasUserSearch) {
-        await resetInfiniteQuery(queryClient, ['users', userFilters]);
+    try {
+      if (isDiscovering) {
+        if (hasUserSearch) {
+          await resetInfiniteQuery(queryClient, ['users', userFilters]);
+        }
+        return;
       }
-    } else if (activeTab === 'received') {
-      await queryClient.invalidateQueries({ queryKey: ['users', 'receivedRequests'] });
-    } else if (activeTab === 'sent') {
-      await queryClient.invalidateQueries({ queryKey: ['users', 'sentRequests'] });
-    } else if (activeTab === 'friends') {
-      await queryClient.invalidateQueries({ queryKey: ['users', 'friends'] });
+      // One mode, one scroll, so all three of its lists refresh together —
+      // refreshing only the section in view would leave the ones above and
+      // below it stale on the same screen.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['users', 'receivedRequests'] }),
+        queryClient.invalidateQueries({ queryKey: ['users', 'friends'] }),
+        queryClient.invalidateQueries({ queryKey: ['users', 'sentRequests'] }),
+      ]);
+    } finally {
+      setRefreshing(false);
     }
-    setRefreshing(false);
   };
 
   // Request the next page when the list nears the end.
@@ -177,38 +229,58 @@ export default function FriendsScreen() {
     }
   };
 
-  // FilterPills acts as the tab bar for this screen.
-  const tabs = useMemo<readonly { id: FriendsTabId; label: string; badgeCount?: number }[]>(
-    () => [
-      { id: 'users', label: 'All Users' },
-      { id: 'received', label: 'Requests Received', badgeCount: received.length },
-      { id: 'sent', label: 'Requests Sent' },
-      { id: 'friends', label: 'Friends' },
-    ],
-    [received.length]
-  );
+  const handleChangeMode = useCallback((next: FriendsMode) => {
+    // The query means something different on each side (a stranger's name vs.
+    // one of your own friends'), so carrying it across would silently apply a
+    // filter to a list the user has not looked at yet.
+    setSearchQuery('');
+    setMode(next);
+  }, []);
 
-  const handleSelectTab = useCallback((id: FriendsTabId) => setActiveTab(id), []);
+  const inviteCard = (
+    <View style={styles.inviteCard}>
+      <ThemedText style={styles.inviteTitle}>Scan To Add Me</ThemedText>
+      {inviteUsername ? (
+        <ThemedText style={styles.inviteUsername}>{inviteUsername}</ThemedText>
+      ) : null}
+      {inviteUrl ? (
+        <View style={styles.qrWrapper}>
+          <QRCode value={inviteUrl} size={QR_SIZE} backgroundColor="#ffffff" color="#111111" />
+        </View>
+      ) : (
+        <View style={styles.qrLoadingWrapper}>
+          <ActivityIndicator size="large" color={colors.tint} />
+        </View>
+      )}
+      <ThemedText style={styles.inviteText}>
+        Ask a friend to scan this code, or share your invite link.
+      </ThemedText>
+      <ShareInviteLinkButton inviteUrl={inviteUrl} />
+    </View>
+  );
 
   // Render/output using the state and derived values prepared above.
   return (
     <TopSafeAreaView style={styles.container}>
       <TopBar title="Friends" />
-      <FilterPills
-        filters={tabs}
-        selectedId={activeTab}
-        onSelect={handleSelectTab}
-      />
-      <View style={styles.searchBarContainer}>
-        <SearchBar
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder={searchPlaceholder}
-          clearOnAndroidBack
+      <View style={styles.modeRow}>
+        <SegmentedControl
+          options={MODE_OPTIONS}
+          value={mode}
+          onChange={handleChangeMode}
+          accessibilityLabelPrefix="Show"
+          stretch
+          size="large"
         />
       </View>
+      <SearchBar
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder={searchPlaceholder}
+        clearOnAndroidBack
+      />
 
-      {activeTab === 'users' ? (
+      {isDiscovering ? (
         <FlatList
           data={hasUserSearch && refreshing ? [] : displayedUsers}
           keyExtractor={(item) => `user-${item.id}`}
@@ -221,119 +293,84 @@ export default function FriendsScreen() {
           onEndReachedThreshold={0.4}
           ListEmptyComponent={
             !hasUserSearch ? (
-              <View style={styles.inviteCard}>
-                <ThemedText style={styles.inviteTitle}>Scan To Add Me</ThemedText>
-                {inviteUsername ? (
-                  <ThemedText style={styles.inviteUsername}>{inviteUsername}</ThemedText>
-                ) : null}
-                {inviteUrl ? (
-                  <View style={styles.qrWrapper}>
-                    <QRCode value={inviteUrl} size={210} backgroundColor="#ffffff" color="#111111" />
-                  </View>
-                ) : (
-                  <View style={styles.qrLoadingWrapper}>
-                    <ActivityIndicator size="large" color={colors.tint} />
-                  </View>
-                )}
-                <ThemedText style={styles.inviteText}>
-                  Ask a friend to scan this code, or share your invite link.
-                </ThemedText>
-                <ShareInviteLinkButton inviteUrl={inviteUrl} />
-              </View>
+              inviteCard
             ) : isFetchingUsers || refreshing ? (
               <SkeletonRows height={64} />
             ) : (
               <View style={styles.emptyCard}>
-                <ThemedText style={styles.emptyText}>{TAB_META.users.emptyText}</ThemedText>
+                <ThemedText style={styles.emptyTitle}>No one found</ThemedText>
+                <ThemedText style={styles.emptyText}>
+                  Try a different name, or show them your QR code instead.
+                </ThemedText>
               </View>
             )
           }
           ListFooterComponent={<LoadMoreFooter loading={isFetchingNextPage} size="small" />}
         />
       ) : (
-        <ScrollView
+        <SectionList
+          sections={refreshing || isLoadingFriendsView ? [] : sections}
+          keyExtractor={(item) => `friend-row-${item.id}`}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
+          stickySectionHeadersEnabled={false}
           refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-        >
-          {activeTab === 'received' ? (
-            <View style={styles.section}>
-              {refreshing ? (
-                <SkeletonRows height={64} />
-              ) : isFetchingReceived && displayedReceived.length === 0 ? (
-                <View style={styles.centerContainer}>
-                  <ActivityIndicator size="large" color={colors.tint} />
-                </View>
-              ) : displayedReceived.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <ThemedText style={styles.emptyText}>
-                    {normalizedSearchQueryLower.length > 0
-                      ? 'No matching requests'
-                      : TAB_META.received.emptyText}
-                  </ThemedText>
-                </View>
-              ) : (
-                <View style={styles.list}>
-                  {displayedReceived.map((user) => (
-                    <FriendCard key={`received-${user.id}`} user={user} />
-                  ))}
-                </View>
-              )}
+          renderItem={({ item }) => (
+            <View style={styles.row}>
+              <FriendCard user={item} />
             </View>
-          ) : null}
-
-          {activeTab === 'sent' ? (
-            <View style={styles.section}>
-              {refreshing ? (
-                <SkeletonRows height={64} />
-              ) : isFetchingSent && displayedSent.length === 0 ? (
-                <View style={styles.centerContainer}>
-                  <ActivityIndicator size="large" color={colors.tint} />
-                </View>
-              ) : displayedSent.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <ThemedText style={styles.emptyText}>
-                    {normalizedSearchQueryLower.length > 0
-                      ? 'No matching requests'
-                      : TAB_META.sent.emptyText}
-                  </ThemedText>
-                </View>
-              ) : (
-                <View style={styles.list}>
-                  {displayedSent.map((user) => (
-                    <FriendCard key={`sent-${user.id}`} user={user} />
-                  ))}
-                </View>
-              )}
+          )}
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <ThemedText
+                style={[
+                  styles.sectionTitle,
+                  section.isCallToAction && styles.sectionTitleCallToAction,
+                ]}
+              >
+                {section.title}
+              </ThemedText>
+              <View
+                style={[
+                  styles.sectionCount,
+                  section.isCallToAction && styles.sectionCountCallToAction,
+                ]}
+              >
+                <ThemedText
+                  style={[
+                    styles.sectionCountText,
+                    section.isCallToAction && styles.sectionCountTextCallToAction,
+                  ]}
+                >
+                  {section.count}
+                </ThemedText>
+              </View>
             </View>
-          ) : null}
-
-          {activeTab === 'friends' ? (
-            <View style={styles.section}>
-              {refreshing ? (
-                <SkeletonRows height={FRIEND_ROW_SKELETON_HEIGHT} />
-              ) : isFetchingFriends && displayedFriends.length === 0 ? (
-                <View style={styles.centerContainer}>
-                  <ActivityIndicator size="large" color={colors.tint} />
-                </View>
-              ) : displayedFriends.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <ThemedText style={styles.emptyText}>
-                    {normalizedSearchQueryLower.length > 0
-                      ? 'No matching friends'
-                      : TAB_META.friends.emptyText}
-                  </ThemedText>
-                </View>
-              ) : (
-                <View style={styles.list}>
-                  {displayedFriends.map((user) => (
-                    <FriendCard key={`friend-${user.id}`} user={user} />
-                  ))}
-                </View>
-              )}
-            </View>
-          ) : null}
-        </ScrollView>
+          )}
+          renderSectionFooter={({ section }) =>
+            section.data.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <ThemedText style={styles.emptyTitle}>
+                  {hasUserSearch ? 'No matches' : 'No friends yet'}
+                </ThemedText>
+                <ThemedText style={styles.emptyText}>
+                  {hasUserSearch
+                    ? 'Nobody in your friends matches that name.'
+                    : 'Find people by name, or let them scan your QR code.'}
+                </ThemedText>
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={<SkeletonRows height={FRIEND_ROW_SKELETON_HEIGHT} />}
+          ListFooterComponent={
+            // The invite card sits at the bottom of your own list rather than
+            // behind a separate tab: adding people is the natural next thing
+            // after looking at who you already have.
+            refreshing || isLoadingFriendsView ? null : (
+              <View style={styles.inviteFooter}>{inviteCard}</View>
+            )
+          }
+        />
       )}
     </TopSafeAreaView>
   );
@@ -345,24 +382,59 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       flex: 1,
       backgroundColor: colors.background,
     },
-    searchBarContainer: {
-      paddingHorizontal: 0,
-      paddingBottom: 2,
+    modeRow: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
     },
     content: {
       padding: 16,
-      paddingTop: 10,
+      paddingTop: 4,
       paddingBottom: 24,
-      gap: 12,
     },
-    section: {
-      gap: 12,
-    },
-    list: {
-      gap: 12,
+    row: {
+      paddingBottom: 12,
     },
     separator: {
       height: 12,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingTop: 10,
+      paddingBottom: 8,
+    },
+    sectionTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      letterSpacing: 0.3,
+      textTransform: 'uppercase',
+      color: colors.textSecondary,
+    },
+    // A pending request is the one thing on this screen waiting on the user, so
+    // its heading carries the app's "needs you" colour.
+    sectionTitleCallToAction: {
+      color: colors.orange.secondary,
+    },
+    sectionCount: {
+      minWidth: 22,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.pillBackground,
+    },
+    sectionCountCallToAction: {
+      backgroundColor: colors.orange.primary,
+    },
+    sectionCountText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textSecondary,
+    },
+    sectionCountTextCallToAction: {
+      color: colors.orange.secondary,
     },
     emptyCard: {
       borderRadius: 12,
@@ -371,8 +443,12 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       backgroundColor: colors.cardBackground,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 16,
-      paddingHorizontal: 12,
+      gap: 4,
+      paddingVertical: 20,
+      paddingHorizontal: 16,
+    },
+    inviteFooter: {
+      paddingTop: 24,
     },
     inviteCard: {
       borderRadius: 12,
@@ -397,6 +473,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.textSecondary,
       textAlign: 'center',
     },
+    // A QR code needs its white quiet zone to scan, in either colour scheme.
     qrWrapper: {
       borderRadius: 12,
       padding: 12,
@@ -405,8 +482,8 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       borderColor: colors.divider,
     },
     qrLoadingWrapper: {
-      width: 210,
-      height: 210,
+      width: QR_SIZE,
+      height: QR_SIZE,
       borderRadius: 12,
       backgroundColor: colors.pillBackground,
       alignItems: 'center',
@@ -417,12 +494,16 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.textSecondary,
       textAlign: 'center',
     },
-    emptyText: {
-      fontSize: 14,
-      color: colors.textSecondary,
+    emptyTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.text,
+      textAlign: 'center',
     },
-    centerContainer: {
-      paddingVertical: 16,
-      alignItems: 'center',
+    emptyText: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.textSecondary,
+      textAlign: 'center',
     },
   });

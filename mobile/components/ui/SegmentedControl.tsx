@@ -31,6 +31,19 @@ type Props<T extends string> = {
   onChange: (value: T) => void;
   /** Prefixes each option's accessibility label, e.g. "Group by". */
   accessibilityLabelPrefix?: string;
+  /**
+   * Split the available width evenly between the options instead of sizing to
+   * the labels. For a control that is the whole width of a screen rather than
+   * the right-hand end of a row.
+   */
+  stretch?: boolean;
+  /**
+   * "compact" (default) is the settings/filter-row size, tuned to share one
+   * line with a label on a 375pt screen. "large" is for a control that leads a
+   * screen, where the segments are the primary navigation and need a real
+   * touch target.
+   */
+  size?: "compact" | "large";
 };
 
 export default function SegmentedControl<T extends string>({
@@ -38,12 +51,15 @@ export default function SegmentedControl<T extends string>({
   value,
   onChange,
   accessibilityLabelPrefix,
+  stretch = false,
+  size = "compact",
 }: Props<T>) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  const isLarge = size === "large";
 
   return (
-    <View style={styles.track}>
+    <View style={[styles.track, stretch && styles.trackStretch]}>
       {options.map((option) => {
         const isActive = option.value === value;
         const foreground = isActive
@@ -54,6 +70,8 @@ export default function SegmentedControl<T extends string>({
             key={option.value}
             style={[
               styles.segment,
+              isLarge && styles.segmentLarge,
+              stretch && styles.segmentStretch,
               isActive && {
                 backgroundColor: option.activeBackground ?? colors.pillActiveBackground,
               },
@@ -72,9 +90,12 @@ export default function SegmentedControl<T extends string>({
             }
           >
             {option.icon && (
-              <MaterialIcons name={option.icon} size={12} color={foreground} />
+              <MaterialIcons name={option.icon} size={isLarge ? 16 : 12} color={foreground} />
             )}
-            <ThemedText style={[styles.segmentText, { color: foreground }]} numberOfLines={1}>
+            <ThemedText
+              style={[styles.segmentText, isLarge && styles.segmentTextLarge, { color: foreground }]}
+              numberOfLines={1}
+            >
               {option.label}
             </ThemedText>
           </TouchableOpacity>
@@ -93,6 +114,9 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       backgroundColor: colors.pillBackground,
       padding: 2,
     },
+    trackStretch: {
+      alignSelf: "stretch",
+    },
     // Deliberately tight: the widest control (Any / Interested / Going, with
     // icons) has to share one line with its row label on a 375pt screen.
     segment: {
@@ -103,5 +127,17 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       paddingVertical: 5,
       borderRadius: 999,
     },
+    segmentLarge: {
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+    },
+    // Equal shares of the track, so two segments read as one control rather
+    // than two pills that happen to be next to each other.
+    segmentStretch: {
+      flex: 1,
+      justifyContent: "center",
+    },
     segmentText: { fontSize: 11, fontWeight: "700" },
+    segmentTextLarge: { fontSize: 14 },
   });

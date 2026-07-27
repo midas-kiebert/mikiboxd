@@ -34,7 +34,6 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
-  BottomSheetBackdrop,
   type BottomSheetBackdropProps,
   BottomSheetModal,
   BottomSheetScrollView,
@@ -71,6 +70,7 @@ import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import FriendListRow, { type FriendWatchStatus } from "@/components/friends/FriendListRow";
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
+import SheetBackdrop from "@/components/sheets/SheetBackdrop";
 import {
   getFriendWatchKindMeta,
   type FriendWatchKind,
@@ -1048,14 +1048,8 @@ export default function ShowtimeActionModal({
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.45}
-        // The tour drives the sheet; a tap outside must not dismiss it.
-        pressBehavior={isTour ? "none" : "close"}
-      />
+      // The tour drives the sheet; a tap outside must not dismiss it.
+      <SheetBackdrop {...props} pressBehavior={isTour ? "none" : "close"} />
     ),
     [isTour]
   );

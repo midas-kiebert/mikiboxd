@@ -17,7 +17,6 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import { BackHandler, StyleSheet } from "react-native";
 import {
-  BottomSheetBackdrop,
   type BottomSheetBackdropProps,
   BottomSheetModal,
   type BottomSheetModalProps,
@@ -26,6 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useThemeColors } from "@/hooks/use-theme-color";
 import BottomSheetHeader from "@/components/sheets/BottomSheetHeader";
+import SheetBackdrop from "@/components/sheets/SheetBackdrop";
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
 
@@ -131,13 +131,7 @@ export default function AppBottomSheet({
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.45}
-        pressBehavior={backdropPressBehavior}
-      />
+      <SheetBackdrop {...props} pressBehavior={backdropPressBehavior} />
     ),
     [backdropPressBehavior]
   );

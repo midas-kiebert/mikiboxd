@@ -367,7 +367,9 @@ class LetterboxdFactory(SQLModelFactory):
     class Meta:
         model = Letterboxd
 
-    letterboxd_username = Faker("user_name")
+    # Sequence, not Faker("user_name"): the faker pool is small enough that a
+    # single run collides on the letterboxd_username primary key.
+    letterboxd_username = Sequence(lambda n: f"lbuser{n}")
     last_watchlist_sync = Faker("date_time_this_year", before_now=True, after_now=False)
 
 
@@ -376,7 +378,8 @@ class UserFactory(SQLModelFactory):
         model = User
 
     id = LazyFunction(uuid4)
-    email = Faker("email")
+    # Sequence for the same reason as LetterboxdFactory: email is unique.
+    email = Sequence(lambda n: f"user{n}@example.com")
     display_name = Faker("name")
     is_active = True
     is_superuser = False

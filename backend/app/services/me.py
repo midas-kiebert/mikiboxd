@@ -26,9 +26,9 @@ from app.exceptions.user_exceptions import (
     InvalidUsername,
 )
 from app.models.cinema_preset import (
-    CinemaPreset,
     DEFAULT_CINEMA_PRESET_ID,
     DEFAULT_CINEMA_PRESET_NAME,
+    CinemaPreset,
 )
 from app.models.push_token import PushToken
 from app.models.saved_preset import SavedPreset
@@ -54,7 +54,6 @@ _NOTIFICATION_FEED_TYPES: dict[NotificationType, NotificationFeedType] = {
     NotificationType.INVITE_RESPONSE: "invite_response",
     NotificationType.FRIEND_REQUEST_ACCEPTED: "friend_request_accepted",
 }
-
 
 
 def update_me(

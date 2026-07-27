@@ -137,9 +137,7 @@ def login_social_token(
     # replayed the first-run intro at it, since the client treats this flag as
     # "brand-new account". Legacy names are fixed in Settings, which validates
     # on change; this endpoint is not the place to force it.
-    needs_username = (
-        user.display_name is None or user.display_name.strip() == ""
-    )
+    needs_username = user.display_name is None or user.display_name.strip() == ""
     return SocialLoginResponse(
         **_build_token(user.id).model_dump(),
         needs_username=needs_username,

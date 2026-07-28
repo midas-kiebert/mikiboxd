@@ -39,6 +39,9 @@ type FriendBadgeProps = {
   name: string;
   seatLabel?: string | null;
   backgroundColor: string;
+  /** Outline tone. Separate from {@link accentColor} so the badge can be readable
+   *  without being outlined in the same ink as its label. */
+  borderColor: string;
   accentColor: string;
   styles: ReturnType<typeof createStyles>;
   variant: "compact" | "default";
@@ -58,6 +61,7 @@ type BadgeItem = {
   key: string;
   friend: UserPublic;
   backgroundColor: string;
+  borderColor: string;
   accentColor: string;
   isPending?: boolean;
 };
@@ -111,6 +115,7 @@ const FriendBadge = ({
   name,
   seatLabel,
   backgroundColor,
+  borderColor,
   accentColor,
   styles,
   variant,
@@ -120,8 +125,8 @@ const FriendBadge = ({
   isPending,
 }: FriendBadgeProps & { isPending?: boolean }) => {
   const router = useRouter();
-  const goToFriendShowtimes = useSingleFireNavigation((id: string) =>
-    router.push(`/friend-showtimes/${id}`)
+  const goToFriendShowtimes = useSingleFireNavigation((id: string, friendName: string) =>
+    router.push({ pathname: "/friend-showtimes/[id]", params: { id, name: friendName } })
   );
   const sizeStyles: VariantStyles =
     variant === "compact"
@@ -142,7 +147,7 @@ const FriendBadge = ({
     if (disabledUserId !== undefined && friendId === disabledUserId) return;
     event.stopPropagation();
     onNavigate?.();
-    goToFriendShowtimes(friendId);
+    goToFriendShowtimes(friendId, name);
   };
 
   return (
@@ -158,7 +163,7 @@ const FriendBadge = ({
       style={[
         styles.badge,
         sizeStyles.badge,
-        { backgroundColor, borderColor: accentColor },
+        { backgroundColor, borderColor },
         isPending && styles.pendingBadge,
       ]}
     >
@@ -206,23 +211,29 @@ export default function FriendBadges({
   const [measuredBadgeWidths, setMeasuredBadgeWidths] = useState<Record<string, number>>({});
   const [overflowBadgeWidth, setOverflowBadgeWidth] = useState(0);
 
+  // Each badge carries its own hue in the fill. Previously every badge was the same
+  // neutral pill and only the label was coloured, which forced the label dark enough
+  // to clear 4.5:1 against that neutral — the reason going/interested read as heavy.
   const items: BadgeItem[] = [
     ...friendsGoing.map((friend) => ({
       key: `going-${friend.id}`,
       friend,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.friendGoing.primary,
+      borderColor: colors.friendGoing.border,
       accentColor: colors.friendGoing.secondary,
     })),
     ...friendsInterested.map((friend) => ({
       key: `interested-${friend.id}`,
       friend,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.friendInterested.primary,
+      borderColor: colors.friendInterested.border,
       accentColor: colors.friendInterested.secondary,
     })),
     ...friendsPending.map((friend) => ({
       key: `pending-${friend.id}`,
       friend,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.gray.border,
       accentColor: colors.textSecondary,
       isPending: true,
     })),
@@ -351,7 +362,7 @@ export default function FriendBadges({
       ]}
       onLayout={handleContainerLayout}
     >
-      {visibleItems.map(({ key, friend, backgroundColor, accentColor, isPending }) => (
+      {visibleItems.map(({ key, friend, backgroundColor, borderColor, accentColor, isPending }) => (
         <FriendBadge
           key={key}
           badgeKey={key}
@@ -359,6 +370,7 @@ export default function FriendBadges({
           name={getFriendName(friend)}
           seatLabel={isPending ? null : getSeatLabel(friend)}
           backgroundColor={backgroundColor}
+          borderColor={borderColor}
           accentColor={accentColor}
           styles={styles}
           variant={variant}
@@ -481,7 +493,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       opacity: 0.85,
     },
     overflowBadge: {
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
       justifyContent: "center",
     },
     overflowBadgeText: {

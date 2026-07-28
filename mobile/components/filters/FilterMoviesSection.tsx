@@ -447,7 +447,7 @@ function Segment({
       // instantly even while the movie list re-filters in the background.
       style={({ pressed }) => [
         styles.segment,
-        { backgroundColor: active ? activeBg : colors.pillBackground },
+        { backgroundColor: active ? activeBg : colors.surfaceMuted },
         pressed && styles.segmentPressed,
       ]}
       android_ripple={{ color: fg }}

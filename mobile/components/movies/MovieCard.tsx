@@ -174,11 +174,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       height: POSTER_HEIGHT,
     },
     movieCardGoing: {
-      borderColor: colors.green.secondary,
+      borderColor: colors.green.border,
       backgroundColor: colors.green.primary,
     },
     movieCardInterested: {
-      borderColor: colors.orange.secondary,
+      borderColor: colors.orange.border,
       backgroundColor: colors.orange.primary,
     },
     poster: {

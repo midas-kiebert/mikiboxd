@@ -259,7 +259,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       justifyContent: "center",
     },
     optionRowSelected: {
-      borderColor: colors.green.secondary,
+      borderColor: colors.green.border,
       backgroundColor: colors.green.primary,
     },
     optionTextWrap: {

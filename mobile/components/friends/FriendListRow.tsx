@@ -143,7 +143,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingVertical: 7,
     },
     rowHighlighted: {
-      borderColor: colors.blue.secondary,
+      borderColor: colors.blue.border,
       backgroundColor: colors.blue.primary,
     },
     rowDisabled: {
@@ -182,7 +182,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingHorizontal: 10,
       borderRadius: 9,
       borderWidth: 1,
-      borderColor: colors.blue.secondary,
+      borderColor: colors.blue.border,
       backgroundColor: colors.blue.primary,
     },
     inviteButtonDisabled: {

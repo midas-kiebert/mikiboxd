@@ -214,7 +214,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderRadius: 14,
       backgroundColor: colors.pillBackground,
       borderWidth: 1,
-      borderColor: colors.divider,
+      borderColor: colors.pillBorder,
       alignSelf: "center",
     },
     chipLabel: {

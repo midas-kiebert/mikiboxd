@@ -277,6 +277,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingVertical: 7,
       borderRadius: 18,
       backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.pillBorder,
       marginRight: 2,
     },
     compoundPill: {
@@ -284,7 +286,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "center",
       borderRadius: 18,
       backgroundColor: colors.pillBackground,
-      borderWidth: 0,
+      borderWidth: 1,
+      borderColor: colors.pillBorder,
       padding: 1,
       gap: 2,
       marginRight: 2,
@@ -311,6 +314,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     pillActive: {
       backgroundColor: colors.pillActiveBackground,
+      // The hairline that defines an inactive pill would read as a pale rim around
+      // a solid green one, so an active pill's border disappears into its fill.
+      borderColor: colors.pillActiveBackground,
     },
     pillText: {
       fontSize: 13,

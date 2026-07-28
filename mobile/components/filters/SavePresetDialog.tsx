@@ -360,7 +360,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       paddingVertical: 8,
       borderRadius: 10,
       borderWidth: 1,
-      borderColor: colors.yellow.secondary,
+      borderColor: colors.yellow.border,
       backgroundColor: colors.yellow.primary,
     },
     warningText: { flex: 1, fontSize: 11, color: colors.text, lineHeight: 16 },

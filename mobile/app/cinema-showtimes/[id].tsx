@@ -52,7 +52,7 @@ export default function CinemaShowtimesScreen() {
     return (
       <ShowtimesScreenSkeleton
         topBarTitle={routeCinemaName || "Cinema"}
-        topBarTitleSuffix={routeCityName ? `(${routeCityName})` : undefined}
+        topBarTitleSuffix={routeCityName || undefined}
         topBarShowBackButton
       />
     );
@@ -157,7 +157,7 @@ function CinemaShowtimesContent() {
   );
   const cinemaName = routeCinemaName || cinemaFromList?.name || "Cinema";
   const cityName = routeCityName || cinemaFromList?.city.name || "";
-  const topBarTitleSuffix = cityName ? `(${cityName})` : undefined;
+  const topBarTitleSuffix = cityName || undefined;
 
   // ─── Showtimes query ─────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({

@@ -609,7 +609,7 @@ function CountSkeleton() {
 function Pill({ label, active, onPress, colors, style, icon }: { label: string; active: boolean; onPress: () => void; colors: ReturnType<typeof useThemeColors>; style?: object; icon?: keyof typeof MaterialIcons.glyphMap }) {
   return (
     <TouchableOpacity
-      style={[{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: active ? colors.pillActiveBackground : colors.pillBackground, marginRight: 7, marginBottom: 7, flexDirection: "row", alignItems: "center", gap: 4 }, style]}
+      style={[{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: active ? colors.pillActiveBackground : colors.pillBackground, borderWidth: 1, borderColor: active ? colors.pillActiveBackground : colors.pillBorder, marginRight: 7, marginBottom: 7, flexDirection: "row", alignItems: "center", gap: 4 }, style]}
       onPress={() => {
         triggerSelectionHaptic();
         onPress();
@@ -719,7 +719,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderRadius: 10,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
     },
     cinemaOpenTextBlock: { flex: 1 },
     cinemaOpenTitle: { fontSize: 14, fontWeight: "600", color: colors.text },

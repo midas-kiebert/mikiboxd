@@ -55,15 +55,22 @@ type MovieSection = {
 };
 
 export default function FriendShowtimesScreen() {
-  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const { id, name } = useLocalSearchParams<{ id?: string | string[]; name?: string | string[] }>();
   const ready = useDeferredMount(`friend:${Array.isArray(id) ? id[0] : id}`);
+  const routeFriendName = getFriendTitle(getRouteParam(name));
   if (!ready) {
-    return <ShowtimesScreenSkeleton topBarTitle="Agenda" topBarShowBackButton />;
+    return <ShowtimesScreenSkeleton topBarTitle={routeFriendName} topBarShowBackButton />;
   }
-  return <FriendShowtimesContent id={id} />;
+  return <FriendShowtimesContent id={id} routeFriendName={routeFriendName} />;
 }
 
-function FriendShowtimesContent({ id }: { id?: string | string[] }) {
+function FriendShowtimesContent({
+  id,
+  routeFriendName,
+}: {
+  id?: string | string[];
+  routeFriendName: string;
+}) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
@@ -152,8 +159,8 @@ function FriendShowtimesContent({ id }: { id?: string | string[] }) {
   });
 
   const topBarTitle = useMemo(
-    () => (friend ? getFriendTitle(friend.display_name) : 'Agenda'),
-    [friend]
+    () => (friend ? getFriendTitle(friend.display_name) : routeFriendName),
+    [friend, routeFriendName]
   );
 
   const showtimesFilters = useMemo(() => ({

@@ -1,5 +1,5 @@
 from sqlalchemy import exists, update
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, func, select
 
 from app.models.movie import Movie
 from app.models.watched_selection import WatchedSelection
@@ -147,6 +147,19 @@ def get_watched_selections(
     )
     selections: list[WatchedSelection] = list(session.exec(stmt).all())
     return selections
+
+
+def count_watched_selections(
+    *,
+    session: Session,
+    letterboxd_username: str,
+) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(WatchedSelection)
+        .where(col(WatchedSelection.letterboxd_username) == letterboxd_username)
+    )
+    return session.exec(stmt).one()
 
 
 def get_watched(

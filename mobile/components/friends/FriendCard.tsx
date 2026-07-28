@@ -47,8 +47,8 @@ const getFriendName = (friend: UserWithFriendStatus) =>
 export default function FriendCard({ user, showStatusBadge = false }: FriendCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
-  const goToFriendShowtimes = useSingleFireNavigation((userId: string) =>
-    router.push(`/friend-showtimes/${userId}`)
+  const goToFriendShowtimes = useSingleFireNavigation((userId: string, name: string) =>
+    router.push({ pathname: "/friend-showtimes/[id]", params: { id: userId, name } })
   );
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -126,7 +126,7 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
 
   const handleOpenFriendShowtimes = () => {
     if (!canOpenFriendShowtimes) return;
-    goToFriendShowtimes(user.id);
+    goToFriendShowtimes(user.id, friendName);
   };
 
   const handleRemovePress = () => {
@@ -136,7 +136,12 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
   };
 
   const header = (
-    <View style={styles.header}>
+    <TouchableOpacity
+      style={styles.header}
+      activeOpacity={canOpenFriendShowtimes ? 0.7 : 1}
+      onPress={handleOpenFriendShowtimes}
+      disabled={!canOpenFriendShowtimes}
+    >
       <View style={[styles.avatar, { backgroundColor: avatarColors.primary }]}>
         <ThemedText style={[styles.avatarText, { color: avatarColors.secondary }]}>
           {getAvatarInitial(friendName)}
@@ -209,7 +214,7 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
           </>
         ) : null}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   // Render/output using the state and derived values prepared above.
@@ -248,14 +253,7 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
 
   return (
     <>
-      <TouchableOpacity
-        style={[styles.card, isBusy && styles.cardDisabled]}
-        activeOpacity={0.8}
-        onPress={handleOpenFriendShowtimes}
-        disabled={!canOpenFriendShowtimes}
-      >
-        {cardContent}
-      </TouchableOpacity>
+      <View style={[styles.card, isBusy && styles.cardDisabled]}>{cardContent}</View>
       {removeDialog}
     </>
   );

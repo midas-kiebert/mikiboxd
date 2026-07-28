@@ -1,4 +1,4 @@
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, func, select
 
 from app.models.movie import Movie
 from app.models.watchlist_selection import WatchlistSelection
@@ -97,6 +97,19 @@ def get_watchlist_selections(
     )
     selections: list[WatchlistSelection] = list(session.exec(stmt).all())
     return selections
+
+
+def count_watchlist_selections(
+    *,
+    session: Session,
+    letterboxd_username: str,
+) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(WatchlistSelection)
+        .where(col(WatchlistSelection.letterboxd_username) == letterboxd_username)
+    )
+    return session.exec(stmt).one()
 
 
 def get_watchlist(

@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlmodel import Session
@@ -5,6 +6,8 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.crud import friendship as friendship_crud
 from app.crud import user as user_crud
+from app.crud import watched as watched_crud
+from app.crud import watchlist as watchlist_crud
 from app.inputs.movie import Filters
 from app.models.user import User, is_report_banned
 from app.schemas.user import (
@@ -13,7 +16,31 @@ from app.schemas.user import (
     UserWithFriendStatus,
     UserWithShowtimesPublic,
 )
+from app.services.letterboxd_sync import SYNC_COOLDOWN, is_within_cooldown
 from app.utils import now_amsterdam_naive
+
+
+def _sync_cooldown_ends_at(
+    *,
+    last_sync: datetime | None,
+    last_attempt: datetime | None,
+) -> datetime | None:
+    if not is_within_cooldown(last_sync=last_sync, last_attempt=last_attempt):
+        return None
+    return max(stamp for stamp in (last_sync, last_attempt) if stamp is not None) + (
+        SYNC_COOLDOWN
+    )
+
+
+def _sync_failed(*, last_sync: datetime | None, last_attempt: datetime | None) -> bool:
+    """Whether the most recent sync attempt did not end in success.
+
+    A sync stamps `last_attempt` before scraping and only advances `last_sync`
+    on success, so an attempt strictly after the last success means it failed.
+    """
+    if last_attempt is None:
+        return False
+    return last_sync is None or last_attempt > last_sync
 
 
 def to_public(
@@ -32,8 +59,30 @@ def to_public(
     )
 
 
-def to_me(user: User) -> UserMe:
+def to_me(user: User, *, session: Session) -> UserMe:
     User.model_validate(user)
+
+    watchlist_last_synced = (
+        user.letterboxd.last_watchlist_sync if user.letterboxd else None
+    )
+    watched_last_synced = user.letterboxd.last_watched_sync if user.letterboxd else None
+    watchlist_last_attempt = (
+        user.letterboxd.last_watchlist_sync_attempt if user.letterboxd else None
+    )
+    watched_last_attempt = (
+        user.letterboxd.last_watched_sync_attempt if user.letterboxd else None
+    )
+
+    watchlist_count = 0
+    watched_count = 0
+    if user.letterboxd_username:
+        watchlist_count = watchlist_crud.count_watchlist_selections(
+            session=session, letterboxd_username=user.letterboxd_username
+        )
+        watched_count = watched_crud.count_watched_selections(
+            session=session, letterboxd_username=user.letterboxd_username
+        )
+
     return UserMe(
         id=user.id,
         is_active=user.is_active,
@@ -52,11 +101,23 @@ def to_me(user: User) -> UserMe:
         notify_channel_invite_response=user.notify_channel_invite_response,
         notify_channel_interest_reminder=user.notify_channel_interest_reminder,
         letterboxd_username=user.letterboxd_username,
-        watchlist_last_synced=(
-            user.letterboxd.last_watchlist_sync if user.letterboxd else None
+        watchlist_count=watchlist_count,
+        watched_count=watched_count,
+        watchlist_last_synced=watchlist_last_synced,
+        watched_last_synced=watched_last_synced,
+        watchlist_last_sync_attempt=watchlist_last_attempt,
+        watched_last_sync_attempt=watched_last_attempt,
+        watchlist_sync_failed=_sync_failed(
+            last_sync=watchlist_last_synced, last_attempt=watchlist_last_attempt
         ),
-        watched_last_synced=(
-            user.letterboxd.last_watched_sync if user.letterboxd else None
+        watched_sync_failed=_sync_failed(
+            last_sync=watched_last_synced, last_attempt=watched_last_attempt
+        ),
+        watchlist_sync_cooldown_ends_at=_sync_cooldown_ends_at(
+            last_sync=watchlist_last_synced, last_attempt=watchlist_last_attempt
+        ),
+        watched_sync_cooldown_ends_at=_sync_cooldown_ends_at(
+            last_sync=watched_last_synced, last_attempt=watched_last_attempt
         ),
         notify_watchlist_digest_enabled=user.notify_watchlist_digest_enabled,
         notify_watchlist_digest_frequency=user.notify_watchlist_digest_frequency,

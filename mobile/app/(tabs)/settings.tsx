@@ -51,6 +51,7 @@ import { useFetchLetterboxdLists } from 'shared/hooks/useLetterboxdLists';
 import { emailPattern, usernameMaxLength, usernamePattern } from 'shared/utils';
 import { unregisterPushTokenForCurrentDevice } from '@/utils/push-notifications';
 import NotificationPreferenceList from '@/components/notifications/NotificationPreferenceList';
+import LetterboxdSection from '@/components/settings/LetterboxdSection';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 
@@ -68,7 +69,6 @@ const CONTENT_PADDING_BOTTOM = 72;
 type ProfileState = {
   display_name: string;
   email: string;
-  letterboxd_username: string;
 };
 
 type PasswordState = {
@@ -105,7 +105,6 @@ export default function SettingsScreen() {
   const [profile, setProfile] = useState<ProfileState>({
     display_name: '',
     email: '',
-    letterboxd_username: '',
   });
   // Editable form state for password fields.
   const [passwords, setPasswords] = useState<PasswordState>({
@@ -200,7 +199,6 @@ export default function SettingsScreen() {
     setProfile({
       display_name: user.display_name ?? '',
       email: user.email ?? '',
-      letterboxd_username: user.letterboxd_username ?? '',
     });
   }, [user]);
 
@@ -295,7 +293,6 @@ export default function SettingsScreen() {
     profileMutation.mutate({
       display_name: normalizedUsername || null,
       email: profile.email,
-      letterboxd_username: profile.letterboxd_username || null,
     });
   };
 
@@ -462,17 +459,6 @@ export default function SettingsScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
             />
-            <ThemedText style={styles.label}>Letterboxd username for watchlist (will update periodically)</ThemedText>
-            <TextInput
-              style={styles.input}
-              value={profile.letterboxd_username}
-              onChangeText={(value) =>
-                setProfile((prev) => ({ ...prev, letterboxd_username: value }))
-              }
-              placeholder="letterboxd"
-              placeholderTextColor={colors.textSecondary}
-              autoCapitalize="none"
-            />
             <TouchableOpacity
               style={[styles.primaryButton, isProfileSaving && styles.buttonDisabled]}
               onPress={handleProfileSave}
@@ -483,6 +469,11 @@ export default function SettingsScreen() {
               </ThemedText>
             </TouchableOpacity>
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Letterboxd</ThemedText>
+          <LetterboxdSection />
         </View>
 
         <View style={styles.section}>
@@ -1076,7 +1067,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       borderWidth: 1,
       borderColor: colors.cardBorder,
       borderRadius: 999,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
       padding: 2,
     },
     notificationChannelOption: {
@@ -1145,7 +1136,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       borderBottomLeftRadius: 8,
       paddingHorizontal: 10,
       paddingVertical: 10,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
       justifyContent: 'center',
     },
     cinevillePrefixText: {
@@ -1163,7 +1154,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       borderWidth: 1,
       borderColor: colors.cardBorder,
       borderRadius: 999,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
       padding: 2,
     },
     appearanceOption: {

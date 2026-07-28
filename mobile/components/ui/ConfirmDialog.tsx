@@ -88,7 +88,7 @@ export default function ConfirmDialog({
             <View
               style={[
                 styles.iconCircle,
-                { backgroundColor: isDestructive ? colors.red.primary : colors.pillBackground },
+                { backgroundColor: isDestructive ? colors.red.primary : colors.surfaceMuted },
               ]}
             >
               <MaterialIcons name={icon} size={20} color={accentColor} />

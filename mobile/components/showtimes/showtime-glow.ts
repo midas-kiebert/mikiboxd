@@ -1,8 +1,8 @@
 import { Platform, type ViewStyle } from "react-native";
 
 type GlowPalette = {
-  green: { secondary: string };
-  orange: { secondary: string };
+  green: { border: string };
+  orange: { border: string };
 };
 
 const IOS_GLOW = {
@@ -30,7 +30,9 @@ const createGlowStyle = (shadowColor: string): ViewStyle => {
   };
 };
 
+// The glow takes each accent's `border` tone rather than its label tone: at these
+// opacities the label tone cast a visibly dark halo around an otherwise pale card.
 export const createShowtimeStatusGlowStyles = (colors: GlowPalette) => ({
-  going: createGlowStyle(colors.green.secondary),
-  interested: createGlowStyle(colors.orange.secondary),
+  going: createGlowStyle(colors.green.border),
+  interested: createGlowStyle(colors.orange.border),
 });

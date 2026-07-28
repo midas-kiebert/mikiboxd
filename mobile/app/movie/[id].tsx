@@ -706,6 +706,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingVertical: 7,
       borderRadius: 18,
       backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.pillBorder,
     },
     filterBtnText: {
       fontSize: 13,
@@ -802,7 +804,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 999,
       paddingHorizontal: 7,
       paddingVertical: 3,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
     },
     watchMarkerCount: {
       fontSize: 11,
@@ -840,11 +842,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     showtimeCardGlowGoing: glowStyles.going,
     showtimeCardGlowInterested: glowStyles.interested,
     showtimeCardGoing: {
-      borderColor: colors.green.secondary,
+      borderColor: colors.green.border,
       backgroundColor: colors.green.primary,
     },
     showtimeCardInterested: {
-      borderColor: colors.orange.secondary,
+      borderColor: colors.orange.border,
       backgroundColor: colors.orange.primary,
     },
     showtimeCard: {

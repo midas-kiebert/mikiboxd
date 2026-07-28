@@ -134,7 +134,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flexDirection: "row",
       alignItems: "stretch",
       borderRadius: 10,
-      backgroundColor: colors.pillBackground,
+      // A hairline-defined white track rather than the surfaceMuted fill: this
+      // control usually sits on a white row, where surfaceMuted read as a dark slab.
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.pillBorder,
       padding: 3,
       gap: 3,
     },

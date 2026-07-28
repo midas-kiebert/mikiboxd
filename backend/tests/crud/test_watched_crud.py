@@ -81,6 +81,53 @@ def test_relink_only_touches_the_requested_user(
     )
 
 
+def test_count_watched_selections_zero_when_none(
+    db_transaction: Session,
+    user_factory,
+):
+    user = user_factory()
+    username = user.letterboxd_username
+
+    count = watched_crud.count_watched_selections(
+        session=db_transaction, letterboxd_username=username
+    )
+
+    assert count == 0
+
+
+def test_count_watched_selections_counts_all_selections(
+    db_transaction: Session,
+    user_factory,
+):
+    user = user_factory()
+    username = user.letterboxd_username
+    _selection(db_transaction, username=username, slug="heat")
+    _selection(db_transaction, username=username, slug="the-conversation")
+    db_transaction.flush()
+
+    count = watched_crud.count_watched_selections(
+        session=db_transaction, letterboxd_username=username
+    )
+
+    assert count == 2
+
+
+def test_count_watched_selections_only_counts_requested_user(
+    db_transaction: Session,
+    user_factory,
+):
+    user = user_factory()
+    other_user = user_factory()
+    _selection(db_transaction, username=other_user.letterboxd_username, slug="heat")
+    db_transaction.flush()
+
+    count = watched_crud.count_watched_selections(
+        session=db_transaction, letterboxd_username=user.letterboxd_username
+    )
+
+    assert count == 0
+
+
 def test_relink_is_idempotent(
     db_transaction: Session,
     user_factory,

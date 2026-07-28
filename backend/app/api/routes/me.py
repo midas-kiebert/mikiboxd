@@ -44,8 +44,8 @@ router = APIRouter(prefix="/me", tags=["me"])
 
 
 @router.get("/", response_model=UserMe)
-def get_current_user(current_user: CurrentUser) -> UserMe:
-    return user_converters.to_me(current_user)
+def get_current_user(session: SessionDep, current_user: CurrentUser) -> UserMe:
+    return user_converters.to_me(current_user, session=session)
 
 
 @router.get("/saved-presets", response_model=list[SavedPresetPublic])

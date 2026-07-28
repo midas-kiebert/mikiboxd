@@ -327,7 +327,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignSelf: "center",
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
       marginBottom: 2,
     },
     iconBubbleCompact: {

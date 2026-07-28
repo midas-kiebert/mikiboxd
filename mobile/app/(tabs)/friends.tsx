@@ -427,7 +427,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       borderRadius: 999,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
     },
     sectionCountCallToAction: {
       backgroundColor: colors.orange.primary,
@@ -489,7 +489,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       width: QR_SIZE,
       height: QR_SIZE,
       borderRadius: 12,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
       alignItems: 'center',
       justifyContent: 'center',
     },

@@ -1,3 +1,4 @@
+from sqlalchemy import exists, update
 from sqlmodel import Session, col, select
 
 from app.models.movie import Movie
@@ -85,6 +86,55 @@ def delete_watched_selection(
     session.delete(selection)
     session.flush()
     return selection
+
+
+def relink_watched_selections_to_catalog(
+    *,
+    session: Session,
+    letterboxd_username: str,
+) -> int:
+    """Attach movie ids to this user's watched rows that were stored without one.
+
+    A row is written with `movie_id` NULL whenever the film was not in our
+    catalog at sync time — either it had never been screened by a scraped
+    cinema, or it had no `letterboxd_slug` yet because enrichment had not
+    reached it. Both change over time, but nothing else ever revisits the row:
+    `movie_id` is only ever written at insert.
+
+    That matters because `get_watched` joins on `movie_id`, so an unlinked row
+    is invisible — a film the user has seen is not treated as watched. The full
+    re-walk fixes it by replacing every row, but the RSS top-up only inserts
+    new slugs, so without this a newly-catalogued film would go unrecognised
+    until the next full walk.
+
+    Parameters:
+        session (Session): The database session.
+        letterboxd_username (str): The username of the user on Letterboxd.
+    Returns:
+        int: How many rows were linked to a movie.
+    """
+    matching_movie_id = (
+        select(col(Movie.id))
+        .where(col(Movie.letterboxd_slug) == col(WatchedSelection.letterboxd_slug))
+        .limit(1)
+        .scalar_subquery()
+    )
+    stmt = (
+        update(WatchedSelection)
+        .where(
+            col(WatchedSelection.letterboxd_username) == letterboxd_username,
+            col(WatchedSelection.movie_id).is_(None),
+            exists(
+                select(col(Movie.id)).where(
+                    col(Movie.letterboxd_slug)
+                    == col(WatchedSelection.letterboxd_slug)
+                )
+            ),
+        )
+        .values(movie_id=matching_movie_id)
+    )
+    result = session.execute(stmt)
+    return result.rowcount or 0
 
 
 def get_watched_selections(

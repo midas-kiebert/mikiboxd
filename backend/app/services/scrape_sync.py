@@ -125,6 +125,19 @@ def cleanup_letterboxd_data(
         .values(last_watched_sync=None)
     )
 
+    # The attempt timestamps only exist to space out retries, so they fall under
+    # the same retention cutoff. They are not counted separately: a row past the
+    # cutoff has already been reported through its success timestamp.
+    for attempt_column, attempt_field in (
+        (col(Letterboxd.last_watchlist_sync_attempt), "last_watchlist_sync_attempt"),
+        (col(Letterboxd.last_watched_sync_attempt), "last_watched_sync_attempt"),
+    ):
+        session.execute(
+            update(Letterboxd)
+            .where(attempt_column.is_not(None), attempt_column < cutoff)
+            .values({attempt_field: None})
+        )
+
     orphaned_usernames = _orphaned_letterboxd_usernames_stmt()
     orphaned_row_count_stmt = (
         select(func.count())

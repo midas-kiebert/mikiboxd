@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from app.exceptions import scraper_exceptions
 
 from . import logger
-from .utils import get_page_async
+from .utils import SlugScrapeResult, get_page_async
 
 
 async def get_watchlist_page_async(
@@ -51,17 +51,18 @@ def extract_slugs_from_page(page: BeautifulSoup) -> list[str]:
     return slugs
 
 
-def get_watchlist(username: str) -> list[str]:
+def get_watchlist(username: str) -> SlugScrapeResult:
     start = perf_counter()
-    slugs = asyncio.run(get_watchlist_async(username=username))
+    result = asyncio.run(get_watchlist_async(username=username))
     end = perf_counter()
     logger.info(
-        f"Fetched {len(slugs)} watchlist slugs for user {username} in {end - start:.2f} seconds."
+        f"Fetched {len(result.slugs)} watchlist slugs for user {username} in "
+        f"{end - start:.2f} seconds (complete={result.is_complete})."
     )
-    return slugs
+    return result
 
 
-async def get_watchlist_async(username: str) -> list[str]:
+async def get_watchlist_async(username: str) -> SlugScrapeResult:
     async with ClientSession() as session:
         first_page = await get_watchlist_page_async(
             session=session, username=username, page_num=1
@@ -83,20 +84,38 @@ async def get_watchlist_async(username: str) -> list[str]:
             logger.error("No slugs found on the first page of watchlist.")
             raise scraper_exceptions.ScraperStructureError()
         if not slugs_1:
-            return []
+            return SlugScrapeResult(slugs=[], is_complete=True)
         perpage = len(slugs_1)
         total_pages = (count + perpage - 1) // perpage
 
-        all_slugs = set(extract_slugs_from_page(page=first_page))
+        all_slugs = set(slugs_1)
+        is_complete = True
 
         tasks = [
             get_watchlist_page_async(session, username, page_num)
             for page_num in range(2, total_pages + 1)
         ]
         pages = await asyncio.gather(*tasks)
-        for page in pages:
-            if page:
-                slugs = extract_slugs_from_page(page=page)
-                all_slugs.update(slugs)
+        for page_num, page in enumerate(pages, start=2):
+            if page is None:
+                logger.warning(
+                    "Watchlist scrape for %s: page %s/%s failed to fetch.",
+                    username,
+                    page_num,
+                    total_pages,
+                )
+                is_complete = False
+                continue
+            slugs = extract_slugs_from_page(page=page)
+            if not slugs:
+                logger.warning(
+                    "Watchlist scrape for %s: page %s/%s returned 0 poster slugs.",
+                    username,
+                    page_num,
+                    total_pages,
+                )
+                is_complete = False
+                continue
+            all_slugs.update(slugs)
 
-        return list(all_slugs)
+        return SlugScrapeResult(slugs=list(all_slugs), is_complete=is_complete)

@@ -122,5 +122,5 @@ def test_get_recent_watched_slugs_bypasses_the_cooldown(mocker):
 
     slugs = rss.get_recent_watched_slugs("someone")
 
-    assert slugs == ["touki-bouki", "the-return"]
+    assert slugs == ["touki-bouki", "fargo"]
     assert mock_fetch.call_args.kwargs["ignore_challenge_block"] is True

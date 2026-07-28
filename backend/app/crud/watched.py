@@ -126,8 +126,7 @@ def relink_watched_selections_to_catalog(
             col(WatchedSelection.movie_id).is_(None),
             exists(
                 select(col(Movie.id)).where(
-                    col(Movie.letterboxd_slug)
-                    == col(WatchedSelection.letterboxd_slug)
+                    col(Movie.letterboxd_slug) == col(WatchedSelection.letterboxd_slug)
                 )
             ),
         )

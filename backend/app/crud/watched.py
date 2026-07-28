@@ -1,4 +1,6 @@
-from sqlalchemy import exists, update
+from typing import cast
+
+from sqlalchemy import CursorResult, exists, update
 from sqlmodel import Session, col, func, select
 
 from app.models.movie import Movie
@@ -133,7 +135,7 @@ def relink_watched_selections_to_catalog(
         .values(movie_id=matching_movie_id)
     )
     result = session.execute(stmt)
-    return result.rowcount or 0
+    return cast(CursorResult, result).rowcount or 0
 
 
 def get_watched_selections(

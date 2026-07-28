@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for movie / [id]. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   SectionList,
   Image,
@@ -77,14 +77,23 @@ type MovieContentProps = {
   showtimeId?: string | string[];
   inheritFilters?: string | string[];
   cinemaId?: string | string[];
+  filtersButton: ReactNode;
+  filtersModalVisible: boolean;
+  setFiltersModalVisible: (visible: boolean) => void;
 };
 
 /**
- * Lightweight route shell. Renders only the header + skeleton on the first
- * frame so the native push animation can start immediately, then mounts the
- * data-fetching MovieContent after the transition's interactions settle.
- * Without this split, Android waits for MovieContent's expensive first render
- * (filter hooks + queries) to commit before it begins the slide.
+ * Lightweight route shell. Renders the page's own chrome — the back button and
+ * the Filters button — plus a skeleton on the first frame, so the push
+ * animation can start immediately, then mounts the data-fetching MovieContent
+ * after the transition's interactions settle. Without this split, Android waits
+ * for MovieContent's expensive first render (filter hooks + queries) to commit
+ * before it begins the slide.
+ *
+ * Neither button belongs to the data, so both live here rather than inside the
+ * deferred content: back works on the first frame, and so does Filters — the
+ * sheet it asks for opens as soon as the content that owns the filter state is
+ * up, which is the very next interaction tick.
  */
 export default function MoviePage() {
   const colors = useThemeColors();
@@ -98,6 +107,21 @@ export default function MoviePage() {
   }>();
 
   const contentReady = useDeferredMount(`movie:${id}`);
+  const [filtersModalVisible, setFiltersModalVisible] = useState(false);
+
+  const filtersButton = (
+    <TouchableOpacity
+      style={styles.filterBtn}
+      onPress={() => {
+        triggerSelectionHaptic();
+        setFiltersModalVisible(true);
+      }}
+      activeOpacity={0.8}
+    >
+      <MaterialIcons name="tune" size={14} color={colors.pillText} />
+      <ThemedText style={styles.filterBtnText}>Filters</ThemedText>
+    </TouchableOpacity>
+  );
 
   return (
     <TopSafeAreaView style={styles.container}>
@@ -120,29 +144,43 @@ export default function MoviePage() {
           showtimeId={showtimeId}
           inheritFilters={inheritFilters}
           cinemaId={cinemaId}
+          filtersButton={filtersButton}
+          filtersModalVisible={filtersModalVisible}
+          setFiltersModalVisible={setFiltersModalVisible}
         />
       ) : (
-        <MovieSkeleton styles={styles} />
+        <MovieSkeleton styles={styles} filtersButton={filtersButton} />
       )}
     </TopSafeAreaView>
   );
 }
 
-function MovieSkeleton({ styles }: { styles: MovieStyles }) {
+/** The poster/title block, which is the only part of the page the movie query owns. */
+function MovieHeaderSkeleton({ styles }: { styles: MovieStyles }) {
+  return (
+    <View style={styles.staticHeader}>
+      <Skeleton style={styles.poster} />
+      <View style={styles.summaryInfo}>
+        <Skeleton style={{ height: 24, width: "75%", borderRadius: 5 }} />
+        <Skeleton style={{ height: 13, width: "50%", borderRadius: 4, marginTop: 6 }} />
+        <Skeleton style={{ height: 12, width: "65%", borderRadius: 4, marginTop: 4 }} />
+      </View>
+    </View>
+  );
+}
+
+function MovieSkeleton({
+  styles,
+  filtersButton,
+}: {
+  styles: MovieStyles;
+  filtersButton: ReactNode;
+}) {
   return (
     <>
-      <View style={styles.staticHeader}>
-        <Skeleton style={styles.poster} />
-        <View style={styles.summaryInfo}>
-          <Skeleton style={{ height: 24, width: "75%", borderRadius: 5 }} />
-          <Skeleton style={{ height: 13, width: "50%", borderRadius: 4, marginTop: 6 }} />
-          <Skeleton style={{ height: 12, width: "65%", borderRadius: 4, marginTop: 4 }} />
-        </View>
-      </View>
+      <MovieHeaderSkeleton styles={styles} />
       <View style={styles.divider} />
-      <View style={styles.filterRow}>
-        <Skeleton style={{ height: 32, width: 88, borderRadius: 18 }} />
-      </View>
+      <View style={styles.filterRow}>{filtersButton}</View>
       <View style={styles.divider} />
       <View style={styles.skeletonList}>
         {[0, 1, 2].map((i) => (
@@ -153,15 +191,22 @@ function MovieSkeleton({ styles }: { styles: MovieStyles }) {
   );
 }
 
-function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContentProps) {
+function MovieContent({
+  id,
+  showtimeId,
+  inheritFilters,
+  cinemaId,
+  filtersButton,
+  filtersModalVisible,
+  setFiltersModalVisible,
+}: MovieContentProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const isFetchingMoreRef = useRef(false);
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
-  const { openShowtimeModal } = useShowtimeModal();
+  const { openShowtimeModal, openShowtimeModalById } = useShowtimeModal();
 
-  const [filtersModalVisible, setFiltersModalVisible] = useState(false);
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   // Which "watchlisted/watched by friends" popup is open, if any.
@@ -414,110 +459,115 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
     .filter((entry) => entry.count > 0)
     .map((entry) => ({ ...entry, meta: getFriendWatchKindMeta(entry.kind, colors) }));
 
+  // The movie query owns the header block and nothing else. It used to gate the
+  // whole page, so a slow metadata request also held back the filter row and
+  // the showtimes list — which come from a separate query and are frequently
+  // ready first.
+  const hasMovieFailed = isMovieError || (!isMovieLoading && !movie);
+
   return (
     <>
-      {isMovieLoading ? (
-        <MovieSkeleton styles={styles} />
-      ) : isMovieError || !movie ? (
+      {hasMovieFailed ? (
         <View style={styles.centered}>
           <ThemedText style={styles.errorText}>Could not load movie.</ThemedText>
         </View>
       ) : (
         <>
           {/* Static movie header — stays fixed while showtimes scroll */}
-          <View style={styles.staticHeader}>
-            <TouchableOpacity
-              onPress={handleOpenLetterboxd}
-              activeOpacity={0.85}
-              disabled={!letterboxdUrl}
-            >
-              {isSynthetic ? (
-                <PosterPlaceholder style={styles.poster} glyphSize={40} />
-              ) : (
-                <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
-              )}
-            </TouchableOpacity>
-            <View style={styles.summaryInfo}>
-              <ThemedText style={styles.movieTitle} numberOfLines={3}>
-                {movie.title}
-              </ThemedText>
-              {movie.original_title ? (
-                <ThemedText style={styles.originalTitle} numberOfLines={2}>{movie.original_title}</ThemedText>
-              ) : null}
-              {movie.directors && movie.directors.length > 0 ? (
-                <ThemedText style={styles.directorText} numberOfLines={2}>
-                  <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
-                  {movie.directors.join(", ")}
-                  {movie.release_year ? ` (${movie.release_year})` : null}
+          {movie ? (
+            <View style={styles.staticHeader}>
+              <TouchableOpacity
+                onPress={handleOpenLetterboxd}
+                activeOpacity={0.85}
+                disabled={!letterboxdUrl}
+              >
+                {isSynthetic ? (
+                  <PosterPlaceholder style={styles.poster} glyphSize={40} />
+                ) : (
+                  <Image source={{ uri: movie.poster_link ?? undefined }} style={styles.poster} />
+                )}
+              </TouchableOpacity>
+              <View style={styles.summaryInfo}>
+                <ThemedText style={styles.movieTitle} numberOfLines={3}>
+                  {movie.title}
                 </ThemedText>
-              ) : isSynthetic ? (
-                <ThemedText style={styles.directorText} numberOfLines={2}>
-                  <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
-                  {`${UNKNOWN_METADATA_PLACEHOLDER} (${UNKNOWN_METADATA_PLACEHOLDER})`}
-                </ThemedText>
-              ) : movie.release_year ? (
-                <ThemedText style={styles.directorText}>{movie.release_year}</ThemedText>
-              ) : null}
-              {movie.cast && movie.cast.length > 0 ? (
-                <ThemedText style={styles.metaText} numberOfLines={2}>
-                  <ThemedText style={styles.metaLabel}>STARRING </ThemedText>
-                  {movie.cast.slice(0, 3).join(", ")}
-                </ThemedText>
-              ) : null}
-              {/* Bottom line of the header: runtime · language on the left, the
-                  watch markers pushed to the right. They ride along on an
-                  existing line rather than claiming a column of their own, so
-                  the title and director keep the full width and the header
-                  gains no height. */}
-              {runtimeLanguageLabel || watchMarkers.length > 0 ? (
-                <View style={styles.metaFooterRow}>
-                  <ThemedText style={styles.metaFooterText} numberOfLines={1}>
-                    {runtimeLanguageLabel}
+                {movie.original_title ? (
+                  <ThemedText style={styles.originalTitle} numberOfLines={2}>{movie.original_title}</ThemedText>
+                ) : null}
+                {movie.directors && movie.directors.length > 0 ? (
+                  <ThemedText style={styles.directorText} numberOfLines={2}>
+                    <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
+                    {movie.directors.join(", ")}
+                    {movie.release_year ? ` (${movie.release_year})` : null}
                   </ThemedText>
-                  {watchMarkers.length > 0 ? (
-                    <View style={styles.watchMarkers}>
-                      {watchMarkers.map((marker) => (
-                        <TouchableOpacity
-                          key={marker.kind}
-                          style={styles.watchMarker}
-                          onPress={() => {
-                            triggerSelectionHaptic();
-                            setWatchModalKind(marker.kind);
-                          }}
-                          // Half the row gap each, so the pills' touch areas meet
-                          // without overlapping — the pill itself is only ~21pt tall.
-                          hitSlop={{
-                            top: 8,
-                            bottom: 8,
-                            left: WATCH_MARKER_GAP / 2,
-                            right: WATCH_MARKER_GAP / 2,
-                          }}
-                          activeOpacity={0.7}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${marker.meta.title} by ${marker.count} friend${
-                            marker.count === 1 ? "" : "s"
-                          }`}
-                        >
-                          <MaterialIcons
-                            name={marker.meta.icon}
-                            size={13}
-                            color={marker.meta.accent}
-                          />
-                          <ThemedText style={styles.watchMarkerCount}>{marker.count}</ThemedText>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  ) : null}
-                </View>
-              ) : null}
+                ) : isSynthetic ? (
+                  <ThemedText style={styles.directorText} numberOfLines={2}>
+                    <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
+                    {`${UNKNOWN_METADATA_PLACEHOLDER} (${UNKNOWN_METADATA_PLACEHOLDER})`}
+                  </ThemedText>
+                ) : movie.release_year ? (
+                  <ThemedText style={styles.directorText}>{movie.release_year}</ThemedText>
+                ) : null}
+                {movie.cast && movie.cast.length > 0 ? (
+                  <ThemedText style={styles.metaText} numberOfLines={2}>
+                    <ThemedText style={styles.metaLabel}>STARRING </ThemedText>
+                    {movie.cast.slice(0, 3).join(", ")}
+                  </ThemedText>
+                ) : null}
+                {/* Bottom line of the header: runtime · language on the left, the
+                    watch markers pushed to the right. They ride along on an
+                    existing line rather than claiming a column of their own, so
+                    the title and director keep the full width and the header
+                    gains no height. */}
+                {runtimeLanguageLabel || watchMarkers.length > 0 ? (
+                  <View style={styles.metaFooterRow}>
+                    <ThemedText style={styles.metaFooterText} numberOfLines={1}>
+                      {runtimeLanguageLabel}
+                    </ThemedText>
+                    {watchMarkers.length > 0 ? (
+                      <View style={styles.watchMarkers}>
+                        {watchMarkers.map((marker) => (
+                          <TouchableOpacity
+                            key={marker.kind}
+                            style={styles.watchMarker}
+                            onPress={() => {
+                              triggerSelectionHaptic();
+                              setWatchModalKind(marker.kind);
+                            }}
+                            // Half the row gap each, so the pills' touch areas meet
+                            // without overlapping — the pill itself is only ~21pt tall.
+                            hitSlop={{
+                              top: 8,
+                              bottom: 8,
+                              left: WATCH_MARKER_GAP / 2,
+                              right: WATCH_MARKER_GAP / 2,
+                            }}
+                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${marker.meta.title} by ${marker.count} friend${
+                              marker.count === 1 ? "" : "s"
+                            }`}
+                          >
+                            <MaterialIcons
+                              name={marker.meta.icon}
+                              size={13}
+                              color={marker.meta.accent}
+                            />
+                            <ThemedText style={styles.watchMarkerCount}>{marker.count}</ThemedText>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
             </View>
-          </View>
+          ) : (
+            <MovieHeaderSkeleton styles={styles} />
+          )}
           <View style={styles.divider} />
           <View style={styles.filterRow}>
-            <TouchableOpacity style={styles.filterBtn} onPress={() => { triggerSelectionHaptic(); setFiltersModalVisible(true); }} activeOpacity={0.8}>
-              <MaterialIcons name="tune" size={14} color={colors.pillText} />
-              <ThemedText style={styles.filterBtnText}>Filters</ThemedText>
-            </TouchableOpacity>
+            {filtersButton}
             <ActiveFilterChips
               inline
               onOpenFilters={() => { triggerSelectionHaptic(); setFiltersModalVisible(true); }}
@@ -564,7 +614,7 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
                         : undefined,
                   ]}
                   onPress={() => {
-                    if (movie)
+                    if (movie) {
                       openShowtimeModal(
                         {
                           ...item,
@@ -574,6 +624,13 @@ function MovieContent({ id, showtimeId, inheritFilters, cinemaId }: MovieContent
                         },
                         { openedFrom: { movieId } }
                       );
+                      return;
+                    }
+                    // The list no longer waits on the movie query, so a row can
+                    // be tapped in the window before the metadata lands. Open
+                    // the sheet by id rather than swallow the tap — it fetches
+                    // what it needs itself and is up immediately either way.
+                    openShowtimeModalById(item.id, { openedFrom: { movieId } });
                   }}
                   activeOpacity={0.85}
                 >

@@ -284,8 +284,8 @@ export function ShowtimesScreenSkeleton({
       )}
       {filterRow ?? (
         <View style={styles.skeletonFilterRow}>
-          <Skeleton style={{ height: 32, width: 90, borderRadius: 18 }} />
-          <Skeleton style={{ height: 32, width: 72, borderRadius: 18 }} />
+          <Skeleton style={{ height: 40, width: 90, borderRadius: 18 }} />
+          <Skeleton style={{ height: 40, width: 72, borderRadius: 18 }} />
         </View>
       )}
       <View style={styles.listContent}>
@@ -342,7 +342,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingVertical: 8,
     },
     // Mirrors ActiveFilterChips' own row: 7pt of vertical padding around a
-    // 28pt chip, closed off by the same divider.
+    // 36pt chip, closed off by the same divider. The chip's 36pt (rather than
+    // the 5+5+border padding alone would suggest) comes from ThemedText's
+    // 24pt default line height, which the real chip's label inherits.
     chipsPlaceholderRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -353,7 +355,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderBottomColor: colors.divider,
     },
     chipsPlaceholderChip: {
-      height: 28,
+      height: 36,
       width: 120,
       borderRadius: 14,
     },

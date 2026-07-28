@@ -113,6 +113,17 @@ def sync_watched(
         )
     }
 
+    # Rows stored before their film reached our catalog stay unlinked forever
+    # otherwise: nothing else ever revisits movie_id, and only a linked row
+    # counts as watched. Run unconditionally, ahead of both paths below, so a
+    # user's watched list self-heals as soon as the catalog catches up -
+    # regardless of which path this sync takes. Costs one UPDATE, no
+    # Letterboxd traffic.
+    watched_crud.relink_watched_selections_to_catalog(
+        session=session,
+        letterboxd_username=letterboxd_username,
+    )
+
     # Fast path: one RSS request instead of a page-per-72-films walk. Only
     # viable once we already hold a full list to top up, and only until the
     # full-resync interval comes round.
@@ -124,14 +135,6 @@ def sync_watched(
                 letterboxd_username=letterboxd_username,
                 slugs=recent_slugs,
                 known_slugs=known_slugs,
-            )
-            # Rows stored before their film reached our catalog stay unlinked
-            # forever otherwise: this path never rewrites existing rows, and
-            # only a linked row counts as watched. Costs one UPDATE, no
-            # Letterboxd traffic.
-            watched_crud.relink_watched_selections_to_catalog(
-                session=session,
-                letterboxd_username=letterboxd_username,
             )
             user.letterboxd.last_watched_sync = now_amsterdam_naive()
             session.commit()

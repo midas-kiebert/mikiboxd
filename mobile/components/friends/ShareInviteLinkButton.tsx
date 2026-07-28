@@ -23,7 +23,7 @@ export default function ShareInviteLinkButton({ inviteUrl }: ShareInviteLinkButt
     triggerSelectionHaptic();
     try {
       await Share.share({
-        message: `Add me on MiKiNO: ${inviteUrl}`,
+        message: inviteUrl,
         url: inviteUrl,
       });
     } catch (error) {

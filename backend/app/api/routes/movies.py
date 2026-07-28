@@ -1,12 +1,20 @@
 """Movie endpoints."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status as http_status
+from fastapi.responses import HTMLResponse
 
 from app.api.deps import CurrentUser, SessionDep
+from app.core.config import settings
 from app.inputs.movie import Filters, get_filters
+from app.models.movie import Movie
 from app.schemas.movie import MovieLoggedIn, MovieSummaryLoggedIn
 from app.schemas.showtime import ShowtimeInMovieLoggedIn
 from app.services import movies as movies_service
+from app.services.share_preview import (
+    DEFAULT_SHARE_PREVIEW_IMAGE,
+    render_share_preview_html,
+)
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 
@@ -62,6 +70,34 @@ def read_movie_showtimes(
         offset=offset,
         filters=filters,
     )
+
+
+@router.get(
+    "/{id}/share-preview",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def get_movie_share_preview(*, session: SessionDep, id: int) -> HTMLResponse:
+    """Unauthenticated HTML page carrying per-movie OpenGraph tags.
+
+    Only ever hit by link-preview crawlers (WhatsApp, iMessage, Slack, ...) —
+    nginx routes them here based on User-Agent instead of the SPA's static
+    index.html, which can't vary per movie. Real visitors never see this
+    page; nginx sends them straight to the SPA.
+    """
+    movie = session.get(Movie, id)
+    if movie is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Movie not found"
+        )
+
+    body = render_share_preview_html(
+        title=movie.title,
+        description="Check it out on MiKiNO.",
+        image_url=movie.poster_link or DEFAULT_SHARE_PREVIEW_IMAGE,
+        page_url=f"{settings.FRONTEND_HOST}/movie/{id}",
+    )
+    return HTMLResponse(content=body)
 
 
 # KEEP AT THE BOTTOM

@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   View,
   Linking,
+  Share,
+  Alert,
 } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,6 +56,7 @@ import {
   UNKNOWN_METADATA_PLACEHOLDER,
   isSyntheticMovieId,
 } from "@/constants/synthetic-movies";
+import { buildMovieShareUrl } from "@/constants/movie-link";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
 
@@ -424,6 +427,19 @@ function MovieContent({
     }
   };
 
+  const handleShareMovie = async () => {
+    if (!movie) return;
+    const shareUrl = buildMovieShareUrl(movie.id);
+    try {
+      await Share.share({
+        message: shareUrl,
+        url: shareUrl,
+      });
+    } catch {
+      Alert.alert("Error", "Could not share this movie.");
+    }
+  };
+
   const openedTargetRef = useRef<number | null>(null);
   useEffect(() => {
     if (targetShowtimeId === null || !movie || showtimes.length === 0) return;
@@ -597,6 +613,16 @@ function MovieContent({
                 if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
               }}
             />
+            <TouchableOpacity
+              style={styles.shareBtn}
+              onPress={() => void handleShareMovie()}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Share this movie"
+            >
+              <MaterialIcons name="share" size={14} color={colors.pillText} />
+              <ThemedText style={styles.filterBtnText}>Share</ThemedText>
+            </TouchableOpacity>
           </View>
           <View style={styles.divider} />
           <SectionList
@@ -770,6 +796,18 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 13,
       fontWeight: "500",
       color: colors.pillText,
+    },
+    shareBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      marginRight: 16,
+      borderRadius: 18,
+      backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.pillBorder,
     },
     centered: {
       flex: 1,

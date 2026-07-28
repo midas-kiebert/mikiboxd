@@ -865,14 +865,9 @@ export default function ShowtimeActionModal({
       return;
     }
     const pingUrl = buildShowtimePingUrl(showtime.id, currentUser.id);
-    const startsAt = DateTime.fromISO(showtime.datetime);
-    const dateTimeLabel = startsAt.isValid
-      ? startsAt.toFormat("ccc, LLL d 'at' HH:mm")
-      : "this showtime";
-    const cinemaLabel = showtime.cinema?.name?.trim() || "the cinema";
     try {
       await Share.share({
-        message: `Come see ${showtime.movie.title} at ${dateTimeLabel} in ${cinemaLabel}\n${pingUrl}`,
+        message: pingUrl,
         url: pingUrl,
       });
     } catch {

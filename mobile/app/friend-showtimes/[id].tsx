@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for friend-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Image, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -13,7 +13,10 @@ import { usePrefetchShowtimeVisibility } from 'shared/hooks/useShowtimeVisibilit
 import useAuth from 'shared/hooks/useAuth';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
-import ShowtimesScreen, { ShowtimesScreenSkeleton } from '@/components/showtimes/ShowtimesScreen';
+import ShowtimesScreen, {
+  ActiveFilterChipsPlaceholder,
+  ShowtimesScreenSkeleton,
+} from '@/components/showtimes/ShowtimesScreen';
 import { useDeferredMount } from '@/utils/use-deferred-mount';
 import FiltersButtonRow from '@/components/filters/FiltersButtonRow';
 import FiltersModal from '@/components/filters/FiltersModal';
@@ -54,22 +57,128 @@ type MovieSection = {
   data: ShowtimeLoggedIn[];
 };
 
+/**
+ * A friend's agenda is nothing but showtimes, so everything above the list —
+ * the top bar, the search field, the Filters button and the Interested toggle —
+ * is the screen's frame rather than something the data decides. It is owned
+ * here, above the deferred-mount split, so it paints and answers taps on the
+ * first frame; whatever the user types or opens while the content below is
+ * still mounting carries straight over, because it was never the content's
+ * state to begin with.
+ */
 export default function FriendShowtimesScreen() {
   const { id, name } = useLocalSearchParams<{ id?: string | string[]; name?: string | string[] }>();
   const ready = useDeferredMount(`friend:${Array.isArray(id) ? id[0] : id}`);
   const routeFriendName = getFriendTitle(getRouteParam(name));
+  const [searchQuery, setSearchQuery] = useState('');
+  // Independent toggle: not inherited from shared state (own thing per user visit).
+  const [includeInterested, setIncludeInterested] = useState(true);
+  const [filtersModalVisible, setFiltersModalVisible] = useState(false);
+
+  const filtersButtonRow = (
+    <FiltersButtonRow
+      onPress={() => setFiltersModalVisible(true)}
+      rightSlot={
+        <InterestedToggle
+          includeInterested={includeInterested}
+          onToggle={() => {
+            triggerLongPressHaptic();
+            setIncludeInterested((previous) => !previous);
+          }}
+        />
+      }
+    />
+  );
+
   if (!ready) {
-    return <ShowtimesScreenSkeleton topBarTitle={routeFriendName} topBarShowBackButton />;
+    return (
+      <ShowtimesScreenSkeleton
+        topBarTitle={routeFriendName}
+        topBarShowBackButton
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        filterRow={
+          <>
+            {filtersButtonRow}
+            <ActiveFilterChipsPlaceholder />
+          </>
+        }
+      />
+    );
   }
-  return <FriendShowtimesContent id={id} routeFriendName={routeFriendName} />;
+  return (
+    <FriendShowtimesContent
+      id={id}
+      routeFriendName={routeFriendName}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      includeInterested={includeInterested}
+      filtersButtonRow={filtersButtonRow}
+      filtersModalVisible={filtersModalVisible}
+      setFiltersModalVisible={setFiltersModalVisible}
+    />
+  );
+}
+
+/** The toggle in the filter row's right slot, so both mount phases render it identically. */
+function InterestedToggle({
+  includeInterested,
+  onToggle,
+}: {
+  includeInterested: boolean;
+  onToggle: () => void;
+}) {
+  const colors = useThemeColors();
+  const styles = createStyles(colors);
+  return (
+    <TouchableOpacity
+      onPress={onToggle}
+      activeOpacity={0.7}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: includeInterested }}
+      accessibilityLabel={`${includeInterested ? 'Hide' : 'Show'} interested`}
+      style={[
+        styles.toggle,
+        includeInterested
+          ? { backgroundColor: colors.orange.primary, borderColor: colors.orange.primary }
+          : { backgroundColor: colors.pillBackground, borderColor: colors.cardBorder },
+      ]}
+    >
+      <MaterialIcons
+        name={includeInterested ? 'bookmark' : 'bookmark-border'}
+        size={15}
+        color={includeInterested ? colors.orange.secondary : colors.textSecondary}
+      />
+      <ThemedText
+        style={[
+          styles.toggleLabel,
+          { color: includeInterested ? colors.orange.secondary : colors.textSecondary },
+        ]}
+      >
+        Interested
+      </ThemedText>
+    </TouchableOpacity>
+  );
 }
 
 function FriendShowtimesContent({
   id,
   routeFriendName,
+  searchQuery,
+  onSearchChange,
+  includeInterested,
+  filtersButtonRow,
+  filtersModalVisible,
+  setFiltersModalVisible,
 }: {
   id?: string | string[];
   routeFriendName: string;
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  includeInterested: boolean;
+  filtersButtonRow: ReactElement;
+  filtersModalVisible: boolean;
+  setFiltersModalVisible: (visible: boolean) => void;
 }) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -84,10 +193,6 @@ function FriendShowtimesContent({
   const { user } = useAuth();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const userId = useMemo(() => getRouteParam(id), [id]);
-  const [searchQuery, setSearchQuery] = useState('');
-  // Independent toggle: not inherited from shared state (own thing per user visit).
-  const [includeInterested, setIncludeInterested] = useState(true);
-  const [filtersModalVisible, setFiltersModalVisible] = useState(false);
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
@@ -265,31 +370,6 @@ function FriendShowtimesContent({
     if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
   };
 
-  const interestedToggle = (
-    <TouchableOpacity
-      onPress={() => { triggerLongPressHaptic(); setIncludeInterested((v) => !v); }}
-      activeOpacity={0.7}
-      accessibilityRole="switch"
-      accessibilityState={{ checked: includeInterested }}
-      accessibilityLabel={`${includeInterested ? 'Hide' : 'Show'} interested`}
-      style={[
-        styles.toggle,
-        includeInterested
-          ? { backgroundColor: colors.orange.primary, borderColor: colors.orange.primary }
-          : { backgroundColor: colors.pillBackground, borderColor: colors.cardBorder },
-      ]}
-    >
-      <MaterialIcons
-        name={includeInterested ? 'bookmark' : 'bookmark-border'}
-        size={15}
-        color={includeInterested ? colors.orange.secondary : colors.textSecondary}
-      />
-      <ThemedText style={[styles.toggleLabel, { color: includeInterested ? colors.orange.secondary : colors.textSecondary }]}>
-        Interested
-      </ThemedText>
-    </TouchableOpacity>
-  );
-
   // Clear sections while refreshing so pull-to-refresh visibly reloads, even
   // when the refetched data is unchanged.
   const visibleMovieSections = refreshing ? [] : movieSections;
@@ -348,13 +428,10 @@ function FriendShowtimesContent({
         refreshing={refreshing}
         onRefresh={handleRefresh}
         searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
+        onSearchChange={onSearchChange}
         filterRow={
           <>
-            <FiltersButtonRow
-              onPress={() => setFiltersModalVisible(true)}
-              rightSlot={interestedToggle}
-            />
+            {filtersButtonRow}
             <ActiveFilterChips
               onOpenFilters={() => setFiltersModalVisible(true)}
               onOpenCinemaModal={() => setCinemaModalVisible(true)}

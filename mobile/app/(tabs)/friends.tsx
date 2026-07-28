@@ -8,7 +8,7 @@
  * asked to be your friend) behind a pill you had to know to press.
  *
  * Now "Friends" is a single scrollable list with incoming requests sectioned at
- * the top, your friends under them, and anything you have sent trailing at the
+ * the top, anything you have sent under them, and your friends trailing at the
  * bottom — the whole state of your friendships in one scroll, with a pending
  * request impossible to miss. "Find people" is a different job (search
  * strangers, or show them your QR code), so it gets its own mode rather than a
@@ -171,14 +171,6 @@ export default function FriendsScreen() {
         data: displayedReceived,
       });
     }
-    // Always present, even at zero: it is the section the user came for, and
-    // its footer is where the "no friends yet" prompt lives.
-    built.push({
-      key: 'friends',
-      title: 'Your friends',
-      count: displayedFriends.length,
-      data: displayedFriends,
-    });
     if (displayedSent.length > 0) {
       built.push({
         key: 'sent',
@@ -187,6 +179,14 @@ export default function FriendsScreen() {
         data: displayedSent,
       });
     }
+    // Always present, even at zero: it is the section the user came for, and
+    // its footer is where the "no friends yet" prompt lives.
+    built.push({
+      key: 'friends',
+      title: 'Your friends',
+      count: displayedFriends.length,
+      data: displayedFriends,
+    });
     return built;
   }, [friends, matchName, received, sent]);
 

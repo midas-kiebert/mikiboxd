@@ -57,7 +57,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 3,
       justifyContent: "center",
       alignItems: "center",
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
     },
     text: {
       includeFontPadding: false,

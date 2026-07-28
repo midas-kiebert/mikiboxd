@@ -26,9 +26,15 @@ services:
     command: ["python", "-m", "app.scheduler"]
     depends_on:
       - db
+    volumes:
+      # Shared with `backend` so the Letterboxd request pacing and challenge
+      # cooldown are host-wide. Without it each container (and each uvicorn
+      # worker) paces itself, multiplying the real outbound rate.
+      - letterboxd-state:/var/lib/letterboxd
     env_file:
       - .env
     environment:
+      - LETTERBOXD_STATE_DIR=/var/lib/letterboxd
       - POSTGRES_SERVER=db
       - POSTGRES_PORT=${POSTGRES_PORT}
       - POSTGRES_DB=${POSTGRES_DB}
@@ -94,6 +100,8 @@ services:
     restart: always
     volumes:
       - ./backend/app/logs:/app/logs
+      # See the scheduler service: shared Letterboxd pacing/cooldown state.
+      - letterboxd-state:/var/lib/letterboxd
     networks:
       - traefik-public
       - default
@@ -106,6 +114,7 @@ services:
     env_file:
       - .env
     environment:
+      - LETTERBOXD_STATE_DIR=/var/lib/letterboxd
       - DOMAIN=${DOMAIN}
       - FRONTEND_HOST=${FRONTEND_HOST?Variable not set}
       - ENVIRONMENT=${ENVIRONMENT}
@@ -191,6 +200,7 @@ services:
       - traefik.http.routers.${STACK_NAME?Variable not set}-root-https.tls.certresolver=le
 volumes:
   app-db-data:
+  letterboxd-state:
 
 networks:
   traefik-public:

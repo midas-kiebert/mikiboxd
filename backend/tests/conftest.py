@@ -74,6 +74,31 @@ def db_transaction(create_test_database: Engine) -> Generator[Session, None, Non
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(scope="function", autouse=True)
+def isolated_letterboxd_state(
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[None, None, None]:
+    """Keep the Letterboxd cooldown/pacing files out of the shared /tmp paths.
+
+    Those files are read on every fetch so that separate processes share one
+    cooldown. In a test run that would mean a cooldown left behind by the
+    developer's own app (or by a previous test) silently suppressing requests.
+    """
+    from app.scraping.letterboxd import load_letterboxd_data as letterboxd
+
+    state_dir = tmp_path_factory.mktemp("letterboxd-state")
+    monkeypatch.setattr(
+        letterboxd, "LETTERBOXD_BLOCK_STATE_FILE", str(state_dir / "block.json")
+    )
+    monkeypatch.setattr(
+        letterboxd, "LETTERBOXD_PACING_STATE_FILE", str(state_dir / "pacing.state")
+    )
+    letterboxd.reset_letterboxd_block_state()
+    yield
+    letterboxd.reset_letterboxd_block_state()
+
+
 @pytest.fixture(scope="function")
 def client() -> Generator[TestClient, None, None]:
     with TestClient(app) as c:

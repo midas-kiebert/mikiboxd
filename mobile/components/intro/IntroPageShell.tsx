@@ -129,7 +129,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 29,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
     },
     title: {
       fontSize: 25,

@@ -129,7 +129,10 @@ export default function NotificationRow({
       {isFriendRequest ? (
         <View style={styles.actions}>
           <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.green.primary }]}
+            style={[
+              styles.actionButton,
+              { backgroundColor: colors.green.primary, borderColor: colors.green.border },
+            ]}
             onPress={() => onAccept(item)}
             disabled={isAccepting || isDeclining}
             activeOpacity={0.7}
@@ -176,6 +179,8 @@ const createStyles = (colors: ThemeColors) =>
       minWidth: 72,
       alignItems: "center",
       justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.pillBorder,
     },
     actionLabel: {
       fontSize: 13,

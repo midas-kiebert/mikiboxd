@@ -277,6 +277,86 @@ def test_get_watchlist(
     assert len(watchlist) == 2
 
 
+def test_count_watchlist_selections_zero_when_none(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+):
+    user = user_factory()
+    assert user.letterboxd_username is not None
+
+    count = watchlist_crud.count_watchlist_selections(
+        session=db_transaction,
+        letterboxd_username=user.letterboxd_username,
+    )
+
+    assert count == 0
+
+
+def test_count_watchlist_selections_counts_all_selections(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+):
+    user = user_factory()
+    movie1 = movie_factory()
+    movie2 = movie_factory()
+
+    assert user.letterboxd_username is not None
+    assert movie1.letterboxd_slug is not None
+    assert movie2.letterboxd_slug is not None
+
+    watchlist_crud.add_watchlist_selection(
+        session=db_transaction,
+        letterboxd_username=user.letterboxd_username,
+        letterboxd_slug=movie1.letterboxd_slug,
+        movie_id=movie1.id,
+    )
+    watchlist_crud.add_watchlist_selection(
+        session=db_transaction,
+        letterboxd_username=user.letterboxd_username,
+        letterboxd_slug=movie2.letterboxd_slug,
+        movie_id=movie2.id,
+    )
+
+    count = watchlist_crud.count_watchlist_selections(
+        session=db_transaction,
+        letterboxd_username=user.letterboxd_username,
+    )
+
+    assert count == 2
+
+
+def test_count_watchlist_selections_only_counts_requested_user(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+):
+    user = user_factory()
+    other_user = user_factory()
+    movie = movie_factory()
+
+    assert user.letterboxd_username is not None
+    assert other_user.letterboxd_username is not None
+    assert movie.letterboxd_slug is not None
+
+    watchlist_crud.add_watchlist_selection(
+        session=db_transaction,
+        letterboxd_username=other_user.letterboxd_username,
+        letterboxd_slug=movie.letterboxd_slug,
+        movie_id=movie.id,
+    )
+
+    count = watchlist_crud.count_watchlist_selections(
+        session=db_transaction,
+        letterboxd_username=user.letterboxd_username,
+    )
+
+    assert count == 0
+
+
 def test_get_watchlist_excludes_selections_without_movie(
     *,
     db_transaction: Session,

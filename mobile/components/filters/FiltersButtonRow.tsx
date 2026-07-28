@@ -55,6 +55,8 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       paddingVertical: 7,
       borderRadius: 18,
       backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.pillBorder,
     },
     pillContent: {
       flexDirection: "row",

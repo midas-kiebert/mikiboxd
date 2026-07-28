@@ -333,7 +333,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 6,
     },
     presetRowCurrent: {
-      borderColor: colors.green.secondary,
+      borderColor: colors.green.border,
       backgroundColor: colors.green.primary,
     },
     presetRowMain: {

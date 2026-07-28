@@ -388,7 +388,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       backgroundColor: colors.pillBackground,
       alignSelf: "center",
       borderWidth: 1,
-      borderColor: colors.divider,
+      borderColor: colors.pillBorder,
       // Chips live in a horizontal ScrollView, so nothing else constrains them:
       // a long label (e.g. a Letterboxd list title) would otherwise make one chip
       // wider than the screen and push every other chip out of reach.

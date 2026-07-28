@@ -45,8 +45,10 @@ export function ThemedText({
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   // `useThemeColor` resolves explicit overrides first, then theme defaults.
   const color = useThemeColor({ light: lightColor, dark: darkColor }, 'text');
+  // Links take the brand green rather than a generic blue, in both schemes.
+  const linkColor = useThemeColor({}, 'tint');
   const resolvedStyle = StyleSheet.flatten([
-    { color },
+    { color: type === 'link' ? linkColor : color },
     type === 'default' ? styles.default : undefined,
     type === 'title' ? styles.title : undefined,
     type === 'defaultSemiBold' ? styles.defaultSemiBold : undefined,
@@ -89,6 +91,5 @@ const styles = StyleSheet.create({
   link: {
     lineHeight: 30,
     fontSize: 16,
-    color: '#0a7ea4',
   },
 });

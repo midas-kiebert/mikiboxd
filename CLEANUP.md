@@ -154,6 +154,8 @@ Legend:
 - [ ] `cinemas.py` — Cinema listing
 - [ ] `users.py` — User management (admin operations)
 - [ ] `watchlist.py` — Watchlist sync logic
+- [ ] `watched.py` — Watched-list sync logic
+- [x] `letterboxd_sync.py` — Shared sync cooldown for `watchlist.py`/`watched.py` (counts failed attempts, not just successes)
 - [ ] `scrape_sync.py` — Triggers scraping from the API layer
 - [ ] `analytics_dashboard.py` — Aggregates AnalyticsEvent/Notification/ShowtimePing/User data for the admin overview
 - [x] `scrape_monitor.py` — Read-only aggregation of ScrapeRun/ScrapeRecap for the admin scrape monitor (deltas + anomaly flags)
@@ -237,7 +239,9 @@ Legend:
 **Letterboxd integration:**
 - [ ] `letterboxd/load_letterboxd_data.py` — Watchlist sync ⚠️ Large (1193 LOC) — needs splitting
 - [ ] `letterboxd/watchlist.py` — Watchlist parsing
-- [ ] `letterboxd/utils.py` — Letterboxd utilities
+- [ ] `letterboxd/watched.py` — Watched ("films") parsing; blocked/partial-page detection
+- [x] `letterboxd/rss.py` — Member RSS feed parsing; the cheap "anything new?" check the incremental watched sync runs instead of a full page walk
+- [ ] `letterboxd/utils.py` — Letterboxd utilities, shared `SlugScrapeResult`
 
 ---
 
@@ -548,7 +552,7 @@ Only components created or reworked during the cleanup are listed here; the rest
 - [ ] `backend/Dockerfile` — Backend image (multi-stage, uv, uvicorn)
 - [ ] `frontend/Dockerfile` — Frontend image (Vite build + Nginx)
 - [ ] `.env` structure — What variables are required? What are the defaults?
-- [ ] `alembic/versions/` — 73 migrations: understand the schema evolution
+- [ ] `alembic/versions/` — 74 migrations: understand the schema evolution
 - [ ] `.pre-commit-config.yaml` — What hooks run on commit?
 
 ---

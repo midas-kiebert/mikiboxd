@@ -232,23 +232,25 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderColor: colors.cardBorder,
       height: POSTER_HEIGHT,
     },
+    // Status outlines take each accent's `border` tone, not its `secondary`: the
+    // label tone is dark enough to make a whole tinted card read as heavy.
     cardGoing: {
-      borderColor: colors.green.secondary,
+      borderColor: colors.green.border,
       backgroundColor: colors.green.primary,
     },
     cardInterested: {
-      borderColor: colors.orange.secondary,
+      borderColor: colors.orange.border,
       backgroundColor: colors.orange.primary,
     },
     cardInvited: {
-      borderColor: colors.blue.secondary,
+      borderColor: colors.blue.border,
       backgroundColor: colors.blue.primary,
     },
     dateColumn: {
       width: 74,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.cardBackground,
       borderRightWidth: 1,
       borderRightColor: colors.cardBorder,
       paddingVertical: 8,
@@ -256,15 +258,15 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     dateColumnGoing: {
       backgroundColor: colors.green.primary,
-      borderRightColor: colors.green.secondary,
+      borderRightColor: colors.green.border,
     },
     dateColumnInterested: {
       backgroundColor: colors.orange.primary,
-      borderRightColor: colors.orange.secondary,
+      borderRightColor: colors.orange.border,
     },
     dateColumnInvited: {
       backgroundColor: colors.blue.primary,
-      borderRightColor: colors.blue.secondary,
+      borderRightColor: colors.blue.border,
     },
     weekday: {
       fontSize: 13,

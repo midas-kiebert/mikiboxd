@@ -119,7 +119,7 @@ def update_me(
         )
 
     session.commit()
-    user_public = user_converters.to_me(current_user)
+    user_public = user_converters.to_me(current_user, session=session)
     return user_public
 
 

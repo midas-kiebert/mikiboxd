@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for cinema-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import { DateTime } from "luxon";
@@ -39,6 +39,12 @@ const EMPTY_RUNTIME_RANGES: string[] = [];
 const getRouteParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 
+/**
+ * The search field and the Filters button frame this screen rather than being
+ * part of what it loads, so they live above the deferred-mount split and are
+ * live on the first frame. Their state is owned here too, so a query typed (or
+ * a filter sheet opened) before the content mounts is still there afterwards.
+ */
 export default function CinemaShowtimesScreen() {
   const { name, city } = useLocalSearchParams<{
     name?: string | string[];
@@ -46,21 +52,52 @@ export default function CinemaShowtimesScreen() {
   }>();
   const cinemaKey = `cinema:${Array.isArray(name) ? name[0] : name}:${Array.isArray(city) ? city[0] : city}`;
   const ready = useDeferredMount(cinemaKey);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filtersModalVisible, setFiltersModalVisible] = useState(false);
+
+  const filtersButtonRow = <FiltersButtonRow onPress={() => setFiltersModalVisible(true)} />;
+
   if (!ready) {
     const routeCinemaName = getRouteParam(name)?.trim() ?? "";
     const routeCityName = getRouteParam(city)?.trim() ?? "";
     return (
       <ShowtimesScreenSkeleton
         topBarTitle={routeCinemaName || "Cinema"}
-        topBarTitleSuffix={routeCityName ? `(${routeCityName})` : undefined}
+        topBarTitleSuffix={routeCityName || undefined}
         topBarShowBackButton
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        // No chips placeholder here: this screen's ActiveFilterChips renders
+        // nothing at all when no filter is set, so reserving a row for it would
+        // more often than not leave an empty band that vanishes on mount.
+        filterRow={filtersButtonRow}
       />
     );
   }
-  return <CinemaShowtimesContent />;
+  return (
+    <CinemaShowtimesContent
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      filtersButtonRow={filtersButtonRow}
+      filtersModalVisible={filtersModalVisible}
+      setFiltersModalVisible={setFiltersModalVisible}
+    />
+  );
 }
 
-function CinemaShowtimesContent() {
+function CinemaShowtimesContent({
+  searchQuery,
+  onSearchChange,
+  filtersButtonRow,
+  filtersModalVisible,
+  setFiltersModalVisible,
+}: {
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  filtersButtonRow: ReactElement;
+  filtersModalVisible: boolean;
+  setFiltersModalVisible: (visible: boolean) => void;
+}) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
@@ -79,8 +116,6 @@ function CinemaShowtimesContent() {
   );
   const routeCinemaName = useMemo(() => getRouteParam(name)?.trim() ?? "", [name]);
   const routeCityName = useMemo(() => getRouteParam(city)?.trim() ?? "", [city]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filtersModalVisible, setFiltersModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
@@ -157,7 +192,7 @@ function CinemaShowtimesContent() {
   );
   const cinemaName = routeCinemaName || cinemaFromList?.name || "Cinema";
   const cityName = routeCityName || cinemaFromList?.city.name || "";
-  const topBarTitleSuffix = cityName ? `(${cityName})` : undefined;
+  const topBarTitleSuffix = cityName || undefined;
 
   // ─── Showtimes query ─────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({
@@ -355,10 +390,10 @@ function CinemaShowtimesContent() {
         refreshing={refreshing}
         onRefresh={handleRefresh}
         searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
+        onSearchChange={onSearchChange}
         filterRow={
           <>
-            <FiltersButtonRow onPress={() => setFiltersModalVisible(true)} />
+            {filtersButtonRow}
             <ActiveFilterChips
               groupByMovie={groupByMovie}
               setGroupByMovie={setGroupByMovie}

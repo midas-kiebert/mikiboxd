@@ -259,7 +259,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderRadius: 10,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
     },
     calendarTextBlock: { flex: 1 },
     calendarTitle: { fontSize: 14, fontWeight: "600", color: colors.text },

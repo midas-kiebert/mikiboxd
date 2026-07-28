@@ -233,18 +233,33 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
 }
 
 /**
- * Lightweight placeholder rendered on a screen's first frame so the native push
- * animation can start immediately, before the real (data-fetching) screen mounts.
- * Mirrors the ShowtimesScreen layout: top bar, search, filter row, list of cards.
+ * Rendered on a screen's first frame so the push animation can start
+ * immediately, before the real (data-fetching) screen mounts. Mirrors the
+ * ShowtimesScreen layout: top bar, search, filter row, list of cards.
+ *
+ * Only the list is genuinely waiting on data. The chrome above it is the
+ * screen's frame, so a caller that already owns the search text and the filter
+ * row passes them in here and gets the real, already-interactive controls on
+ * the first frame — typing and opening the filters work before the content
+ * behind them has mounted. Callers with nothing to bind yet fall back to
+ * placeholder bars.
  */
 export function ShowtimesScreenSkeleton({
   topBarTitle = "MiKiNO",
   topBarTitleSuffix,
   topBarShowBackButton = false,
+  searchQuery,
+  onSearchChange,
+  searchPlaceholder = "Search showtimes",
+  filterRow,
 }: {
   topBarTitle?: string;
   topBarTitleSuffix?: string;
   topBarShowBackButton?: boolean;
+  searchQuery?: string;
+  onSearchChange?: (value: string) => void;
+  searchPlaceholder?: string;
+  filterRow?: React.ReactNode;
 }) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -255,19 +270,45 @@ export function ShowtimesScreenSkeleton({
         titleSuffix={topBarTitleSuffix}
         showBackButton={topBarShowBackButton}
       />
-      <View style={styles.skeletonSearch}>
-        <Skeleton style={styles.skeletonSearchBar} />
-      </View>
-      <View style={styles.skeletonFilterRow}>
-        <Skeleton style={{ height: 32, width: 90, borderRadius: 18 }} />
-        <Skeleton style={{ height: 32, width: 72, borderRadius: 18 }} />
-      </View>
+      {onSearchChange ? (
+        <SearchBar
+          value={searchQuery ?? ""}
+          onChangeText={onSearchChange}
+          placeholder={searchPlaceholder}
+          clearOnAndroidBack
+        />
+      ) : (
+        <View style={styles.skeletonSearch}>
+          <Skeleton style={styles.skeletonSearchBar} />
+        </View>
+      )}
+      {filterRow ?? (
+        <View style={styles.skeletonFilterRow}>
+          <Skeleton style={{ height: 40, width: 90, borderRadius: 18 }} />
+          <Skeleton style={{ height: 40, width: 72, borderRadius: 18 }} />
+        </View>
+      )}
       <View style={styles.listContent}>
         {[0, 1, 2, 3, 4].map((i) => (
           <Skeleton key={i} style={styles.skeletonCard} />
         ))}
       </View>
     </TopSafeAreaView>
+  );
+}
+
+/**
+ * Stand-in for ActiveFilterChips, which cannot render before the filter state
+ * it reflects exists. Same height and divider as the real row, so the chips
+ * replace it in place instead of pushing the list down when they arrive.
+ */
+export function ActiveFilterChipsPlaceholder() {
+  const colors = useThemeColors();
+  const styles = createStyles(colors);
+  return (
+    <View style={styles.chipsPlaceholderRow}>
+      <Skeleton style={styles.chipsPlaceholderChip} />
+    </View>
   );
 }
 
@@ -299,6 +340,24 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 8,
       paddingHorizontal: 16,
       paddingVertical: 8,
+    },
+    // Mirrors ActiveFilterChips' own row: 7pt of vertical padding around a
+    // 36pt chip, closed off by the same divider. The chip's 36pt (rather than
+    // the 5+5+border padding alone would suggest) comes from ThemedText's
+    // 24pt default line height, which the real chip's label inherits.
+    chipsPlaceholderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 7,
+      backgroundColor: colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.divider,
+    },
+    chipsPlaceholderChip: {
+      height: 36,
+      width: 120,
+      borderRadius: 14,
     },
     skeletonCard: {
       height: 112,

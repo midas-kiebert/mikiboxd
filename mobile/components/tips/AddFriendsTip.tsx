@@ -134,7 +134,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       width: QR_CODE_SIZE,
       height: QR_CODE_SIZE,
       borderRadius: 12,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",
     },

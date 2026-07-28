@@ -1,3 +1,4 @@
+import fcntl
 import json
 import os
 import random
@@ -99,10 +100,35 @@ LETTERBOXD_REQUEST_TIMEOUT_SECONDS = _env_float(
     20.0,
 )
 LETTERBOXD_CF_BLOCK_SECONDS = _env_float("LETTERBOXD_CF_BLOCK_SECONDS", 900.0)
+# Repeated blocks back off exponentially: probing a hard block on the same
+# cadence that caused it is what turns a soft throttle into a long one.
+LETTERBOXD_CF_BLOCK_MAX_SECONDS = _env_float("LETTERBOXD_CF_BLOCK_MAX_SECONDS", 3600.0)
+# Random extra delay added to every request interval. Requests spaced exactly
+# 1.000s apart are a machine signature.
+LETTERBOXD_REQUEST_INTERVAL_JITTER_SECONDS = _env_float(
+    "LETTERBOXD_REQUEST_INTERVAL_JITTER_SECONDS",
+    0.5,
+)
+# Optional dedicated egress for Letterboxd only (curl --proxy syntax), so the
+# scraper's bulk enrichment traffic and the API's user syncs do not have to
+# share one IP reputation.
+LETTERBOXD_HTTP_PROXY = os.getenv("LETTERBOXD_HTTP_PROXY", "").strip()
+# Directory for state that must be shared between processes. The API container
+# runs 4 uvicorn workers and the scheduler is a separate container; point this
+# at a shared volume to make the cooldown and the request pacing host-wide
+# rather than per-process.
+LETTERBOXD_STATE_DIR = os.getenv("LETTERBOXD_STATE_DIR", "/tmp")
 LETTERBOXD_BLOCK_STATE_FILE = os.getenv(
     "LETTERBOXD_BLOCK_STATE_FILE",
-    "/tmp/cinema_agenda_letterboxd_block_state.json",
+    os.path.join(LETTERBOXD_STATE_DIR, "cinema_agenda_letterboxd_block_state.json"),
 )
+LETTERBOXD_PACING_STATE_FILE = os.getenv(
+    "LETTERBOXD_PACING_STATE_FILE",
+    os.path.join(LETTERBOXD_STATE_DIR, "cinema_agenda_letterboxd_pacing.state"),
+)
+# Deliberately NOT derived from LETTERBOXD_STATE_DIR: curl rewrites the whole
+# jar when it exits, so sharing one file between containers would race. Each
+# container keeps its own Cloudflare clearance cookie.
 LETTERBOXD_COOKIE_JAR_FILE = os.getenv(
     "LETTERBOXD_COOKIE_JAR_FILE",
     "/tmp/cinema_agenda_letterboxd_cookies.txt",
@@ -148,6 +174,8 @@ _letterboxd_challenge_block_lock = Lock()
 _letterboxd_challenge_block_until: float = 0.0
 _letterboxd_challenge_logged_until: float = 0.0
 _letterboxd_challenge_reason: str | None = None
+_letterboxd_block_state_mtime: float = 0.0
+_letterboxd_consecutive_block_count: int = 0
 _letterboxd_failure_audit_lock = Lock()
 _letterboxd_failure_audit_events: list[dict[str, Any]] = []
 _letterboxd_request_budget_lock = Lock()
@@ -323,6 +351,24 @@ def reset_letterboxd_request_budget() -> None:
     _reset_consecutive_403_counter()
 
 
+def reset_letterboxd_block_state() -> None:
+    """Drop every trace of a cooldown, including the cross-process marker.
+
+    Used by tests: without clearing `_letterboxd_block_state_mtime`, a block
+    file left behind by an earlier run would be picked up by the next fetch.
+    """
+    global _letterboxd_challenge_block_until
+    global _letterboxd_challenge_logged_until
+    global _letterboxd_challenge_reason
+    global _letterboxd_block_state_mtime
+    with _letterboxd_challenge_block_lock:
+        _letterboxd_challenge_block_until = 0.0
+        _letterboxd_challenge_logged_until = 0.0
+        _letterboxd_challenge_reason = None
+    _letterboxd_block_state_mtime = 0.0
+    _reset_consecutive_block_counter()
+
+
 def _reset_consecutive_403_counter() -> None:
     global _letterboxd_consecutive_403_count
     with _letterboxd_403_streak_lock:
@@ -378,6 +424,9 @@ def _record_real_outbound_request_attempt(url: str, transport: str) -> None:
 
 def _record_real_outbound_request_success(url: str, transport: str) -> None:
     global _letterboxd_real_request_success_calls
+    # Letterboxd is answering again, so the next block starts its escalation
+    # from the base duration rather than from wherever the last streak ended.
+    _reset_consecutive_block_counter()
     with _letterboxd_request_budget_lock:
         _letterboxd_real_request_success_calls += 1
         success_number = _letterboxd_real_request_success_calls
@@ -422,6 +471,29 @@ def _persist_challenge_block_state(*, block_until_unix: float, reason: str) -> N
         logger.debug(f"Could not persist Letterboxd block state. Error: {e}")
 
 
+def _refresh_persisted_challenge_block_state() -> None:
+    """Pick up a cooldown that another process started.
+
+    The API container runs 4 uvicorn workers and the scheduler is a separate
+    process; each has its own in-memory `_letterboxd_challenge_block_until`.
+    Without this, one worker hitting a 403 blocks only itself while the other
+    four keep firing for the whole cooldown — multiplying our request rate
+    exactly while Letterboxd is refusing us. Cheap: a stat, and a small JSON
+    read only when the file actually changed.
+    """
+    global _letterboxd_block_state_mtime
+    if not LETTERBOXD_BLOCK_STATE_FILE:
+        return
+    try:
+        mtime = os.path.getmtime(LETTERBOXD_BLOCK_STATE_FILE)
+    except OSError:
+        return
+    if mtime <= _letterboxd_block_state_mtime:
+        return
+    _letterboxd_block_state_mtime = mtime
+    _load_persisted_challenge_block_state()
+
+
 def _load_persisted_challenge_block_state() -> None:
     global _letterboxd_challenge_block_until
     global _letterboxd_challenge_reason
@@ -461,21 +533,66 @@ def _load_persisted_challenge_block_state() -> None:
     )
 
 
+def _parse_retry_after_seconds(response: CurlResponse | None) -> float | None:
+    """Read a `Retry-After` header, if the response carries a usable one.
+
+    Only the delta-seconds form is honoured; the HTTP-date form is rare here
+    and not worth the parsing risk. The value is clamped to the configured
+    maximum so a hostile or mistaken header cannot park us for a day.
+    """
+    if response is None:
+        return None
+    raw = response.headers.get("retry-after")
+    if not raw:
+        return None
+    try:
+        seconds = float(raw.strip())
+    except ValueError:
+        return None
+    if seconds <= 0:
+        return None
+    return min(seconds, LETTERBOXD_CF_BLOCK_MAX_SECONDS)
+
+
+def _block_duration_seconds(retry_after_seconds: float | None) -> float:
+    """How long to suppress calls for, given the block streak so far.
+
+    Letterboxd's own `Retry-After` wins when present. Otherwise each
+    consecutive block doubles the previous wait, up to the configured cap:
+    re-probing a hard block on the cadence that caused it is how a short
+    throttle becomes a long one.
+    """
+    global _letterboxd_consecutive_block_count
+    _letterboxd_consecutive_block_count += 1
+    if retry_after_seconds is not None:
+        return retry_after_seconds
+    escalation_factor = 2 ** (_letterboxd_consecutive_block_count - 1)
+    escalated = LETTERBOXD_CF_BLOCK_SECONDS * escalation_factor
+    return min(escalated, LETTERBOXD_CF_BLOCK_MAX_SECONDS)
+
+
+def _reset_consecutive_block_counter() -> None:
+    global _letterboxd_consecutive_block_count
+    _letterboxd_consecutive_block_count = 0
+
+
 def _set_challenge_block(
     *,
     reason: str,
     url: str | None = None,
     status_code: int | None = None,
     response_meta: dict[str, Any] | None = None,
+    retry_after_seconds: float | None = None,
 ) -> None:
     global _letterboxd_challenge_block_until
     global _letterboxd_challenge_logged_until
     global _letterboxd_challenge_reason
     now = time.monotonic()
     now_unix = time.time()
-    block_until = now + LETTERBOXD_CF_BLOCK_SECONDS
-    block_remaining_seconds = LETTERBOXD_CF_BLOCK_SECONDS
-    block_until_unix = now_unix + LETTERBOXD_CF_BLOCK_SECONDS
+    block_seconds = _block_duration_seconds(retry_after_seconds)
+    block_until = now + block_seconds
+    block_remaining_seconds = block_seconds
+    block_until_unix = now_unix + block_seconds
     with _letterboxd_request_budget_lock:
         request_counters = {
             "budget_consumed": _letterboxd_http_calls_this_run,
@@ -504,17 +621,17 @@ def _set_challenge_block(
         if reason == "cloudflare_challenge":
             logger.warning(
                 "Letterboxd returned Cloudflare challenge; suppressing Letterboxd HTTP "
-                f"calls for {LETTERBOXD_CF_BLOCK_SECONDS:.0f}s."
+                f"calls for {block_remaining_seconds:.0f}s."
             )
         elif reason in {"http_403_block", "http_403_streak_block"}:
             logger.warning(
                 "Letterboxd returned repeated HTTP 403 responses; suppressing "
-                f"Letterboxd HTTP calls for {LETTERBOXD_CF_BLOCK_SECONDS:.0f}s."
+                f"Letterboxd HTTP calls for {block_remaining_seconds:.0f}s."
             )
         else:
             logger.warning(
                 "Letterboxd temporarily rate-limited; suppressing Letterboxd HTTP "
-                f"calls for {LETTERBOXD_CF_BLOCK_SECONDS:.0f}s."
+                f"calls for {block_remaining_seconds:.0f}s."
             )
         logger.warning(
             "Letterboxd challenge diagnostics: url=%s status=%s "
@@ -643,17 +760,75 @@ def _parse_curl_headers(raw: str) -> dict[str, str]:
     return headers
 
 
-def _sleep_for_rate_limit_if_needed() -> None:
-    if LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS <= 0:
-        return
+def _next_request_interval() -> float:
+    """Spacing until the request after this one, with jitter."""
+    if LETTERBOXD_REQUEST_INTERVAL_JITTER_SECONDS <= 0:
+        return LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS
+    return LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS + random.uniform(
+        0.0, LETTERBOXD_REQUEST_INTERVAL_JITTER_SECONDS
+    )
+
+
+def _reserve_request_slot_in_process() -> float:
+    """Reserve the next slot using process-local state. Returns seconds to wait."""
     global _letterboxd_next_request_at
     with _letterboxd_rate_limit_lock:
         now = time.monotonic()
         wait_for = max(0.0, _letterboxd_next_request_at - now)
         scheduled_at = now + wait_for
-        _letterboxd_next_request_at = (
-            scheduled_at + LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS
+        _letterboxd_next_request_at = scheduled_at + _next_request_interval()
+    return wait_for
+
+
+def _reserve_request_slot_across_processes() -> float:
+    """Reserve the next slot in a file every process on the host shares.
+
+    `LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS` used to be enforced per process,
+    so 4 uvicorn workers plus the scheduler emitted up to 5x the configured
+    rate from one IP. The reservation is written under an exclusive lock and
+    uses wall-clock time, which is the only clock comparable across processes.
+
+    Raises OSError if the state file cannot be used, so the caller can fall
+    back to process-local pacing.
+    """
+    directory = os.path.dirname(LETTERBOXD_PACING_STATE_FILE)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    with open(LETTERBOXD_PACING_STATE_FILE, "a+", encoding="utf-8") as fp:
+        fcntl.flock(fp.fileno(), fcntl.LOCK_EX)
+        try:
+            fp.seek(0)
+            raw = fp.read().strip()
+            try:
+                next_request_at = float(raw)
+            except ValueError:
+                next_request_at = 0.0
+            now = time.time()
+            # A far-future value means a clock jump or a corrupt write; ignore
+            # it rather than stalling every Letterboxd request behind it.
+            if next_request_at > now + LETTERBOXD_CF_BLOCK_MAX_SECONDS:
+                next_request_at = 0.0
+            scheduled_at = max(now, next_request_at)
+            fp.seek(0)
+            fp.truncate()
+            fp.write(str(scheduled_at + _next_request_interval()))
+            fp.flush()
+            os.fsync(fp.fileno())
+        finally:
+            fcntl.flock(fp.fileno(), fcntl.LOCK_UN)
+    return max(0.0, scheduled_at - now)
+
+
+def _sleep_for_rate_limit_if_needed() -> None:
+    if LETTERBOXD_MIN_REQUEST_INTERVAL_SECONDS <= 0:
+        return
+    try:
+        wait_for = _reserve_request_slot_across_processes()
+    except OSError as e:
+        logger.debug(
+            f"Falling back to per-process Letterboxd pacing. Error: {e}",
         )
+        wait_for = _reserve_request_slot_in_process()
     if wait_for > 0:
         time.sleep(wait_for)
 
@@ -759,6 +934,10 @@ def _fetch_with_curl(url: str) -> CurlResponse:
         LETTERBOXD_COOKIE_JAR_FILE,
         "--dump-header",
         header_file_path,
+        # Only Letterboxd traffic goes through this proxy, so the bulk
+        # enrichment scrape and the user syncs can be moved off the host IP
+        # without touching any other outbound request.
+        *(["--proxy", LETTERBOXD_HTTP_PROXY] if LETTERBOXD_HTTP_PROXY else []),
         *[arg for name, value in HEADERS.items() for arg in ("-H", f"{name}: {value}")],
         "--write-out",
         write_out,
@@ -817,11 +996,22 @@ def _fetch_with_curl(url: str) -> CurlResponse:
     )
 
 
-def _fetch_page(url: str) -> SyncPageFetchResult:
+def _fetch_page(
+    url: str,
+    *,
+    ignore_challenge_block: bool = False,
+) -> SyncPageFetchResult:
+    """Fetch one Letterboxd URL through the paced, Cloudflare-aware fetcher.
+
+    `ignore_challenge_block` is for the endpoints measured to keep serving
+    while the poster-grid pages are throttled (the member RSS feed). Pacing and
+    the per-run request budget still apply.
+    """
+    _refresh_persisted_challenge_block_state()
     with _letterboxd_challenge_block_lock:
         remaining = max(0.0, _letterboxd_challenge_block_until - time.monotonic())
         reason = _letterboxd_challenge_reason or "cooldown_active"
-        block_active = remaining > 0
+        block_active = remaining > 0 and not ignore_challenge_block
 
     if block_active:
         logger.debug(
@@ -952,6 +1142,7 @@ def _fetch_page(url: str) -> SyncPageFetchResult:
                     url=url,
                     status_code=403,
                     response_meta=response_meta,
+                    retry_after_seconds=_parse_retry_after_seconds(response),
                 )
                 return SyncPageFetchResult(
                     response=None,
@@ -983,6 +1174,7 @@ def _fetch_page(url: str) -> SyncPageFetchResult:
                 url=url,
                 status_code=429,
                 response_meta=_response_meta(response),
+                retry_after_seconds=_parse_retry_after_seconds(response),
             )
             return SyncPageFetchResult(
                 response=None,

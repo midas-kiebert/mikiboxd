@@ -704,7 +704,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 8,
       borderRadius: 999,
       borderWidth: 1,
-      borderColor: colors.divider,
+      borderColor: colors.pillBorder,
       backgroundColor: colors.pillBackground,
       paddingVertical: 6,
       paddingLeft: 10,

@@ -5,6 +5,7 @@ import {
   Alert,
   Animated,
   LayoutAnimation,
+  type LayoutChangeEvent,
   ScrollView,
   StyleSheet,
   Switch,
@@ -50,13 +51,24 @@ import { useFetchLetterboxdLists } from 'shared/hooks/useLetterboxdLists';
 import { emailPattern, usernameMaxLength, usernamePattern } from 'shared/utils';
 import { unregisterPushTokenForCurrentDevice } from '@/utils/push-notifications';
 import NotificationPreferenceList from '@/components/notifications/NotificationPreferenceList';
+import LetterboxdSection from '@/components/settings/LetterboxdSection';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
+
+// Placeholder for the danger zone card's height until it has been measured
+// once. Sized from the card's own styles (18pt padding top and bottom, roughly
+// four 19pt lines of helper text, a 16pt gap, and the ~48pt delete button).
+const DANGER_CARD_ESTIMATED_HEIGHT = 178;
+// Vertical gap the section puts between the danger zone header and its card,
+// mirroring `section.gap` — the card costs this on top of its own height.
+const SECTION_GAP = 12;
+// Bottom room the content always keeps, so the last card is never clipped under
+// the tab bar / home indicator.
+const CONTENT_PADDING_BOTTOM = 72;
 
 type ProfileState = {
   display_name: string;
   email: string;
-  letterboxd_username: string;
 };
 
 type PasswordState = {
@@ -93,7 +105,6 @@ export default function SettingsScreen() {
   const [profile, setProfile] = useState<ProfileState>({
     display_name: '',
     email: '',
-    letterboxd_username: '',
   });
   // Editable form state for password fields.
   const [passwords, setPasswords] = useState<PasswordState>({
@@ -149,6 +160,18 @@ export default function SettingsScreen() {
   // The ScrollView is scrolled to the end once the danger zone expands, so the
   // newly revealed card is never left cut off below the fold.
   const scrollViewRef = useRef<ScrollView>(null);
+  // While collapsed, the exact height the expanded card will take is held open
+  // as blank space below the header, so expanding leaves the total content
+  // height unchanged: someone already scrolled to the bottom sees the card
+  // appear in place instead of being scrolled further. The height is measured
+  // on the card's first layout; until then an estimate close to the real card
+  // (18pt padding + ~4 lines of helper text + 16pt gap + 48pt button) keeps the
+  // very first expansion from jumping either.
+  const [dangerCardHeight, setDangerCardHeight] = useState(DANGER_CARD_ESTIMATED_HEIGHT);
+  const handleDangerCardLayout = useCallback((event: LayoutChangeEvent) => {
+    setDangerCardHeight(event.nativeEvent.layout.height);
+  }, []);
+  const dangerZoneReservedSpace = dangerCardHeight + SECTION_GAP;
   const dangerCaretSpin = useMemo(
     () => dangerCaretRotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }),
     [dangerCaretRotation]
@@ -176,7 +199,6 @@ export default function SettingsScreen() {
     setProfile({
       display_name: user.display_name ?? '',
       email: user.email ?? '',
-      letterboxd_username: user.letterboxd_username ?? '',
     });
   }, [user]);
 
@@ -271,7 +293,6 @@ export default function SettingsScreen() {
     profileMutation.mutate({
       display_name: normalizedUsername || null,
       email: profile.email,
-      letterboxd_username: profile.letterboxd_username || null,
     });
   };
 
@@ -407,7 +428,10 @@ export default function SettingsScreen() {
           bottom of this long form are covered on a small phone. */}
       <ScrollView
         ref={scrollViewRef}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          !isDangerZoneOpen && { paddingBottom: CONTENT_PADDING_BOTTOM + dangerZoneReservedSpace },
+        ]}
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
       >
@@ -435,17 +459,6 @@ export default function SettingsScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
             />
-            <ThemedText style={styles.label}>Letterboxd username for watchlist (will update periodically)</ThemedText>
-            <TextInput
-              style={styles.input}
-              value={profile.letterboxd_username}
-              onChangeText={(value) =>
-                setProfile((prev) => ({ ...prev, letterboxd_username: value }))
-              }
-              placeholder="letterboxd"
-              placeholderTextColor={colors.textSecondary}
-              autoCapitalize="none"
-            />
             <TouchableOpacity
               style={[styles.primaryButton, isProfileSaving && styles.buttonDisabled]}
               onPress={handleProfileSave}
@@ -456,6 +469,11 @@ export default function SettingsScreen() {
               </ThemedText>
             </TouchableOpacity>
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Letterboxd</ThemedText>
+          <LetterboxdSection />
         </View>
 
         <View style={styles.section}>
@@ -561,15 +579,12 @@ export default function SettingsScreen() {
                     Email me when a watchlisted movie gets a showtime it didn&apos;t have before.
                   </ThemedText>
                 </View>
-                {/* No thumbColor override: a hardcoded white grip vanished
-                    against the light theme's near-white "off" track (and lost
-                    its iOS drop shadow). The platform default follows the
-                    app's scheme, which _layout pushes to the native layer. */}
                 <Switch
                   value={digestEnabled}
                   onValueChange={(value) => handleDigestToggle(value)}
                   disabled={!user || isUpdatingDigest}
                   trackColor={{ false: colors.divider, true: colors.tint }}
+                  thumbColor="#ffffff"
                 />
               </View>
               <View style={styles.notificationChannelRow}>
@@ -745,6 +760,7 @@ export default function SettingsScreen() {
                 value={featureTipsEnabled}
                 onValueChange={setFeatureTipsEnabled}
                 trackColor={{ false: colors.divider, true: colors.tint }}
+                thumbColor="#ffffff"
               />
             </View>
             {dismissedTipCount > 0 ? (
@@ -850,7 +866,7 @@ export default function SettingsScreen() {
             </Animated.View>
           </TouchableOpacity>
           {isDangerZoneOpen ? (
-            <View style={[styles.card, styles.dangerCard]}>
+            <View style={[styles.card, styles.dangerCard]} onLayout={handleDangerCardLayout}>
               <ThemedText style={styles.dangerHelperText}>
                 Permanently delete your account and all associated data. Your friends,
                 showtime selections and invites go with it. This cannot be undone.
@@ -905,11 +921,13 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       // Extra bottom room so the expanded danger zone card is never left
       // clipped under the tab bar / home indicator, and so its button is not
       // pressed up against the edge of the screen once it has scrolled to.
-      paddingBottom: 72,
+      // While the danger zone is collapsed the screen adds the card's height on
+      // top of this, see dangerZoneReservedSpace.
+      paddingBottom: CONTENT_PADDING_BOTTOM,
       gap: 20,
     },
     section: {
-      gap: 12,
+      gap: SECTION_GAP,
     },
     sectionTitle: {
       fontSize: 16,
@@ -1049,7 +1067,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       borderWidth: 1,
       borderColor: colors.cardBorder,
       borderRadius: 999,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
       padding: 2,
     },
     notificationChannelOption: {
@@ -1118,7 +1136,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       borderBottomLeftRadius: 8,
       paddingHorizontal: 10,
       paddingVertical: 10,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
       justifyContent: 'center',
     },
     cinevillePrefixText: {
@@ -1136,7 +1154,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       borderWidth: 1,
       borderColor: colors.cardBorder,
       borderRadius: 999,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
       padding: 2,
     },
     appearanceOption: {

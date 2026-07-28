@@ -20,7 +20,7 @@ export default function PosterPlaceholder({ style, glyphSize = 28 }: PosterPlace
   return (
     <View style={[styles.container, style]}>
       <LinearGradient
-        colors={[colors.posterPlaceholder, colors.pillBackground]}
+        colors={[colors.posterPlaceholder, colors.surfaceMuted]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}

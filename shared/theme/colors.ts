@@ -5,80 +5,119 @@
  * file pure data — no React Native / browser imports — so both platforms can load it.
  */
 
-export const tintColorLight = '#1f7a46';
+/**
+ * Both modes share hue 149, so the brand green reads as the same green in light
+ * and dark. Light mode is the darkest green that still keeps 4.5:1 against white,
+ * which is what lets it double as a fill under white text and as an icon/link color.
+ */
+export const tintColorLight = '#0b8345';
 export const tintColorDark = '#39b467';
 
 // App-wide color tokens consumed by themed UI helpers/components.
 export const Colors = {
+  // The light neutrals are not gray: they all sit on the brand's green hue at very
+  // low saturation, so surfaces, borders and muted text belong to the same family as
+  // the tint instead of fighting it with a cold blue-gray.
+  //
+  // Each accent is a trio rather than a pair:
+  //   primary   — the soft fill
+  //   secondary — the label/icon on it; clears 4.9:1 on `primary` and 5.5:1 on white
+  //   border    — a mid-tone outline for that fill. Deliberately far lighter than
+  //               `secondary`, because using the label tone as a border made tinted
+  //               cards read as heavy in light mode. Not for text, ever.
   light: {
-    text: '#11181C',
-    background: '#eef0f4',
-    nestedModalBackground: '#e3e6ec',
+    text: '#12211c',
+    background: '#f4f8f6',
+    nestedModalBackground: '#e9efec',
     tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
+    icon: '#607b6f',
+    tabIconDefault: '#607b6f',
     tabIconSelected: tintColorLight,
     cardBackground: '#ffffff',
-    cardBorder: '#d8dde5',
-    textSecondary: '#666666',
+    cardBorder: '#dce5e1',
+    textSecondary: '#5a7268',
     searchBackground: '#ffffff',
-    pillBackground: '#dde1e8',
-    pillText: '#666666',
+    // Controls are outlined rather than filled in light mode: on a 96.5%-lightness
+    // background any fill light enough not to read as gray is too close to the
+    // background to see, so pills go white and are defined by `pillBorder` instead.
+    pillBackground: '#ffffff',
+    pillBorder: '#dce5e1',
+    pillText: '#4f695e',
     pillActiveBackground: tintColorLight,
     pillActiveText: '#ffffff',
-    notificationBadge: '#c92a2a',
-    divider: '#d8dde5',
-    posterPlaceholder: '#d8dde5',
+    // The recessed fill for things a hairline can't define: segmented-control
+    // tracks, icon tiles, count bubbles, micro-badges and gradient stops.
+    surfaceMuted: '#e6edea',
+    notificationBadge: '#c52b30',
+    divider: '#e3eae7',
+    posterPlaceholder: '#dae2de',
     skeletonShine: 'rgba(255, 255, 255, 0.6)',
     pink: {
-      primary: '#f8c9d8',
-      secondary: '#7a1f3d',
+      primary: '#f7dee6',
+      secondary: '#b22a50',
+      border: '#db7693',
     },
     purple: {
-      primary: '#e2d6ff',
-      secondary: '#4c2a8a',
+      primary: '#ebe1fa',
+      secondary: '#763ecc',
+      border: '#a480db',
     },
     green: {
-      primary: '#cfe9d7',
-      secondary: '#1f6b3a',
+      primary: '#daf1e5',
+      secondary: '#137242',
+      border: '#6ecf9e',
     },
     orange: {
-      primary: '#ffd9b5',
-      secondary: '#8a4a10',
+      primary: '#fbe4d0',
+      secondary: '#9f4b14',
+      border: '#e2955a',
     },
     yellow: {
-      primary: '#fff1b8',
-      secondary: '#7a5a00',
+      primary: '#fcedc0',
+      secondary: '#8b5b09',
+      border: '#deab35',
     },
     blue: {
-      primary: '#dbe6ff',
-      secondary: '#1d3fa8',
+      primary: '#dee7fc',
+      secondary: '#2759ce',
+      border: '#7493dc',
     },
     teal: {
-      primary: '#d3f0df',
-      secondary: '#116a4f',
+      primary: '#d9f2ed',
+      secondary: '#0e7164',
+      border: '#64c4b7',
     },
     red: {
-      primary: '#ffd1d1',
-      secondary: '#8a1c1c',
+      primary: '#fbdfe0',
+      secondary: '#b62b2f',
+      border: '#dc6a6e',
     },
     gray: {
-      primary: '#e2e2e2',
-      secondary: '#4a4a4a',
+      primary: '#e2e9e6',
+      secondary: '#4c675b',
+      border: '#a2b9af',
     },
     cyan: {
-      primary: '#d5f4ff',
-      secondary: '#0a6f99',
+      primary: '#d2f0f9',
+      secondary: '#0b6b8e',
+      border: '#47acd1',
     },
     friendGoing: {
-      primary: '#e3f6ec',
-      secondary: '#0b7f56',
+      primary: '#dbf5eb',
+      secondary: '#0f764e',
+      border: '#66cca5',
     },
     friendInterested: {
-      primary: '#fff0e0',
-      secondary: '#a95708',
+      primary: '#fde9d3',
+      secondary: '#9c4d11',
+      border: '#e49758',
     },
   },
+  // Dark mode is deliberately untouched by the light-mode rework. The tokens the
+  // light theme grew — `pillBorder`, `surfaceMuted`, and each accent's `border` —
+  // are mirrored here at values that render identically to before: the pill border
+  // matches the pill fill, and every accent border is that accent's existing
+  // `secondary`. Dark pills are legible as fills, so they don't need an outline.
   dark: {
     text: '#ECEDEE',
     background: '#151718',
@@ -92,9 +131,11 @@ export const Colors = {
     textSecondary: '#9BA1A6',
     searchBackground: '#2a2a2a',
     pillBackground: '#2a2a2a',
+    pillBorder: '#2a2a2a',
     pillText: '#9BA1A6',
     pillActiveBackground: tintColorDark,
     pillActiveText: '#151718',
+    surfaceMuted: '#2a2a2a',
     notificationBadge: '#d63a3a',
     divider: '#3a3a3a',
     posterPlaceholder: '#3a3a3a',
@@ -102,50 +143,62 @@ export const Colors = {
     pink: {
       primary: '#5a1e33',
       secondary: '#f6b7cf',
+      border: '#f6b7cf',
     },
     purple: {
       primary: '#3f2a6b',
       secondary: '#d8ccff',
+      border: '#d8ccff',
     },
     green: {
       primary: '#1f4d34',
       secondary: '#bfe5c7',
+      border: '#bfe5c7',
     },
     orange: {
       primary: '#6b3a12',
       secondary: '#ffd1a6',
+      border: '#ffd1a6',
     },
     yellow: {
       primary: '#6b5a12',
       secondary: '#ffeaa1',
+      border: '#ffeaa1',
     },
     blue: {
       primary: '#1b2f63',
       secondary: '#c8d8ff',
+      border: '#c8d8ff',
     },
     teal: {
       primary: '#143e34',
       secondary: '#a9e8c8',
+      border: '#a9e8c8',
     },
     red: {
       primary: '#5a1c1c',
       secondary: '#ffb8b8',
+      border: '#ffb8b8',
     },
     gray: {
       primary: '#3f4143',
       secondary: '#d7d9db',
+      border: '#d7d9db',
     },
     cyan: {
       primary: '#0f3f51',
       secondary: '#9fe8ff',
+      border: '#9fe8ff',
     },
     friendGoing: {
       primary: '#173b2b',
       secondary: '#7fddb6',
+      border: '#7fddb6',
     },
     friendInterested: {
       primary: '#4e3015',
       secondary: '#ffc590',
+      border: '#ffc590',
     },
   },
 };

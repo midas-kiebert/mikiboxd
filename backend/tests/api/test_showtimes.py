@@ -2000,3 +2000,97 @@ def test_report_showtime_allowed_when_ban_has_expired(
     )
 
     assert response.status_code == 200
+
+
+def test_share_preview_returns_og_tags_with_poster(
+    client: TestClient,
+    showtime_factory,
+) -> None:
+    """No auth header is passed at all: this endpoint must remain public."""
+    showtime = showtime_factory(
+        movie__title="Paddington 3",
+        movie__poster_link="https://example.com/paddington.jpg",
+        cinema__name="The Movies",
+    )
+    showtime_id = showtime.id
+    sender_identifier = "some-sender"
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/share-preview/{sender_identifier}"
+    )
+
+    assert response.status_code == 200
+    body = response.text
+
+    expected_description = (
+        f"The Movies · {showtime.datetime.strftime('%a, %b %d at %H:%M')}"
+    )
+    expected_url = f"{settings.FRONTEND_HOST}/ping/{showtime_id}/{sender_identifier}"
+
+    assert 'property="og:title" content="Paddington 3"' in body
+    assert 'name="twitter:title" content="Paddington 3"' in body
+    assert f'property="og:description" content="{expected_description}"' in body
+    assert f'name="twitter:description" content="{expected_description}"' in body
+    assert (
+        'property="og:image" content="https://example.com/paddington.jpg"' in body
+    )
+    assert (
+        'name="twitter:image" content="https://example.com/paddington.jpg"' in body
+    )
+    assert f'property="og:url" content="{expected_url}"' in body
+
+
+def test_share_preview_falls_back_to_static_logo_without_poster(
+    client: TestClient,
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory(movie__poster_link=None)
+    showtime_id = showtime.id
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/share-preview/some-sender"
+    )
+
+    assert response.status_code == 200
+    expected_fallback = f"{settings.FRONTEND_HOST}/assets/images/mikino-logo.png"
+    body = response.text
+    assert f'property="og:image" content="{expected_fallback}"' in body
+    assert f'name="twitter:image" content="{expected_fallback}"' in body
+
+
+def test_share_preview_html_escapes_movie_title_and_cinema_name(
+    client: TestClient,
+    showtime_factory,
+) -> None:
+    """Special characters in movie title / cinema name must not appear raw in the HTML."""
+    showtime = showtime_factory(
+        movie__title='<script>alert("xss")</script> & Friends',
+        cinema__name='Bob\'s "Cinema" <Downtown>',
+    )
+    showtime_id = showtime.id
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/share-preview/some-sender"
+    )
+
+    assert response.status_code == 200
+    body = response.text
+
+    # The raw, unescaped strings must never appear in the response body.
+    assert "<script>alert(\"xss\")</script>" not in body
+    assert 'Bob\'s "Cinema" <Downtown>' not in body
+
+    # The escaped versions must be present instead.
+    assert "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt; &amp; Friends" in body
+    assert "Bob&#x27;s &quot;Cinema&quot; &lt;Downtown&gt;" in body
+
+
+def test_share_preview_returns_404_for_nonexistent_showtime(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/99999999/share-preview/some-sender"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Showtime not found"

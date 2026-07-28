@@ -1,7 +1,7 @@
 /**
  * Mobile layout/navigation component: Top Bar.
  */
-import { TouchableOpacity, StyleSheet, Text, View } from "react-native";
+import { Image, TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useFetchNotificationUnseenCount } from "shared/hooks/useFetchNotificationUnseenCount";
@@ -17,6 +17,9 @@ import { useUnseenSnoozedTipCount } from "@/utils/feature-tips";
  */
 const SIDE_BUTTON_RESERVED_WIDTH = 50;
 
+/** Title shown on the app's own screens; other screens name themselves. */
+const APP_TITLE = "MiKiNO";
+
 type TopBarProps = {
   title?: string;
   titleSuffix?: string;
@@ -26,7 +29,7 @@ type TopBarProps = {
 };
 
 export default function TopBar({
-  title = "MiKiNO",
+  title = APP_TITLE,
   titleSuffix,
   showBackButton = false,
   showNotificationBell = true,
@@ -63,14 +66,31 @@ export default function TopBar({
         </TouchableOpacity>
       ) : null}
       <View style={styles.titleRow}>
-        <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
-          {title}
-        </Text>
-        {titleSuffix ? (
-          <Text style={styles.titleSuffix} numberOfLines={1} ellipsizeMode="tail">
-            {titleSuffix}
-          </Text>
+        {title === APP_TITLE ? (
+          <Image
+            source={require("../../assets/images/mikino-logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+            accessible={false}
+          />
         ) : null}
+        {titleSuffix ? (
+          <View style={styles.titleStack}>
+            <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+              {title}
+            </Text>
+            <View style={styles.subtitleRow}>
+              <MaterialIcons name="place" size={11} color={colors.textSecondary} />
+              <Text style={styles.subtitleText} numberOfLines={1} ellipsizeMode="tail">
+                {titleSuffix}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+            {title}
+          </Text>
+        )}
       </View>
       {showNotificationBell ? (
         <TouchableOpacity
@@ -143,6 +163,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 10,
       fontWeight: "700",
     },
+    logo: {
+      // Sized to sit just under the 24pt title's cap height; the width keeps the
+      // ticket's 241x144 aspect ratio so it never squashes.
+      height: 20,
+      width: 34,
+      alignSelf: "center",
+    },
     title: {
       fontSize: 24,
       fontWeight: "bold",
@@ -159,12 +186,25 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       maxWidth: "100%",
       paddingHorizontal: SIDE_BUTTON_RESERVED_WIDTH - 16,
     },
-    titleSuffix: {
-      fontSize: 15,
+    titleStack: {
+      flexShrink: 1,
+      alignItems: "center",
+      gap: 2,
+    },
+    subtitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      maxWidth: "100%",
+      backgroundColor: colors.surfaceMuted,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 8,
+    },
+    subtitleText: {
+      fontSize: 12,
       fontWeight: "600",
-      color: colors.tint,
-      opacity: 0.85,
-      paddingBottom: 2,
+      color: colors.textSecondary,
       flexShrink: 1,
     },
   });

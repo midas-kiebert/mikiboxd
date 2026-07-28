@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi import status as http_status
+from fastapi.responses import HTMLResponse
 
 from app.api.deps import CurrentUser, SessionDep, get_db_context
 from app.core.config import settings
@@ -32,6 +33,10 @@ from app.schemas.showtime_visibility import (
 )
 from app.services import push_notifications
 from app.services import showtimes as showtimes_service
+from app.services.share_preview import (
+    DEFAULT_SHARE_PREVIEW_IMAGE,
+    render_share_preview_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +148,42 @@ def receive_ping_from_link(
         receiver_id=current_user.id,
         sender_identifier=sender_identifier,
     )
+
+
+@router.get(
+    "/{showtime_id}/share-preview/{sender_identifier}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def get_showtime_share_preview(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    sender_identifier: str,
+) -> HTMLResponse:
+    """Unauthenticated HTML page carrying per-showtime OpenGraph tags.
+
+    Only ever hit by link-preview crawlers (WhatsApp, iMessage, Slack, ...) —
+    nginx routes them here based on User-Agent instead of the SPA's static
+    index.html, which can't vary per showtime. Real visitors never see this
+    page; nginx sends them straight to the SPA.
+    """
+    showtime = session.get(Showtime, showtime_id)
+    if showtime is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Showtime not found"
+        )
+
+    body = render_share_preview_html(
+        title=showtime.movie.title,
+        description=(
+            f"{showtime.cinema.name} · "
+            f"{showtime.datetime.strftime('%a, %b %d at %H:%M')}"
+        ),
+        image_url=showtime.movie.poster_link or DEFAULT_SHARE_PREVIEW_IMAGE,
+        page_url=f"{settings.FRONTEND_HOST}/ping/{showtime_id}/{sender_identifier}",
+    )
+    return HTMLResponse(content=body)
 
 
 def _send_report_notification_email(

@@ -11,7 +11,10 @@
  * blue when you have an open invite).
  *
  * It is mounted once by ShowtimeModalProvider and driven by the controlled
- * `visible` prop; screens open it through the useShowtimeModal() hook.
+ * `visible` prop; screens open it through the useShowtimeModal() hook. Opening
+ * waits for the showtime's content to have reached the sheet before raising it,
+ * so it never rises showing the showtime it was opened with last time — see
+ * `CommittedShowtimeReporter`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -196,6 +199,36 @@ const TOUR_MEASURE_DELAYS_MS = [300, 600];
  */
 const SUBSEQUENT_TOUR_MEASURE_DELAYS_MS = [0, 300];
 
+/**
+ * How long an open waits for the sheet's content to reach the portal (see
+ * `CommittedShowtimeReporter`) before the sheet rises anyway. That wait is
+ * normally a frame or two; this only puts a floor under a pathological render
+ * so a content commit that never arrives can't keep the sheet shut.
+ */
+const PRESENT_CONTENT_TIMEOUT_MS = 150;
+
+/**
+ * Renders nothing: it reports which showtime the sheet's content has actually
+ * been committed with.
+ *
+ * The sheet's content is handed to @gorhom/portal, whose host renders it from
+ * its own state — so it lands on screen one commit *after* the render that
+ * produced it. This component is part of that content, which makes its effect
+ * fire in the commit the content itself became visible in.
+ */
+function CommittedShowtimeReporter({
+  showtimeId,
+  onCommitted,
+}: {
+  showtimeId: number | null;
+  onCommitted: (showtimeId: number | null) => void;
+}) {
+  useEffect(() => {
+    onCommitted(showtimeId);
+  }, [showtimeId, onCommitted]);
+  return null;
+}
+
 const SEAT_UNKNOWN_PATTERN = /^(?:\d{1,2}|[A-Za-z])$/;
 const SEAT_DIGITS_PATTERN = /^\d{1,2}$/;
 const SEAT_LETTER_PATTERN = /^[A-Za-z]$/;
@@ -307,6 +340,15 @@ export default function ShowtimeActionModal({
   // close, and never close() when gorhom already closed the sheet.
   const hasEverPresentedRef = useRef(false);
   const closedByGorhomRef = useRef(false);
+  // Because the portal renders the content a commit late, raising the sheet the
+  // moment `visible` flips would show the *previous* showtime for a frame or
+  // two — the sheet stays mounted between opens, so its old content is still
+  // there. These line the two up: what the portal has committed, and which
+  // showtime is waiting on that to be presented.
+  const committedShowtimeIdRef = useRef<number | null>(null);
+  const pendingPresentShowtimeIdRef = useRef<number | null>(null);
+  const isPresentPendingRef = useRef(false);
+  const presentTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [showInviteFriends, setShowInviteFriends] = useState(false);
   const [inviteListReady, setInviteListReady] = useState(false);
@@ -343,6 +385,13 @@ export default function ShowtimeActionModal({
   );
 
   const selectedShowtimeId = showtime?.id ?? null;
+  // Read by the present effect, which must run on `visible` alone: re-presenting
+  // a sheet that is already open would snap it back to its first detent. Kept in
+  // sync above that effect, so it is already current when the sheet opens.
+  const selectedShowtimeIdRef = useRef(selectedShowtimeId);
+  useEffect(() => {
+    selectedShowtimeIdRef.current = selectedShowtimeId;
+  }, [selectedShowtimeId]);
   // The tour runs on mock data: every request it could make would be about a
   // showtime that does not exist, and the answers are already invented.
   const isTour = tour !== null;
@@ -369,15 +418,55 @@ export default function ShowtimeActionModal({
     [onClose]
   );
 
-  useEffect(() => {
-    if (visible) {
-      hasEverPresentedRef.current = true;
-      closedByGorhomRef.current = false;
-      bottomSheetModalRef.current?.present();
-    } else if (hasEverPresentedRef.current && !closedByGorhomRef.current) {
-      bottomSheetModalRef.current?.close();
+  const presentSheet = useCallback(() => {
+    isPresentPendingRef.current = false;
+    if (presentTimeoutRef.current !== null) {
+      clearTimeout(presentTimeoutRef.current);
+      presentTimeoutRef.current = null;
     }
-  }, [visible]);
+    hasEverPresentedRef.current = true;
+    closedByGorhomRef.current = false;
+    bottomSheetModalRef.current?.present();
+  }, []);
+
+  // Reported from inside the portal: if the sheet was waiting for this showtime
+  // to be on screen before rising, it can rise now.
+  const handleContentCommitted = useCallback(
+    (showtimeId: number | null) => {
+      committedShowtimeIdRef.current = showtimeId;
+      if (isPresentPendingRef.current && pendingPresentShowtimeIdRef.current === showtimeId) {
+        presentSheet();
+      }
+    },
+    [presentSheet]
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      isPresentPendingRef.current = false;
+      if (presentTimeoutRef.current !== null) {
+        clearTimeout(presentTimeoutRef.current);
+        presentTimeoutRef.current = null;
+      }
+      if (hasEverPresentedRef.current && !closedByGorhomRef.current) {
+        bottomSheetModalRef.current?.close();
+      }
+      return;
+    }
+    // Nothing has been rendered into the portal yet (first open of the app's
+    // session), or it already holds this showtime (re-opening the same one):
+    // either way there is no stale content to wait out.
+    if (
+      !hasEverPresentedRef.current ||
+      committedShowtimeIdRef.current === selectedShowtimeIdRef.current
+    ) {
+      presentSheet();
+      return;
+    }
+    pendingPresentShowtimeIdRef.current = selectedShowtimeIdRef.current;
+    isPresentPendingRef.current = true;
+    presentTimeoutRef.current = setTimeout(presentSheet, PRESENT_CONTENT_TIMEOUT_MS);
+  }, [visible, presentSheet]);
 
   useEffect(() => {
     if (!visible) return;
@@ -776,14 +865,9 @@ export default function ShowtimeActionModal({
       return;
     }
     const pingUrl = buildShowtimePingUrl(showtime.id, currentUser.id);
-    const startsAt = DateTime.fromISO(showtime.datetime);
-    const dateTimeLabel = startsAt.isValid
-      ? startsAt.toFormat("ccc, LLL d 'at' HH:mm")
-      : "this showtime";
-    const cinemaLabel = showtime.cinema?.name?.trim() || "the cinema";
     try {
       await Share.share({
-        message: `Come see ${showtime.movie.title} at ${dateTimeLabel} in ${cinemaLabel}\n${pingUrl}`,
+        message: pingUrl,
         url: pingUrl,
       });
     } catch {
@@ -1074,6 +1158,10 @@ export default function ShowtimeActionModal({
       {/* @gorhom/portal (used by the bottom sheet) does not forward React
           context, so re-provide the QueryClient for hooks rendered inside. */}
       <QueryClientProvider client={queryClient}>
+      <CommittedShowtimeReporter
+        showtimeId={selectedShowtimeId}
+        onCommitted={handleContentCommitted}
+      />
       <BottomSheetScrollView
         ref={scrollViewRef}
         style={styles.scroll}
@@ -1115,11 +1203,15 @@ export default function ShowtimeActionModal({
           <>
             {/* Header: poster + title + date + time·runtime + cinema badge */}
             <View style={styles.summaryRow}>
+              {/* Keyed by movie: an Image whose uri changes keeps showing the
+                  image it already has until the new one has loaded, which for
+                  an uncached poster is the previous movie's poster. */}
               {disableMovieNavigation ? (
                 isSyntheticMovie ? (
                   <PosterPlaceholder style={styles.poster} glyphSize={34} />
                 ) : (
                   <Image
+                    key={showtime.movie.id}
                     source={{ uri: showtime.movie.poster_link ?? undefined }}
                     style={styles.poster}
                   />
@@ -1130,6 +1222,7 @@ export default function ShowtimeActionModal({
                     <PosterPlaceholder style={styles.poster} glyphSize={34} />
                   ) : (
                     <Image
+                      key={showtime.movie.id}
                       source={{ uri: showtime.movie.poster_link ?? undefined }}
                       style={styles.poster}
                     />
@@ -1403,7 +1496,7 @@ export default function ShowtimeActionModal({
                         key={mode}
                         style={[
                           styles.visibilityOption,
-                          isSelected && { borderColor: optionMeta.color, backgroundColor: colors.pillBackground },
+                          isSelected && { borderColor: optionMeta.color, backgroundColor: colors.surfaceMuted },
                         ]}
                         onPress={() => handleVisibilityModeSelect(mode)}
                         activeOpacity={0.8}
@@ -1835,7 +1928,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 15,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
     },
 
     audienceBox: {
@@ -1897,7 +1990,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 999,
       paddingHorizontal: 7,
       paddingVertical: 3,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
     },
     watchMarkerCount: { fontSize: 11, fontWeight: "600", color: colors.textSecondary },
 
@@ -1962,7 +2055,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     visibilityValueSkeleton: {
       width: 78,
       height: 19,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
     },
     visibilityValueText: {
       fontSize: 12,
@@ -2022,7 +2115,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     ctaIconButtonText: { fontSize: 11, fontWeight: "700", color: colors.textSecondary, textAlign: "center" },
     ticketButton: { flex: 1 },
-    seatButtonSet: { borderColor: colors.green.secondary, backgroundColor: colors.green.primary },
+    seatButtonSet: { borderColor: colors.green.border, backgroundColor: colors.green.primary },
     seatButtonTextSet: { color: colors.green.secondary },
 
     invitedSection: { gap: 8 },
@@ -2157,6 +2250,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.pillBorder,
     },
     reportCancelButtonText: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
 

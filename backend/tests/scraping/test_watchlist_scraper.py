@@ -20,8 +20,10 @@ def test_watchlist_parsing(
         mock_get_page,
     )
 
-    watchlist = get_watchlist("sample username")
+    result = get_watchlist("sample username")
 
+    assert result.is_complete
+    watchlist = result.slugs
     assert isinstance(watchlist, list), "Expected watchlist to be a list"
     assert len(watchlist) == 28, "Expected watchlist to contain 100 items"
     sorted_watchlist = sorted(watchlist)

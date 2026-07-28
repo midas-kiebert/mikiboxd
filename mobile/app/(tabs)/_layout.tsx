@@ -30,6 +30,14 @@ const NOTIFICATION_PERMISSION_PROMPTED_KEY = 'mobile.notifications.permission_pr
 const NOTIFICATION_PREFS_INITIALIZED_KEY = 'mobile.notifications.preferences_initialized_v1';
 const NOTIFICATION_PROMPT_DELAY_MS = 700;
 
+// A Letterboxd sync that is throttled (429, still inside its cooldown) or that
+// Letterboxd itself refused (503) is an expected outcome of foregrounding the
+// app, not a bug: the server kept the previous data and will sync later.
+const EXPECTED_SYNC_ERROR_STATUSES = [429, 503];
+
+const isExpectedSyncError = (error: unknown): boolean =>
+  error instanceof ApiError && EXPECTED_SYNC_ERROR_STATUSES.includes(error.status);
+
 export default function TabLayout() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   // Choose tab colors from the active light/dark palette.
@@ -73,7 +81,7 @@ export default function TabLayout() {
         try {
           await MeService.syncWatchlist();
         } catch (error) {
-          if (!(error instanceof ApiError && error.status === 429)) {
+          if (!isExpectedSyncError(error)) {
             console.error('Error syncing watchlist:', error);
           }
         }
@@ -81,7 +89,7 @@ export default function TabLayout() {
         try {
           await MeService.syncWatched();
         } catch (error) {
-          if (!(error instanceof ApiError && error.status === 429)) {
+          if (!isExpectedSyncError(error)) {
             console.error('Error syncing watched list:', error);
           }
         }

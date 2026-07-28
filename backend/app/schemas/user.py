@@ -41,8 +41,16 @@ class UserMe(UserPublic):
     notify_channel_invite_response: NotificationChannel
     notify_channel_interest_reminder: NotificationChannel
     letterboxd_username: str | None
+    watchlist_count: int
+    watched_count: int
     watchlist_last_synced: datetime | None = None
     watched_last_synced: datetime | None = None
+    watchlist_last_sync_attempt: datetime | None = None
+    watched_last_sync_attempt: datetime | None = None
+    watchlist_sync_failed: bool = False
+    watched_sync_failed: bool = False
+    watchlist_sync_cooldown_ends_at: datetime | None = None
+    watched_sync_cooldown_ends_at: datetime | None = None
     notify_watchlist_digest_enabled: bool
     notify_watchlist_digest_frequency: DigestFrequency
     notify_watchlist_digest_list_id: UUID | None

@@ -173,10 +173,15 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       paddingVertical: 7,
       borderRadius: 18,
       backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.pillBorder,
     },
     chipText: { fontSize: 13, fontWeight: "500", color: colors.pillText },
     chipSkeleton: {
-      height: 30,
+      // Matches the loaded chip: 7pt padding either side, the 1pt hairline
+      // border, and ThemedText's 24pt line height (its default type sets that
+      // regardless of the 13pt font size here).
+      height: 40,
       borderRadius: 18,
       backgroundColor: colors.posterPlaceholder,
     },

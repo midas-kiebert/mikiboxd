@@ -693,8 +693,16 @@ export type UserMe = {
   notify_channel_invite_response: NotificationChannel
   notify_channel_interest_reminder: NotificationChannel
   letterboxd_username: string | null
+  watchlist_count: number
+  watched_count: number
   watchlist_last_synced?: string | null
   watched_last_synced?: string | null
+  watchlist_last_sync_attempt?: string | null
+  watched_last_sync_attempt?: string | null
+  watchlist_sync_failed?: boolean
+  watched_sync_failed?: boolean
+  watchlist_sync_cooldown_ends_at?: string | null
+  watched_sync_cooldown_ends_at?: string | null
   notify_watchlist_digest_enabled: boolean
   notify_watchlist_digest_frequency: DigestFrequency
   notify_watchlist_digest_list_id: string | null

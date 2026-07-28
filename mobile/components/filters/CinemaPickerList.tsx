@@ -232,7 +232,7 @@ const createStyles = (colors: ThemeColors) =>
       backgroundColor: "transparent",
     },
     chipSelected: {
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
     },
     chipText: {
       flexShrink: 1,

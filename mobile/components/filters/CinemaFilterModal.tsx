@@ -698,7 +698,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 9,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
     },
     iconBtnFavorite: { backgroundColor: colors.yellow.primary },
     iconBtnDisabled: { opacity: 0.4 },

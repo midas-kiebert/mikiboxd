@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import requests
 from aiohttp import ClientSession
 from bs4 import BeautifulSoup
@@ -8,6 +10,20 @@ HEADERS = {
     "referer": "https://letterboxd.com",
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
 }
+
+
+@dataclass(frozen=True)
+class SlugScrapeResult:
+    """Slugs scraped from a paginated Letterboxd list, plus their completeness.
+
+    `is_complete` is False when any page failed after its retries. Callers that
+    replace stored rows wholesale (both the watchlist and the watched sync do)
+    must discard an incomplete result: writing it silently deletes entries the
+    user still has, and stamps the truncated list as successfully synced.
+    """
+
+    slugs: list[str]
+    is_complete: bool
 
 
 def get_page(

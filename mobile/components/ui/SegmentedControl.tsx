@@ -111,7 +111,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       flexDirection: "row",
       alignItems: "center",
       borderRadius: 999,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.surfaceMuted,
       padding: 2,
     },
     trackStretch: {

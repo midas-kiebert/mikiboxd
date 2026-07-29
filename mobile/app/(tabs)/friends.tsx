@@ -266,7 +266,7 @@ export default function FriendsScreen() {
   // Render/output using the state and derived values prepared above.
   return (
     <TopSafeAreaView style={styles.container}>
-      <TopBar title="Friends" />
+      <TopBar title="Friends" icon="person.2.fill" />
       <View style={styles.modeRow}>
         <SegmentedControl
           options={MODE_OPTIONS}

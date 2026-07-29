@@ -101,7 +101,7 @@ export default function AgendaScreen() {
   // Render/output using the state and derived values prepared above.
   return (
     <TopSafeAreaView style={styles.container}>
-      <TopBar title="Agenda" />
+      <TopBar title="Agenda" icon="calendar" />
       <AgendaToggleRow>
         <AgendaTogglePill
           label="Interested"

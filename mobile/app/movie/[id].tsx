@@ -33,6 +33,7 @@ import {
   type FriendWatchKind,
 } from "@/components/friends/friend-watch-kind";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
+import MovieDescriptionSection from "@/components/movies/MovieDescriptionSection";
 import { SkeletonRows } from "@/components/ui/SkeletonRows";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -629,6 +630,14 @@ function MovieContent({
             sections={refreshing ? [] : showtimeSections}
             keyExtractor={(item) => item.id.toString()}
             stickySectionHeadersEnabled
+            ListHeaderComponent={
+              movie?.description ? (
+                <MovieDescriptionSection
+                  description={movie.description}
+                  letterboxdUrl={letterboxdSlug ? letterboxdUrl : null}
+                />
+              ) : null
+            }
             renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[

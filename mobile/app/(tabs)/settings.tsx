@@ -486,7 +486,7 @@ export default function SettingsScreen() {
   // Render/output using the state and derived values prepared above.
   return (
     <TopSafeAreaView style={styles.container}>
-      <TopBar title="Settings" />
+      <TopBar title="Settings" icon="gearshape.fill" />
       {/* automaticallyAdjustKeyboardInsets (iOS-only) keeps the focused field
           above the keyboard — without it the password/Cineville fields near the
           bottom of this long form are covered on a small phone. */}

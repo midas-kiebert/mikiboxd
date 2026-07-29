@@ -9,6 +9,7 @@ import { useFetchNotificationUnseenCount } from "shared/hooks/useFetchNotificati
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useNotificationCenter } from "@/components/notifications/NotificationCenterProvider";
 import { useUnseenSnoozedTipCount } from "@/utils/feature-tips";
+import { IconSymbol, type IconSymbolName } from "@/components/ui/icon-symbol";
 
 /**
  * Horizontal space (from the screen edge) taken by the back button / bell, which
@@ -34,6 +35,8 @@ type TopBarProps = {
   linkUrl?: string;
   /** Single-letter avatar shown left of the title (e.g. a friend's initial), tinted by accentColor. */
   avatarInitial?: string;
+  /** Icon shown left of the title (e.g. a tab's own icon), matching the title's color. */
+  icon?: IconSymbolName;
 };
 
 export default function TopBar({
@@ -45,6 +48,7 @@ export default function TopBar({
   onTitleSuffixPress,
   linkUrl,
   avatarInitial,
+  icon,
 }: TopBarProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
@@ -144,6 +148,13 @@ export default function TopBar({
           </View>
         ) : (
           <View style={styles.plainTitleRow}>
+            {icon ? (
+              <IconSymbol
+                name={icon}
+                size={22}
+                color={accentColor?.text ?? colors.tint}
+              />
+            ) : null}
             {avatarInitial ? (
               <View
                 style={[

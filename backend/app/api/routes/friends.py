@@ -26,7 +26,9 @@ router = APIRouter(prefix="/friends", tags=["friends"])
     response_class=HTMLResponse,
     include_in_schema=False,
 )
-def get_friend_invite_preview(*, session: SessionDep, user_id: uuid.UUID) -> HTMLResponse:
+def get_friend_invite_preview(
+    *, session: SessionDep, user_id: uuid.UUID
+) -> HTMLResponse:
     """Unauthenticated HTML page carrying per-inviter OpenGraph tags.
 
     Only ever hit by link-preview crawlers (WhatsApp, iMessage, Slack, ...) —

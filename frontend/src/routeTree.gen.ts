@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SupportRouteImport } from './routes/support'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
@@ -37,6 +38,11 @@ import { Route as LayoutAdminReportsRouteImport } from './routes/_layout/admin/r
 import { Route as LayoutAdminMoviesRouteImport } from './routes/_layout/admin/movies'
 import { Route as LayoutUserIdShowtimesRouteImport } from './routes/_layout/$userId/showtimes'
 
+const SupportRoute = SupportRouteImport.update({
+  id: '/support',
+  path: '/support',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -183,6 +189,7 @@ export interface FileRoutesByFullPath {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/support': typeof SupportRoute
   '/friends': typeof LayoutFriendsRoute
   '/movies': typeof LayoutMoviesRoute
   '/pings': typeof LayoutPingsRoute
@@ -210,6 +217,7 @@ export interface FileRoutesByTo {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/support': typeof SupportRoute
   '/friends': typeof LayoutFriendsRoute
   '/movies': typeof LayoutMoviesRoute
   '/pings': typeof LayoutPingsRoute
@@ -240,6 +248,7 @@ export interface FileRoutesById {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/support': typeof SupportRoute
   '/_layout/friends': typeof LayoutFriendsRoute
   '/_layout/movies': typeof LayoutMoviesRoute
   '/_layout/pings': typeof LayoutPingsRoute
@@ -271,6 +280,7 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/support'
     | '/friends'
     | '/movies'
     | '/pings'
@@ -298,6 +308,7 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/support'
     | '/friends'
     | '/movies'
     | '/pings'
@@ -327,6 +338,7 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/support'
     | '/_layout/friends'
     | '/_layout/movies'
     | '/_layout/pings'
@@ -357,6 +369,7 @@ export interface RootRouteChildren {
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  SupportRoute: typeof SupportRoute
   AddFriendReceiverIdRoute: typeof AddFriendReceiverIdRoute
   MovieMovieIdRoute: typeof MovieMovieIdRoute
   PingShowtimeIdSenderRoute: typeof PingShowtimeIdSenderRoute
@@ -364,6 +377,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/support': {
+      id: '/support'
+      path: '/support'
+      fullPath: '/support'
+      preLoaderRoute: typeof SupportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -624,6 +644,7 @@ const rootRouteChildren: RootRouteChildren = {
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  SupportRoute: SupportRoute,
   AddFriendReceiverIdRoute: AddFriendReceiverIdRoute,
   MovieMovieIdRoute: MovieMovieIdRoute,
   PingShowtimeIdSenderRoute: PingShowtimeIdSenderRoute,

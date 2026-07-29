@@ -1,8 +1,8 @@
 /**
- * The first-run walkthrough: four full-screen pages, a progress row, and one
+ * The first-run walkthrough: five full-screen pages, a progress row, and one
  * "Skip tutorial" escape hatch that is always reachable.
  *
- * One Modal for all four pages, opaque for the three that own the screen and
+ * One Modal for all of them, opaque for the pages that own the screen and
  * transparent for the showtime tour, which has to show the real sheet behind
  * it. The sheet itself is rendered as a sibling of the Modal rather than inside
  * it — see `IntroShowtimeSheet` — and stays mounted for the whole intro so
@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import IntroCinemasPage from "@/components/intro/IntroCinemasPage";
 import IntroFriendsPage from "@/components/intro/IntroFriendsPage";
 import IntroLetterboxdPage from "@/components/intro/IntroLetterboxdPage";
+import IntroNotificationsPage from "@/components/intro/IntroNotificationsPage";
 import IntroShowtimeSheet from "@/components/intro/IntroShowtimeSheet";
 import IntroShowtimeTour, { SHOWTIME_TOUR_STEPS } from "@/components/intro/IntroShowtimeTour";
 import type { SpotlightRect } from "@/components/intro/SpotlightOverlay";
@@ -277,6 +278,9 @@ export default function IntroFlow() {
               {pageId === "cinemas" ? <IntroCinemasPage onDone={handleNextPage} /> : null}
               {pageId === "letterboxd" ? <IntroLetterboxdPage onDone={handleNextPage} /> : null}
               {pageId === "friends" ? <IntroFriendsPage onDone={handleNextPage} /> : null}
+              {pageId === "notifications" ? (
+                <IntroNotificationsPage onDone={handleNextPage} />
+              ) : null}
             </Animated.View>
           ) : null}
         </Animated.View>

@@ -5,15 +5,16 @@ import { useEffect, useRef } from 'react'
 import { StyleSheet, TextInput, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Controller, useForm } from 'react-hook-form'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { MeService, type ApiError, type UserUpdate } from 'shared'
-import useAuth from 'shared/hooks/useAuth'
 import { handleError, usernameMaxLength, usernamePattern } from 'shared/utils'
 
 import AuthPrimaryButton from '@/components/auth/AuthPrimaryButton'
 import AuthScreenShell from '@/components/auth/AuthScreenShell'
 import AuthTextField from '@/components/auth/AuthTextField'
+import { currentUserQueryKey } from '@/hooks/useCurrentUser'
 import { completeLogin } from '@/utils/complete-login'
+import { markUsernameResolved } from '@/utils/username-gate'
 
 type PickUsernameForm = {
     display_name: string
@@ -39,7 +40,7 @@ export default function PickUsernameScreen() {
     const router = useRouter()
     const { suggestion } = useLocalSearchParams<{ suggestion?: string }>()
     const inputRef = useRef<TextInput>(null)
-    const { user } = useAuth()
+    const queryClient = useQueryClient()
 
     const {
         control,
@@ -54,18 +55,6 @@ export default function PickUsernameScreen() {
         mutationFn: (data: UserUpdate) => MeService.updateUserMe({ requestBody: data }),
     })
 
-    // Belt and braces on top of the backend's `needs_username`: this screen is
-    // only ever for an account that has no username, so one that turns out to
-    // have one is sent straight on rather than asked to pick a second. Positive
-    // check only — an unloaded/absent user is not treated as "has a username",
-    // which would bounce the very accounts this screen exists for. Left out in
-    // __DEV__ so the login screen's preview shortcut still opens it.
-    const existingUsername = user?.display_name?.trim()
-    useEffect(() => {
-        if (__DEV__ || !existingUsername) return
-        void completeLogin(router)
-    }, [existingUsername, router])
-
     useEffect(() => {
         const timer = setTimeout(() => inputRef.current?.focus(), AUTOFOCUS_DELAY_MS)
         return () => clearTimeout(timer)
@@ -74,7 +63,15 @@ export default function PickUsernameScreen() {
     const onSubmit = async (data: PickUsernameForm) => {
         if (isSubmitting || updateUsernameMutation.isPending) return
         try {
-            await updateUsernameMutation.mutateAsync({ display_name: data.display_name })
+            const updatedUser = await updateUsernameMutation.mutateAsync({
+                display_name: data.display_name,
+            })
+            // Before navigating, not by invalidating and waiting for a refetch:
+            // the root layout's guard reads this cache to decide whether the
+            // account still owes a username, and would send us straight back
+            // here for as long as it says the old, empty one.
+            queryClient.setQueryData(currentUserQueryKey, updatedUser)
+            markUsernameResolved()
             await completeLogin(router)
         } catch (error) {
             setError('display_name', { message: handleError(error as ApiError) })

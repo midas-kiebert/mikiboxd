@@ -33,6 +33,8 @@ import { loadThemePreference, useThemePreference } from '@/utils/theme-preferenc
 import { loadFeatureTips } from '@/utils/feature-tips';
 import { loadIntroState, useIsIntroActive } from '@/utils/intro';
 import { loadAuthSession, markSignedOut, useAuthStatus } from '@/utils/auth-session';
+import { currentUserQueryKey, hasUsername, isMissingUsername, useCurrentUser } from '@/hooks/useCurrentUser';
+import { markUsernameResolved, useIsUsernameRequired } from '@/utils/username-gate';
 import { markAppReady, useIsAppReady } from '@/utils/app-ready';
 import { parseInviteLinkUrl, registerInviteLink } from '@/utils/showtime-invite-link';
 import { closeAllBlockingOverlays } from '@/utils/blocking-overlays';
@@ -61,7 +63,6 @@ import {
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import axios, { AxiosRequestTransformer } from 'axios'
 import * as qs from 'qs'
-import useAuth from 'shared/hooks/useAuth';
 import useTrackEvent from 'shared/hooks/useTrackEvent';
 
 export const unstable_settings = {
@@ -182,6 +183,18 @@ if (__DEV__ && !apiLoggingEnabled) {
   });
 }
 
+// An involuntary sign-out leaves the cache behind, unlike `logout`, which clears
+// it. The cached account has to go with the session: the next one to sign in
+// reads the same `currentUser` key, and a leftover account *with* a username is
+// exactly what would tell the username guard below that a brand-new account
+// already has one.
+const endSessionCaches = () => {
+  queryClient.removeQueries({ queryKey: currentUserQueryKey });
+  // The gate belongs to the session that raised it; the next one decides for
+  // itself, rather than inheriting a demand meant for an account that is gone.
+  markUsernameResolved();
+};
+
 // When the backend rejects our stored token (401), the session is dead — the
 // token is invalid/expired (or was issued by a different backend). Clear it and
 // let the component-level redirect send the user back to login, rather than
@@ -189,12 +202,14 @@ if (__DEV__ && !apiLoggingEnabled) {
 const handleUnauthorized = (error: unknown) => {
   if (!(error instanceof ApiError) || error.status !== 401) return;
   void storage.removeItem('access_token');
+  endSessionCaches();
   markSignedOut();
 };
 
 // Before a 401 becomes a logout, try to transparently refresh the access token.
 // Only a failed refresh falls through to handleUnauthorized above.
 installAuthRefreshInterceptor(() => {
+  endSessionCaches();
   markSignedOut();
 });
 
@@ -269,8 +284,14 @@ function RootLayourContent() {
   const [updateRequiredInfo, setUpdateRequiredInfo] = useState<UpdateRequiredInfo | null>(null)
   const queryClient = useQueryClient();
   const hasHiddenNativeSplashRef = useRef(false)
-  const { user } = useAuth();
+  const user = useCurrentUser();
   const userId = user?.id ? String(user.id) : undefined;
+  // An account with no username is not allowed to be anywhere but the screen
+  // that asks for one — see the route guard below. Two sources, because neither
+  // covers the other's window: the loaded account is authoritative but arrives a
+  // round trip late, and the gate a sign-in raises is synchronous but only knows
+  // about the session it started.
+  const owesUsername = useIsUsernameRequired() || isMissingUsername(user);
   const { trackEvent } = useTrackEvent();
   // Lets notification taps open the showtime modal in place instead of navigating.
   const { openShowtimeModalById } = useShowtimeModal();
@@ -374,13 +395,20 @@ function RootLayourContent() {
     };
   }, [isChecking, isAuthenticated, queryClient])
 
+  useEffect(() => {
+    // The account is the authority, so it also lowers the gate: whatever the
+    // sign-in that raised it believed, an account that turns out to have a
+    // username is not held on the screen that asks for one.
+    if (hasUsername(user)) markUsernameResolved()
+  }, [user])
+
   // `useSegments` hands back a fresh array every render, so the guard below re-runs
   // on every render — not just when the route actually changed. A redirect takes a
   // few renders to land, and each of those renders used to fire the same
   // `router.replace` again, stacking two or three login screens on top of each other.
   const issuedRedirectRef = useRef<string | null>(null)
   const redirectTo = useCallback(
-    (href: '/login' | '/(tabs)') => {
+    (href: '/login' | '/(tabs)' | '/pick-username') => {
       if (issuedRedirectRef.current === href) return
       issuedRedirectRef.current = href
       router.replace(href)
@@ -424,6 +452,14 @@ function RootLayourContent() {
         void storage.setItem(PENDING_DEEP_LINK_PATH_KEY, pathname)
       }
       redirectTo('/login')
+    } else if (isAuthenticated && owesUsername && rootSegment !== 'pick-username') {
+      // The one rule with no exceptions: an account without a username gets no
+      // further than the screen that asks for one — no tabs, no deep link, no
+      // intro. Enforced here rather than only where a social sign-in navigates,
+      // because that is a single decision taken once, and it only has to lose a
+      // race with another redirect (or be force-quit on the way) for an account
+      // to exist that can never be found or recognised by anyone.
+      redirectTo('/pick-username')
     } else if (isAuthenticated && signedOutRoutes.has(rootSegment)) {
       redirectTo('/(tabs)')
     } else {
@@ -431,7 +467,7 @@ function RootLayourContent() {
       // logout, say) starts from a clean slate.
       issuedRedirectRef.current = null
     }
-  }, [isAuthenticated, router, segments, pathname, isChecking, redirectTo])
+  }, [isAuthenticated, owesUsername, router, segments, pathname, isChecking, redirectTo])
 
   const handleNotificationResponse = useCallback(
     async (response: Notifications.NotificationResponse) => {

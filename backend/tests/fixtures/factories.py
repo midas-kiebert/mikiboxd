@@ -14,6 +14,7 @@ from factory.alchemy import SQLAlchemyModelFactory
 from sqlmodel import Session
 
 from app.core.security import get_password_hash
+from app.crud.user import sync_primary_login_email
 from app.models.cinema import Cinema, CinemaCreate
 from app.models.city import City, CityCreate
 from app.models.letterboxd import Letterboxd
@@ -391,6 +392,16 @@ class UserFactory(SQLModelFactory):
     def password(self, create, extracted, **kwargs):
         if create and extracted:
             self.hashed_password = get_password_hash(extracted)
+
+    @post_generation
+    def login_email(self, create, extracted, **kwargs):
+        # Mirrors `crud.user.create_user`: without a reserved row in
+        # `user_login_email`, this user's email is invisible to
+        # `authenticate()`/`get_user_by_login_email` and they can never log in.
+        if create:
+            session = UserFactory._meta.sqlalchemy_session
+            sync_primary_login_email(session=session, user_id=self.id, email=self.email)
+            session.flush()
 
 
 @pytest.fixture

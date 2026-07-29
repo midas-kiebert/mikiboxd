@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.enums import GoingStatus
+from app.core.security import get_password_hash
 from app.models.cinema_selection import CinemaSelection
 from app.models.friendship import FriendRequest, Friendship
 from app.models.push_token import PushToken
@@ -244,8 +245,19 @@ def test_delete_me_rejects_superuser(
 
 
 def test_update_me_notification_preference(
-    client: TestClient, normal_user_token_headers: dict[str, str]
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
 ) -> None:
+    # Opting a channel into email requires a confirmed address, same as the
+    # digest — mark this fixture user verified first.
+    normal_user = db_transaction.exec(
+        select(User).where(User.email == settings.EMAIL_TEST_USER)
+    ).one()
+    normal_user.email_verified = True
+    db_transaction.add(normal_user)
+    db_transaction.commit()
+
     update_response = client.patch(
         f"{settings.API_V1_STR}/me/",
         headers=normal_user_token_headers,
@@ -396,13 +408,14 @@ def test_update_me_allows_recasing_own_username(
         select(User).where(User.email == settings.EMAIL_TEST_USER)
     ).one()
     normal_user.display_name = "casetest"
+    normal_user.hashed_password = get_password_hash("current-password")
     db_transaction.add(normal_user)
     db_transaction.commit()
 
     update_response = client.patch(
         f"{settings.API_V1_STR}/me/",
         headers=normal_user_token_headers,
-        json={"display_name": "CaseTest"},
+        json={"display_name": "CaseTest", "current_password": "current-password"},
     )
 
     assert update_response.status_code == 200
@@ -469,13 +482,14 @@ def test_update_me_allows_unchanged_legacy_username(
         select(User).where(User.email == settings.EMAIL_TEST_USER)
     ).one()
     normal_user.display_name = "Legacy Name"
+    normal_user.hashed_password = get_password_hash("current-password")
     db_transaction.add(normal_user)
     db_transaction.commit()
 
     update_response = client.patch(
         f"{settings.API_V1_STR}/me/",
         headers=normal_user_token_headers,
-        json={"display_name": "Legacy Name"},
+        json={"display_name": "Legacy Name", "current_password": "current-password"},
     )
 
     assert update_response.status_code == 200

@@ -152,7 +152,7 @@ def test_authenticate_success(
     user = user_factory(password=password)
 
     authenticated_user = user_crud.authenticate(
-        session=db_transaction, email=user.email, password=password
+        session=db_transaction, identifier=user.email, password=password
     )
 
     assert authenticated_user is not None
@@ -162,7 +162,7 @@ def test_authenticate_success(
 def test_authenticate_email_doesnt_exist(*, db_transaction: Session):
     authenticated_user = user_crud.authenticate(
         session=db_transaction,
-        email="non-existant-email@example.com",
+        identifier="non-existant-email@example.com",
         password="password",
     )
 
@@ -176,7 +176,7 @@ def test_authenticate_incorrect_password(
     user = user_factory(password=password)
 
     authenticated_user = user_crud.authenticate(
-        session=db_transaction, email=user.email, password="wrong-password"
+        session=db_transaction, identifier=user.email, password="wrong-password"
     )
 
     assert authenticated_user is None

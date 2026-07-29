@@ -369,8 +369,10 @@ def test_social_token_links_to_password_account_with_differently_cased_email(
     assert linked.id == existing_id
     assert linked.google_sub == google_sub
     assert linked.display_name == "alice123"
-    # The address is left exactly as the user typed it when registering.
-    assert linked.email == registered_email
+    # The local part is left exactly as typed; `EmailStr` itself lowercases the
+    # domain on validation, regardless of the social-linking code path.
+    local_part, _, domain = registered_email.partition("@")
+    assert linked.email == f"{local_part}@{domain.lower()}"
 
 
 def test_social_token_new_account_is_verified_by_the_provider(
@@ -529,7 +531,7 @@ def test_authenticate_returns_none_for_social_only_account(
     )
 
     result = user_crud.authenticate(
-        session=db_transaction, email=email, password="whatever-password"
+        session=db_transaction, identifier=email, password="whatever-password"
     )
     assert result is None
 
@@ -550,4 +552,4 @@ def test_social_only_account_cannot_login_via_password_endpoint(
         data={"username": email, "password": "whatever-password"},
     )
     assert r.status_code == 400
-    assert r.json()["detail"] == "Incorrect email or password"
+    assert r.json()["detail"] == "Incorrect email/username or password"

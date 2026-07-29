@@ -753,6 +753,7 @@ export type UserUpdate = {
   notify_watchlist_digest_list_id?: string | null
   notify_watchlist_digest_cinema_preset_id?: string | null
   password?: string | null
+  current_password?: string | null
 }
 
 export type UserWithFriendStatus = {

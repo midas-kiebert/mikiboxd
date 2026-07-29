@@ -200,6 +200,9 @@ export type NotificationPreferencesController = {
   setDelivery: (key: NotificationPreferenceKey, delivery: NotificationDelivery) => Promise<void>;
   /** Prompts, or sends the user to system settings once the OS stops asking. */
   requestSystemPermission: () => Promise<boolean>;
+  /** True while the "confirm your email first" dialog should be shown. */
+  isEmailVerificationRequired: boolean;
+  dismissEmailVerificationRequired: () => void;
 };
 
 export const useNotificationPreferences = (): NotificationPreferencesController => {
@@ -213,6 +216,7 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
     buildNotificationChannelsState(user)
   );
   const [pendingKey, setPendingKey] = useState<NotificationPreferenceKey | null>(null);
+  const [isEmailVerificationRequired, setIsEmailVerificationRequired] = useState(false);
   const permission = useSystemNotificationPermission();
   const { apply: applyPermission } = permission;
 
@@ -298,10 +302,7 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
       // the control back without ever explaining why. Turning email *off* is
       // never blocked — only routing something to it.
       if (delivery === "email" && !user.email_verified) {
-        Alert.alert(
-          "Confirm your email first",
-          "We can't email you until you've opened the confirmation link we sent."
-        );
+        setIsEmailVerificationRequired(true);
         return;
       }
 
@@ -360,5 +361,7 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
     isReady: !!user,
     setDelivery,
     requestSystemPermission,
+    isEmailVerificationRequired,
+    dismissEmailVerificationRequired: useCallback(() => setIsEmailVerificationRequired(false), []),
   };
 };

@@ -55,6 +55,13 @@ class UsernameRequired(AppError):
         super().__init__("Username is required.")
 
 
+class EmailRequired(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    def __init__(self):
+        super().__init__("Email is required.")
+
+
 class InvalidUsername(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
 
@@ -63,6 +70,20 @@ class InvalidUsername(AppError):
             f"Username must be {USERNAME_MIN_LENGTH}-{USERNAME_MAX_LENGTH} characters "
             "and use only letters, numbers, and underscores."
         )
+
+
+class PasswordNotSet(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    def __init__(self):
+        super().__init__("Set a password before changing your username or email.")
+
+
+class IncorrectPassword(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    def __init__(self):
+        super().__init__("Incorrect password.")
 
 
 class OneOrMoreUsersNotFound(AppError):

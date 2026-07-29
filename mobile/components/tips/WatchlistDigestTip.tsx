@@ -75,8 +75,8 @@ export default function WatchlistDigestTip() {
       {!isEnabled ? (
         <View style={styles.details}>
           <ThemedText style={styles.hint}>
-            You can change how often it arrives, follow a Letterboxd list instead of your
-            watchlist, or turn it off again — all in Settings.
+            You can set it to use a Letterboxd list instead of your
+            watchlist in Settings.
           </ThemedText>
         </View>
       ) : null}

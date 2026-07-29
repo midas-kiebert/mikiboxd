@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
+from logging import getLogger
 from typing import Any
 from uuid import UUID
 
@@ -8,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, case, cast, col, delete, or_, select
 
-from app.core.enums import GoingStatus, SocialProvider
+from app.core.enums import GoingStatus, LoginEmailSource, SocialProvider
 from app.core.security import get_password_hash, verify_password
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud.movie import apply_language_filter
@@ -21,6 +22,7 @@ from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User, UserCreate, UserUpdate
+from app.models.user_login_email import UserLoginEmail
 from app.models.watchlist_selection import WatchlistSelection
 from app.utils import now_amsterdam_naive
 
@@ -29,6 +31,14 @@ from app.utils import now_amsterdam_naive
 # UniqueViolation, and the caller has to tell a taken username from a taken
 # email to report either one honestly.
 DISPLAY_NAME_UNIQUE_INDEX = "uq_user_display_name_lower"
+
+# The global unique index on `lower(email)` across every row of
+# user_login_email (migration c2d4e6f8a0b1) — the actual guarantee that no
+# loginable email (primary, or a linked Google/Apple email) is ever shared by
+# two users, or by two sources on the same user.
+LOGIN_EMAIL_UNIQUE_INDEX = "uq_user_login_email_lower"
+
+logger = getLogger(__name__)
 
 DAY_BUCKET_CUTOFF = time(4, 0)
 DAY_BUCKET_OFFSET = timedelta(
@@ -187,6 +197,106 @@ def get_user_by_display_name(*, session: Session, display_name: str) -> User | N
     return session_user
 
 
+def get_user_by_login_email(*, session: Session, email: str) -> User | None:
+    """Resolve any reserved loginable email (primary, Google, or Apple) to its
+    owning user, via `user_login_email` rather than `User.email` directly.
+
+    This is what lets someone log in with an email their account no longer
+    shows as its primary — e.g. the Google address they originally signed up
+    with, after changing their primary email away from it.
+    """
+    statement = (
+        select(User)
+        .join(UserLoginEmail, col(UserLoginEmail.user_id) == col(User.id))
+        .where(func.lower(col(UserLoginEmail.email)) == email.strip().lower())
+    )
+    return session.exec(statement).one_or_none()
+
+
+def is_login_email_conflict(error: IntegrityError) -> bool:
+    """True when an IntegrityError came from the global login-email uniqueness
+    index, as opposed to `User`'s own `email`/display-name constraints."""
+    constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+    return constraint == LOGIN_EMAIL_UNIQUE_INDEX
+
+
+class LoginEmailConflict(Exception):
+    """`email` is already reserved by a different user than the one asking."""
+
+    def __init__(self, email: str):
+        self.email = email
+        super().__init__(f"{email!r} is already reserved by another account.")
+
+
+def _reserve_login_email(
+    *, session: Session, user_id: UUID, email: str, source: LoginEmailSource
+) -> None:
+    """Ensure `email` is reserved for `user_id`.
+
+    A no-op if this user already holds it — from *any* source, including a
+    previous call for a different purpose, since a value reserved once stays
+    reserved to that user permanently and is never replaced. `source` only
+    records why this row first came to exist, should a new reservation be
+    needed. Raises `LoginEmailConflict` if a different user already holds it;
+    the pre-check keeps that the common case, and a `session.flush()` inside a
+    SAVEPOINT is the actual, race-safe arbiter (two concurrent requests
+    reserving the same never-before-seen address).
+    """
+    normalized_email = email.strip()
+    owner = get_user_by_login_email(session=session, email=normalized_email)
+    if owner is not None:
+        if owner.id != user_id:
+            raise LoginEmailConflict(normalized_email)
+        return
+    try:
+        with session.begin_nested():
+            session.add(
+                UserLoginEmail(user_id=user_id, source=source, email=normalized_email)
+            )
+            session.flush()
+    except IntegrityError as e:
+        if not is_login_email_conflict(e):
+            raise
+        raise LoginEmailConflict(normalized_email) from e
+
+
+def sync_primary_login_email(*, session: Session, user_id: UUID, email: str) -> None:
+    """Ensure this user's current primary email is reserved. Call in the same
+    transaction as the `User.email` write, so a `LoginEmailConflict` here
+    rolls back the email change too rather than leaving them out of sync.
+    Raises `LoginEmailConflict` if someone else already holds the address."""
+    _reserve_login_email(
+        session=session, user_id=user_id, email=email, source=LoginEmailSource.PRIMARY
+    )
+
+
+def _try_reserve_social_email(
+    *, session: Session, user_id: UUID, provider: SocialProvider, email: str
+) -> None:
+    """Best-effort reservation of a linked provider's reported email.
+
+    A sub match (or a fresh account/link just proven by a provider token)
+    already establishes who this is — a stale or newly colliding email on the
+    provider's side (e.g. their Google account now reports an address someone
+    else has since reserved) must never fail the sign-in over it.
+    """
+    try:
+        _reserve_login_email(
+            session=session,
+            user_id=user_id,
+            email=email,
+            source=LoginEmailSource(provider.value),
+        )
+    except LoginEmailConflict:
+        logger.warning(
+            "Skipping %s email reservation for user %s: %r is already reserved "
+            "by another account",
+            provider.value,
+            user_id,
+            email,
+        )
+
+
 def _social_sub_column(provider: SocialProvider):
     return User.apple_sub if provider is SocialProvider.APPLE else User.google_sub
 
@@ -239,6 +349,14 @@ def get_or_create_social_user(
         session=session, provider=provider, provider_sub=provider_sub
     )
     if existing:
+        # Opportunistically (re)capture what this provider currently reports as
+        # the account's email — the only way an account that predates this
+        # table, or whose Google/Apple email has since changed, ever gets a
+        # row here. Never lets a collision with someone else's reserved email
+        # fail the sign-in: the sub match already proves who this is.
+        _try_reserve_social_email(
+            session=session, user_id=existing.id, provider=provider, email=email
+        )
         return SocialUserResolution(user=existing, is_new=False, password_removed=False)
 
     # Same email, different provider (or a pre-existing password account) —
@@ -266,6 +384,15 @@ def get_or_create_social_user(
             by_email.email_verified = True
         session.add(by_email)
         session.flush()
+        # Belt-and-suspenders: the PRIMARY row should already exist (backfill
+        # or an earlier write), this just guarantees it. The provider row
+        # reserves the linked identity's own email under its own source.
+        sync_primary_login_email(
+            session=session, user_id=by_email.id, email=by_email.email
+        )
+        _try_reserve_social_email(
+            session=session, user_id=by_email.id, provider=provider, email=email
+        )
         return SocialUserResolution(
             user=by_email, is_new=False, password_removed=password_removed
         )
@@ -287,6 +414,10 @@ def get_or_create_social_user(
     )
     session.add(db_obj)
     session.flush()  # Check for unique constraints (email, apple_sub, google_sub)
+    sync_primary_login_email(session=session, user_id=db_obj.id, email=db_obj.email)
+    _try_reserve_social_email(
+        session=session, user_id=db_obj.id, provider=provider, email=email
+    )
     return SocialUserResolution(user=db_obj, is_new=True, password_removed=False)
 
 
@@ -304,12 +435,19 @@ def create_user(
         User: The created user object.
     Raises:
         IntegrityError: If a user with the same email already exists.
+        LoginEmailConflict: If the email is already reserved by a different
+            user via user_login_email (e.g. it's someone else's linked
+            Google/Apple email, even though it's nobody's current primary).
     """
     db_obj = User.model_validate(
         user_create, update={"hashed_password": get_password_hash(user_create.password)}
     )
     session.add(db_obj)
     session.flush()  # Check for unique constraints
+    # Reserve the email as this user's PRIMARY login identifier — without this,
+    # a freshly-created account's email would be unreachable by
+    # get_user_by_login_email, and it could never log in.
+    sync_primary_login_email(session=session, user_id=db_obj.id, email=db_obj.email)
     return db_obj
 
 
@@ -407,18 +545,32 @@ def set_report_ban(
     return db_user
 
 
-def authenticate(*, session: Session, email: str, password: str) -> User | None:
+def authenticate(*, session: Session, identifier: str, password: str) -> User | None:
     """
-    Authenticate a user by email and password.
+    Authenticate a user by password, resolving them from either an email or a
+    username.
+
+    Usernames are validated to `^[A-Za-z0-9_]+$` (see app.validators.username)
+    and so can never contain "@" — an email always does — which makes the
+    branch below unambiguous without needing to try both lookups. "Email"
+    here means any reserved login email (current primary, or a linked
+    Google/Apple email), not just the account's current primary.
 
     Parameters:
         session (Session): The database session.
-        email (str): The email address of the user.
+        identifier (str): Whatever the client's "email or username" field
+            held — an email address or a username.
         password (str): The password of the user.
     Returns:
         User | None: The authenticated user object if credentials are valid, otherwise None.
     """
-    db_user = get_user_by_email(session=session, email=email)
+    normalized_identifier = identifier.strip()
+    if "@" in normalized_identifier:
+        db_user = get_user_by_login_email(session=session, email=normalized_identifier)
+    else:
+        db_user = get_user_by_display_name(
+            session=session, display_name=normalized_identifier
+        )
     if not db_user:
         return None
     if db_user.hashed_password is None:

@@ -17,6 +17,7 @@ import { useThemeColors } from '@/hooks/use-theme-color'
 import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation'
 import { completeLogin } from '@/utils/complete-login'
 import { EMAIL_PATTERN } from '@/constants/auth'
+import { usernamePattern } from 'shared/utils'
 
 export default function LoginScreen() {
     // Read flow: local state and data hooks first, then handlers, then the JSX screen.
@@ -94,29 +95,32 @@ export default function LoginScreen() {
             />
 
             <View style={styles.form}>
-                {/* Email field uses Controller so validation and input stay in sync. */}
+                {/* Accepts either the account's email or its username — including
+                    a Google/Apple email that's no longer the current primary,
+                    for anyone who forgets they changed it and doesn't tap
+                    "Continue with Google/Apple". Not spelled out in the copy,
+                    deliberately: it's a safety net, not a feature to advertise. */}
                 <Controller
                     control={control}
                     name="username"
                     rules={{
-                        required: 'Email is required',
-                        pattern: {
-                            value: EMAIL_PATTERN,
-                            message: 'Invalid email address',
-                        },
+                        required: 'Email or username is required',
+                        validate: (value) =>
+                            EMAIL_PATTERN.test(value) ||
+                            usernamePattern.value.test(value) ||
+                            'Enter a valid email or username',
                     }}
                     render={({ field: { onChange, onBlur, value } }) => (
                         <AuthTextField
-                            label="Email"
-                            placeholder="you@example.com"
+                            label="Email or username"
+                            placeholder="you@example.com or username"
                             error={errors.username?.message}
                             onBlur={onBlur}
                             onChangeText={onChange}
                             value={value}
                             autoCapitalize="none"
                             autoCorrect={false}
-                            keyboardType="email-address"
-                            autoComplete="email"
+                            autoComplete="username"
                             returnKeyType="next"
                             editable={!isSocialSignInBusy}
                             onSubmitEditing={() => passwordRef.current?.focus()}

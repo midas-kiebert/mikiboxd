@@ -408,6 +408,12 @@ def register_user(
             user_id=user.id,
         )
         session.commit()
+    except users_crud.LoginEmailConflict as e:
+        # The address is nobody's current primary (User.email's own unique
+        # index missed it) but is still reserved — e.g. it's someone else's
+        # linked Google/Apple email.
+        session.rollback()
+        raise EmailAlreadyExists(user_in.email) from e
     except IntegrityError as e:
         session.rollback()
         if isinstance(e.orig, UniqueViolation):

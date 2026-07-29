@@ -107,6 +107,10 @@ class UserUpdate(SQLModel):
     notify_watchlist_digest_list_id: uuid.UUID | None = Field(default=None)
     notify_watchlist_digest_cinema_preset_id: uuid.UUID | None = Field(default=None)
     password: str | None = Field(default=None, min_length=1, max_length=255)
+    # Required to confirm a username or email change (see me_service.update_me);
+    # ignored otherwise. Never reaches the database — popped from the update
+    # dict before crud.update_user's sqlmodel_update, same as `password` is.
+    current_password: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 # Database model, database table inferred from class name

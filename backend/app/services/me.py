@@ -10,6 +10,7 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
 from app.core.enums import NotificationChannel, NotificationType, ShowtimePingSort
+from app.core.security import verify_password
 from app.crud import cinema as cinemas_crud
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import friendship as friendship_crud
@@ -25,7 +26,10 @@ from app.exceptions.user_exceptions import (
     DisplayNameAlreadyExists,
     EmailAlreadyExists,
     EmailNotVerified,
+    EmailRequired,
+    IncorrectPassword,
     InvalidUsername,
+    PasswordNotSet,
     UsernameRequired,
 )
 from app.models.cinema_preset import (
@@ -43,6 +47,7 @@ from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe
+from app.services import users as users_service
 from app.utils import now_amsterdam_naive
 from app.validators.username import is_valid_username
 
@@ -136,6 +141,43 @@ def update_me(
             )
             if existing_user and existing_user.id != current_user.id:
                 raise DisplayNameAlreadyExists(requested_display_name)
+
+    requested_email: str | None = None
+    email_changed = False
+    if "email" in user_data:
+        email = user_data["email"]
+        requested_email = str(email).strip() if email else None
+        if not requested_email:
+            # No account gives up its email either — EmailStr validation on
+            # UserUpdate rejects a malformed string, but an explicit
+            # `"email": null` still reaches here.
+            raise EmailRequired()
+        normalized_current_email = current_user.email.strip().lower()
+        email_changed = requested_email.lower() != normalized_current_email
+        if email_changed:
+            existing_owner = users_crud.get_user_by_login_email(
+                session=session, email=requested_email
+            )
+            if existing_owner and existing_owner.id != current_user.id:
+                raise EmailAlreadyExists(requested_email)
+
+    # Changing the username or email is who-you-are, not a preference — it
+    # requires proving you're still the one holding the account, exactly like
+    # changing the password itself does. An account with no password yet has
+    # nothing to confirm with, so it must set one first rather than treating a
+    # blank confirmation as good enough. Gated on the field being present at
+    # all (not just actually changed) — re-saving the same value is still a
+    # deliberate identity-field submission, and keeping the rule simple means
+    # there's no separate "did it really change" edge case to get wrong here.
+    current_password = user_data.pop("current_password", None)
+    if "display_name" in user_data or "email" in user_data:
+        if current_user.hashed_password is None:
+            raise PasswordNotSet()
+        if current_password is None or not verify_password(
+            current_password, current_user.hashed_password
+        ):
+            raise IncorrectPassword()
+
     validated_user_update = UserUpdate.model_validate(user_data)
 
     try:
@@ -144,6 +186,14 @@ def update_me(
             db_user=current_user,
             user_in=validated_user_update,
         )
+        if email_changed:
+            current_user.email_verified = False
+            session.add(current_user)
+            users_crud.sync_primary_login_email(
+                session=session, user_id=current_user.id, email=current_user.email
+            )
+    except users_crud.LoginEmailConflict as e:
+        raise EmailAlreadyExists(e.email) from e
     except IntegrityError as e:
         if isinstance(e.orig, UniqueViolation):
             # Both of this table's unique rules surface as the same error, and
@@ -169,6 +219,8 @@ def update_me(
 
     session.commit()
     user_public = user_converters.to_me(current_user, session=session)
+    if email_changed:
+        users_service.send_email_verification(user=current_user)
     return user_public
 
 

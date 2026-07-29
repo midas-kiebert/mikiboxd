@@ -24,6 +24,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 type MovieCardProps = {
   movie: MovieSummaryLoggedIn;
   onPress?: (movie: MovieSummaryLoggedIn) => void;
+  showCinema?: boolean;
 };
 
 const MAX_SHOWTIMES = 5;
@@ -45,7 +46,7 @@ const getCompactBadgeRowsForHeight = (height: number) => {
   return Math.max(1, Math.min(MAX_COMPACT_BADGE_ROWS, rows));
 };
 
-export default function MovieCard({ movie, onPress }: MovieCardProps) {
+export default function MovieCard({ movie, onPress, showCinema = true }: MovieCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -120,6 +121,7 @@ export default function MovieCard({ movie, onPress }: MovieCardProps) {
                       variant="compact"
                       subtitlesAfterCinema
                       isSyntheticMovie={isSynthetic}
+                      showCinema={showCinema}
                     />
                   ))}
                 </View>

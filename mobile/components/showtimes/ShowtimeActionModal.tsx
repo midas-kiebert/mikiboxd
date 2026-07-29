@@ -90,6 +90,7 @@ import {
   isSyntheticMovieId,
 } from "@/constants/synthetic-movies";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
+import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
 import { EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -316,6 +317,9 @@ export default function ShowtimeActionModal({
         },
       })
   );
+  const goToUserPage = useSingleFireNavigation((userId: string, name: string) =>
+    router.push({ pathname: "/friend-showtimes/[id]", params: { id: userId, name } })
+  );
   // Generous trailing space so the invite section can always be scrolled to the
   // top, even after typing shrinks the friend list (so the view doesn't jump).
   const inviteScrollPadding = Math.round(windowHeight * 0.6);
@@ -408,15 +412,28 @@ export default function ShowtimeActionModal({
   const tourTarget = tour?.target ?? null;
   const onTourTargetRect = tour?.onTargetRect;
 
+  // Registered as a blocking overlay for as long as the sheet is actually on
+  // screen — including mid-close-animation. Driven off gorhom's own index
+  // rather than the `visible` prop: `visible` flips false the instant a close
+  // is requested, but the sheet keeps sliding down for a couple hundred ms
+  // after that, and anything gating on "is a blocking overlay open" (e.g. the
+  // intro's filters spotlight) must not treat the sheet as gone until it
+  // truly is, or it ends up highlighting the Filters button over a sheet
+  // that's still visibly there.
+  const [isPresented, setIsPresented] = useState(false);
+
   const handleSheetChange = useCallback(
     (index: number) => {
       if (index === -1) {
         closedByGorhomRef.current = true;
+        setIsPresented(false);
         onClose();
       }
     },
     [onClose]
   );
+
+  useRegisterBlockingOverlay(isPresented, onClose);
 
   const presentSheet = useCallback(() => {
     isPresentPendingRef.current = false;
@@ -426,6 +443,7 @@ export default function ShowtimeActionModal({
     }
     hasEverPresentedRef.current = true;
     closedByGorhomRef.current = false;
+    setIsPresented(true);
     bottomSheetModalRef.current?.present();
   }, []);
 
@@ -803,6 +821,11 @@ export default function ShowtimeActionModal({
     goToMoviePage(showtime.movie.id, showtime.cinema.id);
   };
 
+  const handleGoToUserPage = (userId: string, name: string) => {
+    onClose();
+    goToUserPage(userId, name);
+  };
+
 
   const handleOpenSeatDialog = () => {
     if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) return;
@@ -1015,15 +1038,26 @@ export default function ShowtimeActionModal({
 
   const coInvitedFriends = showtime?.co_invited_friends ?? [];
   const nonFriendParticipants = showtime?.non_friend_participants ?? [];
+  const invitedByUsers = showtime?.invited_by ?? [];
   const invitedYouLabel = hasInvite ? formatInvitedYou(invite!.senders) : null;
   const inviterNames = hasInvite ? formatInviterNames(invite!.senders) : null;
 
   // The "Invited" tab merges who you've invited (with their respond status),
-  // who your inviter(s) also invited (your co-invitees), and non-friends from
-  // the same invite chain (with an inline friend-request affordance instead
-  // of a status) — each row says who's responsible for the invite, "you"
-  // taking priority when both apply.
+  // who your inviter(s) also invited (your co-invitees), friends who invited
+  // you directly, and non-friends from the same invite chain (with an inline
+  // friend-request affordance instead of a status) — each row says who's
+  // responsible for the invite, "you" taking priority when both apply.
+  //
+  // A row's attribution (you invited them / they invited you / a shared
+  // inviter) and its friendship status are independent facts — someone you
+  // invited while you were friends can unfriend you afterward and still show
+  // up here, still attributed the same way, just no longer a friend. So every
+  // attribution bucket below checks `nonFriendParticipantsById` for its own
+  // rows instead of assuming friendship from which bucket it landed in.
   const invitedTabEntries = useMemo(() => {
+    const nonFriendParticipantsById = new Map(
+      nonFriendParticipants.map((entry) => [entry.user.id, entry.user])
+    );
     const sentEntries = sentPings.map((ping) => ({
       key: `sent-${ping.id}`,
       userId: ping.receiver_id,
@@ -1036,7 +1070,7 @@ export default function ShowtimeActionModal({
           ? colors.green.secondary
           : colors.textSecondary,
       canUninvite: true,
-      nonFriendUser: null as (typeof nonFriendParticipants)[number]["user"] | null,
+      nonFriendUser: nonFriendParticipantsById.get(ping.receiver_id) ?? null,
     }));
     const coInvitedEntries = coInvitedFriends.map((entry) => ({
       key: `co-${entry.friend.id}`,
@@ -1048,12 +1082,30 @@ export default function ShowtimeActionModal({
       statusLabel: null,
       statusColor: colors.textSecondary,
       canUninvite: false,
-      nonFriendUser: null as (typeof nonFriendParticipants)[number]["user"] | null,
+      nonFriendUser: nonFriendParticipantsById.get(entry.friend.id) ?? null,
     }));
     const knownIds = new Set([
       ...sentEntries.map((entry) => entry.userId),
       ...coInvitedEntries.map((entry) => entry.userId),
     ]);
+    // Non-friend inviters already get a "Invited you" entry below (with a
+    // friend-request affordance); this only covers the ones who invited you
+    // and are already friends — invited_by has no attribution/status of its
+    // own, so anyone left over here must have invited you directly.
+    const friendInviterEntries = invitedByUsers
+      .filter(
+        (sender) => !knownIds.has(sender.id) && !nonFriendParticipantsById.has(sender.id)
+      )
+      .map((sender) => ({
+        key: `friend-inviter-${sender.id}`,
+        userId: sender.id,
+        name: sender.display_name?.trim() || "Friend",
+        invitedByLabel: "Invited you" as string | null,
+        statusLabel: null,
+        statusColor: colors.textSecondary,
+        canUninvite: false,
+        nonFriendUser: null as (typeof nonFriendParticipants)[number]["user"] | null,
+      }));
     const nonFriendEntries = nonFriendParticipants
       .filter((entry) => !knownIds.has(entry.user.id))
       .map((entry) => ({
@@ -1072,8 +1124,8 @@ export default function ShowtimeActionModal({
         canUninvite: false,
         nonFriendUser: entry.user as (typeof nonFriendParticipants)[number]["user"] | null,
       }));
-    return [...sentEntries, ...coInvitedEntries, ...nonFriendEntries];
-  }, [sentPings, coInvitedFriends, nonFriendParticipants, colors]);
+    return [...sentEntries, ...coInvitedEntries, ...friendInviterEntries, ...nonFriendEntries];
+  }, [sentPings, coInvitedFriends, nonFriendParticipants, invitedByUsers, colors]);
   const showtimeStartsAt = showtime ? DateTime.fromISO(showtime.datetime) : null;
   const dateLabel = showtimeStartsAt?.isValid ? showtimeStartsAt.toFormat("cccc d LLLL") : null;
   const isSyntheticMovie = showtime ? isSyntheticMovieId(showtime.movie.id) : false;
@@ -1405,20 +1457,11 @@ export default function ShowtimeActionModal({
               ))}
             </View>
 
-            {/* Actions: Share + Get Ticket (+ Seat) */}
+            {/* Actions: Get Ticket (+ Seat) — Share moved down next to Invite friends */}
             <View style={styles.ctaRow}>
-              <TouchableOpacity
-                style={styles.ctaIconButton}
-                onPress={() => void handleSharePingLink()}
-                disabled={!currentUser?.id}
-                activeOpacity={0.85}
-              >
-                <MaterialIcons name="share" size={18} color={colors.textSecondary} />
-                <ThemedText style={styles.ctaIconButtonText}>Share</ThemedText>
-              </TouchableOpacity>
               {!disableMovieNavigation ? (
                 <TouchableOpacity
-                  style={[styles.ctaIconButton, !hasTicketLink && styles.ticketButton]}
+                  style={styles.ctaIconButton}
                   onPress={handleGoToMoviePage}
                   activeOpacity={0.85}
                 >
@@ -1430,7 +1473,7 @@ export default function ShowtimeActionModal({
               ) : null}
               {hasTicketLink ? (
                 <TouchableOpacity
-                  style={[styles.ctaIconButton, styles.ticketButton]}
+                  style={styles.ctaIconButton}
                   onPress={handleOpenTicketLink}
                   activeOpacity={0.85}
                 >
@@ -1539,7 +1582,12 @@ export default function ShowtimeActionModal({
                   {invitedTabEntries.map((entry) => {
                     const avatarColors = getAvatarColors(entry.userId, colors);
                     return (
-                      <View key={entry.key} style={styles.invitedRow}>
+                      <TouchableOpacity
+                        key={entry.key}
+                        style={styles.invitedRow}
+                        onPress={() => handleGoToUserPage(entry.userId, entry.name)}
+                        activeOpacity={0.7}
+                      >
                         <View
                           style={[
                             styles.invitedRowAvatar,
@@ -1569,10 +1617,14 @@ export default function ShowtimeActionModal({
                             {entry.statusLabel}
                           </ThemedText>
                         ) : null}
+                        {entry.nonFriendUser ? (
+                          <InlineFriendRequestButtons user={entry.nonFriendUser} />
+                        ) : null}
                         {entry.canUninvite ? (
                           <TouchableOpacity
                             style={styles.uninviteButton}
-                            onPress={() => {
+                            onPress={(event) => {
+                              event.stopPropagation();
                               if (!showtime) return;
                               uninviteFriend({ showtimeId: showtime.id, friendId: entry.userId });
                             }}
@@ -1583,31 +1635,39 @@ export default function ShowtimeActionModal({
                             <MaterialIcons name="close" size={14} color={colors.textSecondary} />
                           </TouchableOpacity>
                         ) : null}
-                        {entry.nonFriendUser ? (
-                          <InlineFriendRequestButtons user={entry.nonFriendUser} />
-                        ) : null}
-                      </View>
+                      </TouchableOpacity>
                     );
                   })}
                 </View>
               )}
             </View>
 
-            {/* Invite friends (collapsible, blue invite coding) */}
-            <TouchableOpacity
-              ref={(node) => {
-                tourTargetRefs.current.invite = node;
-              }}
-              style={styles.inviteToggle}
-              onPress={toggleInviteFriends}
-              activeOpacity={0.85}
-            >
-              <MaterialIcons name="mail-outline" size={18} color={colors.blue.secondary} />
-              <ThemedText style={styles.inviteToggleText}>Invite friends</ThemedText>
-              <Animated.View style={{ transform: [{ rotate: caretSpin }] }}>
-                <MaterialIcons name="expand-more" size={20} color={colors.blue.secondary} />
-              </Animated.View>
-            </TouchableOpacity>
+            {/* Share (always one tap, no expand) + Invite friends (collapsible, blue invite coding) */}
+            <View style={styles.inviteBarRow}>
+              <TouchableOpacity
+                style={styles.shareButton}
+                onPress={() => void handleSharePingLink()}
+                disabled={!currentUser?.id}
+                activeOpacity={0.85}
+              >
+                <MaterialIcons name="share" size={16} color={colors.blue.secondary} />
+                <ThemedText style={styles.shareButtonText}>Share</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                ref={(node) => {
+                  tourTargetRefs.current.invite = node;
+                }}
+                style={styles.inviteToggle}
+                onPress={toggleInviteFriends}
+                activeOpacity={0.85}
+              >
+                <MaterialIcons name="mail-outline" size={18} color={colors.blue.secondary} />
+                <ThemedText style={styles.inviteToggleText}>Invite friends</ThemedText>
+                <Animated.View style={{ transform: [{ rotate: caretSpin }] }}>
+                  <MaterialIcons name="expand-more" size={20} color={colors.blue.secondary} />
+                </Animated.View>
+              </TouchableOpacity>
+            </View>
 
             {showInviteFriends ? (
               <View style={styles.invitePanel}>
@@ -1782,6 +1842,7 @@ export default function ShowtimeActionModal({
         kind={watchModalKind}
         friends={watchModalKind === "watched" ? friendsWatched : friendsWatchlisted}
         onClose={() => setWatchModalKind(null)}
+        onNavigate={onClose}
         invite={{
           getState: (friendId) => {
             const availability = getPingAvailability(friendId);
@@ -2011,12 +2072,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     statusRow: { flexDirection: "row", gap: 8 },
     statusButton: {
       flex: 1,
-      gap: 3,
+      gap: 1,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.pillBackground,
-      paddingVertical: 5,
+      paddingTop: 8,
+      paddingBottom: 5,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -2098,15 +2160,15 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     ctaRow: { flexDirection: "row", gap: 8 },
     ctaIconButton: {
-      // Without flexShrink the three buttons ("All showtimes" / "Get ticket" /
-      // "Seat A-12") overflow their row at ~320-340dp and their labels wrap to
-      // two lines; shrinking lets the labels ellipsize instead.
-      flexShrink: 1,
-      gap: 3,
+      // flex: 1 (same as statusButton) so however many of these three render,
+      // they split the row evenly, keeping "All showtimes" the exact same
+      // width as "Not going" above it rather than sizing to its own label.
+      flex: 1,
+      gap: 1,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      paddingTop: 5,
+      paddingTop: 8,
       paddingBottom: 4,
       paddingHorizontal: 14,
       alignItems: "center",
@@ -2114,7 +2176,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.cardBackground,
     },
     ctaIconButtonText: { fontSize: 11, fontWeight: "700", color: colors.textSecondary, textAlign: "center" },
-    ticketButton: { flex: 1 },
     seatButtonSet: { borderColor: colors.green.border, backgroundColor: colors.green.primary },
     seatButtonTextSet: { color: colors.green.secondary },
 
@@ -2156,7 +2217,20 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 4,
     },
 
+    inviteBarRow: { flexDirection: "row", gap: 8 },
+    shareButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      paddingVertical: 9,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      backgroundColor: colors.blue.primary,
+    },
+    shareButtonText: { fontSize: 13, fontWeight: "700", color: colors.blue.secondary },
     inviteToggle: {
+      flex: 1,
       flexDirection: "row",
       alignItems: "center",
       gap: 8,

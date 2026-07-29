@@ -3,8 +3,8 @@
  */
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useRouter, useSegments, usePathname, withLayoutContext } from 'expo-router';
-import { createStackNavigator, TransitionPresets, TransitionSpecs } from '@react-navigation/stack';
-import { Appearance, Easing, Platform, View } from 'react-native';
+import { CardStyleInterpolators, createStackNavigator, TransitionPresets, TransitionSpecs } from '@react-navigation/stack';
+import { Appearance, Easing, Linking, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import {
@@ -33,9 +33,12 @@ import { loadThemePreference, useThemePreference } from '@/utils/theme-preferenc
 import { loadFeatureTips } from '@/utils/feature-tips';
 import { loadIntroState, useIsIntroActive } from '@/utils/intro';
 import { loadAuthSession, markSignedOut, useAuthStatus } from '@/utils/auth-session';
+import { markAppReady, useIsAppReady } from '@/utils/app-ready';
+import { parseInviteLinkUrl, registerInviteLink } from '@/utils/showtime-invite-link';
+import { closeAllBlockingOverlays } from '@/utils/blocking-overlays';
 import IntroHost from '@/components/intro/IntroHost';
 import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
-import AppSplash from '@/components/layout/AppSplash';
+import AppSplash, { SPLASH_FADE_DURATION_MS } from '@/components/layout/AppSplash';
 import {
   displayPresetOrderQueryKey,
   displayPresetsQueryKey,
@@ -73,6 +76,17 @@ export const unstable_settings = {
 // never cleared early — no blank, identical on iOS and Android.
 const { Navigator: JsStackNavigator } = createStackNavigator();
 const JsStack = withLayoutContext(JsStackNavigator);
+
+// For screens that must appear and leave with no transition at all. Both the
+// interpolator and the spec have to be given: the stack's screenOptions set each
+// of them explicitly, and an explicit value always wins over a preset's.
+const INSTANT_SCREEN_OPTIONS = {
+  cardStyleInterpolator: CardStyleInterpolators.forNoAnimation,
+  transitionSpec: {
+    open: { animation: 'timing', config: { duration: 0 } },
+    close: { animation: 'timing', config: { duration: 0 } },
+  },
+} as const;
 
 // Configured once at startup so GoogleSignin.signIn() is ready wherever a
 // sign-in button is rendered. webClientId sets the ID token audience, which
@@ -247,6 +261,9 @@ function RootLayourContent() {
   const [themeReady, setThemeReady] = useState(false)
   const [warmupDone, setWarmupDone] = useState(false)
   const [splashVisible, setSplashVisible] = useState(true)
+  // Reveal the app only once the shell is stable: theme resolved, auth known,
+  // and critical caches warmed. The branded overlay covers everything until then.
+  const appReady = themeReady && !isChecking && warmupDone;
   // Set once the backend 426s this build; renders UpdateRequiredScreen instead
   // of the app shell for the rest of the session (see onUpdateRequired above).
   const [updateRequiredInfo, setUpdateRequiredInfo] = useState<UpdateRequiredInfo | null>(null)
@@ -257,6 +274,8 @@ function RootLayourContent() {
   const { trackEvent } = useTrackEvent();
   // Lets notification taps open the showtime modal in place instead of navigating.
   const { openShowtimeModalById } = useShowtimeModal();
+  // Gates deep-link handling until the shell is up — see the invite effect below.
+  const isAppReady = useIsAppReady();
   // Prevent duplicate handling when the same notification response is replayed.
   const handledNotificationResponsesRef = useRef<Set<string>>(new Set())
   // A notification tapped mid-walkthrough would otherwise navigate or open the
@@ -355,6 +374,20 @@ function RootLayourContent() {
     };
   }, [isChecking, isAuthenticated, queryClient])
 
+  // `useSegments` hands back a fresh array every render, so the guard below re-runs
+  // on every render — not just when the route actually changed. A redirect takes a
+  // few renders to land, and each of those renders used to fire the same
+  // `router.replace` again, stacking two or three login screens on top of each other.
+  const issuedRedirectRef = useRef<string | null>(null)
+  const redirectTo = useCallback(
+    (href: '/login' | '/(tabs)') => {
+      if (issuedRedirectRef.current === href) return
+      issuedRedirectRef.current = href
+      router.replace(href)
+    },
+    [router]
+  )
+
   useEffect(() => {
     if (isChecking) return
 
@@ -385,18 +418,20 @@ function RootLayourContent() {
 
     if (!isAuthenticated && authRoutes.has(rootSegment)) {
       // User is not authenticated but trying to access protected routes
-      console.log('Redirecting to login because user is not authenticated')
       // Remember the deep link (everything except the plain tabs home) so the
       // login flow can resume it after the user signs in.
       if (rootSegment !== '(tabs)') {
         void storage.setItem(PENDING_DEEP_LINK_PATH_KEY, pathname)
       }
-      router.replace('/login')
+      redirectTo('/login')
     } else if (isAuthenticated && signedOutRoutes.has(rootSegment)) {
-      console.log('Redirecting to home because user is authenticated')
-      router.replace('/(tabs)')
+      redirectTo('/(tabs)')
+    } else {
+      // Landed somewhere this guard is happy with, so the next redirect (a
+      // logout, say) starts from a clean slate.
+      issuedRedirectRef.current = null
     }
-  }, [isAuthenticated, router, segments, pathname, isChecking])
+  }, [isAuthenticated, router, segments, pathname, isChecking, redirectTo])
 
   const handleNotificationResponse = useCallback(
     async (response: Notifications.NotificationResponse) => {
@@ -423,6 +458,9 @@ function RootLayourContent() {
         // everything else still navigates via the resolved route.
         const modalShowtimeId = getModalShowtimeIdFromNotification(data)
         const runRoute = () => {
+          // Same reason as the invite deep link below: a sheet still open from
+          // before the tap would otherwise keep drawing over what the tap opens.
+          closeAllBlockingOverlays()
           if (modalShowtimeId !== null) {
             openShowtimeModalById(modalShowtimeId)
           } else {
@@ -449,6 +487,66 @@ function RootLayourContent() {
     },
     [router, openShowtimeModalById, trackEvent]
   )
+
+  // Release the deep links held back during launch, once the splash has faded
+  // and the shell is the thing on screen. Keyed on `appReady` rather than the
+  // splash's own onHidden, which is skipped outright if its fade is interrupted.
+  useEffect(() => {
+    if (!appReady) return
+    const timer = setTimeout(markAppReady, SPLASH_FADE_DURATION_MS)
+    return () => clearTimeout(timer)
+  }, [appReady])
+
+  // Invite links are handled here rather than on the `/ping` route they resolve
+  // to. That route is not a reliable handler: on a cold start it can mount into
+  // a shell that is still assembling (or never mount at all, if the launch URL
+  // lands before the navigator does), and on a warm open it mounts on top of
+  // whatever the user was already looking at. Reading the URL directly — the
+  // launch one plus every one delivered while running — makes it one path that
+  // works the same either way, and leaves the route with nothing to do but bow
+  // out.
+  useEffect(() => {
+    if (!isAppReady || isChecking) return
+    let cancelled = false
+
+    const handleUrl = (url: string | null) => {
+      if (cancelled || !url) return
+      const invite = parseInviteLinkUrl(url)
+      if (!invite) return
+
+      if (!isAuthenticated) {
+        // Stored so the login screen resumes where the link was headed. The
+        // invite itself is picked up by this effect re-running once a session
+        // exists, which re-reads the same launch URL — hence `isAuthenticated`
+        // in the deps.
+        void storage.setItem(
+          PENDING_DEEP_LINK_PATH_KEY,
+          `/ping/${invite.showtimeId}/${invite.sender}`
+        )
+        return
+      }
+
+      // An invite arriving from outside the app has to end up in front of the
+      // user, and a sheet left open from before would otherwise swallow it: the
+      // showtime sheet's portal slot was fixed the first time it opened, so one
+      // raised later (the notification centre, say) keeps drawing over it.
+      closeAllBlockingOverlays()
+      openShowtimeModalById(invite.showtimeId)
+      void registerInviteLink({ ...invite, queryClient })
+    }
+
+    void Linking.getInitialURL()
+      .then(handleUrl)
+      .catch((error) => {
+        console.error('Error reading launch URL:', error)
+      })
+    const subscription = Linking.addEventListener('url', ({ url }) => handleUrl(url))
+
+    return () => {
+      cancelled = true
+      subscription.remove()
+    }
+  }, [isAppReady, isChecking, isAuthenticated, openShowtimeModalById, queryClient])
 
   useEffect(() => {
     void configureNotificationCategories().catch((error) => {
@@ -491,10 +589,6 @@ function RootLayourContent() {
     }
   }, [isAuthenticated, userId])
 
-  // Reveal the app only once the shell is stable: theme resolved, auth known,
-  // and critical caches warmed. The branded overlay covers everything until then.
-  const appReady = themeReady && !isChecking && warmupDone;
-
   // A 426 means every API call from here on fails the same way — show the
   // blocking screen instead of the shell, regardless of auth/splash state.
   if (updateRequiredInfo) {
@@ -535,11 +629,22 @@ function RootLayourContent() {
         }}
       >
         <JsStack.Screen name="(tabs)" />
+        {/* Never animated. Expo Router builds the initial state from the launch
+            URL, which on a normal cold start is the tabs home — so a signed-out
+            launch always starts there and is redirected here a beat later, and
+            with a transition that redirect reads as the app sliding the login
+            screen in over a home screen the user was never meant to see. Logging
+            out lands here the same way. */}
+        <JsStack.Screen name="login" options={INSTANT_SCREEN_OPTIONS} />
         <JsStack.Screen name="movie/[id]" />
         <JsStack.Screen name="friend-showtimes/[id]" />
         <JsStack.Screen name="cinema-showtimes/[id]" />
         <JsStack.Screen name="add-friend/[receiverId]" />
-        <JsStack.Screen name="ping/[showtimeId]/[sender]" />
+        {/* Renders nothing and pops itself the moment it is handled, so it must
+            never animate: sliding an empty card in and back out again was the
+            whole of the invite link's "glitchy" open, and it happens over a
+            screen the user is already looking at when the app was running. */}
+        <JsStack.Screen name="ping/[showtimeId]/[sender]" options={INSTANT_SCREEN_OPTIONS} />
         <JsStack.Screen
           name="modal"
           options={{ presentation: 'modal', title: 'Modal', ...TransitionPresets.ModalSlideFromBottomIOS }}

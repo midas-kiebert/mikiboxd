@@ -176,9 +176,10 @@ def get_showtime_share_preview(
 
     body = render_share_preview_html(
         title=showtime.movie.title,
+        # Time first, cinema second: WhatsApp truncates the description to
+        # roughly one line, so the part that must survive the cut goes first.
         description=(
-            f"{showtime.cinema.name} · "
-            f"{showtime.datetime.strftime('%a, %b %d at %H:%M')}"
+            f"{showtime.datetime.strftime('%-d %b, %H:%M')} · {showtime.cinema.name}"
         ),
         image_url=showtime.movie.poster_link or DEFAULT_SHARE_PREVIEW_IMAGE,
         page_url=f"{settings.FRONTEND_HOST}/ping/{showtime_id}/{sender_identifier}",

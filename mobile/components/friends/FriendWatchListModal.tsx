@@ -12,9 +12,11 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useRouter } from "expo-router";
 import type { UserPublic } from "shared";
 
 import FriendListRow from "@/components/friends/FriendListRow";
+import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { getFriendWatchKindMeta, type FriendWatchKind } from "@/components/friends/friend-watch-kind";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -41,6 +43,15 @@ type FriendWatchListModalProps = {
     getState: (friendId: string) => FriendWatchInviteState;
     onInvite: (friendId: string) => void;
   };
+  /**
+   * Called (in addition to `onClose`) right before a row navigates to that
+   * friend's page. This popup can itself be nested inside a bigger sheet (the
+   * showtime sheet's watch markers); `onClose` only dismisses the popup, so a
+   * caller in that position passes its own outer close here to take the whole
+   * sheet down too — leaving it open behind the new screen would look broken.
+   * The movie page, which isn't inside anything, has no need to pass this.
+   */
+  onNavigate?: () => void;
 };
 
 const getFriendName = (friend: UserPublic) => friend.display_name?.trim() || "Friend";
@@ -50,10 +61,15 @@ export default function FriendWatchListModal({
   friends,
   onClose,
   invite,
+  onNavigate,
 }: FriendWatchListModalProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  const router = useRouter();
+  const goToUserPage = useSingleFireNavigation((friendId: string, name: string) =>
+    router.push({ pathname: "/friend-showtimes/[id]", params: { id: friendId, name } })
+  );
   const anim = useRef(new Animated.Value(0)).current;
   const scale = useMemo(
     () => anim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
@@ -126,16 +142,22 @@ export default function FriendWatchListModal({
           >
             {renderedFriends.map((friend) => {
               const inviteState = rowInvite?.getState(friend.id);
+              const name = getFriendName(friend);
               return (
                 <FriendListRow
                   key={friend.id}
                   userId={friend.id}
-                  name={getFriendName(friend)}
+                  name={name}
                   mode={rowInvite ? "invite" : "display"}
                   statusLabel={inviteState?.statusLabel ?? null}
                   invited={inviteState?.invited ?? false}
                   disabled={inviteState?.disabled ?? false}
                   onInvite={rowInvite ? () => rowInvite.onInvite(friend.id) : undefined}
+                  onPress={() => {
+                    onClose();
+                    onNavigate?.();
+                    goToUserPage(friend.id, name);
+                  }}
                 />
               );
             })}

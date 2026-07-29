@@ -18,6 +18,8 @@ from app.services import friends as friends_services
 def test_create_friend_request_success(
     mocker: MockerFixture,
 ):
+    mocker.patch("app.crud.friendship.are_users_friends", return_value=False)
+    mocker.patch("app.crud.friendship.has_sent_friend_request", return_value=False)
     mock_crud = mocker.patch("app.crud.friendship.create_friend_request")
     notify = mocker.patch("app.services.push_notifications.notify_user_on_friend_request")
     mock_session = mocker.MagicMock()
@@ -57,6 +59,8 @@ def test_create_friend_failure(
     org_exc,
     expected_exc,
 ):
+    mocker.patch("app.crud.friendship.are_users_friends", return_value=False)
+    mocker.patch("app.crud.friendship.has_sent_friend_request", return_value=False)
     mock_crud = mocker.patch("app.crud.friendship.create_friend_request")
     mock_crud.side_effect = IntegrityError(
         statement="Integrity error", orig=org_exc("Integrity violation"), params=None

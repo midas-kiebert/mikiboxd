@@ -25,7 +25,6 @@ import {
 import { prefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 
 import ShowtimeActionModal, { type ShowtimeInvite } from "@/components/showtimes/ShowtimeActionModal";
-import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
 
 export type OpenOptions = {
   invite?: ShowtimeInvite | null;
@@ -65,10 +64,6 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
   const [isLoadingById, setIsLoadingById] = useState(false);
   // Guards against a slow getShowtimeById resolving after a newer open superseded it.
   const openRequestIdRef = useRef(0);
-
-  // Lets anything that must be the only thing on screen hold off while the
-  // sheet is up, or close it outright (currently the intro's filters highlight).
-  useRegisterBlockingOverlay(visible, () => setVisible(false));
 
   const openShowtimeModal = useCallback(
     (showtime: ShowtimeLoggedIn, options?: OpenOptions) => {

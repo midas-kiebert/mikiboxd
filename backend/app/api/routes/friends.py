@@ -1,16 +1,54 @@
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from fastapi import status as http_status
+from fastapi.responses import HTMLResponse
 
 from app.api.deps import (
     CurrentUser,
     SessionDep,
 )
+from app.core.config import settings
 from app.models.auth_schemas import Message
+from app.models.user import User
 from app.schemas.friendship import FriendStatusSharingUpdate
 from app.services import friends as friends_service
+from app.services.share_preview import (
+    DEFAULT_SHARE_PREVIEW_IMAGE,
+    render_share_preview_html,
+)
 
 router = APIRouter(prefix="/friends", tags=["friends"])
+
+
+@router.get(
+    "/invite-preview/{user_id}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def get_friend_invite_preview(
+    *, session: SessionDep, user_id: uuid.UUID
+) -> HTMLResponse:
+    """Unauthenticated HTML page carrying per-inviter OpenGraph tags.
+
+    Only ever hit by link-preview crawlers (WhatsApp, iMessage, Slack, ...) —
+    nginx routes them here based on User-Agent instead of the SPA's static
+    index.html, which is the same generic card for every invite link.
+    """
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    inviter_name = user.display_name or "Someone"
+    body = render_share_preview_html(
+        title=f"{inviter_name} wants to be friends on MiKiNO",
+        description="Accept to see what they're watching and going to.",
+        image_url=DEFAULT_SHARE_PREVIEW_IMAGE,
+        page_url=f"{settings.FRONTEND_HOST}/add-friend/{user_id}",
+    )
+    return HTMLResponse(content=body)
 
 
 @router.post("/request/{receiver_id}")

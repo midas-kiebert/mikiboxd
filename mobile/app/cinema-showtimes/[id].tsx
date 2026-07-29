@@ -2,7 +2,7 @@
  * Expo Router screen/module for cinema-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
+import { FlatList, Linking, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import { DateTime } from "luxon";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -31,6 +31,7 @@ import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
 import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
+import { getCinemaColorPalette } from "@/utils/cinema-color";
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
@@ -40,31 +41,82 @@ const getRouteParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 
 /**
+ * Shared by the deferred-mount skeleton and the real content below so both
+ * phases render the cinema's accent color / maps link / website link on
+ * their very first frame — computing this only once data has loaded would
+ * flash from the default header colors into the cinema's own.
+ */
+const buildCinemaHeaderProps = ({
+  cinemaName,
+  cityName,
+  badgeBgColorKey,
+  url,
+  colors,
+}: {
+  cinemaName: string;
+  cityName: string;
+  badgeBgColorKey: string;
+  url: string;
+  colors: ReturnType<typeof useThemeColors>;
+}) => {
+  const cinemaPalette = badgeBgColorKey
+    ? getCinemaColorPalette({ name: cinemaName || "Cinema", badge_bg_color: badgeBgColorKey }, colors)
+    : undefined;
+  const topBarAccentColor = cinemaPalette
+    ? { background: cinemaPalette.primary, text: cinemaPalette.secondary }
+    : undefined;
+  const mapsQuery = [cinemaName, cityName].filter(Boolean).join(", ");
+  const handleOpenLocation = mapsQuery
+    ? () => {
+        void Linking.openURL(
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`
+        );
+      }
+    : undefined;
+  return { topBarAccentColor, handleOpenLocation, topBarLinkUrl: url || undefined };
+};
+
+/**
  * The search field and the Filters button frame this screen rather than being
  * part of what it loads, so they live above the deferred-mount split and are
  * live on the first frame. Their state is owned here too, so a query typed (or
  * a filter sheet opened) before the content mounts is still there afterwards.
  */
 export default function CinemaShowtimesScreen() {
-  const { name, city } = useLocalSearchParams<{
+  const { name, city, badgeBgColor, url } = useLocalSearchParams<{
     name?: string | string[];
     city?: string | string[];
+    badgeBgColor?: string | string[];
+    url?: string | string[];
   }>();
   const cinemaKey = `cinema:${Array.isArray(name) ? name[0] : name}:${Array.isArray(city) ? city[0] : city}`;
   const ready = useDeferredMount(cinemaKey);
   const [searchQuery, setSearchQuery] = useState("");
   const [filtersModalVisible, setFiltersModalVisible] = useState(false);
+  const colors = useThemeColors();
 
   const filtersButtonRow = <FiltersButtonRow onPress={() => setFiltersModalVisible(true)} />;
 
   if (!ready) {
     const routeCinemaName = getRouteParam(name)?.trim() ?? "";
     const routeCityName = getRouteParam(city)?.trim() ?? "";
+    const routeBadgeBgColor = getRouteParam(badgeBgColor)?.trim() ?? "";
+    const routeUrl = getRouteParam(url)?.trim() ?? "";
+    const { topBarAccentColor, handleOpenLocation, topBarLinkUrl } = buildCinemaHeaderProps({
+      cinemaName: routeCinemaName,
+      cityName: routeCityName,
+      badgeBgColorKey: routeBadgeBgColor,
+      url: routeUrl,
+      colors,
+    });
     return (
       <ShowtimesScreenSkeleton
         topBarTitle={routeCinemaName || "Cinema"}
         topBarTitleSuffix={routeCityName || undefined}
         topBarShowBackButton
+        topBarAccentColor={topBarAccentColor}
+        topBarOnTitleSuffixPress={handleOpenLocation}
+        topBarLinkUrl={topBarLinkUrl}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         // No chips placeholder here: this screen's ActiveFilterChips renders
@@ -101,10 +153,12 @@ function CinemaShowtimesContent({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
-  const { id, name, city } = useLocalSearchParams<{
+  const { id, name, city, badgeBgColor, url } = useLocalSearchParams<{
     id?: string | string[];
     name?: string | string[];
     city?: string | string[];
+    badgeBgColor?: string | string[];
+    url?: string | string[];
   }>();
   const routeCinemaId = useMemo(() => Number(getRouteParam(id)), [id]);
   const cinemaId = Number.isFinite(routeCinemaId) && routeCinemaId > 0 ? routeCinemaId : -1;
@@ -116,6 +170,11 @@ function CinemaShowtimesContent({
   );
   const routeCinemaName = useMemo(() => getRouteParam(name)?.trim() ?? "", [name]);
   const routeCityName = useMemo(() => getRouteParam(city)?.trim() ?? "", [city]);
+  // Carried from CinemaPill's navigation params so the badge color and website
+  // link are available on the very first frame, rather than flashing in once
+  // the cinemas list finishes fetching.
+  const routeBadgeBgColor = useMemo(() => getRouteParam(badgeBgColor)?.trim() ?? "", [badgeBgColor]);
+  const routeUrl = useMemo(() => getRouteParam(url)?.trim() ?? "", [url]);
   const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
@@ -193,6 +252,15 @@ function CinemaShowtimesContent({
   const cinemaName = routeCinemaName || cinemaFromList?.name || "Cinema";
   const cityName = routeCityName || cinemaFromList?.city.name || "";
   const topBarTitleSuffix = cityName || undefined;
+  const badgeBgColorKey = routeBadgeBgColor || cinemaFromList?.badge_bg_color || "";
+  const cinemaUrl = routeUrl || cinemaFromList?.url || "";
+  const { topBarAccentColor, handleOpenLocation, topBarLinkUrl } = buildCinemaHeaderProps({
+    cinemaName,
+    cityName,
+    badgeBgColorKey,
+    url: cinemaUrl,
+    colors,
+  });
 
   // ─── Showtimes query ─────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({
@@ -352,6 +420,7 @@ function CinemaShowtimesContent({
         <MovieCard
           movie={item}
           onPress={(movie) => goToMovieFromCard(movie.id)}
+          showCinema={false}
         />
       )}
       keyExtractor={(item) => item.id.toString()}
@@ -381,6 +450,9 @@ function CinemaShowtimesContent({
         topBarTitle={cinemaName}
         topBarTitleSuffix={topBarTitleSuffix}
         topBarShowBackButton
+        topBarAccentColor={topBarAccentColor}
+        topBarOnTitleSuffixPress={handleOpenLocation}
+        topBarLinkUrl={topBarLinkUrl}
         showtimes={showtimes}
         isLoading={isLoading}
         isFetching={isFetching}

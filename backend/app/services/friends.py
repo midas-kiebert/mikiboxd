@@ -25,11 +25,41 @@ def create_friend_request(
 ) -> Message:
     """
     Create a friend request from sender to receiver.
+
+    If receiver_id already has a pending request to sender_id (both sides
+    requested each other, likely because one side's client hadn't yet shown
+    the other's incoming request), this resolves the pair as friends
+    immediately instead of leaving two open requests sitting unresolved.
+
+    Already being friends is treated the same way: a no-op success rather
+    than a dangling pending request that can never be accepted (the client
+    hides the "Add" action once friends, so this only matters for a stale
+    client, a race with another action, or a direct API call).
+
     Raises:
         FriendRequestAlreadyExistsError: If a friend request already exists.
         OneOrMoreUsersNotFound: If one or both users do not exist.
         AppError: For any other (unexpected) errors.
     """
+    if friendship_crud.are_users_friends(
+        session=session, user_id=sender_id, friend_id=receiver_id
+    ):
+        return Message(message="You are already friends.")
+
+    if friendship_crud.has_sent_friend_request(
+        session=session, sender_id=receiver_id, receiver_id=sender_id
+    ):
+        try:
+            return accept_friend_request(
+                session=session,
+                current_user_id=sender_id,
+                sender_id=receiver_id,
+            )
+        except FriendRequestNotFoundError:
+            # The reverse request was cancelled/accepted between the check
+            # above and here — fall through to a normal forward request.
+            pass
+
     try:
         friendship_crud.create_friend_request(
             session=session,

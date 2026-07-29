@@ -1,3 +1,12 @@
 {
-  "expo": {}
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "67598d7a-def6-4011-bc8d-3a7edfac01ec"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.midaskiebert.cinemaagendafastapi"
+    }
+  }
 }

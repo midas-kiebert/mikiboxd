@@ -64,6 +64,26 @@ def register_user(*, session: SessionDep, user_in: UserRegister) -> UserPublic:
     )
 
 
+@router.get("/{user_id}/friend-status", response_model=UserWithFriendStatus)
+def get_user_friend_status(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    user_id: UUID,
+) -> UserWithFriendStatus:
+    """A single user's friendship/request status relative to the current user.
+
+    Polled by e.g. a showtime's "Invited" list so a status change made
+    elsewhere (the other side accepted/declined) is noticed without
+    refetching the whole showtime.
+    """
+    return users_service.get_user_friend_status(
+        session=session,
+        current_user_id=current_user.id,
+        user_id=user_id,
+    )
+
+
 @router.get("/{user_id}", response_model=UserPublic)
 def get_user(
     session: SessionDep,

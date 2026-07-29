@@ -424,3 +424,132 @@
 #     assert len(users_with_alice_query) == 1
 #     alice_user = users_with_alice_query[0]
 #     assert alice_user.display_name == "alice"
+
+
+from uuid import UUID, uuid4
+
+from fastapi.testclient import TestClient
+from sqlmodel import Session, select
+
+from app.core.config import settings
+from app.crud import friendship as friendship_crud
+from app.models.user import User
+from tests.utils.user import user_authentication_headers
+
+
+def _normal_user_id(db_transaction: Session) -> UUID:
+    return db_transaction.exec(
+        select(User.id).where(User.email == settings.EMAIL_TEST_USER)
+    ).one()
+
+
+def test_friend_status_with_no_relationship(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    user_factory,
+) -> None:
+    other_user = user_factory()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/users/{other_user.id}/friend-status",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["is_friend"] is False
+    assert body["sent_request"] is False
+    assert body["received_request"] is False
+
+
+def test_friend_status_reflects_a_sent_request_from_both_angles(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+) -> None:
+    current_user_id = _normal_user_id(db_transaction)
+    other_user = user_factory(password="password")
+    other_headers = user_authentication_headers(
+        client=client, email=other_user.email, password="password"
+    )
+
+    friendship_crud.create_friend_request(
+        session=db_transaction,
+        sender_id=current_user_id,
+        receiver_id=other_user.id,
+    )
+    db_transaction.commit()
+
+    # Queried by the sender: sent_request is True, received_request is False.
+    from_sender = client.get(
+        f"{settings.API_V1_STR}/users/{other_user.id}/friend-status",
+        headers=normal_user_token_headers,
+    )
+    assert from_sender.status_code == 200
+    sender_body = from_sender.json()
+    assert sender_body["sent_request"] is True
+    assert sender_body["received_request"] is False
+    assert sender_body["is_friend"] is False
+
+    # Queried by the receiver (looking at the sender): received_request is True.
+    from_receiver = client.get(
+        f"{settings.API_V1_STR}/users/{current_user_id}/friend-status",
+        headers=other_headers,
+    )
+    assert from_receiver.status_code == 200
+    receiver_body = from_receiver.json()
+    assert receiver_body["received_request"] is True
+    assert receiver_body["sent_request"] is False
+    assert receiver_body["is_friend"] is False
+
+
+def test_friend_status_when_already_friends(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+) -> None:
+    current_user_id = _normal_user_id(db_transaction)
+    other_user = user_factory()
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=current_user_id, friend_id=other_user.id
+    )
+    db_transaction.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/users/{other_user.id}/friend-status",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["is_friend"] is True
+    assert body["sent_request"] is False
+    assert body["received_request"] is False
+
+
+def test_friend_status_for_nonexistent_user_returns_404(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    response = client.get(
+        f"{settings.API_V1_STR}/users/{uuid4()}/friend-status",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_friend_status_requires_authentication(
+    client: TestClient,
+    user_factory,
+) -> None:
+    other_user = user_factory()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/users/{other_user.id}/friend-status",
+    )
+
+    assert response.status_code == 401

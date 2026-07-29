@@ -12,6 +12,7 @@ export type AdminMoviePublic = {
   duration?: number | null
   languages?: Array<string> | null
   original_language?: string | null
+  description?: string | null
 }
 
 export type AdminShowtimePublic = {
@@ -222,6 +223,7 @@ export type MovieInShowtime = {
   duration?: number | null
   languages?: Array<string> | null
   original_language?: string | null
+  description?: string | null
 }
 
 export type MovieLoggedIn = {
@@ -236,6 +238,7 @@ export type MovieLoggedIn = {
   duration?: number | null
   languages?: Array<string> | null
   original_language?: string | null
+  description?: string | null
   showtimes: Array<ShowtimeInMovieLoggedIn>
   friends_watchlisted?: Array<UserPublic>
   friends_watched?: Array<UserPublic>
@@ -253,6 +256,7 @@ export type MovieSummaryLoggedIn = {
   duration?: number | null
   languages?: Array<string> | null
   original_language?: string | null
+  description?: string | null
   showtimes: Array<ShowtimeInMovieLoggedIn>
   cinemas: Array<CinemaPublic>
   last_showtime_datetime: string | null
@@ -270,6 +274,7 @@ export type MovieUpdate = {
   languages?: Array<string> | null
   original_language?: string | null
   cast?: Array<string> | null
+  description?: string | null
   tmdb_last_enriched_at?: string | null
   tmdb_cache_id?: number | null
 }

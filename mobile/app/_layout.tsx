@@ -567,7 +567,11 @@ function RootLayourContent() {
       // showtime sheet's portal slot was fixed the first time it opened, so one
       // raised later (the notification centre, say) keeps drawing over it.
       closeAllBlockingOverlays()
-      openShowtimeModalById(invite.showtimeId)
+      // `requireUpcoming`: a link keeps working long after its showtime has
+      // started, and opening a screening that is already over invites nothing.
+      // The backend rejects the ping for the same reason, which
+      // registerInviteLink swallows.
+      openShowtimeModalById(invite.showtimeId, { requireUpcoming: true })
       void registerInviteLink({ ...invite, queryClient })
     }
 

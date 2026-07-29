@@ -20,6 +20,7 @@ from app.exceptions.showtime_exceptions import (
     ShowtimePingAlreadySelectedError,
     ShowtimePingAlreadySentError,
     ShowtimePingNonFriendError,
+    ShowtimePingPastShowtimeError,
     ShowtimePingSelfError,
     ShowtimePingSenderAmbiguousError,
     ShowtimePingSenderNotFoundError,
@@ -329,6 +330,11 @@ def _create_showtime_ping(
     )
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
+
+    # Invite links stay valid forever once shared, so an old one must not still
+    # be able to create a ping for a screening that has already started.
+    if showtime.datetime < now_amsterdam_naive():
+        raise ShowtimePingPastShowtimeError()
 
     if require_friendship:
         is_friend = friendship_crud.are_users_friends(

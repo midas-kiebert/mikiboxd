@@ -83,6 +83,17 @@ class ShowtimePingAlreadySentError(AppError):
         super().__init__("You already invited this friend for this showtime.")
 
 
+class ShowtimePingPastShowtimeError(AppError):
+    status_code = status.HTTP_410_GONE
+    openapi_description = (
+        "Returned when inviting someone for a showtime that has already started."
+    )
+    openapi_example = {"detail": "This showtime has already passed."}
+
+    def __init__(self):
+        super().__init__("This showtime has already passed.")
+
+
 class ShowtimePingSelfError(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
     openapi_description = "Returned when trying to invite yourself."

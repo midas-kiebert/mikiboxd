@@ -7,13 +7,15 @@
  * belongs to the showtimes screen, which is the only thing that knows when its
  * list is up.
  *
- * It waits for the user to actually be in the tabs before starting: a social
- * sign-in is authenticated while still on the "pick a username" screen, and an
- * intro over that would be covering a form the user has to fill in. Only the
- * start is gated — once running, the intro stays put wherever the app goes,
- * which is exactly why it forces the showtimes tab the moment it actually
- * starts: a resumed deep link or another tab reached first would otherwise be
- * whatever's revealed once the walkthrough ends.
+ * It waits for the user to be in the tabs *and* to have a username before
+ * starting: a social sign-in is authenticated while still on the "pick a
+ * username" screen, and an intro over that would be covering a form the user
+ * has to fill in — or, if a redirect race put the app in the tabs instead,
+ * replacing it entirely, which is how accounts came to exist with no username
+ * at all. Only the start is gated — once running, the intro stays put wherever
+ * the app goes, which is exactly why it forces the showtimes tab the moment it
+ * actually starts: a resumed deep link or another tab reached first would
+ * otherwise be whatever's revealed once the walkthrough ends.
  */
 import { useEffect, useState } from "react";
 import { useNavigationContainerRef, useRouter, useSegments } from "expo-router";
@@ -21,6 +23,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { prefetchCinemas } from "shared/hooks/useFetchCinemas";
 
 import IntroFlow from "@/components/intro/IntroFlow";
+import { hasUsername, useCurrentUser } from "@/hooks/useCurrentUser";
 import {
   startIntroIfPending,
   useIntroPhase,
@@ -39,6 +42,12 @@ export default function IntroHost() {
   const navigationRef = useNavigationContainerRef();
   const queryClient = useQueryClient();
   const isInTabs = (segments as unknown as string[])[0] === TABS_SEGMENT;
+  // The walkthrough waits for a *confirmed* username, not merely for the
+  // absence of a known-missing one: whatever else goes wrong, the intro can
+  // then never be the thing a brand-new account sees instead of the username
+  // form. Costs one already-in-flight round trip on a real signup.
+  const currentUser = useCurrentUser();
+  const hasPickedUsername = hasUsername(currentUser);
 
   // expo-router throws on any navigation until the root NavigationContainer
   // reports ready. That flag is set by an effect in ExpoRoot — an ancestor of
@@ -76,11 +85,11 @@ export default function IntroHost() {
   useEffect(() => {
     // A no-op unless an account was created on this device and never
     // introduced. Waits for the stored flag, which usually lands after mount.
-    if (!isNavigationReady || !isLoaded || !isInTabs) return;
+    if (!isNavigationReady || !isLoaded || !isInTabs || !hasPickedUsername) return;
     if (startIntroIfPending()) {
       router.replace("/(tabs)");
     }
-  }, [isInTabs, isLoaded, isNavigationReady, router]);
+  }, [hasPickedUsername, isInTabs, isLoaded, isNavigationReady, router]);
 
   if (phase !== "pages") return null;
   return <IntroFlow />;

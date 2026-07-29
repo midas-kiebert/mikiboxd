@@ -25,6 +25,7 @@ import {
 import { prefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 
 import ShowtimeActionModal, { type ShowtimeInvite } from "@/components/showtimes/ShowtimeActionModal";
+import { hasShowtimeStarted } from "@/utils/showtime-time";
 
 export type OpenOptions = {
   invite?: ShowtimeInvite | null;
@@ -32,6 +33,11 @@ export type OpenOptions = {
   /** True when the modal was opened from a context whose showtimes-tab filters
    * should carry over to the movie page (e.g. the showtimes tab itself). */
   inheritFilters?: boolean;
+  /** Closes the sheet again when the fetched showtime has already started. For
+   * openShowtimeModalById callers whose id comes from a link that outlives the
+   * showtime it points at (invite links), where "past" is only known once the
+   * showtime has been fetched. */
+  requireUpcoming?: boolean;
 };
 
 type ShowtimeModalContextValue = {
@@ -95,6 +101,11 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
         try {
           const fetched = await ShowtimesService.getShowtimeById({ showtimeId });
           if (openRequestIdRef.current !== requestId) return;
+          if (options?.requireUpcoming && hasShowtimeStarted(fetched.datetime)) {
+            setVisible(false);
+            Alert.alert("Invite expired", "This showtime has already passed.");
+            return;
+          }
           setCurrentShowtime(fetched);
         } catch (error) {
           if (openRequestIdRef.current !== requestId) return;

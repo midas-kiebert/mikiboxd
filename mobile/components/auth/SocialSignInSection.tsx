@@ -28,6 +28,7 @@ import { completeLogin } from "@/utils/complete-login";
 import { getGoogleSignin, isGoogleSignInAvailable } from "@/utils/google-signin";
 import { markIntroPending } from "@/utils/intro";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { markUsernameRequired } from "@/utils/username-gate";
 
 type SocialProvider = "apple" | "google";
 
@@ -81,9 +82,12 @@ export default function SocialSignInSection({
   // A social sign-in the backend reports as new has no username yet, so it
   // detours through /pick-username instead of straight into the app. That is a
   // protected route, so the session has to be announced before we navigate to
-  // it — otherwise the root layout's guard bounces us back to /login.
+  // it — otherwise the root layout's guard bounces us back to /login. And the
+  // gate is raised before the session, so the guard cannot see a signed-in user
+  // on the login screen and send it to the tabs in the render between the two.
   const finishSocialLogin = async (needsUsername: boolean, suggestion: string | undefined) => {
     if (needsUsername) {
+      markUsernameRequired();
       markIntroPending();
       markSignedIn();
       router.replace({ pathname: "/pick-username", params: { suggestion: suggestion ?? "" } });

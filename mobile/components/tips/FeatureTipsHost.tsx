@@ -1,6 +1,6 @@
 /**
  * Renders at most one feature tip. Candidates are listed in priority order —
- * cinemas, friends, notifications, Letterboxd, filter presets — and
+ * notifications, cinemas, friends, Letterboxd, filter presets — and
  * `rollForFeatureTip` applies eligibility, dismissal, per-tip cooldowns and a
  * random chance, so the user is never handed a stack of nags and does not see
  * a tip on every single app open.
@@ -100,10 +100,20 @@ export default function FeatureTipsHost() {
   useEffect(() => {
     if (!readyToRoll) return;
     rollForFeatureTip([
-      // Priority order: cinemas, friends, notifications, Letterboxd, filters.
+      // Priority order, most-broken first:
+      //  1. notifications — the only tip about something already failing: the
+      //     user asked for pushes and the system is silently dropping them.
+      //     Rarely eligible, so it costs the others almost nothing.
+      //  2. cinemas — an unfiltered feed makes every screen noisier, and it is
+      //     one tap to fix. Normally handled by the intro, so this is the user
+      //     who skipped that page.
+      //  3. friends — the social half of the app, but it needs other people to
+      //     accept before it pays off.
+      //  4. Letterboxd, 5. filter presets — real conveniences, no urgency;
+      //     both also carry the longer cooldown.
+      { id: "notification-permission", isEligible: isBlockedFromNotifications },
       { id: "cinema-presets", isEligible: shouldSuggestCinemaPreset },
       { id: "add-friends", isEligible: shouldSuggestAddFriends },
-      { id: "notification-permission", isEligible: isBlockedFromNotifications },
       { id: "letterboxd-username", isEligible: !hasLetterboxdUsername },
       { id: "filter-presets", isEligible: shouldSuggestFilterPreset },
     ]);

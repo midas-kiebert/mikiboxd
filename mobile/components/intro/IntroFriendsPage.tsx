@@ -50,7 +50,7 @@ export default function IntroFriendsPage({ onDone }: { onDone: () => void }) {
       icon="group-add"
       title="Add your friends"
       message="See each other's showtimes, send invites, and keep track of who's going where."
-      primaryLabel="Finish"
+      primaryLabel="Continue"
       onPrimary={onDone}
     >
       <ScrollView

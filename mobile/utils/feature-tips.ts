@@ -80,8 +80,13 @@ const TIP_COOLDOWN_MS: Record<FeatureTipId, number> = {
 /**
  * Even when a tip is eligible and off cooldown, it only actually appears this
  * often — so opening the app doesn't reliably nag the user every single time.
+ *
+ * A coin flip rather than the long odds it started at: the per-tip cooldown is
+ * what actually stops the nagging (a tip that shows is silent for a day or
+ * three afterwards), so a low chance on top of it mostly meant undiscovered
+ * features stayed undiscovered for weeks.
  */
-const TIP_SHOW_CHANCE = 0.2;
+const TIP_SHOW_CHANCE = 0.5;
 
 /** How the user responded once a tip was actually shown. */
 export type TipReaction = 'dismissed' | 'dont_show_again' | 'interacted';

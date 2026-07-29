@@ -7,9 +7,11 @@
  * renamed later from the cinema filter's Manage presets page.
  *
  * Saving also applies the selection to this session and retires the cinema
- * preset tip, so the user is never nudged towards a feature they just used.
+ * preset tip, so the user is never nudged towards a feature they just used —
+ * but only when something was actually saved: clearing the list and continuing
+ * anyway is the same as skipping, and leaves the tip to nudge later.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MeService, type CinemaPresetCreate } from "shared";
@@ -47,10 +49,20 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
   // without it the very first thing a new account saw was "0 of 0 selected"
   // over an empty box, which then popped into a full list.
   const isCinemaListLoading = cinemas === undefined;
-  // Deliberately starts empty rather than seeded from the account's stored
-  // selection: the page asks the user to pick their cinemas, and anything
-  // pre-ticked reads as a choice already made — which they then have to undo.
+  // Everything starts ticked. "0 of 24 selected" over a full list reads as a
+  // filter that is already hiding everything, and the honest default for a
+  // brand-new account is "show me all of them" — narrowing down from there is
+  // a much easier ask than building the list from nothing. Seeded in an effect
+  // because the cinemas arrive asynchronously; the ref keeps it to the first
+  // arrival, so a later refetch never re-ticks what the user just cleared.
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
+  const hasSeededSelectionRef = useRef(false);
+
+  useEffect(() => {
+    if (hasSeededSelectionRef.current || cinemaList.length === 0) return;
+    hasSeededSelectionRef.current = true;
+    setSelectedIds(new Set(cinemaList.map((cinema) => cinema.id)));
+  }, [cinemaList]);
 
   const saveMutation = useMutation({
     mutationFn: (requestBody: CinemaPresetCreate) =>
@@ -70,6 +82,7 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
   });
 
   const selectedCount = selectedIds.size;
+  const isEverythingSelected = cinemaList.length > 0 && selectedCount === cinemaList.length;
 
   const handleToggleCinema = useCallback((cinemaId: number) => {
     setSelectedIds((current) => {
@@ -91,13 +104,25 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
     });
   }, []);
 
-  const handleClearAll = useCallback(() => {
+  // One control rather than a "Clear all" that cannot be undone: now that the
+  // page opens fully ticked, clearing it has to be reversible without asking
+  // the user to tap every cinema back on.
+  const handleToggleAll = useCallback(() => {
     triggerSelectionHaptic();
-    setSelectedIds(new Set());
-  }, []);
+    setSelectedIds(
+      isEverythingSelected ? new Set<number>() : new Set(cinemaList.map((cinema) => cinema.id))
+    );
+  }, [cinemaList, isEverythingSelected]);
 
   const handleSave = useCallback(() => {
-    if (selectedCount === 0) return;
+    // Nothing ticked counts as saving nothing at all — the same as Skip. A
+    // preset with no cinemas in it is a filter that hides every showtime, and
+    // creating one would also retire the cinema tip over a choice the user
+    // never really made.
+    if (selectedCount === 0) {
+      onDone();
+      return;
+    }
     saveMutation.mutate({
       name: DEFAULT_PRESET_NAME,
       cinema_ids: sortCinemaIds(selectedIds),
@@ -105,7 +130,7 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
       // filter's Manage presets page is where that gets changed later.
       is_favorite: true,
     });
-  }, [saveMutation, selectedCount, selectedIds]);
+  }, [onDone, saveMutation, selectedCount, selectedIds]);
 
   // Render/output using the state and handlers prepared above.
   return (
@@ -113,9 +138,11 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
       icon="theaters"
       title="Select your favorite cinemas"
       message="We'll only show you showtimes at the cinemas you pick. You can change this any time."
-      primaryLabel="Save and continue"
+      primaryLabel={selectedCount === 0 ? "Continue without saving" : "Save and continue"}
       onPrimary={handleSave}
-      isPrimaryDisabled={selectedCount === 0}
+      // Only the loading case is blocked: pressing through an empty skeleton
+      // would silently skip the step the user is looking at.
+      isPrimaryDisabled={isCinemaListLoading}
       isPrimaryBusy={saveMutation.isPending}
       secondaryLabel="Skip for now"
       onSecondary={onDone}
@@ -128,14 +155,16 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
             {selectedCount} of {cinemaList.length} selected
           </ThemedText>
         )}
-        {!isCinemaListLoading && selectedCount > 0 ? (
+        {!isCinemaListLoading ? (
           <TouchableOpacity
-            onPress={handleClearAll}
+            onPress={handleToggleAll}
             activeOpacity={0.7}
             hitSlop={8}
             accessibilityRole="button"
           >
-            <ThemedText style={styles.clearAll}>Clear all</ThemedText>
+            <ThemedText style={styles.toggleAll}>
+              {isEverythingSelected ? "Clear all" : "Select all"}
+            </ThemedText>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -184,7 +213,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       width: 120,
       borderRadius: 4,
     },
-    clearAll: {
+    toggleAll: {
       fontSize: 13,
       fontWeight: "700",
       color: colors.tint,

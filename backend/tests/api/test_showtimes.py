@@ -521,6 +521,67 @@ def test_receive_ping_from_link_is_idempotent(
     assert len(ping_rows) == 1
 
 
+def test_receive_ping_from_link_rejects_past_showtime(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    """An invite link outlives its showtime; it must stop working once it starts."""
+    sender = user_factory(display_name="Past Link Sender")
+    showtime = showtime_factory(datetime=now_amsterdam_naive() - timedelta(hours=1))
+    sender_id = sender.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 410
+    assert response.json()["detail"] == "This showtime has already passed."
+
+    stored_ping = db_transaction.exec(
+        select(ShowtimePing).where(
+            ShowtimePing.showtime_id == showtime_id,
+            ShowtimePing.sender_id == sender_id,
+            ShowtimePing.receiver_id == current_user_id,
+        )
+    ).one_or_none()
+    assert stored_ping is None
+
+
+def test_ping_friend_for_showtime_rejects_past_showtime(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    friend = user_factory()
+    showtime = showtime_factory(datetime=now_amsterdam_naive() - timedelta(minutes=5))
+    friend_id = friend.id
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction,
+        user_id=current_user_id,
+        friend_id=friend_id,
+    )
+    db_transaction.commit()
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping/{friend_id}",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 410
+    assert response.json()["detail"] == "This showtime has already passed."
+
+
 def test_receive_ping_from_link_rejects_unknown_sender(
     client: TestClient,
     normal_user_token_headers: dict[str, str],

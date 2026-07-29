@@ -1,8 +1,8 @@
 /**
  * First-run intro — the full-screen tour a brand-new account walks through once,
- * covering the four things the app is useless without (favorite cinemas, the
- * Letterboxd link, what the showtime sheet's buttons do, and friends) and
- * finishing with a nudge towards the filters.
+ * covering the things the app is useless without (favorite cinemas, the
+ * Letterboxd link, what the showtime sheet's buttons do, friends, and turning
+ * notifications on) and finishing with a nudge towards the filters.
  *
  * Related to feature tips but deliberately separate: a tip is a single
  * dismissible nudge that appears at random long after the user has settled in,
@@ -27,14 +27,22 @@
 import { useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 
-/** The four full-screen pages, in the order they are shown. */
-export type IntroPageId = 'cinemas' | 'letterboxd' | 'showtime-tour' | 'friends';
+/** The full-screen pages, in the order they are shown. */
+export type IntroPageId =
+  | 'cinemas'
+  | 'letterboxd'
+  | 'showtime-tour'
+  | 'friends'
+  | 'notifications';
 
 export const INTRO_PAGE_ORDER: readonly IntroPageId[] = [
   'cinemas',
   'letterboxd',
   'showtime-tour',
   'friends',
+  // Last: it triggers the OS permission dialog by itself, and a system prompt
+  // landing over the middle of the walkthrough would interrupt it.
+  'notifications',
 ];
 
 /**
@@ -47,6 +55,27 @@ export const INTRO_PAGE_ORDER: readonly IntroPageId[] = [
 export type IntroPhase = 'idle' | 'pages' | 'filters-spotlight';
 
 const PENDING_STORAGE_KEY = 'intro_pending_v1';
+
+/**
+ * How long the showtimes screen gets to deliver the final highlight before the
+ * intro stops waiting for it.
+ *
+ * Without this the `filters-spotlight` phase could last the whole session: the
+ * screen only mounts the highlight once its feed has actually loaded, is
+ * focused and has nothing open over it, and a user who lands on an empty feed
+ * or goes straight to another tab never satisfies that. The intro then still
+ * counts as running, which — among other things — keeps every feature tip
+ * suppressed (see `FeatureTipsHost`) until the app is restarted.
+ */
+const FILTERS_SPOTLIGHT_DEADLINE_MS = 3 * 60 * 1000;
+
+let spotlightDeadlineTimer: ReturnType<typeof setTimeout> | null = null;
+
+const clearSpotlightDeadline = (): void => {
+  if (spotlightDeadlineTimer === null) return;
+  clearTimeout(spotlightDeadlineTimer);
+  spotlightDeadlineTimer = null;
+};
 
 type IntroState = {
   phase: IntroPhase;
@@ -107,6 +136,9 @@ export const startIntroIfPending = (): boolean => {
 
 /** Developer override: replay the intro from the Settings screen. */
 export const startIntro = (): void => {
+  // A replay started while a previous run's spotlight deadline is still
+  // pending would otherwise be cut short by it.
+  clearSpotlightDeadline();
   update({ phase: 'pages' });
 };
 
@@ -121,10 +153,22 @@ export const startIntro = (): void => {
 export const completeIntroPages = (): void => {
   update({ phase: 'filters-spotlight', isPending: false });
   persistPending(false);
+  clearSpotlightDeadline();
+  spotlightDeadlineTimer = setTimeout(endIntro, FILTERS_SPOTLIGHT_DEADLINE_MS);
+};
+
+/**
+ * The filters highlight is on screen, so the deadline above has done its job:
+ * from here the step ends itself, whether the user takes the suggestion, just
+ * acknowledges it, or the button turns out not to be measurable.
+ */
+export const markFiltersSpotlightStarted = (): void => {
+  clearSpotlightDeadline();
 };
 
 /** The whole intro is over — either finished or skipped. */
 export const endIntro = (): void => {
+  clearSpotlightDeadline();
   update({ phase: 'idle', isPending: false });
   persistPending(false);
 };

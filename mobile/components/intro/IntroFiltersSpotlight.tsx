@@ -15,7 +15,7 @@ import { Modal, type View } from "react-native";
 
 import SpotlightOverlay, { type SpotlightRect } from "@/components/intro/SpotlightOverlay";
 import { closeAllBlockingOverlays } from "@/utils/blocking-overlays";
-import { endIntro } from "@/utils/intro";
+import { endIntro, markFiltersSpotlightStarted } from "@/utils/intro";
 import { measureForSpotlight } from "@/utils/spotlight-measure";
 
 /**
@@ -61,6 +61,12 @@ export default function IntroFiltersSpotlight({
     // check or opened in the gap between the check passing and this mounting —
     // this step must never appear over another modal.
     closeAllBlockingOverlays();
+  }, []);
+
+  useEffect(() => {
+    // This step is happening after all, so the intro stops waiting on the
+    // clock for it; the timers below own the ending from here.
+    markFiltersSpotlightStarted();
   }, []);
 
   useEffect(() => {

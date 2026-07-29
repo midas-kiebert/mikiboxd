@@ -175,6 +175,18 @@ export default function TabLayout() {
           lastRegisteredUserIdRef.current = currentUserId;
         }
 
+        // Registration prompts when permission is missing, so a refusal is
+        // taken as an answer rather than asked again here: the intro's
+        // notifications page and the notification-permission tip are where
+        // the user gets asked a second time, both on purpose and with an
+        // explanation attached. Without this, denying on the intro's last
+        // page was followed by a bare system prompt seconds later.
+        const permissionsBefore = await Notifications.getPermissionsAsync();
+        if (permissionsBefore.status === 'denied') {
+          await storage.setItem(storageKey, '1');
+          return;
+        }
+
         // Always attempt registration once user context exists.
         // This handles fresh installs, account switches, and OS-level permission changes.
         await registerPushTokenForCurrentDevice({ userId: currentUserId, force: true });

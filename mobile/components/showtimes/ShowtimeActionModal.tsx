@@ -90,6 +90,7 @@ import {
   isSyntheticMovieId,
 } from "@/constants/synthetic-movies";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
+import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
 import { EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -411,15 +412,28 @@ export default function ShowtimeActionModal({
   const tourTarget = tour?.target ?? null;
   const onTourTargetRect = tour?.onTargetRect;
 
+  // Registered as a blocking overlay for as long as the sheet is actually on
+  // screen — including mid-close-animation. Driven off gorhom's own index
+  // rather than the `visible` prop: `visible` flips false the instant a close
+  // is requested, but the sheet keeps sliding down for a couple hundred ms
+  // after that, and anything gating on "is a blocking overlay open" (e.g. the
+  // intro's filters spotlight) must not treat the sheet as gone until it
+  // truly is, or it ends up highlighting the Filters button over a sheet
+  // that's still visibly there.
+  const [isPresented, setIsPresented] = useState(false);
+
   const handleSheetChange = useCallback(
     (index: number) => {
       if (index === -1) {
         closedByGorhomRef.current = true;
+        setIsPresented(false);
         onClose();
       }
     },
     [onClose]
   );
+
+  useRegisterBlockingOverlay(isPresented, onClose);
 
   const presentSheet = useCallback(() => {
     isPresentPendingRef.current = false;
@@ -429,6 +443,7 @@ export default function ShowtimeActionModal({
     }
     hasEverPresentedRef.current = true;
     closedByGorhomRef.current = false;
+    setIsPresented(true);
     bottomSheetModalRef.current?.present();
   }, []);
 

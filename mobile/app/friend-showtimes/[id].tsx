@@ -27,6 +27,7 @@ import FriendAgendaOptions from '@/components/friends/FriendAgendaOptions';
 import NonFriendProfile from '@/components/friends/NonFriendProfile';
 import AgendaTogglePill from '@/components/showtimes/AgendaTogglePill';
 import { useThemeColors } from '@/hooks/use-theme-color';
+import { getAvatarColors, getAvatarInitial } from '@/utils/avatar-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
@@ -62,6 +63,11 @@ export default function FriendShowtimesScreen() {
   const [includeInterested, setIncludeInterested] = useState(true);
   const [filtersModalVisible, setFiltersModalVisible] = useState(false);
   const colors = useThemeColors();
+  // Derived from the route params alone, so the color-coded initial paints on
+  // the very first frame instead of waiting on the friend-status fetch.
+  const routeAvatarColors = getAvatarColors(getRouteParam(id) ?? '', colors);
+  const topBarAccentColor = { background: routeAvatarColors.primary, text: routeAvatarColors.secondary };
+  const topBarAvatarInitial = getAvatarInitial(routeFriendName);
 
   // Same pill and wording as the Interested toggle on your own Agenda tab —
   // a friend's agenda is read the same way as your own — but here it rides in
@@ -86,6 +92,8 @@ export default function FriendShowtimesScreen() {
     return (
       <ShowtimesScreenSkeleton
         topBarTitle={routeFriendName}
+        topBarAccentColor={topBarAccentColor}
+        topBarAvatarInitial={topBarAvatarInitial}
         topBarShowBackButton
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -212,6 +220,15 @@ function FriendShowtimesContent({
     [friend, routeFriendName]
   );
 
+  // Derived from the route id/name alone (never from the friend-status fetch),
+  // so the color-coded initial paints on the very first frame.
+  const topBarAvatarColors = useMemo(() => getAvatarColors(userId ?? '', colors), [userId, colors]);
+  const topBarAccentColor = useMemo(
+    () => ({ background: topBarAvatarColors.primary, text: topBarAvatarColors.secondary }),
+    [topBarAvatarColors]
+  );
+  const topBarAvatarInitial = useMemo(() => getAvatarInitial(topBarTitle), [topBarTitle]);
+
   const showtimesFilters = useMemo(() => ({
     query: searchQuery || undefined,
     days: resolvedApiDays,
@@ -302,7 +319,12 @@ function FriendShowtimesContent({
   if (!friend) {
     return (
       <TopSafeAreaView style={styles.container}>
-        <TopBar title={routeFriendName} showBackButton />
+        <TopBar
+          title={routeFriendName}
+          showBackButton
+          accentColor={topBarAccentColor}
+          avatarInitial={topBarAvatarInitial}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.tint} />
         </View>
@@ -313,7 +335,12 @@ function FriendShowtimesContent({
   if (!friend.is_friend) {
     return (
       <TopSafeAreaView style={styles.container}>
-        <TopBar title={topBarTitle} showBackButton />
+        <TopBar
+          title={topBarTitle}
+          showBackButton
+          accentColor={topBarAccentColor}
+          avatarInitial={topBarAvatarInitial}
+        />
         <NonFriendProfile user={friend} />
       </TopSafeAreaView>
     );
@@ -323,6 +350,8 @@ function FriendShowtimesContent({
     <>
       <ShowtimesScreen
         topBarTitle={topBarTitle}
+        topBarAccentColor={topBarAccentColor}
+        topBarAvatarInitial={topBarAvatarInitial}
         topBarShowBackButton
         showtimes={showtimes}
         isLoading={isLoading}

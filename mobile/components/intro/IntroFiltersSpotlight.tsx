@@ -14,6 +14,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { Modal, type View } from "react-native";
 
 import SpotlightOverlay, { type SpotlightRect } from "@/components/intro/SpotlightOverlay";
+import { closeAllBlockingOverlays } from "@/utils/blocking-overlays";
 import { endIntro } from "@/utils/intro";
 import { measureForSpotlight } from "@/utils/spotlight-measure";
 
@@ -51,6 +52,16 @@ export default function IntroFiltersSpotlight({
 }: IntroFiltersSpotlightProps) {
   const [targetRect, setTargetRect] = useState<SpotlightRect | null>(null);
   const targetRectRef = useRef<SpotlightRect | null>(null);
+
+  useEffect(() => {
+    // Belt-and-braces: the showtimes screen already withholds this component
+    // until nothing is registered as open (see `isShowingIntroFiltersSpotlight`
+    // in app/(tabs)/index.tsx), but that only covers overlays that announce
+    // themselves. Closing again here catches anything that slipped past that
+    // check or opened in the gap between the check passing and this mounting —
+    // this step must never appear over another modal.
+    closeAllBlockingOverlays();
+  }, []);
 
   useEffect(() => {
     const measureTimer = setTimeout(() => {

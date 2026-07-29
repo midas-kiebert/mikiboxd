@@ -32,6 +32,8 @@ type TopBarProps = {
   onTitleSuffixPress?: () => void;
   /** Makes the title itself tappable, opening this URL (e.g. a cinema's website). */
   linkUrl?: string;
+  /** Single-letter avatar shown left of the title (e.g. a friend's initial), tinted by accentColor. */
+  avatarInitial?: string;
 };
 
 export default function TopBar({
@@ -42,6 +44,7 @@ export default function TopBar({
   accentColor,
   onTitleSuffixPress,
   linkUrl,
+  avatarInitial,
 }: TopBarProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
@@ -140,9 +143,27 @@ export default function TopBar({
             </TouchableOpacity>
           </View>
         ) : (
-          <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
-            {title}
-          </Text>
+          <View style={styles.plainTitleRow}>
+            {avatarInitial ? (
+              <View
+                style={[
+                  styles.avatarCircle,
+                  accentColor ? { backgroundColor: accentColor.background } : null,
+                ]}
+              >
+                <Text style={[styles.avatarInitial, accentColor ? { color: accentColor.text } : null]}>
+                  {avatarInitial}
+                </Text>
+              </View>
+            ) : null}
+            <Text
+              style={[styles.title, accentColor ? { color: accentColor.text } : null]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {title}
+            </Text>
+          </View>
         )}
       </View>
       {showNotificationBell ? (
@@ -238,6 +259,24 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       // cinema/friend name runs underneath both on ~360dp and narrower.
       maxWidth: "100%",
       paddingHorizontal: SIDE_BUTTON_RESERVED_WIDTH - 16,
+    },
+    plainTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      flexShrink: 1,
+      maxWidth: "100%",
+    },
+    avatarCircle: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarInitial: {
+      fontSize: 11,
+      fontWeight: "700",
     },
     titleStack: {
       flexShrink: 1,

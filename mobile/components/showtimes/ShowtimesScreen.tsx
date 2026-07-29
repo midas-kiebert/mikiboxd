@@ -140,6 +140,7 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   topBarAccentColor?: { background: string; text: string };
   topBarOnTitleSuffixPress?: () => void;
   topBarLinkUrl?: string;
+  topBarAvatarInitial?: string;
   showtimes: ShowtimeLoggedIn[];
   isLoading: boolean;
   isFetching: boolean;
@@ -174,6 +175,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   topBarAccentColor,
   topBarOnTitleSuffixPress,
   topBarLinkUrl,
+  topBarAvatarInitial,
   showtimes,
   isLoading,
   isFetching,
@@ -206,6 +208,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         accentColor={topBarAccentColor}
         onTitleSuffixPress={topBarOnTitleSuffixPress}
         linkUrl={topBarLinkUrl}
+        avatarInitial={topBarAvatarInitial}
       />
       <SearchBar
         value={searchQuery}
@@ -257,6 +260,10 @@ export function ShowtimesScreenSkeleton({
   topBarTitle = "MiKiNO",
   topBarTitleSuffix,
   topBarShowBackButton = false,
+  topBarAccentColor,
+  topBarOnTitleSuffixPress,
+  topBarLinkUrl,
+  topBarAvatarInitial,
   searchQuery,
   onSearchChange,
   searchPlaceholder = "Search showtimes",
@@ -265,6 +272,10 @@ export function ShowtimesScreenSkeleton({
   topBarTitle?: string;
   topBarTitleSuffix?: string;
   topBarShowBackButton?: boolean;
+  topBarAccentColor?: { background: string; text: string };
+  topBarOnTitleSuffixPress?: () => void;
+  topBarLinkUrl?: string;
+  topBarAvatarInitial?: string;
   searchQuery?: string;
   onSearchChange?: (value: string) => void;
   searchPlaceholder?: string;
@@ -278,6 +289,10 @@ export function ShowtimesScreenSkeleton({
         title={topBarTitle}
         titleSuffix={topBarTitleSuffix}
         showBackButton={topBarShowBackButton}
+        accentColor={topBarAccentColor}
+        onTitleSuffixPress={topBarOnTitleSuffixPress}
+        linkUrl={topBarLinkUrl}
+        avatarInitial={topBarAvatarInitial}
       />
       {onSearchChange ? (
         <SearchBar

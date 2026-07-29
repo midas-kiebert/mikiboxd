@@ -69,7 +69,6 @@ export default function LoginScreen() {
     return (
         <AuthScreenShell
             title="Welcome back"
-            subtitle="Your cinema agenda, and your friends' too."
             error={error}
             footer={
                 <TouchableOpacity

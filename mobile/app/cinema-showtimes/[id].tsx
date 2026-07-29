@@ -41,31 +41,82 @@ const getRouteParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 
 /**
+ * Shared by the deferred-mount skeleton and the real content below so both
+ * phases render the cinema's accent color / maps link / website link on
+ * their very first frame — computing this only once data has loaded would
+ * flash from the default header colors into the cinema's own.
+ */
+const buildCinemaHeaderProps = ({
+  cinemaName,
+  cityName,
+  badgeBgColorKey,
+  url,
+  colors,
+}: {
+  cinemaName: string;
+  cityName: string;
+  badgeBgColorKey: string;
+  url: string;
+  colors: ReturnType<typeof useThemeColors>;
+}) => {
+  const cinemaPalette = badgeBgColorKey
+    ? getCinemaColorPalette({ name: cinemaName || "Cinema", badge_bg_color: badgeBgColorKey }, colors)
+    : undefined;
+  const topBarAccentColor = cinemaPalette
+    ? { background: cinemaPalette.primary, text: cinemaPalette.secondary }
+    : undefined;
+  const mapsQuery = [cinemaName, cityName].filter(Boolean).join(", ");
+  const handleOpenLocation = mapsQuery
+    ? () => {
+        void Linking.openURL(
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`
+        );
+      }
+    : undefined;
+  return { topBarAccentColor, handleOpenLocation, topBarLinkUrl: url || undefined };
+};
+
+/**
  * The search field and the Filters button frame this screen rather than being
  * part of what it loads, so they live above the deferred-mount split and are
  * live on the first frame. Their state is owned here too, so a query typed (or
  * a filter sheet opened) before the content mounts is still there afterwards.
  */
 export default function CinemaShowtimesScreen() {
-  const { name, city } = useLocalSearchParams<{
+  const { name, city, badgeBgColor, url } = useLocalSearchParams<{
     name?: string | string[];
     city?: string | string[];
+    badgeBgColor?: string | string[];
+    url?: string | string[];
   }>();
   const cinemaKey = `cinema:${Array.isArray(name) ? name[0] : name}:${Array.isArray(city) ? city[0] : city}`;
   const ready = useDeferredMount(cinemaKey);
   const [searchQuery, setSearchQuery] = useState("");
   const [filtersModalVisible, setFiltersModalVisible] = useState(false);
+  const colors = useThemeColors();
 
   const filtersButtonRow = <FiltersButtonRow onPress={() => setFiltersModalVisible(true)} />;
 
   if (!ready) {
     const routeCinemaName = getRouteParam(name)?.trim() ?? "";
     const routeCityName = getRouteParam(city)?.trim() ?? "";
+    const routeBadgeBgColor = getRouteParam(badgeBgColor)?.trim() ?? "";
+    const routeUrl = getRouteParam(url)?.trim() ?? "";
+    const { topBarAccentColor, handleOpenLocation, topBarLinkUrl } = buildCinemaHeaderProps({
+      cinemaName: routeCinemaName,
+      cityName: routeCityName,
+      badgeBgColorKey: routeBadgeBgColor,
+      url: routeUrl,
+      colors,
+    });
     return (
       <ShowtimesScreenSkeleton
         topBarTitle={routeCinemaName || "Cinema"}
         topBarTitleSuffix={routeCityName || undefined}
         topBarShowBackButton
+        topBarAccentColor={topBarAccentColor}
+        topBarOnTitleSuffixPress={handleOpenLocation}
+        topBarLinkUrl={topBarLinkUrl}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         // No chips placeholder here: this screen's ActiveFilterChips renders
@@ -202,21 +253,14 @@ function CinemaShowtimesContent({
   const cityName = routeCityName || cinemaFromList?.city.name || "";
   const topBarTitleSuffix = cityName || undefined;
   const badgeBgColorKey = routeBadgeBgColor || cinemaFromList?.badge_bg_color || "";
-  const cinemaPalette = badgeBgColorKey
-    ? getCinemaColorPalette({ name: cinemaName, badge_bg_color: badgeBgColorKey }, colors)
-    : undefined;
-  const topBarAccentColor = cinemaPalette
-    ? { background: cinemaPalette.primary, text: cinemaPalette.secondary }
-    : undefined;
-  const cinemaUrl = routeUrl || cinemaFromList?.url || undefined;
-  const mapsQuery = [cinemaName, cityName].filter(Boolean).join(", ");
-  const handleOpenLocation = mapsQuery
-    ? () => {
-        void Linking.openURL(
-          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`
-        );
-      }
-    : undefined;
+  const cinemaUrl = routeUrl || cinemaFromList?.url || "";
+  const { topBarAccentColor, handleOpenLocation, topBarLinkUrl } = buildCinemaHeaderProps({
+    cinemaName,
+    cityName,
+    badgeBgColorKey,
+    url: cinemaUrl,
+    colors,
+  });
 
   // ─── Showtimes query ─────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({
@@ -408,7 +452,7 @@ function CinemaShowtimesContent({
         topBarShowBackButton
         topBarAccentColor={topBarAccentColor}
         topBarOnTitleSuffixPress={handleOpenLocation}
-        topBarLinkUrl={cinemaUrl}
+        topBarLinkUrl={topBarLinkUrl}
         showtimes={showtimes}
         isLoading={isLoading}
         isFetching={isFetching}

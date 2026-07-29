@@ -1,5 +1,6 @@
 """API tests for the /friends routes."""
 
+import uuid
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -152,3 +153,60 @@ def test_send_friend_request_when_already_friends_is_a_no_op(
     assert not friendship_crud.has_sent_friend_request(
         session=db_transaction, sender_id=current_user_id, receiver_id=other_user.id
     )
+
+
+def test_invite_preview_returns_og_tags_with_display_name(
+    client: TestClient,
+    user_factory,
+) -> None:
+    """No auth header is passed at all: this endpoint must remain public."""
+    user = user_factory(display_name="Alice Example")
+
+    response = client.get(
+        f"{settings.API_V1_STR}/friends/invite-preview/{user.id}"
+    )
+
+    assert response.status_code == 200
+    body = response.text
+
+    expected_url = f"{settings.FRONTEND_HOST}/add-friend/{user.id}"
+
+    assert (
+        'property="og:title" content="Alice Example wants to be friends on MiKiNO"'
+        in body
+    )
+    assert (
+        'name="twitter:title" content="Alice Example wants to be friends on MiKiNO"'
+        in body
+    )
+    assert f'property="og:url" content="{expected_url}"' in body
+
+
+def test_invite_preview_falls_back_to_someone_without_display_name(
+    client: TestClient,
+    user_factory,
+) -> None:
+    user = user_factory(display_name=None)
+
+    response = client.get(
+        f"{settings.API_V1_STR}/friends/invite-preview/{user.id}"
+    )
+
+    assert response.status_code == 200
+    body = response.text
+
+    assert (
+        'property="og:title" content="Someone wants to be friends on MiKiNO"'
+        in body
+    )
+
+
+def test_invite_preview_returns_404_for_nonexistent_user(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        f"{settings.API_V1_STR}/friends/invite-preview/{uuid.uuid4()}"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "User not found"

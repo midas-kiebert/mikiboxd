@@ -1477,9 +1477,9 @@ export default function ShowtimeActionModal({
                   onPress={handleGoToMoviePage}
                   activeOpacity={0.85}
                 >
-                  <MaterialIcons name="format-list-bulleted" size={18} color={colors.textSecondary} />
+                  <MaterialIcons name="info-outline" size={18} color={colors.textSecondary} />
                   <ThemedText style={styles.ctaIconButtonText} numberOfLines={1}>
-                    All showtimes
+                    Movie info
                   </ThemedText>
                 </TouchableOpacity>
               ) : null}

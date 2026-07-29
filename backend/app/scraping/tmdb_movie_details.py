@@ -45,6 +45,7 @@ def _movie_to_tmdb_details(movie: Movie) -> tmdb_core.TmdbMovieDetails | None:
         cast_names=list(movie.cast) if movie.cast else None,
         enriched_at=movie.tmdb_last_enriched_at,
         genre_ids=None,
+        description=movie.description,
     )
 
 

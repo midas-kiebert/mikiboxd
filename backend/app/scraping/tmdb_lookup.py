@@ -469,6 +469,13 @@ def _parse_tmdb_movie_details(
             seen_genres.add(genre_id)
             genre_ids.append(genre_id)
 
+    overview_raw = payload.get("overview")
+    description = (
+        overview_raw.strip()
+        if isinstance(overview_raw, str) and overview_raw.strip()
+        else None
+    )
+
     return TmdbMovieDetails(
         title=title,
         original_title=original_title,
@@ -482,6 +489,7 @@ def _parse_tmdb_movie_details(
         enriched_at=enriched_at,
         genre_ids=genre_ids or None,
         alternative_titles=alternative_titles or None,
+        description=description,
     )
 
 

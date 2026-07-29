@@ -26,7 +26,7 @@ depends_on = None
 def upgrade() -> None:
     op.execute(
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS '
-        "unverified_email_saved_channels JSON"
+        "unverified_email_saved_channels JSONB"
     )
     op.execute(
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS '

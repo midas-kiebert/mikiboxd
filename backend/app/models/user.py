@@ -3,8 +3,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 from pydantic import EmailStr
-from sqlalchemy import JSON
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Column, Field, Relationship, SQLModel
 
 from app.core.enums import DigestFrequency, NotificationChannel
@@ -142,7 +142,7 @@ class User(_UserBase, table=True):
     # unverified. Restored verbatim by verify_email once the new address is
     # confirmed. Deliberately not on `_UserBase` — internal, never user-settable.
     unverified_email_saved_channels: list[str] | None = Field(
-        default=None, sa_column=Column(JSON, nullable=True)
+        default=None, sa_column=Column(JSONB, nullable=True)
     )
     unverified_email_saved_digest_enabled: bool = Field(default=False)
     # Moderation: blocks POST /showtimes/{id}/report. None expiry + banned=True

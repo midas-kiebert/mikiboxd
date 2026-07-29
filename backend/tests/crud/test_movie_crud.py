@@ -217,6 +217,30 @@ def test_upsert_movie_preserves_existing_language_data_when_payload_language_is_
     assert updated_movie.original_language == "en"
 
 
+def test_upsert_movie_preserves_existing_description_when_payload_description_is_missing(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+):
+    """A transient/skipped TMDB fetch must not wipe previously-enriched description."""
+    existing_movie = movie_factory(description="A gripping tale of two cities.")
+    movie_create = MovieCreate(
+        id=existing_movie.id,
+        title=existing_movie.title,
+        poster_link=existing_movie.poster_link,
+        letterboxd_slug=existing_movie.letterboxd_slug,
+        description=None,
+    )
+
+    updated_movie = movie_crud.upsert_movie(
+        session=db_transaction,
+        movie_create=movie_create,
+    )
+
+    assert updated_movie.id == existing_movie.id
+    assert updated_movie.description == "A gripping tale of two cities."
+
+
 def test_upsert_movie_updates_language_data_when_payload_has_real_values(
     *,
     db_transaction: Session,

@@ -41,7 +41,7 @@ export function getVisibilityModeMeta(
       return {
         mode,
         label: "Invited only",
-        description: "Only friends in this invite — nobody else.",
+        description: "Only friends in this invite.",
         icon: "mail",
         color: colors.blue.secondary,
       };

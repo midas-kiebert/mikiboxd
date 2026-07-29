@@ -137,6 +137,9 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   topBarTitle?: string;
   topBarTitleSuffix?: string;
   topBarShowBackButton?: boolean;
+  topBarAccentColor?: { background: string; text: string };
+  topBarOnTitleSuffixPress?: () => void;
+  topBarLinkUrl?: string;
   showtimes: ShowtimeLoggedIn[];
   isLoading: boolean;
   isFetching: boolean;
@@ -168,6 +171,9 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   topBarTitle = "MiKiNO",
   topBarTitleSuffix,
   topBarShowBackButton = false,
+  topBarAccentColor,
+  topBarOnTitleSuffixPress,
+  topBarLinkUrl,
   showtimes,
   isLoading,
   isFetching,
@@ -197,6 +203,9 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         title={topBarTitle}
         titleSuffix={topBarTitleSuffix}
         showBackButton={topBarShowBackButton}
+        accentColor={topBarAccentColor}
+        onTitleSuffixPress={topBarOnTitleSuffixPress}
+        linkUrl={topBarLinkUrl}
       />
       <SearchBar
         value={searchQuery}

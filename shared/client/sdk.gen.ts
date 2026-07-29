@@ -160,6 +160,8 @@ import type {
   UsersSearchUsersResponse,
   UsersRegisterUserData,
   UsersRegisterUserResponse,
+  UsersGetUserFriendStatusData,
+  UsersGetUserFriendStatusResponse,
   UsersGetUserData,
   UsersGetUserResponse,
   UsersGetUserSelectedShowtimesData,
@@ -2287,6 +2289,33 @@ export class UsersService {
       url: "/api/v1/users/signup",
       body: data.requestBody,
       mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get User Friend Status
+   * A single user's friendship/request status relative to the current user.
+   *
+   * Polled by e.g. a showtime's "Invited" list so a status change made
+   * elsewhere (the other side accepted/declined) is noticed without
+   * refetching the whole showtime.
+   * @param data The data for the request.
+   * @param data.userId
+   * @returns UserWithFriendStatus Successful Response
+   * @throws ApiError
+   */
+  public static getUserFriendStatus(
+    data: UsersGetUserFriendStatusData,
+  ): CancelablePromise<UsersGetUserFriendStatusResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/users/{user_id}/friend-status",
+      path: {
+        user_id: data.userId,
+      },
       errors: {
         422: "Validation Error",
       },

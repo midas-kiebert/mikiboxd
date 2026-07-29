@@ -4,8 +4,10 @@
  *  - the watchlisted/watched popups (invite mode there, static on a movie page).
  *
  * Colored initial avatar + name, then a trailing action that depends on the mode.
- * In invite mode only the labelled "Invite" button sends the invite — the row
- * itself is inert, so a stray tap on a name can never invite someone by accident.
+ * In invite mode only the labelled "Invite" button sends the invite; the row
+ * itself never does, so a stray tap on a name can never invite someone by
+ * accident — but when a caller passes `onPress`, the row still opens that
+ * person's page, in either mode.
  */
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -58,9 +60,11 @@ export default function FriendListRow({
 
   const isInvite = mode === "invite";
   const canInvite = isInvite && !invited && !statusLabel && !disabled && Boolean(onInvite);
-  // Only display mode makes the row itself a target; invite mode keeps the tap
-  // on the button so nobody invites a friend by tapping their name.
-  const rowPress = isInvite ? undefined : onPress;
+  // The row itself always opens the friend's page when a handler is given —
+  // in invite mode that's a separate action from the labelled Invite button
+  // (which stops its own press from reaching the row), so nobody invites a
+  // friend by tapping their name.
+  const rowPress = onPress;
 
   // Render/output using the state and derived values prepared above.
   const content = (
@@ -88,7 +92,10 @@ export default function FriendListRow({
         ) : (
           <TouchableOpacity
             style={[styles.inviteButton, !canInvite && styles.inviteButtonDisabled]}
-            onPress={onInvite}
+            onPress={(event) => {
+              event.stopPropagation();
+              onInvite?.();
+            }}
             disabled={!canInvite}
             activeOpacity={0.8}
             hitSlop={6}

@@ -2,7 +2,7 @@
  * Expo Router screen/module for cinema-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
+import { FlatList, Linking, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import { DateTime } from "luxon";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -31,6 +31,7 @@ import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
 import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
+import { getCinemaColorPalette } from "@/utils/cinema-color";
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
@@ -101,10 +102,12 @@ function CinemaShowtimesContent({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
-  const { id, name, city } = useLocalSearchParams<{
+  const { id, name, city, badgeBgColor, url } = useLocalSearchParams<{
     id?: string | string[];
     name?: string | string[];
     city?: string | string[];
+    badgeBgColor?: string | string[];
+    url?: string | string[];
   }>();
   const routeCinemaId = useMemo(() => Number(getRouteParam(id)), [id]);
   const cinemaId = Number.isFinite(routeCinemaId) && routeCinemaId > 0 ? routeCinemaId : -1;
@@ -116,6 +119,11 @@ function CinemaShowtimesContent({
   );
   const routeCinemaName = useMemo(() => getRouteParam(name)?.trim() ?? "", [name]);
   const routeCityName = useMemo(() => getRouteParam(city)?.trim() ?? "", [city]);
+  // Carried from CinemaPill's navigation params so the badge color and website
+  // link are available on the very first frame, rather than flashing in once
+  // the cinemas list finishes fetching.
+  const routeBadgeBgColor = useMemo(() => getRouteParam(badgeBgColor)?.trim() ?? "", [badgeBgColor]);
+  const routeUrl = useMemo(() => getRouteParam(url)?.trim() ?? "", [url]);
   const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
@@ -193,6 +201,22 @@ function CinemaShowtimesContent({
   const cinemaName = routeCinemaName || cinemaFromList?.name || "Cinema";
   const cityName = routeCityName || cinemaFromList?.city.name || "";
   const topBarTitleSuffix = cityName || undefined;
+  const badgeBgColorKey = routeBadgeBgColor || cinemaFromList?.badge_bg_color || "";
+  const cinemaPalette = badgeBgColorKey
+    ? getCinemaColorPalette({ name: cinemaName, badge_bg_color: badgeBgColorKey }, colors)
+    : undefined;
+  const topBarAccentColor = cinemaPalette
+    ? { background: cinemaPalette.primary, text: cinemaPalette.secondary }
+    : undefined;
+  const cinemaUrl = routeUrl || cinemaFromList?.url || undefined;
+  const mapsQuery = [cinemaName, cityName].filter(Boolean).join(", ");
+  const handleOpenLocation = mapsQuery
+    ? () => {
+        void Linking.openURL(
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`
+        );
+      }
+    : undefined;
 
   // ─── Showtimes query ─────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({
@@ -352,6 +376,7 @@ function CinemaShowtimesContent({
         <MovieCard
           movie={item}
           onPress={(movie) => goToMovieFromCard(movie.id)}
+          showCinema={false}
         />
       )}
       keyExtractor={(item) => item.id.toString()}
@@ -381,6 +406,9 @@ function CinemaShowtimesContent({
         topBarTitle={cinemaName}
         topBarTitleSuffix={topBarTitleSuffix}
         topBarShowBackButton
+        topBarAccentColor={topBarAccentColor}
+        topBarOnTitleSuffixPress={handleOpenLocation}
+        topBarLinkUrl={cinemaUrl}
         showtimes={showtimes}
         isLoading={isLoading}
         isFetching={isFetching}

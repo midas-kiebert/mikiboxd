@@ -14,22 +14,7 @@ import type { CinemaPublic } from "shared";
 import { ThemedText } from "@/components/themed-text";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
-
-type CinemaColorKey =
-  | "pink"
-  | "purple"
-  | "green"
-  | "orange"
-  | "yellow"
-  | "blue"
-  | "teal"
-  | "red"
-  | "cyan";
-
-type CinemaColorPalette = {
-  primary: string;
-  secondary: string;
-};
+import { getCinemaColorPalette } from "@/utils/cinema-color";
 
 type CinemaPillProps = {
   cinema: CinemaPublic;
@@ -50,7 +35,13 @@ export default function CinemaPill({ cinema, variant = "default", disabledIfSame
   const goToCinemaShowtimes = useSingleFireNavigation((c: CinemaPublic) =>
     router.push({
       pathname: "/cinema-showtimes/[id]",
-      params: { id: c.id.toString(), name: c.name, city: c.city.name },
+      params: {
+        id: c.id.toString(),
+        name: c.name,
+        city: c.city.name,
+        badgeBgColor: c.badge_bg_color,
+        url: c.url,
+      },
     })
   );
   const colors = useThemeColors();
@@ -67,27 +58,7 @@ export default function CinemaPill({ cinema, variant = "default", disabledIfSame
           text: styles.defaultText,
         };
 
-  // Backend provides a color key string; map it to the theme palette safely.
-  const paletteByKey: Record<CinemaColorKey, CinemaColorPalette> = {
-    pink: colors.pink,
-    purple: colors.purple,
-    green: colors.green,
-    orange: colors.orange,
-    yellow: colors.yellow,
-    blue: colors.blue,
-    teal: colors.teal,
-    red: colors.red,
-    cyan: colors.cyan,
-  };
-  const cinemaColorKey = cinema.badge_bg_color as CinemaColorKey;
-  const fallbackPalettes = Object.values(paletteByKey);
-  const fallbackPalette =
-    fallbackPalettes[
-      Math.abs(
-        cinema.name.split("").reduce((hash, char) => hash * 31 + char.charCodeAt(0), 0)
-      ) % fallbackPalettes.length
-    ];
-  const cinemaPalette = paletteByKey[cinemaColorKey] ?? fallbackPalette;
+  const cinemaPalette = getCinemaColorPalette(cinema, colors);
   const cinemaBackground = cinemaPalette.primary;
   const cinemaText = cinemaPalette.secondary;
 

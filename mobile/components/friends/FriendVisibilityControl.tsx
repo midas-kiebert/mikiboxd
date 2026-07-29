@@ -6,6 +6,7 @@
  * answer carries a subtle tint — green for open, amber for restricted — so the
  * setting also reads from a scan down the list.
  */
+import type { ReactNode } from "react";
 import { StyleSheet, TouchableOpacity, View, type GestureResponderEvent } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
@@ -18,6 +19,10 @@ type FriendVisibilityControlProps = {
   sharesStatus: boolean;
   onChange: (sharesStatus: boolean) => void;
   disabled?: boolean;
+  /** Rendered at the end of the label line — a place for a rare, unrelated
+   *  per-friend action (e.g. remove friend) to sit deliberately rather than
+   *  floating loose beside the control. */
+  trailingAccessory?: ReactNode;
 };
 
 type VisibilityOption = {
@@ -50,6 +55,7 @@ export default function FriendVisibilityControl({
   sharesStatus,
   onChange,
   disabled = false,
+  trailingAccessory,
 }: FriendVisibilityControlProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
@@ -70,8 +76,11 @@ export default function FriendVisibilityControl({
   return (
     <View style={styles.container}>
       <View style={styles.labelRow}>
-        <MaterialIcons name={selectedOption.icon} size={13} color={selectedTone.secondary} />
-        <ThemedText style={styles.label}>Can see your showtimes:</ThemedText>
+        <View style={styles.labelText}>
+          <MaterialIcons name={selectedOption.icon} size={13} color={selectedTone.secondary} />
+          <ThemedText style={styles.label}>Can see your showtimes:</ThemedText>
+        </View>
+        {trailingAccessory}
       </View>
       <View
         style={[styles.track, disabled && styles.trackDisabled]}
@@ -120,6 +129,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 6,
     },
     labelRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    labelText: {
       flexDirection: "row",
       alignItems: "center",
       gap: 5,

@@ -34,6 +34,7 @@ type ShowtimeRowProps = {
   showDate?: boolean;
   subtitlesAfterCinema?: boolean;
   isSyntheticMovie?: boolean;
+  showCinema?: boolean;
 };
 
 const formatShowtime = (
@@ -57,6 +58,7 @@ export default function ShowtimeRow({
   showDate = true,
   subtitlesAfterCinema = false,
   isSyntheticMovie = false,
+  showCinema = true,
 }: ShowtimeRowProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
@@ -66,9 +68,9 @@ export default function ShowtimeRow({
   const subtitlesBadges = (
     <SubtitlesBadges subtitles={showtime.subtitles} variant={isCompact ? "compact" : "default"} />
   );
-  const cinemaPill = (
+  const cinemaPill = showCinema ? (
     <CinemaPill cinema={showtime.cinema} variant={isCompact ? "compact" : "default"} />
-  );
+  ) : null;
 
   // Render/output using the state and derived values prepared above.
   return (

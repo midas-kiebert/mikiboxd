@@ -1644,6 +1644,12 @@ export type UsersRegisterUserData = {
 
 export type UsersRegisterUserResponse = UserPublic
 
+export type UsersGetUserFriendStatusData = {
+  userId: string
+}
+
+export type UsersGetUserFriendStatusResponse = UserWithFriendStatus
+
 export type UsersGetUserData = {
   userId: string
 }

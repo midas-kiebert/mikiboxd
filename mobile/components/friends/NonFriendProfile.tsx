@@ -1,0 +1,242 @@
+/**
+ * Full-screen state for a user's page when the viewer isn't friends with them.
+ *
+ * Previously this same route rendered as if the viewer already were a
+ * friend — the showtimes list and every friend-only option, just silently
+ * empty (only a friend's showtimes ever load) with nothing on screen saying
+ * why. This replaces that pretend view entirely: no showtimes, no visibility
+ * control, no remove button — only the one thing there is to actually do
+ * here, front and center, in whichever direction the relationship currently
+ * points (send a request, accept/decline theirs, or cancel yours).
+ *
+ * Polls its own live status the same way `InlineFriendRequestButtons` does,
+ * so accepting a request here (or it resolving from the other side while this
+ * screen is open) is reflected without a manual refresh — and the parent
+ * screen, watching the same query, swaps this out for the real agenda the
+ * moment `is_friend` turns true.
+ */
+import { StyleSheet, TouchableOpacity, View } from "react-native";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import type { UserWithFriendStatus } from "shared";
+
+import { ThemedText } from "@/components/themed-text";
+import { useFriendActions } from "@/hooks/useFriendActions";
+import { useOptimisticFriendStatus } from "@/hooks/useFriendStatus";
+import { useThemeColors } from "@/hooks/use-theme-color";
+import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
+import { triggerSelectionHaptic } from "@/utils/long-press";
+
+type NonFriendProfileProps = {
+  user: UserWithFriendStatus;
+};
+
+type Override = "sent" | "cleared" | "friend" | null;
+
+export default function NonFriendProfile({ user: seed }: NonFriendProfileProps) {
+  const colors = useThemeColors();
+  const styles = createStyles(colors);
+  const { sendRequest, acceptRequest, declineRequest, cancelRequest, isBusy } = useFriendActions();
+  const { user, override, setOverride } = useOptimisticFriendStatus<Override>(seed);
+
+  const runAction = (next: Override, action: () => void) => {
+    triggerSelectionHaptic();
+    setOverride(next);
+    action();
+  };
+
+  const displayUser = user ?? seed;
+  const name = displayUser.display_name?.trim() || "This user";
+  const avatarColors = getAvatarColors(displayUser.id, colors);
+
+  const status: "friend" | "received" | "sent" | "none" =
+    override === "friend"
+      ? "friend"
+      : override === "cleared"
+        ? "none"
+        : override === "sent"
+          ? "sent"
+          : displayUser.is_friend
+            ? "friend"
+            : displayUser.received_request
+              ? "received"
+              : displayUser.sent_request
+                ? "sent"
+                : "none";
+
+  const subtitle =
+    status === "received"
+      ? `${name} wants to be your friend`
+      : status === "sent"
+        ? "Friend request sent"
+        : status === "friend"
+          ? "You're friends"
+          : "You're not friends yet";
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.card}>
+        <View style={[styles.avatar, { backgroundColor: avatarColors.primary }]}>
+          <ThemedText style={[styles.avatarText, { color: avatarColors.secondary }]}>
+            {getAvatarInitial(name)}
+          </ThemedText>
+        </View>
+        <ThemedText style={styles.name} numberOfLines={2}>
+          {name}
+        </ThemedText>
+        <View style={styles.statusRow}>
+          <MaterialIcons
+            name={status === "friend" ? "people" : "lock-outline"}
+            size={13}
+            color={colors.textSecondary}
+          />
+          <ThemedText style={styles.statusText}>{subtitle}</ThemedText>
+        </View>
+        <ThemedText style={styles.hint}>
+          Become friends to see {name}&apos;s agenda and invite them to showtimes.
+        </ThemedText>
+
+        {status === "received" ? (
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={[styles.button, styles.ghostButton]}
+              onPress={() => runAction("cleared", () => declineRequest(displayUser.id))}
+              disabled={isBusy}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Decline friend request"
+            >
+              <ThemedText style={styles.ghostButtonText}>Decline</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, styles.primaryButton]}
+              onPress={() => runAction("friend", () => acceptRequest(displayUser.id))}
+              disabled={isBusy}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Accept friend request"
+            >
+              <MaterialIcons name="check" size={16} color={colors.pillActiveText} />
+              <ThemedText style={styles.primaryButtonText}>Accept</ThemedText>
+            </TouchableOpacity>
+          </View>
+        ) : status === "sent" ? (
+          <TouchableOpacity
+            style={[styles.button, styles.ghostButton, styles.wideButton]}
+            onPress={() => runAction("cleared", () => cancelRequest(displayUser.id))}
+            disabled={isBusy}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel friend request"
+          >
+            <MaterialIcons name="schedule" size={16} color={colors.textSecondary} />
+            <ThemedText style={styles.ghostButtonText}>Cancel Request</ThemedText>
+          </TouchableOpacity>
+        ) : status === "none" ? (
+          <TouchableOpacity
+            style={[styles.button, styles.primaryButton, styles.wideButton]}
+            onPress={() => runAction("sent", () => sendRequest(displayUser.id))}
+            disabled={isBusy}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Add friend"
+          >
+            <MaterialIcons name="person-add-alt" size={16} color={colors.pillActiveText} />
+            <ThemedText style={styles.primaryButtonText}>Add Friend</ThemedText>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 24,
+    },
+    card: {
+      width: "100%",
+      maxWidth: 340,
+      alignItems: "center",
+      gap: 6,
+    },
+    avatar: {
+      width: 84,
+      height: 84,
+      borderRadius: 42,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 10,
+    },
+    avatarText: {
+      fontSize: 32,
+      fontWeight: "700",
+      lineHeight: 38,
+    },
+    name: {
+      fontSize: 22,
+      fontWeight: "700",
+      color: colors.text,
+      textAlign: "center",
+    },
+    statusRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      marginTop: 2,
+    },
+    statusText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.textSecondary,
+    },
+    hint: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginTop: 8,
+      marginBottom: 20,
+    },
+    buttonRow: {
+      flexDirection: "row",
+      gap: 10,
+      alignSelf: "stretch",
+    },
+    button: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      minHeight: 46,
+      paddingHorizontal: 18,
+      borderRadius: 14,
+      borderWidth: 1,
+      flex: 1,
+    },
+    wideButton: {
+      alignSelf: "stretch",
+      flex: undefined,
+    },
+    primaryButton: {
+      backgroundColor: colors.tint,
+      borderColor: colors.tint,
+    },
+    primaryButtonText: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: colors.pillActiveText,
+    },
+    ghostButton: {
+      backgroundColor: "transparent",
+      borderColor: colors.cardBorder,
+    },
+    ghostButtonText: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
+  });

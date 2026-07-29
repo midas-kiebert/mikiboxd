@@ -47,6 +47,35 @@ def get_user(
     return user_converters.to_public(user_db)
 
 
+def get_user_friend_status(
+    *,
+    session: Session,
+    current_user_id: UUID,
+    user_id: UUID,
+) -> UserWithFriendStatus:
+    """
+    Get a user's current friendship/request status relative to current_user_id.
+
+    Deliberately lightweight and separate from the showtime/movie payloads
+    that embed a snapshot of this same data — callers (e.g. a showtime
+    modal's "Invited" list) poll this to notice a status change (request
+    accepted/declined elsewhere, etc.) without refetching the whole showtime.
+
+    Parameters:
+        session (Session): Database session.
+        current_user_id (UUID): The viewer, whose relationship to user_id is reported.
+        user_id (UUID): ID of the user whose status to retrieve.
+    Raises:
+        UserNotFound: If the user with the given ID does not exist.
+    """
+    user_db = users_crud.get_user_by_id(session=session, user_id=user_id)
+    if not user_db:
+        raise UserNotFound(user_id)
+    return user_converters.to_with_friend_status(
+        user_db, session=session, current_user=current_user_id
+    )
+
+
 def get_users(
     *,
     session: Session,

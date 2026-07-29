@@ -1,7 +1,7 @@
 /**
  * Mobile layout/navigation component: Top Bar.
  */
-import { Image, TouchableOpacity, StyleSheet, Text, View } from "react-native";
+import { Image, Linking, TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useFetchNotificationUnseenCount } from "shared/hooks/useFetchNotificationUnseenCount";
@@ -26,6 +26,12 @@ type TopBarProps = {
   showBackButton?: boolean;
   /** Hides the notification bell (e.g. on screens where it's redundant). */
   showNotificationBell?: boolean;
+  /** Tints the title and the titleSuffix pill (e.g. a cinema's badge color). */
+  accentColor?: { background: string; text: string };
+  /** Makes the titleSuffix pill (e.g. a cinema's city) tappable. */
+  onTitleSuffixPress?: () => void;
+  /** Makes the title itself tappable, opening this URL (e.g. a cinema's website). */
+  linkUrl?: string;
 };
 
 export default function TopBar({
@@ -33,6 +39,9 @@ export default function TopBar({
   titleSuffix,
   showBackButton = false,
   showNotificationBell = true,
+  accentColor,
+  onTitleSuffixPress,
+  linkUrl,
 }: TopBarProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
@@ -49,6 +58,15 @@ export default function TopBar({
   const totalUnseenCount = unseenCount + unseenTipCount;
   const showBadge = totalUnseenCount > 0;
   const badgeLabel = totalUnseenCount > 99 ? "99+" : String(totalUnseenCount);
+
+  const handleOpenLink = async () => {
+    if (!linkUrl) return;
+    try {
+      await Linking.openURL(linkUrl);
+    } catch {
+      // Ignore open failures to keep the header interaction non-blocking.
+    }
+  };
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -76,15 +94,50 @@ export default function TopBar({
         ) : null}
         {titleSuffix ? (
           <View style={styles.titleStack}>
-            <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
-              {title}
-            </Text>
-            <View style={styles.subtitleRow}>
-              <MaterialIcons name="place" size={11} color={colors.textSecondary} />
-              <Text style={styles.subtitleText} numberOfLines={1} ellipsizeMode="tail">
+            <TouchableOpacity
+              onPress={handleOpenLink}
+              disabled={!linkUrl}
+              hitSlop={6}
+              activeOpacity={0.6}
+              accessibilityRole={linkUrl ? "button" : undefined}
+              accessibilityLabel={linkUrl ? `Open ${title} website` : undefined}
+            >
+              <Text
+                style={[styles.title, accentColor ? { color: accentColor.text } : null]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {title}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.subtitleRow,
+                accentColor ? { backgroundColor: accentColor.background } : null,
+              ]}
+              onPress={onTitleSuffixPress}
+              disabled={!onTitleSuffixPress}
+              hitSlop={6}
+              activeOpacity={0.6}
+              accessibilityRole={onTitleSuffixPress ? "button" : undefined}
+              accessibilityLabel={onTitleSuffixPress ? `Open ${titleSuffix} in Maps` : undefined}
+            >
+              <MaterialIcons
+                name="place"
+                size={11}
+                color={accentColor?.text ?? colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.subtitleText,
+                  accentColor ? { color: accentColor.text } : null,
+                ]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 {titleSuffix}
               </Text>
-            </View>
+            </TouchableOpacity>
           </View>
         ) : (
           <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">

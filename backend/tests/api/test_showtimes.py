@@ -2023,7 +2023,7 @@ def test_share_preview_returns_og_tags_with_poster(
     body = response.text
 
     expected_description = (
-        f"The Movies · {showtime.datetime.strftime('%a, %b %d at %H:%M')}"
+        f"{showtime.datetime.strftime('%-d %b, %H:%M')} · The Movies"
     )
     expected_url = f"{settings.FRONTEND_HOST}/ping/{showtime_id}/{sender_identifier}"
 

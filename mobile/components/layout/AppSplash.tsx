@@ -18,6 +18,9 @@ import { Animated, Appearance, Easing, StyleSheet } from 'react-native';
 const SPLASH_LIGHT_BG = '#ffffff';
 const SPLASH_DARK_BG = '#000000';
 
+/** How long the reveal takes, for callers that must wait the overlay out. */
+export const SPLASH_FADE_DURATION_MS = 320;
+
 type AppSplashProps = {
   /** While true the splash stays up; when it flips to false the splash fades out. */
   active: boolean;
@@ -60,7 +63,7 @@ export default function AppSplash({ active, onHidden, onReady }: AppSplashProps)
     if (active) return;
     const animation = Animated.timing(opacity, {
       toValue: 0,
-      duration: 320,
+      duration: SPLASH_FADE_DURATION_MS,
       easing: Easing.out(Easing.quad),
       useNativeDriver: true,
     });

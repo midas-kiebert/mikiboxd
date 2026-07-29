@@ -28,6 +28,15 @@ class UserPublic(SQLModel):
 
 class UserMe(UserPublic):
     email: EmailStr
+    email_verified: bool
+    # Whether the app should offer the watchlist digest to this user. Decided
+    # here rather than by the client so both the switch and who it reaches can
+    # be changed from the backend without waiting for a release: it combines the
+    # global WATCHLIST_DIGEST_TIP_ENABLED switch with "this account can receive
+    # email at all", "has never turned the digest on", and — for now, as a
+    # narrower first audience rather than a real requirement — "has a Letterboxd
+    # account connected".
+    show_watchlist_digest_tip: bool
     is_superuser: bool
     incognito_mode: bool
     notify_on_friend_showtime_match: bool

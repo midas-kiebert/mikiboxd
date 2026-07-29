@@ -4,7 +4,8 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, select
+from sqlalchemy import func
+from sqlmodel import Session, col, select
 
 from app.api.routes.login import _build_token
 from app.core.config import settings
@@ -216,6 +217,12 @@ def test_social_token_links_to_existing_password_account_by_email(
         session=db_transaction,
         user_create=UserCreate(email=email, password=password),
     )
+    # Confirmed, so this is the ordinary link and the password is left alone.
+    # Linking into an *unverified* account deliberately discards it — see
+    # test_social_token_linking_into_an_unverified_account_drops_its_password.
+    existing.email_verified = True
+    db_transaction.add(existing)
+    db_transaction.flush()
     original_hash = existing.hashed_password
     google_sub = f"google-{uuid.uuid4()}"
 
@@ -232,6 +239,7 @@ def test_social_token_links_to_existing_password_account_by_email(
     assert linked.id == existing.id
     assert linked.google_sub == google_sub
     assert linked.hashed_password == original_hash
+    assert r.json()["password_removed"] is False
 
     # No duplicate account exists for this email.
     matches = db_transaction.exec(select(User).where(User.email == email)).all()
@@ -313,6 +321,160 @@ def test_social_token_link_to_existing_account_with_valid_display_name_no_userna
     assert r.json()["needs_username"] is False
 
 
+def test_social_token_links_to_password_account_with_differently_cased_email(
+    client: TestClient,
+    db_transaction: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Signing in with Google reaches the account you registered by email.
+
+    Providers hand back a lowercased address, so an account registered as
+    `Bob@example.com` was missed by an exact-match lookup and the sign-in
+    quietly created a second, empty account beside the real one. One mailbox is
+    one account, whatever the capitalisation.
+    """
+    local_part = random_lower_string()[:10]
+    registered_email = f"Mixed.{local_part}@Example.com"
+    existing = user_crud.create_user(
+        session=db_transaction,
+        user_create=UserCreate(
+            email=registered_email, password=random_lower_string()
+        ),
+    )
+    existing.display_name = "alice123"
+    db_transaction.add(existing)
+    db_transaction.flush()
+    existing_id = existing.id
+
+    google_sub = f"google-{uuid.uuid4()}"
+    monkeypatch.setattr(
+        "app.api.routes.login.verify_social_token",
+        lambda provider, token: SocialClaims(
+            sub=google_sub, email=registered_email.lower()
+        ),
+    )
+
+    r = _post_social_token(client, provider="google")
+
+    assert r.status_code == 200, r.text
+    # Straight in: the account already has a username, so the client skips
+    # /pick-username and never marks the first-run intro pending.
+    assert r.json()["needs_username"] is False
+
+    matching_users = db_transaction.exec(
+        select(User).where(func.lower(col(User.email)) == registered_email.lower())
+    ).all()
+    assert len(matching_users) == 1
+    linked = matching_users[0]
+    assert linked.id == existing_id
+    assert linked.google_sub == google_sub
+    assert linked.display_name == "alice123"
+    # The address is left exactly as the user typed it when registering.
+    assert linked.email == registered_email
+
+
+def test_social_token_new_account_is_verified_by_the_provider(
+    client: TestClient,
+    db_transaction: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider-signed `email_verified` is proof enough; no link is mailed."""
+    email = random_email()
+    sub = f"google-{uuid.uuid4()}"
+    monkeypatch.setattr(
+        "app.api.routes.login.verify_social_token",
+        lambda provider, token: SocialClaims(sub=sub, email=email),
+    )
+
+    r = _post_social_token(client, provider="google")
+
+    assert r.status_code == 200, r.text
+    created = user_crud.get_user_by_social_sub(
+        session=db_transaction, provider=SocialProvider.GOOGLE, provider_sub=sub
+    )
+    assert created is not None
+    assert created.email_verified is True
+
+
+def test_social_token_linking_into_a_verified_account_keeps_its_password(
+    client: TestClient,
+    db_transaction: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ordinary case: you confirmed your address, then added Google."""
+    email = random_email()
+    existing = user_crud.create_user(
+        session=db_transaction,
+        user_create=UserCreate(email=email, password=random_lower_string()),
+    )
+    existing.display_name = "alice123"
+    existing.email_verified = True
+    db_transaction.add(existing)
+    db_transaction.flush()
+    password_hash = existing.hashed_password
+
+    monkeypatch.setattr(
+        "app.api.routes.login.verify_social_token",
+        lambda provider, token: SocialClaims(
+            sub=f"google-{uuid.uuid4()}", email=email
+        ),
+    )
+
+    r = _post_social_token(client, provider="google")
+
+    assert r.status_code == 200, r.text
+    db_transaction.expire_all()
+    linked = user_crud.get_user_by_email(session=db_transaction, email=email)
+    assert linked is not None
+    assert linked.hashed_password == password_hash
+    assert linked.email_verified is True
+
+
+def test_social_token_linking_into_an_unverified_account_drops_its_password(
+    client: TestClient,
+    db_transaction: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Registering someone else's address must not become a way into it.
+
+    Signup takes the address on trust, so an account nobody confirmed carries an
+    unproven password. When a provider then proves who owns that mailbox, the
+    proven owner gets the account and the unproven credential is discarded —
+    otherwise whoever pre-registered the address would still hold a key to it.
+    """
+    email = random_email()
+    squatter = user_crud.create_user(
+        session=db_transaction,
+        user_create=UserCreate(email=email, password=random_lower_string()),
+    )
+    squatter.display_name = "squatter1"
+    db_transaction.add(squatter)
+    db_transaction.flush()
+    assert squatter.email_verified is False
+    squatter_id = squatter.id
+
+    monkeypatch.setattr(
+        "app.api.routes.login.verify_social_token",
+        lambda provider, token: SocialClaims(
+            sub=f"google-{uuid.uuid4()}", email=email
+        ),
+    )
+
+    r = _post_social_token(client, provider="google")
+
+    assert r.status_code == 200, r.text
+    db_transaction.expire_all()
+    linked = user_crud.get_user_by_email(session=db_transaction, email=email)
+    assert linked is not None
+    # Same account — the real owner lands where their data would have gone.
+    assert linked.id == squatter_id
+    assert linked.email_verified is True
+    assert linked.hashed_password is None
+    # Reported back so the app can tell the user, rather than leaving them to
+    # discover it the next time they try that password.
+    assert r.json()["password_removed"] is True
+
+
 def test_social_token_invalid_token_is_unauthorized(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -332,13 +494,14 @@ def test_social_token_inactive_user_rejected(
 ) -> None:
     email = random_email()
     sub = f"apple-{uuid.uuid4()}"
-    user, is_new = user_crud.get_or_create_social_user(
+    resolution = user_crud.get_or_create_social_user(
         session=db_transaction,
         provider=SocialProvider.APPLE,
         provider_sub=sub,
         email=email,
     )
-    assert is_new
+    assert resolution.is_new
+    user = resolution.user
     user.is_active = False
     db_transaction.add(user)
     db_transaction.flush()

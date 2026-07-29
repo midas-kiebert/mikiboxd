@@ -109,12 +109,13 @@ def login_social_token(
             detail=f"Invalid {body.provider.value} token: {e}",
         ) from e
 
-    user, is_new = users_crud.get_or_create_social_user(
+    resolution = users_crud.get_or_create_social_user(
         session=session,
         provider=body.provider,
         provider_sub=claims.sub,
         email=claims.email,
     )
+    user = resolution.user
     if not user.is_active:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -141,6 +142,7 @@ def login_social_token(
     return SocialLoginResponse(
         **_build_token(user.id).model_dump(),
         needs_username=needs_username,
+        password_removed=resolution.password_removed,
     )
 
 

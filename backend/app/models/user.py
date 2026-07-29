@@ -114,6 +114,17 @@ class User(_UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # None for social-only accounts (signed up via Apple/Google, never set a password).
     hashed_password: str | None = None
+    # Sticky: set the first time the watchlist digest is switched on and never
+    # cleared. "Has never been turned on" is what makes someone a candidate for
+    # the tip that points the feature out, and turning it on and then off again
+    # is a decision, not a reason to be told about it a second time.
+    watchlist_digest_ever_enabled: bool = Field(default=False)
+    # Whether this address has been proven to belong to whoever holds the
+    # account: by clicking the link mailed at registration, or by a provider
+    # asserting `email_verified` in a signed token. Deliberately *not* on
+    # `_UserBase` — it must not be settable through UserCreate/UserUpdate, or an
+    # account could simply declare itself verified via PATCH /me.
+    email_verified: bool = Field(default=False)
     # Provider subject identifiers for social sign-in. Nullable/unique: a user has
     # at most one linked identity per provider, and most users will have zero or one.
     apple_sub: str | None = Field(default=None, unique=True, index=True)

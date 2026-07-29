@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
@@ -6,6 +7,8 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
+from app.core.config import settings
+from app.core.security import generate_email_verification_token
 from app.crud import cinema as cinemas_crud
 from app.crud import friendship as friendship_crud
 from app.crud import user as users_crud
@@ -19,10 +22,13 @@ from app.exceptions.user_exceptions import (
     UserNotFound,
 )
 from app.inputs.movie import Filters
-from app.models.user import UserCreate, UserRegister
+from app.mailer import generate_verify_email_email, send_email
+from app.models.user import User, UserCreate, UserRegister
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.user import UserPublic, UserWithFriendStatus
 from app.validators.username import is_valid_username
+
+logger = logging.getLogger(__name__)
 
 
 def get_user(
@@ -405,6 +411,14 @@ def register_user(
     except IntegrityError as e:
         session.rollback()
         if isinstance(e.orig, UniqueViolation):
+            # Email and username both have a unique rule on this table, so the
+            # error has to be attributed before it is reported — telling someone
+            # their email is taken when their username is sends them to change
+            # the wrong field. The username check above is a separate statement
+            # from this insert, so a request that interleaved between the two
+            # lands here rather than there.
+            if users_crud.is_display_name_conflict(e):
+                raise DisplayNameAlreadyExists(normalized_display_name) from e
             raise EmailAlreadyExists(user_in.email) from e
         else:
             raise AppError from e
@@ -412,5 +426,36 @@ def register_user(
         session.rollback()
         raise AppError from e
 
+    send_email_verification(user=user)
+
     user_public = user_converters.to_public(user)
     return user_public
+
+
+def send_email_verification(*, user: User) -> bool:
+    """Mail the account a link confirming it owns the address it registered.
+
+    Never raises. A registration that succeeded is not undone because SMTP was
+    down for a moment, and the caller of a resend has nothing useful to do with
+    the failure either — the account simply stays unverified and can ask again.
+    Returns whether the message actually went out.
+    """
+    if user.email_verified:
+        return False
+    if not settings.emails_enabled:
+        logger.warning(
+            "Email is not configured; skipping verification email for %s", user.email
+        )
+        return False
+    token = generate_email_verification_token(email=user.email)
+    email_data = generate_verify_email_email(email_to=user.email, token=token)
+    try:
+        send_email(
+            email_to=user.email,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
+    except Exception:
+        logger.exception("Verification email delivery failed for %s", user.email)
+        return False
+    return True

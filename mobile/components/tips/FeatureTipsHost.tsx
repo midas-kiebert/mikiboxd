@@ -1,9 +1,11 @@
 /**
  * Renders at most one feature tip. Candidates are listed in priority order —
- * notifications, cinemas, friends, Letterboxd, filter presets — and
- * `rollForFeatureTip` applies eligibility, dismissal, per-tip cooldowns and a
- * random chance, so the user is never handed a stack of nags and does not see
- * a tip on every single app open.
+ * verify email, notifications, cinemas, friends, Letterboxd, filter presets,
+ * watchlist digest — and `rollForFeatureTip` applies eligibility, dismissal,
+ * per-tip cooldowns and a random chance, so the user is never handed a stack of
+ * nags and does not see a tip on every single app open. The exception is
+ * "verify email", which is unfinished business rather than a suggestion and
+ * does appear on every open until it is done.
  *
  * The roll happens once per session, a short delay after all the eligibility
  * data has actually loaded (not just once eligibility looks true), so nothing
@@ -31,12 +33,15 @@ import CinemaPresetTip from "@/components/tips/CinemaPresetTip";
 import FilterPresetTip from "@/components/tips/FilterPresetTip";
 import LetterboxdUsernameTip from "@/components/tips/LetterboxdUsernameTip";
 import NotificationPermissionTip from "@/components/tips/NotificationPermissionTip";
+import VerifyEmailTip from "@/components/tips/VerifyEmailTip";
+import WatchlistDigestTip from "@/components/tips/WatchlistDigestTip";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import {
   useSystemNotificationPermission,
   wantsPushNotifications,
 } from "@/hooks/useNotificationPreferences";
 import { rollForFeatureTip, useFirstVisibleTip } from "@/utils/feature-tips";
-import { useIsIntroActive } from "@/utils/intro";
+import { useIsIntroOwed } from "@/utils/intro";
 
 /** Give the app a moment to settle before nagging, even once data is ready. */
 const TIP_ROLL_DELAY_MS = 1500;
@@ -46,9 +51,12 @@ export default function FeatureTipsHost() {
   // The host lives inside a tab screen that stays mounted when the user leaves
   // it, and the tip is a blocking dialog, so it must not outlive the screen.
   const isFocused = useIsFocused();
-  // A first-time user is being walked through these very features right now;
-  // a tip on top of the intro would be nagging about something in progress.
-  const isIntroActive = useIsIntroActive();
+  // A first-time user is being walked through these very features right now; a
+  // tip on top of the intro would be nagging about something in progress.
+  // Deliberately "owed" rather than "active": that also covers the gap before
+  // the walkthrough has started, and the filters highlight it ends on, neither
+  // of which is a moment to put a dialog over.
+  const isIntroOwed = useIsIntroOwed();
   const { status: permissionStatus, isGranted: isPermissionGranted } =
     useSystemNotificationPermission();
   const { data: cinemas } = useFetchCinemas();
@@ -60,6 +68,15 @@ export default function FeatureTipsHost() {
     queryFn: () => fetchDisplayPresets(),
     enabled: Boolean(user),
   });
+
+  // Positive check, and from the loaded account only: an unconfirmed address is
+  // something we know, never something we have not heard about yet.
+  const currentUser = useCurrentUser();
+  const needsEmailVerification = currentUser !== undefined && !currentUser.email_verified;
+  // Decided entirely by the backend, so the digest can be advertised (or not)
+  // without a client release: it already accounts for the server-side switch,
+  // a confirmed address, and whether this account ever turned the digest on.
+  const shouldSuggestWatchlistDigest = currentUser?.show_watchlist_digest_tip === true;
 
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
 
@@ -92,15 +109,25 @@ export default function FeatureTipsHost() {
 
   const [readyToRoll, setReadyToRoll] = useState(false);
   useEffect(() => {
-    if (!dataReady || isIntroActive) return;
+    if (isIntroOwed) return;
+    // The verification nudge does not wait for the other tips' data. It is the
+    // only candidate that can win while it is eligible, so there is nothing to
+    // weigh it against — and holding it back would mean one slow or failed
+    // query is enough for the whole session to pass without it.
+    if (!dataReady && !needsEmailVerification) return;
     const timer = setTimeout(() => setReadyToRoll(true), TIP_ROLL_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [dataReady, isIntroActive]);
+  }, [dataReady, needsEmailVerification, isIntroOwed]);
 
   useEffect(() => {
     if (!readyToRoll) return;
     rollForFeatureTip([
       // Priority order, most-broken first:
+      //  0. verify email — not a suggestion but unfinished business, and the
+      //     only candidate exempt from the chance, the cooldown and the
+      //     Settings switch (see ALWAYS_SHOW_TIP_IDS). Whenever it is eligible
+      //     it wins, so nothing below it is reached until the address is
+      //     confirmed.
       //  1. notifications — the only tip about something already failing: the
       //     user asked for pushes and the system is silently dropping them.
       //     Rarely eligible, so it costs the others almost nothing.
@@ -111,28 +138,37 @@ export default function FeatureTipsHost() {
       //     accept before it pays off.
       //  4. Letterboxd, 5. filter presets — real conveniences, no urgency;
       //     both also carry the longer cooldown.
+      //  6. watchlist digest — last on purpose: a niche convenience, behind a
+      //     backend switch, with the longest cooldown and lowest chance of the
+      //     lot. It should feel like something you stumble on, not a pitch.
+      { id: "verify-email", isEligible: needsEmailVerification },
       { id: "notification-permission", isEligible: isBlockedFromNotifications },
       { id: "cinema-presets", isEligible: shouldSuggestCinemaPreset },
       { id: "add-friends", isEligible: shouldSuggestAddFriends },
       { id: "letterboxd-username", isEligible: !hasLetterboxdUsername },
       { id: "filter-presets", isEligible: shouldSuggestFilterPreset },
+      { id: "watchlist-digest", isEligible: shouldSuggestWatchlistDigest },
     ]);
   }, [
     readyToRoll,
+    needsEmailVerification,
     shouldSuggestCinemaPreset,
     shouldSuggestAddFriends,
     isBlockedFromNotifications,
     hasLetterboxdUsername,
     shouldSuggestFilterPreset,
+    shouldSuggestWatchlistDigest,
   ]);
 
   const visibleTipId = useFirstVisibleTip();
 
-  if (!isFocused || isIntroActive) return null;
+  if (!isFocused || isIntroOwed) return null;
+  if (visibleTipId === "verify-email") return <VerifyEmailTip />;
   if (visibleTipId === "cinema-presets") return <CinemaPresetTip />;
   if (visibleTipId === "add-friends") return <AddFriendsTip />;
   if (visibleTipId === "notification-permission") return <NotificationPermissionTip />;
   if (visibleTipId === "letterboxd-username") return <LetterboxdUsernameTip />;
   if (visibleTipId === "filter-presets") return <FilterPresetTip />;
+  if (visibleTipId === "watchlist-digest") return <WatchlistDigestTip />;
   return null;
 }

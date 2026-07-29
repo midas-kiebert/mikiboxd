@@ -293,6 +293,18 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
       const nextChannel = delivery === "off" ? previousChannel : delivery;
       if (previousEnabled === nextEnabled && previousChannel === nextChannel) return;
 
+      // Nothing is sent to an address nobody has confirmed, so the backend
+      // refuses this (403). Said here instead, because a failed save would put
+      // the control back without ever explaining why. Turning email *off* is
+      // never blocked — only routing something to it.
+      if (delivery === "email" && !user.email_verified) {
+        Alert.alert(
+          "Confirm your email first",
+          "We can't email you until you've opened the confirmation link we sent."
+        );
+        return;
+      }
+
       const rollback = () => {
         setPreferences((previous) => ({ ...previous, [key]: previousEnabled }));
         setChannels((previous) => ({ ...previous, [channelKey]: previousChannel }));

@@ -232,6 +232,90 @@ def test_get_users_query(*, db_transaction: Session, user_factory: Callable[...,
     assert len(users) == 2
 
 
+def test_display_name_unique_index_rejects_case_variant(
+    *, db_transaction: Session, user_factory: Callable[..., User]
+):
+    """Two accounts cannot hold the same username in different capitalisation.
+
+    The services check this before writing, but a check and an insert are two
+    statements: interleave two requests between them and both pass. This is the
+    rule the database itself holds (migration c3f7b1a5d8e2), which is what makes
+    it true regardless of who is writing.
+    """
+    user_factory(display_name="Index_Guard")
+
+    with pytest.raises(IntegrityError) as exc_info:
+        with db_transaction.begin_nested():
+            db_transaction.add(
+                User(
+                    email="index-guard@example.com",
+                    display_name="index_guard",
+                    hashed_password="hashed",
+                )
+            )
+            db_transaction.flush()
+
+    assert isinstance(exc_info.value.orig, UniqueViolation)
+    assert user_crud.is_display_name_conflict(exc_info.value)
+
+
+def test_display_name_unique_index_allows_many_users_without_one(
+    *, db_transaction: Session, user_factory: Callable[..., User]
+):
+    """The index is partial: a social sign-in has no username until it picks one.
+
+    Several accounts sit in that state at once, and a plain unique index would
+    have made the second of them impossible to create.
+    """
+    first = user_factory(display_name=None)
+    second = user_factory(display_name=None)
+    db_transaction.flush()
+
+    assert first.display_name is None
+    assert second.display_name is None
+
+
+def test_get_user_by_email_is_case_insensitive(
+    *, db_transaction: Session, user_factory: Callable[..., User]
+):
+    """One mailbox is one account, whatever the capitalisation.
+
+    This is the lookup a social sign-in links through: providers hand back a
+    lowercased address, so an exact match missed the account the same person had
+    registered as `Mixed.Case@Example.com` and made them a second one.
+    """
+    user = user_factory(email="Mixed.Case@Example.com")
+
+    found = user_crud.get_user_by_email(
+        session=db_transaction, email="mixed.case@example.com"
+    )
+
+    assert found is user
+
+
+def test_email_unique_index_rejects_case_variant(
+    *, db_transaction: Session, user_factory: Callable[..., User]
+):
+    """The two rows the lookup above must never have to choose between."""
+    user_factory(email="Case.Guard@Example.com")
+
+    with pytest.raises(IntegrityError) as exc_info:
+        with db_transaction.begin_nested():
+            db_transaction.add(
+                User(
+                    email="case.guard@example.com",
+                    display_name="case_guard",
+                    hashed_password="hashed",
+                )
+            )
+            db_transaction.flush()
+
+    assert isinstance(exc_info.value.orig, UniqueViolation)
+    # Attributed to the email rule, not the username one, so the caller reports
+    # the field the user actually has to change.
+    assert not user_crud.is_display_name_conflict(exc_info.value)
+
+
 def test_get_friends(*, db_transaction: Session, user_factory: Callable[..., User]):
     user_1 = user_factory()
     user_2 = user_factory()

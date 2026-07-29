@@ -39,6 +39,15 @@ class DisplayNameAlreadyExists(AppError):
         super().__init__(detail)
 
 
+class EmailNotVerified(AppError):
+    status_code = status.HTTP_403_FORBIDDEN
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Confirm your email address before having anything sent to it."
+        )
+
+
 class UsernameRequired(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
 

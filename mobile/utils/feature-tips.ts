@@ -9,6 +9,8 @@
  *  - closing the dialog snoozes one tip for the rest of this app session.
  * The first two persist on the device (SecureStore, like the theme preference);
  * the session layer is deliberately memory-only so closing a tip is cheap.
+ * Neither of the first two applies to the tips in `ALWAYS_SHOW_TIP_IDS`, which
+ * are unfinished business rather than suggestions.
  *
  * A snoozed tip leaves an unseen reminder in the notification centre, so a
  * suggestion the user waved away is recoverable rather than gone. Those
@@ -27,6 +29,8 @@ import * as SecureStore from 'expo-secure-store';
 import { MeService } from 'shared';
 
 export type FeatureTipId =
+  | 'verify-email'
+  | 'watchlist-digest'
   | 'letterboxd-username'
   | 'add-friends'
   | 'cinema-presets'
@@ -34,12 +38,31 @@ export type FeatureTipId =
   | 'notification-permission';
 
 const FEATURE_TIP_IDS: readonly FeatureTipId[] = [
+  'verify-email',
+  'watchlist-digest',
   'letterboxd-username',
   'add-friends',
   'cinema-presets',
   'filter-presets',
   'notification-permission',
 ];
+
+/**
+ * Tips that are not suggestions but unfinished business, and so are exempt from
+ * every mechanism that exists to stop nagging: the random chance, the per-tip
+ * cooldown, the master switch in Settings and any permanent dismissal. While
+ * one of these is eligible it appears on every app start, ahead of everything
+ * else.
+ *
+ * Only the session snooze still applies — closing the dialog has to actually
+ * close it. It is back on the next launch, which is the point: eligibility ends
+ * when the user does the thing, not when they get tired of being asked.
+ */
+const ALWAYS_SHOW_TIP_IDS: ReadonlySet<FeatureTipId> = new Set<FeatureTipId>([
+  // An unconfirmed email address is the account's one loose end: nothing can
+  // be sent to it, and until it is confirmed the address is only a claim.
+  'verify-email',
+]);
 
 /**
  * Development override: while a tip is still being designed, force it on screen
@@ -62,6 +85,7 @@ const LAST_SHOWN_STORAGE_KEY = 'feature_tips_last_shown_v1';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const THREE_DAYS_MS = 3 * ONE_DAY_MS;
+const A_WEEK_MS = 7 * ONE_DAY_MS;
 
 /**
  * Minimum time between two showings of the same tip, so a snoozed tip does not
@@ -70,11 +94,25 @@ const THREE_DAYS_MS = 3 * ONE_DAY_MS;
  * friends/cinemas/notifications, so they earn the user's attention less often.
  */
 const TIP_COOLDOWN_MS: Record<FeatureTipId, number> = {
+  // Never consulted — see ALWAYS_SHOW_TIP_IDS — but the map is exhaustive so
+  // that adding a tip id is a compile error until its cadence is decided.
+  'verify-email': 0,
   'cinema-presets': ONE_DAY_MS,
   'add-friends': ONE_DAY_MS,
   'notification-permission': ONE_DAY_MS,
   'letterboxd-username': THREE_DAYS_MS,
   'filter-presets': THREE_DAYS_MS,
+  // The quietest of the lot: a niche convenience the user has lived without,
+  // and one the backend only offers at all once it is switched on there.
+  'watchlist-digest': A_WEEK_MS,
+};
+
+/**
+ * Overrides `TIP_SHOW_CHANCE` for a tip that should turn up more rarely than
+ * the rest even when it is eligible and off cooldown.
+ */
+const TIP_SHOW_CHANCE_BY_ID: Partial<Record<FeatureTipId, number>> = {
+  'watchlist-digest': 0.15,
 };
 
 /**
@@ -365,6 +403,23 @@ export type FeatureTipCandidate = {
  */
 export const rollForFeatureTip = (candidates: readonly FeatureTipCandidate[]): void => {
   if (state.rollDone || !state.isLoaded) return;
+
+  // Unfinished business first, and on its own terms: no chance roll, no
+  // cooldown, and not silenced by the Settings switch or a past dismissal.
+  const owed = candidates.find(
+    (candidate) =>
+      candidate.isEligible &&
+      ALWAYS_SHOW_TIP_IDS.has(candidate.id) &&
+      !state.hiddenThisSession.has(candidate.id)
+  );
+  if (owed) {
+    const lastShownAt = { ...state.lastShownAt, [owed.id]: Date.now() };
+    update({ rollDone: true, activeTipId: owed.id, lastShownAt });
+    persistLastShownAt(lastShownAt);
+    trackTipShown(owed.id);
+    return;
+  }
+
   if (!state.enabled) {
     update({ rollDone: true });
     return;
@@ -373,12 +428,13 @@ export const rollForFeatureTip = (candidates: readonly FeatureTipCandidate[]): v
   const winner = candidates.find(
     (candidate) =>
       candidate.isEligible &&
+      !ALWAYS_SHOW_TIP_IDS.has(candidate.id) &&
       !state.dismissedForever.has(candidate.id) &&
       !state.hiddenThisSession.has(candidate.id) &&
       !isInCooldown(candidate.id)
   );
 
-  if (winner && Math.random() < TIP_SHOW_CHANCE) {
+  if (winner && Math.random() < (TIP_SHOW_CHANCE_BY_ID[winner.id] ?? TIP_SHOW_CHANCE)) {
     const lastShownAt = { ...state.lastShownAt, [winner.id]: Date.now() };
     update({ rollDone: true, activeTipId: winner.id, lastShownAt });
     persistLastShownAt(lastShownAt);
@@ -405,6 +461,11 @@ export const useFirstVisibleTip = (): FeatureTipId | null => {
   // Reopening a tip from the notification centre forces it open too, since the
   // reminder may not correspond to a still-true real eligibility condition.
   if (forcedTipId) return hiddenThisSession.has(forcedTipId) ? null : forcedTipId;
+  // Checked before the Settings switch: an always-show tip is exempt from it
+  // (see ALWAYS_SHOW_TIP_IDS), and the roll only ever selects one that is.
+  if (activeTipId && ALWAYS_SHOW_TIP_IDS.has(activeTipId)) {
+    return hiddenThisSession.has(activeTipId) ? null : activeTipId;
+  }
   if (!enabled) return null;
   if (activeTipId && !hiddenThisSession.has(activeTipId)) return activeTipId;
   return null;

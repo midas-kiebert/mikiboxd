@@ -333,6 +333,82 @@ def test_update_me_rejects_duplicate_display_name(
     )
 
 
+def test_update_me_rejects_clearing_the_username(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    """An account never gives up its username once it has one.
+
+    An empty settings field used to clear it, leaving a user nobody could search
+    for, recognise in a friend list, or invite to anything.
+    """
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": ""},
+    )
+
+    assert update_response.status_code == 400
+    assert update_response.json()["detail"] == "Username is required."
+
+
+def test_update_me_rejects_null_username(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    """Same rule through the other spelling of "empty" the client can send."""
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": None},
+    )
+
+    assert update_response.status_code == 400
+    assert update_response.json()["detail"] == "Username is required."
+
+
+def test_update_me_rejects_whitespace_only_username(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": "   "},
+    )
+
+    assert update_response.status_code == 400
+    assert update_response.json()["detail"] == "Username is required."
+
+
+def test_update_me_allows_recasing_own_username(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+) -> None:
+    """Changing only capitalisation is a rename to yourself, not a clash.
+
+    The uniqueness check is case-insensitive, so without treating the user's own
+    row as their own, "midas" → "Midas" would report the username as taken by
+    the very account asking for it.
+    """
+    normal_user = db_transaction.exec(
+        select(User).where(User.email == settings.EMAIL_TEST_USER)
+    ).one()
+    normal_user.display_name = "casetest"
+    db_transaction.add(normal_user)
+    db_transaction.commit()
+
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": "CaseTest"},
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json()["display_name"] == "CaseTest"
+
+
 def test_update_me_rejects_invalid_username_characters(
     client: TestClient,
     normal_user_token_headers: dict[str, str],

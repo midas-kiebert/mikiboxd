@@ -115,6 +115,32 @@ def generate_reset_password_email(email_to: str, email: str, token: str) -> Emai
     return EmailData(html_content=html_content, subject=subject)
 
 
+def generate_verify_email_email(email_to: str, token: str) -> EmailData:
+    """Generate the "confirm your email" email sent when an account is created.
+
+    The link points straight at the API rather than the frontend, like the
+    digest's unsubscribe link: confirming is one click with nothing to fill in,
+    and routing it through a single-page app would only add a way for it to
+    fail in someone's mail client.
+    """
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Confirm your email address"
+    link = (
+        f"{settings.API_HOST}{settings.API_V1_STR}" f"/users/verify-email?token={token}"
+    )
+    html_content = _render_email_template(
+        template_name="verify_email.html",
+        context={
+            "project_name": project_name,
+            "username": email_to,
+            "email": email_to,
+            "valid_hours": settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS,
+            "link": link,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
 def generate_watchlist_digest_email(
     *,
     email_to: str,

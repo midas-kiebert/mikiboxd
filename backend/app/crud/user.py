@@ -1,8 +1,10 @@
+from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, case, cast, col, delete, or_, select
 
@@ -21,6 +23,12 @@ from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User, UserCreate, UserUpdate
 from app.models.watchlist_selection import WatchlistSelection
 from app.utils import now_amsterdam_naive
+
+# The partial unique index on `lower(display_name)` (migration c3f7b1a5d8e2).
+# Named here because both `user` uniqueness rules raise the same psycopg
+# UniqueViolation, and the caller has to tell a taken username from a taken
+# email to report either one honestly.
+DISPLAY_NAME_UNIQUE_INDEX = "uq_user_display_name_lower"
 
 DAY_BUCKET_CUTOFF = time(4, 0)
 DAY_BUCKET_OFFSET = timedelta(
@@ -139,15 +147,33 @@ def get_user_by_email(*, session: Session, email: str) -> User | None:
     """
     Get a user by their email address.
 
+    Matched case-insensitively. Mailbox providers treat addresses that differ
+    only in capitalisation as the same mailbox, and so does everyone typing one
+    in: an exact match meant `Bob@x.com` could register a second account
+    alongside `bob@x.com`, could not log in as it, and — the reason this
+    surfaced — a "Continue with Google" for a provider-lowercased address failed
+    to find the password account the same person had already created, and
+    silently made them a new, empty one instead.
+
     Parameters:
         session (Session): The database session.
         email (str): The email address of the user to retrieve.
     Returns:
         User | None: The user object if found, otherwise None.
     """
-    statement = select(User).where(User.email == email)
+    statement = select(User).where(func.lower(col(User.email)) == email.strip().lower())
     session_user = session.exec(statement).one_or_none()
     return session_user
+
+
+def is_display_name_conflict(error: IntegrityError) -> bool:
+    """True when an IntegrityError came from the case-insensitive username index.
+
+    The alternative on `user` is the email unique constraint, and reporting one
+    as the other tells the user to change the wrong field.
+    """
+    constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+    return constraint == DISPLAY_NAME_UNIQUE_INDEX
 
 
 def get_user_by_display_name(*, session: Session, display_name: str) -> User | None:
@@ -172,13 +198,31 @@ def get_user_by_social_sub(
     return session.exec(statement).one_or_none()
 
 
+@dataclass(frozen=True)
+class SocialUserResolution:
+    """What resolving a social identity turned out to mean for the account."""
+
+    user: User
+    """Whether this sign-in created the account rather than finding it."""
+    is_new: bool
+    """
+    Whether an existing account's password was discarded to link this identity.
+
+    True only for the unverified-account takeover below. The caller passes it on
+    so the app can tell the user their password no longer works — silently
+    breaking someone's sign-in method and letting them discover it on their next
+    password attempt would be its own kind of broken.
+    """
+    password_removed: bool
+
+
 def get_or_create_social_user(
     *,
     session: Session,
     provider: SocialProvider,
     provider_sub: str,
     email: str,
-) -> tuple[User, bool]:
+) -> SocialUserResolution:
     """
     Get the user for a verified social identity, creating or linking one if needed.
 
@@ -188,13 +232,14 @@ def get_or_create_social_user(
         provider_sub (str): The provider's stable subject identifier for the user.
         email (str): The verified email address from the provider's token.
     Returns:
-        tuple[User, bool]: The user, and whether it was newly created.
+        SocialUserResolution: The user, whether it was created, and whether an
+            existing account's password had to be discarded to link it.
     """
     existing = get_user_by_social_sub(
         session=session, provider=provider, provider_sub=provider_sub
     )
     if existing:
-        return existing, False
+        return SocialUserResolution(user=existing, is_new=False, password_removed=False)
 
     # Same email, different provider (or a pre-existing password account) —
     # link this provider to it rather than creating a duplicate account.
@@ -204,9 +249,26 @@ def get_or_create_social_user(
             by_email.apple_sub = provider_sub
         else:
             by_email.google_sub = provider_sub
+        password_removed = False
+        if not by_email.email_verified:
+            # The provider has just proven this address belongs to whoever is
+            # signing in. The account being linked into was created by someone
+            # who typed the address and was never asked to prove anything, so
+            # any password on it is an unproven claim on a mailbox that now has
+            # a proven owner — registering someone else's address ahead of them
+            # would otherwise have been a way into their account the moment they
+            # signed in with Google. Discard the password; the address is now
+            # confirmed, and a legitimate user who simply had not clicked their
+            # confirmation link yet can set a new one from Settings or "Forgot
+            # password" (both of which reach only this mailbox).
+            password_removed = by_email.hashed_password is not None
+            by_email.hashed_password = None
+            by_email.email_verified = True
         session.add(by_email)
         session.flush()
-        return by_email, False
+        return SocialUserResolution(
+            user=by_email, is_new=False, password_removed=password_removed
+        )
 
     # display_name is left unset so this always routes through the
     # pick-username screen — display_name doubles as the public username and
@@ -216,12 +278,16 @@ def get_or_create_social_user(
         email=email,
         display_name=None,
         hashed_password=None,
+        # The caller only reaches here with a provider-signed token carrying
+        # `email_verified` (see `_claims_from_payload`), which is a stronger
+        # proof than our own confirmation link asks for.
+        email_verified=True,
         apple_sub=provider_sub if provider is SocialProvider.APPLE else None,
         google_sub=provider_sub if provider is SocialProvider.GOOGLE else None,
     )
     session.add(db_obj)
     session.flush()  # Check for unique constraints (email, apple_sub, google_sub)
-    return db_obj, True
+    return SocialUserResolution(user=db_obj, is_new=True, password_removed=False)
 
 
 def create_user(

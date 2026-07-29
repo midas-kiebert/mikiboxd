@@ -42,13 +42,14 @@ import { markSignedOut } from '@/utils/auth-session';
 import useAuth from 'shared/hooks/useAuth';
 import {
   MeService,
+  type ApiError,
   type CinemaPresetPublic,
   type DigestFrequency,
   type UpdatePassword,
   type UserUpdate,
 } from 'shared';
 import { useFetchLetterboxdLists } from 'shared/hooks/useLetterboxdLists';
-import { emailPattern, usernameMaxLength, usernamePattern } from 'shared/utils';
+import { emailPattern, handleError, usernameMaxLength, usernamePattern } from 'shared/utils';
 import { unregisterPushTokenForCurrentDevice } from '@/utils/push-notifications';
 import NotificationPreferenceList from '@/components/notifications/NotificationPreferenceList';
 import LetterboxdSection from '@/components/settings/LetterboxdSection';
@@ -230,7 +231,10 @@ export default function SettingsScreen() {
     },
     onError: (error) => {
       console.error('Error updating profile:', error);
-      Alert.alert('Error', 'Could not update profile.');
+      // The server's own words: "that username is taken" and "that email is
+      // taken" are both things the user can act on, and a flat "could not
+      // update profile" told them neither.
+      Alert.alert('Error', handleError(error as ApiError));
     },
   });
 
@@ -285,13 +289,21 @@ export default function SettingsScreen() {
     const normalizedCurrentUsername = user?.display_name?.trim() ?? '';
     const isUsernameChanged =
       normalizedUsername.toLowerCase() !== normalizedCurrentUsername.toLowerCase();
-    if (isUsernameChanged && normalizedUsername && !usernamePattern.value.test(normalizedUsername)) {
+    // Saving an empty field used to clear the username, which is the one thing
+    // an account may never be without — friends find and recognise each other
+    // by it. The backend refuses it too; this is so the refusal is not the
+    // first the user hears of it.
+    if (!normalizedUsername) {
+      Alert.alert('Username required', 'Your account needs a username.');
+      return;
+    }
+    if (isUsernameChanged && !usernamePattern.value.test(normalizedUsername)) {
       Alert.alert('Invalid username', usernamePattern.message);
       return;
     }
 
     profileMutation.mutate({
-      display_name: normalizedUsername || null,
+      display_name: normalizedUsername,
       email: profile.email,
     });
   };
@@ -357,6 +369,17 @@ export default function SettingsScreen() {
   };
 
   const handleDigestToggle = (enabled: boolean) => {
+    // Nothing is sent to an address nobody has confirmed, so the backend
+    // refuses this until then (403). Said here rather than let through as a
+    // failed save, because "could not update" would not tell the user the one
+    // thing they need to do about it.
+    if (enabled && !user?.email_verified) {
+      Alert.alert(
+        'Confirm your email first',
+        "We can't email you until you've opened the confirmation link we sent."
+      );
+      return;
+    }
     const previous = digestEnabled;
     void handleDigestUpdate(
       { notify_watchlist_digest_enabled: enabled },

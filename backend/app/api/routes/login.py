@@ -64,13 +64,15 @@ def login_access_token(
     The refresh token is exchanged at POST /login/refresh-token when the access
     token expires.
     """
+    # `form_data.username` is the OAuth2 password-flow's spec-mandated field
+    # name; it holds whatever the client's "email or username" field submitted.
     user = users_crud.authenticate(
-        session=session, email=form_data.username, password=form_data.password
+        session=session, identifier=form_data.username, password=form_data.password
     )
     if not user:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect email or password",
+            detail="Incorrect email/username or password",
         )
     if not user.is_active:
         raise HTTPException(
@@ -109,12 +111,13 @@ def login_social_token(
             detail=f"Invalid {body.provider.value} token: {e}",
         ) from e
 
-    user, is_new = users_crud.get_or_create_social_user(
+    resolution = users_crud.get_or_create_social_user(
         session=session,
         provider=body.provider,
         provider_sub=claims.sub,
         email=claims.email,
     )
+    user = resolution.user
     if not user.is_active:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -141,6 +144,7 @@ def login_social_token(
     return SocialLoginResponse(
         **_build_token(user.id).model_dump(),
         needs_username=needs_username,
+        password_removed=resolution.password_removed,
     )
 
 

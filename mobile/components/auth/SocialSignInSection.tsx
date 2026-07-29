@@ -27,6 +27,7 @@ import { markSignedIn } from "@/utils/auth-session";
 import { completeLogin } from "@/utils/complete-login";
 import { getGoogleSignin, isGoogleSignInAvailable } from "@/utils/google-signin";
 import { markIntroPending } from "@/utils/intro";
+import { markPasswordRemovedForProvider } from "@/utils/sign-in-notice";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import { markUsernameRequired } from "@/utils/username-gate";
 
@@ -85,8 +86,18 @@ export default function SocialSignInSection({
   // it — otherwise the root layout's guard bounces us back to /login. And the
   // gate is raised before the session, so the guard cannot see a signed-in user
   // on the login screen and send it to the tabs in the render between the two.
-  const finishSocialLogin = async (needsUsername: boolean, suggestion: string | undefined) => {
-    if (needsUsername) {
+  const finishSocialLogin = async (
+    provider: SocialProvider,
+    result: { needsUsername: boolean; passwordRemoved: boolean },
+    suggestion: string | undefined
+  ) => {
+    // Linking a provider to an account whose address was never confirmed drops
+    // that account's password. Raised before the navigation, so the notice is
+    // already pending wherever the user lands.
+    if (result.passwordRemoved) {
+      markPasswordRemovedForProvider(provider);
+    }
+    if (result.needsUsername) {
       markUsernameRequired();
       markIntroPending();
       markSignedIn();
@@ -121,11 +132,11 @@ export default function SocialSignInSection({
             .filter(Boolean)
             .join(" ")
         : undefined;
-      const { needsUsername } = await socialLoginMutation.mutateAsync({
+      const result = await socialLoginMutation.mutateAsync({
         provider: "apple",
         token: credential.identityToken,
       });
-      await finishSocialLogin(needsUsername, displayName);
+      await finishSocialLogin("apple", result, displayName);
     } catch (appleError: unknown) {
       if ((appleError as { code?: string })?.code === "ERR_REQUEST_CANCELED") return;
       console.log("Apple sign-in error", appleError);
@@ -149,11 +160,11 @@ export default function SocialSignInSection({
       await GoogleSignin.hasPlayServices();
       const response = await GoogleSignin.signIn();
       if (response.type !== "success" || !response.data.idToken) return;
-      const { needsUsername } = await socialLoginMutation.mutateAsync({
+      const result = await socialLoginMutation.mutateAsync({
         provider: "google",
         token: response.data.idToken,
       });
-      await finishSocialLogin(needsUsername, response.data.user.name ?? undefined);
+      await finishSocialLogin("google", result, response.data.user.name ?? undefined);
     } catch (googleError: unknown) {
       const { statusCodes } = getGoogleSignin();
       const code = (googleError as { code?: string })?.code;

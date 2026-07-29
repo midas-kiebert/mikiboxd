@@ -82,7 +82,14 @@ const UserInformation = () => {
     const isUsernameChanged =
       normalizedUsername.toLowerCase() !==
       normalizedCurrentUsername.toLowerCase()
-    if (!isUsernameChanged || !normalizedUsername) {
+    // An account never gives up its username: an empty field used to pass
+    // validation here and clear it, leaving a user nobody could search for or
+    // recognise. The backend refuses it now too; this is so the refusal is not
+    // the first the user hears of it.
+    if (!normalizedUsername) {
+      return "Username is required."
+    }
+    if (!isUsernameChanged) {
       return true
     }
     return (

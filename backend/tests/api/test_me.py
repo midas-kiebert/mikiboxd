@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.enums import GoingStatus
+from app.core.security import get_password_hash
 from app.models.cinema_selection import CinemaSelection
 from app.models.friendship import FriendRequest, Friendship
 from app.models.push_token import PushToken
@@ -244,8 +245,19 @@ def test_delete_me_rejects_superuser(
 
 
 def test_update_me_notification_preference(
-    client: TestClient, normal_user_token_headers: dict[str, str]
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
 ) -> None:
+    # Opting a channel into email requires a confirmed address, same as the
+    # digest — mark this fixture user verified first.
+    normal_user = db_transaction.exec(
+        select(User).where(User.email == settings.EMAIL_TEST_USER)
+    ).one()
+    normal_user.email_verified = True
+    db_transaction.add(normal_user)
+    db_transaction.commit()
+
     update_response = client.patch(
         f"{settings.API_V1_STR}/me/",
         headers=normal_user_token_headers,
@@ -333,6 +345,83 @@ def test_update_me_rejects_duplicate_display_name(
     )
 
 
+def test_update_me_rejects_clearing_the_username(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    """An account never gives up its username once it has one.
+
+    An empty settings field used to clear it, leaving a user nobody could search
+    for, recognise in a friend list, or invite to anything.
+    """
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": ""},
+    )
+
+    assert update_response.status_code == 400
+    assert update_response.json()["detail"] == "Username is required."
+
+
+def test_update_me_rejects_null_username(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    """Same rule through the other spelling of "empty" the client can send."""
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": None},
+    )
+
+    assert update_response.status_code == 400
+    assert update_response.json()["detail"] == "Username is required."
+
+
+def test_update_me_rejects_whitespace_only_username(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": "   "},
+    )
+
+    assert update_response.status_code == 400
+    assert update_response.json()["detail"] == "Username is required."
+
+
+def test_update_me_allows_recasing_own_username(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+) -> None:
+    """Changing only capitalisation is a rename to yourself, not a clash.
+
+    The uniqueness check is case-insensitive, so without treating the user's own
+    row as their own, "midas" → "Midas" would report the username as taken by
+    the very account asking for it.
+    """
+    normal_user = db_transaction.exec(
+        select(User).where(User.email == settings.EMAIL_TEST_USER)
+    ).one()
+    normal_user.display_name = "casetest"
+    normal_user.hashed_password = get_password_hash("current-password")
+    db_transaction.add(normal_user)
+    db_transaction.commit()
+
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/me/",
+        headers=normal_user_token_headers,
+        json={"display_name": "CaseTest", "current_password": "current-password"},
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json()["display_name"] == "CaseTest"
+
+
 def test_update_me_rejects_invalid_username_characters(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
@@ -393,13 +482,14 @@ def test_update_me_allows_unchanged_legacy_username(
         select(User).where(User.email == settings.EMAIL_TEST_USER)
     ).one()
     normal_user.display_name = "Legacy Name"
+    normal_user.hashed_password = get_password_hash("current-password")
     db_transaction.add(normal_user)
     db_transaction.commit()
 
     update_response = client.patch(
         f"{settings.API_V1_STR}/me/",
         headers=normal_user_token_headers,
-        json={"display_name": "Legacy Name"},
+        json={"display_name": "Legacy Name", "current_password": "current-password"},
     )
 
     assert update_response.status_code == 200

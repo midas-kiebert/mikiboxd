@@ -5,8 +5,11 @@
  * reads what they are being asked for and then answers it, rather than meeting
  * the system dialog cold on some other screen later. Everything the page can
  * end up in follows from the permission state:
- *  - undetermined → ask (once, automatically);
- *  - denied but still askable → the button asks again;
+ *  - not yet answered → ask (once, automatically), on both platforms: Android
+ *    has no `undetermined`, it reports a permission it has never asked about as
+ *    denied-but-askable, so "can still be asked" is the condition, not iOS's
+ *    name for it;
+ *  - refused but still askable → the button asks again;
  *  - denied for good → the button opens system settings, and the page updates
  *    itself when the user comes back (`useSystemNotificationPermission`
  *    re-reads on foreground);
@@ -91,13 +94,20 @@ export default function IntroNotificationsPage({ onDone }: { onDone: () => void 
   }, [apply, user]);
 
   useEffect(() => {
-    // Waits for the first permission read: asking while the status is still
-    // unknown would prompt a user who has already granted it.
-    if (status !== "undetermined" || hasAutoAskedRef.current) return;
+    // Anything the OS will still answer is asked automatically — the button is
+    // there for a second try, not for the first. Gating this on `undetermined`
+    // made it an iOS-only courtesy: Android has no such state, and reports a
+    // POST_NOTIFICATIONS permission it has never been asked about as `denied`
+    // with `canAskAgain`, so every Android user had to press the button
+    // themselves to see a prompt the page had already explained.
+    //
+    // Still waits for the first read (`status === null`): asking before it
+    // lands would prompt a user who has already granted it.
+    if (status === null || isGranted || !canAskAgain || hasAutoAskedRef.current) return;
     hasAutoAskedRef.current = true;
     const timer = setTimeout(() => void askForPermission(), AUTO_PROMPT_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [askForPermission, status]);
+  }, [askForPermission, canAskAgain, isGranted, status]);
 
   const canRetryAsk = canAskAgain && status !== null;
 

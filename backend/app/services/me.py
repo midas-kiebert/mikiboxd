@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from logging import getLogger
+from typing import Any
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
@@ -8,7 +9,8 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
-from app.core.enums import NotificationType, ShowtimePingSort
+from app.core.enums import NotificationChannel, NotificationType, ShowtimePingSort
+from app.core.security import verify_password
 from app.crud import cinema as cinemas_crud
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import friendship as friendship_crud
@@ -23,7 +25,12 @@ from app.exceptions.base import AppError
 from app.exceptions.user_exceptions import (
     DisplayNameAlreadyExists,
     EmailAlreadyExists,
+    EmailNotVerified,
+    EmailRequired,
+    IncorrectPassword,
     InvalidUsername,
+    PasswordNotSet,
+    UsernameRequired,
 )
 from app.models.cinema_preset import (
     DEFAULT_CINEMA_PRESET_ID,
@@ -40,6 +47,7 @@ from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe
+from app.services import users as users_service
 from app.utils import now_amsterdam_naive
 from app.validators.username import is_valid_username
 
@@ -56,6 +64,29 @@ _NOTIFICATION_FEED_TYPES: dict[NotificationType, NotificationFeedType] = {
 }
 
 
+# Every field on `UserUpdate` that can point something at the user's inbox.
+# Listed rather than derived from the `notify_channel_` prefix, so that adding a
+# channel is a deliberate decision about whether it may reach an unconfirmed
+# address rather than something a naming convention decides silently.
+_EMAIL_DELIVERY_FIELDS: tuple[str, ...] = (
+    "notify_channel_friend_showtime_match",
+    "notify_channel_friend_requests",
+    "notify_channel_showtime_ping",
+    "notify_channel_invite_response",
+    "notify_channel_interest_reminder",
+)
+
+
+def _wants_email_delivery(user_data: dict[str, Any]) -> bool:
+    """Whether this update opts *into* email for anything."""
+    if user_data.get("notify_watchlist_digest_enabled") is True:
+        return True
+    return any(
+        user_data.get(field) == NotificationChannel.EMAIL
+        for field in _EMAIL_DELIVERY_FIELDS
+    )
+
+
 def update_me(
     *,
     session: Session,
@@ -69,31 +100,84 @@ def update_me(
             user_data["incognito_mode"] != current_user.incognito_mode
         )
 
+    # Nothing may route mail to an address nobody has proven belongs to this
+    # account — not a notification channel, not the digest. An unconfirmed
+    # address is quite possibly a stranger's, and mail they never asked for is
+    # how a sender ends up in spam folders. Switching *away* from email is
+    # always allowed; only opting in waits for the confirmation link.
+    if not current_user.email_verified and _wants_email_delivery(user_data):
+        raise EmailNotVerified()
+
+    # Sticky, so the tip that points this feature out never nags someone who has
+    # already found it — including someone who tried it and switched it back off.
+    if user_data.get("notify_watchlist_digest_enabled") is True:
+        current_user.watchlist_digest_ever_enabled = True
+
+    requested_display_name: str | None = None
     if "display_name" in user_data:
         display_name = user_data["display_name"]
-        if display_name is not None:
-            normalized_display_name = display_name.strip()
-            if normalized_display_name == "":
-                user_data["display_name"] = None
-                normalized_display_name = None
-            else:
-                user_data["display_name"] = normalized_display_name
-            normalized_current_display_name = (
-                current_user.display_name.strip() if current_user.display_name else None
+        # No account gives up its username. `None` and `""` both arrive from the
+        # same empty field, and either one would leave a user that nobody can
+        # search for, recognise in a friend list, or invite to anything.
+        requested_display_name = display_name.strip() if display_name else None
+        if not requested_display_name:
+            raise UsernameRequired()
+        user_data["display_name"] = requested_display_name
+        normalized_current_display_name = (
+            current_user.display_name.strip() if current_user.display_name else None
+        )
+        # Compared case-insensitively so re-saving the same name in different
+        # capitalisation is a rename to itself, not a clash with itself.
+        username_changed = (
+            requested_display_name.lower()
+            != (normalized_current_display_name or "").lower()
+        )
+        if username_changed:
+            if not is_valid_username(requested_display_name):
+                raise InvalidUsername()
+            existing_user = users_crud.get_user_by_display_name(
+                session=session,
+                display_name=requested_display_name,
             )
-            username_changed = (normalized_display_name or "").lower() != (
-                normalized_current_display_name or ""
-            ).lower()
-            if normalized_display_name:
-                if username_changed and not is_valid_username(normalized_display_name):
-                    raise InvalidUsername()
-                if username_changed:
-                    existing_user = users_crud.get_user_by_display_name(
-                        session=session,
-                        display_name=normalized_display_name,
-                    )
-                    if existing_user and existing_user.id != current_user.id:
-                        raise DisplayNameAlreadyExists(normalized_display_name)
+            if existing_user and existing_user.id != current_user.id:
+                raise DisplayNameAlreadyExists(requested_display_name)
+
+    requested_email: str | None = None
+    email_changed = False
+    if "email" in user_data:
+        email = user_data["email"]
+        requested_email = str(email).strip() if email else None
+        if not requested_email:
+            # No account gives up its email either — EmailStr validation on
+            # UserUpdate rejects a malformed string, but an explicit
+            # `"email": null` still reaches here.
+            raise EmailRequired()
+        normalized_current_email = current_user.email.strip().lower()
+        email_changed = requested_email.lower() != normalized_current_email
+        if email_changed:
+            existing_owner = users_crud.get_user_by_login_email(
+                session=session, email=requested_email
+            )
+            if existing_owner and existing_owner.id != current_user.id:
+                raise EmailAlreadyExists(requested_email)
+
+    # Changing the username or email is who-you-are, not a preference — it
+    # requires proving you're still the one holding the account, exactly like
+    # changing the password itself does. An account with no password yet has
+    # nothing to confirm with, so it must set one first rather than treating a
+    # blank confirmation as good enough. Gated on the field being present at
+    # all (not just actually changed) — re-saving the same value is still a
+    # deliberate identity-field submission, and keeping the rule simple means
+    # there's no separate "did it really change" edge case to get wrong here.
+    current_password = user_data.pop("current_password", None)
+    if "display_name" in user_data or "email" in user_data:
+        if current_user.hashed_password is None:
+            raise PasswordNotSet()
+        if current_password is None or not verify_password(
+            current_password, current_user.hashed_password
+        ):
+            raise IncorrectPassword()
+
     validated_user_update = UserUpdate.model_validate(user_data)
 
     try:
@@ -102,8 +186,23 @@ def update_me(
             db_user=current_user,
             user_in=validated_user_update,
         )
+        if email_changed:
+            current_user.email_verified = False
+            session.add(current_user)
+            users_crud.sync_primary_login_email(
+                session=session, user_id=current_user.id, email=current_user.email
+            )
+    except users_crud.LoginEmailConflict as e:
+        raise EmailAlreadyExists(e.email) from e
     except IntegrityError as e:
         if isinstance(e.orig, UniqueViolation):
+            # Both of this table's unique rules surface as the same error, and
+            # naming the wrong one sends the user to fix the wrong field. The
+            # username check above can still be lost to a request that
+            # interleaved between it and this write; the index is what actually
+            # decides, so this is where that race is reported.
+            if users_crud.is_display_name_conflict(e):
+                raise DisplayNameAlreadyExists(requested_display_name or "") from e
             raise EmailAlreadyExists(
                 validated_user_update.email or current_user.email
             ) from e
@@ -120,6 +219,8 @@ def update_me(
 
     session.commit()
     user_public = user_converters.to_me(current_user, session=session)
+    if email_changed:
+        users_service.send_email_verification(user=current_user)
     return user_public
 
 

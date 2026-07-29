@@ -39,6 +39,7 @@ import { markAppReady, useIsAppReady } from '@/utils/app-ready';
 import { parseInviteLinkUrl, registerInviteLink } from '@/utils/showtime-invite-link';
 import { closeAllBlockingOverlays } from '@/utils/blocking-overlays';
 import IntroHost from '@/components/intro/IntroHost';
+import SignInNoticeHost from '@/components/auth/SignInNoticeHost';
 import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
 import AppSplash, { SPLASH_FADE_DURATION_MS } from '@/components/layout/AppSplash';
 import {
@@ -700,6 +701,7 @@ function RootLayourContent() {
           the splash instead meant the app itself was revealed for a beat before
           the walkthrough covered it back up. */}
       {isAuthenticated && <IntroHost />}
+      {isAuthenticated && <SignInNoticeHost />}
       {splashVisible && (
         <AppSplash
           active={!appReady}

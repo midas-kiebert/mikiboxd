@@ -77,7 +77,10 @@ const useAuth = (onLoginSuccess?: () => void, onLogout?: () => void): AuthHook =
     await storage.setItem("access_token", response.access_token)
     await storage.setItem("refresh_token", response.refresh_token)
     setIsAuthenticated(true)
-    return { needsUsername: response.needs_username ?? false }
+    return {
+      needsUsername: response.needs_username ?? false,
+      passwordRemoved: response.password_removed ?? false,
+    }
   }
 
   const socialLoginMutation = useMutation({

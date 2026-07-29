@@ -68,3 +68,8 @@ class SocialLoginResponse(Token):
     # username rules yet — the client should send the user to pick one
     # before letting them into the app.
     needs_username: bool = False
+    # True when this sign-in linked the provider to an account whose email had
+    # never been confirmed, and so discarded that account's password (see
+    # `get_or_create_social_user`). The client shows a one-time notice: the user
+    # would otherwise only find out the next time they tried that password.
+    password_removed: bool = False

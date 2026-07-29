@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
+from app.core.config import settings
 from app.crud import friendship as friendship_crud
 from app.crud import user as user_crud
 from app.crud import watched as watched_crud
@@ -88,6 +89,18 @@ def to_me(user: User, *, session: Session) -> UserMe:
         is_active=user.is_active,
         display_name=user.display_name,
         email=user.email,
+        email_verified=user.email_verified,
+        show_watchlist_digest_tip=(
+            settings.WATCHLIST_DIGEST_TIP_ENABLED
+            and user.email_verified
+            and not user.watchlist_digest_ever_enabled
+            # The digest itself does not require this — it can follow a public
+            # Letterboxd list instead of the user's own watchlist. Offering it
+            # only to users who have connected an account is a narrower first
+            # audience while the feature is still being lived with, not a limit
+            # of the feature. Widening it is a change here and nowhere else.
+            and bool(user.letterboxd_username)
+        ),
         is_superuser=user.is_superuser,
         incognito_mode=user.incognito_mode,
         notify_on_friend_showtime_match=user.notify_on_friend_showtime_match,

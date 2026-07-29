@@ -39,11 +39,27 @@ class DisplayNameAlreadyExists(AppError):
         super().__init__(detail)
 
 
+class EmailNotVerified(AppError):
+    status_code = status.HTTP_403_FORBIDDEN
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Confirm your email address before having anything sent to it."
+        )
+
+
 class UsernameRequired(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
 
     def __init__(self):
         super().__init__("Username is required.")
+
+
+class EmailRequired(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    def __init__(self):
+        super().__init__("Email is required.")
 
 
 class InvalidUsername(AppError):
@@ -54,6 +70,20 @@ class InvalidUsername(AppError):
             f"Username must be {USERNAME_MIN_LENGTH}-{USERNAME_MAX_LENGTH} characters "
             "and use only letters, numbers, and underscores."
         )
+
+
+class PasswordNotSet(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    def __init__(self):
+        super().__init__("Set a password before changing your username or email.")
+
+
+class IncorrectPassword(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    def __init__(self):
+        super().__init__("Incorrect password.")
 
 
 class OneOrMoreUsersNotFound(AppError):

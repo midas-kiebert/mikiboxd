@@ -42,17 +42,19 @@ import { markSignedOut } from '@/utils/auth-session';
 import useAuth from 'shared/hooks/useAuth';
 import {
   MeService,
+  type ApiError,
   type CinemaPresetPublic,
   type DigestFrequency,
   type UpdatePassword,
   type UserUpdate,
 } from 'shared';
 import { useFetchLetterboxdLists } from 'shared/hooks/useLetterboxdLists';
-import { emailPattern, usernameMaxLength, usernamePattern } from 'shared/utils';
+import { emailPattern, handleError, usernameMaxLength, usernamePattern } from 'shared/utils';
 import { unregisterPushTokenForCurrentDevice } from '@/utils/push-notifications';
 import NotificationPreferenceList from '@/components/notifications/NotificationPreferenceList';
 import LetterboxdSection from '@/components/settings/LetterboxdSection';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import EmailVerificationRequiredDialog from '@/components/ui/EmailVerificationRequiredDialog';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 
 // Placeholder for the danger zone card's height until it has been measured
@@ -69,6 +71,7 @@ const CONTENT_PADDING_BOTTOM = 72;
 type ProfileState = {
   display_name: string;
   email: string;
+  current_password: string;
 };
 
 type PasswordState = {
@@ -105,6 +108,7 @@ export default function SettingsScreen() {
   const [profile, setProfile] = useState<ProfileState>({
     display_name: '',
     email: '',
+    current_password: '',
   });
   // Editable form state for password fields.
   const [passwords, setPasswords] = useState<PasswordState>({
@@ -153,6 +157,7 @@ export default function SettingsScreen() {
   // user's light/dark choice.
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
   const [isLogoutDialogVisible, setIsLogoutDialogVisible] = useState(false);
+  const [isEmailVerificationRequired, setIsEmailVerificationRequired] = useState(false);
   // The danger zone is collapsed by default so it takes an extra, deliberate
   // tap to reach account deletion.
   const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
@@ -196,10 +201,14 @@ export default function SettingsScreen() {
   // Populate editable form state once user data has loaded.
   useEffect(() => {
     if (!user) return;
-    setProfile({
+    // Preserves whatever's currently typed into current_password — this
+    // effect also re-fires on unrelated user-cache refreshes, and clearing a
+    // field mid-edit that the user didn't just submit would be its own bug.
+    setProfile((prev) => ({
+      ...prev,
       display_name: user.display_name ?? '',
       email: user.email ?? '',
-    });
+    }));
   }, [user]);
 
   useEffect(() => {
@@ -225,12 +234,16 @@ export default function SettingsScreen() {
   const profileMutation = useMutation({
     mutationFn: (data: UserUpdate) => MeService.updateUserMe({ requestBody: data }),
     onSuccess: () => {
+      setProfile((prev) => ({ ...prev, current_password: '' }));
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       Alert.alert('Success', 'Profile updated successfully.');
     },
     onError: (error) => {
       console.error('Error updating profile:', error);
-      Alert.alert('Error', 'Could not update profile.');
+      // The server's own words: "that username is taken" and "that email is
+      // taken" are both things the user can act on, and a flat "could not
+      // update profile" told them neither.
+      Alert.alert('Error', handleError(error as ApiError));
     },
   });
 
@@ -277,6 +290,20 @@ export default function SettingsScreen() {
 
   // Basic client-side validation prevents obvious round trips before API calls.
   const handleProfileSave = () => {
+    // Changing username or email now requires confirming the current
+    // password, mirroring the password card below — an account with none
+    // yet has nothing to confirm with, so it has to set one first.
+    if (!hasPassword) {
+      Alert.alert(
+        'Password required',
+        'Set a password below before you can change your username or email.'
+      );
+      return;
+    }
+    if (!profile.current_password) {
+      Alert.alert('Missing fields', 'Enter your current password to save these changes.');
+      return;
+    }
     if (!profile.email || !emailPattern.value.test(profile.email)) {
       Alert.alert('Invalid email', 'Please enter a valid email address.');
       return;
@@ -285,14 +312,23 @@ export default function SettingsScreen() {
     const normalizedCurrentUsername = user?.display_name?.trim() ?? '';
     const isUsernameChanged =
       normalizedUsername.toLowerCase() !== normalizedCurrentUsername.toLowerCase();
-    if (isUsernameChanged && normalizedUsername && !usernamePattern.value.test(normalizedUsername)) {
+    // Saving an empty field used to clear the username, which is the one thing
+    // an account may never be without — friends find and recognise each other
+    // by it. The backend refuses it too; this is so the refusal is not the
+    // first the user hears of it.
+    if (!normalizedUsername) {
+      Alert.alert('Username required', 'Your account needs a username.');
+      return;
+    }
+    if (isUsernameChanged && !usernamePattern.value.test(normalizedUsername)) {
       Alert.alert('Invalid username', usernamePattern.message);
       return;
     }
 
     profileMutation.mutate({
-      display_name: normalizedUsername || null,
+      display_name: normalizedUsername,
       email: profile.email,
+      current_password: profile.current_password,
     });
   };
 
@@ -357,6 +393,14 @@ export default function SettingsScreen() {
   };
 
   const handleDigestToggle = (enabled: boolean) => {
+    // Nothing is sent to an address nobody has confirmed, so the backend
+    // refuses this until then (403). Said here rather than let through as a
+    // failed save, because "could not update" would not tell the user the one
+    // thing they need to do about it.
+    if (enabled && !user?.email_verified) {
+      setIsEmailVerificationRequired(true);
+      return;
+    }
     const previous = digestEnabled;
     void handleDigestUpdate(
       { notify_watchlist_digest_enabled: enabled },
@@ -459,6 +503,25 @@ export default function SettingsScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
             />
+            {hasPassword ? (
+              <>
+                <ThemedText style={styles.label}>Current password</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  value={profile.current_password}
+                  onChangeText={(value) =>
+                    setProfile((prev) => ({ ...prev, current_password: value }))
+                  }
+                  placeholder="Required to change username or email"
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                />
+              </>
+            ) : (
+              <ThemedText style={styles.helperText}>
+                Set a password below before you can change your username or email.
+              </ThemedText>
+            )}
             <TouchableOpacity
               style={[styles.primaryButton, isProfileSaving && styles.buttonDisabled]}
               onPress={handleProfileSave}
@@ -905,6 +968,10 @@ export default function SettingsScreen() {
         cancelLabel="Cancel"
         onConfirm={handleConfirmDeleteAccount}
         onCancel={() => setIsDeleteDialogVisible(false)}
+      />
+      <EmailVerificationRequiredDialog
+        visible={isEmailVerificationRequired}
+        onClose={() => setIsEmailVerificationRequired(false)}
       />
     </TopSafeAreaView>
   );

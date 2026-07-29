@@ -254,6 +254,11 @@ def _should_send_now(
 def _is_eligible(user: User) -> bool:
     if not user.notify_watchlist_digest_enabled:
         return False
+    # Belt and braces on the check in `update_me`: whatever turned the switch on
+    # (an older client, a flag set before this rule existed), recurring mail
+    # only ever goes to an address someone has proven they can read.
+    if not user.email_verified:
+        return False
     # Outside production this only goes to superusers, so the feature can be
     # tested on dev/staging before opening it up to everyone in production.
     if settings.ENVIRONMENT != Environment.PRODUCTION and not user.is_superuser:

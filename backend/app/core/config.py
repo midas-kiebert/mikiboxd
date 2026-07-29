@@ -104,8 +104,21 @@ class Settings(BaseSettings):
     # client only re-authenticates after this window lapses.
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 90  # 90 days
 
+    # Whether the app may offer the watchlist digest to users who have never
+    # turned it on (see `show_watchlist_digest_tip` on /me). Off: the feature
+    # works and is reachable in Settings, but nothing advertises it, so it can
+    # be lived with for a while before being pointed at everyone. Flipping this
+    # env var is the whole switch — no client release involved.
+    WATCHLIST_DIGEST_TIP_ENABLED: bool = False
+
     # How long password-reset links stay valid
     EMAIL_RESET_TOKEN_EXPIRE_HOURS: int = 48
+
+    # How long "confirm your email" links stay valid. Longer than a reset link:
+    # nothing prompts the user to act on it, so it has to survive a weekend in
+    # an unread inbox. Expiring one is not a dead end either — the app can ask
+    # for a fresh one (POST /me/resend-verification).
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24 * 14
 
     # -------------------------------------------------------------------------
     # Social sign-in

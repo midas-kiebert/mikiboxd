@@ -1,6 +1,7 @@
 /**
  * Themed in-app confirmation dialog — the app-wide replacement for `Alert.alert`
- * when the user is asked to decide something. Fades/scales in over a dimmed
+ * when the user is asked to decide something, or (with no `cancelLabel`) simply
+ * told it. Fades/scales in over a dimmed
  * backdrop with the same fast custom timing used by the showtime sheet's dialogs
  * (RN's built-in `animationType="fade"` is too slow to tune).
  */
@@ -21,7 +22,12 @@ type ConfirmDialogProps = {
   message?: string;
   icon?: keyof typeof MaterialIcons.glyphMap;
   confirmLabel: string;
-  cancelLabel: string;
+  /**
+   * Omit for a notice rather than a question: the dialog then has one button,
+   * which only acknowledges it. `onCancel` still runs when the backdrop or the
+   * back gesture closes it.
+   */
+  cancelLabel?: string;
   /** "destructive" paints the confirm button red; "primary" uses the app tint. */
   tone?: "destructive" | "primary";
   onConfirm: () => void;
@@ -97,13 +103,15 @@ export default function ConfirmDialog({
           <ThemedText style={styles.title}>{title}</ThemedText>
           {message ? <ThemedText style={styles.message}>{message}</ThemedText> : null}
           <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
-              onPress={onCancel}
-              activeOpacity={0.8}
-            >
-              <ThemedText style={styles.cancelText}>{cancelLabel}</ThemedText>
-            </TouchableOpacity>
+            {cancelLabel ? (
+              <TouchableOpacity
+                style={[styles.button, styles.cancelButton]}
+                onPress={onCancel}
+                activeOpacity={0.8}
+              >
+                <ThemedText style={styles.cancelText}>{cancelLabel}</ThemedText>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               style={[
                 styles.button,

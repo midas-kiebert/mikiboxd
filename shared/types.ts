@@ -12,7 +12,7 @@ export type AuthHook = {
   signUpMutation: UseMutationResult<UserPublic, ApiError, UserRegister, unknown>;
   loginMutation: UseMutationResult<void, ApiError, AccessToken, unknown>;
   socialLoginMutation: UseMutationResult<
-    { needsUsername: boolean },
+    { needsUsername: boolean; passwordRemoved: boolean },
     ApiError,
     SocialLoginRequest,
     unknown

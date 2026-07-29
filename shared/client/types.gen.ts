@@ -612,6 +612,7 @@ export type SocialLoginResponse = {
    */
   token_type?: string
   needs_username?: boolean
+  password_removed?: boolean
 }
 
 /**
@@ -680,6 +681,8 @@ export type UserMe = {
   seat_row?: string | null
   seat_number?: string | null
   email: string
+  email_verified: boolean
+  show_watchlist_digest_tip: boolean
   is_superuser: boolean
   incognito_mode: boolean
   notify_on_friend_showtime_match: boolean
@@ -750,6 +753,7 @@ export type UserUpdate = {
   notify_watchlist_digest_list_id?: string | null
   notify_watchlist_digest_cinema_preset_id?: string | null
   password?: string | null
+  current_password?: string | null
 }
 
 export type UserWithFriendStatus = {
@@ -1005,6 +1009,8 @@ export type MeDeleteCinemaPresetData = {
 }
 
 export type MeDeleteCinemaPresetResponse = Message
+
+export type MeResendEmailVerificationResponse = Message
 
 export type MeUpdatePasswordMeData = {
   requestBody: UpdatePassword
@@ -1629,6 +1635,12 @@ export type UsersUnsubscribeWatchlistDigestData = {
 }
 
 export type UsersUnsubscribeWatchlistDigestResponse = string
+
+export type UsersVerifyEmailData = {
+  token: string
+}
+
+export type UsersVerifyEmailResponse = string
 
 export type UsersSearchUsersData = {
   limit?: number

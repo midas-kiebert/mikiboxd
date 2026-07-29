@@ -252,6 +252,22 @@ def update_user_me(
     )
 
 
+@router.post("/resend-verification", response_model=Message)
+def resend_email_verification(current_user: CurrentUser) -> Message:
+    """Send a fresh "confirm your email" link to the signed-in account.
+
+    Scoped to the caller's own address rather than taking one as input, so it
+    cannot be used to mail arbitrary people or to probe which addresses have
+    accounts. Reports the same message whether or not anything was sent — a
+    verified account has nothing to resend, and a delivery failure is not
+    something the app can act on.
+    """
+    users_service.send_email_verification(user=current_user)
+    return Message(
+        message="If your address still needs confirming, a new link is on its way."
+    )
+
+
 @router.patch("/password", response_model=Message)
 def update_password_me(
     *, session: SessionDep, body: UpdatePassword, current_user: CurrentUser

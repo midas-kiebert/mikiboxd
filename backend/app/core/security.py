@@ -36,6 +36,9 @@ _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 ALGORITHM = "HS256"  # HMAC-SHA256 — standard for symmetric JWT signing
 
+# `type` claim scoping the "confirm your email" link to that one job.
+EMAIL_VERIFICATION_TOKEN_TYPE = "email_verification"
+
 
 def create_access_token(subject: str | Any, expires_delta: timedelta) -> str:
     """Create a signed JWT access token for the given subject (typically a user ID).
@@ -134,9 +137,53 @@ def verify_password_reset_token(token: str) -> str | None:
     """
     try:
         decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
-        return str(decoded["sub"])
     except jwt.exceptions.InvalidTokenError:
         return None
+    # Every one of this app's mailed links carries the same `sub`, so a token
+    # minted for another purpose (an unsubscribe link, which never expires, or
+    # an email confirmation) would otherwise be accepted here as permission to
+    # set a new password. Reset tokens themselves are untyped for historical
+    # reasons, so the rule is "no *other* purpose" rather than a positive match.
+    if decoded.get("type") is not None:
+        return None
+    return str(decoded["sub"])
+
+
+def generate_email_verification_token(email: str) -> str:
+    """Generate the JWT behind the "confirm your email" link sent at signup.
+
+    Scoped with a `type` claim so it cannot be redeemed as any of the app's
+    other mailed tokens (see `verify_password_reset_token`).
+    """
+    delta = timedelta(hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS)
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {
+            "exp": (now + delta).timestamp(),
+            "nbf": now,
+            "sub": email,
+            "type": EMAIL_VERIFICATION_TOKEN_TYPE,
+        },
+        settings.SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+
+def verify_email_verification_token(token: str) -> str | None:
+    """Decode and validate an email-confirmation token.
+
+    Returns:
+        The email address the link was issued for, or None if the token is
+        invalid, expired, or was minted for a different purpose.
+    """
+    try:
+        decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.exceptions.InvalidTokenError:
+        return None
+    if decoded.get("type") != EMAIL_VERIFICATION_TOKEN_TYPE:
+        return None
+    sub = decoded.get("sub")
+    return str(sub) if sub is not None else None
 
 
 def generate_watchlist_digest_unsubscribe_token(email: str) -> str:

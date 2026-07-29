@@ -13,6 +13,7 @@ import { StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
+import EmailVerificationRequiredDialog from "@/components/ui/EmailVerificationRequiredDialog";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import type {
   NotificationDelivery,
@@ -38,7 +39,14 @@ export default function NotificationPreferenceList({
 }: NotificationPreferenceListProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
-  const { toggles, isReady, pendingKey, setDelivery } = controller;
+  const {
+    toggles,
+    isReady,
+    pendingKey,
+    setDelivery,
+    isEmailVerificationRequired,
+    dismissEmailVerificationRequired,
+  } = controller;
 
   const handlePress = (key: NotificationPreferenceKey, delivery: NotificationDelivery) => {
     triggerSelectionHaptic();
@@ -47,6 +55,10 @@ export default function NotificationPreferenceList({
 
   return (
     <View style={styles.card}>
+      <EmailVerificationRequiredDialog
+        visible={isEmailVerificationRequired}
+        onClose={dismissEmailVerificationRequired}
+      />
       {toggles.map((toggle, index) => {
         const isOff = toggle.delivery === "off";
         const isDisabled = !isReady || pendingKey === toggle.key;

@@ -19,6 +19,16 @@ type Presentation = {
 
 // Wording for the reminder, which is shorter and more direct than the dialog's.
 const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
+  "verify-email": {
+    icon: "mark-email-unread",
+    title: "Confirm your email",
+    subtitle: "Open the link we sent you",
+  },
+  "watchlist-digest": {
+    icon: "mail",
+    title: "Get watchlist films by email",
+    subtitle: "Hear when one gets a showtime at your cinemas",
+  },
   "letterboxd-username": {
     icon: "bookmark-added",
     title: "Connect your Letterboxd watchlist",

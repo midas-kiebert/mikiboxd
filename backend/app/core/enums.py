@@ -191,3 +191,17 @@ class SocialProvider(str, Enum):
 
     APPLE = "apple"
     GOOGLE = "google"
+
+
+@unique
+class LoginEmailSource(str, Enum):
+    """Where a reserved, loginable email in `user_login_email` came from.
+
+    Shares its GOOGLE/APPLE values with `SocialProvider` by design — `source =
+    SocialProvider(...).value` needs no translation table. PRIMARY has no
+    `SocialProvider` counterpart since it isn't provider-linked.
+    """
+
+    PRIMARY = "primary"
+    GOOGLE = "google"
+    APPLE = "apple"

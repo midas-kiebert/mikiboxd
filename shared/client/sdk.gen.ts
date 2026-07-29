@@ -77,6 +77,7 @@ import type {
   MeSetFavoriteCinemaPresetResponse,
   MeDeleteCinemaPresetData,
   MeDeleteCinemaPresetResponse,
+  MeResendEmailVerificationResponse,
   MeUpdatePasswordMeData,
   MeUpdatePasswordMeResponse,
   MeCountMyShowtimesData,
@@ -156,6 +157,8 @@ import type {
   ShowtimesGetShowtimeByIdResponse,
   UsersUnsubscribeWatchlistDigestData,
   UsersUnsubscribeWatchlistDigestResponse,
+  UsersVerifyEmailData,
+  UsersVerifyEmailResponse,
   UsersSearchUsersData,
   UsersSearchUsersResponse,
   UsersRegisterUserData,
@@ -1042,6 +1045,25 @@ export class MeService {
       errors: {
         422: "Validation Error",
       },
+    })
+  }
+
+  /**
+   * Resend Email Verification
+   * Send a fresh "confirm your email" link to the signed-in account.
+   *
+   * Scoped to the caller's own address rather than taking one as input, so it
+   * cannot be used to mail arbitrary people or to probe which addresses have
+   * accounts. Reports the same message whether or not anything was sent — a
+   * verified account has nothing to resend, and a delivery failure is not
+   * something the app can act on.
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static resendEmailVerification(): CancelablePromise<MeResendEmailVerificationResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/resend-verification",
     })
   }
 
@@ -2239,6 +2261,35 @@ export class UsersService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/users/unsubscribe-watchlist-digest",
+      query: {
+        token: data.token,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Verify Email
+   * Confirm an email address from the link mailed at registration.
+   *
+   * No authentication — the signed token in the link is what proves the request
+   * came from someone reading that mailbox, which is the whole point of it.
+   * Already-verified accounts are answered the same way as a fresh confirmation:
+   * a second click on the same link is a normal thing to do, and it has the
+   * outcome the user wanted either way.
+   * @param data The data for the request.
+   * @param data.token
+   * @returns string Successful Response
+   * @throws ApiError
+   */
+  public static verifyEmail(
+    data: UsersVerifyEmailData,
+  ): CancelablePromise<UsersVerifyEmailResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/users/verify-email",
       query: {
         token: data.token,
       },

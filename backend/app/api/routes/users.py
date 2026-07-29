@@ -9,7 +9,10 @@ from app.api.deps import (
     CurrentUser,
     SessionDep,
 )
-from app.core.security import verify_watchlist_digest_unsubscribe_token
+from app.core.security import (
+    verify_email_verification_token,
+    verify_watchlist_digest_unsubscribe_token,
+)
 from app.crud import user as users_crud
 from app.inputs.movie import Filters, get_filters
 from app.models.user import UserRegister
@@ -36,6 +39,35 @@ def unsubscribe_watchlist_digest(session: SessionDep, token: str) -> HTMLRespons
         session.add(user)
         session.commit()
     return HTMLResponse("<p>You will no longer receive watchlist digest emails.</p>")
+
+
+@router.get("/verify-email", response_class=HTMLResponse)
+def verify_email(session: SessionDep, token: str) -> HTMLResponse:
+    """Confirm an email address from the link mailed at registration.
+
+    No authentication — the signed token in the link is what proves the request
+    came from someone reading that mailbox, which is the whole point of it.
+    Already-verified accounts are answered the same way as a fresh confirmation:
+    a second click on the same link is a normal thing to do, and it has the
+    outcome the user wanted either way.
+    """
+    email = verify_email_verification_token(token)
+    if email is None:
+        return HTMLResponse(
+            "<p>This confirmation link is invalid or has expired. "
+            "You can ask for a new one from the app.</p>",
+            status_code=400,
+        )
+    user = users_crud.get_user_by_email(session=session, email=email)
+    if user is None:
+        return HTMLResponse(
+            "<p>This confirmation link is invalid.</p>", status_code=400
+        )
+    if not user.email_verified:
+        user.email_verified = True
+        session.add(user)
+        session.commit()
+    return HTMLResponse("<p>Thanks — your email address is confirmed.</p>")
 
 
 @router.get("/search", response_model=list[UserWithFriendStatus])

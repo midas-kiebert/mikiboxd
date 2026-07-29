@@ -112,13 +112,19 @@ export default function SpotlightOverlay({
   // cannot push a pane to a negative size.
   const measuredHole = useMemo(() => {
     if (!target) return null;
-    const left = Math.max(0, target.x - HOLE_PADDING);
-    const top = Math.max(0, target.y - HOLE_PADDING);
+    const rawLeft = target.x - HOLE_PADDING;
+    const rawTop = target.y - HOLE_PADDING;
+    const left = Math.max(0, rawLeft);
+    const top = Math.max(0, rawTop);
+    // Clamping left/top to the screen edge shrinks how much padding is
+    // actually applied on that side, so the padded width/height must be
+    // reduced by the same amount clamping ate — otherwise the far edge
+    // overshoots by exactly that much, reading as an offset hole.
     return {
       left,
       top,
-      width: Math.min(windowWidth - left, target.width + HOLE_PADDING * 2),
-      height: Math.min(windowHeight - top, target.height + HOLE_PADDING * 2),
+      width: Math.min(windowWidth - left, target.width + HOLE_PADDING * 2 + Math.min(0, rawLeft)),
+      height: Math.min(windowHeight - top, target.height + HOLE_PADDING * 2 + Math.min(0, rawTop)),
     };
   }, [target, windowHeight, windowWidth]);
 

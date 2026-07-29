@@ -105,10 +105,6 @@ export default function LoginScreen() {
                     name="username"
                     rules={{
                         required: 'Email or username is required',
-                        validate: (value) =>
-                            EMAIL_PATTERN.test(value) ||
-                            usernamePattern.value.test(value) ||
-                            'Enter a valid email or username',
                     }}
                     render={({ field: { onChange, onBlur, value } }) => (
                         <AuthTextField

@@ -49,7 +49,7 @@ export default function VerifyEmailTip() {
       tipId="verify-email"
       icon="mark-email-unread"
       title="Confirm your email"
-      message="We sent you a link when you signed up. Open it to confirm this address is yours — it's how you get back in if you forget your password, and nothing can be emailed to you until you do."
+      message="We sent you a link when you signed up. Open it to confirm this address is yours. You'll need it to get back in if you forget your password, and nothing can be emailed to you until you do."
       actionLabel={hasResent ? "Link sent" : "Send the link again"}
       onAction={handleResend}
       isActionDisabled={hasResent}
@@ -62,7 +62,7 @@ export default function VerifyEmailTip() {
         <ThemedText style={styles.hint}>
           {hasResent
             ? "Check your inbox, and your spam folder. Wrong address? You can change it in Settings."
-            : "Already opened it? It may take a moment — the tip goes away once the address is confirmed."}
+            : "Already opened it? It may take a moment."}
         </ThemedText>
       </View>
     </FeatureTipModal>

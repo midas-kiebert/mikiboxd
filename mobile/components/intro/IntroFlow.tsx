@@ -311,7 +311,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 6,
     },
     progressDot: {
-      width: 22,
+      width: 16,
       height: 4,
       borderRadius: 2,
       backgroundColor: colors.divider,

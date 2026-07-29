@@ -187,6 +187,24 @@ def update_me(
             user_in=validated_user_update,
         )
         if email_changed:
+            # Only snapshot on the transition into "unverified" — a second email
+            # change while still unverified from a prior one must not overwrite
+            # the saved preferences with the already-switched-to-push state.
+            if current_user.email_verified:
+                saved_channels = [
+                    field
+                    for field in _EMAIL_DELIVERY_FIELDS
+                    if getattr(current_user, field) == NotificationChannel.EMAIL
+                ]
+                saved_digest_enabled = current_user.notify_watchlist_digest_enabled
+                for field in saved_channels:
+                    setattr(current_user, field, NotificationChannel.PUSH)
+                if saved_digest_enabled:
+                    current_user.notify_watchlist_digest_enabled = False
+                current_user.unverified_email_saved_channels = saved_channels or None
+                current_user.unverified_email_saved_digest_enabled = (
+                    saved_digest_enabled
+                )
             current_user.email_verified = False
             session.add(current_user)
             users_crud.sync_primary_login_email(

@@ -62,6 +62,7 @@ class TmdbMovieDetails:
     enriched_at: datetime | None = None
     genre_ids: list[int] | None = None
     alternative_titles: list[str] | None = None
+    description: str | None = None
 
 
 @dataclass(frozen=True)

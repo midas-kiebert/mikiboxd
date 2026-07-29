@@ -332,6 +332,11 @@ def reassign_movies_for_cache_correction(
             if tmdb_details is not None
             else old_movie.original_language
         ),
+        description=(
+            tmdb_details.description
+            if tmdb_details is not None
+            else old_movie.description
+        ),
         tmdb_last_enriched_at=(
             tmdb_details.enriched_at if tmdb_details is not None else None
         ),

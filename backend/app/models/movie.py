@@ -46,6 +46,7 @@ class MovieBase(SQLModel):
     duration: int | None = None
     languages: list[str] | None = Field(sa_column=Column(ARRAY(String)), default=None)
     original_language: str | None = None
+    description: str | None = None
 
 
 # Properties to receive on movie creation
@@ -65,6 +66,7 @@ class MovieUpdate(SQLModel):
     languages: list[str] | None = None
     original_language: str | None = None
     cast: list[str] | None = None
+    description: str | None = None
     tmdb_last_enriched_at: datetime | None = None
     tmdb_cache_id: int | None = None
 
@@ -97,6 +99,7 @@ def sneak_preview_movie() -> MovieCreate:
         duration=None,
         languages=None,
         original_language=None,
+        description=None,
         letterboxd_slug=None,
         poster_link=None,
         tmdb_last_enriched_at=None,

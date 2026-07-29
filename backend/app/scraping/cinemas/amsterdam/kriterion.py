@@ -218,6 +218,7 @@ def get_movie(show: Show) -> MovieCreate | None:
         original_title=(
             tmdb_details.original_title if tmdb_details is not None else None
         ),
+        description=(tmdb_details.description if tmdb_details is not None else None),
         tmdb_last_enriched_at=(
             tmdb_details.enriched_at if tmdb_details is not None else None
         ),

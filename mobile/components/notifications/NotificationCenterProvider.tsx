@@ -65,7 +65,9 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
   // bell tap right as the intro takes over), it would otherwise just be
   // sitting there, revealed once the intro ends instead of closed like it was.
   const isIntroActive = useIsIntroActive();
+  const isIntroActiveRef = useRef(isIntroActive);
   useEffect(() => {
+    isIntroActiveRef.current = isIntroActive;
     if (isIntroActive) setVisible(false);
   }, [isIntroActive]);
 
@@ -105,7 +107,13 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  const openNotificationCenter = useCallback(() => setVisible(true), []);
+  // Guarded against the ref rather than the `isIntroActive` value itself, so a
+  // bell tap during the brief window the real screen is exposed mid-intro (see
+  // above) can't open the sheet at all, not just get it closed a beat later.
+  const openNotificationCenter = useCallback(() => {
+    if (isIntroActiveRef.current) return;
+    setVisible(true);
+  }, []);
   const closeNotificationCenter = useCallback(() => setVisible(false), []);
 
   const { mutate: dismissNotification } = useMutation({

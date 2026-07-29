@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 from pydantic import EmailStr
+from sqlalchemy import JSON
 from sqlalchemy import Enum as SAEnum
 from sqlmodel import Column, Field, Relationship, SQLModel
 
@@ -135,6 +136,15 @@ class User(_UserBase, table=True):
     google_sub: str | None = Field(default=None, unique=True, index=True)
     # Drives the digest lookback window and prevents double-sends; not user-facing.
     notify_watchlist_digest_last_sent_at: datetime | None = Field(default=None)
+    # Bookkeeping for the switch-to-push-until-reverified behaviour on email
+    # change (see me_service.update_me): which notify_channel_* fields were set
+    # to EMAIL, and whether the digest was on, at the moment the address became
+    # unverified. Restored verbatim by verify_email once the new address is
+    # confirmed. Deliberately not on `_UserBase` — internal, never user-settable.
+    unverified_email_saved_channels: list[str] | None = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
+    unverified_email_saved_digest_enabled: bool = Field(default=False)
     # Moderation: blocks POST /showtimes/{id}/report. None expiry + banned=True
     # means indefinite; a past expiry is treated as no-longer-banned.
     report_banned: bool = Field(default=False)

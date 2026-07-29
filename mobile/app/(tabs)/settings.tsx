@@ -128,8 +128,9 @@ export default function SettingsScreen() {
   const [digestCinemaPresetId, setDigestCinemaPresetId] = useState<string | null>(null);
   const [digestAdvancedOpen, setDigestAdvancedOpen] = useState(false);
   const [isUpdatingDigest, setIsUpdatingDigest] = useState(false);
-  // Lists and cinema presets are only needed once the advanced picker is opened.
-  const { data: digestLists = [] } = useFetchLetterboxdLists(digestAdvancedOpen);
+  // Always fetched (not gated on the advanced picker): needed to resolve the
+  // curated top-500 default below even when the picker has never been opened.
+  const { data: digestLists = [] } = useFetchLetterboxdLists();
   const { data: cinemaPresets = [] } = useQuery<CinemaPresetPublic[]>({
     queryKey: ['cinema-presets'],
     queryFn: () => MeService.getCinemaPresets(),
@@ -429,6 +430,25 @@ export default function SettingsScreen() {
     );
   };
 
+  // "My watchlist" is no longer a selectable source: without a Letterboxd
+  // username it silently resolved to nothing, so a brand-new digest source is
+  // now the curated top-500 list instead. Only fires once — after the update
+  // lands, `user.notify_watchlist_digest_list_id` is no longer null and this
+  // bails out on subsequent renders.
+  useEffect(() => {
+    if (!user || user.notify_watchlist_digest_list_id || user.letterboxd_username) return;
+    if (digestListId) return;
+    const defaultList = digestLists.find(
+      (list) => list.is_curated && list.list_slug === 'letterboxds-top-500-films'
+    );
+    if (!defaultList) return;
+    void handleDigestUpdate(
+      { notify_watchlist_digest_list_id: defaultList.id },
+      () => setDigestListId(defaultList.id),
+      () => {}
+    );
+  }, [user, digestLists, digestListId]);
+
   const handleDigestCinemaPresetChange = (presetId: string | null) => {
     if (presetId === digestCinemaPresetId) return;
     const previous = digestCinemaPresetId;
@@ -493,7 +513,28 @@ export default function SettingsScreen() {
               autoCorrect={false}
               maxLength={usernameMaxLength}
             />
-            <ThemedText style={styles.label}>Email</ThemedText>
+            <View style={styles.emailLabelRow}>
+              <ThemedText style={styles.label}>Email</ThemedText>
+              {user?.email_verified ? (
+                <View style={styles.emailStatus}>
+                  <MaterialIcons name="check-circle" size={13} color={colors.green.secondary} />
+                  <ThemedText style={[styles.emailStatusText, { color: colors.green.secondary }]}>
+                    Verified
+                  </ThemedText>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.emailStatus}
+                  onPress={() => setIsEmailVerificationRequired(true)}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <MaterialIcons name="warning" size={13} color={colors.yellow.secondary} />
+                  <ThemedText style={[styles.emailStatusText, { color: colors.yellow.secondary }]}>
+                    Not verified
+                  </ThemedText>
+                </TouchableOpacity>
+              )}
+            </View>
             <TextInput
               style={styles.input}
               value={profile.email}
@@ -707,24 +748,6 @@ export default function SettingsScreen() {
                 <>
                   <ThemedText style={styles.notificationChannelLabel}>Source</ThemedText>
                   <View style={styles.digestListOptions}>
-                    <TouchableOpacity
-                      style={[
-                        styles.digestListOption,
-                        digestListId === null && styles.digestListOptionActive,
-                      ]}
-                      onPress={() => handleDigestListChange(null)}
-                      disabled={!user || isUpdatingDigest}
-                      activeOpacity={0.8}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.digestListOptionText,
-                          digestListId === null && styles.digestListOptionTextActive,
-                        ]}
-                      >
-                        My watchlist
-                      </ThemedText>
-                    </TouchableOpacity>
                     {digestLists.map((list) => (
                       <TouchableOpacity
                         key={list.id}
@@ -1021,6 +1044,20 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     label: {
       fontSize: 12,
       color: colors.textSecondary,
+    },
+    emailLabelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    emailStatus: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    emailStatusText: {
+      fontSize: 12,
+      fontWeight: '600',
     },
     input: {
       borderWidth: 1,

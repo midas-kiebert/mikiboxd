@@ -65,6 +65,9 @@ def verify_email(session: SessionDep, token: str) -> HTMLResponse:
         )
     if not user.email_verified:
         user.email_verified = True
+        # Restore whatever email-routed preferences were switched to push (and
+        # the digest, if it was on) when this address became unverified.
+        users_crud.restore_unverified_email_preferences(user)
         session.add(user)
         session.commit()
     return HTMLResponse("<p>Thanks — your email address is confirmed.</p>")

@@ -9,7 +9,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, case, cast, col, delete, or_, select
 
-from app.core.enums import GoingStatus, LoginEmailSource, SocialProvider
+from app.core.enums import (
+    GoingStatus,
+    LoginEmailSource,
+    NotificationChannel,
+    SocialProvider,
+)
 from app.core.security import get_password_hash, verify_password
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud.movie import apply_language_filter
@@ -308,6 +313,20 @@ def get_user_by_social_sub(
     return session.exec(statement).one_or_none()
 
 
+def restore_unverified_email_preferences(user: User) -> None:
+    """Undo the switch-to-push/digest-off that happened when `user` went
+    unverified, now that its (possibly new) email address is confirmed.
+
+    Caller is responsible for `session.add`/`session.commit`.
+    """
+    for field in user.unverified_email_saved_channels or []:
+        setattr(user, field, NotificationChannel.EMAIL)
+    if user.unverified_email_saved_digest_enabled:
+        user.notify_watchlist_digest_enabled = True
+    user.unverified_email_saved_channels = None
+    user.unverified_email_saved_digest_enabled = False
+
+
 @dataclass(frozen=True)
 class SocialUserResolution:
     """What resolving a social identity turned out to mean for the account."""
@@ -382,6 +401,7 @@ def get_or_create_social_user(
             password_removed = by_email.hashed_password is not None
             by_email.hashed_password = None
             by_email.email_verified = True
+            restore_unverified_email_preferences(by_email)
         session.add(by_email)
         session.flush()
         # Belt-and-suspenders: the PRIMARY row should already exist (backfill

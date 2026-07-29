@@ -26,7 +26,7 @@ import { useThemeColors } from '@/hooks/use-theme-color';
 type Colors = ReturnType<typeof useThemeColors>;
 
 function formatSynced(iso: string | null | undefined): string {
-  if (!iso) return 'Never synced';
+  if (!iso) return 'Not synced recently';
   const relative = DateTime.fromISO(iso).toRelative({ style: 'short' });
   return relative ? `Last synced ${relative}` : 'Last synced just now';
 }

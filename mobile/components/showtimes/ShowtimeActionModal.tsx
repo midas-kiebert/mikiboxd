@@ -428,9 +428,21 @@ export default function ShowtimeActionModal({
         closedByGorhomRef.current = true;
         setIsPresented(false);
         onClose();
+        return;
+      }
+      // The sheet just settled on a snap point — including, on the very
+      // first open, the end of its entry animation. TOUR_MEASURE_DELAYS_MS
+      // above is only a guess at how long that takes; if it ran long, the
+      // guessed delay sampled the target mid-rise and the first tour step
+      // never got a hole to highlight. Re-measuring off the real settle
+      // event catches that case regardless of device speed.
+      if (tourTarget) {
+        measureForSpotlight(tourTargetRefs.current[tourTarget], (rect) => {
+          onTourTargetRectRef.current?.(rect);
+        });
       }
     },
-    [onClose]
+    [onClose, tourTarget]
   );
 
   useRegisterBlockingOverlay(isPresented, onClose);

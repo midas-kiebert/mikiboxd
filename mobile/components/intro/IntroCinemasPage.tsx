@@ -11,7 +11,7 @@
  * but only when something was actually saved: clearing the list and continuing
  * anyway is the same as skipping, and leaves the tip to nudge later.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MeService, type CinemaPresetCreate } from "shared";
@@ -29,7 +29,7 @@ import { retireCinemaPresetTip } from "@/utils/feature-tips";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 /** The name the first preset gets, since the intro does not stop to ask. */
-const DEFAULT_PRESET_NAME = "Favorites";
+const DEFAULT_PRESET_NAME = "Favorite Cinemas";
 
 /** Placeholder rows drawn while the cinema list is still in flight. */
 const SKELETON_ROW_COUNT = 8;
@@ -49,20 +49,10 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
   // without it the very first thing a new account saw was "0 of 0 selected"
   // over an empty box, which then popped into a full list.
   const isCinemaListLoading = cinemas === undefined;
-  // Everything starts ticked. "0 of 24 selected" over a full list reads as a
-  // filter that is already hiding everything, and the honest default for a
-  // brand-new account is "show me all of them" — narrowing down from there is
-  // a much easier ask than building the list from nothing. Seeded in an effect
-  // because the cinemas arrive asynchronously; the ref keeps it to the first
-  // arrival, so a later refetch never re-ticks what the user just cleared.
+  // Everything starts unticked: this is a "pick your cinemas" step, so the
+  // user selects the ones they want rather than deselecting the ones they
+  // don't.
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
-  const hasSeededSelectionRef = useRef(false);
-
-  useEffect(() => {
-    if (hasSeededSelectionRef.current || cinemaList.length === 0) return;
-    hasSeededSelectionRef.current = true;
-    setSelectedIds(new Set(cinemaList.map((cinema) => cinema.id)));
-  }, [cinemaList]);
 
   const saveMutation = useMutation({
     mutationFn: (requestBody: CinemaPresetCreate) =>
@@ -104,9 +94,8 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
     });
   }, []);
 
-  // One control rather than a "Clear all" that cannot be undone: now that the
-  // page opens fully ticked, clearing it has to be reversible without asking
-  // the user to tap every cinema back on.
+  // A single toggle that both selects and clears everything, rather than two
+  // separate "Select all" / "Clear all" controls.
   const handleToggleAll = useCallback(() => {
     triggerSelectionHaptic();
     setSelectedIds(

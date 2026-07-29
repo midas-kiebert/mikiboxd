@@ -66,8 +66,11 @@ const PENDING_STORAGE_KEY = 'intro_pending_v1';
  * or goes straight to another tab never satisfies that. The intro then still
  * counts as running, which — among other things — keeps every feature tip
  * suppressed (see `FeatureTipsHost`) until the app is restarted.
+ *
+ * Unused while the filters-spotlight step is disabled in `completeIntroPages`
+ * below — kept for when it is re-enabled.
  */
-const FILTERS_SPOTLIGHT_DEADLINE_MS = 3 * 60 * 1000;
+// const FILTERS_SPOTLIGHT_DEADLINE_MS = 3 * 60 * 1000;
 
 let spotlightDeadlineTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -149,12 +152,18 @@ export const startIntro = (): void => {
  * waits for a clear showtimes screen and might never get one this session, and
  * replaying the whole walkthrough over a single missed highlight is far worse
  * than losing the highlight.
+ *
+ * TEMPORARY: the filters-spotlight step is disabled (it was opening over the
+ * notification centre when a bell tap raced it, see NotificationCenterProvider)
+ * — this just ends the intro instead of handing off to it. The step's code is
+ * left in place below; flip this back to the commented block to re-enable it.
  */
 export const completeIntroPages = (): void => {
-  update({ phase: 'filters-spotlight', isPending: false });
-  persistPending(false);
-  clearSpotlightDeadline();
-  spotlightDeadlineTimer = setTimeout(endIntro, FILTERS_SPOTLIGHT_DEADLINE_MS);
+  endIntro();
+  // update({ phase: 'filters-spotlight', isPending: false });
+  // persistPending(false);
+  // clearSpotlightDeadline();
+  // spotlightDeadlineTimer = setTimeout(endIntro, FILTERS_SPOTLIGHT_DEADLINE_MS);
 };
 
 /**

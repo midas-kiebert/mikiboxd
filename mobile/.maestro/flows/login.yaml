@@ -55,4 +55,8 @@ appId: com.midaskiebert.mikino
       visible: "Done"
     commands:
       - tapOn: "Done"
-- assertVisible: "Showtimes"
+# Not "Showtimes" (the tab bar label): dev-only LogBox warning toasts at the
+# bottom of the screen can cover the tab bar without blocking anything else.
+# "MiKiNO" (header title) confirms the same thing — successfully landed on
+# the signed-in home screen — without depending on what those toasts hide.
+- assertVisible: "MiKiNO"

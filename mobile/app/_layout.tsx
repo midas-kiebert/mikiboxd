@@ -2,7 +2,7 @@
  * Expo Router root layout. It wires global providers, auth-based redirects, and app-wide API config.
  */
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useRouter, useSegments, usePathname, withLayoutContext } from 'expo-router';
+import { useRouter, useSegments, usePathname, useRootNavigationState, withLayoutContext } from 'expo-router';
 import { CardStyleInterpolators, createStackNavigator, TransitionPresets, TransitionSpecs } from '@react-navigation/stack';
 import { Appearance, Easing, Linking, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -264,6 +264,12 @@ function RootLayourContent() {
   const pathname = usePathname();
   // Router instance used for in-app navigation actions.
   const router = useRouter();
+  // `key` is null until the navigator has actually mounted; on a fast cold
+  // start `!rootSegment` below isn't enough on its own to catch this, since
+  // useSegments() can already report a non-empty path before the Root Layout
+  // has finished its first mount, and router.replace() throws if called
+  // before then ("Attempted to navigate before mounting the Root Layout").
+  const navigationState = useRootNavigationState();
   const colorScheme = useColorScheme();
   const palette = Colors[colorScheme ?? 'light'];
   // Single source of truth for "is there a session", shared with the screens
@@ -412,13 +418,24 @@ function RootLayourContent() {
     (href: '/login' | '/(tabs)' | '/pick-username') => {
       if (issuedRedirectRef.current === href) return
       issuedRedirectRef.current = href
-      router.replace(href)
+      // Deferred a frame: `navigationState?.key` above can already be
+      // non-null while the native navigator is still mid-mount, and
+      // router.replace() called synchronously in that window throws
+      // "Attempted to navigate before mounting the Root Layout component"
+      // — confirmed reproducing on every cold launch even with that guard
+      // in place. Pushing past the current commit gives it time to finish.
+      requestAnimationFrame(() => router.replace(href))
     },
     [router]
   )
 
   useEffect(() => {
     if (isChecking) return
+    // Belt-and-suspenders with the `!rootSegment` check below: `key` is null
+    // until the navigator has actually finished mounting, which is the
+    // precise condition `router.replace` itself cares about — segments can
+    // report a non-empty path slightly before that on a fast cold start.
+    if (!navigationState?.key) return
 
     const segmentPath = segments as unknown as string[]
     const rootSegment = segmentPath[0]
@@ -468,7 +485,7 @@ function RootLayourContent() {
       // logout, say) starts from a clean slate.
       issuedRedirectRef.current = null
     }
-  }, [isAuthenticated, owesUsername, router, segments, pathname, isChecking, redirectTo])
+  }, [isAuthenticated, owesUsername, router, segments, pathname, isChecking, navigationState, redirectTo])
 
   const handleNotificationResponse = useCallback(
     async (response: Notifications.NotificationResponse) => {

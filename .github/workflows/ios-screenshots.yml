@@ -10,7 +10,7 @@ on:
 
 jobs:
   screenshots:
-    runs-on: macos-14
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
@@ -23,6 +23,18 @@ jobs:
             device_type_fallback: "iPad Pro (12.9-inch) (6th generation)"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: |
+          set -euo pipefail
+          XCODE_PATH=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n1)
+          if [ -z "$XCODE_PATH" ]; then
+            echo "No Xcode 16.x found on this runner image. Available Xcode installs:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_PATH"
+          xcodebuild -version
 
       - uses: actions/setup-node@v4
         with:
@@ -68,7 +80,8 @@ jobs:
           RUNTIME_ID=$(xcrun simctl list runtimes -j | \
             jq -r '[.runtimes[] | select(.identifier | contains("com.apple.CoreSimulator.SimRuntime.iOS")) | select(.isAvailable == true)] | sort_by(.version) | last | .identifier')
 
-          UDID=$(xcrun simctl create "ci-${{ matrix.label }}" "$DEVICE_TYPE_ID" "$RUNTIME_ID")
+          SIM_NAME="ci-${{ matrix.label }}"
+          UDID=$(xcrun simctl create "$SIM_NAME" "$DEVICE_TYPE_ID" "$RUNTIME_ID")
           xcrun simctl boot "$UDID"
 
           # Grant notification permission up front so the OS permission dialog
@@ -76,29 +89,84 @@ jobs:
           xcrun simctl privacy "$UDID" grant notifications com.midaskiebert.mikino || true
 
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "name=$SIM_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Start Metro bundler
+      - name: Build app for simulator
+        working-directory: mobile/ios
+        env:
+          CI: "1"
+        # `expo run:ios` wraps exactly this, but on this Xcode 16/macOS 15
+        # runner combo it consistently misroutes through a signed
+        # physical-device build path even when pointed at a simulator UDID
+        # (see two failed attempts this replaced). Driving xcodebuild and
+        # simctl directly sidesteps whatever's wrong in that resolution. Only
+        # builds+installs here — launching happens after Metro is confirmed
+        # up, so the app never opens to a dead dev-server screen.
+        run: |
+          set -euo pipefail
+          UDID="${{ steps.sim.outputs.udid }}"
+          WORKSPACE=$(ls -d *.xcworkspace | head -n1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+
+          # No CODE_SIGNING_ALLOWED=NO here: simulator SDK builds sign
+          # locally ("Sign to Run Locally") without needing a real developer
+          # certificate, but forcing signing off entirely also strips
+          # entitlements (e.g. Keychain access for expo-secure-store),
+          # which crashed the app with "A required entitlement isn't
+          # present" the one time this ran without it.
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "id=$UDID" \
+            -derivedDataPath build \
+            build
+
+          APP_PATH=$(find build/Build/Products -maxdepth 2 -iname "*.app" | head -n1)
+          xcrun simctl install "$UDID" "$APP_PATH"
+
+      - name: Start Metro bundler and launch app
         working-directory: mobile
         env:
           CI: "1"
         run: |
+          set -euo pipefail
           # __DEV__ (and therefore the staging API URL, see app/_layout.tsx)
           # is only true for a bundle actually served by Metro, so it has to
           # be started and left running in the background rather than let
           # `expo run:ios` spawn+attach to it, which would block this step
-          # forever streaming logs.
+          # forever streaming logs. Started right before launch (not earlier,
+          # e.g. before the ~20min from-scratch xcodebuild) so there's no long
+          # idle window for it to die in before the app ever requests a bundle.
           nohup npx expo start --non-interactive > metro.log 2>&1 &
           echo $! > metro.pid
           for i in $(seq 1 30); do
             curl -sf http://localhost:8081/status && break
             sleep 2
           done
+          curl -sf http://localhost:8081/status || {
+            echo "Metro never became ready. Log:"
+            cat metro.log
+            exit 1
+          }
 
-      - name: Build and launch app on simulator
-        working-directory: mobile
-        env:
-          CI: "1"
-        run: npx expo run:ios --device "${{ steps.sim.outputs.udid }}" --no-bundler
+          # Pre-warm Metro's cache by requesting the exact bundle URL the app
+          # itself will fetch. A cold compile of this app's entry bundle takes
+          # ~5 minutes, which sits right on top of React Native's own
+          # client-side fetch timeout — the in-app request was losing that
+          # race and showing "Could not connect to development server" right
+          # as the compile was finishing. Compiling it here first (generous
+          # timeout, full log visibility) means the app's own request below
+          # hits an already-cached, near-instant response instead.
+          BUNDLE_URL="http://localhost:8081/.expo/.virtual-metro-entry.bundle?platform=ios&dev=true&lazy=true&minify=false&inlineSourceMap=false&modulesOnly=false&runModule=true&excludeSource=true&sourcePaths=url-server&app=com.midaskiebert.mikino"
+          time curl -sf --max-time 600 -o /dev/null "$BUNDLE_URL"
+
+          # No `simctl launch` here: Maestro's own `launchApp` (with
+          # clearState) in login.yaml is what actually launches the app for
+          # the flow. Launching it here first would just waste a full cold
+          # JS bundle compile (well over a minute for this app), thrown away
+          # the moment Maestro kills and relaunches it anyway.
 
       - name: Run Maestro screenshot flows
         working-directory: mobile/.maestro/flows
@@ -106,6 +174,15 @@ jobs:
           MAESTRO_TEST_EMAIL: ${{ secrets.SCREENSHOT_TEST_EMAIL }}
           MAESTRO_TEST_PASSWORD: ${{ secrets.SCREENSHOT_TEST_PASSWORD }}
         run: |
+          set -euo pipefail
+          # Metro should still be the same process started in the previous
+          # step, but confirm before spending time on Maestro flows that will
+          # only fail the same way if it's died since.
+          curl -sf http://localhost:8081/status || {
+            echo "Metro is not responding before running Maestro flows. Log:"
+            cat ../metro.log
+            exit 1
+          }
           mkdir -p "$GITHUB_WORKSPACE/screenshots/${{ matrix.label }}"
           for flow in screenshot-showtimes.yaml screenshot-agenda.yaml screenshot-friends.yaml; do
             maestro --device "${{ steps.sim.outputs.udid }}" test "$flow" \
@@ -113,6 +190,18 @@ jobs:
               --env MAESTRO_TEST_PASSWORD="$MAESTRO_TEST_PASSWORD"
           done
           mv ./*.png "$GITHUB_WORKSPACE/screenshots/${{ matrix.label }}/"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: maestro-debug-${{ matrix.label }}
+          path: ~/.maestro/tests
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metro-log-${{ matrix.label }}
+          path: mobile/metro.log
 
       - name: Stop Metro bundler
         if: always()

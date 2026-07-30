@@ -35,6 +35,9 @@ services:
       - .env
     environment:
       - LETTERBOXD_STATE_DIR=/var/lib/letterboxd
+      - DOMAIN=${DOMAIN}
+      - API_HOST=${API_HOST?Variable not set}
+      - FRONTEND_HOST=${FRONTEND_HOST?Variable not set}
       - POSTGRES_SERVER=db
       - POSTGRES_PORT=${POSTGRES_PORT}
       - POSTGRES_DB=${POSTGRES_DB}
@@ -78,6 +81,7 @@ services:
       - .env
     environment:
       - DOMAIN=${DOMAIN}
+      - API_HOST=${API_HOST?Variable not set}
       - FRONTEND_HOST=${FRONTEND_HOST?Variable not set}
       - ENVIRONMENT=${ENVIRONMENT}
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
@@ -116,6 +120,7 @@ services:
     environment:
       - LETTERBOXD_STATE_DIR=/var/lib/letterboxd
       - DOMAIN=${DOMAIN}
+      - API_HOST=${API_HOST?Variable not set}
       - FRONTEND_HOST=${FRONTEND_HOST?Variable not set}
       - ENVIRONMENT=${ENVIRONMENT}
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}

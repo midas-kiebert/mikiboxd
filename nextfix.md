@@ -1,0 +1,3 @@
+- Not verified text polls every few seconds with visible reload
+- Always notify on verify email sent (so when user changes email for example)
+- Opening a cinema page from a showtime modal should close the showtime modal

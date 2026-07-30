@@ -169,8 +169,19 @@ def update_me(
     # all (not just actually changed) — re-saving the same value is still a
     # deliberate identity-field submission, and keeping the rule simple means
     # there's no separate "did it really change" edge case to get wrong here.
+    # Exception: a social sign-in account starts with no display_name at all,
+    # and giving it its first username is filling in a required field, not
+    # proving continued ownership of an existing one — there's nothing to
+    # confirm against yet, so it must not be blocked on a password that
+    # setting the username is precisely how the user would go on to add.
+    initial_username_set = (
+        "display_name" in user_data and current_user.display_name is None
+    )
     current_password = user_data.pop("current_password", None)
-    if "display_name" in user_data or "email" in user_data:
+    identity_fields_changed = "email" in user_data or (
+        "display_name" in user_data and not initial_username_set
+    )
+    if identity_fields_changed:
         if current_user.hashed_password is None:
             raise PasswordNotSet()
         if current_password is None or not verify_password(

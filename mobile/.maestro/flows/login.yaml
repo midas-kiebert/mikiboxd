@@ -11,6 +11,23 @@ appId: com.midaskiebert.mikino
 # timeout — hence the generous explicit wait before the default timeout
 # applies to the rest of the flow.
 - extendedWaitUntil:
+    visible: "you@example.com or username|Dismiss"
+    timeout: 90000
+# A completely fresh device/first-ever launch can hit Expo Router's known
+# "navigate before mounting Root Layout" dev-only redbox (an auth-guard
+# redirect firing before the router is ready). It's a harmless race that
+# self-resolves — dismiss it if present so it doesn't block the form
+# underneath. Repeated a few times since the overlay can stack more than
+# one logged error, each needing its own dismiss tap.
+- repeat:
+    times: 5
+    commands:
+      - runFlow:
+          when:
+            visible: "Dismiss"
+          commands:
+            - tapOn: "Dismiss"
+- extendedWaitUntil:
     visible: "you@example.com or username"
     timeout: 90000
 - tapOn: "you@example.com or username"

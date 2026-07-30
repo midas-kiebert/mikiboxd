@@ -169,18 +169,26 @@ def update_me(
     # all (not just actually changed) — re-saving the same value is still a
     # deliberate identity-field submission, and keeping the rule simple means
     # there's no separate "did it really change" edge case to get wrong here.
-    # Exception: a social sign-in account starts with no display_name at all,
-    # and giving it its first username is filling in a required field, not
-    # proving continued ownership of an existing one — there's nothing to
-    # confirm against yet, so it must not be blocked on a password that
-    # setting the username is precisely how the user would go on to add.
-    initial_username_set = (
-        "display_name" in user_data and current_user.display_name is None
+    # Exception: a social sign-in account starts with both no display_name and
+    # no password at all, and giving it its first username is filling in a
+    # required field, not proving continued ownership of an existing one —
+    # there's nothing to confirm against yet, and no password to set one up
+    # with either, so it must not be blocked on PasswordNotSet. A password
+    # already being set means there's something to confirm with, so that case
+    # still goes through the normal check below even for a first username.
+    # Scoped to a display_name-only submission — an email change riding along
+    # in the same request still needs the account to set a password first,
+    # exactly as before.
+    initial_username_set_without_password = (
+        "display_name" in user_data
+        and "email" not in user_data
+        and current_user.display_name is None
+        and current_user.hashed_password is None
     )
     current_password = user_data.pop("current_password", None)
-    identity_fields_changed = "email" in user_data or (
-        "display_name" in user_data and not initial_username_set
-    )
+    identity_fields_changed = (
+        "email" in user_data or "display_name" in user_data
+    ) and not initial_username_set_without_password
     if identity_fields_changed:
         if current_user.hashed_password is None:
             raise PasswordNotSet()

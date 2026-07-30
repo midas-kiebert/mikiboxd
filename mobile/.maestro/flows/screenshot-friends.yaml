@@ -1,5 +1,6 @@
 appId: com.midaskiebert.mikino
 ---
-- runFlow: login.yaml
+- runFlow: launch.yaml
+- assertVisible: "Friends"
 - tapOn: "Friends"
 - takeScreenshot: 03-friends

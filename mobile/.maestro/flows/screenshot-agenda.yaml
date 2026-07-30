@@ -1,5 +1,10 @@
 appId: com.midaskiebert.mikino
 ---
-- runFlow: login.yaml
+- runFlow: launch.yaml
+# One run hit "Element not found: Agenda" despite it being visible in the
+# post-failure debug screenshot — looks like a momentary re-render right
+# after launch.yaml's own waits complete. assertVisible retries; a bare
+# tapOn does not.
+- assertVisible: "Agenda"
 - tapOn: "Agenda"
 - takeScreenshot: 02-agenda

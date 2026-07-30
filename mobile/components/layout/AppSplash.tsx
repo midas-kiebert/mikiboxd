@@ -77,6 +77,7 @@ export default function AppSplash({ active, onHidden, onReady }: AppSplashProps)
 
   return (
     <Animated.View
+      testID="app-splash"
       style={[StyleSheet.absoluteFill, styles.container, { backgroundColor, opacity }]}
       pointerEvents={active ? 'auto' : 'none'}
       onLayout={onReady}

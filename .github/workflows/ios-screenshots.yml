@@ -126,10 +126,33 @@ jobs:
           APP_PATH=$(find build/Build/Products -maxdepth 2 -iname "*.app" | head -n1)
           xcrun simctl install "$UDID" "$APP_PATH"
 
+      - name: Fetch screenshot-mode auth token
+        id: token
+        env:
+          MAESTRO_TEST_EMAIL: ${{ secrets.SCREENSHOT_TEST_EMAIL }}
+          MAESTRO_TEST_PASSWORD: ${{ secrets.SCREENSHOT_TEST_PASSWORD }}
+        # Real token from a plain API call, not a UI login — see the
+        # EXPO_PUBLIC_SCREENSHOT_MODE_TOKEN bypass in app/_layout.tsx. Removes
+        # the login screen, its dialogs, and the whole redirect-guard timing
+        # area entirely from the screenshot flow.
+        run: |
+          set -euo pipefail
+          TOKEN=$(curl -sf -X POST "https://api.staging.mikino.nl/api/v1/login/access-token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "username=$MAESTRO_TEST_EMAIL" \
+            --data-urlencode "password=$MAESTRO_TEST_PASSWORD" | jq -r .access_token)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "Failed to fetch a screenshot-mode token."
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
       - name: Start Metro bundler and launch app
         working-directory: mobile
         env:
           CI: "1"
+          EXPO_PUBLIC_SCREENSHOT_MODE_TOKEN: ${{ steps.token.outputs.token }}
         run: |
           set -euo pipefail
           # __DEV__ (and therefore the staging API URL, see app/_layout.tsx)
@@ -139,6 +162,9 @@ jobs:
           # forever streaming logs. Started right before launch (not earlier,
           # e.g. before the ~20min from-scratch xcodebuild) so there's no long
           # idle window for it to die in before the app ever requests a bundle.
+          # EXPO_PUBLIC_ vars are inlined into the bundle at the point Metro
+          # transforms it, so it must be set in this process's environment
+          # before expo start runs, not just when Maestro launches the app.
           nohup npx expo start --non-interactive > metro.log 2>&1 &
           echo $! > metro.pid
           for i in $(seq 1 30); do
@@ -163,16 +189,13 @@ jobs:
           time curl -sf --max-time 600 -o /dev/null "$BUNDLE_URL"
 
           # No `simctl launch` here: Maestro's own `launchApp` (with
-          # clearState) in login.yaml is what actually launches the app for
+          # clearState) in launch.yaml is what actually launches the app for
           # the flow. Launching it here first would just waste a full cold
           # JS bundle compile (well over a minute for this app), thrown away
           # the moment Maestro kills and relaunches it anyway.
 
       - name: Run Maestro screenshot flows
         working-directory: mobile/.maestro/flows
-        env:
-          MAESTRO_TEST_EMAIL: ${{ secrets.SCREENSHOT_TEST_EMAIL }}
-          MAESTRO_TEST_PASSWORD: ${{ secrets.SCREENSHOT_TEST_PASSWORD }}
         run: |
           set -euo pipefail
           # Metro should still be the same process started in the previous
@@ -185,9 +208,7 @@ jobs:
           }
           mkdir -p "$GITHUB_WORKSPACE/screenshots/${{ matrix.label }}"
           for flow in screenshot-showtimes.yaml screenshot-agenda.yaml screenshot-friends.yaml; do
-            maestro --device "${{ steps.sim.outputs.udid }}" test "$flow" \
-              --env MAESTRO_TEST_EMAIL="$MAESTRO_TEST_EMAIL" \
-              --env MAESTRO_TEST_PASSWORD="$MAESTRO_TEST_PASSWORD"
+            maestro --device "${{ steps.sim.outputs.udid }}" test "$flow"
           done
           mv ./*.png "$GITHUB_WORKSPACE/screenshots/${{ matrix.label }}/"
 

@@ -110,7 +110,11 @@ jobs:
         working-directory: mobile
         env:
           CI: "1"
-        run: npx expo run:ios --device "${{ steps.sim.outputs.udid }}" --no-bundler
+        # No --device flag: passing the simulator's UDID there makes Expo CLI
+        # treat it as a physical-device target and demand code signing.
+        # Since exactly one simulator is booted at this point, omitting the
+        # flag makes it default to that simulator.
+        run: npx expo run:ios --no-bundler
 
       - name: Run Maestro screenshot flows
         working-directory: mobile/.maestro/flows

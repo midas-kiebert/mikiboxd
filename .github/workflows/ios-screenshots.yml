@@ -108,6 +108,12 @@ jobs:
           WORKSPACE=$(ls -d *.xcworkspace | head -n1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
 
+          # No CODE_SIGNING_ALLOWED=NO here: simulator SDK builds sign
+          # locally ("Sign to Run Locally") without needing a real developer
+          # certificate, but forcing signing off entirely also strips
+          # entitlements (e.g. Keychain access for expo-secure-store),
+          # which crashed the app with "A required entitlement isn't
+          # present" the one time this ran without it.
           xcodebuild \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
@@ -115,7 +121,6 @@ jobs:
             -sdk iphonesimulator \
             -destination "id=$UDID" \
             -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             build
 
           APP_PATH=$(find build/Build/Products -maxdepth 2 -iname "*.app" | head -n1)

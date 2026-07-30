@@ -14,18 +14,15 @@ appId: com.midaskiebert.mikino
     timeout: 300000
 # A completely fresh device/first-ever launch can hit Expo Router's known
 # "navigate before mounting Root Layout" dev-only redbox (an auth-guard
-# redirect firing before the router is ready). It's a harmless race that
-# self-resolves — dismiss it if present so it doesn't block the form
-# underneath. Repeated a few times since the overlay can stack more than
-# one logged error, each needing its own dismiss tap.
-- repeat:
-    times: 5
+# redirect firing before the router is ready). Dismissing it (tried first)
+# left navigation permanently broken — the app sat on the splash screen for
+# the rest of the flow instead of recovering. Reload re-runs the JS bundle
+# from scratch, which lets Root Layout mount and the router settle properly.
+- runFlow:
+    when:
+      visible: "Reload"
     commands:
-      - runFlow:
-          when:
-            visible: "Dismiss"
-          commands:
-            - tapOn: "Dismiss"
+      - tapOn: "Reload"
 - extendedWaitUntil:
     visible: "you@example.com or username"
     timeout: 300000

@@ -91,32 +91,17 @@ jobs:
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           echo "name=$SIM_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Start Metro bundler
-        working-directory: mobile
-        env:
-          CI: "1"
-        run: |
-          # __DEV__ (and therefore the staging API URL, see app/_layout.tsx)
-          # is only true for a bundle actually served by Metro, so it has to
-          # be started and left running in the background rather than let
-          # `expo run:ios` spawn+attach to it, which would block this step
-          # forever streaming logs.
-          nohup npx expo start --non-interactive > metro.log 2>&1 &
-          echo $! > metro.pid
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:8081/status && break
-            sleep 2
-          done
-
-      - name: Build and launch app on simulator
+      - name: Build app for simulator
         working-directory: mobile/ios
         env:
           CI: "1"
         # `expo run:ios` wraps exactly this, but on this Xcode 16/macOS 15
         # runner combo it consistently misroutes through a signed
         # physical-device build path even when pointed at a simulator UDID
-        # (see the two failed attempts this replaced). Driving xcodebuild and
-        # simctl directly sidesteps whatever's wrong in that resolution.
+        # (see two failed attempts this replaced). Driving xcodebuild and
+        # simctl directly sidesteps whatever's wrong in that resolution. Only
+        # builds+installs here — launching happens after Metro is confirmed
+        # up, so the app never opens to a dead dev-server screen.
         run: |
           set -euo pipefail
           UDID="${{ steps.sim.outputs.udid }}"
@@ -135,7 +120,32 @@ jobs:
 
           APP_PATH=$(find build/Build/Products -maxdepth 2 -iname "*.app" | head -n1)
           xcrun simctl install "$UDID" "$APP_PATH"
-          xcrun simctl launch "$UDID" com.midaskiebert.mikino
+
+      - name: Start Metro bundler and launch app
+        working-directory: mobile
+        env:
+          CI: "1"
+        run: |
+          set -euo pipefail
+          # __DEV__ (and therefore the staging API URL, see app/_layout.tsx)
+          # is only true for a bundle actually served by Metro, so it has to
+          # be started and left running in the background rather than let
+          # `expo run:ios` spawn+attach to it, which would block this step
+          # forever streaming logs. Started right before launch (not earlier,
+          # e.g. before the ~20min from-scratch xcodebuild) so there's no long
+          # idle window for it to die in before the app ever requests a bundle.
+          nohup npx expo start --non-interactive > metro.log 2>&1 &
+          echo $! > metro.pid
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8081/status && break
+            sleep 2
+          done
+          curl -sf http://localhost:8081/status || {
+            echo "Metro never became ready. Log:"
+            cat metro.log
+            exit 1
+          }
+          xcrun simctl launch "${{ steps.sim.outputs.udid }}" com.midaskiebert.mikino
 
       - name: Run Maestro screenshot flows
         working-directory: mobile/.maestro/flows
@@ -143,6 +153,15 @@ jobs:
           MAESTRO_TEST_EMAIL: ${{ secrets.SCREENSHOT_TEST_EMAIL }}
           MAESTRO_TEST_PASSWORD: ${{ secrets.SCREENSHOT_TEST_PASSWORD }}
         run: |
+          set -euo pipefail
+          # Metro should still be the same process started in the previous
+          # step, but confirm before spending time on Maestro flows that will
+          # only fail the same way if it's died since.
+          curl -sf http://localhost:8081/status || {
+            echo "Metro is not responding before running Maestro flows. Log:"
+            cat ../metro.log
+            exit 1
+          }
           mkdir -p "$GITHUB_WORKSPACE/screenshots/${{ matrix.label }}"
           for flow in screenshot-showtimes.yaml screenshot-agenda.yaml screenshot-friends.yaml; do
             maestro --device "${{ steps.sim.outputs.udid }}" test "$flow" \
@@ -156,6 +175,12 @@ jobs:
         with:
           name: maestro-debug-${{ matrix.label }}
           path: ~/.maestro/tests
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metro-log-${{ matrix.label }}
+          path: mobile/metro.log
 
       - name: Stop Metro bundler
         if: always()

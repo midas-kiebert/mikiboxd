@@ -39,4 +39,20 @@ appId: com.midaskiebert.mikino
 # label dismisses it instead.
 - tapOn: "Welcome back"
 - tapOn: "Log In"
+# Two dialogs can cover the tab bar after a successful login: iOS's own
+# "Save Password?" prompt, and the app's in-app "Notifications are on"
+# confirmation. Neither appears every time, so both are optional.
+- extendedWaitUntil:
+    visible: "Showtimes|Not Now|Done"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Not Now"
+    commands:
+      - tapOn: "Not Now"
+- runFlow:
+    when:
+      visible: "Done"
+    commands:
+      - tapOn: "Done"
 - assertVisible: "Showtimes"

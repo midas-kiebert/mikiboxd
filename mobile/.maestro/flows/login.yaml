@@ -6,6 +6,13 @@ appId: com.midaskiebert.mikino
 # must never be hardcoded here.
 - launchApp:
     clearState: true
+# First launch after a fresh install pulls the JS bundle from a cold Metro
+# process, which regularly takes longer than Maestro's default 17s action
+# timeout — hence the generous explicit wait before the default timeout
+# applies to the rest of the flow.
+- extendedWaitUntil:
+    visible: "you@example.com or username"
+    timeout: 90000
 - tapOn: "you@example.com or username"
 - inputText: "${MAESTRO_TEST_EMAIL}"
 - tapOn: "Your password"

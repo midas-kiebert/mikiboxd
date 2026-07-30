@@ -151,6 +151,12 @@ jobs:
           done
           mv ./*.png "$GITHUB_WORKSPACE/screenshots/${{ matrix.label }}/"
 
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: maestro-debug-${{ matrix.label }}
+          path: ~/.maestro/tests
+
       - name: Stop Metro bundler
         if: always()
         working-directory: mobile

@@ -145,6 +145,18 @@ jobs:
             cat metro.log
             exit 1
           }
+
+          # Pre-warm Metro's cache by requesting the exact bundle URL the app
+          # itself will fetch. A cold compile of this app's entry bundle takes
+          # ~5 minutes, which sits right on top of React Native's own
+          # client-side fetch timeout — the in-app request was losing that
+          # race and showing "Could not connect to development server" right
+          # as the compile was finishing. Compiling it here first (generous
+          # timeout, full log visibility) means the app's own request below
+          # hits an already-cached, near-instant response instead.
+          BUNDLE_URL="http://localhost:8081/.expo/.virtual-metro-entry.bundle?platform=ios&dev=true&lazy=true&minify=false&inlineSourceMap=false&modulesOnly=false&runModule=true&excludeSource=true&sourcePaths=url-server&app=com.midaskiebert.mikino"
+          time curl -sf --max-time 600 -o /dev/null "$BUNDLE_URL"
+
           # No `simctl launch` here: Maestro's own `launchApp` (with
           # clearState) in login.yaml is what actually launches the app for
           # the flow. Launching it here first would just waste a full cold

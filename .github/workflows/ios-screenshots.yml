@@ -10,7 +10,7 @@ on:
 
 jobs:
   screenshots:
-    runs-on: macos-14
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
@@ -23,6 +23,18 @@ jobs:
             device_type_fallback: "iPad Pro (12.9-inch) (6th generation)"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: |
+          set -euo pipefail
+          XCODE_PATH=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n1)
+          if [ -z "$XCODE_PATH" ]; then
+            echo "No Xcode 16.x found on this runner image. Available Xcode installs:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_PATH"
+          xcodebuild -version
 
       - uses: actions/setup-node@v4
         with:

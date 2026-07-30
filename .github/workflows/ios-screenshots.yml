@@ -80,7 +80,8 @@ jobs:
           RUNTIME_ID=$(xcrun simctl list runtimes -j | \
             jq -r '[.runtimes[] | select(.identifier | contains("com.apple.CoreSimulator.SimRuntime.iOS")) | select(.isAvailable == true)] | sort_by(.version) | last | .identifier')
 
-          UDID=$(xcrun simctl create "ci-${{ matrix.label }}" "$DEVICE_TYPE_ID" "$RUNTIME_ID")
+          SIM_NAME="ci-${{ matrix.label }}"
+          UDID=$(xcrun simctl create "$SIM_NAME" "$DEVICE_TYPE_ID" "$RUNTIME_ID")
           xcrun simctl boot "$UDID"
 
           # Grant notification permission up front so the OS permission dialog
@@ -88,6 +89,7 @@ jobs:
           xcrun simctl privacy "$UDID" grant notifications com.midaskiebert.mikino || true
 
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "name=$SIM_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Start Metro bundler
         working-directory: mobile
@@ -110,11 +112,10 @@ jobs:
         working-directory: mobile
         env:
           CI: "1"
-        # No --device flag: passing the simulator's UDID there makes Expo CLI
-        # treat it as a physical-device target and demand code signing.
-        # Since exactly one simulator is booted at this point, omitting the
-        # flag makes it default to that simulator.
-        run: npx expo run:ios --no-bundler
+        # Must pass --device by the simulator's *name*, not its UDID or no
+        # flag at all: both of those made Expo CLI fall through to a generic
+        # physical-device destination that demands code signing.
+        run: npx expo run:ios --device "${{ steps.sim.outputs.name }}" --no-bundler
 
       - name: Run Maestro screenshot flows
         working-directory: mobile/.maestro/flows

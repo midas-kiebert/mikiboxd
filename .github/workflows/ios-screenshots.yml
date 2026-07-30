@@ -137,7 +137,7 @@ jobs:
         # area entirely from the screenshot flow.
         run: |
           set -euo pipefail
-          TOKEN=$(curl -sf -X POST "https://api.staging.mikino.nl/login/access-token" \
+          TOKEN=$(curl -sf -X POST "https://api.staging.mikino.nl/api/v1/login/access-token" \
             -H "Content-Type: application/x-www-form-urlencoded" \
             --data-urlencode "username=$MAESTRO_TEST_EMAIL" \
             --data-urlencode "password=$MAESTRO_TEST_PASSWORD" | jq -r .access_token)

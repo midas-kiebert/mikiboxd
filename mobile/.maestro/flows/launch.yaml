@@ -8,13 +8,32 @@ appId: com.midaskiebert.mikino
 # redirect-guard timing this used to have to work around.
 - launchApp:
     clearState: true
+# The branded JS splash (components/layout/AppSplash.tsx) covers the real
+# screen while auth/theme/initial data resolve, but Maestro's visibility
+# check only looks at the accessibility tree, not actual pixel occlusion —
+# "MiKiNO" (the real header, already mounted underneath) reported "visible"
+# on an iPad run that was still showing nothing but the splash logo. Wait
+# for the splash's testID to disappear (it fully unmounts, it's not just
+# faded to opacity 0) before trusting anything else on screen.
 - extendedWaitUntil:
-    visible: "MiKiNO"
+    notVisible:
+      id: "app-splash"
     timeout: 300000
-# "MiKiNO" renders immediately, well before the cinema/showtime data has
-# loaded — the screen sits on skeleton placeholders and "0 cinemas" for a
-# few seconds first. Wait for that placeholder to be gone (i.e. a real
-# cinema count loaded) before anything takes a screenshot of this screen.
+- assertVisible: "MiKiNO"
+# "MiKiNO" can still beat the cinema/showtime data itself by a moment — the
+# screen briefly sits on skeleton placeholders and "0 cinemas" first. Wait
+# for that placeholder to be gone (i.e. a real cinema count loaded) before
+# anything takes a screenshot of this screen.
 - extendedWaitUntil:
     notVisible: "0 cinemas"
     timeout: 30000
+# Whether a fresh simulator reports notification permission as granted or
+# blocked isn't consistent between boots (the `simctl privacy grant` step
+# doesn't always seem to stick), so this in-app "Notifications are blocked"
+# nudge can appear covering the tab bar. Dismiss it without changing any
+# actual permission state.
+- runFlow:
+    when:
+      visible: "Notifications are blocked"
+    commands:
+      - tapOn: "Don't show this again"

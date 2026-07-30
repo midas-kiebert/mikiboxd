@@ -109,13 +109,33 @@ jobs:
           done
 
       - name: Build and launch app on simulator
-        working-directory: mobile
+        working-directory: mobile/ios
         env:
           CI: "1"
-        # Must pass --device by the simulator's *name*, not its UDID or no
-        # flag at all: both of those made Expo CLI fall through to a generic
-        # physical-device destination that demands code signing.
-        run: npx expo run:ios --device "${{ steps.sim.outputs.name }}" --no-bundler
+        # `expo run:ios` wraps exactly this, but on this Xcode 16/macOS 15
+        # runner combo it consistently misroutes through a signed
+        # physical-device build path even when pointed at a simulator UDID
+        # (see the two failed attempts this replaced). Driving xcodebuild and
+        # simctl directly sidesteps whatever's wrong in that resolution.
+        run: |
+          set -euo pipefail
+          UDID="${{ steps.sim.outputs.udid }}"
+          WORKSPACE=$(ls -d *.xcworkspace | head -n1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "id=$UDID" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build
+
+          APP_PATH=$(find build/Build/Products -maxdepth 2 -iname "*.app" | head -n1)
+          xcrun simctl install "$UDID" "$APP_PATH"
+          xcrun simctl launch "$UDID" com.midaskiebert.mikino
 
       - name: Run Maestro screenshot flows
         working-directory: mobile/.maestro/flows

@@ -1,0 +1,15 @@
+appId: com.midaskiebert.mikino
+---
+# Reusable sub-flow: log in with the staging screenshot account and land on
+# the Showtimes tab. MAESTRO_TEST_EMAIL / MAESTRO_TEST_PASSWORD are supplied
+# via `maestro test --env` (see .github/workflows/ios-screenshots.yml) and
+# must never be hardcoded here.
+- launchApp:
+    clearState: true
+- tapOn: "you@example.com or username"
+- inputText: "${MAESTRO_TEST_EMAIL}"
+- tapOn: "Your password"
+- inputText: "${MAESTRO_TEST_PASSWORD}"
+- hideKeyboard
+- tapOn: "Log In"
+- assertVisible: "Showtimes"

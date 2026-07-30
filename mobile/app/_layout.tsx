@@ -32,7 +32,7 @@ import { Colors } from '@/constants/theme';
 import { loadThemePreference, useThemePreference } from '@/utils/theme-preference';
 import { loadFeatureTips } from '@/utils/feature-tips';
 import { loadIntroState, useIsIntroActive } from '@/utils/intro';
-import { loadAuthSession, markSignedOut, useAuthStatus } from '@/utils/auth-session';
+import { loadAuthSession, markSignedIn, markSignedOut, useAuthStatus } from '@/utils/auth-session';
 import { currentUserQueryKey, hasUsername, isMissingUsername, useCurrentUser } from '@/hooks/useCurrentUser';
 import { markUsernameResolved, useIsUsernameRequired } from '@/utils/username-gate';
 import { markAppReady, useIsAppReady } from '@/utils/app-ready';
@@ -242,9 +242,20 @@ void loadFeatureTips();
 // created on this device, which is well after the splash is gone.
 void loadIntroState();
 
-// The one and only read of the stored token. Everything after this point is
-// announced synchronously by whoever signs in or out — see `auth-session.ts`.
-void loadAuthSession();
+// Screenshot-mode bypass for App Store screenshot automation (CI only — see
+// .github/workflows/ios-screenshots.yml): writes a real, pre-fetched staging
+// token straight to storage and marks the session signed in immediately,
+// skipping the login screen (and everything that only runs from
+// completeLogin, e.g. push-token registration) entirely. Never set outside
+// that workflow.
+const screenshotModeToken = process.env.EXPO_PUBLIC_SCREENSHOT_MODE_TOKEN;
+if (screenshotModeToken) {
+  void storage.setItem('access_token', screenshotModeToken).then(markSignedIn);
+} else {
+  // The one and only read of the stored token. Everything after this point is
+  // announced synchronously by whoever signs in or out — see `auth-session.ts`.
+  void loadAuthSession();
+}
 
 // Default foreground notification behavior for this app.
 Notifications.setNotificationHandler({

@@ -1,0 +1,13 @@
+appId: com.midaskiebert.mikino
+---
+# Reusable sub-flow: launch straight into the signed-in home screen. Relies on
+# the EXPO_PUBLIC_SCREENSHOT_MODE_TOKEN bypass in app/_layout.tsx (see
+# .github/workflows/ios-screenshots.yml), which writes a real staging token
+# and marks the session signed in before the login screen ever renders — so
+# there's no login form, no post-login dialogs, and none of the first-cold-launch
+# redirect-guard timing this used to have to work around.
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "MiKiNO"
+    timeout: 300000

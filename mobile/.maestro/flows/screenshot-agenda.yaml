@@ -1,5 +1,5 @@
 appId: com.midaskiebert.mikino
 ---
-- runFlow: login.yaml
+- runFlow: launch.yaml
 - tapOn: "Agenda"
 - takeScreenshot: 02-agenda

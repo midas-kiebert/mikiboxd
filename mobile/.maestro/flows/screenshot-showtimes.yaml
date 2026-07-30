@@ -1,4 +1,4 @@
 appId: com.midaskiebert.mikino
 ---
-- runFlow: login.yaml
+- runFlow: launch.yaml
 - takeScreenshot: 01-showtimes

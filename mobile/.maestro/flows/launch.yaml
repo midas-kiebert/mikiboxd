@@ -11,3 +11,10 @@ appId: com.midaskiebert.mikino
 - extendedWaitUntil:
     visible: "MiKiNO"
     timeout: 300000
+# "MiKiNO" renders immediately, well before the cinema/showtime data has
+# loaded — the screen sits on skeleton placeholders and "0 cinemas" for a
+# few seconds first. Wait for that placeholder to be gone (i.e. a real
+# cinema count loaded) before anything takes a screenshot of this screen.
+- extendedWaitUntil:
+    notVisible: "0 cinemas"
+    timeout: 30000

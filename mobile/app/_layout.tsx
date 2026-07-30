@@ -4,7 +4,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useRouter, useSegments, usePathname, useRootNavigationState, withLayoutContext } from 'expo-router';
 import { CardStyleInterpolators, createStackNavigator, TransitionPresets, TransitionSpecs } from '@react-navigation/stack';
-import { Appearance, Easing, Linking, Platform, View } from 'react-native';
+import { Appearance, Easing, Linking, LogBox, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import {
@@ -251,6 +251,10 @@ void loadIntroState();
 const screenshotModeToken = process.env.EXPO_PUBLIC_SCREENSHOT_MODE_TOKEN;
 if (screenshotModeToken) {
   void storage.setItem('access_token', screenshotModeToken).then(markSignedIn);
+  // Dev-only LogBox warning toasts sit at the bottom of the screen and cover
+  // the tab bar — cosmetic noise a real build never shows, but it blocks
+  // automation from reaching the tabs underneath.
+  LogBox.ignoreAllLogs(true);
 } else {
   // The one and only read of the stored token. Everything after this point is
   // announced synchronously by whoever signs in or out — see `auth-session.ts`.

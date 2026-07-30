@@ -6,13 +6,12 @@ appId: com.midaskiebert.mikino
 # must never be hardcoded here.
 - launchApp:
     clearState: true
-# First launch after a fresh install pulls the JS bundle from a cold Metro
-# process, which regularly takes longer than Maestro's default 17s action
-# timeout — hence the generous explicit wait before the default timeout
-# applies to the rest of the flow.
+# First launch after a fresh install pulls a full cold compile of this app's
+# JS bundle (1500+ modules), which has taken several minutes in practice —
+# far past Maestro's default 17s action timeout, hence the 5-minute wait.
 - extendedWaitUntil:
     visible: "you@example.com or username|Dismiss"
-    timeout: 90000
+    timeout: 300000
 # A completely fresh device/first-ever launch can hit Expo Router's known
 # "navigate before mounting Root Layout" dev-only redbox (an auth-guard
 # redirect firing before the router is ready). It's a harmless race that
@@ -29,7 +28,7 @@ appId: com.midaskiebert.mikino
             - tapOn: "Dismiss"
 - extendedWaitUntil:
     visible: "you@example.com or username"
-    timeout: 90000
+    timeout: 300000
 - tapOn: "you@example.com or username"
 - inputText: "${MAESTRO_TEST_EMAIL}"
 - tapOn: "Your password"

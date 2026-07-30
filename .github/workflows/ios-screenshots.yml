@@ -145,7 +145,11 @@ jobs:
             cat metro.log
             exit 1
           }
-          xcrun simctl launch "${{ steps.sim.outputs.udid }}" com.midaskiebert.mikino
+          # No `simctl launch` here: Maestro's own `launchApp` (with
+          # clearState) in login.yaml is what actually launches the app for
+          # the flow. Launching it here first would just waste a full cold
+          # JS bundle compile (well over a minute for this app), thrown away
+          # the moment Maestro kills and relaunches it anyway.
 
       - name: Run Maestro screenshot flows
         working-directory: mobile/.maestro/flows

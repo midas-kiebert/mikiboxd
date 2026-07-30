@@ -418,7 +418,13 @@ function RootLayourContent() {
     (href: '/login' | '/(tabs)' | '/pick-username') => {
       if (issuedRedirectRef.current === href) return
       issuedRedirectRef.current = href
-      router.replace(href)
+      // Deferred a frame: `navigationState?.key` above can already be
+      // non-null while the native navigator is still mid-mount, and
+      // router.replace() called synchronously in that window throws
+      // "Attempted to navigate before mounting the Root Layout component"
+      // — confirmed reproducing on every cold launch even with that guard
+      // in place. Pushing past the current commit gives it time to finish.
+      requestAnimationFrame(() => router.replace(href))
     },
     [router]
   )

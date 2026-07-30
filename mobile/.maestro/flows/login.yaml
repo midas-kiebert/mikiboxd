@@ -34,6 +34,9 @@ appId: com.midaskiebert.mikino
 - inputText: "${MAESTRO_TEST_EMAIL}"
 - tapOn: "Your password"
 - inputText: "${MAESTRO_TEST_PASSWORD}"
-- hideKeyboard
+# hideKeyboard isn't supported on this keyboard config ("Couldn't hide the
+# keyboard... doesn't expose a standard dismiss action") — tapping a static
+# label dismisses it instead.
+- tapOn: "Welcome back"
 - tapOn: "Log In"
 - assertVisible: "Showtimes"

@@ -13,7 +13,7 @@
  * no sign at all that the tap had registered.
  */
 import { useState } from "react";
-import { ActivityIndicator, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import * as AppleAuthentication from "expo-apple-authentication";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useRouter } from "expo-router";
@@ -170,7 +170,12 @@ export default function SocialSignInSection({
       const code = (googleError as { code?: string })?.code;
       if (code === statusCodes.SIGN_IN_CANCELLED) return;
       console.log("Google sign-in error", googleError);
-      // Error handled by useAuth for API failures; silently ignored otherwise.
+      // Errors from the API call itself are handled by useAuth's error banner;
+      // this only catches failures in the native SDK step before that, which
+      // otherwise fail with no visible sign at all. Temporary until we've
+      // tracked down why this is failing on iOS.
+      const message = (googleError as { message?: string })?.message ?? String(googleError);
+      Alert.alert("Google sign-in failed", `${code ?? "no code"}: ${message}`);
     } finally {
       setBusy(null);
     }

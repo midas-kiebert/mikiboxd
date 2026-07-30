@@ -1,0 +1,5 @@
+appId: com.midaskiebert.mikino
+---
+- runFlow: login.yaml
+- tapOn: "Friends"
+- takeScreenshot: 03-friends

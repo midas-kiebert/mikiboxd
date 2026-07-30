@@ -1,0 +1,129 @@
+name: iOS App Store screenshots
+
+# Builds the mobile app for the iOS Simulator, drives it with Maestro against
+# staging, and captures App Store Connect screenshots for the required
+# 6.5-inch iPhone and 13-inch iPad display classes. Manual only: this hits the
+# staging backend with a real test account and burns macOS runner minutes, so
+# it should never run on every push.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  screenshots:
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: iphone-6.5
+            device_type_name: "iPhone 11 Pro Max"
+            device_type_fallback: "iPhone 13 Pro Max"
+          - label: ipad-13
+            device_type_name: "iPad Pro 13-inch (M4)"
+            device_type_fallback: "iPad Pro (12.9-inch) (6th generation)"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.18.0"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prebuild native iOS project
+        working-directory: mobile
+        env:
+          CI: "1"
+        run: npx expo prebuild --platform ios
+
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Create and boot simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          DEVICE_TYPE_ID=$(xcrun simctl list devicetypes -j | \
+            jq -r --arg name "${{ matrix.device_type_name }}" \
+            '.devicetypes[] | select(.name == $name) | .identifier' | head -n1)
+          if [ -z "$DEVICE_TYPE_ID" ]; then
+            echo "Primary device type not found, trying fallback: ${{ matrix.device_type_fallback }}"
+            DEVICE_TYPE_ID=$(xcrun simctl list devicetypes -j | \
+              jq -r --arg name "${{ matrix.device_type_fallback }}" \
+              '.devicetypes[] | select(.name == $name) | .identifier' | head -n1)
+          fi
+          if [ -z "$DEVICE_TYPE_ID" ]; then
+            echo "Neither device type is available on this runner image. Available device types:"
+            xcrun simctl list devicetypes
+            exit 1
+          fi
+
+          RUNTIME_ID=$(xcrun simctl list runtimes -j | \
+            jq -r '[.runtimes[] | select(.identifier | contains("com.apple.CoreSimulator.SimRuntime.iOS")) | select(.isAvailable == true)] | sort_by(.version) | last | .identifier')
+
+          UDID=$(xcrun simctl create "ci-${{ matrix.label }}" "$DEVICE_TYPE_ID" "$RUNTIME_ID")
+          xcrun simctl boot "$UDID"
+
+          # Grant notification permission up front so the OS permission dialog
+          # never interrupts a Maestro flow.
+          xcrun simctl privacy "$UDID" grant notifications com.midaskiebert.mikino || true
+
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Start Metro bundler
+        working-directory: mobile
+        env:
+          CI: "1"
+        run: |
+          # __DEV__ (and therefore the staging API URL, see app/_layout.tsx)
+          # is only true for a bundle actually served by Metro, so it has to
+          # be started and left running in the background rather than let
+          # `expo run:ios` spawn+attach to it, which would block this step
+          # forever streaming logs.
+          nohup npx expo start --non-interactive > metro.log 2>&1 &
+          echo $! > metro.pid
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8081/status && break
+            sleep 2
+          done
+
+      - name: Build and launch app on simulator
+        working-directory: mobile
+        env:
+          CI: "1"
+        run: npx expo run:ios --device "${{ steps.sim.outputs.udid }}" --no-bundler
+
+      - name: Run Maestro screenshot flows
+        working-directory: mobile/.maestro/flows
+        env:
+          MAESTRO_TEST_EMAIL: ${{ secrets.SCREENSHOT_TEST_EMAIL }}
+          MAESTRO_TEST_PASSWORD: ${{ secrets.SCREENSHOT_TEST_PASSWORD }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/screenshots/${{ matrix.label }}"
+          for flow in screenshot-showtimes.yaml screenshot-agenda.yaml screenshot-friends.yaml; do
+            maestro --device "${{ steps.sim.outputs.udid }}" test "$flow" \
+              --env MAESTRO_TEST_EMAIL="$MAESTRO_TEST_EMAIL" \
+              --env MAESTRO_TEST_PASSWORD="$MAESTRO_TEST_PASSWORD"
+          done
+          mv ./*.png "$GITHUB_WORKSPACE/screenshots/${{ matrix.label }}/"
+
+      - name: Stop Metro bundler
+        if: always()
+        working-directory: mobile
+        run: '[ -f metro.pid ] && kill "$(cat metro.pid)" || true'
+
+      - name: Shut down simulator
+        if: always()
+        run: xcrun simctl shutdown "${{ steps.sim.outputs.udid }}" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ matrix.label }}
+          path: screenshots/${{ matrix.label }}

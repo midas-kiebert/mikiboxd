@@ -63,7 +63,7 @@ Legend:
 
 - [x] `auth_schemas.py` — Token and token-payload shapes (not a DB model)
 - [x] `user.py` — User account (email, password hash, settings, flags)
-- [x] `cinema.py` — Cinema venue (name, city, coords, seating preset)
+- [x] `cinema.py` — Cinema venue (`key` identity + display `name` + `aliases`, city, seating preset). `CinemaBase` holds only what clients are served; `key`/`aliases` are backend-only and sit on `Cinema`/`CinemaCreate`
 - [x] `cinema_selection.py` — Which cinemas a user has selected
 - [x] `cinema_preset.py` — Saved named sets of cinema selections
 - [x] `movie.py` — Movie metadata (title, duration, genres, poster). Positive id = TMDB id; negative id = synthetic listing (e.g. sneak preview) via `sneak_preview_movie()` / `is_synthetic_movie_id`
@@ -74,7 +74,7 @@ Legend:
 - [x] `showtime_visibility.py` — Per-showtime visibility mode + effective-visibility cache
 - [x] `showtime_source_presence.py` — Tracks which scraper provided a showtime
 - [x] `scrape_run.py` — Metadata about each scraping execution
-- [x] `scrape_recap.py` — Stored per-run scrape recap (stitched into one daily email)
+- [x] `scrape_recap.py` — Stored per-run scrape recap (metrics + HTML + attachments; the day's rows are rendered into one email)
 - [x] `friendship.py` — Accepted friend relationships (+ per-friend `shares_status`)
 - [x] `filter_preset.py` — Saved filter configurations (movies or showtimes scope)
 - ~~`friend_group.py`~~ — deleted (friend groups retired in the visibility overhaul)
@@ -130,7 +130,7 @@ Legend:
 - [x] `notification.py` — Notification-centre row queries (upsert, feed, decay)
 - [ ] `friendship.py` — Friend request and friendship queries (+ status-sharing)
 - ~~`friend_group.py`~~ — deleted (friend groups retired)
-- [ ] `cinema.py` — Cinema queries
+- [ ] `cinema.py` — Cinema queries. Resolve by `get_cinema_id_by_key`; `get_cinema_id_by_name_or_alias` is only for names arriving from outside (Cineville venues). `upsert_cinema` matches on key so a rename in cinemas.yaml edits the row in place
 - [ ] `cinema_preset.py` — Cinema preset CRUD
 - [ ] `filter_preset.py` — Filter preset CRUD
 - [ ] `watchlist.py` — Watchlist selection CRUD
@@ -159,6 +159,8 @@ Legend:
 - [ ] `scrape_sync.py` — Triggers scraping from the API layer
 - [ ] `analytics_dashboard.py` — Aggregates AnalyticsEvent/Notification/ShowtimePing/User data for the admin overview
 - [x] `scrape_monitor.py` — Read-only aggregation of ScrapeRun/ScrapeRecap for the admin scrape monitor (deltas + anomaly flags)
+- [x] `scrape_recap_render.py` — `RecapRunMetrics` + the recap renderer; the daily email is grouped by statistic (combined value, then each run's) instead of stitching per-run reports, and the long diagnostic dumps live in JSON attachments only
+- [x] `showtime_title_conflict.py` — Recognizing the same screening listed by Cineville and a cinema scraper under near-identical titles; used both to stop the duplicate being inserted (`upsert_showtime`) and to clean up existing ones (`runner._delete_cineville_title_conflicts`). Also collects the resulting `SourceDisagreement`s, which the recap reports as TMDB matches to review
 
 ---
 
@@ -560,7 +562,7 @@ Only components created or reworked during the cleanup are listed here; the rest
 - [ ] `backend/Dockerfile` — Backend image (multi-stage, uv, uvicorn)
 - [ ] `frontend/Dockerfile` — Frontend image (Vite build + Nginx)
 - [ ] `.env` structure — What variables are required? What are the defaults?
-- [ ] `alembic/versions/` — 74 migrations: understand the schema evolution
+- [ ] `alembic/versions/` — 106 migrations: understand the schema evolution
 - [ ] `.pre-commit-config.yaml` — What hooks run on commit?
 
 ---

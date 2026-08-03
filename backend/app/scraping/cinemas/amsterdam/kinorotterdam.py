@@ -3,4 +3,4 @@ from app.scraping.cinemas.generic.eagerly import GenericEagerlyScraper
 
 class KinoRotterdamScraper(GenericEagerlyScraper):
     def __init__(self) -> None:
-        super().__init__(cinema="KINO", url_base="https://www.kinorotterdam.nl/")
+        super().__init__(cinema_key="kino", url_base="https://www.kinorotterdam.nl/")

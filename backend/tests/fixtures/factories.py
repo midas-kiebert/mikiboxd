@@ -92,7 +92,9 @@ class CinemaCreateFactory(Factory):
     class Meta:
         model = CinemaCreate
 
+    key = Sequence(lambda n: f"cinema-create-{n}")
     name = Faker("company")
+    aliases = LazyFunction(list)
     cineville = Faker("boolean", chance_of_getting_true=50)
     badge_bg_color = Faker("color")
     badge_text_color = Faker("color")
@@ -111,7 +113,9 @@ class CinemaFactory(SQLModelFactory):
         model = Cinema
 
     id = Sequence(lambda n: n + 1)
+    key = Sequence(lambda n: f"cinema-{n}")
     name = Faker("company")
+    aliases = LazyFunction(list)
     cineville = Faker("boolean", chance_of_getting_true=50)
     badge_bg_color = Faker("color")
     badge_text_color = Faker("color")

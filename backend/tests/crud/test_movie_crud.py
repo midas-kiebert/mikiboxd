@@ -945,6 +945,46 @@ def test_get_movies_search_field_cinema(
     assert {m.id for m in movies} == {movie_match.id}
 
 
+def test_get_movies_search_field_cinema_matches_alias(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    cinema_factory: Callable[..., Cinema],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    """A renamed cinema stays findable under the name the user knows it by.
+
+    The query matches only the alias, never the shortened display name, so this
+    fails if aliases are dropped from the search.
+    """
+    user = user_factory()
+    cinema_match = cinema_factory(
+        name="Louis Hartlooper",
+        aliases=["Louis Hartlooper Complex"],
+    )
+    cinema_other = cinema_factory(name="Plaza", aliases=[])
+    movie_match = movie_factory(title="A Film", directors=[])
+    movie_other = movie_factory(title="B Film", directors=[])
+    showtime_factory(movie=movie_match, cinema=cinema_match)
+    showtime_factory(movie=movie_other, cinema=cinema_other)
+
+    movies = movie_crud.get_movies(
+        session=db_transaction,
+        current_user_id=user.id,
+        letterboxd_username=user.letterboxd_username,
+        limit=20,
+        offset=0,
+        filters=Filters(
+            snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+            query="hartlooper complex",
+            search_field=SearchField.CINEMA,
+        ),
+    )
+
+    assert {m.id for m in movies} == {movie_match.id}
+
+
 def test_get_movies_search_field_friend(
     *,
     db_transaction: Session,

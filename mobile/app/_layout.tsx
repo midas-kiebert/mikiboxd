@@ -95,8 +95,14 @@ const INSTANT_SCREEN_OPTIONS = {
 // the backend checks against settings.GOOGLE_CLIENT_IDS. Skipped entirely in
 // Expo Go, which doesn't bundle this native module.
 const googleWebClientId = Constants.expoConfig?.extra?.googleWebClientId as string | undefined;
+// iOS-only: without a GoogleService-Info.plist, RNGoogleSignIn can't derive
+// its own client ID and throws at configure() time without this.
+const googleIosClientId = Constants.expoConfig?.extra?.googleIosClientId as string | undefined;
 if (isGoogleSignInAvailable && googleWebClientId) {
-  getGoogleSignin().GoogleSignin.configure({ webClientId: googleWebClientId });
+  getGoogleSignin().GoogleSignin.configure({
+    webClientId: googleWebClientId,
+    ...(googleIosClientId ? { iosClientId: googleIosClientId } : {}),
+  });
 }
 
 setStorage({

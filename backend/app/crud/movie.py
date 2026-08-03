@@ -422,9 +422,14 @@ def _array_search_clause(column, query: str) -> ColumnElement[bool]:
 
 
 def _matching_cinema_ids_subquery(query: str):
+    # Aliases are searched alongside the display name so a cinema stays findable
+    # under the name a user knows it by, including one it has been renamed from.
     return (
         select(col(Cinema.id))
-        .where(_unaccent_ilike(col(Cinema.name), query))
+        .where(
+            _unaccent_ilike(col(Cinema.name), query)
+            | _array_search_clause(col(Cinema.aliases), query)
+        )
         .scalar_subquery()
     )
 

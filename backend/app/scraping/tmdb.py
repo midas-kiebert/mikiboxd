@@ -718,6 +718,40 @@ def determine_post_enrichment_quality(
     return pre_quality
 
 
+def _rescore_title_after_enrichment(
+    *,
+    candidate: CandidateQuality,
+    enrichment: EnrichmentQuality,
+) -> tuple[Quality, Quality]:
+    """Re-judge a candidate once enrichment has revealed its other titles.
+
+    The pre-enrichment title score only ever sees TMDB's primary and original
+    title. For a foreign film TMDB titles by its romanized original — "Riri
+    Shushu no Subete" for *All About Lily Chou-Chou* — an English-language
+    cinema listing scores CONTRADICTORY against both, and that verdict used to
+    be frozen into the candidate's quality for the rest of the pipeline. A
+    same-director look-alike whose literal title happens to contain the query
+    (the making-of documentary) therefore started a full quality level ahead and
+    stayed there, even though enrichment had already found the exact English
+    title among the real film's alternative titles.
+
+    Enrichment titles only ever raise the verdict: a candidate whose primary
+    title already matched keeps its score, and an alias can never be used to
+    argue a candidate matches *less* well than its own title says.
+    """
+    effective_title_quality = max(candidate.title_quality, enrichment.title_quality)
+    if effective_title_quality == candidate.title_quality:
+        return candidate.title_quality, candidate.quality
+
+    rescored_pre_quality = determine_pre_enrichment_quality(
+        source_quality=candidate.source_quality,
+        title_quality=effective_title_quality,
+        year_quality=candidate.year_quality,
+        language_quality=candidate.language_quality,
+    )
+    return effective_title_quality, max(candidate.quality, rescored_pre_quality)
+
+
 def apply_enrichment_to_candidates(
     *,
     pre_candidates: Sequence[CandidateQuality],
@@ -752,19 +786,26 @@ def apply_enrichment_to_candidates(
             for other in pre_candidates
             if other.movie.id != candidate.movie.id
         )
+        enrichment = enrichment_by_id[candidate.movie.id]
+        effective_title_quality, effective_pre_quality = (
+            _rescore_title_after_enrichment(
+                candidate=candidate,
+                enrichment=enrichment,
+            )
+        )
         new_quality = determine_post_enrichment_quality(
             source_quality=candidate.source_quality,
-            title_quality=candidate.title_quality,
+            title_quality=effective_title_quality,
             year_quality=candidate.year_quality,
-            pre_quality=candidate.quality,
-            enrichment=enrichment_by_id[candidate.movie.id],
+            pre_quality=effective_pre_quality,
+            enrichment=enrichment,
             has_viable_higher_option=has_viable_higher_option,
         )
         adjusted.append(
             CandidateQuality(
                 movie=candidate.movie,
                 source_quality=candidate.source_quality,
-                title_quality=candidate.title_quality,
+                title_quality=effective_title_quality,
                 year_quality=candidate.year_quality,
                 language_quality=candidate.language_quality,
                 quality=new_quality,
@@ -973,6 +1014,26 @@ def _disambiguate_ambiguous_top_quality(
             }
         )
         remaining_ids.intersection_update(preferred_ids)
+
+    # A film and its making-of, or an original and its same-director remake, tie
+    # on people and often on title too; the release year is the thing that
+    # actually tells them apart. Weak enough to intersect with the other signals
+    # rather than decide on its own — year+runtime already has its own rule above.
+    exact_year_ids = {
+        candidate.movie.id for candidate in top if candidate.year_quality >= GOOD
+    }
+    off_year_ids = {
+        candidate.movie.id for candidate in top if candidate.year_quality < GOOD
+    }
+    if exact_year_ids and off_year_ids:
+        active_signals.append(
+            {
+                "signal": "prefer_exact_year",
+                "preferred_candidate_ids": sorted(exact_year_ids),
+                "off_year_candidate_ids": sorted(off_year_ids),
+            }
+        )
+        remaining_ids.intersection_update(exact_year_ids)
 
     popularity_leader_id, popularity_diagnostics = _clear_popularity_leader(
         candidates=top

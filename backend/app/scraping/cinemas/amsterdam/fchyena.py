@@ -23,7 +23,7 @@ from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
 
-CINEMA = "FC Hyena"
+CINEMA_KEY = "fc-hyena"
 
 
 def clean_title(title: str) -> str:
@@ -37,9 +37,10 @@ def clean_title(title: str) -> str:
 
 class FCHyenaScraper(BaseCinemaScraper):
     def __init__(self) -> None:
+        self.cinema_key = CINEMA_KEY
         with get_db_context() as session:
-            self.cinema_id = cinema_crud.get_cinema_id_by_name(
-                session=session, name=CINEMA
+            self.cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=CINEMA_KEY
             )
 
     def _process_film_element(
@@ -57,11 +58,13 @@ class FCHyenaScraper(BaseCinemaScraper):
 
         director_element = film_element.find(lambda tag: tag.string == "Regie")
         if not isinstance(director_element, Tag):
-            logger.warning(f"Could not find director for {title_query} in {CINEMA}")
+            logger.warning(f"Could not find director for {title_query} in {CINEMA_KEY}")
             return None
         director_sibling = director_element.next_sibling
         if not isinstance(director_sibling, str):
-            logger.warning(f"Could not parse director for {title_query} in {CINEMA}")
+            logger.warning(
+                f"Could not parse director for {title_query} in {CINEMA_KEY}"
+            )
             return None
         directors = [
             director.strip() for director in director_sibling.strip().split(",")
@@ -76,7 +79,7 @@ class FCHyenaScraper(BaseCinemaScraper):
                 else None
             )
         else:
-            logger.debug(f"Could not find actor for {title_query} in {CINEMA}")
+            logger.debug(f"Could not find actor for {title_query} in {CINEMA_KEY}")
             actor = None
 
         # "Taal" combines spoken language and subtitles in free text, e.g.

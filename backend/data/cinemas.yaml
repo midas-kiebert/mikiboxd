@@ -1,3 +1,16 @@
+# `key` is the cinema's identity: it is what the seeder upserts on and what
+# scrapers look themselves up by, so it must never change once a cinema is live.
+# Nothing outside the backend ever sees it.
+#
+# `name` is the display name, and is the only name clients are shown. It is free
+# to change at any time — editing it here renames the cinema in place on the next
+# deploy, keeping its id and all of its showtimes.
+#
+# `aliases` are the other names this cinema is known by: names Cineville uses for
+# the venue, and former display names. They are matched when ingesting Cineville
+# showtimes and when a user searches by cinema, so a rename can neither break
+# ingestion nor make the cinema unsearchable under its old name.
+#
 # Optional `seating` presets per cinema (defined in app/validators/cinema_seating.py):
 # - unknown (default if omitted) — row and seat accept a letter or 1-2 digits
 # - free                        — no assigned seating, no seat input allowed
@@ -6,56 +19,64 @@
 # - number-letter               — row: 1-2 digits, seat: single letter
 # - letter-letter               — row: single letter, seat: single letter
 
-- name: Eye
+- key: eye
+  name: Eye
   city: Amsterdam
   cineville: true
   badge_bg_color: "cyan"
   url: "https://www.eyefilm.nl"
   seating: "free"
 
-- name: LAB111
+- key: lab111
+  name: LAB111
   city: Amsterdam
   cineville: true
   badge_bg_color: "pink"
   url: "https://www.lab111.nl"
   seating: "free"
 
-- name: Kriterion
+- key: kriterion
+  name: Kriterion
   city: Amsterdam
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.kriterion.nl"
   seating: "free"
 
-- name: Filmhallen
+- key: filmhallen
+  name: Filmhallen
   city: Amsterdam
   cineville: true
   badge_bg_color: "green"
   url: "https://www.filmhallen.nl"
   seating: "number-number"
 
-- name: The Movies
+- key: the-movies
+  name: The Movies
   city: Amsterdam
   cineville: true
   badge_bg_color: "orange"
   url: "https://www.themovies.nl"
   seating: "number-number"
 
-- name: FC Hyena
+- key: fc-hyena
+  name: FC Hyena
   city: Amsterdam
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.fchyena.nl"
   seating: "free"
 
-- name: "De Uitkijk"
+- key: de-uitkijk
+  name: "De Uitkijk"
   city: Amsterdam
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.uitkijk.nl"
   seating: "free"
 
-- name: Filmkoepel
+- key: filmkoepel
+  name: Filmkoepel
   city: Haarlem
   cineville: true
   badge_bg_color: "yellow"
@@ -63,427 +84,554 @@
   url: "https://www.filmkoepel.nl"
   seating: "number-number"
 
-- name: Lido
+- key: lido
+  name: Lido
   city: Leiden
   cineville: true
   badge_bg_color: "orange"
   url: "https://www.bioscopenleiden.nl"
   seating: "number-number"
 
-- name: Trianon
+- key: trianon
+  name: Trianon
   city: Leiden
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.bioscopenleiden.nl"
   seating: "number-number"
 
-- name: Kijkhuis
+- key: kijkhuis
+  name: Kijkhuis
   city: Leiden
   cineville: true
   badge_bg_color: "teal"
   url: "https://www.bioscopenleiden.nl"
   seating: "number-number"
 
-- name: Louis Hartlooper Complex
+- key: louis-hartlooper-complex
+  name: Louis Hartlooper
+  aliases: ["Louis Hartlooper Complex"]
   city: Utrecht
   cineville: true
   badge_bg_color: "green"
   url: "https://www.hartlooper.nl"
   seating: "number-number"
 
-- name: Slachtstraat
+- key: slachtstraat
+  name: Slachtstraat
   city: Utrecht
   cineville: true
   badge_bg_color: "red"
   url: "https://www.slachtstraat.nl"
   seating: "number-number"
 
-- name: Springhaver
+- key: springhaver
+  name: Springhaver
   city: Utrecht
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.springhaver.nl"
   seating: "number-number"
 
-- name: KINO
+- key: kino
+  name: KINO
   city: Rotterdam
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.kinorotterdam.nl"
   seating: "number-number"
 
-- name: Aan de Slinger
+- key: aan-de-slinger
+  name: Aan de Slinger
   city: Houten
   cineville: true
   badge_bg_color: "pink"
   url: "https://www.aandeslinger.nl"
 
-- name: Bijlmerbios
+- key: bijlmerbios
+  name: Bijlmerbios
   city: Amsterdam
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.bijlmerbios.com"
 
-- name: Chassé Cinema
+- key: chasse-cinema
+  name: Chassé
+  aliases: "Chassé Cinema"
   city: Breda
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.chasse.nl"
 
 
-- name: Cinecenter
+- key: cinecenter
+  name: Cinecenter
   city: Amsterdam
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.cinecenter.nl"
 
-- name: Cinecitta
+- key: cinecitta
+  name: Cinecitta
   city: Tilburg
   cineville: true
   badge_bg_color: "pink"
   url: "https://cinecittatilburg.nl"
 
-- name: Cinema Amstelveen
+- key: cinema-amstelveen
+  name: C. Amstelveen
+  aliases: ["Cinema Amstelveen"]
   city: Amsterdam
   cineville: true
   badge_bg_color: "purple"
   url: "https://schouwburgamstelveen.nl/nl/cinema/"
 
-- name: Cinema De Vlugt
+- key: cinema-de-vlugt
+  name: C. De Vlugt
+  aliases: "[Cinema de Vlugt]"
   city: Amsterdam
   cineville: true
   badge_bg_color: "green"
   url: "https://www.cinemadevlugt.nl"
 
-- name: Cinema Enkhuizen
+- key: cinema-enkhuizen
+  name: C. Enkhuizen
+  aliases: ["Cinema Enkhuizen"]
   city: Enkhuizen
   cineville: true
   badge_bg_color: "orange"
   url: "https://www.cinemaenkhuizen.nl"
 
-- name: Cinema Middelburg
+- key: cinema-middelburg
+  name: C. Middelburg
+  aliases: ["Cinema Middelburg"]
   city: Middelburg
   cineville: true
   badge_bg_color: "teal"
   url: "https://www.cinemamiddelburg.nl"
 
-- name: Cinema Oostereiland
+- key: cinema-oostereiland
+  name: C. Oostereiland
+  aliases: ["Cinema Oostereiland"]
   city: Hoorn
   cineville: true
   badge_bg_color: "red"
   url: "https://www.cinemaoostereiland.nl"
 
-- name: Cinerama
+- key: cinerama
+  name: Cinerama
   city: Rotterdam
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.cineramabios.nl"
 
-- name: Concordia
+- key: concordia
+  name: Concordia
   city: Enschede
   cineville: true
   badge_bg_color: "cyan"
   url: "https://www.concordia.nl/film"
 
-- name: Corso Bioscoop
+- key: corso-bioscoop
+  name: Corso
+  aliases: ["Corso Bioscoop"]
   city: Castricum
   cineville: true
   badge_bg_color: "red"
   url: "https://www.corsobioscoop.nl"
 
-- name: De Balie
+- key: de-balie
+  name: De Balie
   city: Amsterdam
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.debalie.nl"
 
-- name: De Cacaofabriek
+- key: de-cacaofabriek
+  name: De Cacaofabriek
   city: Helmond
   cineville: true
   badge_bg_color: "green"
   url: "https://www.cacaofabriek.nl"
 
-- name: De Fabriek
+- key: de-fabriek
+  name: De Fabriek
   city: Zaandam
   cineville: true
   badge_bg_color: "cyan"
   url: "https://www.de-fabriek.nl"
 
-- name: De Lieve Vrouw
+- key: de-lieve-vrouw
+  name: De Lieve Vrouw
   city: Amersfoort
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.delievevrouw.nl"
 
-- name: De Omval Diemen
+- key: de-omval-diemen
+  name: De Omval
+  aliases: ["De Omval Diemen"]
   city: Amsterdam
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.theaterdeomval.nl/"
 
-- name: Filmhuis Alkmaar
+- key: filmhuis-alkmaar
+  name: FH Alkmaar
+  aliases: ["Filmhuis Alkmaar"]
   city: Alkmaar
   cineville: true
   badge_bg_color: "orange"
   url: "https://www.filmhuisalkmaar.nl"
 
-- name: Filmhuis Breda
-  city: Breda
-  cineville: true
-  badge_bg_color: "green"
-  url: "https://www.filmhuisbreda.nl"
-
-- name: Filmhuis Bussum
+- key: filmhuis-bussum
+  name: FH Bussum
+  aliases: ["Filmhuis Bussum"]
   city: Bussum
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.filmhuisbussum.nl"
 
-- name: Filmhuis Cavia
+- key: filmhuis-cavia
+  name: FH Cavia
+  aliases: ["Filmhuis Cavia"]
   city: Amsterdam
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.filmhuiscavia.nl"
   seating: "free"
 
-- name: Filmhuis Den Haag
+- key: filmhuis-den-haag
+  name: FH Den Haag
+  aliases: ["Filmhuis Den Haag"]
   city: Den Haag
   cineville: true
   badge_bg_color: "teal"
   url: "https://www.filmhuisdenhaag.nl"
 
-- name: Filmhuis Movie W
+- key: filmhuis-movie-w
+  name: FH Movie W
+  aliases: ["Filmhuis Movie W"]
   city: Wageningen
   cineville: true
   badge_bg_color: "red"
   url: "https://www.moview.nl"
 
-- name: Filmhuis Zevenaar
+- key: filmhuis-zevenaar
+  name: FH Zevenaar
+  aliases: ["Filmhuis Zevenaar"]
   city: Zevenaar
   cineville: true
   badge_bg_color: "orange"
   url: "https://www.filmhuiszevenaar.nl"
 
-- name: Filmtheater De Witt
+- key: filmtheater-de-witt
+  name: FT De Witt
+  aliases: ["Filmtheater De Witt"]
   city: Dordrecht
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.dewittdordrecht.nl"
 
-- name: Filmtheater Hilversum
+- key: filmtheater-hilversum
+  name: FT Hilversum
+  aliases: ["Filmtheater Hilversum"]
   city: Hilversum
   cineville: true
   badge_bg_color: "red"
   url: "https://www.filmtheaterhilversum.nl"
 
-- name: Filmtheater Voorschoten
+- key: filmtheater-voorschoten
+  name: FT Voorschoten
+  aliases: ["Filmtheater Voorschoten"]
   city: Voorschoten
   cineville: true
   badge_bg_color: "cyan"
   url: "https://www.filmtheatervoorschoten.nl"
 
-- name: fiZi
+- key: fizi
+  name: fiZi
   city: Zierikzee
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.fizi.nl"
 
-- name: Flora
+- key: flora
+  name: Flora
   city: Den Haag
   cineville: true
   badge_bg_color: "red"
   url: "https://www.florafilmtheater.nl"
 
-- name: Focus Filmtheater
+- key: focus-filmtheater
+  name: Focus
+  aliases: ["Focus Filmtheater"]
   city: Arnhem
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.focusarnhem.nl"
 
-- name: Forum
+- key: forum
+  name: Forum
   city: Groningen
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.forum.nl"
 
-- name: Fraterhuis
+- key: fraterhuis
+  name: Fraterhuis
   city: Zwolle
   cineville: true
   badge_bg_color: "cyan"
   url: "https://www.filmtheaterfraterhuis.nl"
 
-- name: Gigant
+- key: gigant
+  name: Gigant
   city: Apeldoorn
   cineville: true
   badge_bg_color: "red"
   url: "https://www.gigant.nl"
 
-- name: Haventheater IJmuiden
+- key: haventheater-ijmuiden
+  name: Haventh. IJmuiden
+  aliases: ["Haventheater IJmuiden"]
   city: IJmuiden
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.haventheaterijmuiden.nl"
 
-- name: Heerenstraat Theater
+- key: heerenstraat-theater
+  name: Heerenstraat Th.
+  aliases: ["Heerenstraat Theater"]
   city: Wageningen
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.heerenstraattheater.nl"
 
-- name: Het Documentaire Paviljoen
+- key: het-documentaire-paviljoen
+  name: Docu. Paviljoen
+  aliases: ["Het Documentaire Paviljoen"]
   city: Amsterdam
   cineville: true
   badge_bg_color: "pink"
   url: "https://www.idfa.nl/vondelpark/"
 
-- name: Het Ketelhuis
+- key: het-ketelhuis
+  name: Het Ketelhuis
   city: Amsterdam
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.ketelhuis.nl"
 
-- name: Hoogt on Tour
+- key: hoogt-on-tour
+  name: Hoogt on Tour
   city: Utrecht
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.hoogt.nl"
 
-- name: LAB-1
+- key: lab-1
+  name: LAB-1
   city: Eindhoven
   cineville: true
   badge_bg_color: "red"
   url: "https://www.lab-1.nl"
 
-- name: LantarenVenster
+- key: lantarenvenster
+  name: LantarenVenster
   city: Rotterdam
   cineville: true
   badge_bg_color: "green"
   url: "https://www.lantarenvenster.nl"
 
-- name: Ledeltheater
+- key: ledeltheater
+  name: Ledeltheater
   city: Oostburg
   cineville: true
   badge_bg_color: "red"
   url: "https://www.ledeltheater.nl"
 
-- name: Lumen
+- key: lumen
+  name: Lumen
   city: Delft
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.filmhuis-lumen.nl"
 
-- name: Lumière Cinema
+- key: lumiere-cinema
+  name: Lumière
+  aliases: ["Lumière Cinema"]
   city: Maastricht
   cineville: true
   badge_bg_color: "teal"
   url: "https://www.lumiere.nl"
 
-- name: LUX
+- key: lux
+  name: LUX
   city: Nijmegen
   cineville: true
   badge_bg_color: "orange"
   url: "https://www.lux-nijmegen.nl"
 
-- name: Luxor Theater
+- key: luxor-theater
+  name: Luxor
+  aliases: ["Luxor Theater"]
   city: Zutphen
   cineville: true
   badge_bg_color: "red"
   url: "https://www.luxortheater.nl"
 
-- name: Melkweg Cinema
+- key: melkweg-cinema
+  name: Melkweg
+  aliases: ["Melkweg Cinema"]
   city: Amsterdam
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.melkweg.nl/film"
 
-- name: MIMIK
+- key: mimik
+  name: MIMIK
   city: Deventer
   cineville: true
   badge_bg_color: "red"
   url: "https://www.mimik.nl"
 
-- name: Natlab
+- key: natlab
+  name: Natlab
   city: Eindhoven
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.natlab.nl"
 
-- name: "Podium 't Beest"
+- key: podium-t-beest
+  name: "'t Beest"
+  aliases: ["Podium 't Beest"]
   city: Goes
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.tbeest.nl"
 
-- name: Rialto De Pijp
+- key: rialto-de-pijp
+  name: Rialto De Pijp
   city: Amsterdam
   cineville: true
   badge_bg_color: "red"
   url: "https://www.rialtofilm.nl"
   seating: "free"
 
-- name: Rialto VU
+- key: rialto-vu
+  name: VU Griffioen
+  aliases: ["Rialto VU Griffioen", "Rialto VU"]
   city: Amsterdam
   cineville: true
   badge_bg_color: "blue"
   url: "https://www.rialtofilm.nl"
 
-- name: Schuur
+- key: schuur
+  name: Schuur
   city: Haarlem
   cineville: true
   badge_bg_color: "green"
   url: "https://www.schuur.nl"
 
-- name: Slieker
+- key: slieker
+  name: Slieker
   city: Leeuwarden
   cineville: true
   badge_bg_color: "red"
   url: "https://www.sliekerfilm.nl"
 
-- name: Studio/K
+- key: studio-k
+  name: Studio/K
   city: Amsterdam
   cineville: true
   badge_bg_color: "cyan"
   url: "https://www.studio-k.nu"
   seating: "free"
 
-- name: Theater Dakota
+- key: theater-dakota
+  name: Th. Dakota
+  aliases: ["Theater Dakota"]
   city: Den Haag
   cineville: true
   badge_bg_color: "orange"
   url: "https://www.theaterdakota.nl"
 
-- name: Verkadefabriek
+- key: verkadefabriek
+  name: Verkadefabriek
   city: Den Bosch
   cineville: true
   badge_bg_color: "orange"
   url: "https://www.verkadefabriek.nl"
 
-- name: Visum Mundi
+- key: visum-mundi
+  name: Visum Mundi
   city: Wageningen
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.visummundi.nl"
 
-- name: Wenneker Cinema
+- key: wenneker-cinema
+  name: Wenneker Cinema
   city: Schiedam
   cineville: true
   badge_bg_color: "teal"
   url: "https://www.wennekercinema.nl"
 
-- name: WORM
+- key: worm
+  name: WORM
   city: Rotterdam
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.worm.org"
 
-- name: Cinema The Pulse
+- key: cinema-the-pulse
+  name: C. The Pulse
+  aliases: ["Cinema The Pulse"]
   city: Amsterdam
   cineville: true
   badge_bg_color: "red"
   url: "https://www.cinemathepulse.com"
 
-- name: AnnexCinema
+- key: annexcinema
+  name: AnnexCinema
   city: Woerden
   cineville: true
   badge_bg_color: "purple"
   url: "https://www.annexcinema.nl"
+
+- key: artishock
+  name: Artishock
+  city: Woerden
+  cineville: true
+  badge_bg_color: "cyan"
+  url: "https://www.artishocksoest.nl"
+
+- key: filmhuis-breda
+  name: Botanique
+  aliaes: ["Filmhuis Breda"]
+  city: Breda
+  cineville: true
+  badge_bg_color: "green"
+  url: "https://www.filmhuisbreda.nl"
+
+- key: cinebergen
+  name: Cinebergen
+  city: Bergen (NH)
+  cineville: true
+  badge_bg_color: "red"
+  url: "https://www.cinebergen.nl"
+
+- key: de-drom
+  name: De Drom
+  city: Enkhuizen
+  cineville: true
+  badge_bg_color: "red"
+  url: "https://drom.nl"
+
+- key: de-sien
+  name: De Sien
+  city: Utrecht
+  cineville: true
+  badge_bg_color: "pink"
+  url: "https://desienfilm.nl"

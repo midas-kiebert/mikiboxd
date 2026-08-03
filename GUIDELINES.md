@@ -508,8 +508,17 @@ via the TMDB API.
 
 ### Cinema configuration
 
-Cinema metadata (name, city, seating preset, URL) is defined in `backend/data/cinemas.yaml`.
-This is the source of truth for which cinemas the scraper targets.
+Cinema metadata (key, name, aliases, city, seating preset, URL) is defined in
+`backend/data/cinemas.yaml`. This is the source of truth for which cinemas the scraper
+targets, and `prestart.sh` re-seeds from it on every deploy.
+
+A cinema is identified by its `key`, never by its name: seeding upserts on the key and
+scrapers resolve themselves with `get_cinema_id_by_key`. A key must never change once
+the cinema is live. `name` is only ever a display string — editing it renames the cinema
+in place on the next deploy, with no client release needed, since clients key everything
+on `cinema.id` and only render the name. `aliases` lists the other names the cinema is
+known by (Cineville's venue name, former display names); they are matched when ingesting
+Cineville showtimes and when a user searches by cinema, so renaming can break neither.
 
 ### Seating presets
 

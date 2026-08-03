@@ -98,6 +98,14 @@ class ScrapeExecutionSummary:
     deleted_showtimes: list[scrape_sync_service.DeletedShowtimeInfo] = field(
         default_factory=list
     )
+    # Duplicates of a screening another source already listed, removed by the
+    # Cineville title-conflict cleanup. Kept apart from `deleted_showtimes`:
+    # those genuinely vanished from their source, these never existed twice in
+    # the real world, and mixing them made the recap read as if the same
+    # screenings were being dropped every single run.
+    conflict_deleted_showtimes: list[scrape_sync_service.DeletedShowtimeInfo] = field(
+        default_factory=list
+    )
     errors: list[str] = field(default_factory=list)
     missing_cinemas: list[str] = field(default_factory=list)
     missing_cinema_insert_failures: list[str] = field(default_factory=list)
@@ -190,10 +198,14 @@ def _persist_cineville_results_batch(
     missing_cinema_insert_failures: list[str] = []
 
     with get_db_context() as session:
+        # Cineville names a venue however it likes, which need not be our display
+        # name — so aliases are matched too, and a cinema renamed here keeps
+        # ingesting as long as Cineville's name for it stays in its aliases.
         cinema_id_by_name: dict[str, int] = {
-            cinema.name: cinema.id
+            venue_name: cinema.id
             for cinema in cinema_crud.get_cinemas(session=session)
             if cinema.cineville
+            for venue_name in (cinema.name, *cinema.aliases)
         }
         inserted_movie_ids: set[int] = set()
         processed_movies = 0
@@ -226,7 +238,7 @@ def _persist_cineville_results_batch(
                     cinema_id = cinema_id_by_name.get(venue_name)
                     if cinema_id is None:
                         try:
-                            cinema_id = cinema_crud.get_cinema_id_by_name(
+                            cinema_id = cinema_crud.get_cinema_id_by_name_or_alias(
                                 session=session,
                                 name=venue_name,
                             )
@@ -252,6 +264,11 @@ def _persist_cineville_results_batch(
                         session=session,
                         showtime_create=showtime,
                         commit=False,
+                        # The cinema's own site wins a slot it already listed
+                        # under a near-identical title, so a Cineville
+                        # mis-resolution attaches to that showtime instead of
+                        # adding a duplicate row for the same screening.
+                        yield_to_conflicting_showtime=True,
                     )
                     if db_showtime is not None:
                         observed_by_stream[source_stream].append(
@@ -355,26 +372,6 @@ def _is_missing_cinema_insert_error(error: Exception) -> bool:
             current.__cause__ if current.__cause__ is not None else current.__context__
         )
     return False
-
-
-def _expected_cinema_name(scraper_name: str) -> str | None:
-    return {
-        "EyeScraper": "Eye",
-        "FCHyenaScraper": "FC Hyena",
-        "LAB111Scraper": "LAB111",
-        "UitkijkScraper": "De Uitkijk",
-        "KriterionScraper": "Kriterion",
-        "TheMoviesScraper": "The Movies",
-        "FilmHallenScraper": "Filmhallen",
-        "StudioKScraper": "Studio/K",
-        "RialtoDePijpScraper": "Rialto De Pijp",
-        "RialtoVUScraper": "Rialto VU",
-        "KinoRotterdamScraper": "KINO",
-        "LouisHartlooperComplexScraper": "Louis Hartlooper Complex",
-        "SlachtstraatScraper": "Slachtstraat",
-        "SpringhaverScraper": "Springhaver",
-        "FilmkoepelScraper": "Filmkoepel",
-    }.get(scraper_name)
 
 
 async def _process_cineville_movie_async(
@@ -692,9 +689,9 @@ async def _run_single_cinema_scraper(
         scraper: BaseCinemaScraper = await asyncio.to_thread(scraper_factory)
         cinema_id = getattr(scraper, "cinema_id", None)
         if cinema_id is None:
-            expected_cinema_name = _expected_cinema_name(scraper_name)
+            cinema_key = getattr(scraper, "cinema_key", None)
             raise ValueError(
-                f"Cinema {expected_cinema_name or scraper_name} not found in database"
+                f"Cinema {cinema_key or scraper_name} not found in database"
             )
         if cinema_id is not None:
             source_stream = f"cinema_scraper:{cinema_id}"

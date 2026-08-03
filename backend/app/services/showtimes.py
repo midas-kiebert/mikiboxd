@@ -32,7 +32,7 @@ from app.models.showtime import Showtime, ShowtimeCreate
 from app.schemas.showtime import ShowtimeLoggedIn
 from app.schemas.showtime_ping import SentShowtimePingPublic
 from app.schemas.showtime_visibility import ShowtimeVisibilityPublic
-from app.services import push_notifications
+from app.services import push_notifications, showtime_title_conflict
 from app.utils import now_amsterdam_naive
 from app.validators.cinema_seating import CinemaSeatingPreset, validate_seat_for_preset
 
@@ -68,6 +68,23 @@ def _apply_end_datetime_fallback(
         return
     showtime_create.end_datetime = showtime_create.datetime + timedelta(
         minutes=movie.duration + 15
+    )
+
+
+def _find_conflicting_cinema_scraper_showtime(
+    *,
+    session: Session,
+    showtime_create: ShowtimeCreate,
+) -> Showtime | None:
+    movie = movies_crud.get_movie_by_id(session=session, id=showtime_create.movie_id)
+    if movie is None:
+        return None
+    return showtime_title_conflict.find_conflicting_cinema_scraper_showtime(
+        session=session,
+        cinema_id=showtime_create.cinema_id,
+        showtime_datetime=showtime_create.datetime,
+        movie_id=showtime_create.movie_id,
+        movie_title=movie.title,
     )
 
 
@@ -717,6 +734,7 @@ def upsert_showtime(
     session: Session,
     showtime_create: ShowtimeCreate,
     commit: bool = True,
+    yield_to_conflicting_showtime: bool = False,
 ) -> Showtime | None:
     """
     Insert or update a showtime and return the resulting database row.
@@ -726,6 +744,13 @@ def upsert_showtime(
 
     Returns None (creating nothing) if this exact showtime was previously
     deleted by an admin from the reports page — see DeletedShowtime.
+
+    ``yield_to_conflicting_showtime`` is for the Cineville path: rather than
+    adding a second row for a screening a cinema scraper already listed under a
+    near-identical title, return that row so the Cineville presence attaches to
+    it. Without this the duplicate is created every run and deleted again by
+    ``_delete_cineville_title_conflicts``, which churned the same handful of
+    showtimes through the recap's deletion list on every single scrape.
     """
     # Prefer exact unique match so metadata fallbacks (for example end_datetime)
     # can be applied on unchanged showtimes instead of hitting unique-violation
@@ -755,6 +780,14 @@ def upsert_showtime(
         datetime=showtime_create.datetime,
     ):
         return None
+
+    if existing_showtime is None and yield_to_conflicting_showtime:
+        conflicting_showtime = _find_conflicting_cinema_scraper_showtime(
+            session=session,
+            showtime_create=showtime_create,
+        )
+        if conflicting_showtime is not None:
+            return conflicting_showtime
 
     _apply_end_datetime_fallback(
         session=session,

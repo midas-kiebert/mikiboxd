@@ -62,6 +62,13 @@ def send_email(
         AssertionError: If email settings are not configured.
         EmailDeliveryError: If the SMTP server returns a 4xx/5xx response.
     """
+    if settings.TESTING:
+        # Belt-and-suspenders: even if a test forgets to mock send_email, this
+        # stops the real SMTP call. Callers already treat delivery failures as
+        # non-fatal (see call sites' try/except), so raising here is safe.
+        raise RuntimeError(
+            "send_email() was called during a test run without being mocked"
+        )
     if not settings.emails_enabled:
         raise RuntimeError("no provided configuration for email variables")
     message = emails.Message(

@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     ENVIRONMENT: Environment = Environment.LOCAL
     DEBUG: bool = False
 
+    # Set by scripts/test.sh. Forces emails_enabled off so the test suite never
+    # sends real mail through whatever SMTP creds happen to be in .env.
+    TESTING: bool = False
+
     @field_validator("DEBUG", mode="before")
     @classmethod
     def _normalize_debug_aliases(cls, value: Any) -> Any:

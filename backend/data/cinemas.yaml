@@ -157,7 +157,7 @@
 
 - key: chasse-cinema
   name: Chassé
-  aliases: "Chassé Cinema"
+  aliases: ["Chassé Cinema"]
   city: Breda
   cineville: true
   badge_bg_color: "blue"
@@ -188,7 +188,7 @@
 
 - key: cinema-de-vlugt
   name: C. De Vlugt
-  aliases: "[Cinema de Vlugt]"
+  aliases: ["Cinema de Vlugt"]
   city: Amsterdam
   cineville: true
   badge_bg_color: "green"

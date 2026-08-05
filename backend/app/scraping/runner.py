@@ -159,6 +159,7 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
             existing.has_cinema_scraper_source = True
 
     ids_to_delete: set[int] = set()
+    reassignments: dict[int, int] = {}  # showtime_id -> corrected movie_id
     for slot_showtime_ids in showtimes_by_slot.values():
         cinema_scraper_showtimes = [
             showtimes[showtime_id]
@@ -190,12 +191,11 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
                     cineville_movie_id=candidate.movie_id,
                 )
                 if stale:
-                    # The cinema scraper's row is the wrong movie, not just the
-                    # one to defer to — remove it instead of the correct
-                    # Cineville row so the screening is left listed once.
-                    ids_to_delete.add(conflicting.showtime_id)
-                else:
-                    ids_to_delete.add(candidate.showtime_id)
+                    # The cinema scraper's row has the wrong movie tied to the
+                    # right screening — correct it in place rather than
+                    # deleting it, then remove Cineville's now-redundant row.
+                    reassignments[conflicting.showtime_id] = candidate.movie_id
+                ids_to_delete.add(candidate.showtime_id)
                 record_source_disagreement(
                     SourceDisagreement(
                         cinema_id=candidate.cinema_id,
@@ -213,6 +213,14 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
 
     if not ids_to_delete:
         return []
+
+    if reassignments:
+        for showtime in session.exec(
+            select(Showtime).where(col(Showtime.id).in_(reassignments))
+        ).all():
+            showtime.movie_id = reassignments[showtime.id]
+            session.add(showtime)
+        session.flush()
 
     deleted_showtimes = list(
         session.exec(select(Showtime).where(col(Showtime.id).in_(ids_to_delete))).all()

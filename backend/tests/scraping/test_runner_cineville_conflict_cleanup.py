@@ -231,7 +231,7 @@ def test_keep_showtime_when_it_also_has_cinema_scraper_source(
     assert remaining_showtime_ids == {shared_showtime.id, cinema_showtime.id}
 
 
-def test_delete_stale_cinema_scraper_showtime_instead_of_cineville(
+def test_reassigns_stale_cinema_scraper_showtime_instead_of_deleting_cineville(
     *,
     db_transaction: Session,
     cinema_factory,
@@ -239,8 +239,10 @@ def test_delete_stale_cinema_scraper_showtime_instead_of_cineville(
     showtime_factory,
 ) -> None:
     """When the cinema scraper's match is stale (older resolver version than
-    Cineville's), the cinema scraper's row is the wrong one to keep — deleting
-    Cineville's row instead would leave the wrong movie listed."""
+    Cineville's), its row has the right screening tied to the wrong movie.
+    Correct its movie_id in place and drop Cineville's now-redundant row,
+    rather than deleting the cinema scraper's row outright — the row itself
+    (its id, ticket_link, presence history) is still worth keeping."""
     cinema = cinema_factory(cineville=True)
     cineville_movie = movie_factory(title="All About Lily Chou-Chou")
     cinema_movie = movie_factory(title="All About \"All About Lily Chou-Chou\"")
@@ -289,12 +291,13 @@ def test_delete_stale_cinema_scraper_showtime_instead_of_cineville(
 
     deleted = runner._delete_cineville_title_conflicts(session=db_transaction)
 
-    assert {item.showtime_id for item in deleted} == {cinema_showtime.id}
-    remaining_showtime_ids = set(
+    assert {item.showtime_id for item in deleted} == {cineville_showtime.id}
+    remaining = list(
         db_transaction.exec(
-            select(Showtime.id).where(
+            select(Showtime).where(
                 col(Showtime.id).in_([cineville_showtime.id, cinema_showtime.id])
             )
         ).all()
     )
-    assert remaining_showtime_ids == {cineville_showtime.id}
+    assert {showtime.id for showtime in remaining} == {cinema_showtime.id}
+    assert remaining[0].movie_id == cineville_movie.id

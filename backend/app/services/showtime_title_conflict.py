@@ -235,13 +235,13 @@ def find_conflicting_cinema_scraper_showtime(
                 )
             )
             if stale:
-                # The stale showtime is the wrong movie, not just a duplicate
-                # to defer to — leaving it in place would show the film twice
-                # (this row and the one Cineville is about to create) instead
-                # of once, correctly. Evict it so Cineville's insert lands
-                # clean.
-                session.delete(showtime)
+                # The occupant is the wrong movie, not just the one to defer
+                # to. Correct it in place — same row, same id, just the right
+                # film — rather than deleting it and letting Cineville insert
+                # a second row for the same physical screening.
+                showtime.movie_id = movie_id
+                session.add(showtime)
                 session.flush()
-                continue
+                return showtime
             return showtime
     return None

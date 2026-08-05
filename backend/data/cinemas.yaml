@@ -179,7 +179,7 @@
   url: "https://cinecittatilburg.nl"
 
 - key: cinema-amstelveen
-  name: C. Amstelveen
+  name: Cinema Amstelveen
   aliases: ["Cinema Amstelveen"]
   city: Amsterdam
   cineville: true
@@ -187,7 +187,7 @@
   url: "https://schouwburgamstelveen.nl/nl/cinema/"
 
 - key: cinema-de-vlugt
-  name: C. De Vlugt
+  name: Cinema De Vlugt
   aliases: ["Cinema de Vlugt"]
   city: Amsterdam
   cineville: true
@@ -195,7 +195,7 @@
   url: "https://www.cinemadevlugt.nl"
 
 - key: cinema-enkhuizen
-  name: C. Enkhuizen
+  name: Cinema Enkhuizen
   aliases: ["Cinema Enkhuizen"]
   city: Enkhuizen
   cineville: true
@@ -203,7 +203,7 @@
   url: "https://www.cinemaenkhuizen.nl"
 
 - key: cinema-middelburg
-  name: C. Middelburg
+  name: Cinema Middelburg
   aliases: ["Cinema Middelburg"]
   city: Middelburg
   cineville: true
@@ -211,7 +211,7 @@
   url: "https://www.cinemamiddelburg.nl"
 
 - key: cinema-oostereiland
-  name: C. Oostereiland
+  name: Cinema Oostereiland
   aliases: ["Cinema Oostereiland"]
   city: Hoorn
   cineville: true
@@ -277,7 +277,7 @@
   url: "https://www.theaterdeomval.nl/"
 
 - key: filmhuis-alkmaar
-  name: FH Alkmaar
+  name: Filmhuis Alkmaar
   aliases: ["Filmhuis Alkmaar"]
   city: Alkmaar
   cineville: true
@@ -285,7 +285,7 @@
   url: "https://www.filmhuisalkmaar.nl"
 
 - key: filmhuis-bussum
-  name: FH Bussum
+  name: Filmhuis Bussum
   aliases: ["Filmhuis Bussum"]
   city: Bussum
   cineville: true
@@ -293,7 +293,7 @@
   url: "https://www.filmhuisbussum.nl"
 
 - key: filmhuis-cavia
-  name: FH Cavia
+  name: Filmhuis Cavia
   aliases: ["Filmhuis Cavia"]
   city: Amsterdam
   cineville: true
@@ -302,7 +302,7 @@
   seating: "free"
 
 - key: filmhuis-den-haag
-  name: FH Den Haag
+  name: Filmhuis Den Haag
   aliases: ["Filmhuis Den Haag"]
   city: Den Haag
   cineville: true
@@ -310,7 +310,7 @@
   url: "https://www.filmhuisdenhaag.nl"
 
 - key: filmhuis-movie-w
-  name: FH Movie W
+  name: Filmhuis Movie W
   aliases: ["Filmhuis Movie W"]
   city: Wageningen
   cineville: true
@@ -318,7 +318,7 @@
   url: "https://www.moview.nl"
 
 - key: filmhuis-zevenaar
-  name: FH Zevenaar
+  name: Filmhuis Zevenaar
   aliases: ["Filmhuis Zevenaar"]
   city: Zevenaar
   cineville: true
@@ -326,7 +326,7 @@
   url: "https://www.filmhuiszevenaar.nl"
 
 - key: filmtheater-de-witt
-  name: FT De Witt
+  name: Filmtheater De Witt
   aliases: ["Filmtheater De Witt"]
   city: Dordrecht
   cineville: true
@@ -334,7 +334,7 @@
   url: "https://www.dewittdordrecht.nl"
 
 - key: filmtheater-hilversum
-  name: FT Hilversum
+  name: Filmtheater Hilversum
   aliases: ["Filmtheater Hilversum"]
   city: Hilversum
   cineville: true
@@ -342,7 +342,7 @@
   url: "https://www.filmtheaterhilversum.nl"
 
 - key: filmtheater-voorschoten
-  name: FT Voorschoten
+  name: Filmtheater Voorschoten
   aliases: ["Filmtheater Voorschoten"]
   city: Voorschoten
   cineville: true
@@ -586,7 +586,7 @@
   url: "https://www.worm.org"
 
 - key: cinema-the-pulse
-  name: C. The Pulse
+  name: Cinema The Pulse
   aliases: ["Cinema The Pulse"]
   city: Amsterdam
   cineville: true

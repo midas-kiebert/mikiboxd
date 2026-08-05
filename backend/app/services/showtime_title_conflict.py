@@ -7,7 +7,9 @@ ids produce two rows for one physical screening, and the site shows the film
 twice.
 
 The cinema's own site is treated as the more reliable source, so the Cineville
-row is the one that loses. Two things use that rule:
+row is the one that loses — unless the cinema scraper's match turns out to be
+stale (see ``cinema_scraper_match_is_stale``), in which case Cineville's fresher
+match is kept instead. Two things use that rule:
 
 * ``find_conflicting_cinema_scraper_showtime`` — consulted *before* the Cineville
   row is inserted, so the duplicate is never created and the Cineville presence
@@ -17,6 +19,7 @@ row is the one that loses. Two things use that rule:
   happened to be scraped before the cinema's own site listed the screening).
 """
 
+import json
 import re
 import threading
 import unicodedata
@@ -30,6 +33,7 @@ from sqlmodel import Session, col, select
 from app.models.movie import Movie
 from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
+from app.models.tmdb_lookup_cache import TmdbLookupCache
 from app.utils import clean_title
 
 CINEVILLE_STREAM_PREFIX = "cineville:"
@@ -59,6 +63,14 @@ class SourceDisagreement:
     cinema_scraper_movie_id: int
     cinema_scraper_movie_title: str
     detected_by: str
+    # Which side's row was kept. Normally the cinema scraper, but see
+    # `cinema_scraper_match_is_stale` — a resolver-version bump can make the
+    # cinema scraper's *cached* match wrong until something re-resolves it.
+    kept_movie_id: int = 0
+
+    def __post_init__(self) -> None:
+        if self.kept_movie_id == 0:
+            object.__setattr__(self, "kept_movie_id", self.cinema_scraper_movie_id)
 
 
 _disagreement_lock = threading.Lock()
@@ -115,6 +127,56 @@ def titles_conflict_match(left_title: str, right_title: str) -> bool:
     return similarity >= SINGLE_TOKEN_SIMILARITY_THRESHOLD
 
 
+def _lookup_payload_versions(
+    session: Session, movie_ids: list[int]
+) -> dict[int, tuple[int | None, bool]]:
+    """Movie id -> (payload version, is_manual_override) for each id's TMDB match.
+
+    Missing/unparseable entries map to (None, False).
+    """
+    rows = session.exec(
+        select(Movie.id, TmdbLookupCache.lookup_payload, TmdbLookupCache.is_manual_override)
+        .join(TmdbLookupCache, col(TmdbLookupCache.id) == col(Movie.tmdb_cache_id))
+        .where(col(Movie.id).in_(movie_ids))
+    ).all()
+    versions: dict[int, tuple[int | None, bool]] = dict.fromkeys(
+        movie_ids, (None, False)
+    )
+    for movie_id, lookup_payload, is_manual_override in rows:
+        try:
+            version = json.loads(lookup_payload).get("version")
+        except (ValueError, AttributeError):
+            version = None
+        versions[movie_id] = (version, bool(is_manual_override))
+    return versions
+
+
+def cinema_scraper_match_is_stale(
+    *,
+    session: Session,
+    cinema_scraper_movie_id: int,
+    cineville_movie_id: int,
+) -> bool:
+    """True when the cinema scraper's match predates a matcher fix cineville's doesn't.
+
+    The "cinema scraper always wins" rule assumes both sides were resolved by
+    the same matcher. When the cinema scraper's Movie row was matched by an
+    older ``TMDB_LOOKUP_PAYLOAD_VERSION`` than cineville's, that assumption is
+    false: the cinema scraper's match is a stale answer from a matcher bug that
+    has since been fixed (see the making-of-documentary case this guards
+    against), and cineville's fresher match should be trusted instead. A manual
+    admin override on the cinema scraper's side always wins regardless.
+    """
+    versions = _lookup_payload_versions(
+        session, [cinema_scraper_movie_id, cineville_movie_id]
+    )
+    cinema_version, cinema_is_manual = versions[cinema_scraper_movie_id]
+    cineville_version, _ = versions[cineville_movie_id]
+    if cinema_is_manual or cinema_version is None or cineville_version is None:
+        return False
+    return cineville_version > cinema_version
+
+
 def find_conflicting_cinema_scraper_showtime(
     *,
     session: Session,
@@ -155,6 +217,11 @@ def find_conflicting_cinema_scraper_showtime(
     )
     for showtime, movie in session.exec(stmt).all():
         if titles_conflict_match(movie_title, movie.title):
+            stale = cinema_scraper_match_is_stale(
+                session=session,
+                cinema_scraper_movie_id=movie.id,
+                cineville_movie_id=movie_id,
+            )
             record_source_disagreement(
                 SourceDisagreement(
                     cinema_id=cinema_id,
@@ -164,7 +231,10 @@ def find_conflicting_cinema_scraper_showtime(
                     cinema_scraper_movie_id=movie.id,
                     cinema_scraper_movie_title=movie.title,
                     detected_by=DETECTED_BY_INSERT_GUARD,
+                    kept_movie_id=movie_id if stale else movie.id,
                 )
             )
+            if stale:
+                continue
             return showtime
     return None

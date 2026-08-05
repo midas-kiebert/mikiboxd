@@ -43,6 +43,7 @@ from app.services.showtime_title_conflict import (
     DETECTED_BY_CLEANUP,
     TITLE_NORMALIZE_PATTERN,
     SourceDisagreement,
+    cinema_scraper_match_is_stale,
     consume_source_disagreements,
     record_source_disagreement,
     titles_conflict_match,
@@ -183,7 +184,13 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
                 None,
             )
             if conflicting is not None:
-                ids_to_delete.add(candidate.showtime_id)
+                stale = cinema_scraper_match_is_stale(
+                    session=session,
+                    cinema_scraper_movie_id=conflicting.movie_id,
+                    cineville_movie_id=candidate.movie_id,
+                )
+                if not stale:
+                    ids_to_delete.add(candidate.showtime_id)
                 record_source_disagreement(
                     SourceDisagreement(
                         cinema_id=candidate.cinema_id,
@@ -193,6 +200,9 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
                         cinema_scraper_movie_id=conflicting.movie_id,
                         cinema_scraper_movie_title=conflicting.movie_title,
                         detected_by=DETECTED_BY_CLEANUP,
+                        kept_movie_id=(
+                            candidate.movie_id if stale else conflicting.movie_id
+                        ),
                     )
                 )
 
@@ -1053,9 +1063,47 @@ def _source_disagreement_line(
         f"(movie_id={disagreement.cineville_movie_id}) | "
         f"cinema scraper: {disagreement.cinema_scraper_movie_title} "
         f"(movie_id={disagreement.cinema_scraper_movie_id}) | "
-        f"kept movie_id={disagreement.cinema_scraper_movie_id} "
+        f"kept movie_id={disagreement.kept_movie_id} "
         f"({disagreement.detected_by})"
     )
+
+
+def _drop_source_disagreements_resolved_since(
+    disagreements: list[SourceDisagreement],
+) -> list[SourceDisagreement]:
+    """Drop disagreements a later phase of the same run already fixed.
+
+    Cineville scrapers run before cinema scrapers in ``run()``, so the insert
+    guard can flag a slot as disputed using the cinema scraper's *previous*
+    match, and then that cinema scraper's own pass — minutes later, same run —
+    re-resolves the title and ``get_showtime_reassignment_candidate`` quietly
+    relinks the showtime to the correct movie before the recap is even built.
+    Reporting the stale snapshot as an unresolved disagreement is misleading:
+    reconcile against the current row before it goes in the recap.
+    """
+    if not disagreements:
+        return disagreements
+    slots = {(d.cinema_id, d.showtime_datetime) for d in disagreements}
+    with get_db_context() as session:
+        current_movie_ids = {
+            (cinema_id, showtime_datetime): (
+                session.exec(
+                    select(Showtime.movie_id).where(
+                        Showtime.cinema_id == cinema_id,
+                        Showtime.datetime == showtime_datetime,
+                    )
+                ).first()
+            )
+            for cinema_id, showtime_datetime in slots
+        }
+    return [
+        disagreement
+        for disagreement in disagreements
+        if current_movie_ids.get(
+            (disagreement.cinema_id, disagreement.showtime_datetime)
+        )
+        == disagreement.kept_movie_id
+    ]
 
 
 def _dedupe_source_disagreements(
@@ -1173,7 +1221,9 @@ def _store_run_recap(
         if detail.source_stream.startswith(CINEMA_SCRAPER_STREAM_PREFIX)
     ]
     cinema_name_by_id = _load_cinema_name_by_id()
-    source_disagreements = _dedupe_source_disagreements(consume_source_disagreements())
+    source_disagreements = _drop_source_disagreements_resolved_since(
+        _dedupe_source_disagreements(consume_source_disagreements())
+    )
     letterboxd_failure_counts = _letterboxd_failure_breakdown(letterboxd_failures)
     recovered_presence_count = scrape_sync_service.consume_recovered_presence_count()
     pending_miss_details = _load_pending_miss_details()
@@ -1307,7 +1357,7 @@ def _store_run_recap(
                         "cinema_scraper_movie_title": (
                             disagreement.cinema_scraper_movie_title
                         ),
-                        "kept_movie_id": disagreement.cinema_scraper_movie_id,
+                        "kept_movie_id": disagreement.kept_movie_id,
                         "detected_by": disagreement.detected_by,
                     }
                     for disagreement in source_disagreements

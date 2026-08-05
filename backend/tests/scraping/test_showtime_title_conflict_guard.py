@@ -16,6 +16,8 @@ from sqlmodel import Session, select
 
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.models.showtime_source_presence import ShowtimeSourcePresence
+from app.models.tmdb_lookup_cache import TmdbLookupCache
+from app.scraping.tmdb_config import TMDB_LOOKUP_PAYLOAD_VERSION
 from app.services import showtimes as showtimes_service
 from app.services.showtime_title_conflict import consume_source_disagreements
 from app.utils import now_amsterdam_naive
@@ -109,6 +111,135 @@ def test_cineville_yields_to_conflicting_cinema_scraper_showtime(
     assert disagreements[0].cineville_movie_id == cineville_movie.id
     assert disagreements[0].cinema_scraper_movie_id == cinema_movie.id
     assert disagreements[0].cinema_id == cinema.id
+
+
+def _attach_tmdb_cache(
+    *, session: Session, movie, version: int, is_manual_override: bool = False
+) -> None:
+    cache = TmdbLookupCache(
+        lookup_hash=f"hash-{movie.id}",
+        lookup_payload=f'{{"version":{version}}}',
+        tmdb_id=movie.id,
+        confidence=93.0,
+        is_manual_override=is_manual_override,
+        created_at=now_amsterdam_naive(),
+        updated_at=now_amsterdam_naive(),
+    )
+    session.add(cache)
+    session.flush()
+    movie.tmdb_cache_id = cache.id
+    session.add(movie)
+
+
+def test_cineville_wins_when_cinema_scraper_match_is_stale(
+    *,
+    db_transaction: Session,
+    cinema_factory,
+    movie_factory,
+    showtime_factory,
+) -> None:
+    """A resolver-version bump can fix a bad match going forward without
+    touching the Movie row a cinema scraper already created under the old
+    algorithm. When that happens the "cinema scraper always wins" default is
+    backwards: cineville's fresher match should be kept instead."""
+    cinema = cinema_factory(cineville=True)
+    cinema_movie = movie_factory(title="All About \"All About Lily Chou-Chou\"")
+    cineville_movie = movie_factory(title="All About Lily Chou-Chou")
+    slot = _slot_time()
+
+    _attach_tmdb_cache(
+        session=db_transaction,
+        movie=cinema_movie,
+        version=TMDB_LOOKUP_PAYLOAD_VERSION - 1,
+    )
+    _attach_tmdb_cache(
+        session=db_transaction, movie=cineville_movie, version=TMDB_LOOKUP_PAYLOAD_VERSION
+    )
+
+    cinema_showtime = showtime_factory(
+        cinema=cinema,
+        movie=cinema_movie,
+        datetime=slot,
+        ticket_link="https://cinema.example/stale",
+    )
+    _add_presence(
+        session=db_transaction,
+        source_stream=f"cinema_scraper:{cinema.id}",
+        showtime_id=cinema_showtime.id,
+    )
+    db_transaction.flush()
+
+    result = showtimes_service.upsert_showtime(
+        session=db_transaction,
+        showtime_create=ShowtimeCreate(
+            movie_id=cineville_movie.id,
+            cinema_id=cinema.id,
+            datetime=slot,
+            ticket_link="https://cineville.example/fresh",
+        ),
+        commit=False,
+        yield_to_conflicting_showtime=True,
+    )
+
+    assert result is not None
+    assert result.id != cinema_showtime.id
+    assert result.movie_id == cineville_movie.id
+
+    disagreements = consume_source_disagreements()
+    assert len(disagreements) == 1
+    assert disagreements[0].kept_movie_id == cineville_movie.id
+
+
+def test_cinema_scraper_still_wins_when_its_match_is_manually_overridden(
+    *,
+    db_transaction: Session,
+    cinema_factory,
+    movie_factory,
+    showtime_factory,
+) -> None:
+    """A stale payload version never overrides an admin's manual correction."""
+    cinema = cinema_factory(cineville=True)
+    cinema_movie = movie_factory(title="All About \"All About Lily Chou-Chou\"")
+    cineville_movie = movie_factory(title="All About Lily Chou-Chou")
+    slot = _slot_time()
+
+    _attach_tmdb_cache(
+        session=db_transaction,
+        movie=cinema_movie,
+        version=TMDB_LOOKUP_PAYLOAD_VERSION - 1,
+        is_manual_override=True,
+    )
+    _attach_tmdb_cache(
+        session=db_transaction, movie=cineville_movie, version=TMDB_LOOKUP_PAYLOAD_VERSION
+    )
+
+    cinema_showtime = showtime_factory(
+        cinema=cinema,
+        movie=cinema_movie,
+        datetime=slot,
+        ticket_link="https://cinema.example/manual",
+    )
+    _add_presence(
+        session=db_transaction,
+        source_stream=f"cinema_scraper:{cinema.id}",
+        showtime_id=cinema_showtime.id,
+    )
+    db_transaction.flush()
+
+    result = showtimes_service.upsert_showtime(
+        session=db_transaction,
+        showtime_create=ShowtimeCreate(
+            movie_id=cineville_movie.id,
+            cinema_id=cinema.id,
+            datetime=slot,
+            ticket_link="https://cineville.example/fresh",
+        ),
+        commit=False,
+        yield_to_conflicting_showtime=True,
+    )
+
+    assert result is not None
+    assert result.id == cinema_showtime.id
 
 
 def test_cineville_still_inserts_when_titles_are_unrelated(

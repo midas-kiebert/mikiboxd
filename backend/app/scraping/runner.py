@@ -51,6 +51,7 @@ from app.utils import now_amsterdam_naive
 
 RECAP_EMAIL_TO = "scraper.mikino@midaskiebert.nl"
 RECAP_AGGREGATION_WINDOW = timedelta(hours=24)
+RECAP_RETENTION_WINDOW = timedelta(days=7)
 STAGE_PATTERN = re.compile(r"(^|\s)stage=([^|]+)")
 TMDB_LOW_CONFIDENCE_THRESHOLD = 80.0
 TMDB_RECAP_ATTACHMENT_MAX_ITEMS = 300
@@ -1486,11 +1487,12 @@ def send_daily_recap() -> bool:
     )
 
     with get_db_context() as session:
-        session.execute(delete(ScrapeRecap).where(col(ScrapeRecap.id).in_(sent_ids)))
-        # Prune any stragglers from earlier failed sends so the table stays small.
+        # Sent recaps are kept for a week (rather than deleted immediately) so the
+        # monitor API has recent data between daily sends; the window filter above
+        # already keeps them out of the next email once they age past 24h.
         session.execute(
             delete(ScrapeRecap).where(
-                col(ScrapeRecap.started_at) < now - 2 * RECAP_AGGREGATION_WINDOW
+                col(ScrapeRecap.started_at) < now - RECAP_RETENTION_WINDOW
             )
         )
         session.commit()

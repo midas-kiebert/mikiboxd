@@ -185,6 +185,17 @@ def test_cineville_wins_when_cinema_scraper_match_is_stale(
     assert result.id != cinema_showtime.id
     assert result.movie_id == cineville_movie.id
 
+    # The stale showtime must be gone, not just superseded — otherwise the
+    # screening shows twice (once right, once still wrong).
+    remaining = set(
+        db_transaction.exec(
+            select(Showtime.id).where(
+                Showtime.cinema_id == cinema.id, Showtime.datetime == slot
+            )
+        ).all()
+    )
+    assert remaining == {result.id}
+
     disagreements = consume_source_disagreements()
     assert len(disagreements) == 1
     assert disagreements[0].kept_movie_id == cineville_movie.id

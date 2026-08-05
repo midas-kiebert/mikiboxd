@@ -4,8 +4,25 @@ from sqlmodel import Session, col, select
 
 from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
+from app.models.tmdb_lookup_cache import TmdbLookupCache
 from app.scraping import runner
+from app.scraping.tmdb_config import TMDB_LOOKUP_PAYLOAD_VERSION
 from app.utils import now_amsterdam_naive
+
+
+def _attach_tmdb_cache(*, session: Session, movie, version: int) -> None:
+    cache = TmdbLookupCache(
+        lookup_hash=f"hash-{movie.id}",
+        lookup_payload=f'{{"version":{version}}}',
+        tmdb_id=movie.id,
+        confidence=93.0,
+        created_at=now_amsterdam_naive(),
+        updated_at=now_amsterdam_naive(),
+    )
+    session.add(cache)
+    session.flush()
+    movie.tmdb_cache_id = cache.id
+    session.add(movie)
 
 
 def _add_presence(
@@ -212,3 +229,72 @@ def test_keep_showtime_when_it_also_has_cinema_scraper_source(
         ).all()
     )
     assert remaining_showtime_ids == {shared_showtime.id, cinema_showtime.id}
+
+
+def test_delete_stale_cinema_scraper_showtime_instead_of_cineville(
+    *,
+    db_transaction: Session,
+    cinema_factory,
+    movie_factory,
+    showtime_factory,
+) -> None:
+    """When the cinema scraper's match is stale (older resolver version than
+    Cineville's), the cinema scraper's row is the wrong one to keep — deleting
+    Cineville's row instead would leave the wrong movie listed."""
+    cinema = cinema_factory(cineville=True)
+    cineville_movie = movie_factory(title="All About Lily Chou-Chou")
+    cinema_movie = movie_factory(title="All About \"All About Lily Chou-Chou\"")
+    showtime_time = now_amsterdam_naive().replace(
+        hour=20,
+        minute=0,
+        second=0,
+        microsecond=0,
+    ) + timedelta(days=2)
+
+    _attach_tmdb_cache(
+        session=db_transaction,
+        movie=cinema_movie,
+        version=TMDB_LOOKUP_PAYLOAD_VERSION - 1,
+    )
+    _attach_tmdb_cache(
+        session=db_transaction, movie=cineville_movie, version=TMDB_LOOKUP_PAYLOAD_VERSION
+    )
+
+    cineville_showtime = showtime_factory(
+        cinema=cinema,
+        movie=cineville_movie,
+        datetime=showtime_time,
+        ticket_link="https://cineville.example/correct",
+    )
+    cinema_showtime = showtime_factory(
+        cinema=cinema,
+        movie=cinema_movie,
+        datetime=showtime_time,
+        ticket_link="https://cinema.example/stale",
+    )
+
+    _add_presence(
+        session=db_transaction,
+        source_stream=f"cineville:{cinema.id}",
+        source_event_key=f"event:cineville:{cineville_showtime.id}",
+        showtime_id=cineville_showtime.id,
+    )
+    _add_presence(
+        session=db_transaction,
+        source_stream=f"cinema_scraper:{cinema.id}",
+        source_event_key=f"event:cinema:{cinema_showtime.id}",
+        showtime_id=cinema_showtime.id,
+    )
+    db_transaction.flush()
+
+    deleted = runner._delete_cineville_title_conflicts(session=db_transaction)
+
+    assert {item.showtime_id for item in deleted} == {cinema_showtime.id}
+    remaining_showtime_ids = set(
+        db_transaction.exec(
+            select(Showtime.id).where(
+                col(Showtime.id).in_([cineville_showtime.id, cinema_showtime.id])
+            )
+        ).all()
+    )
+    assert remaining_showtime_ids == {cineville_showtime.id}

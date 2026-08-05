@@ -189,7 +189,12 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
                     cinema_scraper_movie_id=conflicting.movie_id,
                     cineville_movie_id=candidate.movie_id,
                 )
-                if not stale:
+                if stale:
+                    # The cinema scraper's row is the wrong movie, not just the
+                    # one to defer to — remove it instead of the correct
+                    # Cineville row so the screening is left listed once.
+                    ids_to_delete.add(conflicting.showtime_id)
+                else:
                     ids_to_delete.add(candidate.showtime_id)
                 record_source_disagreement(
                     SourceDisagreement(

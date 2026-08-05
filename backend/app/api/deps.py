@@ -16,13 +16,14 @@ The session is automatically closed after the response is sent.
 See: https://fastapi.tiangolo.com/tutorial/dependencies/
 """
 
+import hmac
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Annotated
 
 import jwt
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
 from sqlmodel import Session
@@ -162,3 +163,28 @@ def get_current_active_superuser(current_user: CurrentUser) -> User:
             status_code=403, detail="The user doesn't have enough privileges"
         )
     return current_user
+
+
+scrape_monitor_api_key_header = APIKeyHeader(
+    name="X-Monitor-Api-Key", auto_error=False
+)
+
+
+def verify_scrape_monitor_api_key(
+    api_key: Annotated[str | None, Depends(scrape_monitor_api_key_header)],
+) -> None:
+    """Gate the /monitor/scrape/* routes with a static bearer key instead of a
+    user JWT, for machine consumers (e.g. an unattended monitoring agent) that
+    can't hold a login session.
+
+    Raises:
+        HTTPException 401: If SCRAPE_MONITOR_API_KEY isn't configured, or the
+            header is missing or doesn't match.
+    """
+    configured_key = settings.SCRAPE_MONITOR_API_KEY
+    if (
+        not configured_key
+        or not api_key
+        or not hmac.compare_digest(api_key, configured_key)
+    ):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")

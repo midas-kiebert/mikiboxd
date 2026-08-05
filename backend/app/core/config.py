@@ -124,6 +124,12 @@ class Settings(BaseSettings):
     # for a fresh one (POST /me/resend-verification).
     EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24 * 14
 
+    # Bearer key for the read-only /monitor/scrape/* routes (scrape-run/recap
+    # health data for machine consumers, e.g. an unattended monitoring agent,
+    # that can't hold a user JWT). Unset means those routes refuse every
+    # request rather than falling open.
+    SCRAPE_MONITOR_API_KEY: str | None = None
+
     # -------------------------------------------------------------------------
     # Social sign-in
     # -------------------------------------------------------------------------

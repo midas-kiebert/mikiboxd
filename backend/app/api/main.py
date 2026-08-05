@@ -13,6 +13,7 @@ from app.api.routes import (
     login,
     me,
     movies,
+    scrape_monitor_api,
     showtimes,
     users,
     utils,
@@ -28,3 +29,4 @@ api_router.include_router(friends.router)
 api_router.include_router(me.router)
 api_router.include_router(cinemas.router)
 api_router.include_router(admin.router)
+api_router.include_router(scrape_monitor_api.router)

@@ -2,7 +2,7 @@
  * Movies list feature component: Movie Info Box.
  */
 import { Flex, Separator } from "@chakra-ui/react"
-import type { MovieSummaryLoggedIn } from "shared"
+import type { MovieSummaryPublic } from "shared"
 import CinemaBadges from "./CinemaBadges"
 import FriendBadges from "./FriendBadges"
 import MovieTitle from "./MovieTitle"
@@ -10,7 +10,7 @@ import OriginalTitle from "./OriginalTitle"
 import ShowtimeInfo from "./ShowtimeInfo"
 
 type MovieInfoBoxProps = {
-  movie: MovieSummaryLoggedIn
+  movie: MovieSummaryPublic
 }
 
 const goingBorderMap: Record<string, string> = {
@@ -25,8 +25,8 @@ export default function MovieInfoBox({ movie }: MovieInfoBoxProps) {
   const cinemas = movie.cinemas || []
   const lastShowtime = movie.last_showtime_datetime || null
   const total_showtimes = movie.total_showtimes || 0
-  const friends_going = movie.friends_going || []
-  const friends_interested = movie.friends_interested || []
+  const friends_going = movie.viewer?.friends_going || []
+  const friends_interested = movie.viewer?.friends_interested || []
   const original_title = movie.original_title || null
   // Render/output using the state and derived values prepared above.
   return (
@@ -42,7 +42,7 @@ export default function MovieInfoBox({ movie }: MovieInfoBoxProps) {
         <OriginalTitle originalTitle={original_title} />
         <CinemaBadges cinemas={cinemas} />
       </Flex>
-      <Separator mt={0.5} mb={2} borderColor={goingBorderMap[movie.going]} />
+      <Separator mt={0.5} mb={2} borderColor={goingBorderMap[movie.viewer?.going ?? "NOT_GOING"]} />
       <Flex flex="1">
         <ShowtimeInfo
           showtimes={showtimes}
@@ -52,7 +52,7 @@ export default function MovieInfoBox({ movie }: MovieInfoBoxProps) {
         <Separator
           orientation={"vertical"}
           mx={2}
-          borderColor={goingBorderMap[movie.going]}
+          borderColor={goingBorderMap[movie.viewer?.going ?? "NOT_GOING"]}
         />
         <FriendBadges friends={friends_going} goingStatus="GOING" />
         <FriendBadges friends={friends_interested} goingStatus="INTERESTED" />

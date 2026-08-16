@@ -85,7 +85,9 @@ export default function FilterMoviesSection({
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  const { data: lists = [], isLoading: listsLoading } = useFetchLetterboxdLists();
+  // Every list here is one the account added; without one there is nothing to
+  // ask the backend for. `user` is undefined for a signed-out visitor.
+  const { data: lists = [], isLoading: listsLoading } = useFetchLetterboxdLists(Boolean(user));
   const { addList, syncList, removeList } = useLetterboxdListMutations();
 
   const [newUrl, setNewUrl] = useState("");

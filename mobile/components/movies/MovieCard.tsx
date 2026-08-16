@@ -11,7 +11,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { DateTime } from "luxon";
-import type { MovieSummaryLoggedIn } from "shared";
+import type { MovieSummaryPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import FriendBadges from "@/components/badges/FriendBadges";
@@ -22,8 +22,8 @@ import { isSyntheticMovieId } from "@/constants/synthetic-movies";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 type MovieCardProps = {
-  movie: MovieSummaryLoggedIn;
-  onPress?: (movie: MovieSummaryLoggedIn) => void;
+  movie: MovieSummaryPublic;
+  onPress?: (movie: MovieSummaryPublic) => void;
   showCinema?: boolean;
 };
 
@@ -64,23 +64,26 @@ export default function MovieCard({ movie, onPress, showCinema = true }: MovieCa
     movie.original_title && movie.original_title.trim() !== movie.title.trim()
       ? movie.original_title.trim()
       : null;
-  const friendsGoing = movie.friends_going || [];
-  const friendsInterested = movie.friends_interested || [];
+  // Absent for a guest: the card still lists the film and its screenings,
+  // just without anything that would be about the person looking.
+  const viewer = movie.viewer;
+  const friendsGoing = viewer?.friends_going || [];
+  const friendsInterested = viewer?.friends_interested || [];
   const hasAudience = friendsGoing.length > 0 || friendsInterested.length > 0;
   const responsiveBadgeRows = useMemo(() => {
     if (!hasAudience) return undefined;
     return getCompactBadgeRowsForHeight(friendBadgeAreaHeight - COMPACT_BADGE_TOP_PADDING);
   }, [friendBadgeAreaHeight, hasAudience]);
   const cardStatusStyle =
-    movie.going === "GOING"
+    viewer?.going === "GOING"
       ? styles.movieCardGoing
-      : movie.going === "INTERESTED"
+      : viewer?.going === "INTERESTED"
         ? styles.movieCardInterested
         : undefined;
   const cardGlowStyle =
-    movie.going === "GOING"
+    viewer?.going === "GOING"
       ? styles.movieCardGlowGoing
-      : movie.going === "INTERESTED"
+      : viewer?.going === "INTERESTED"
         ? styles.movieCardGlowInterested
         : undefined;
   const isSynthetic = isSyntheticMovieId(movie.id);

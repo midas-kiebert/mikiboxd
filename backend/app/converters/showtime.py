@@ -6,8 +6,8 @@ from app.converters import cinema as cinema_converters
 from app.converters import movie as movie_converters
 from app.converters import user as user_converters
 from app.core.enums import GoingStatus
+from app.core.viewer import ViewerId
 from app.crud import friendship as friendship_crud
-from app.crud import movie as movie_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.models.showtime import Showtime
@@ -16,8 +16,10 @@ from app.models.user import User
 from app.schemas.showtime import (
     CoInvitedFriendPublic,
     NonFriendParticipantPublic,
-    ShowtimeInMovieLoggedIn,
-    ShowtimeLoggedIn,
+    ShowtimeInMoviePublic,
+    ShowtimeInMovieViewerState,
+    ShowtimePublic,
+    ShowtimeViewerState,
 )
 from app.schemas.user import UserPublic
 
@@ -26,7 +28,7 @@ def _friend_to_public_with_seat(
     *,
     friend: User,
     selection_by_user_id: dict[UUID, ShowtimeSelection],
-):
+) -> UserPublic:
     selection = selection_by_user_id.get(friend.id)
     return user_converters.to_public(
         friend,
@@ -53,7 +55,7 @@ def _friends_for_showtime(
     session: Session,
     showtime_id: int,
     user_id: UUID,
-) -> tuple[list, list]:
+) -> tuple[list[UserPublic], list[UserPublic]]:
     friends_going_users = showtime_crud.get_friends_for_showtime(
         session=session,
         showtime_id=showtime_id,
@@ -91,14 +93,14 @@ def _invite_info_for_showtime(
     session: Session,
     showtime_id: int,
     user_id: UUID,
-) -> tuple[list, list[int]]:
+) -> tuple[list[UserPublic], list[int]]:
     """Unique senders + ping ids of the user's active received pings for a showtime."""
     pings = showtime_ping_crud.get_received_pings_for_showtime(
         session=session,
         showtime_id=showtime_id,
         receiver_id=user_id,
     )
-    invited_by = []
+    invited_by: list[UserPublic] = []
     invite_ping_ids: list[int] = []
     seen_sender_ids: set[UUID] = set()
     for ping, sender in pings:
@@ -241,35 +243,21 @@ def _non_friend_participants(
     ]
 
 
-def to_logged_in(
-    showtime: Showtime,
+def _in_movie_viewer_state(
     *,
     session: Session,
+    showtime_id: int,
     user_id: UUID,
-) -> ShowtimeLoggedIn:
-    """
-    Converts a Showtime object to a ShowtimeLoggedIn object, including additional
-    information such as friends going, whether the user is going, and related movie
-    and cinema details.
-
-    Parameters:
-        showtime (Showtime): The Showtime object to convert.
-        session (Session): The SQLAlchemy session for database operations.
-        user_id (UUID): The ID of the current user.
-    Returns:
-        ShowtimeLoggedIn: The converted ShowtimeLoggedIn object with additional details.
-    Raises:
-        ValidationError: If the showtime does not match the expected model.
-    """
-    Showtime.model_validate(showtime)
+) -> ShowtimeInMovieViewerState:
+    """The viewer fields both showtime shapes carry, gathered once."""
     friends_going, friends_interested = _friends_for_showtime(
         session=session,
-        showtime_id=showtime.id,
+        showtime_id=showtime_id,
         user_id=user_id,
     )
     current_selection = showtime_crud.get_showtime_selection(
         session=session,
-        showtime_id=showtime.id,
+        showtime_id=showtime_id,
         user_id=user_id,
     )
     going, seat_row, seat_number = _selection_status_and_seat(
@@ -277,128 +265,122 @@ def to_logged_in(
     )
     invited_by, invite_ping_ids = _invite_info_for_showtime(
         session=session,
-        showtime_id=showtime.id,
+        showtime_id=showtime_id,
         user_id=user_id,
     )
+    responded_ids = {friend.id for friend in friends_going} | {
+        friend.id for friend in friends_interested
+    }
+    return ShowtimeInMovieViewerState(
+        going=going,
+        seat_row=seat_row,
+        seat_number=seat_number,
+        friends_going=friends_going,
+        friends_interested=friends_interested,
+        invited_by=invited_by,
+        invite_ping_ids=invite_ping_ids,
+        co_invited_friends=_co_invited_friends(
+            session=session, showtime_id=showtime_id, user_id=user_id
+        ),
+        pending_invited_friends=_pending_invited_friends(
+            session=session,
+            showtime_id=showtime_id,
+            user_id=user_id,
+            responded_ids=responded_ids,
+        ),
+    )
+
+
+def to_public(
+    showtime: Showtime,
+    *,
+    session: Session,
+    user_id: ViewerId,
+) -> ShowtimePublic:
+    """
+    Converts a Showtime object to a ShowtimePublic object: the screening itself,
+    plus — when someone is asking — how it relates to them (friends going,
+    whether they are going, invites, seat).
+
+    Parameters:
+        showtime (Showtime): The Showtime object to convert.
+        session (Session): The SQLAlchemy session for database operations.
+        user_id (ViewerId): Who to annotate for. None leaves `viewer` unset,
+            which is how the response says nobody was asking — see
+            `app.core.viewer`.
+    Returns:
+        ShowtimePublic: The converted showtime, with or without viewer state.
+    Raises:
+        ValidationError: If the showtime does not match the expected model.
+    """
+    Showtime.model_validate(showtime)
     movie = movie_converters.to_in_showtime(showtime.movie)
     cinema = cinema_converters.to_public(
         cinema=showtime.cinema,
     )
-    friends_watchlisted = [
-        user_converters.to_public(friend)
-        for friend in movie_crud.get_friends_who_watchlisted_movie(
-            session=session,
-            movie_id=showtime.movie_id,
-            current_user=user_id,
-        )
-    ]
-    friends_watched = [
-        user_converters.to_public(friend)
-        for friend in movie_crud.get_friends_who_watched_movie(
-            session=session,
-            movie_id=showtime.movie_id,
-            current_user=user_id,
-        )
-    ]
-    responded_ids = {friend.id for friend in friends_going} | {
-        friend.id for friend in friends_interested
-    }
-    co_invited_friends = _co_invited_friends(
-        session=session, showtime_id=showtime.id, user_id=user_id
-    )
-    pending_invited_friends = _pending_invited_friends(
-        session=session,
-        showtime_id=showtime.id,
-        user_id=user_id,
-        responded_ids=responded_ids,
-    )
-    non_friend_participants = _non_friend_participants(
-        session=session, showtime_id=showtime.id, user_id=user_id
-    )
 
-    return ShowtimeLoggedIn(
+    viewer: ShowtimeViewerState | None = None
+    if user_id is not None:
+        shared = _in_movie_viewer_state(
+            session=session, showtime_id=showtime.id, user_id=user_id
+        )
+        friends_watchlisted, friends_watched = (
+            movie_converters.friends_letterboxd_lists_for_movie(
+                session=session,
+                movie_id=showtime.movie_id,
+                current_user=user_id,
+            )
+        )
+        viewer = ShowtimeViewerState(
+            **shared.model_dump(),
+            friends_watchlisted=friends_watchlisted,
+            friends_watched=friends_watched,
+            non_friend_participants=_non_friend_participants(
+                session=session, showtime_id=showtime.id, user_id=user_id
+            ),
+        )
+
+    return ShowtimePublic(
         **showtime.model_dump(),
-        friends_going=friends_going,
-        friends_interested=friends_interested,
-        going=going,
-        seat_row=seat_row,
-        seat_number=seat_number,
         movie=movie,
         cinema=cinema,
-        invited_by=invited_by,
-        invite_ping_ids=invite_ping_ids,
-        co_invited_friends=co_invited_friends,
-        pending_invited_friends=pending_invited_friends,
-        friends_watchlisted=friends_watchlisted,
-        friends_watched=friends_watched,
-        non_friend_participants=non_friend_participants,
+        viewer=viewer,
     )
 
 
-def to_in_movie_logged_in(
+def to_in_movie_public(
     showtime: Showtime,
     *,
     session: Session,
-    user_id: UUID,
-) -> ShowtimeInMovieLoggedIn:
+    user_id: ViewerId,
+) -> ShowtimeInMoviePublic:
     """
-    Converts a Showtime object to a ShowtimeInMovieLoggedIn object, including
-    viewer status and related cinema details.
+    Converts a Showtime object to a ShowtimeInMoviePublic object: a screening
+    listed under a movie, with the viewer's own state when there is a viewer.
 
     Parameters:
         showtime (Showtime): The Showtime object to convert.
         session (Session): The SQLAlchemy session for database operations.
-        user_id (UUID): The ID of the current user.
+        user_id (ViewerId): Who to annotate for; None leaves `viewer` unset —
+            see `app.core.viewer`.
     Returns:
-        ShowtimeInMovieLoggedIn: The converted ShowtimeInMovieLoggedIn object with additional details.
+        ShowtimeInMoviePublic: The converted showtime, with or without viewer state.
     Raises:
         ValidationError: If the showtime does not match the expected model.
     """
     Showtime.model_validate(showtime)
-    friends_going, friends_interested = _friends_for_showtime(
-        session=session,
-        showtime_id=showtime.id,
-        user_id=user_id,
-    )
-    current_selection = showtime_crud.get_showtime_selection(
-        session=session,
-        showtime_id=showtime.id,
-        user_id=user_id,
-    )
-    going, seat_row, seat_number = _selection_status_and_seat(
-        selection=current_selection
-    )
-    invited_by, invite_ping_ids = _invite_info_for_showtime(
-        session=session,
-        showtime_id=showtime.id,
-        user_id=user_id,
-    )
     cinema = cinema_converters.to_public(
         cinema=showtime.cinema,
     )
-    responded_ids = {friend.id for friend in friends_going} | {
-        friend.id for friend in friends_interested
-    }
-    co_invited_friends = _co_invited_friends(
-        session=session, showtime_id=showtime.id, user_id=user_id
-    )
-    pending_invited_friends = _pending_invited_friends(
-        session=session,
-        showtime_id=showtime.id,
-        user_id=user_id,
-        responded_ids=responded_ids,
-    )
 
-    return ShowtimeInMovieLoggedIn(
+    return ShowtimeInMoviePublic(
         **showtime.model_dump(),
-        friends_going=friends_going,
-        friends_interested=friends_interested,
-        going=going,
-        seat_row=seat_row,
-        seat_number=seat_number,
         cinema=cinema,
-        invited_by=invited_by,
-        invite_ping_ids=invite_ping_ids,
-        co_invited_friends=co_invited_friends,
-        pending_invited_friends=pending_invited_friends,
+        viewer=(
+            _in_movie_viewer_state(
+                session=session, showtime_id=showtime.id, user_id=user_id
+            )
+            if user_id is not None
+            else None
+        ),
     )

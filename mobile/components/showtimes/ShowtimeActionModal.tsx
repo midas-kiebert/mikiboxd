@@ -52,7 +52,7 @@ import {
   type GoingStatus,
   type MeGetCurrentUserResponse,
   type SentShowtimePingPublic,
-  type ShowtimeLoggedIn,
+  type ShowtimePublic,
   type UserPublic,
   type VisibilityMode,
 } from "shared";
@@ -90,6 +90,7 @@ import {
   isSyntheticMovieId,
 } from "@/constants/synthetic-movies";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
 import { EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
@@ -137,7 +138,7 @@ const REPORT_REASON_OPTIONS: { value: ReportReason; label: string }[] = [
 
 type ShowtimeActionModalProps = {
   visible: boolean;
-  showtime: ShowtimeLoggedIn | null;
+  showtime: ShowtimePublic | null;
   /** True while a showtime opened by id is still being fetched. */
   isLoadingShowtime?: boolean;
   /** Present when the sheet was opened from an invite (ping). */
@@ -362,7 +363,15 @@ export default function ShowtimeActionModal({
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
   const [isReportDialogVisible, setIsReportDialogVisible] = useState(false);
   const { user } = useAuth();
-  const canReport = user ? user.can_report : true;
+  // Everything on this sheet below the status buttons is about people — the
+  // friends coming, who you invited, who can see you're going. A guest has
+  // none of it and no way to get any without an account, so those sections are
+  // absent rather than rendered permanently empty. The status buttons stay:
+  // tapping one is how a guest finds out an account is what they're for (see
+  // ShowtimeModalProvider's gate), and the screening itself — film, cinema,
+  // time, ticket link — is public and unchanged.
+  const isSignedIn = useIsSignedIn();
+  const canReport = isSignedIn && (user ? user.can_report : true);
   const [isVisibilityExpanded, setIsVisibilityExpanded] = useState(false);
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<FriendWatchKind | null>(null);
@@ -399,7 +408,7 @@ export default function ShowtimeActionModal({
   // The tour runs on mock data: every request it could make would be about a
   // showtime that does not exist, and the answers are already invented.
   const isTour = tour !== null;
-  const sheetDataEnabled = visible && selectedShowtimeId !== null && !isTour;
+  const sheetDataEnabled = visible && selectedShowtimeId !== null && !isTour && isSignedIn;
 
   // Window positions of the controls the tour explains, read on demand rather
   // than on layout: layout fires while the sheet is still rising, so it would
@@ -564,9 +573,9 @@ export default function ShowtimeActionModal({
 
 
   useEffect(() => {
-    setSeatRowDraft(showtime?.seat_row ?? "");
-    setSeatNumberDraft(showtime?.seat_number ?? "");
-  }, [showtime?.id, showtime?.seat_row, showtime?.seat_number]);
+    setSeatRowDraft(showtime?.viewer?.seat_row ?? "");
+    setSeatNumberDraft(showtime?.viewer?.seat_number ?? "");
+  }, [showtime?.id, showtime?.viewer?.seat_row, showtime?.viewer?.seat_number]);
 
   // ─── Friends + invite data ─────────────────────────────────────────────────
   // Friends + already-pinged ids load whenever the sheet is open so the "Invited"
@@ -714,8 +723,8 @@ export default function ShowtimeActionModal({
   // ─── Seat handling ─────────────────────────────────────────────────────────
   const normalizedSeatRowDraft = seatRowDraft.trim() || null;
   const normalizedSeatNumberDraft = seatNumberDraft.trim() || null;
-  const normalizedCurrentSeatRow = showtime?.seat_row?.trim() || null;
-  const normalizedCurrentSeatNumber = showtime?.seat_number?.trim() || null;
+  const normalizedCurrentSeatRow = showtime?.viewer?.seat_row?.trim() || null;
+  const normalizedCurrentSeatNumber = showtime?.viewer?.seat_number?.trim() || null;
   const cinemaSeating = showtime?.cinema?.seating?.trim().toLowerCase() ?? "";
   const seatInputConfig = useMemo(() => getSeatInputConfig(cinemaSeating), [cinemaSeating]);
   const seatRowValidationError = useMemo(
@@ -744,11 +753,11 @@ export default function ShowtimeActionModal({
 
   const hasInvite = Boolean(invite && invite.senders.length > 0);
   const notGoingActsAsDismiss = Boolean(invite && onDismissInvite);
-  const isGoingSelected = showtime?.going === "GOING";
-  const isInterestedSelected = showtime?.going === "INTERESTED";
+  const isGoingSelected = showtime?.viewer?.going === "GOING";
+  const isInterestedSelected = showtime?.viewer?.going === "INTERESTED";
   // When invited, the Not-going button is a dismiss affordance, not a status —
   // so don't render it as "selected" even if the stored status is NOT_GOING.
-  const isNotGoingSelected = showtime?.going === "NOT_GOING" && !hasInvite;
+  const isNotGoingSelected = showtime?.viewer?.going === "NOT_GOING" && !hasInvite;
   const shouldShowSeatButton = isGoingSelected && !isFreeSeating;
   const hasTicketLink = Boolean(showtime?.ticket_link);
 
@@ -840,14 +849,14 @@ export default function ShowtimeActionModal({
 
 
   const handleOpenSeatDialog = () => {
-    if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) return;
-    setSeatRowDraft(showtime.seat_row ?? "");
-    setSeatNumberDraft(showtime.seat_number ?? "");
+    if (!showtime || isUpdatingStatus || showtime.viewer?.going !== "GOING" || isFreeSeating) return;
+    setSeatRowDraft(showtime.viewer?.seat_row ?? "");
+    setSeatNumberDraft(showtime.viewer?.seat_number ?? "");
     setIsSeatDialogVisible(true);
   };
 
   const handleSaveSeat = () => {
-    if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) return;
+    if (!showtime || isUpdatingStatus || showtime.viewer?.going !== "GOING" || isFreeSeating) return;
     if (seatValidationError) {
       Alert.alert("Invalid seat", seatValidationError);
       return;
@@ -912,12 +921,12 @@ export default function ShowtimeActionModal({
 
   // ─── Derivations ────────────────────────────────────────────────────────────
   const friendsGoingIds = useMemo(
-    () => new Set((showtime?.friends_going ?? []).map((friend) => friend.id)),
-    [showtime?.friends_going]
+    () => new Set((showtime?.viewer?.friends_going ?? []).map((friend) => friend.id)),
+    [showtime?.viewer?.friends_going]
   );
   const friendsInterestedIds = useMemo(
-    () => new Set((showtime?.friends_interested ?? []).map((friend) => friend.id)),
-    [showtime?.friends_interested]
+    () => new Set((showtime?.viewer?.friends_interested ?? []).map((friend) => friend.id)),
+    [showtime?.viewer?.friends_interested]
   );
 
   const pingedReceiverIds = useMemo(
@@ -926,12 +935,12 @@ export default function ShowtimeActionModal({
   );
 
   const friendsWatchlisted = useMemo(
-    () => showtime?.friends_watchlisted ?? [],
-    [showtime?.friends_watchlisted]
+    () => showtime?.viewer?.friends_watchlisted ?? [],
+    [showtime?.viewer?.friends_watchlisted]
   );
   const friendsWatched = useMemo(
-    () => showtime?.friends_watched ?? [],
-    [showtime?.friends_watched]
+    () => showtime?.viewer?.friends_watched ?? [],
+    [showtime?.viewer?.friends_watched]
   );
   // Only the non-empty relationships get a marker.
   const watchMarkers = useMemo(
@@ -1048,9 +1057,9 @@ export default function ShowtimeActionModal({
       : null;
   const spokenLanguage = formatLanguageCode(showtime?.movie.original_language);
 
-  const coInvitedFriends = showtime?.co_invited_friends ?? [];
-  const nonFriendParticipants = showtime?.non_friend_participants ?? [];
-  const invitedByUsers = showtime?.invited_by ?? [];
+  const coInvitedFriends = showtime?.viewer?.co_invited_friends ?? [];
+  const nonFriendParticipants = showtime?.viewer?.non_friend_participants ?? [];
+  const invitedByUsers = showtime?.viewer?.invited_by ?? [];
   const invitedYouLabel = hasInvite ? formatInvitedYou(invite!.senders) : null;
   const inviterNames = hasInvite ? formatInviterNames(invite!.senders) : null;
 
@@ -1158,8 +1167,8 @@ export default function ShowtimeActionModal({
   // the "Invited" section below already lists who you've invited and their
   // status — so audience visibility is based on going/interested only.
   const hasAudience =
-    (showtime?.friends_going.length ?? 0) > 0 ||
-    (showtime?.friends_interested.length ?? 0) > 0;
+    (showtime?.viewer?.friends_going?.length ?? 0) > 0 ||
+    (showtime?.viewer?.friends_interested?.length ?? 0) > 0;
 
   const statusOptions = [
     {
@@ -1382,6 +1391,7 @@ export default function ShowtimeActionModal({
             {/* Friends going / interested, with the report link anchored just
                 above its top divider — absolutely positioned so it doesn't
                 claim any extra vertical space in the layout. */}
+            {isSignedIn ? (
             <View style={[styles.audienceBox, !hasAudience && styles.audienceBoxEmpty]}>
               {canReport && (
                 <TouchableOpacity
@@ -1396,8 +1406,8 @@ export default function ShowtimeActionModal({
               )}
               {hasAudience ? (
                 <FriendBadges
-                  friendsGoing={showtime.friends_going}
-                  friendsInterested={showtime.friends_interested}
+                  friendsGoing={showtime.viewer?.friends_going}
+                  friendsInterested={showtime.viewer?.friends_interested}
                   variant="default"
                   maxVisible={30}
                   disabledUserId={disabledUserId}
@@ -1409,6 +1419,7 @@ export default function ShowtimeActionModal({
                 </ThemedText>
               )}
             </View>
+            ) : null}
 
             {/* Optional "X invited you." banner */}
             {invitedYouLabel ? (
@@ -1521,6 +1532,7 @@ export default function ShowtimeActionModal({
                 does, even before the visibility query resolves, with a skeleton
                 badge in place of the real one — otherwise the row pops in once the
                 fetch lands and visibly shifts everything below it (worse on Android). */}
+            {isSignedIn ? (
             <View style={styles.visibilitySection}>
               <TouchableOpacity
                 style={styles.visibilityHeader}
@@ -1576,8 +1588,10 @@ export default function ShowtimeActionModal({
                 </View>
               ) : null}
             </View>
+            ) : null}
 
             {/* Who you've invited */}
+            {isSignedIn ? (
             <View
               style={styles.invitedSection}
               onLayout={(event) => {
@@ -1653,8 +1667,10 @@ export default function ShowtimeActionModal({
                 </View>
               )}
             </View>
+            ) : null}
 
             {/* Share (always one tap, no expand) + Invite friends (collapsible, blue invite coding) */}
+            {isSignedIn ? (
             <View style={styles.inviteBarRow}>
               <TouchableOpacity
                 style={styles.shareButton}
@@ -1680,6 +1696,7 @@ export default function ShowtimeActionModal({
                 </Animated.View>
               </TouchableOpacity>
             </View>
+            ) : null}
 
             {showInviteFriends ? (
               <View style={styles.invitePanel}>

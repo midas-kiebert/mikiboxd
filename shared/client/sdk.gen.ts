@@ -129,6 +129,14 @@ import type {
   MoviesReadMovieShowtimesResponse,
   MoviesReadMovieData,
   MoviesReadMovieResponse,
+  ScrapeMonitorGetScrapeRunsData,
+  ScrapeMonitorGetScrapeRunsResponse,
+  ScrapeMonitorListScrapeRecapsData,
+  ScrapeMonitorListScrapeRecapsResponse,
+  ScrapeMonitorGetScrapeRecapData,
+  ScrapeMonitorGetScrapeRecapResponse,
+  ScrapeMonitorGetScrapeRecapAttachmentData,
+  ScrapeMonitorGetScrapeRecapAttachmentResponse,
   ShowtimesUpdateShowtimeSelectionData,
   ShowtimesUpdateShowtimeSelectionResponse,
   ShowtimesPingFriendForShowtimeData,
@@ -1168,7 +1176,7 @@ export class MeService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static getMyShowtimes(
@@ -1212,7 +1220,7 @@ export class MeService {
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.limit
    * @param data.offset
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static getMyAgenda(
@@ -1711,7 +1719,7 @@ export class MoviesService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns MovieSummaryLoggedIn Successful Response
+   * @returns MovieSummaryPublic Successful Response
    * @throws ApiError
    */
   public static readMovies(
@@ -1771,7 +1779,7 @@ export class MoviesService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns ShowtimeInMovieLoggedIn Successful Response
+   * @returns ShowtimeInMoviePublic Successful Response
    * @throws ApiError
    */
   public static readMovieShowtimes(
@@ -1832,7 +1840,7 @@ export class MoviesService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns MovieLoggedIn Successful Response
+   * @returns MoviePublic Successful Response
    * @throws ApiError
    */
   public static readMovie(
@@ -1871,13 +1879,107 @@ export class MoviesService {
   }
 }
 
+export class ScrapeMonitorService {
+  /**
+   * Get Scrape Runs
+   * Per-stream scrape-run history with deltas + anomaly flags (JSON = script/LLM friendly).
+   * @param data The data for the request.
+   * @param data.hours
+   * @returns ScrapeMonitorResponse Successful Response
+   * @throws ApiError
+   */
+  public static getScrapeRuns(
+    data: ScrapeMonitorGetScrapeRunsData = {},
+  ): CancelablePromise<ScrapeMonitorGetScrapeRunsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/monitor/scrape/runs",
+      query: {
+        hours: data.hours,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * List Scrape Recaps
+   * @param data The data for the request.
+   * @param data.limit
+   * @returns ScrapeRecapView Successful Response
+   * @throws ApiError
+   */
+  public static listScrapeRecaps(
+    data: ScrapeMonitorListScrapeRecapsData = {},
+  ): CancelablePromise<ScrapeMonitorListScrapeRecapsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/monitor/scrape/recaps",
+      query: {
+        limit: data.limit,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Scrape Recap
+   * @param data The data for the request.
+   * @param data.recapId
+   * @returns ScrapeRecapDetail Successful Response
+   * @throws ApiError
+   */
+  public static getScrapeRecap(
+    data: ScrapeMonitorGetScrapeRecapData,
+  ): CancelablePromise<ScrapeMonitorGetScrapeRecapResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/monitor/scrape/recaps/{recap_id}",
+      path: {
+        recap_id: data.recapId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Scrape Recap Attachment
+   * Raw attachment bytes (the machine-readable per-run traces: TMDB lookups, run details).
+   * @param data The data for the request.
+   * @param data.recapId
+   * @param data.filename
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static getScrapeRecapAttachment(
+    data: ScrapeMonitorGetScrapeRecapAttachmentData,
+  ): CancelablePromise<ScrapeMonitorGetScrapeRecapAttachmentResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/monitor/scrape/recaps/{recap_id}/attachments/{filename}",
+      path: {
+        recap_id: data.recapId,
+        filename: data.filename,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+}
+
 export class ShowtimesService {
   /**
    * Update Showtime Selection
    * @param data The data for the request.
    * @param data.showtimeId
    * @param data.requestBody
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static updateShowtimeSelection(
@@ -2184,7 +2286,7 @@ export class ShowtimesService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static getMainPageShowtimes(
@@ -2224,7 +2326,7 @@ export class ShowtimesService {
    * Get Showtime By Id
    * @param data The data for the request.
    * @param data.showtimeId
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static getShowtimeById(
@@ -2419,7 +2521,7 @@ export class UsersService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static getUserSelectedShowtimes(

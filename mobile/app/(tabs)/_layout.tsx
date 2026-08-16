@@ -48,7 +48,14 @@ export default function TabLayout() {
   // Data hooks keep this module synced with backend data and shared cache state.
   const { user } = useAuth();
   // Data hooks keep this module synced with backend data and shared cache state.
-  const { data: receivedRequests } = useFetchReceivedRequests({ refetchIntervalMs: 15000 });
+  // Every badge below counts something that belongs to an account, so for a
+  // guest they are not merely empty — the queries behind them would 401 on a
+  // fifteen-second loop. `user` is undefined without a session (useAuth reads
+  // the stored token), which is what the rest of this file already gates on.
+  const { data: receivedRequests } = useFetchReceivedRequests({
+    enabled: !!user,
+    refetchIntervalMs: 15000,
+  });
   const { data: unseenPingCount = 0 } = useFetchUnseenShowtimePingCount({
     enabled: !!user,
     refetchIntervalMs: 15000,

@@ -38,7 +38,7 @@ import {
   useFeatureTipsEnabled,
 } from '@/utils/feature-tips';
 import { startIntro } from '@/utils/intro';
-import { markSignedOut } from '@/utils/auth-session';
+import { markSignedOut, useIsSignedIn } from '@/utils/auth-session';
 import useAuth from 'shared/hooks/useAuth';
 import {
   MeService,
@@ -53,6 +53,7 @@ import { emailPattern, handleError, usernameMaxLength, usernamePattern } from 's
 import { unregisterPushTokenForCurrentDevice } from '@/utils/push-notifications';
 import NotificationPreferenceList from '@/components/notifications/NotificationPreferenceList';
 import LetterboxdSection from '@/components/settings/LetterboxdSection';
+import SignedOutPanel from '@/components/auth/SignedOutPanel';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import EmailVerificationRequiredDialog from '@/components/ui/EmailVerificationRequiredDialog';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
@@ -99,6 +100,12 @@ export default function SettingsScreen() {
     markSignedOut();
     router.replace('/login');
   });
+  // Settings is two things stacked: preferences that belong to this device
+  // (appearance, the Cineville card, the legal notices) and preferences that
+  // belong to an account (profile, notifications, Letterboxd, the account
+  // itself). A guest gets the first set, which works exactly as it does for
+  // anyone else, and an offer where the second would be.
+  const isSignedIn = useIsSignedIn();
   // The intro normally runs once, for a brand-new account. Superusers get the
   // replay button in release builds too, so it can be checked on a real device
   // without making an account for every run.
@@ -130,7 +137,7 @@ export default function SettingsScreen() {
   const [isUpdatingDigest, setIsUpdatingDigest] = useState(false);
   // Always fetched (not gated on the advanced picker): needed to resolve the
   // curated top-500 default below even when the picker has never been opened.
-  const { data: digestLists = [] } = useFetchLetterboxdLists();
+  const { data: digestLists = [] } = useFetchLetterboxdLists(isSignedIn);
   const { data: cinemaPresets = [] } = useQuery<CinemaPresetPublic[]>({
     queryKey: ['cinema-presets'],
     queryFn: () => MeService.getCinemaPresets(),
@@ -177,7 +184,9 @@ export default function SettingsScreen() {
   const handleDangerCardLayout = useCallback((event: LayoutChangeEvent) => {
     setDangerCardHeight(event.nativeEvent.layout.height);
   }, []);
-  const dangerZoneReservedSpace = dangerCardHeight + SECTION_GAP;
+  // Nothing to reserve room for when the danger zone isn't rendered at all,
+  // which is the guest's Settings — the space would just be a gap at the end.
+  const dangerZoneReservedSpace = isSignedIn ? dangerCardHeight + SECTION_GAP : 0;
   const dangerCaretSpin = useMemo(
     () => dangerCaretRotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }),
     [dangerCaretRotation]
@@ -499,6 +508,13 @@ export default function SettingsScreen() {
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
       >
+        {!isSignedIn ? (
+          <View style={styles.section}>
+            <SignedOutPanel feature="profile" variant="card" />
+          </View>
+        ) : null}
+
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>My profile</ThemedText>
           <View style={styles.card}>
@@ -574,11 +590,14 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        ) : null}
 
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Letterboxd</ThemedText>
           <LetterboxdSection />
         </View>
+        ) : null}
 
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Appearance</ThemedText>
@@ -610,7 +629,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {canReplayIntro ? (
+        {canReplayIntro && isSignedIn ? (
           <View style={styles.section}>
             <ThemedText style={styles.sectionTitle}>Developer</ThemedText>
             <View style={styles.card}>
@@ -668,6 +687,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Notifications</ThemedText>
           <View style={styles.card}>
@@ -831,7 +851,9 @@ export default function SettingsScreen() {
             ) : null}
           </View>
         </View>
+        ) : null}
 
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Tips</ThemedText>
           <View style={styles.card}>
@@ -858,7 +880,9 @@ export default function SettingsScreen() {
             ) : null}
           </View>
         </View>
+        ) : null}
 
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>{hasPassword ? 'Password' : 'Add password'}</ThemedText>
           <View style={styles.card}>
@@ -909,7 +933,9 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        ) : null}
 
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Account</ThemedText>
           <View style={styles.card}>
@@ -924,6 +950,7 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        ) : null}
 
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>About</ThemedText>
@@ -938,6 +965,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {isSignedIn ? (
         <View style={styles.section}>
           <TouchableOpacity
             style={styles.dangerZoneHeader}
@@ -971,6 +999,7 @@ export default function SettingsScreen() {
             </View>
           ) : null}
         </View>
+        ) : null}
       </ScrollView>
       <ConfirmDialog
         visible={isLogoutDialogVisible}

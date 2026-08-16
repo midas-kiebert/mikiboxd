@@ -223,7 +223,7 @@ def to_with_showtimes_public(
 
     User.model_validate(user)
     showtimes = [
-        showtime_converters.to_logged_in(
+        showtime_converters.to_public(
             showtime=showtime, session=session, user_id=user.id
         )
         for showtime in user_crud.get_selected_showtimes(

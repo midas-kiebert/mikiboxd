@@ -31,6 +31,7 @@ from sqlmodel import Session
 from app.core import security
 from app.core.config import settings
 from app.core.db import engine
+from app.core.viewer import ViewerId
 from app.models.auth_schemas import TokenPayload
 from app.models.user import User
 
@@ -39,6 +40,14 @@ from app.models.user import User
 # docs UI — it points at the login endpoint that issues tokens.
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
+)
+
+# Same scheme, but a missing Authorization header yields None instead of a 401.
+# Used by the browse endpoints, which serve signed-out visitors too — see
+# `MaybeCurrentUser` below.
+optional_oauth2 = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_STR}/login/access-token",
+    auto_error=False,
 )
 
 
@@ -77,6 +86,7 @@ def get_db_context() -> Generator[Session, None, None]:
 # `SessionDep` gives you a DB session; `TokenDep` gives you the raw JWT string.
 SessionDep = Annotated[Session, Depends(get_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
+OptionalTokenDep = Annotated[str | None, Depends(optional_oauth2)]
 
 
 def get_current_user(session: SessionDep, token: TokenDep) -> User:
@@ -144,6 +154,62 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
+def get_current_user_optional(
+    session: SessionDep, token: OptionalTokenDep
+) -> User | None:
+    """Return the authenticated User, or None when the request carries no token.
+
+    For the browse endpoints, which serve the public catalogue to signed-out
+    visitors and the same catalogue *annotated* to signed-in ones — see
+    `app.core.viewer`.
+
+    A token that is present but bad is still a 401: the caller believes it has
+    a session, and silently downgrading it to anonymous would hide an expired
+    login behind a page that looks signed-out but never says so, with no 401 to
+    put the client on its refresh path.
+
+    Args:
+        session: Injected DB session (from get_db).
+        token:   The raw JWT string, or None if no Authorization header was sent.
+
+    Returns:
+        The authenticated User, or None for an anonymous visitor.
+
+    Raises:
+        HTTPException: Whatever `get_current_user` raises for a token that was
+            sent but is not usable.
+    """
+    if token is None:
+        return None
+    return get_current_user(session=session, token=token)
+
+
+# Shorthand for routes that serve signed-out visitors as well as signed-in ones
+# and need the whole User. Most only need who is asking, so they declare
+# `CurrentViewer` below instead.
+MaybeCurrentUser = Annotated[User | None, Depends(get_current_user_optional)]
+
+
+def get_viewer_id(current_user: MaybeCurrentUser) -> ViewerId:
+    """Who this request is being answered for — None when nobody is signed in."""
+    return current_user.id if current_user is not None else None
+
+
+# Declare this on a browse route and pass it straight down to the service layer:
+#   def read_movies(session: SessionDep, viewer: CurrentViewer): ...
+CurrentViewer = Annotated[ViewerId, Depends(get_viewer_id)]
+
+# FastAPI derives one security requirement per scheme and has no way to say
+# "the token is optional" — `auto_error=False` changes the runtime behaviour
+# but not the generated schema, which still documents these routes as requiring
+# a bearer token. An empty requirement is how OpenAPI spells "or no credentials
+# at all"; FastAPI appends `openapi_extra`'s entries to the ones it derived, so
+# the published requirement ends up "bearer token, or nothing". Pass this on
+# every route that takes a `CurrentViewer`, so the contract says out loud what
+# the code does.
+OPTIONAL_AUTH_OPENAPI_EXTRA = {"security": [{}]}
+
+
 def get_current_active_superuser(current_user: CurrentUser) -> User:
     """Require that the current user is a superuser.
 
@@ -165,9 +231,7 @@ def get_current_active_superuser(current_user: CurrentUser) -> User:
     return current_user
 
 
-scrape_monitor_api_key_header = APIKeyHeader(
-    name="X-Monitor-Api-Key", auto_error=False
-)
+scrape_monitor_api_key_header = APIKeyHeader(name="X-Monitor-Api-Key", auto_error=False)
 
 
 def verify_scrape_monitor_api_key(

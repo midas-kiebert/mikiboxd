@@ -7,7 +7,7 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.core.enums import GoingStatus, VisibilityMode
-from app.crud import cinema_preset as cinema_presets_crud
+from app.core.viewer import ViewerId
 from app.crud import friendship as friendship_crud
 from app.crud import movie as movies_crud
 from app.crud import showtime as showtimes_crud
@@ -29,10 +29,10 @@ from app.exceptions.showtime_exceptions import (
 from app.inputs.movie import Filters
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime, ShowtimeCreate
-from app.schemas.showtime import ShowtimeLoggedIn
+from app.schemas.showtime import ShowtimePublic
 from app.schemas.showtime_ping import SentShowtimePingPublic
 from app.schemas.showtime_visibility import ShowtimeVisibilityPublic
-from app.services import push_notifications, showtime_title_conflict
+from app.services import push_notifications, showtime_title_conflict, viewer_context
 from app.utils import now_amsterdam_naive
 from app.validators.cinema_seating import CinemaSeatingPreset, validate_seat_for_preset
 
@@ -115,17 +115,18 @@ def get_showtime_by_id(
     *,
     session: Session,
     showtime_id: int,
-    current_user: UUID,
-) -> ShowtimeLoggedIn:
+    current_user: ViewerId,
+) -> ShowtimePublic:
     """
-    Get a showtime by its ID for a logged-in user.
+    Get a showtime by its ID, annotated for the requesting viewer.
 
     Parameters:
         session (Session): Database session.
         showtime_id (int): ID of the showtime to retrieve.
-        current_user (UUID): ID of the current user.
+        current_user (ViewerId): Who to annotate for; None for an anonymous
+            visitor — see `app.core.viewer`.
     Returns:
-        ShowtimeLoggedIn: The showtime details for the logged-in user.
+        ShowtimePublic: The showtime details for the requesting viewer.
     Raises:
         ShowtimeNotFoundError: If the showtime with the given ID does not exist.
     """
@@ -135,7 +136,7 @@ def get_showtime_by_id(
     )
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
-    showtime_public = showtime_converters.to_logged_in(
+    showtime_public = showtime_converters.to_public(
         showtime=showtime, session=session, user_id=current_user
     )
     return showtime_public
@@ -151,7 +152,7 @@ def update_showtime_selection(
     seat_number: str | None = None,
     visibility_mode: VisibilityMode | None = None,
     update_seat: bool = False,
-) -> ShowtimeLoggedIn:
+) -> ShowtimePublic:
     previous_status = user_crud.get_showtime_going_status(
         session=session,
         showtime_id=showtime_id,
@@ -236,7 +237,7 @@ def update_showtime_selection(
         except Exception as e:
             session.rollback()
             raise AppError from e
-    showtime_logged_in = showtime_converters.to_logged_in(
+    showtime_logged_in = showtime_converters.to_public(
         showtime=showtime, session=session, user_id=user_id
     )
 
@@ -879,30 +880,20 @@ def upsert_showtime(
 def get_main_page_showtimes(
     *,
     session: Session,
-    current_user_id: UUID,
+    current_user_id: ViewerId,
     limit: int,
     offset: int,
     filters: Filters,
-) -> list[ShowtimeLoggedIn]:
-    if filters.selected_cinema_ids is None:
-        favorite_preset = cinema_presets_crud.get_user_favorite_preset(
-            session=session,
-            user_id=current_user_id,
-        )
-        if favorite_preset is not None:
-            filters.selected_cinema_ids = list(favorite_preset.cinema_ids)
-        else:
-            # Compatibility fallback for users still on legacy cinema selections.
-            filters.selected_cinema_ids = user_crud.get_selected_cinemas_ids(
-                session=session,
-                user_id=current_user_id,
-            )
+) -> list[ShowtimePublic]:
+    viewer_context.apply_viewer_defaults(
+        session=session, viewer_id=current_user_id, filters=filters
+    )
 
     letterboxd_username = None
     if filters.watchlist_only or filters.hide_watched:
-        letterboxd_username = user_crud.get_letterboxd_username(
+        letterboxd_username = viewer_context.letterboxd_username_for(
             session=session,
-            user_id=current_user_id,
+            viewer_id=current_user_id,
         )
     showtimes = showtimes_crud.get_main_page_showtimes(
         session=session,
@@ -913,7 +904,7 @@ def get_main_page_showtimes(
         letterboxd_username=letterboxd_username,
     )
     return [
-        showtime_converters.to_logged_in(
+        showtime_converters.to_public(
             showtime=showtime, session=session, user_id=current_user_id
         )
         for showtime in showtimes
@@ -923,27 +914,18 @@ def get_main_page_showtimes(
 def count_main_page_showtimes(
     *,
     session: Session,
-    current_user_id: UUID,
+    current_user_id: ViewerId,
     filters: Filters,
 ) -> int:
-    if filters.selected_cinema_ids is None:
-        favorite_preset = cinema_presets_crud.get_user_favorite_preset(
-            session=session,
-            user_id=current_user_id,
-        )
-        if favorite_preset is not None:
-            filters.selected_cinema_ids = list(favorite_preset.cinema_ids)
-        else:
-            filters.selected_cinema_ids = user_crud.get_selected_cinemas_ids(
-                session=session,
-                user_id=current_user_id,
-            )
+    viewer_context.apply_viewer_defaults(
+        session=session, viewer_id=current_user_id, filters=filters
+    )
 
     letterboxd_username = None
     if filters.watchlist_only or filters.hide_watched:
-        letterboxd_username = user_crud.get_letterboxd_username(
+        letterboxd_username = viewer_context.letterboxd_username_for(
             session=session,
-            user_id=current_user_id,
+            viewer_id=current_user_id,
         )
     return showtimes_crud.count_main_page_showtimes(
         session=session,

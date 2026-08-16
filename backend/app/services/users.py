@@ -24,7 +24,7 @@ from app.exceptions.user_exceptions import (
 from app.inputs.movie import Filters
 from app.mailer import generate_verify_email_email, send_email
 from app.models.user import User, UserCreate, UserRegister
-from app.schemas.showtime import ShowtimeLoggedIn
+from app.schemas.showtime import ShowtimePublic
 from app.schemas.user import UserPublic, UserWithFriendStatus
 from app.validators.username import is_valid_username
 
@@ -131,7 +131,7 @@ def get_selected_showtimes(
     limit: int,
     offset: int,
     filters: Filters,
-) -> list[ShowtimeLoggedIn]:
+) -> list[ShowtimePublic]:
     """
     Get the showtimes selected by a user.
 
@@ -139,7 +139,7 @@ def get_selected_showtimes(
         session (Session): Database session.
         user_id (UUID): ID of the user whose selected showtimes are to be retrieved.
     Returns:
-        list[ShowtimeLoggedIn]: List of showtimes selected by the user.
+        list[ShowtimePublic]: List of showtimes selected by the user.
     """
     is_friend = friendship_crud.are_users_friends(
         session=session,
@@ -167,7 +167,7 @@ def get_selected_showtimes(
         letterboxd_username=letterboxd_username,
     )
     return [
-        showtime_converters.to_logged_in(
+        showtime_converters.to_public(
             showtime=showtime, session=session, user_id=current_user_id
         )
         for showtime in showtimes

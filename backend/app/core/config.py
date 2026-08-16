@@ -282,10 +282,18 @@ class Settings(BaseSettings):
     # Lowest mobile app `version` (from app.json, sent as X-Client-Version) still
     # allowed to call the API. Requests from an older native build get a 426
     # Upgrade Required instead of hitting routes they don't understand — see
-    # app/core/client_version.py. `None` disables the gate entirely (every
-    # version is accepted), which is the default so this stays inert until a
-    # breaking mobile change actually needs it.
-    MIN_SUPPORTED_CLIENT_VERSION: str | None = None
+    # app/core/client_version.py. `None` disables the gate for that platform
+    # (every version is accepted), which is the default so this stays inert
+    # until a breaking mobile change actually needs it.
+    #
+    # Per-platform on purpose: App Store review runs to weeks where Play review
+    # runs to a day, so the two floors are never raised at the same moment and
+    # a shared setting would force the faster store to wait for the slower one.
+    # Raise each one only once that platform's release is actually installed —
+    # the X-Client-Version header on live traffic is what tells you, not the
+    # store listing, since an approved build still takes days to roll out.
+    MIN_SUPPORTED_CLIENT_VERSION_IOS: str | None = None
+    MIN_SUPPORTED_CLIENT_VERSION_ANDROID: str | None = None
 
     # Store links surfaced in the 426 response so the app can deep-link straight
     # to the update instead of hardcoding store URLs into the client.
@@ -294,7 +302,9 @@ class Settings(BaseSettings):
         "https://play.google.com/store/apps/details?id=com.midaskiebert.mikino"
     )
 
-    @field_validator("MIN_SUPPORTED_CLIENT_VERSION")
+    @field_validator(
+        "MIN_SUPPORTED_CLIENT_VERSION_IOS", "MIN_SUPPORTED_CLIENT_VERSION_ANDROID"
+    )
     @classmethod
     def _validate_min_supported_client_version(cls, value: str | None) -> str | None:
         if value is not None:

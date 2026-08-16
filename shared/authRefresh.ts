@@ -49,9 +49,17 @@ export function installAuthRefreshInterceptor(onRefreshFailed: () => void): void
       const config = error.config as RetriableConfig | undefined;
       const status = error.response?.status;
 
+      // No credential was sent, so this 401 cannot be an expired one. It is a
+      // signed-out visitor reaching an endpoint that needs an account — there
+      // is nothing to refresh, and treating it as a dead session would tear
+      // down a session that was never there. (The generated client omits the
+      // header entirely when it has no token; see `getHeaders`.)
+      const requestWasAuthenticated = Boolean(config?.headers?.Authorization);
+
       const shouldAttemptRefresh =
         status === 401 &&
         !!config &&
+        requestWasAuthenticated &&
         !config._retriedAfterRefresh &&
         !(config.url ?? '').includes(REFRESH_PATH);
 

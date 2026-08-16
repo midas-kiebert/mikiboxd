@@ -3,13 +3,13 @@ import { Flex } from "@chakra-ui/react"
 /**
  * Showtimes feature component: Showtime Card.
  */
-import type { GoingStatus, ShowtimeLoggedIn } from "shared"
+import type { GoingStatus, ShowtimePublic } from "shared"
 import MoviePoster from "../Movies/MoviePoster"
 import DatetimeCard from "./DatetimeCard"
 import ShowtimeInfoBox from "./ShowtimeInfoBox"
 
 type ShowtimeCardProps = {
-  showtime: ShowtimeLoggedIn
+  showtime: ShowtimePublic
   going_status: GoingStatus
 }
 

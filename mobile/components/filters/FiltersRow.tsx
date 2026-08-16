@@ -15,6 +15,7 @@ import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import SavedPresetChips from "@/components/filters/SavedPresetChips";
 import { type DisplayPreset } from "@/components/filters/saved-presets";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 export type FiltersRowProps = {
@@ -34,6 +35,9 @@ export default function FiltersRow({
 }: FiltersRowProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // Saved presets belong to an account, so for a guest the row is the Filters
+  // button alone — the separator would otherwise draw a line to nothing.
+  const isSignedIn = useIsSignedIn();
 
   return (
     <View style={styles.container}>
@@ -53,11 +57,15 @@ export default function FiltersRow({
         </View>
       </TouchableOpacity>
 
-      {/* Vertical separator */}
-      <View style={styles.separator} />
+      {isSignedIn ? (
+        <>
+          {/* Vertical separator */}
+          <View style={styles.separator} />
 
-      {/* Scrollable preset buttons */}
-      <SavedPresetChips onApply={onApplyPreset} />
+          {/* Scrollable preset buttons */}
+          <SavedPresetChips onApply={onApplyPreset} />
+        </>
+      ) : null}
     </View>
   );
 }

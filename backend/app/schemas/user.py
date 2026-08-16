@@ -8,7 +8,7 @@ from sqlmodel import SQLModel
 from app.core.enums import DigestFrequency, NotificationChannel
 
 if TYPE_CHECKING:
-    from .showtime import ShowtimeLoggedIn
+    from .showtime import ShowtimePublic
 
 __all__ = [
     "UserPublic",
@@ -78,4 +78,4 @@ class UserWithFriendStatus(UserPublic):
 
 
 class UserWithShowtimesPublic(UserPublic):
-    showtimes_going: list["ShowtimeLoggedIn"]
+    showtimes_going: list["ShowtimePublic"]

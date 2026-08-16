@@ -1,12 +1,12 @@
 /**
  * Showtimes feature component: Showtimes.
  */
-import type { ShowtimeLoggedIn } from "shared"
+import type { ShowtimePublic } from "shared"
 import MoviesContainer from "../Movies/MoviesContainer"
 import ShowtimeCard from "./ShowtimeCard"
 
 type ShowtimeProps = {
-  showtimes: ShowtimeLoggedIn[]
+  showtimes: ShowtimePublic[]
 }
 
 export function Showtimes({ showtimes }: ShowtimeProps) {
@@ -16,7 +16,7 @@ export function Showtimes({ showtimes }: ShowtimeProps) {
       {showtimes.map((showtime) => (
         <ShowtimeCard
           showtime={showtime}
-          going_status={showtime.going}
+          going_status={showtime.viewer?.going}
           key={showtime.id}
         />
       ))}

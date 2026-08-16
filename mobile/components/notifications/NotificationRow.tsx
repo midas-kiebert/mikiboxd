@@ -33,8 +33,8 @@ const actorStatus = (item: NotificationFeedItem): "going" | "interested" | null 
   const actorId = item.actor?.id;
   const showtime = item.showtime;
   if (!actorId || !showtime) return null;
-  if (showtime.friends_going?.some((u) => u.id === actorId)) return "going";
-  if (showtime.friends_interested?.some((u) => u.id === actorId)) return "interested";
+  if (showtime.viewer?.friends_going?.some((u) => u.id === actorId)) return "going";
+  if (showtime.viewer?.friends_interested?.some((u) => u.id === actorId)) return "interested";
   return null;
 };
 

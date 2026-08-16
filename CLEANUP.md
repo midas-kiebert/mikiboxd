@@ -17,7 +17,8 @@ Legend:
 - [x] `security.py` — JWT creation, password hashing/verification, password reset tokens (moved from `utils.py`)
 - [x] `enums.py` — App-wide enums (GoingStatus, TimeOfDay, etc.)
 - [x] `client_version.py` — Dotted-integer version parsing/comparison for the mobile update gate
-- [x] `middleware.py` — `ClientVersionGateMiddleware`: 426s requests from mobile builds older than `MIN_SUPPORTED_CLIENT_VERSION`
+- [x] `middleware.py` — `ClientVersionGateMiddleware`: 426s requests from mobile builds older than that platform's `MIN_SUPPORTED_CLIENT_VERSION_*`. Per-platform floors, because App Store review runs weeks behind Play and a shared floor would hold the faster store hostage to the slower one
+- [x] `viewer.py` — `ViewerId` (`UUID | None`): who a read is being annotated for. `None` is a legitimate anonymous viewer, entitled to the public catalogue and none of the personal annotations — threaded through the browse routes, services, converters and crud so one code path serves signed-in and signed-out alike
 
 ---
 
@@ -98,8 +99,9 @@ Legend:
 
 - [ ] `user.py` — Public/private user representations
 - [ ] `cinema.py` — Cinema response shape
-- [ ] `movie.py` — Movie response shape (with watchlist status, friend data)
-- [ ] `showtime.py` — Showtime response shape (with selections, visibility)
+- [ ] `movie.py` — Movie response shape. `MoviePublic`/`MovieSummaryPublic` are the film itself; whatever depends on who asked lives under a nullable `viewer` block (`MovieViewerState`/`MovieSummaryViewerState`), absent for an anonymous read
+- [ ] `showtime.py` — Showtime response shape. Same split: `ShowtimePublic`/`ShowtimeInMoviePublic` are public, `ShowtimeViewerState`/`ShowtimeInMovieViewerState` carry selections, invites and friend annotations. The two viewer shapes differ rather than sharing one with empty defaults, so an empty list always means "none" and never "we didn't look"
+- [x] `legacy_viewer_compat.py` — TEMPORARY. Deprecation note shared by the flat `going`/`friends_going`/... mirrors that keep pre-1.1.0 app builds working now that those fields live under `viewer`. Delete this file and the `LEGACY_VIEWER_FIELDS` blocks once no old build is still calling
 - [ ] `showtime_ping.py` — Ping response shape
 - [x] `notification.py` — Merged notification-centre feed item shape
 - [x] `showtime_visibility.py` — Per-showtime visibility mode response shape
@@ -156,6 +158,7 @@ Legend:
 - [ ] `watchlist.py` — Watchlist sync logic
 - [ ] `watched.py` — Watched-list sync logic
 - [x] `letterboxd_sync.py` — Shared sync cooldown for `watchlist.py`/`watched.py` (counts failed attempts, not just successes)
+- [x] `viewer_context.py` — Settles the browse filters that depend on who is asking: fills in `selected_cinema_ids` from the account's favourite cinema preset (then its legacy selection), and resolves the Letterboxd username the watchlist filters read against. For an anonymous viewer it leaves cinemas unrestricted — the whole catalogue, not an empty feed — and drops Letterboxd list ids, which can only belong to an account. Replaces the copy of that block that sat in each of the four movie/showtime list+count entry points
 - [ ] `scrape_sync.py` — Triggers scraping from the API layer
 - [ ] `analytics_dashboard.py` — Aggregates AnalyticsEvent/Notification/ShowtimePing/User data for the admin overview
 - [x] `scrape_monitor.py` — Read-only aggregation of ScrapeRun/ScrapeRecap for the admin scrape monitor (deltas + anomaly flags)
@@ -270,6 +273,8 @@ Legend:
 - [ ] Add tests for `crud/showtime_visibility.py` (default-mode resolution covered by `tests/crud/test_showtime_visibility_defaults.py`)
 - [ ] Add tests for `crud/user.py` (time-range filtering)
 - [ ] `tests/api/test_admin.py` — Admin route gating, analytics overview, movie/showtime moderation, showtime reports
+- [x] `tests/api/test_anonymous_browse.py` — The browse endpoints answered without a token: catalogue in full, no personal annotations, `/me/*` still 401
+- [x] `tests/api/test_client_compatibility.py` — Legacy flat mirrors match the `viewer` block, and the version gate's per-platform floors are independent
 
 ---
 
@@ -531,6 +536,13 @@ Only components created or reworked during the cleanup are listed here; the rest
 - ~~`tips/FeatureTipCard.tsx`~~ — deleted (the inline card was superseded by the blocking `FeatureTipModal`)
 - [x] `hooks/useCurrentUser.ts` — The signed-in account (same `currentUser` query key as `shared/hooks/useAuth`, but enabled from the global auth session rather than that hook's own token read, so it is live on every launch and from the moment a sign-in is announced) plus the predicate the app is gated on: `hasUsername`/`isMissingUsername`, positive checks both ways so an account that has not loaded is never read as either
 - [x] `utils/username-gate.ts` — "This session owes a username", known synchronously, raised by a social sign-in in the same block as `markSignedIn` so the route guard has an answer before the account loads. In memory only, unlike `intro.ts`: a stored flag outliving its account would strand a user on the username screen
+- [x] `auth/SignInGateProvider.tsx` — One place to ask "does this need an account?", and one dialog to answer it. `requireAccount(feature)` returns true when the caller may proceed and false when it has put the prompt up instead, so an account-only affordance anywhere in the app gates itself in one line. Mounted above the sheet/notification providers so the prompt outlives the surface the tap came from
+- [x] `auth/SignInRequiredDialog.tsx` — What a guest sees when they tap something an account is needed for. Not a `ConfirmDialog`: it asks for two different yeses (make an account, or use the one you have), with dismissal as a quiet third option
+- [x] `auth/SignedOutPanel.tsx` — What a guest sees instead of a tab that has nothing to show them (Agenda, Friends), and as a card at the top of Settings. Reads the same copy table as the dialog, so the sentence on the Friends tab is the one they read again if they tap "Invite" three screens later
+- [x] `auth/account-features.ts` — The copy table both of the above read: for each thing an account is for, an icon, a title naming the *feature* rather than the restriction, and one sentence on what it does
+- [x] `auth/BrowseWithoutAccountLink.tsx` — The way past the door, on both auth screens. A quiet link rather than a third button competing with Apple/Google; hidden when the user is already browsing as a guest
+- [x] `utils/guest-cinema-selection.ts` — A guest's chosen cinemas, kept on the device (a signed-in user's live on their account). Empty means all cinemas, which is where a guest starts; `claimGuestCinemaSelection` hands them to the account on sign-up so the picking is not repeated
+- [x] `hooks/useCinemaSelection.ts` — The session's cinema selection plus persistence for guests, so every picker in the app saves a guest's choice by doing nothing different from what it already did
 - [x] `hooks/useSingleFireNavigation.ts` — Wraps a `router.push`/`replace` call so a double-tap only fires it once; `expo-router` navigation is async, so a disabled-on-submit re-render lags behind a fast double-tap and stacks the destination screen twice. Resets on screen focus. Rolled out to every push-on-press site found across the app (movie/friend/cinema cards, showtime long-press, login's sign-up/forgot-password links, the notification centre)
 
 ---

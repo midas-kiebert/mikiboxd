@@ -3,11 +3,11 @@ import ShowtimeList from "@/components/Movies/ShowtimeList"
  * Movies list feature component: Showtime Info.
  */
 import { Box } from "@chakra-ui/react"
-import type { ShowtimeInMovieLoggedIn } from "shared"
+import type { ShowtimeInMoviePublic } from "shared"
 import MoreShowtimes from "./MoreShowtimes"
 
 type ShowtimeInfoProps = {
-  showtimes: ShowtimeInMovieLoggedIn[]
+  showtimes: ShowtimeInMoviePublic[]
   lastShowtime?: string | null
   total_showtimes: number
 }

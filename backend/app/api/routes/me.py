@@ -30,7 +30,7 @@ from app.schemas.letterboxd_list import (
 from app.schemas.notification import NotificationFeedItem
 from app.schemas.push_token import PushTokenDelete, PushTokenRegister
 from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
-from app.schemas.showtime import ShowtimeLoggedIn
+from app.schemas.showtime import ShowtimePublic
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe, UserWithFriendStatus
 from app.services import letterboxd_lists as letterboxd_lists_service
@@ -310,14 +310,14 @@ def count_my_showtimes(
     )
 
 
-@router.get("/showtimes", response_model=list[ShowtimeLoggedIn])
+@router.get("/showtimes", response_model=list[ShowtimePublic])
 def get_my_showtimes(
     session: SessionDep,
     current_user: CurrentUser,
     limit: int = Query(10, ge=1, le=50),
     offset: int = Query(0, ge=0),
     filters: Filters = Depends(get_filters),
-) -> list[ShowtimeLoggedIn]:
+) -> list[ShowtimePublic]:
     return users_service.get_selected_showtimes(
         session=session,
         user_id=current_user.id,
@@ -328,7 +328,7 @@ def get_my_showtimes(
     )
 
 
-@router.get("/agenda", response_model=list[ShowtimeLoggedIn])
+@router.get("/agenda", response_model=list[ShowtimePublic])
 def get_my_agenda(
     session: SessionDep,
     current_user: CurrentUser,
@@ -339,7 +339,7 @@ def get_my_agenda(
     ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-) -> list[ShowtimeLoggedIn]:
+) -> list[ShowtimePublic]:
     if snapshot_time is None:
         snapshot_time = now_amsterdam_naive()
     return me_service.get_agenda_showtimes(

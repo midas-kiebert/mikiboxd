@@ -3,7 +3,7 @@ from typing import Literal
 
 from sqlmodel import SQLModel
 
-from .showtime import ShowtimeLoggedIn
+from .showtime import ShowtimePublic
 from .user import UserPublic
 
 __all__ = [
@@ -46,4 +46,4 @@ class NotificationFeedItem(SQLModel):
     # The friend / sender / accepter involved (always present for current types).
     actor: UserPublic | None
     # Present for showtime-related types so a tap can open the showtime modal.
-    showtime: ShowtimeLoggedIn | None
+    showtime: ShowtimePublic | None

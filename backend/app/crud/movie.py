@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, time, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import String, case, false, func, select
@@ -9,6 +10,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_
 
 from app.core.enums import GoingStatus, SearchField
+from app.core.viewer import ViewerId
 from app.crud.movie_set_filters import apply_movie_set_filters
 from app.inputs.movie import Filters
 from app.models.cinema import Cinema
@@ -453,7 +455,7 @@ def apply_search_filter(
     *,
     filters: Filters,
     session: Session,
-    current_user_id: UUID | None,
+    current_user_id: ViewerId,
 ):
     """Apply `filters.query` against whichever field `filters.search_field` selects.
 
@@ -622,7 +624,7 @@ def get_showtimes_for_movie(
     limit: int | None = None,
     offset: int = 0,
     filters: Filters,
-    current_user_id: UUID | None = None,
+    current_user_id: ViewerId = None,
     letterboxd_username: str | None = None,
 ) -> list[Showtime]:
     stmt = select(Showtime).where(col(Showtime.datetime) >= filters.snapshot_time)
@@ -681,7 +683,7 @@ def get_showtimes_for_movie(
         stmt = apply_language_filter(stmt, filters=filters)
 
     # Movie-set filters (watchlist / watched / lists) only apply when a username is
-    # supplied. Callers building grouped movie *cards* (to_summary_logged_in) do not
+    # supplied. Callers building grouped movie *cards* (to_summary_public) do not
     # pass one — those cards must always show the movie's own showtimes, since the
     # movie already qualified via the list-level query. Without this guard the
     # "include requested but no username" path would force an empty result and the
@@ -774,15 +776,18 @@ def get_total_number_of_future_showtimes(
     return total_showtimes
 
 
-def get_movies(
+def _build_movies_query(
     *,
     session: Session,
-    current_user_id: UUID,
+    current_user_id: ViewerId,
     letterboxd_username: str | None,
-    limit: int,
-    offset: int,
     filters: Filters,
-) -> list[Movie]:
+) -> tuple[Any, bool]:
+    """
+    Shared filter-application logic for get_movies and count_movies. Every filter
+    dimension must be applied here exactly once so the two entry points can never
+    drift out of sync.
+    """
     stmt = (
         select(Movie)
         .join(Showtime, col(Movie.id) == Showtime.movie_id)
@@ -812,7 +817,7 @@ def get_movies(
         letterboxd_username=letterboxd_username,
     )
     if force_empty:
-        return []
+        return stmt, True
 
     if filters.days is not None and len(filters.days) > 0:
         stmt = stmt.where(
@@ -834,7 +839,15 @@ def get_movies(
             )
         )
 
-    if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
+    # "Going / interested" is a statement about people, so it needs someone to be
+    # about. An anonymous viewer has no selections and can see no one else's, so
+    # the filter is dropped rather than applied against a NULL viewer, which would
+    # match nothing and leave them looking at an empty catalogue.
+    if (
+        current_user_id is not None
+        and filters.selected_statuses is not None
+        and len(filters.selected_statuses) > 0
+    ):
         visible_row = aliased(ShowtimeVisibilityEffective)
         stmt = (
             stmt.join(
@@ -855,6 +868,27 @@ def get_movies(
                 col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
             )
         )
+
+    return stmt, False
+
+
+def get_movies(
+    *,
+    session: Session,
+    current_user_id: ViewerId,
+    letterboxd_username: str | None,
+    limit: int,
+    offset: int,
+    filters: Filters,
+) -> list[Movie]:
+    stmt, force_empty = _build_movies_query(
+        session=session,
+        current_user_id=current_user_id,
+        letterboxd_username=letterboxd_username,
+        filters=filters,
+    )
+    if force_empty:
+        return []
 
     order_terms: list[ColumnElement] = []
     if filters.query and filters.search_field == SearchField.TITLE:
@@ -890,82 +924,18 @@ def get_movies(
 def count_movies(
     *,
     session: Session,
-    current_user_id: UUID,
+    current_user_id: ViewerId,
     letterboxd_username: str | None,
     filters: Filters,
 ) -> int:
-    stmt = (
-        select(Movie)
-        .join(Showtime, col(Movie.id) == Showtime.movie_id)
-        .where(
-            col(Showtime.datetime) >= filters.snapshot_time,
-        )
-    )
-    if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
-
-    stmt = apply_search_filter(
-        stmt, filters=filters, session=session, current_user_id=current_user_id
-    )
-
-    if filters.runtime_min is not None:
-        stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
-
-    if filters.runtime_max is not None:
-        stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
-
-    stmt = apply_language_filter(stmt, filters=filters)
-
-    stmt, force_empty = apply_movie_set_filters(
-        stmt,
-        movie_id_col=col(Movie.id),
-        filters=filters,
+    stmt, force_empty = _build_movies_query(
+        session=session,
+        current_user_id=current_user_id,
         letterboxd_username=letterboxd_username,
+        filters=filters,
     )
     if force_empty:
         return 0
-
-    if filters.days is not None and len(filters.days) > 0:
-        stmt = stmt.where(
-            day_bucket_date_clause(col(Showtime.datetime)).in_(filters.days)
-        )
-
-    if filters.time_ranges is not None and len(filters.time_ranges) > 0:
-        stmt = stmt.where(
-            or_(
-                *[
-                    time_range_clause(
-                        col(Showtime.datetime),
-                        col(Showtime.end_datetime),
-                        tr.start,
-                        tr.end,
-                    )
-                    for tr in filters.time_ranges
-                ]
-            )
-        )
-
-    if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
-        visible_row = aliased(ShowtimeVisibilityEffective)
-        stmt = (
-            stmt.join(
-                ShowtimeSelection,
-                col(Showtime.id) == col(ShowtimeSelection.showtime_id),
-            )
-            .outerjoin(
-                visible_row,
-                (col(visible_row.owner_id) == col(ShowtimeSelection.user_id))
-                & (col(visible_row.showtime_id) == col(Showtime.id))
-                & (col(visible_row.viewer_id) == current_user_id),
-            )
-            .where(
-                or_(
-                    col(ShowtimeSelection.user_id) == current_user_id,
-                    col(visible_row.viewer_id).is_not(None),
-                ),
-                col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
-            )
-        )
 
     count_stmt = select(func.count()).select_from(
         stmt.group_by(col(Movie.id)).subquery()

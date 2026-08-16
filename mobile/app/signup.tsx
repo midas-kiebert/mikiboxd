@@ -12,6 +12,7 @@ import { usernameMaxLength, usernamePattern } from 'shared/utils';
 import AuthPrimaryButton from '@/components/auth/AuthPrimaryButton';
 import AuthScreenShell from '@/components/auth/AuthScreenShell';
 import AuthTextField from '@/components/auth/AuthTextField';
+import BrowseWithoutAccountLink from '@/components/auth/BrowseWithoutAccountLink';
 import SocialSignInSection from '@/components/auth/SocialSignInSection';
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
@@ -96,16 +97,20 @@ export default function SignUpScreen() {
       subtitle="Find what's on, and see what your friends are watching."
       error={error}
       footer={
-        <TouchableOpacity
-          onPress={() => router.replace('/login')}
-          disabled={isSubmitting || isSocialSignInBusy}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-        >
-          <ThemedText style={styles.linkText}>
-            Already have an account? <ThemedText style={styles.link}>Log In</ThemedText>
-          </ThemedText>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity
+            onPress={() => router.replace('/login')}
+            disabled={isSubmitting || isSocialSignInBusy}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+          >
+            <ThemedText style={styles.linkText}>
+              Already have an account? <ThemedText style={styles.link}>Log In</ThemedText>
+            </ThemedText>
+          </TouchableOpacity>
+          <View style={styles.footerDivider} />
+          <BrowseWithoutAccountLink disabled={isSubmitting || isSocialSignInBusy} />
+        </>
       }
     >
       <SocialSignInSection
@@ -262,5 +267,12 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       fontSize: 14,
       color: colors.tint,
       fontWeight: '700',
+    },
+    // Sets "browse without an account" apart from the log-in link above it:
+    // one is another way to get to an account, the other is choosing not to.
+    footerDivider: {
+      height: 1,
+      alignSelf: 'stretch',
+      backgroundColor: colors.divider,
     },
   });

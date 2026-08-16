@@ -4,15 +4,15 @@ import Day from "@/components/Movie/Day"
  */
 import dayjs from "dayjs"
 
-import type { ShowtimeInMovieLoggedIn } from "shared"
+import type { ShowtimeInMoviePublic } from "shared"
 
 type GroupedShowtimes = Record<
   string,
-  { showtimesForDate: ShowtimeInMovieLoggedIn[] }
+  { showtimesForDate: ShowtimeInMoviePublic[] }
 >
 
 export function groupShowtimesByDate(
-  showtimes: ShowtimeInMovieLoggedIn[],
+  showtimes: ShowtimeInMoviePublic[],
 ): GroupedShowtimes {
   return showtimes.reduce((acc, showtime) => {
     // Read flow: prepare derived values/handlers first, then return component JSX.
@@ -27,8 +27,8 @@ export function groupShowtimesByDate(
 }
 
 type ShowtimeProps = {
-  showtimes: ShowtimeInMovieLoggedIn[]
-  setSelectedShowtime: (showtime: ShowtimeInMovieLoggedIn) => void
+  showtimes: ShowtimeInMoviePublic[]
+  setSelectedShowtime: (showtime: ShowtimeInMoviePublic) => void
 }
 
 export function Showtimes({ showtimes, setSelectedShowtime }: ShowtimeProps) {

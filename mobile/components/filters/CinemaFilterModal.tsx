@@ -31,7 +31,6 @@ import {
 } from "shared";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import { ThemedText } from "@/components/themed-text";
 import CinemaPickerList from "@/components/filters/CinemaPickerList";
@@ -44,6 +43,8 @@ import {
   sortCinemaPresetsByOrder,
 } from "@/components/filters/cinema-preset-order";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useCinemaSelection } from "@/hooks/useCinemaSelection";
+import { useIsSignedIn } from "@/utils/auth-session";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { retireCinemaPresetTip } from "@/utils/feature-tips";
 import { triggerSelectionHaptic } from "@/utils/long-press";
@@ -79,8 +80,15 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
   const [presetOrderIds, setPresetOrderIds] = useState<readonly string[]>([]);
 
   const { data: cinemas } = useFetchCinemas();
-  const { data: favoriteCinemaIds, isLoading: isFavoritesLoading } = useFetchSelectedCinemas();
-  const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } = useSessionCinemaSelections();
+  // Presets and saved favourites belong to an account. A guest still picks
+  // cinemas here — that is the whole point, it is what shapes their feed — but
+  // the picks are kept on the device, and the preset footer below is theirs to
+  // discover after signing up rather than a row of buttons that can only refuse.
+  const isSignedIn = useIsSignedIn();
+  const { data: favoriteCinemaIds, isLoading: isFavoritesLoading } = useFetchSelectedCinemas({
+    enabled: isSignedIn,
+  });
+  const { cinemaIds: sessionCinemaIds, setCinemaIds: setSessionCinemaIds } = useCinemaSelection();
 
   const selectedCinemas = useMemo(
     () => sessionCinemaIds ?? favoriteCinemaIds ?? [],
@@ -137,7 +145,7 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
   }, [visible, selectedCinemas, initialPage]);
 
   const { data: presets = [], isLoading: isPresetsLoading } = useCinemaPresets({
-    enabled: visible,
+    enabled: visible && isSignedIn,
   });
 
   useEffect(() => {
@@ -477,7 +485,10 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
               </BottomSheetScrollView>
 
               {/* Pinned footer: the preset actions stay reachable at any scroll
-                  position, since the cinema list is far longer than a screen. */}
+                  position, since the cinema list is far longer than a screen.
+                  Absent for a guest — nothing in it does anything without an
+                  account, and an empty bordered strip reads as broken. */}
+              {isSignedIn ? (
               <View style={[styles.footer, { paddingBottom: bottomInset + 12 }]}>
                 <TouchableOpacity
                   style={[
@@ -524,6 +535,7 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                   </TouchableOpacity>
                 )}
               </View>
+              ) : null}
             </>
           )}
         </QueryClientProvider>

@@ -5,10 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { MeService } from "shared";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useCinemaSelection } from "@/hooks/useCinemaSelection";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
@@ -52,12 +53,16 @@ export default function CinemaFilterChip({ onOpenFilters, onOpenCinemaModal }: C
   }, [dropdownVisible, caretRotation]);
 
   const { data: allCinemas = [] } = useFetchCinemas();
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
-  const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
-    useSessionCinemaSelections();
+  // See FiltersModal: the cinema list is public, the saved picks and named
+  // presets are not, and a guest's selection persists to the device instead.
+  const isSignedIn = useIsSignedIn();
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
+  const { cinemaIds: sessionCinemaIds, setCinemaIds: setSessionCinemaIds } =
+    useCinemaSelection();
   const { data: cinemaPresets = [] } = useQuery({
     queryKey: ["cinema-presets"],
     queryFn: () => MeService.getCinemaPresets(),
+    enabled: isSignedIn,
   });
 
   const effectiveIds = sessionCinemaIds ?? preferredCinemaIds ?? [];

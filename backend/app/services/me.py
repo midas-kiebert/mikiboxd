@@ -44,7 +44,7 @@ from app.models.user import User, UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.notification import NotificationFeedItem, NotificationFeedType
 from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
-from app.schemas.showtime import ShowtimeLoggedIn
+from app.schemas.showtime import ShowtimePublic
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe
 from app.services import users as users_service
@@ -719,7 +719,7 @@ def get_received_showtime_pings(
 
     sender_cache: dict[UUID, User | None] = {}
     showtime_cache: dict[int, Showtime | None] = {}
-    showtime_public_cache: dict[int, ShowtimeLoggedIn] = {}
+    showtime_public_cache: dict[int, ShowtimePublic] = {}
     result: list[ShowtimePingPublic] = []
 
     for ping in pings:
@@ -742,7 +742,7 @@ def get_received_showtime_pings(
 
         showtime_public = showtime_public_cache.get(showtime.id)
         if showtime_public is None:
-            showtime_public = showtime_converters.to_logged_in(
+            showtime_public = showtime_converters.to_public(
                 showtime=showtime,
                 session=session,
                 user_id=user_id,
@@ -781,7 +781,7 @@ def get_agenda_showtimes(
     include_invited: bool,
     limit: int,
     offset: int,
-) -> list[ShowtimeLoggedIn]:
+) -> list[ShowtimePublic]:
     showtimes = showtimes_crud.get_agenda_showtimes(
         session=session,
         user_id=user_id,
@@ -792,7 +792,7 @@ def get_agenda_showtimes(
         offset=offset,
     )
     return [
-        showtime_converters.to_logged_in(
+        showtime_converters.to_public(
             showtime=showtime,
             session=session,
             user_id=user_id,
@@ -922,20 +922,20 @@ def get_notification_feed(
     fetch_count = limit + offset
 
     user_cache: dict[UUID, User | None] = {}
-    showtime_public_cache: dict[int, ShowtimeLoggedIn | None] = {}
+    showtime_public_cache: dict[int, ShowtimePublic | None] = {}
 
     def resolve_user(uid: UUID) -> User | None:
         if uid not in user_cache:
             user_cache[uid] = users_crud.get_user_by_id(session=session, user_id=uid)
         return user_cache[uid]
 
-    def resolve_showtime_public(sid: int) -> ShowtimeLoggedIn | None:
+    def resolve_showtime_public(sid: int) -> ShowtimePublic | None:
         if sid not in showtime_public_cache:
             showtime = showtimes_crud.get_showtime_by_id(
                 session=session, showtime_id=sid
             )
             showtime_public_cache[sid] = (
-                showtime_converters.to_logged_in(
+                showtime_converters.to_public(
                     showtime=showtime, session=session, user_id=user_id
                 )
                 if showtime is not None

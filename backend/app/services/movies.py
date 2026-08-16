@@ -1,51 +1,38 @@
-from uuid import UUID
-
 from psycopg.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.converters import movie as movie_converters
 from app.converters import showtime as showtime_converters
-from app.crud import cinema_preset as cinema_presets_crud
+from app.core.viewer import ViewerId
 from app.crud import movie as movies_crud
 from app.crud import showtime as showtime_crud
-from app.crud import user as users_crud
 from app.exceptions.base import AppError
 from app.exceptions.movie_exceptions import MovieNotFoundError
 from app.inputs.movie import Filters
 from app.models.movie import Movie, MovieCreate, MovieUpdate
-from app.schemas.movie import MovieLoggedIn, MovieSummaryLoggedIn
-from app.schemas.showtime import ShowtimeInMovieLoggedIn
+from app.schemas.movie import MoviePublic, MovieSummaryPublic
+from app.schemas.showtime import ShowtimeInMoviePublic
 from app.scraping.logger import logger
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
+from app.services import viewer_context
 
 
 def get_movie_summaries(
     *,
     session: Session,
-    user_id: UUID,
+    user_id: ViewerId,
     limit: int,
     offset: int,
     showtime_limit: int,
     filters: Filters,
-) -> list[MovieSummaryLoggedIn]:
-    letterboxd_username = users_crud.get_letterboxd_username(
-        session=session,
-        user_id=user_id,
+) -> list[MovieSummaryPublic]:
+    letterboxd_username = viewer_context.letterboxd_username_for(
+        session=session, viewer_id=user_id
     )
-    if filters.selected_cinema_ids is None:
-        favorite_preset = cinema_presets_crud.get_user_favorite_preset(
-            session=session,
-            user_id=user_id,
-        )
-        if favorite_preset is not None:
-            filters.selected_cinema_ids = list(favorite_preset.cinema_ids)
-        else:
-            # Compatibility fallback for users still on legacy cinema selections.
-            filters.selected_cinema_ids = users_crud.get_selected_cinemas_ids(
-                session=session,
-                user_id=user_id,
-            )
+    viewer_context.apply_viewer_defaults(
+        session=session, viewer_id=user_id, filters=filters
+    )
 
     movies_db = movies_crud.get_movies(
         session=session,
@@ -56,7 +43,7 @@ def get_movie_summaries(
         filters=filters,
     )
     movies = [
-        movie_converters.to_summary_logged_in(
+        movie_converters.to_summary_public(
             movie=movie,
             session=session,
             current_user=user_id,
@@ -71,25 +58,15 @@ def get_movie_summaries(
 def count_movie_summaries(
     *,
     session: Session,
-    user_id: UUID,
+    user_id: ViewerId,
     filters: Filters,
 ) -> int:
-    letterboxd_username = users_crud.get_letterboxd_username(
-        session=session,
-        user_id=user_id,
+    letterboxd_username = viewer_context.letterboxd_username_for(
+        session=session, viewer_id=user_id
     )
-    if filters.selected_cinema_ids is None:
-        favorite_preset = cinema_presets_crud.get_user_favorite_preset(
-            session=session,
-            user_id=user_id,
-        )
-        if favorite_preset is not None:
-            filters.selected_cinema_ids = list(favorite_preset.cinema_ids)
-        else:
-            filters.selected_cinema_ids = users_crud.get_selected_cinemas_ids(
-                session=session,
-                user_id=user_id,
-            )
+    viewer_context.apply_viewer_defaults(
+        session=session, viewer_id=user_id, filters=filters
+    )
 
     return movies_crud.count_movies(
         session=session,
@@ -103,20 +80,21 @@ def get_movie_by_id(
     *,
     session: Session,
     movie_id: int,
-    current_user: UUID,
+    current_user: ViewerId,
     filters: Filters,
     showtime_limit: int | None = None,
-) -> MovieLoggedIn:
+) -> MoviePublic:
     """
-    Get a movie by its ID for a logged-in user.
+    Get a movie by its ID, annotated for the requesting viewer.
 
     Parameters:
         session (Session): Database session.
         movie_id (int): ID of the movie to retrieve.
-        current_user (UUID): ID of the current user.
+        current_user (ViewerId): Who to annotate for; None for an anonymous
+            visitor — see `app.core.viewer`.
         snapshot_time (datetime): Time to snapshot the movie data.
     Returns:
-        MovieLoggedIn: Movie details for the logged-in user.
+        MoviePublic: Movie details for the requesting viewer.
     Raises:
         MovieNotFoundError: If the movie with the given ID does not exist.
     """
@@ -126,7 +104,7 @@ def get_movie_by_id(
     )
     if movie_db is None:
         raise MovieNotFoundError(movie_id)
-    movie_public = movie_converters.to_logged_in(
+    movie_public = movie_converters.to_public(
         movie=movie_db,
         session=session,
         current_user=current_user,
@@ -140,11 +118,11 @@ def get_movie_showtimes(
     *,
     session: Session,
     movie_id: int,
-    current_user: UUID,
+    current_user: ViewerId,
     limit: int,
     offset: int,
     filters: Filters,
-) -> list[ShowtimeInMovieLoggedIn]:
+) -> list[ShowtimeInMoviePublic]:
     movie_db = movies_crud.get_movie_by_id(
         session=session,
         id=movie_id,
@@ -154,9 +132,9 @@ def get_movie_showtimes(
 
     letterboxd_username = None
     if filters.watchlist_only or filters.hide_watched:
-        letterboxd_username = users_crud.get_letterboxd_username(
+        letterboxd_username = viewer_context.letterboxd_username_for(
             session=session,
-            user_id=current_user,
+            viewer_id=current_user,
         )
 
     showtimes = movies_crud.get_showtimes_for_movie(
@@ -170,7 +148,7 @@ def get_movie_showtimes(
     )
 
     return [
-        showtime_converters.to_in_movie_logged_in(
+        showtime_converters.to_in_movie_public(
             showtime=showtime,
             session=session,
             user_id=current_user,

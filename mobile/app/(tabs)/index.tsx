@@ -35,6 +35,7 @@ import {
   getSelectedStatusesFromShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
 import { useThemeColors } from '@/hooks/use-theme-color';
+import { useIsSignedIn } from '@/utils/auth-session';
 import { useIsAnyBlockingOverlayOpen } from '@/utils/blocking-overlays';
 import { useIntroPhase } from '@/utils/intro';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
@@ -97,6 +98,7 @@ export default function MainShowtimesScreen() {
   } = useSharedTabFilters();
 
   const { user } = useAuth();
+  const isSignedIn = useIsSignedIn();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
@@ -105,7 +107,10 @@ export default function MainShowtimesScreen() {
   const effectiveWatchlistExclude = hasLetterboxdUsername ? watchlistExclude : false;
   const effectiveWatchedOnly = hasLetterboxdUsername ? watchedOnly : false;
 
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  // "Clear all" restores the account's saved cinemas. A guest has none to
+  // restore to — the session selection *is* what they saved — so their cinema
+  // choice is deliberately left alone by it.
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
 
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
@@ -312,7 +317,7 @@ export default function MainShowtimesScreen() {
       setIsFilterTransitionLoading(true);
       setSelectedShowtimeFilter(v);
     },
-    showStatusFilter: true,
+    showStatusFilter: isSignedIn,
     selectedDays,
     setSelectedDays,
     selectedTimeRanges,

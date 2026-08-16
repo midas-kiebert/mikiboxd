@@ -3,10 +3,10 @@ import { Box, Image } from "@chakra-ui/react"
  * Movies list feature component: Movie Poster.
  */
 import { Link } from "@tanstack/react-router"
-import type { MovieInShowtime, MovieSummaryLoggedIn } from "shared"
+import type { MovieInShowtime, MovieSummaryPublic } from "shared"
 
 type MoviePosterProps = {
-  movie: MovieSummaryLoggedIn | MovieInShowtime
+  movie: MovieSummaryPublic | MovieInShowtime
   size?: { base: string; md: string }
 }
 

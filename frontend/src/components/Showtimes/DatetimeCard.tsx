@@ -4,10 +4,10 @@ import { useIsMobile } from "@/hooks/useIsMobile"
  */
 import { Text, VStack } from "@chakra-ui/react"
 import days from "dayjs"
-import type { ShowtimeLoggedIn } from "shared"
+import type { ShowtimePublic } from "shared"
 
 type DatetimeCardProps = {
-  showtime: ShowtimeLoggedIn
+  showtime: ShowtimePublic
 }
 
 const DatetimeCard = ({ showtime }: DatetimeCardProps) => {

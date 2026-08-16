@@ -5,7 +5,7 @@ import React from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
-import { type ShowtimeLoggedIn } from "shared";
+import { type ShowtimePublic } from "shared";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 
 import { useRouter } from "expo-router";
@@ -14,6 +14,7 @@ import { ThemedText } from "@/components/themed-text";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useShowtimeModal, type OpenOptions } from "@/components/showtimes/ShowtimeModalProvider";
+import { useIsSignedIn } from "@/utils/auth-session";
 import TopBar from "@/components/layout/TopBar";
 import SearchBar from "@/components/inputs/SearchBar";
 import FilterPills, {
@@ -24,7 +25,7 @@ import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
 
 type ShowtimesListContentProps = {
-  showtimes: ShowtimeLoggedIn[];
+  showtimes: ShowtimePublic[];
   isLoading: boolean;
   isFetching: boolean;
   isFetchingNextPage: boolean;
@@ -52,7 +53,7 @@ export function ShowtimesListContent({
   inheritFiltersOnMovieNav = false,
 }: ShowtimesListContentProps) {
   const router = useRouter();
-  const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimeLoggedIn) =>
+  const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimePublic) =>
     router.push({
       pathname: "/movie/[id]",
       params: {
@@ -65,9 +66,13 @@ export function ShowtimesListContent({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const { openShowtimeModal } = useShowtimeModal();
+  const isSignedIn = useIsSignedIn();
   // Every card here opens the showtime sheet, so its visibility mode is
-  // fetched up front — otherwise the sheet's mode pill loads on open.
-  usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id));
+  // fetched up front — otherwise the sheet's mode pill loads on open. The pill
+  // is on the signed-in sheet only, so for a guest there is nothing to warm.
+  usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id), {
+    enabled: isSignedIn,
+  });
 
   // Always mounted at a fixed height: it doubles as the list's end spacer, so
   // reaching the bottom never changes the layout under the user's scroll.
@@ -141,7 +146,7 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   topBarOnTitleSuffixPress?: () => void;
   topBarLinkUrl?: string;
   topBarAvatarInitial?: string;
-  showtimes: ShowtimeLoggedIn[];
+  showtimes: ShowtimePublic[];
   isLoading: boolean;
   isFetching: boolean;
   isFetchingNextPage: boolean;

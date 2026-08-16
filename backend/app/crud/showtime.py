@@ -9,6 +9,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_, select
 
 from app.core.enums import GoingStatus, SearchField
+from app.core.viewer import ViewerId
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud.movie import apply_language_filter, apply_search_filter
 from app.crud.movie_set_filters import apply_movie_set_filters
@@ -429,7 +430,7 @@ def get_interested_reminder_candidates(
 def _build_main_page_showtimes_query(
     *,
     session: Session,
-    user_id: UUID,
+    user_id: ViewerId,
     filters: Filters,
     letterboxd_username: str | None,
 ) -> tuple[Any, bool]:
@@ -497,7 +498,15 @@ def _build_main_page_showtimes_query(
     if force_empty:
         return stmt, True
 
-    if filters.selected_statuses is not None and len(filters.selected_statuses) > 0:
+    # "Going / interested" is a statement about people, so it needs someone to be
+    # about. An anonymous viewer has no selections and can see no one else's, so
+    # the filter is dropped rather than applied against a NULL viewer, which would
+    # match nothing and leave them looking at an empty catalogue.
+    if (
+        user_id is not None
+        and filters.selected_statuses is not None
+        and len(filters.selected_statuses) > 0
+    ):
         visible_row = aliased(ShowtimeVisibilityEffective)
         stmt = (
             stmt.join(
@@ -526,7 +535,7 @@ def _build_main_page_showtimes_query(
 def get_main_page_showtimes(
     *,
     session: Session,
-    user_id: UUID,
+    user_id: ViewerId,
     limit: int,
     offset: int,
     filters: Filters,
@@ -594,7 +603,7 @@ def get_agenda_showtimes(
 def count_main_page_showtimes(
     *,
     session: Session,
-    user_id: UUID,
+    user_id: ViewerId,
     filters: Filters,
     letterboxd_username: str | None = None,
 ) -> int:

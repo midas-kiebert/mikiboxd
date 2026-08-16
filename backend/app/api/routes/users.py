@@ -16,7 +16,7 @@ from app.core.security import (
 from app.crud import user as users_crud
 from app.inputs.movie import Filters, get_filters
 from app.models.user import UserRegister
-from app.schemas.showtime import ShowtimeLoggedIn
+from app.schemas.showtime import ShowtimePublic
 from app.schemas.user import UserPublic, UserWithFriendStatus
 from app.services import users as users_service
 
@@ -131,7 +131,7 @@ def get_user(
     )
 
 
-@router.get("/{user_id}/showtimes", response_model=list[ShowtimeLoggedIn])
+@router.get("/{user_id}/showtimes", response_model=list[ShowtimePublic])
 def get_user_selected_showtimes(
     session: SessionDep,
     current_user: CurrentUser,
@@ -139,7 +139,7 @@ def get_user_selected_showtimes(
     limit: int = Query(10, ge=1, le=50),
     offset: int = Query(0, ge=0),
     filters: Filters = Depends(get_filters),
-) -> list[ShowtimeLoggedIn]:
+) -> list[ShowtimePublic]:
     return users_service.get_selected_showtimes(
         session=session,
         user_id=user_id,

@@ -5,7 +5,7 @@ import { Image, Platform, StyleSheet, TouchableOpacity, View } from "react-nativ
 import { useMemo, useRef, useState } from "react";
 import { DateTime } from "luxon";
 import { useRouter } from "expo-router";
-import type { ShowtimeLoggedIn } from "shared";
+import type { ShowtimePublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import CinemaPill from "@/components/badges/CinemaPill";
@@ -22,9 +22,9 @@ import {
 } from "@/utils/long-press";
 
 type ShowtimeCardProps = {
-  showtime: ShowtimeLoggedIn;
-  onPress?: (showtime: ShowtimeLoggedIn) => void;
-  onLongPress?: (showtime: ShowtimeLoggedIn) => void;
+  showtime: ShowtimePublic;
+  onPress?: (showtime: ShowtimePublic) => void;
+  onLongPress?: (showtime: ShowtimePublic) => void;
 };
 
 const POSTER_HEIGHT = 112;
@@ -73,36 +73,39 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
     : isSyntheticMovie
       ? UNKNOWN_METADATA_PLACEHOLDER
       : null;
+  // Everything below is about the person looking at the card, so it is absent
+  // for a guest — the card then draws in its plain, unannotated state.
+  const viewer = showtime.viewer;
   // Invited-only = you've been invited but haven't responded yet → blue.
   // Going / interested take precedence over the invite tint.
   const isInvitedOnly =
-    (showtime.invited_by?.length ?? 0) > 0 && showtime.going === "NOT_GOING";
+    (viewer?.invited_by?.length ?? 0) > 0 && viewer?.going === "NOT_GOING";
   const cardStatusStyle =
-    showtime.going === "GOING"
+    viewer?.going === "GOING"
       ? styles.cardGoing
-      : showtime.going === "INTERESTED"
+      : viewer?.going === "INTERESTED"
         ? styles.cardInterested
         : isInvitedOnly
           ? styles.cardInvited
           : undefined;
   const cardGlowStyle =
-    showtime.going === "GOING"
+    viewer?.going === "GOING"
       ? styles.cardGlowGoing
-      : showtime.going === "INTERESTED"
+      : viewer?.going === "INTERESTED"
         ? styles.cardGlowInterested
         : undefined;
   const dateColumnStatusStyle =
-    showtime.going === "GOING"
+    viewer?.going === "GOING"
       ? styles.dateColumnGoing
-      : showtime.going === "INTERESTED"
+      : viewer?.going === "INTERESTED"
         ? styles.dateColumnInterested
         : isInvitedOnly
           ? styles.dateColumnInvited
           : undefined;
   const hasAudience =
-    (showtime.friends_going?.length ?? 0) > 0 ||
-    (showtime.friends_interested?.length ?? 0) > 0 ||
-    (showtime.pending_invited_friends?.length ?? 0) > 0;
+    (viewer?.friends_going?.length ?? 0) > 0 ||
+    (viewer?.friends_interested?.length ?? 0) > 0 ||
+    (viewer?.pending_invited_friends?.length ?? 0) > 0;
   const responsiveBadgeRows = useMemo(() => {
     if (!hasAudience) return undefined;
     return getCompactBadgeRowsForHeight(friendBadgeAreaHeight - COMPACT_BADGE_TOP_PADDING);
@@ -197,9 +200,9 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
             }}
           >
             <FriendBadges
-              friendsGoing={showtime.friends_going}
-              friendsInterested={showtime.friends_interested}
-              friendsPending={showtime.pending_invited_friends}
+              friendsGoing={viewer?.friends_going}
+              friendsInterested={viewer?.friends_interested}
+              friendsPending={viewer?.pending_invited_friends}
               variant="compact"
               maxRows={responsiveBadgeRows}
             />

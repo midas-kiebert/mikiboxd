@@ -13,10 +13,19 @@ import { useFetchAgenda } from "shared/hooks/useFetchAgenda";
 import { useFetchShowtimePings } from "shared/hooks/useFetchShowtimePings";
 
 import TopBar from "@/components/layout/TopBar";
+import SignedOutPanel from "@/components/auth/SignedOutPanel";
 import { ShowtimesListContent } from "@/components/showtimes/ShowtimesScreen";
 import AgendaTogglePill, { AgendaToggleRow } from "@/components/showtimes/AgendaTogglePill";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
+
+/** What signing in would put on this tab, in the order it would appear. */
+const AGENDA_HIGHLIGHTS = [
+  "The screenings you said you're going to",
+  "Invites your friends send you",
+  "Your seat, so you can find it later",
+] as const;
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
 
@@ -26,6 +35,10 @@ export default function AgendaScreen() {
   const styles = createStyles(colors);
   const queryClient = useQueryClient();
   const isFocused = useIsFocused();
+  // An agenda is a list of what *you* are going to, so there is nothing here to
+  // render for a guest — and nothing to fetch either. The tab stays in the bar
+  // rather than vanishing: it is where a guest finds out what an account is for.
+  const isSignedIn = useIsSignedIn();
   const [includeInterested, setIncludeInterested] = useState(true);
   const [includeInvited, setIncludeInvited] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -43,14 +56,14 @@ export default function AgendaScreen() {
     snapshotTime,
     includeInterested,
     includeInvited,
-    enabled: isFocused,
+    enabled: isFocused && isSignedIn,
   });
 
   const showtimes = useMemo(() => data?.pages.flat() ?? [], [data]);
 
   const { data: pendingPings } = useFetchShowtimePings({
     limit: 1,
-    enabled: isFocused,
+    enabled: isFocused && isSignedIn,
     refetchIntervalMs: false,
   });
   const hasAnyInvites = (pendingPings?.length ?? 0) > 0;
@@ -70,11 +83,11 @@ export default function AgendaScreen() {
   });
 
   useEffect(() => {
-    if (!isFocused) return;
+    if (!isFocused || !isSignedIn) return;
     markSeenMutation.mutate();
     // Trigger once when this tab gains focus.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFocused]);
+  }, [isFocused, isSignedIn]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -99,6 +112,15 @@ export default function AgendaScreen() {
       : "Nothing in your agenda yet";
 
   // Render/output using the state and derived values prepared above.
+  if (!isSignedIn) {
+    return (
+      <TopSafeAreaView style={styles.container}>
+        <TopBar title="Agenda" icon="calendar" />
+        <SignedOutPanel feature="agenda" bullets={AGENDA_HIGHLIGHTS} />
+      </TopSafeAreaView>
+    );
+  }
+
   return (
     <TopSafeAreaView style={styles.container}>
       <TopBar title="Agenda" icon="calendar" />

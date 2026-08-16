@@ -19,12 +19,13 @@ import {
   type DisplayPreset,
 } from "@/components/filters/saved-presets";
 
-export function useDisplayPresets() {
+export function useDisplayPresets({ enabled = true }: { enabled?: boolean } = {}) {
   const queryClient = useQueryClient();
 
   const { data: rawPresets = [], isLoading } = useQuery({
     queryKey: displayPresetsQueryKey,
     queryFn: () => fetchDisplayPresets(),
+    enabled,
   });
 
   const { data: order = [] } = useQuery({

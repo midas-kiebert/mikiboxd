@@ -14,6 +14,7 @@ import { useFetchMovies } from "shared/hooks/useFetchMovies";
 import useAuth from "shared/hooks/useAuth";
 
 import ShowtimesScreen, { ShowtimesScreenSkeleton } from "@/components/showtimes/ShowtimesScreen";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
 import FiltersButtonRow from "@/components/filters/FiltersButtonRow";
 import FiltersModal from "@/components/filters/FiltersModal";
@@ -208,6 +209,9 @@ function CinemaShowtimesContent({
     setSelectedLanguages,
   } = useSharedTabFilters();
   const { user } = useAuth();
+  // The status filter is about who is going; a guest has no such answer to
+  // filter by, so it is not offered here either (see FiltersModalProvider).
+  const isSignedIn = useIsSignedIn();
   const isFocused = useIsFocused();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
@@ -480,7 +484,7 @@ function CinemaShowtimesContent({
               canUseWatchlistFilter={hasLetterboxdUsername}
               selectedShowtimeFilter={selectedShowtimeFilter}
               setSelectedShowtimeFilter={setSelectedShowtimeFilter}
-              showStatusFilter
+              showStatusFilter={isSignedIn}
               selectedDays={selectedDays}
               setSelectedDays={setSelectedDays}
               selectedTimeRanges={selectedTimeRanges}
@@ -518,7 +522,7 @@ function CinemaShowtimesContent({
         canUseWatchlistFilter={hasLetterboxdUsername}
         selectedShowtimeFilter={selectedShowtimeFilter}
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}
-        showStatusFilter
+        showStatusFilter={isSignedIn}
         showCinemas={false}
         selectedDays={selectedDays}
         setSelectedDays={setSelectedDays}

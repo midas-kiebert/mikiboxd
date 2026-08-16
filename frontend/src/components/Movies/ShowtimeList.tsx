@@ -2,7 +2,7 @@
  * Movies list feature component: Showtime List.
  */
 import { Box, Text } from "@chakra-ui/react"
-import type { ShowtimeInMovieLoggedIn } from "shared"
+import type { ShowtimeInMoviePublic } from "shared"
 import CinemaBadge from "../Common/CinemaBadge"
 
 function formatTime(datetime: string): string {
@@ -17,7 +17,7 @@ function formatTime(datetime: string): string {
 }
 
 type ShowtimeListProps = {
-  showtimes: ShowtimeInMovieLoggedIn[]
+  showtimes: ShowtimeInMoviePublic[]
 }
 
 const ShowtimeList = ({ showtimes }: ShowtimeListProps) => {

@@ -6,18 +6,18 @@ import { FaTicket } from "react-icons/fa6"
 import CinemaBadge from "../Common/CinemaBadge"
 import FriendBadges from "../Movies/FriendBadges"
 
-import type { ShowtimeInMovieLoggedIn } from "shared"
+import type { ShowtimeInMoviePublic } from "shared"
 
 type ShowtimeRowProps = {
-  showtime: ShowtimeInMovieLoggedIn
-  onOpen: (showtime: ShowtimeInMovieLoggedIn) => void
+  showtime: ShowtimeInMoviePublic
+  onOpen: (showtime: ShowtimeInMoviePublic) => void
 }
 
 export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   // unpack showtime data
-  const { datetime, cinema, going, friends_going, friends_interested } =
-    showtime
+  const { datetime, cinema, viewer } = showtime
+  const { going, friends_going, friends_interested } = viewer ?? {}
 
   // Format time as "7:30 PM"
   const formattedTime = new Date(datetime).toLocaleTimeString(undefined, {

@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Language } from "shared/client";
 import { useFetchFavoriteSavedPreset } from "shared/hooks/useFetchFavoriteSavedPreset";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 import { useSessionDaySelections } from "shared/hooks/useSessionDaySelections";
 import { useSessionShowtimeFilter } from "shared/hooks/useSessionShowtimeFilter";
 import { useSessionTimeRangeSelections } from "shared/hooks/useSessionTimeRangeSelections";
@@ -17,6 +16,9 @@ import { useSessionExcludeListIds } from "shared/hooks/useSessionExcludeListIds"
 import { useSessionWatchlistExclude } from "shared/hooks/useSessionWatchlistExclude";
 import { useSessionWatchedOnly } from "shared/hooks/useSessionWatchedOnly";
 
+import { useCinemaSelection } from "@/hooks/useCinemaSelection";
+import { useIsSignedIn } from "@/utils/auth-session";
+import { useGuestCinemaSelection } from "@/utils/guest-cinema-selection";
 import type { PageFilterPresetState } from "@/components/filters/filter-preset-utils";
 import {
   normalizeSingleRuntimeRangeSelection,
@@ -56,8 +58,8 @@ export function useSharedTabFilters() {
   const applyWatchlistOnlyFrameRef = useRef<number | null>(null);
   const applyHideWatchedFrameRef = useRef<number | null>(null);
 
-  const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
-    useSessionCinemaSelections();
+  const { cinemaIds: sessionCinemaIds, setCinemaIds: setSessionCinemaIds } =
+    useCinemaSelection();
   const { selections: sessionDays, setSelections: setSessionDays } =
     useSessionDaySelections();
   const { selections: sessionTimeRanges, setSelections: setSessionTimeRanges } =
@@ -82,8 +84,13 @@ export function useSharedTabFilters() {
     useSessionWatchlistExclude();
   const { selection: watchedOnly, setSelection: setWatchedOnly } =
     useSessionWatchedOnly();
-  const favoriteSavedPresetQuery = useFetchFavoriteSavedPreset();
-  const favoriteCinemasQuery = useFetchSelectedCinemas();
+  // A guest has no account to read defaults from, so these stay off rather than
+  // 401-ing on a loop. Their equivalent — the cinemas they picked on this
+  // device — is read from storage instead, and seeded below by the same effect.
+  const isSignedIn = useIsSignedIn();
+  const favoriteSavedPresetQuery = useFetchFavoriteSavedPreset({ enabled: isSignedIn });
+  const favoriteCinemasQuery = useFetchSelectedCinemas({ enabled: isSignedIn });
+  const guestCinemaIds = useGuestCinemaSelection();
 
   const initialShowtimeFilter = toSharedTabShowtimeFilter(sessionShowtimeFilter);
   const initialWatchlistOnly = Boolean(sessionWatchlistOnly);
@@ -202,6 +209,22 @@ export function useSharedTabFilters() {
 
   useEffect(() => {
     if (initializedFromFavoritesRef.current) return;
+
+    // A guest has one dimension to seed and one source for it: the cinemas they
+    // picked on this device. Everything below reads a saved preset, which is an
+    // account-only thing to have, so there is nothing else here for them.
+    if (!isSignedIn) {
+      if (guestCinemaIds === undefined) return;
+      const rawSessionCinemaIds = queryClient.getQueryData<number[]>(
+        SESSION_CINEMA_SELECTIONS_KEY
+      );
+      if (rawSessionCinemaIds === undefined) {
+        setSessionCinemaIds(guestCinemaIds);
+      }
+      initializedFromFavoritesRef.current = true;
+      return;
+    }
+
     if (!favoriteSavedPresetQuery.isFetched || !favoriteCinemasQuery.isFetched) return;
 
     const savedFavorite = favoriteSavedPresetQuery.data;
@@ -314,6 +337,8 @@ export function useSharedTabFilters() {
     favoriteCinemasQuery.isFetched,
     favoriteSavedPresetQuery.data,
     favoriteSavedPresetQuery.isFetched,
+    guestCinemaIds,
+    isSignedIn,
     queryClient,
     setSessionCinemaIds,
     setSessionDays,

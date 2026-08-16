@@ -23,11 +23,11 @@ import { MeService } from "shared";
 import type { Language } from "shared/client";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import { ThemedText } from "@/components/themed-text";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useCinemaSelection } from "@/hooks/useCinemaSelection";
 import { useOptimisticValue } from "@/hooks/useOptimisticValue";
 import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
 import { type SharedTabShowtimeFilter } from "@/components/filters/shared-tab-filters";
@@ -35,6 +35,7 @@ import {
   hasAnyActiveFilter,
   type PageFilterPresetState,
 } from "@/components/filters/filter-preset-utils";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { isCinemaSelectionDifferentFromPreferred } from "@/utils/cinema-selection";
 import SavePresetDialog from "@/components/filters/SavePresetDialog";
 import ManagePresetsModal from "@/components/filters/ManagePresetsModal";
@@ -169,14 +170,17 @@ export default function FiltersModal({
   const openCinemaModal = onOpenCinemaModal ?? providerOpenCinemaModal;
   const [specificDatesVisible, setSpecificDatesVisible] = useState(false);
   const { trackEvent } = useTrackEvent();
+  // Analytics events are recorded against an account, so there is nobody to
+  // record a guest's against — the call would 401 and be swallowed.
+  const isSignedIn = useIsSignedIn();
   // Filters apply live as the user taps pills, so any way of dismissing this
   // sheet — the "View results" button, swipe-down, or backdrop tap — commits
   // the current filter state. Track it here, not just on the button, so the
   // swipe/backdrop paths (handled by AppBottomSheet's onClose) aren't missed.
   const handleClose = useCallback(() => {
-    trackEvent("filter_applied");
+    if (isSignedIn) trackEvent("filter_applied");
     onClose();
-  }, [trackEvent, onClose]);
+  }, [isSignedIn, trackEvent, onClose]);
 
   // contentMounted: false on first open (shows spinner while content renders),
   // then permanently true so subsequent opens show content immediately.
@@ -198,12 +202,16 @@ export default function FiltersModal({
   }, [visible]);
 
   const { data: allCinemas = [] } = useFetchCinemas();
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
-  const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
-    useSessionCinemaSelections();
+  // The cinema list is public; the account's saved picks and named presets are
+  // not. A guest's selection is the session value itself, persisted to the
+  // device by `useCinemaSelection`.
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
+  const { cinemaIds: sessionCinemaIds, setCinemaIds: setSessionCinemaIds } =
+    useCinemaSelection();
   const { data: cinemaPresets = [] } = useQuery({
     queryKey: ["cinema-presets"],
     queryFn: () => MeService.getCinemaPresets(),
+    enabled: isSignedIn,
   });
 
   const sortedEffectiveIds = useMemo(() => {

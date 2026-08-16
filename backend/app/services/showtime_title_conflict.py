@@ -135,7 +135,9 @@ def _lookup_payload_versions(
     Missing/unparseable entries map to (None, False).
     """
     rows = session.exec(
-        select(Movie.id, TmdbLookupCache.lookup_payload, TmdbLookupCache.is_manual_override)
+        select(
+            Movie.id, TmdbLookupCache.lookup_payload, TmdbLookupCache.is_manual_override
+        )
         .join(TmdbLookupCache, col(TmdbLookupCache.id) == col(Movie.tmdb_cache_id))
         .where(col(Movie.id).in_(movie_ids))
     ).all()

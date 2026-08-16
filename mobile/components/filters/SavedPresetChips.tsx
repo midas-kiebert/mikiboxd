@@ -8,6 +8,7 @@ import { type DisplayPreset } from "@/components/filters/saved-presets";
 import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
 import { Skeleton } from "@/components/ui/Skeleton";
 import FilterPresetTip from "@/components/tips/FilterPresetTip";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
@@ -21,7 +22,11 @@ type SavedPresetChipsProps = {
 export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { presets, isLoading, remove } = useDisplayPresets();
+  // Presets are saved to an account, so a guest has none and no way to make
+  // one. The row renders nothing at all for them rather than the "save your
+  // first preset" hint, which would only lead somewhere they cannot go.
+  const isSignedIn = useIsSignedIn();
+  const { presets, isLoading, remove } = useDisplayPresets({ enabled: isSignedIn });
   const { trackEvent } = useTrackEvent();
   const [isTipVisible, setIsTipVisible] = useState(false);
 
@@ -47,6 +52,8 @@ export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
     triggerSelectionHaptic();
     setIsTipVisible(true);
   };
+
+  if (!isSignedIn) return null;
 
   return (
     <>

@@ -7,7 +7,7 @@
  * to be copy-pasted in every screen that opened the modal.
  *
  * Open it with:
- *  - openShowtimeModal(showtime)         already-loaded ShowtimeLoggedIn
+ *  - openShowtimeModal(showtime)         already-loaded ShowtimePublic
  *  - openShowtimeModalById(showtimeId)   fetches by id (deep links, notifications)
  *  - openShowtimeModalForInvite(group)   from a ping (shows "Invited by …")
  */
@@ -19,13 +19,20 @@ import {
   MeService,
   ShowtimesService,
   type GoingStatus,
-  type ShowtimeLoggedIn,
+  type ShowtimePublic,
+  type ShowtimeViewerState,
   type UserPublic,
 } from "shared";
 import { prefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 
 import ShowtimeActionModal, { type ShowtimeInvite } from "@/components/showtimes/ShowtimeActionModal";
+import { useSignInGate } from "@/components/auth/SignInGateProvider";
 import { hasShowtimeStarted } from "@/utils/showtime-time";
+
+/** A signed-in viewer with nothing recorded against this showtime yet. Only a
+ * starting point for an optimistic status change made before the sheet's own
+ * fetch has landed; the response replaces it wholesale. */
+const NO_VIEWER_STATE_YET: ShowtimeViewerState = { going: "NOT_GOING" };
 
 export type OpenOptions = {
   invite?: ShowtimeInvite | null;
@@ -41,10 +48,10 @@ export type OpenOptions = {
 };
 
 type ShowtimeModalContextValue = {
-  openShowtimeModal: (showtime: ShowtimeLoggedIn, options?: OpenOptions) => void;
+  openShowtimeModal: (showtime: ShowtimePublic, options?: OpenOptions) => void;
   openShowtimeModalById: (showtimeId: number, options?: OpenOptions) => void;
   openShowtimeModalForInvite: (args: {
-    showtime: ShowtimeLoggedIn;
+    showtime: ShowtimePublic;
     senders: UserPublic[];
     pingIds: number[];
   }) => void;
@@ -62,8 +69,9 @@ export function useShowtimeModal() {
 
 export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const { requireAccount } = useSignInGate();
   const [visible, setVisible] = useState(false);
-  const [currentShowtime, setCurrentShowtime] = useState<ShowtimeLoggedIn | null>(null);
+  const [currentShowtime, setCurrentShowtime] = useState<ShowtimePublic | null>(null);
   const [invite, setInvite] = useState<ShowtimeInvite | null>(null);
   const [openedFrom, setOpenedFrom] = useState<OpenOptions["openedFrom"]>(undefined);
   const [inheritFilters, setInheritFilters] = useState(false);
@@ -72,7 +80,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
   const openRequestIdRef = useRef(0);
 
   const openShowtimeModal = useCallback(
-    (showtime: ShowtimeLoggedIn, options?: OpenOptions) => {
+    (showtime: ShowtimePublic, options?: OpenOptions) => {
       openRequestIdRef.current += 1;
       setInvite(options?.invite ?? null);
       setOpenedFrom(options?.openedFrom);
@@ -126,7 +134,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
       senders,
       pingIds,
     }: {
-      showtime: ShowtimeLoggedIn;
+      showtime: ShowtimePublic;
       senders: UserPublic[];
       pingIds: number[];
     }) => {
@@ -176,13 +184,31 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
   const handleUpdateStatus = useCallback(
     (going: GoingStatus, seat?: { seatRow: string | null; seatNumber: string | null }) => {
       if (!currentShowtime || isUpdatingStatus) return;
+      // Going/interested is a note on an account, so this is where a guest is
+      // asked for one. Gated here rather than on each of the sheet's three
+      // status buttons: they all end up in this one call, and the sheet is not
+      // the only thing that makes it.
+      if (!requireAccount("going")) return;
+      const viewer = currentShowtime.viewer;
       const nextSeatRow =
-        going === "GOING" ? (seat?.seatRow ?? currentShowtime.seat_row ?? null) : null;
+        going === "GOING" ? (seat?.seatRow ?? viewer?.seat_row ?? null) : null;
       const nextSeatNumber =
-        going === "GOING" ? (seat?.seatNumber ?? currentShowtime.seat_number ?? null) : null;
+        going === "GOING" ? (seat?.seatNumber ?? viewer?.seat_number ?? null) : null;
       // Optimistic update so the sheet reflects the new status immediately.
       setCurrentShowtime((previous) =>
-        previous ? { ...previous, going, seat_row: nextSeatRow, seat_number: nextSeatNumber } : previous
+        previous
+          ? {
+              ...previous,
+              viewer: {
+                // requireAccount above guarantees a viewer; the fallback covers
+                // the window before the sheet's own fetch has landed.
+                ...(previous.viewer ?? NO_VIEWER_STATE_YET),
+                going,
+                seat_row: nextSeatRow,
+                seat_number: nextSeatNumber,
+              },
+            }
+          : previous
       );
       updateShowtimeSelection({
         showtimeId: currentShowtime.id,
@@ -191,7 +217,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
         seatNumber: seat?.seatNumber,
       });
     },
-    [currentShowtime, isUpdatingStatus, updateShowtimeSelection]
+    [currentShowtime, isUpdatingStatus, requireAccount, updateShowtimeSelection]
   );
 
   const { mutate: dismissInvitePings, isPending: isDismissingInvite } = useMutation({
@@ -230,10 +256,11 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
   // the "X invited you" banner + blue tint show no matter where the modal opens.
   const effectiveInvite = useMemo<ShowtimeInvite | null>(() => {
     if (invite) return invite;
-    if (currentShowtime && (currentShowtime.invited_by?.length ?? 0) > 0) {
+    const viewer = currentShowtime?.viewer;
+    if ((viewer?.invited_by?.length ?? 0) > 0) {
       return {
-        senders: [...(currentShowtime.invited_by ?? [])],
-        pingIds: [...(currentShowtime.invite_ping_ids ?? [])],
+        senders: [...(viewer?.invited_by ?? [])],
+        pingIds: [...(viewer?.invite_ping_ids ?? [])],
       };
     }
     return null;

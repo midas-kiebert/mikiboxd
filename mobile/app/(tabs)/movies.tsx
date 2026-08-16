@@ -36,6 +36,7 @@ import { useThemeColors } from '@/hooks/use-theme-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import MovieCard from '@/components/movies/MovieCard';
+import { useIsSignedIn } from '@/utils/auth-session';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 
 export default function MovieScreen() {
@@ -82,6 +83,7 @@ export default function MovieScreen() {
   } = useSharedTabFilters();
 
   const { user } = useAuth();
+  const isSignedIn = useIsSignedIn();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
@@ -104,7 +106,9 @@ export default function MovieScreen() {
     [selectedRuntimeRanges]
   );
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  // No account, no saved cinemas to fall back to — a guest's picks are the
+  // session selection itself (see hooks/useCinemaSelection).
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
 
   useEffect(() => {
     if (hasLetterboxdUsername || !watchlistOnly) return;

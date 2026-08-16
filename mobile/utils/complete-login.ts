@@ -1,8 +1,10 @@
 import type { Router } from 'expo-router'
+import { MeService } from 'shared'
 import { storage } from 'shared/storage'
 import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications'
 import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link'
 import { markSignedIn } from '@/utils/auth-session'
+import { claimGuestCinemaSelection } from '@/utils/guest-cinema-selection'
 import { isIntroOwed, startIntroIfPending } from '@/utils/intro'
 
 // Shared post-authentication side effects, run after any successful login or
@@ -23,6 +25,31 @@ export async function completeLogin(router: Router) {
     const pendingDeepLinkPath = await storage.getItem(PENDING_DEEP_LINK_PATH_KEY)
     if (pendingDeepLinkPath) {
         await storage.removeItem(PENDING_DEEP_LINK_PATH_KEY)
+    }
+
+    // If they narrowed the feed to their own cinemas while browsing as a guest,
+    // that choice is now theirs to keep — the new account inherits it rather
+    // than making them pick the same cinemas a second time.
+    //
+    // Guarded on the account having no saved cinemas of its own, which is what
+    // makes this safe on the *other* path into here: someone who already has an
+    // account, browsed as a guest before remembering they had one, and logged
+    // in. Their own picks are the real answer and a browsing session must not
+    // overwrite them. (An account whose cinemas live in a favourite preset
+    // instead reads as empty here, but the preset still wins when the backend
+    // resolves the feed, so the write cannot change what they see either.)
+    //
+    // Not awaited, and failure is not fatal: this is a nicety on top of a login
+    // that has already succeeded, and the cinema picker is one tap away.
+    const guestCinemaIds = claimGuestCinemaSelection()
+    if (guestCinemaIds.length > 0) {
+        void (async () => {
+            const savedCinemaIds = await MeService.getCinemaSelections()
+            if (savedCinemaIds.length > 0) return
+            await MeService.setCinemaSelections({ requestBody: guestCinemaIds })
+        })().catch((cinemaError) => {
+            console.error('Error carrying over guest cinema selection:', cinemaError)
+        })
     }
 
     // A brand-new account still owes the intro (and, at the end of it, the

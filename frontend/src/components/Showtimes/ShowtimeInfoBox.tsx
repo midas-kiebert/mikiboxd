@@ -14,8 +14,8 @@ type ShowtimeInfoBoxProps = {
 
 export default function ShowtimeInfoBox({ showtime }: ShowtimeInfoBoxProps) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
-  const friendsGoing = showtime.viewer?.friends_going
-  const friendsInterested = showtime.viewer?.friends_interested
+  const friendsGoing = showtime.viewer?.friends_going ?? []
+  const friendsInterested = showtime.viewer?.friends_interested ?? []
   const isMobile = useIsMobile()
   // Render/output using the state and derived values prepared above.
   return (

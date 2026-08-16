@@ -10,7 +10,7 @@ import ShowtimeInfoBox from "./ShowtimeInfoBox"
 
 type ShowtimeCardProps = {
   showtime: ShowtimePublic
-  going_status: GoingStatus
+  going_status: GoingStatus | undefined
 }
 
 const ShowtimeCard = ({ showtime, going_status }: ShowtimeCardProps) => {

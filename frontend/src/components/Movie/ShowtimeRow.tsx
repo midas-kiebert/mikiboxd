@@ -17,7 +17,7 @@ export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   // unpack showtime data
   const { datetime, cinema, viewer } = showtime
-  const { going, friends_going, friends_interested } = viewer ?? {}
+  const { going, friends_going = [], friends_interested = [] } = viewer ?? {}
 
   // Format time as "7:30 PM"
   const formattedTime = new Date(datetime).toLocaleTimeString(undefined, {

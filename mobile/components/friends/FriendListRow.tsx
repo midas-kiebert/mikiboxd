@@ -93,9 +93,9 @@ export default function FriendListRow({
 
       {isInvite ? (
         invited ? (
-          <View style={styles.invitedTag}>
-            <MaterialIcons name="check" size={14} color={colors.green.secondary} />
-            <ThemedText style={styles.invitedTagText}>Invited</ThemedText>
+          <View style={[styles.inviteButton, styles.invitedButton]}>
+            <MaterialIcons name="check" size={13} color={colors.textSecondary} />
+            <ThemedText style={styles.invitedButtonText}>Invited</ThemedText>
           </View>
         ) : (
           <TouchableOpacity
@@ -205,15 +205,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "700",
       color: colors.blue.secondary,
     },
-    invitedTag: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 3,
-      paddingRight: 4,
+    invitedButton: {
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.surfaceMuted,
     },
-    invitedTagText: {
-      fontSize: 11,
+    invitedButtonText: {
+      fontSize: 12,
       fontWeight: "700",
-      color: colors.green.secondary,
+      color: colors.textSecondary,
     },
   });

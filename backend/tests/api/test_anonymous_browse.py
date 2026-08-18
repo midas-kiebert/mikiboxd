@@ -108,12 +108,16 @@ def test_anonymous_showtime_carries_no_personal_annotations(
     db_transaction: Session,
     showtime_factory,
     user_factory,
+    normal_user_token_headers: dict[str, str],  # noqa: ARG001
 ) -> None:
     """The catalogue is public; who is going to it is not.
 
     Two people are going to this showtime and are friends with each other, so
     every personal field on the response has something it *could* say. To a
     request with no token it must say nothing.
+
+    `normal_user_token_headers` is depended on only to create the account
+    behind `_normal_user_id` — its headers are never sent.
     """
     showtime = showtime_factory()
     showtime_id = showtime.id
@@ -153,7 +157,10 @@ def test_anonymous_movie_carries_no_personal_annotations(
     client: TestClient,
     db_transaction: Session,
     showtime_factory,
+    normal_user_token_headers: dict[str, str],  # noqa: ARG001
 ) -> None:
+    """`normal_user_token_headers` only creates `_normal_user_id`'s account;
+    its headers are never sent."""
     showtime = showtime_factory()
     movie_id = showtime.movie_id
     owner_id = _normal_user_id(db_transaction)
@@ -185,12 +192,16 @@ def test_anonymous_feed_is_not_narrowed_by_someone_elses_cinemas(
     client: TestClient,
     db_transaction: Session,
     showtime_factory,
+    normal_user_token_headers: dict[str, str],  # noqa: ARG001
 ) -> None:
     """No account means no saved cinemas, which means the whole catalogue.
 
     The signed-in default — "wherever I usually go" — has no anonymous
     equivalent, and resolving it to an empty set would have shown a first-time
     visitor an empty app.
+
+    `normal_user_token_headers` only creates `_normal_user_id`'s account; its
+    headers are never sent.
     """
     kept = showtime_factory()
     other = showtime_factory()
@@ -297,6 +308,8 @@ def test_anonymous_can_filter_by_a_curated_list(
     """
     on_list = showtime_factory()
     off_list = showtime_factory()
+    on_list_id = on_list.id
+    off_list_id = off_list.id
     curated = _list_with_movie(
         db_transaction, movie_id=on_list.movie_id, slug="curated", is_curated=True
     )
@@ -304,13 +317,13 @@ def test_anonymous_can_filter_by_a_curated_list(
 
     response = client.get(
         f"{settings.API_V1_STR}/showtimes/",
-        params={"list_ids": [str(curated.id)]},
+        params={"selected_list_ids": [str(curated.id)]},
     )
 
     assert response.status_code == 200
     returned_ids = {item["id"] for item in response.json()}
-    assert on_list.id in returned_ids
-    assert off_list.id not in returned_ids
+    assert on_list_id in returned_ids
+    assert off_list_id not in returned_ids
 
 
 def test_anonymous_list_filter_ignores_someone_elses_list(
@@ -332,7 +345,7 @@ def test_anonymous_list_filter_ignores_someone_elses_list(
 
     response = client.get(
         f"{settings.API_V1_STR}/showtimes/",
-        params={"list_ids": [str(private_list.id)]},
+        params={"selected_list_ids": [str(private_list.id)]},
     )
 
     assert response.status_code == 200

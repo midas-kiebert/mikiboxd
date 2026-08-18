@@ -65,6 +65,9 @@ def test_get_users_success(
     mock_crud = mocker.patch("app.crud.user.get_users")
     mock_crud.return_value = [mocker.MagicMock() for _ in range(len_results)]
     mock_converter = mocker.patch("app.converters.user.to_with_friend_status")
+    mock_hidden_ids = mocker.patch(
+        "app.services.moderation.get_hidden_user_ids", return_value=set()
+    )
     mock_session = mocker.MagicMock()
 
     current_user_id = uuid4()
@@ -80,12 +83,16 @@ def test_get_users_success(
         current_user_id=current_user_id,
     )
 
+    mock_hidden_ids.assert_called_once_with(
+        session=mock_session, user_id=current_user_id
+    )
     mock_crud.assert_called_once_with(
         session=mock_session,
         query=query,
         limit=limit,
         offset=offset,
         current_user_id=current_user_id,
+        excluded_user_ids=set(),
     )
     assert mock_converter.call_count == len_results
 

@@ -663,10 +663,12 @@ def get_uninvited_selected_friends_for_showtime(
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
 
-    friend_ids = showtime_visibility_crud.get_uninvited_selected_friend_ids_for_showtime(
-        session=session,
-        owner_id=actor_id,
-        showtime_id=showtime_id,
+    friend_ids = (
+        showtime_visibility_crud.get_uninvited_selected_friend_ids_for_showtime(
+            session=session,
+            owner_id=actor_id,
+            showtime_id=showtime_id,
+        )
     )
     friends = user_crud.get_users_by_ids(session=session, user_ids=friend_ids)
     return UninvitedSelectedFriendsPublic(

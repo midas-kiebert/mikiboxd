@@ -117,7 +117,9 @@ def _sent_receiver_ids(
         ShowtimePing.sender_id == sender_id,
     )
     if eligible_only:
-        stmt = stmt.where(col(ShowtimePing.receiver_had_selection_at_creation).is_(False))
+        stmt = stmt.where(
+            col(ShowtimePing.receiver_had_selection_at_creation).is_(False)
+        )
     return set(session.exec(stmt).all())
 
 
@@ -133,7 +135,9 @@ def _received_sender_ids(
         ShowtimePing.receiver_id == receiver_id,
     )
     if eligible_only:
-        stmt = stmt.where(col(ShowtimePing.receiver_had_selection_at_creation).is_(False))
+        stmt = stmt.where(
+            col(ShowtimePing.receiver_had_selection_at_creation).is_(False)
+        )
     return set(session.exec(stmt).all())
 
 
@@ -262,7 +266,9 @@ def get_active_received_inviter_ids_for_showtimes(
         col(ShowtimePing.dismissed_at).is_(None),
     )
     if eligible_only:
-        stmt = stmt.where(col(ShowtimePing.receiver_had_selection_at_creation).is_(False))
+        stmt = stmt.where(
+            col(ShowtimePing.receiver_had_selection_at_creation).is_(False)
+        )
     inviter_ids_by_showtime_id: dict[int, set[UUID]] = {}
     for showtime_id, sender_id in session.exec(stmt).all():
         inviter_ids_by_showtime_id.setdefault(showtime_id, set()).add(sender_id)

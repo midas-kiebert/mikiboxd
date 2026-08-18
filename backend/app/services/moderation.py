@@ -141,9 +141,7 @@ def block_user(
             blocker_id=blocker_id,
             blocked_id=blocked_id,
         )
-        _tear_down_contact(
-            session=session, user_id=blocker_id, other_id=blocked_id
-        )
+        _tear_down_contact(session=session, user_id=blocker_id, other_id=blocked_id)
         session.commit()
     except AppError:
         session.rollback()

@@ -157,9 +157,7 @@ class Settings(BaseSettings):
 
     @property
     def apple_token_revocation_configured(self) -> bool:
-        return bool(
-            self.APPLE_TEAM_ID and self.APPLE_KEY_ID and self.APPLE_PRIVATE_KEY
-        )
+        return bool(self.APPLE_TEAM_ID and self.APPLE_KEY_ID and self.APPLE_PRIVATE_KEY)
 
     # Accepted audiences for Google ID tokens: the iOS, Android, and Web OAuth
     # client IDs from Google Cloud Console. The mobile app requests an ID token

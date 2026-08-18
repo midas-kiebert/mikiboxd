@@ -19,6 +19,8 @@ Legend:
 - [x] `client_version.py` — Dotted-integer version parsing/comparison for the mobile update gate
 - [x] `middleware.py` — `ClientVersionGateMiddleware`: 426s requests from mobile builds older than that platform's `MIN_SUPPORTED_CLIENT_VERSION_*`. Per-platform floors, because App Store review runs weeks behind Play and a shared floor would hold the faster store hostage to the slower one
 - [x] `viewer.py` — `ViewerId` (`UUID | None`): who a read is being annotated for. `None` is a legitimate anonymous viewer, entitled to the public catalogue and none of the personal annotations — threaded through the browse routes, services, converters and crud so one code path serves signed-in and signed-out alike
+- [x] `username_filter.py` — Objectionable-username denylist for App Store guideline 1.2 (slurs, child-safety terms, hardcore sexual content, staff impersonation only — deliberately minimal, see its module docstring); leet-speak folding + a small `_ALLOWED_WORDS` strip to dodge the Scunthorpe problem (`Hitchcock` must pass)
+- [x] `apple_auth.py` — Apple's OAuth token endpoints as a *client* (code exchange at sign-in, revocation at account deletion) — required so deleting an account also revokes its Sign in with Apple tokens (guideline 5.1.1(v)). Fails soft throughout: nothing here may block an account deletion
 
 ---
 
@@ -89,6 +91,8 @@ Legend:
 - [ ] `watchlist_digest_notified_movie.py` — Per-user record of movies already sent/seen in the digest
 - [ ] `analytics_event.py` — Single usage-analytics event (name + free-form properties)
 - [ ] `showtime_report.py` — User-submitted report that a showtime is wrong
+- [x] `user_block.py` — One user blocking another; directional storage, symmetric effect (see `crud/user_block.is_blocked_either_way`)
+- [x] `user_report.py` — User-submitted report about another user; mirrors `showtime_report.py`
 
 ---
 
@@ -116,6 +120,8 @@ Legend:
 - [x] `scrape_monitor.py` — Admin scrape-run/recap response shapes (deltas + anomaly flags)
 - [ ] `showtime_report.py` — Showtime report create/update/admin-view shapes
 - [ ] `admin.py` — Admin movie/showtime moderation request/response shapes
+- [x] `user_block.py` — Blocked-account list-row shape
+- [x] `user_report.py` — User report create/update/admin-view shapes; `UserReportCreate.block_user` defaults true — reporting and blocking are one client gesture
 
 ---
 
@@ -141,6 +147,8 @@ Legend:
 - [ ] `city.py` — City queries
 - [ ] `analytics_event.py` — Event creation and dashboard aggregation queries
 - [ ] `showtime_report.py` — Report creation, listing (joined), status updates
+- [x] `user_block.py` — Block create/delete, symmetric `is_blocked_either_way`, `get_hidden_user_ids` (both directions folded into one set — the one every list-filtering caller wants)
+- [x] `user_report.py` — Report creation, duplicate-open-report check, listing (joined, scalar-subquery count so status filtering doesn't shrink it)
 
 ---
 
@@ -165,6 +173,7 @@ Legend:
 - [x] `scrape_monitor.py` — Read-only aggregation of ScrapeRun/ScrapeRecap for the admin scrape monitor (deltas + anomaly flags)
 - [x] `scrape_recap_render.py` — `RecapRunMetrics` + the recap renderer; the daily email is grouped by statistic (combined value, then each run's) instead of stitching per-run reports, and the long diagnostic dumps live in JSON attachments only
 - [x] `showtime_title_conflict.py` — Recognizing the same screening listed by Cineville and a cinema scraper under near-identical titles; used both to stop the duplicate being inserted (`upsert_showtime`) and to clean up existing ones (`runner._delete_cineville_title_conflicts`). Also collects the resulting `SourceDisagreement`s, which the recap reports as TMDB matches to review
+- [x] `moderation.py` — Blocking (a teardown of friendship/requests/invites + visibility rebuild, not a flag) and reporting another user, together — App Store guideline 1.2. Reporting blocks by default; the two are still separate rows so unblocking never withdraws a report. Mails the operator on every new report, best-effort
 
 ---
 
@@ -196,6 +205,7 @@ Legend:
 - [ ] `scraper_exceptions.py` — Scraping-specific errors
 - [x] `cinema_preset_exceptions.py` — Cinema preset errors: not found, empty name, and the 409 raised when a preset name is already taken (create and rename both need it, and the client turns it into a "replace?" prompt rather than a failure)
 - [ ] `letterboxd_list_exceptions.py` — Letterboxd list scrape/sync errors
+- [x] `moderation_exceptions.py` — Block/report self-target and not-found errors, plus `UserBlockedError` (deliberately vague — never tells the sender which direction the block runs, so it can't be used to confirm a block landed) and `ObjectionableUsernameError`
 
 ---
 
@@ -473,6 +483,7 @@ Only components created or reworked during the cleanup are listed here; the rest
 `mobile/components/` predates this checklist.
 
 - [x] `ui/ConfirmDialog.tsx` — Reusable themed confirm dialog (fade + scale over a dimmed backdrop); the app-wide replacement for `Alert.alert` whenever the user is asked to decide something
+- [x] `showtimes/InviteBeforePrivateDialog.tsx` — Checkbox-list variant of `ConfirmDialog`, shown right before a showtime switches to INVITED_ONLY when friends are already going/interested but never pinged; offers to invite them (non-notifying) so they don't silently lose visibility
 - [x] `ui/AnimatedHeight.tsx` — Measures its children and tweens its own height to match, for content that grows and shrinks under the user (search results arriving, an empty state replacing a list). Used instead of `LayoutAnimation` where the change comes from a query resolving rather than a tap, since `configureNext` has to be armed before the update that moves things
 - [x] `ui/LoadMoreFooter.tsx` — The spinner at the bottom of a paginated list, tweening its own height and opacity so a loaded page glides in instead of snapping up a whole row the instant the spinner unmounts. Shared by every infinite list (showtimes, movies, friends, cinema/friend/movie detail). Not `AnimatedHeight`: there is nothing to measure, and the fade has to run *with* the collapse rather than after it
 - [x] `auth/AuthScreenShell.tsx` — The frame every auth screen sits in (brand mark, title, subtitle, keyboard handling, and the error banner, which is tweened in rather than inserted under the user). Exists so log in / sign up / pick a username / recover password cannot drift apart — this is the first thing anyone sees of the app
@@ -548,6 +559,13 @@ Only components created or reworked during the cleanup are listed here; the rest
 - [x] `utils/guest-cinema-selection.ts` — A guest's chosen cinemas, kept on the device (a signed-in user's live on their account). Empty means all cinemas, which is where a guest starts; `claimGuestCinemaSelection` hands them to the account on sign-up so the picking is not repeated
 - [x] `hooks/useCinemaSelection.ts` — The session's cinema selection plus persistence for guests, so every picker in the app saves a guest's choice by doing nothing different from what it already did
 - [x] `hooks/useSingleFireNavigation.ts` — Wraps a `router.push`/`replace` call so a double-tap only fires it once; `expo-router` navigation is async, so a disabled-on-submit re-render lags behind a fast double-tap and stacks the destination screen twice. Resets on screen focus. Rolled out to every push-on-press site found across the app (movie/friend/cinema cards, showtime long-press, login's sign-up/forgot-password links, the notification centre)
+- [x] `hooks/useUserModeration.ts` — Block/unblock/report-user mutations behind one hook, mirroring `useFriendActions`; invalidates `["users"]` since a block changes search, friend-status and the friends list at once
+- [x] `friends/ReportUserDialog.tsx` — "Report this person" reason picker (`ConfirmDialog`'s fade/scale chrome, a reason list instead of two buttons); reporting blocks by default, offered from `NonFriendProfile` and `FriendAgendaOptions`
+- [x] `friends/NonFriendProfile.tsx` — Gained Block/Report (or Unblock, once blocked) links below the existing friend-request actions — App Store Review guideline 1.2's blocking/reporting mechanism for the one profile screen a stranger is ever shown
+- [x] `friends/FriendAgendaOptions.tsx` — Gained the same Block/Report pair below the visibility control; blocking a friend removes the friendship, same as Remove
+- `app/blocked-users.tsx` — "Blocked accounts" screen off Settings → Privacy: the one place a blocked account is still visible, since search/friends/invites all filter them out; unblock-only, does not restore what blocking removed
+- [x] `constants/tablet-layout.ts` — `tabletCappedContentStyle` (maxWidth 640 + centered), the cheap fix for `RESPONSIVE_AUDIT.md` finding 16; applied to the four main-feed list containers, deliberately not to `FiltersModal`/`AppBottomSheet` (would mismatch their full-width pinned footers)
+- ~~`app/modal.tsx`~~ — deleted (leftover Expo Router template screen — "This is a modal" — that was never navigated to; flagged as `RESPONSIVE_AUDIT.md` finding 22)
 
 ---
 

@@ -31,11 +31,12 @@ from app.models.auth_schemas import Message
 from app.models.showtime import Showtime
 from app.models.user import is_report_banned
 from app.schemas.showtime import ShowtimePublic, ShowtimeSelectionUpdate
-from app.schemas.showtime_ping import SentShowtimePingPublic
+from app.schemas.showtime_ping import SentShowtimePingPublic, ShowtimePingLinkToken
 from app.schemas.showtime_report import ShowtimeReportCreate
 from app.schemas.showtime_visibility import (
     ShowtimeVisibilityPublic,
     ShowtimeVisibilityUpdate,
+    UninvitedSelectedFriendsPublic,
 )
 from app.services import push_notifications
 from app.services import showtimes as showtimes_service
@@ -124,35 +125,55 @@ def ping_friend_for_showtime(
     friend_id: UUID,
     current_user: CurrentUser,
 ) -> Message:
-    message, ping_id = showtimes_service.ping_friend_for_showtime(
+    message, ping_id, should_notify = showtimes_service.ping_friend_for_showtime(
         session=session,
         showtime_id=showtime_id,
         actor_id=current_user.id,
         friend_id=friend_id,
     )
-    background_tasks.add_task(
-        _notify_after_delay,
-        ping_id=ping_id,
-        sender_id=current_user.id,
-        receiver_id=friend_id,
-        showtime_id=showtime_id,
-    )
+    if should_notify:
+        background_tasks.add_task(
+            _notify_after_delay,
+            ping_id=ping_id,
+            sender_id=current_user.id,
+            receiver_id=friend_id,
+            showtime_id=showtime_id,
+        )
     return message
 
 
-@router.post("/{showtime_id}/ping-link/{sender_identifier}", response_model=Message)
+@router.post("/{showtime_id}/ping-link-token", response_model=ShowtimePingLinkToken)
+def create_showtime_ping_link_token(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> ShowtimePingLinkToken:
+    """Mint the signed token embedded in this showtime's shared invite link.
+
+    Called when the current user taps "Share" — the resulting token proves,
+    to whoever opens the link, that this user (and no one else) generated it.
+    """
+    return showtimes_service.create_showtime_ping_link_token(
+        session=session,
+        showtime_id=showtime_id,
+        sender_id=current_user.id,
+    )
+
+
+@router.post("/{showtime_id}/ping-link/{token}", response_model=Message)
 def receive_ping_from_link(
     *,
     session: SessionDep,
     showtime_id: int,
-    sender_identifier: str,
+    token: str,
     current_user: CurrentUser,
 ) -> Message:
     return showtimes_service.receive_ping_from_link(
         session=session,
         showtime_id=showtime_id,
         receiver_id=current_user.id,
-        sender_identifier=sender_identifier,
+        token=token,
     )
 
 
@@ -350,6 +371,28 @@ def get_showtime_visibility(
     current_user: CurrentUser,
 ) -> ShowtimeVisibilityPublic:
     return showtimes_service.get_showtime_visibility(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+    )
+
+
+@router.get(
+    "/{showtime_id}/visibility/uninvited-selected-friends",
+    response_model=UninvitedSelectedFriendsPublic,
+)
+def get_uninvited_selected_friends_for_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> UninvitedSelectedFriendsPublic:
+    """Friends already going/interested but not yet invited to this showtime.
+
+    Used to prompt the actor, before switching to INVITED_ONLY, to invite
+    friends who would otherwise silently lose visibility into their status.
+    """
+    return showtimes_service.get_uninvited_selected_friends_for_showtime(
         session=session,
         showtime_id=showtime_id,
         actor_id=current_user.id,

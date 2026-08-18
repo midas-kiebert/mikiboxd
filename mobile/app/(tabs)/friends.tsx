@@ -38,6 +38,7 @@ import { useFetchSentRequests } from 'shared/hooks/useFetchSentRequests';
 import QRCode from 'react-native-qrcode-svg';
 
 import { ThemedText } from '@/components/themed-text';
+import { tabletCappedContentStyle } from '@/constants/tablet-layout';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
@@ -418,6 +419,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       paddingTop: 12,
     },
     content: {
+      ...tabletCappedContentStyle,
       padding: 16,
       paddingTop: 4,
       paddingBottom: 24,

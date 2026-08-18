@@ -1,11 +1,12 @@
 from datetime import timedelta
-from urllib.parse import quote
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.enums import GoingStatus, VisibilityMode
+from app.core.security import generate_showtime_ping_token
 from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_ping as showtime_ping_crud
@@ -370,35 +371,100 @@ def test_get_pinged_friend_ids_for_showtime(
     assert list_response.json() == [str(friend_id)]
 
 
-def test_receive_ping_from_link_allows_non_friend_sender(
+def test_create_showtime_ping_link_token_round_trip(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    superuser_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    """The token minted for the sharer is the one the receiver's link redeems."""
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    sender_id = _normal_user_id(db_transaction)
+
+    mint_response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link-token",
+        headers=normal_user_token_headers,
+    )
+    assert mint_response.status_code == 200
+    token = mint_response.json()["token"]
+
+    receive_response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{token}",
+        headers=superuser_token_headers,
+    )
+    assert receive_response.status_code == 200
+    assert receive_response.json() == {"message": "Invite received successfully"}
+
+    superuser_id = db_transaction.exec(
+        select(User.id).where(User.email == settings.FIRST_SUPERUSER)
+    ).one()
+    stored_ping = db_transaction.exec(
+        select(ShowtimePing).where(
+            ShowtimePing.showtime_id == showtime_id,
+            ShowtimePing.sender_id == sender_id,
+            ShowtimePing.receiver_id == superuser_id,
+        )
+    ).one_or_none()
+    assert stored_ping is not None
+
+
+def test_receive_ping_from_link_rejects_forged_sender(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,
     user_factory,
     showtime_factory,
 ) -> None:
-    sender = user_factory(display_name="Ping Link Sender")
+    """A receiver must not be able to fabricate an invite by putting another
+    user's raw ID where the signed token belongs — the whole point of the
+    token is that only the real sharer can produce a value that verifies."""
+    victim = user_factory(display_name="Never Shared Anything")
     showtime = showtime_factory()
-    sender_id = sender.id
+    victim_id = victim.id
     showtime_id = showtime.id
     current_user_id = _normal_user_id(db_transaction)
 
     response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{victim_id}",
         headers=normal_user_token_headers,
     )
 
-    assert response.status_code == 200
-    assert response.json() == {"message": "Invite received successfully"}
+    assert response.status_code == 400
+    assert response.json()["detail"] == "This invite link is invalid."
 
     stored_ping = db_transaction.exec(
         select(ShowtimePing).where(
             ShowtimePing.showtime_id == showtime_id,
-            ShowtimePing.sender_id == sender_id,
+            ShowtimePing.sender_id == victim_id,
             ShowtimePing.receiver_id == current_user_id,
         )
     ).one_or_none()
-    assert stored_ping is not None
+    assert stored_ping is None
+
+
+def test_receive_ping_from_link_rejects_token_for_different_showtime(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    user_factory,
+    showtime_factory,
+) -> None:
+    """A token minted for one showtime must not redeem an invite for another —
+    otherwise a receiver could replay a legitimately-received token against an
+    unrelated showtime the real sender never shared."""
+    sender = user_factory(display_name="Cross Showtime Sender")
+    minted_for = showtime_factory()
+    other_showtime = showtime_factory()
+    token = generate_showtime_ping_token(showtime_id=minted_for.id, sender_id=sender.id)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{other_showtime.id}/ping-link/{token}",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "This invite link is invalid."
 
 
 def test_receive_ping_from_link_marks_sender_interested(
@@ -413,9 +479,10 @@ def test_receive_ping_from_link_marks_sender_interested(
     showtime = showtime_factory()
     sender_id = sender.id
     showtime_id = showtime.id
+    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=sender_id)
 
     response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{token}",
         headers=normal_user_token_headers,
     )
     assert response.status_code == 200
@@ -441,6 +508,7 @@ def test_receive_ping_from_link_does_not_downgrade_going_sender(
     showtime = showtime_factory()
     sender_id = sender.id
     showtime_id = showtime.id
+    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=sender_id)
 
     showtime_crud.add_showtime_selection(
         session=db_transaction,
@@ -451,7 +519,7 @@ def test_receive_ping_from_link_does_not_downgrade_going_sender(
     db_transaction.commit()
 
     response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{token}",
         headers=normal_user_token_headers,
     )
     assert response.status_code == 200
@@ -463,26 +531,6 @@ def test_receive_ping_from_link_does_not_downgrade_going_sender(
         user_id=sender_id,
     )
     assert sender_status == GoingStatus.GOING
-
-
-def test_receive_ping_from_link_accepts_display_name_identifier(
-    client: TestClient,
-    normal_user_token_headers: dict[str, str],
-    user_factory,
-    showtime_factory,
-) -> None:
-    sender = user_factory(display_name="Sender Via Name")
-    showtime = showtime_factory()
-    showtime_id = showtime.id
-    encoded_sender = quote(sender.display_name or "", safe="")
-
-    response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{encoded_sender}",
-        headers=normal_user_token_headers,
-    )
-
-    assert response.status_code == 200
-    assert response.json() == {"message": "Invite received successfully"}
 
 
 def test_receive_ping_from_link_is_idempotent(
@@ -497,15 +545,16 @@ def test_receive_ping_from_link_is_idempotent(
     sender_id = sender.id
     showtime_id = showtime.id
     current_user_id = _normal_user_id(db_transaction)
+    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=sender_id)
 
     first_response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{token}",
         headers=normal_user_token_headers,
     )
     assert first_response.status_code == 200
 
     second_response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{token}",
         headers=normal_user_token_headers,
     )
     assert second_response.status_code == 200
@@ -534,9 +583,10 @@ def test_receive_ping_from_link_rejects_past_showtime(
     sender_id = sender.id
     showtime_id = showtime.id
     current_user_id = _normal_user_id(db_transaction)
+    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=sender_id)
 
     response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{sender_id}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{token}",
         headers=normal_user_token_headers,
     )
 
@@ -582,7 +632,7 @@ def test_ping_friend_for_showtime_rejects_past_showtime(
     assert response.json()["detail"] == "This showtime has already passed."
 
 
-def test_receive_ping_from_link_rejects_unknown_sender(
+def test_receive_ping_from_link_rejects_garbage_token(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     showtime_factory,
@@ -590,7 +640,28 @@ def test_receive_ping_from_link_rejects_unknown_sender(
     showtime = showtime_factory()
     showtime_id = showtime.id
     response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{quote('missing sender', safe='')}",
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/not-a-real-token",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "This invite link is invalid."
+
+
+def test_receive_ping_from_link_rejects_deleted_sender(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    showtime_factory,
+) -> None:
+    """A structurally-valid token whose sender no longer exists (account
+    deleted after the link was shared) must not silently attribute the ping
+    to nobody."""
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=uuid4())
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{token}",
         headers=normal_user_token_headers,
     )
 

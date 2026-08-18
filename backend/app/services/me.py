@@ -9,8 +9,10 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
+from app.core import apple_auth
 from app.core.enums import NotificationChannel, NotificationType, ShowtimePingSort
 from app.core.security import verify_password
+from app.core.username_filter import assert_display_name_allowed
 from app.crud import cinema as cinemas_crud
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import friendship as friendship_crud
@@ -141,6 +143,9 @@ def update_me(
         if username_changed:
             if not is_valid_username(requested_display_name):
                 raise InvalidUsername()
+            # Applied on rename as well as creation: a filter that only ran at
+            # signup would be one settings visit away from being pointless.
+            assert_display_name_allowed(requested_display_name)
             existing_user = users_crud.get_user_by_display_name(
                 session=session,
                 display_name=requested_display_name,
@@ -272,6 +277,27 @@ def delete_me(
     session: Session,
     current_user: User,
 ) -> None:
+    """Delete the account, revoking its Apple tokens first.
+
+    Apple requires an app offering Sign in with Apple to revoke the user's
+    tokens on account deletion — without it the Apple ID keeps MiKiNO listed
+    under "Sign in with Apple" and a later sign-in silently re-links to an
+    account that no longer exists. See `core/apple_auth.py`.
+
+    Revocation happens *before* the row goes, since the token lives on it, and
+    its outcome is deliberately ignored: someone asking to delete their account
+    must always succeed, whatever Apple's endpoint is doing. A token that
+    outlives a failed revoke is logged and left — the account is gone either way.
+    """
+    if current_user.apple_refresh_token:
+        revoked = apple_auth.revoke_refresh_token(current_user.apple_refresh_token)
+        if not revoked:
+            logger.warning(
+                "Could not revoke Apple tokens for user %s; deleting the account "
+                "anyway",
+                current_user.id,
+            )
+
     session.delete(current_user)
     session.commit()
 

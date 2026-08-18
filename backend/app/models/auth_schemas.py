@@ -60,6 +60,12 @@ class NewPassword(SQLModel):
 class SocialLoginRequest(SQLModel):
     provider: SocialProvider
     token: str
+    # Apple only, and optional: the native sign-in also hands the client a
+    # short-lived authorization code, which the backend exchanges for a refresh
+    # token so that deleting the account can revoke the user's Apple tokens (see
+    # core/apple_auth.py). Absent from Google sign-ins and from older builds, and
+    # a sign-in never fails for want of it.
+    authorization_code: str | None = None
 
 
 # Response body for POST /login/social-token

@@ -186,6 +186,37 @@ class ShowtimeReportStatus(str, Enum):
 
 
 @unique
+class UserReportReason(str, Enum):
+    """Why a user is reporting another user.
+
+    Scoped to what is actually possible in MiKiNO: there is no messaging or
+    free-text between users, so reasons like harassment or bullying (which
+    would need a channel to say something in) don't apply. What remains is
+    what a username, a friend request, or an invite can actually do wrong.
+    """
+
+    OBJECTIONABLE_USERNAME = "objectionable_username"
+    IMPERSONATION = "impersonation"
+    REPEATED_UNWANTED_CONTACT = "repeated_unwanted_contact"
+    SPAM = "spam"
+    OTHER = "other"
+
+
+@unique
+class UserReportStatus(str, Enum):
+    """Moderation state of a user-submitted report about another user.
+
+    Mirrors `ShowtimeReportStatus` rather than sharing it: the two queues are
+    triaged separately and nothing should make it possible to move a report
+    about a person into a state that only means something for a screening.
+    """
+
+    OPEN = "open"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"
+
+
+@unique
 class SocialProvider(str, Enum):
     """Third-party identity provider for social sign-in."""
 

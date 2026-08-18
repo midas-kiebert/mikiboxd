@@ -45,6 +45,12 @@ export type OpenOptions = {
    * showtime it points at (invite links), where "past" is only known once the
    * showtime has been fetched. */
   requireUpcoming?: boolean;
+  /** Awaited (errors swallowed) before the showtime is fetched, while the
+   * sheet's loading spinner is already showing. For openShowtimeModalById
+   * callers that must land a server-side write — e.g. recording an invite
+   * link's ping — before the fetch, so the first render already reflects it
+   * instead of needing a reopen. */
+  awaitBeforeFetch?: () => Promise<void>;
 };
 
 type ShowtimeModalContextValue = {
@@ -107,6 +113,14 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
       prefetchShowtimeVisibility(queryClient, [showtimeId]);
       void (async () => {
         try {
+          if (options?.awaitBeforeFetch) {
+            try {
+              await options.awaitBeforeFetch();
+            } catch (error) {
+              console.error("Error in awaitBeforeFetch:", error);
+            }
+            if (openRequestIdRef.current !== requestId) return;
+          }
           const fetched = await ShowtimesService.getShowtimeById({ showtimeId });
           if (openRequestIdRef.current !== requestId) return;
           if (options?.requireUpcoming && hasShowtimeStarted(fetched.datetime)) {

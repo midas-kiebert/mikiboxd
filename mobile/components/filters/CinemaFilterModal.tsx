@@ -808,6 +808,9 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                   // replace the preset the last one collided with.
                   if (isReplacingNamedPreset) setIsReplacingNamedPreset(false);
                 }}
+                // selectTextOnFocus doesn't reliably select on the focus that
+                // autoFocus triggers (only on a manual tap), so select explicitly.
+                onFocus={() => presetNameInputRef.current?.setSelection(0, presetName.length)}
                 placeholder="Cinema preset name"
                 placeholderTextColor={colors.textSecondary}
                 style={styles.dialogInput}
@@ -883,6 +886,9 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                   setRenameValue(value);
                   if (renameError) setRenameError(null);
                 }}
+                // selectTextOnFocus doesn't reliably select on the focus that
+                // autoFocus triggers (only on a manual tap), so select explicitly.
+                onFocus={() => renameInputRef.current?.setSelection(0, renameValue.length)}
                 placeholder="Preset name"
                 placeholderTextColor={colors.textSecondary}
                 style={styles.dialogInput}

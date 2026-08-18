@@ -7,6 +7,7 @@ import {
   Animated,
   LayoutAnimation,
   type LayoutChangeEvent,
+  Linking,
   ScrollView,
   StyleSheet,
   Switch,
@@ -60,6 +61,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import EmailVerificationRequiredDialog from '@/components/ui/EmailVerificationRequiredDialog';
 import { useEmailVerificationPolling } from '@/hooks/useCurrentUser';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
+import { PRIVACY_POLICY_URL, SUPPORT_PAGE_URL } from '@/constants/legal-links';
 
 // Placeholder for the danger zone card's height until it has been measured
 // once. Sized from the card's own styles (18pt padding top and bottom, roughly
@@ -392,6 +394,16 @@ export default function SettingsScreen() {
       current_password: hasPassword ? passwords.current_password : null,
       new_password: passwords.new_password,
     });
+  };
+
+  const handleOpenPrivacyPolicy = () => {
+    triggerSelectionHaptic();
+    void Linking.openURL(PRIVACY_POLICY_URL);
+  };
+
+  const handleOpenSupport = () => {
+    triggerSelectionHaptic();
+    void Linking.openURL(SUPPORT_PAGE_URL);
   };
 
   // Run a confirmed destructive action and handle the result.
@@ -1006,8 +1018,49 @@ export default function SettingsScreen() {
               MiKiNO is not affiliated with Letterboxd, Cineville, or any of the cinemas listed in
               the app.
             </ThemedText>
+            <TouchableOpacity
+              style={styles.aboutLinkRow}
+              onPress={handleOpenPrivacyPolicy}
+              activeOpacity={0.7}
+              accessibilityRole="link"
+              accessibilityLabel="Open the privacy policy"
+            >
+              <MaterialIcons name="privacy-tip" size={16} color={colors.textSecondary} />
+              <ThemedText style={styles.aboutLinkText}>Privacy policy</ThemedText>
+              <MaterialIcons name="open-in-new" size={13} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.aboutLinkRow}
+              onPress={handleOpenSupport}
+              activeOpacity={0.7}
+              accessibilityRole="link"
+              accessibilityLabel="Contact support"
+            >
+              <MaterialIcons name="mail-outline" size={16} color={colors.textSecondary} />
+              <ThemedText style={styles.aboutLinkText}>Contact support</ThemedText>
+              <MaterialIcons name="open-in-new" size={13} color={colors.textSecondary} />
+            </TouchableOpacity>
           </View>
         </View>
+
+        {isSignedIn ? (
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Privacy</ThemedText>
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.aboutLinkRow}
+              onPress={() => router.push('/blocked-users')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="View blocked accounts"
+            >
+              <MaterialIcons name="block" size={16} color={colors.textSecondary} />
+              <ThemedText style={styles.aboutLinkText}>Blocked accounts</ThemedText>
+              <MaterialIcons name="chevron-right" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        ) : null}
 
         {isSignedIn ? (
         <View style={styles.section}>
@@ -1220,6 +1273,19 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     helperText: {
       fontSize: 12,
       color: colors.textSecondary,
+    },
+    aboutLinkRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 10,
+      marginTop: 2,
+    },
+    aboutLinkText: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
     },
     notificationToggleRow: {
       gap: 10,

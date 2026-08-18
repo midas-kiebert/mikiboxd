@@ -39,9 +39,9 @@ function PingLinkPage() {
     }
   }, [])
 
-  const { showtimeId, sender } = {
+  const { showtimeId, token } = {
     showtimeId: pathShowtimeId,
-    sender: pathSender,
+    token: pathSender,
   }
 
   const normalizedShowtimeId = useMemo(() => {
@@ -49,7 +49,7 @@ function PingLinkPage() {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null
   }, [showtimeId])
 
-  const normalizedSender = useMemo(() => sender?.trim() ?? "", [sender])
+  const normalizedToken = useMemo(() => token?.trim() ?? "", [token])
 
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false)
   const [hasAuth, setHasAuth] = useState(false)
@@ -61,10 +61,10 @@ function PingLinkPage() {
   const hasAttemptedRef = useRef(false)
 
   const pingMutation = useMutation({
-    mutationFn: (payload: { showtimeId: number; sender: string }) =>
+    mutationFn: (payload: { showtimeId: number; token: string }) =>
       ShowtimesService.receivePingFromLink({
         showtimeId: payload.showtimeId,
-        senderIdentifier: payload.sender,
+        token: payload.token,
       }),
     onSuccess: () => {
       setHasStarted(false)
@@ -96,7 +96,7 @@ function PingLinkPage() {
     if (!hasCheckedAuth || hasAttemptedRef.current) return
     hasAttemptedRef.current = true
 
-    if (normalizedShowtimeId === null || normalizedSender.length === 0) {
+    if (normalizedShowtimeId === null || normalizedToken.length === 0) {
       setStatusMessage("Invalid invite link.")
       return
     }
@@ -109,13 +109,13 @@ function PingLinkPage() {
     setHasStarted(true)
     pingMutation.mutate({
       showtimeId: normalizedShowtimeId,
-      sender: normalizedSender,
+      token: normalizedToken,
     })
   }, [
     hasCheckedAuth,
     hasAuth,
     normalizedShowtimeId,
-    normalizedSender,
+    normalizedToken,
     pingMutation,
   ])
 

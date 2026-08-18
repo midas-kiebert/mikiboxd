@@ -31,6 +31,7 @@ import {
   getSelectedStatusesFromShowtimeFilter,
   toSharedTabShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
+import { tabletCappedContentStyle } from '@/constants/tablet-layout';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
@@ -310,7 +311,7 @@ export default function MovieScreen() {
 const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    movieFeed: { padding: 16 },
+    movieFeed: { ...tabletCappedContentStyle, padding: 16 },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });

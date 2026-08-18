@@ -15,9 +15,12 @@ from app.core.security import (
 )
 from app.crud import user as users_crud
 from app.inputs.movie import Filters, get_filters
+from app.models.auth_schemas import Message
 from app.models.user import UserRegister
 from app.schemas.showtime import ShowtimePublic
 from app.schemas.user import UserPublic, UserWithFriendStatus
+from app.schemas.user_report import UserReportCreate
+from app.services import moderation as moderation_service
 from app.services import users as users_service
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -116,6 +119,64 @@ def get_user_friend_status(
         session=session,
         current_user_id=current_user.id,
         user_id=user_id,
+    )
+
+
+@router.post("/{user_id}/block", response_model=Message)
+def block_user(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    user_id: UUID,
+) -> Message:
+    """Block a user: no contact in either direction from here on.
+
+    Tears down the friendship, any pending request and every standing invite
+    between the two accounts — see services/moderation.py for why a block has to
+    be a teardown rather than a flag.
+    """
+    return moderation_service.block_user(
+        session=session,
+        blocker_id=current_user.id,
+        blocked_id=user_id,
+    )
+
+
+@router.delete("/{user_id}/block", response_model=Message)
+def unblock_user(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    user_id: UUID,
+) -> Message:
+    """Lift a block. Does not restore the friendship or invites it removed."""
+    return moderation_service.unblock_user(
+        session=session,
+        blocker_id=current_user.id,
+        blocked_id=user_id,
+    )
+
+
+@router.post("/{user_id}/report", response_model=Message)
+def report_user(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    user_id: UUID,
+    payload: UserReportCreate,
+) -> Message:
+    """Report a user for moderation, and block them unless asked not to.
+
+    Mails the report to the operator as well as recording it, so guideline 1.2's
+    "timely responses to concerns" has something to respond from.
+    """
+    return moderation_service.report_user(
+        session=session,
+        reporter=current_user,
+        reported_id=user_id,
+        reason=payload.reason,
+        message=payload.message,
+        also_block=payload.block_user,
     )
 
 

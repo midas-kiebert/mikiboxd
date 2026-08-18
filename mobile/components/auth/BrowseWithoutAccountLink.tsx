@@ -47,9 +47,7 @@ export default function BrowseWithoutAccountLink({ disabled }: { disabled?: bool
       hitSlop={6}
     >
       <View style={styles.row}>
-        <ThemedText style={styles.label}>
-            "Continue without an account"
-        </ThemedText>
+        <ThemedText style={styles.label}>Continue without an account</ThemedText>
         <MaterialIcons name="arrow-forward" size={15} color={colors.tint} />
       </View>
     </TouchableOpacity>

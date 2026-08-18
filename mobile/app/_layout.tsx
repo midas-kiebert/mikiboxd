@@ -499,7 +499,7 @@ function RootLayourContent() {
     // handled by the effect below, which shows a guest the screening and leaves
     // accepting it to the sheet's own gate.
     const browseRoutes = new Set(['(tabs)', 'movie', 'cinema-showtimes', 'ping'])
-    const accountRoutes = new Set(['friend-showtimes', 'add-friend'])
+    const accountRoutes = new Set(['friend-showtimes', 'add-friend', 'blocked-users'])
     const signedOutRoutes = new Set(['login', 'signup', 'recover-password'])
     // Protected in release builds — the real flow only ever arrives already
     // signed in. In dev it stays neutral so the login screen's "Preview
@@ -622,7 +622,7 @@ function RootLayourContent() {
         // in the deps.
         void storage.setItem(
           PENDING_DEEP_LINK_PATH_KEY,
-          `/ping/${invite.showtimeId}/${invite.sender}`
+          `/ping/${invite.showtimeId}/${invite.token}`
         )
         // A guest can still be shown the screening they were invited to — that
         // is public, and it is the thing the link is actually about. Accepting
@@ -644,8 +644,14 @@ function RootLayourContent() {
       // started, and opening a screening that is already over invites nothing.
       // The backend rejects the ping for the same reason, which
       // registerInviteLink swallows.
-      openShowtimeModalById(invite.showtimeId, { requireUpcoming: true })
-      void registerInviteLink({ ...invite, queryClient })
+      // `awaitBeforeFetch`: the ping must be recorded server-side before the
+      // showtime is fetched, or the sheet's first render (viewer.invited_by,
+      // the "invited by" banner) misses the invite it was just opened for —
+      // it would only show up after closing and reopening the sheet.
+      openShowtimeModalById(invite.showtimeId, {
+        requireUpcoming: true,
+        awaitBeforeFetch: () => registerInviteLink({ ...invite, queryClient }),
+      })
     }
 
     void Linking.getInitialURL()
@@ -753,15 +759,12 @@ function RootLayourContent() {
         <JsStack.Screen name="friend-showtimes/[id]" />
         <JsStack.Screen name="cinema-showtimes/[id]" />
         <JsStack.Screen name="add-friend/[receiverId]" />
+        <JsStack.Screen name="blocked-users" />
         {/* Renders nothing and pops itself the moment it is handled, so it must
             never animate: sliding an empty card in and back out again was the
             whole of the invite link's "glitchy" open, and it happens over a
             screen the user is already looking at when the app was running. */}
         <JsStack.Screen name="ping/[showtimeId]/[sender]" options={INSTANT_SCREEN_OPTIONS} />
-        <JsStack.Screen
-          name="modal"
-          options={{ presentation: 'modal', title: 'Modal', ...TransitionPresets.ModalSlideFromBottomIOS }}
-        />
       </JsStack>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
         </>

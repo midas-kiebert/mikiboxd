@@ -75,6 +75,19 @@ export type AnalyticsOverview = {
   notifications_clicked: number
 }
 
+/**
+ * One row of the "Blocked accounts" list.
+ *
+ * Carries the display name rather than only the id so the list is readable
+ * without a second request per row — the blocked user is deliberately not
+ * reachable through search any more, so the client cannot look them up.
+ */
+export type BlockedUserPublic = {
+  id: string
+  display_name: string | null
+  blocked_at: string
+}
+
 export type Body_login_login_access_token = {
   grant_type?: string | null
   username: string
@@ -91,10 +104,6 @@ export type CinemaPresetCreate = {
   overwrite?: boolean
 }
 
-export type CinemaPresetRename = {
-  name: string
-}
-
 export type CinemaPresetPublic = {
   id: string
   name: string
@@ -103,6 +112,16 @@ export type CinemaPresetPublic = {
   is_favorite: boolean
   created_at: string
   updated_at: string
+}
+
+/**
+ * The only field of a saved preset the user can edit after the fact.
+ *
+ * Its cinemas are changed by re-picking them in the sheet and saving over the
+ * preset, so a rename never carries a selection with it.
+ */
+export type CinemaPresetRename = {
+  name: string
 }
 
 export type CinemaPublic = {
@@ -599,6 +618,10 @@ export type ShowtimeInMovieViewerState = {
   pending_invited_friends?: Array<UserPublic>
 }
 
+export type ShowtimePingLinkToken = {
+  token: string
+}
+
 export type ShowtimePingPublic = {
   id: number
   showtime_id: number
@@ -774,6 +797,7 @@ export type ShowtimeVisibilityUpdate = {
 export type SocialLoginRequest = {
   provider: SocialProvider
   token: string
+  authorization_code?: string | null
 }
 
 export type SocialLoginResponse = {
@@ -841,6 +865,10 @@ export type Token = {
   token_type?: string
 }
 
+export type UninvitedSelectedFriendsPublic = {
+  friends: Array<UserPublic>
+}
+
 export type UpdatePassword = {
   current_password?: string | null
   new_password: string
@@ -900,9 +928,58 @@ export type UserRegister = {
   display_name?: string | null
 }
 
+export type UserReportAdminView = {
+  id: number
+  reported_id: string
+  reported_display_name: string | null
+  reported_email: string
+  reporter_id: string
+  reporter_email: string
+  reason: UserReportReason
+  message: string | null
+  status: UserReportStatus
+  created_at: string
+  resolved_at: string | null
+  report_count: number
+}
+
 export type UserReportBanUpdate = {
   banned: boolean
   duration_days?: number | null
+}
+
+export type UserReportCreate = {
+  reason: UserReportReason
+  message?: string | null
+  block_user?: boolean
+}
+
+/**
+ * Why a user is reporting another user.
+ *
+ * Scoped to what is actually possible in MiKiNO: there is no messaging or
+ * free-text between users, so reasons like harassment or bullying (which
+ * would need a channel to say something in) don't apply. What remains is
+ * what a username, a friend request, or an invite can actually do wrong.
+ */
+export type UserReportReason =
+  | "objectionable_username"
+  | "impersonation"
+  | "repeated_unwanted_contact"
+  | "spam"
+  | "other"
+
+/**
+ * Moderation state of a user-submitted report about another user.
+ *
+ * Mirrors `ShowtimeReportStatus` rather than sharing it: the two queues are
+ * triaged separately and nothing should make it possible to move a report
+ * about a person into a state that only means something for a screening.
+ */
+export type UserReportStatus = "open" | "resolved" | "dismissed"
+
+export type UserReportUpdate = {
+  status: UserReportStatus
 }
 
 export type UserUpdate = {
@@ -938,6 +1015,7 @@ export type UserWithFriendStatus = {
   sent_request: boolean
   received_request: boolean
   shares_status?: boolean
+  is_blocked?: boolean
 }
 
 export type ValidationError = {
@@ -1022,6 +1100,19 @@ export type AdminUpdateShowtimeReportData = {
 }
 
 export type AdminUpdateShowtimeReportResponse = Message
+
+export type AdminListUserReportsData = {
+  status?: UserReportStatus | null
+}
+
+export type AdminListUserReportsResponse = Array<UserReportAdminView>
+
+export type AdminUpdateUserReportData = {
+  reportId: number
+  requestBody: UserReportUpdate
+}
+
+export type AdminUpdateUserReportResponse = Message
 
 export type AdminUpdateUserReportBanData = {
   requestBody: UserReportBanUpdate
@@ -1180,17 +1271,17 @@ export type MeRenameCinemaPresetData = {
 
 export type MeRenameCinemaPresetResponse = CinemaPresetPublic
 
-export type MeSetFavoriteCinemaPresetData = {
-  presetId: string
-}
-
-export type MeSetFavoriteCinemaPresetResponse = CinemaPresetPublic
-
 export type MeDeleteCinemaPresetData = {
   presetId: string
 }
 
 export type MeDeleteCinemaPresetResponse = Message
+
+export type MeSetFavoriteCinemaPresetData = {
+  presetId: string
+}
+
+export type MeSetFavoriteCinemaPresetResponse = CinemaPresetPublic
 
 export type MeResendEmailVerificationResponse = Message
 
@@ -1385,6 +1476,8 @@ export type MeRemoveLetterboxdListData = {
 export type MeRemoveLetterboxdListResponse = Message
 
 export type MeGetFriendsResponse = Array<UserWithFriendStatus>
+
+export type MeGetBlockedUsersResponse = Array<BlockedUserPublic>
 
 export type MeGetSentFriendRequestsResponse = Array<UserWithFriendStatus>
 
@@ -1678,9 +1771,15 @@ export type ShowtimesUninviteFriendFromShowtimeData = {
 
 export type ShowtimesUninviteFriendFromShowtimeResponse = Message
 
-export type ShowtimesReceivePingFromLinkData = {
-  senderIdentifier: string
+export type ShowtimesCreateShowtimePingLinkTokenData = {
   showtimeId: number
+}
+
+export type ShowtimesCreateShowtimePingLinkTokenResponse = ShowtimePingLinkToken
+
+export type ShowtimesReceivePingFromLinkData = {
+  showtimeId: number
+  token: string
 }
 
 export type ShowtimesReceivePingFromLinkResponse = Message
@@ -1724,6 +1823,13 @@ export type ShowtimesUpdateShowtimeVisibilityData = {
 }
 
 export type ShowtimesUpdateShowtimeVisibilityResponse = ShowtimeVisibilityPublic
+
+export type ShowtimesGetUninvitedSelectedFriendsForShowtimeData = {
+  showtimeId: number
+}
+
+export type ShowtimesGetUninvitedSelectedFriendsForShowtimeResponse =
+  UninvitedSelectedFriendsPublic
 
 export type ShowtimesCountMainPageShowtimesData = {
   days?: Array<string> | null
@@ -1868,6 +1974,25 @@ export type UsersGetUserFriendStatusData = {
 }
 
 export type UsersGetUserFriendStatusResponse = UserWithFriendStatus
+
+export type UsersBlockUserData = {
+  userId: string
+}
+
+export type UsersBlockUserResponse = Message
+
+export type UsersUnblockUserData = {
+  userId: string
+}
+
+export type UsersUnblockUserResponse = Message
+
+export type UsersReportUserData = {
+  requestBody: UserReportCreate
+  userId: string
+}
+
+export type UsersReportUserResponse = Message
 
 export type UsersGetUserData = {
   userId: string

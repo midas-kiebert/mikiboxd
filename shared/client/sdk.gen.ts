@@ -22,6 +22,10 @@ import type {
   AdminListShowtimeReportsResponse,
   AdminUpdateShowtimeReportData,
   AdminUpdateShowtimeReportResponse,
+  AdminListUserReportsData,
+  AdminListUserReportsResponse,
+  AdminUpdateUserReportData,
+  AdminUpdateUserReportResponse,
   AdminUpdateUserReportBanData,
   AdminUpdateUserReportBanResponse,
   AdminGetScrapeRunsData,
@@ -76,10 +80,10 @@ import type {
   MeClearFavoriteCinemaPresetResponse,
   MeRenameCinemaPresetData,
   MeRenameCinemaPresetResponse,
-  MeSetFavoriteCinemaPresetData,
-  MeSetFavoriteCinemaPresetResponse,
   MeDeleteCinemaPresetData,
   MeDeleteCinemaPresetResponse,
+  MeSetFavoriteCinemaPresetData,
+  MeSetFavoriteCinemaPresetResponse,
   MeResendEmailVerificationResponse,
   MeUpdatePasswordMeData,
   MeUpdatePasswordMeResponse,
@@ -113,6 +117,7 @@ import type {
   MeRemoveLetterboxdListData,
   MeRemoveLetterboxdListResponse,
   MeGetFriendsResponse,
+  MeGetBlockedUsersResponse,
   MeGetSentFriendRequestsResponse,
   MeGetReceivedFriendRequestsResponse,
   MeGetCinemaSelectionsResponse,
@@ -146,6 +151,8 @@ import type {
   ShowtimesPingFriendForShowtimeResponse,
   ShowtimesUninviteFriendFromShowtimeData,
   ShowtimesUninviteFriendFromShowtimeResponse,
+  ShowtimesCreateShowtimePingLinkTokenData,
+  ShowtimesCreateShowtimePingLinkTokenResponse,
   ShowtimesReceivePingFromLinkData,
   ShowtimesReceivePingFromLinkResponse,
   ShowtimesReportShowtimeData,
@@ -160,6 +167,8 @@ import type {
   ShowtimesGetShowtimeVisibilityResponse,
   ShowtimesUpdateShowtimeVisibilityData,
   ShowtimesUpdateShowtimeVisibilityResponse,
+  ShowtimesGetUninvitedSelectedFriendsForShowtimeData,
+  ShowtimesGetUninvitedSelectedFriendsForShowtimeResponse,
   ShowtimesCountMainPageShowtimesData,
   ShowtimesCountMainPageShowtimesResponse,
   ShowtimesGetMainPageShowtimesData,
@@ -176,6 +185,12 @@ import type {
   UsersRegisterUserResponse,
   UsersGetUserFriendStatusData,
   UsersGetUserFriendStatusResponse,
+  UsersBlockUserData,
+  UsersBlockUserResponse,
+  UsersUnblockUserData,
+  UsersUnblockUserResponse,
+  UsersReportUserData,
+  UsersReportUserResponse,
   UsersGetUserData,
   UsersGetUserResponse,
   UsersGetUserSelectedShowtimesData,
@@ -398,6 +413,59 @@ export class AdminService {
     return __request(OpenAPI, {
       method: "PATCH",
       url: "/api/v1/admin/showtime-reports/{report_id}",
+      path: {
+        report_id: data.reportId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * List User Reports
+   * The moderation queue for reports about people.
+   *
+   * Separate from /showtime-reports because the two are triaged by different
+   * questions: whether a screening is real, versus whether an account is abusive.
+   * `report_count` is every report about that account, not just the ones this
+   * status filter shows.
+   * @param data The data for the request.
+   * @param data.status
+   * @returns UserReportAdminView Successful Response
+   * @throws ApiError
+   */
+  public static listUserReports(
+    data: AdminListUserReportsData = {},
+  ): CancelablePromise<AdminListUserReportsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/admin/user-reports",
+      query: {
+        status: data.status,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update User Report
+   * @param data The data for the request.
+   * @param data.reportId
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static updateUserReport(
+    data: AdminUpdateUserReportData,
+  ): CancelablePromise<AdminUpdateUserReportResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/admin/user-reports/{report_id}",
       path: {
         report_id: data.reportId,
       },
@@ -1055,28 +1123,6 @@ export class MeService {
   }
 
   /**
-   * Set Favorite Cinema Preset
-   * @param data The data for the request.
-   * @param data.presetId
-   * @returns CinemaPresetPublic Successful Response
-   * @throws ApiError
-   */
-  public static setFavoriteCinemaPreset(
-    data: MeSetFavoriteCinemaPresetData,
-  ): CancelablePromise<MeSetFavoriteCinemaPresetResponse> {
-    return __request(OpenAPI, {
-      method: "PUT",
-      url: "/api/v1/me/cinema-presets/{preset_id}/favorite",
-      path: {
-        preset_id: data.presetId,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
    * Delete Cinema Preset
    * @param data The data for the request.
    * @param data.presetId
@@ -1089,6 +1135,29 @@ export class MeService {
     return __request(OpenAPI, {
       method: "DELETE",
       url: "/api/v1/me/cinema-presets/{preset_id}",
+      path: {
+        preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Set Favorite Cinema Preset
+   * Point "my cinemas" at this preset's cinemas — a copy, not a handover.
+   * @param data The data for the request.
+   * @param data.presetId
+   * @returns CinemaPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static setFavoriteCinemaPreset(
+    data: MeSetFavoriteCinemaPresetData,
+  ): CancelablePromise<MeSetFavoriteCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/me/cinema-presets/{preset_id}/favorite",
       path: {
         preset_id: data.presetId,
       },
@@ -1558,6 +1627,23 @@ export class MeService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/me/friends",
+    })
+  }
+
+  /**
+   * Get Blocked Users
+   * The accounts this user has blocked, newest first.
+   *
+   * The only place a blocked account is still visible to them — search, friends
+   * and invites all leave it out — so this list is also the only way back to
+   * unblocking one.
+   * @returns BlockedUserPublic Successful Response
+   * @throws ApiError
+   */
+  public static getBlockedUsers(): CancelablePromise<MeGetBlockedUsersResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/blocked-users",
     })
   }
 
@@ -2090,10 +2176,36 @@ export class ShowtimesService {
   }
 
   /**
+   * Create Showtime Ping Link Token
+   * Mint the signed token embedded in this showtime's shared invite link.
+   *
+   * Called when the current user taps "Share" — the resulting token proves,
+   * to whoever opens the link, that this user (and no one else) generated it.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns ShowtimePingLinkToken Successful Response
+   * @throws ApiError
+   */
+  public static createShowtimePingLinkToken(
+    data: ShowtimesCreateShowtimePingLinkTokenData,
+  ): CancelablePromise<ShowtimesCreateShowtimePingLinkTokenResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/showtimes/{showtime_id}/ping-link-token",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Receive Ping From Link
    * @param data The data for the request.
    * @param data.showtimeId
-   * @param data.senderIdentifier
+   * @param data.token
    * @returns Message Successful Response
    * @throws ApiError
    */
@@ -2102,10 +2214,10 @@ export class ShowtimesService {
   ): CancelablePromise<ShowtimesReceivePingFromLinkResponse> {
     return __request(OpenAPI, {
       method: "POST",
-      url: "/api/v1/showtimes/{showtime_id}/ping-link/{sender_identifier}",
+      url: "/api/v1/showtimes/{showtime_id}/ping-link/{token}",
       path: {
         showtime_id: data.showtimeId,
-        sender_identifier: data.senderIdentifier,
+        token: data.token,
       },
       errors: {
         422: "Validation Error",
@@ -2246,6 +2358,32 @@ export class ShowtimesService {
       },
       body: data.requestBody,
       mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Uninvited Selected Friends For Showtime
+   * Friends already going/interested but not yet invited to this showtime.
+   *
+   * Used to prompt the actor, before switching to INVITED_ONLY, to invite
+   * friends who would otherwise silently lose visibility into their status.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns UninvitedSelectedFriendsPublic Successful Response
+   * @throws ApiError
+   */
+  public static getUninvitedSelectedFriendsForShowtime(
+    data: ShowtimesGetUninvitedSelectedFriendsForShowtimeData,
+  ): CancelablePromise<ShowtimesGetUninvitedSelectedFriendsForShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/{showtime_id}/visibility/uninvited-selected-friends",
+      path: {
+        showtime_id: data.showtimeId,
+      },
       errors: {
         422: "Validation Error",
       },
@@ -2511,6 +2649,85 @@ export class UsersService {
       path: {
         user_id: data.userId,
       },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Block User
+   * Block a user: no contact in either direction from here on.
+   *
+   * Tears down the friendship, any pending request and every standing invite
+   * between the two accounts — see services/moderation.py for why a block has to
+   * be a teardown rather than a flag.
+   * @param data The data for the request.
+   * @param data.userId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static blockUser(
+    data: UsersBlockUserData,
+  ): CancelablePromise<UsersBlockUserResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/users/{user_id}/block",
+      path: {
+        user_id: data.userId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Unblock User
+   * Lift a block. Does not restore the friendship or invites it removed.
+   * @param data The data for the request.
+   * @param data.userId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static unblockUser(
+    data: UsersUnblockUserData,
+  ): CancelablePromise<UsersUnblockUserResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/users/{user_id}/block",
+      path: {
+        user_id: data.userId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Report User
+   * Report a user for moderation, and block them unless asked not to.
+   *
+   * Mails the report to the operator as well as recording it, so guideline 1.2's
+   * "timely responses to concerns" has something to respond from.
+   * @param data The data for the request.
+   * @param data.userId
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static reportUser(
+    data: UsersReportUserData,
+  ): CancelablePromise<UsersReportUserResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/users/{user_id}/report",
+      path: {
+        user_id: data.userId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },

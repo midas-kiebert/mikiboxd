@@ -37,8 +37,10 @@ from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
 from app.schemas.showtime import ShowtimePublic
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe, UserWithFriendStatus
+from app.schemas.user_block import BlockedUserPublic
 from app.services import letterboxd_lists as letterboxd_lists_service
 from app.services import me as me_service
+from app.services import moderation as moderation_service
 from app.services import users as users_service
 from app.services import watched as watched_service
 from app.services import watchlist as watchlist_service
@@ -577,6 +579,21 @@ def get_friends(
     *, session: SessionDep, current_user: CurrentUser
 ) -> list[UserWithFriendStatus]:
     return users_service.get_friends(session=session, user_id=current_user.id)
+
+
+@router.get("/blocked-users", response_model=list[BlockedUserPublic])
+def get_blocked_users(
+    *, session: SessionDep, current_user: CurrentUser
+) -> list[BlockedUserPublic]:
+    """The accounts this user has blocked, newest first.
+
+    The only place a blocked account is still visible to them — search, friends
+    and invites all leave it out — so this list is also the only way back to
+    unblocking one.
+    """
+    return moderation_service.list_blocked_users(
+        session=session, blocker_id=current_user.id
+    )
 
 
 @router.get("/requests/sent", response_model=list[UserWithFriendStatus])

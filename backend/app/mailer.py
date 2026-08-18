@@ -187,6 +187,43 @@ def generate_watchlist_digest_email(
     return EmailData(html_content=html_content, subject=subject)
 
 
+def generate_user_report_email(
+    *,
+    reported_display_name: str | None,
+    reported_email: str,
+    reason_label: str,
+    message: str | None,
+    reporter_email: str,
+    open_report_count: int,
+) -> EmailData:
+    """Generate the internal notification sent on every report about a user.
+
+    Guideline 1.2 asks for timely responses to concerns, so a report about a
+    person is mailed rather than only queued — the open-report count is in the
+    subject because a second or third report about the same account is the
+    signal worth acting on immediately.
+
+    Plain inline HTML rather than a Jinja template, matching
+    `generate_showtime_report_email`: internal moderation mail, not a branded
+    user-facing email.
+    """
+    reported_label = reported_display_name or "(no username)"
+    subject = (
+        f"{BRAND_NAME} - User report: {reported_label} ({reason_label})"
+        f"{f' — {open_report_count} open' if open_report_count > 1 else ''}"
+    )
+    admin_link = f"{settings.FRONTEND_HOST}/admin/user-reports"
+    html_content = f"""
+    <p>Reported account: <strong>{html.escape(reported_label)}</strong> ({html.escape(reported_email)})</p>
+    <p>Reason: {html.escape(reason_label)}</p>
+    <p>Message: {html.escape(message) if message else "(none)"}</p>
+    <p>Reported by: {html.escape(reporter_email)}</p>
+    <p>Open reports about this account: {open_report_count}</p>
+    <p><a href="{admin_link}">Open the user-reports dashboard</a></p>
+    """
+    return EmailData(html_content=html_content, subject=subject)
+
+
 def generate_showtime_report_email(
     *,
     movie_title: str,

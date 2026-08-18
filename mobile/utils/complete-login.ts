@@ -22,10 +22,18 @@ export async function completeLogin(router: Router) {
     // the stored path re-mounts the target screen, which re-runs its own
     // side effects (e.g. /ping registers the invite, /add-friend sends the
     // request), so no special-casing per route is needed here.
-    const pendingDeepLinkPath = await storage.getItem(PENDING_DEEP_LINK_PATH_KEY)
-    if (pendingDeepLinkPath) {
-        await storage.removeItem(PENDING_DEEP_LINK_PATH_KEY)
-    }
+    //
+    // Skipped for a brand-new account: a path stashed here belongs to
+    // whatever guest/previous session left it behind, not to the account
+    // being created right now. Following it stranded a new account on a
+    // stale screen outside the tabs layout, where nothing ever starts the
+    // intro it's owed — the only way out was restarting the app. A fresh
+    // account gets treated as fresh: straight to the tabs, intro included.
+    const isNewAccount = isIntroOwed()
+    const pendingDeepLinkPath = isNewAccount
+        ? null
+        : await storage.getItem(PENDING_DEEP_LINK_PATH_KEY)
+    await storage.removeItem(PENDING_DEEP_LINK_PATH_KEY)
 
     // If they narrowed the feed to their own cinemas while browsing as a guest,
     // that choice is now theirs to keep — the new account inherits it rather

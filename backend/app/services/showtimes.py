@@ -2,11 +2,13 @@ from datetime import timedelta
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
+from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
+from app.converters import user as user_converters
 from app.core.enums import GoingStatus, VisibilityMode
+from app.core.security import generate_showtime_ping_token, verify_showtime_ping_token
 from app.core.viewer import ViewerId
 from app.crud import friendship as friendship_crud
 from app.crud import movie as movies_crud
@@ -15,14 +17,14 @@ from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.exceptions.base import AppError
+from app.exceptions.moderation_exceptions import UserBlockedError
 from app.exceptions.showtime_exceptions import (
     ShowtimeNotFoundError,
-    ShowtimePingAlreadySelectedError,
     ShowtimePingAlreadySentError,
+    ShowtimePingInvalidLinkError,
     ShowtimePingNonFriendError,
     ShowtimePingPastShowtimeError,
     ShowtimePingSelfError,
-    ShowtimePingSenderAmbiguousError,
     ShowtimePingSenderNotFoundError,
     ShowtimeSeatValidationError,
 )
@@ -30,8 +32,12 @@ from app.inputs.movie import Filters
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime, ShowtimeCreate
 from app.schemas.showtime import ShowtimePublic
-from app.schemas.showtime_ping import SentShowtimePingPublic
-from app.schemas.showtime_visibility import ShowtimeVisibilityPublic
+from app.schemas.showtime_ping import SentShowtimePingPublic, ShowtimePingLinkToken
+from app.schemas.showtime_visibility import (
+    ShowtimeVisibilityPublic,
+    UninvitedSelectedFriendsPublic,
+)
+from app.services import moderation as moderation_service
 from app.services import push_notifications, showtime_title_conflict, viewer_context
 from app.utils import now_amsterdam_naive
 from app.validators.cinema_seating import CinemaSeatingPreset, validate_seat_for_preset
@@ -265,12 +271,14 @@ def ping_friend_for_showtime(
     showtime_id: int,
     actor_id: UUID,
     friend_id: UUID,
-) -> tuple[Message, int]:
-    """Create the ping and return (message, ping_id).
+) -> tuple[Message, int, bool]:
+    """Create the ping and return (message, ping_id, should_notify).
 
     The caller is responsible for scheduling the push notification as a
     background task so the sender has a 5-second window to uninvite before
-    the notification fires.
+    the notification fires. `should_notify` is False when the friend already
+    had a selection before this ping — they already know, and this ping
+    grants no extra visibility, so it isn't a "real" invite to announce.
     """
     _create_showtime_ping(
         session=session,
@@ -286,7 +294,29 @@ def ping_friend_for_showtime(
         receiver_id=friend_id,
     )
     assert ping is not None and ping.id is not None
-    return Message(message="Friend invited successfully"), ping.id
+    should_notify = not ping.receiver_had_selection_at_creation
+    return Message(message="Friend invited successfully"), ping.id, should_notify
+
+
+def create_showtime_ping_link_token(
+    *,
+    session: Session,
+    showtime_id: int,
+    sender_id: UUID,
+) -> ShowtimePingLinkToken:
+    """Mint the signed token embedded in a shared `/ping/{showtime_id}/{token}` link.
+
+    Binds the link to the user actually sharing it, so `receive_ping_from_link`
+    can trust the sender it names instead of taking an unverified ID or display
+    name from the URL — see that function's docstring for why that mattered.
+    """
+    showtime = showtimes_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
+    if showtime is None:
+        raise ShowtimeNotFoundError(showtime_id)
+    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=sender_id)
+    return ShowtimePingLinkToken(token=token)
 
 
 def receive_ping_from_link(
@@ -294,29 +324,25 @@ def receive_ping_from_link(
     session: Session,
     showtime_id: int,
     receiver_id: UUID,
-    sender_identifier: str,
+    token: str,
 ) -> Message:
-    normalized_identifier = sender_identifier.strip()
-    if not normalized_identifier:
-        raise ShowtimePingSenderNotFoundError()
+    """Record the invite carried by a shared link, once its token checks out.
 
-    sender_id: UUID
-    try:
-        sender_id = UUID(normalized_identifier)
-        sender = user_crud.get_user_by_id(session=session, user_id=sender_id)
-        if sender is None:
-            raise ShowtimePingSenderNotFoundError()
-    except ValueError:
-        try:
-            sender = user_crud.get_user_by_display_name(
-                session=session,
-                display_name=normalized_identifier,
-            )
-        except MultipleResultsFound as error:
-            raise ShowtimePingSenderAmbiguousError() from error
-        if sender is None:
-            raise ShowtimePingSenderNotFoundError()
-        sender_id = sender.id
+    The token is signed by `create_showtime_ping_link_token` at share time, so
+    the sender it names is provably the person who generated the link — unlike
+    a raw user ID or display name in the URL, which anyone could substitute to
+    fabricate an invite from someone who never sent one.
+    """
+    decoded = verify_showtime_ping_token(token)
+    if decoded is None:
+        raise ShowtimePingInvalidLinkError()
+    sender_id, token_showtime_id = decoded
+    if token_showtime_id != showtime_id:
+        raise ShowtimePingInvalidLinkError()
+
+    sender = user_crud.get_user_by_id(session=session, user_id=sender_id)
+    if sender is None:
+        raise ShowtimePingSenderNotFoundError()
 
     try:
         _create_showtime_ping(
@@ -343,6 +369,14 @@ def _create_showtime_ping(
     if sender_id == receiver_id:
         raise ShowtimePingSelfError()
 
+    # Checked here rather than in the two callers so it covers both a direct
+    # invite and one carried by a shared link — an invite is contact, and a
+    # block has to stop all of it. Symmetric: see services/moderation.py.
+    if moderation_service.is_contact_blocked(
+        session=session, user_id=sender_id, other_id=receiver_id
+    ):
+        raise UserBlockedError
+
     showtime = showtimes_crud.get_showtime_by_id(
         session=session, showtime_id=showtime_id
     )
@@ -368,17 +402,13 @@ def _create_showtime_ping(
         showtime_id=showtime_id,
         user_id=receiver_id,
     )
-    if friend_status in (GoingStatus.GOING, GoingStatus.INTERESTED):
-        friend_status_is_visible = (
-            showtime_visibility_crud.is_showtime_visible_to_viewer_for_ids(
-                session=session,
-                owner_id=receiver_id,
-                showtime_id=showtime_id,
-                viewer_id=sender_id,
-            )
-        )
-        if friend_status_is_visible:
-            raise ShowtimePingAlreadySelectedError()
+    # A friend who is already going/interested can still be invited — it just
+    # doesn't count as an "accepted" invite (see receiver_had_selection_at_creation),
+    # so it grants no extra visibility and isn't notified.
+    receiver_had_selection_at_creation = friend_status in (
+        GoingStatus.GOING,
+        GoingStatus.INTERESTED,
+    )
 
     existing_ping = showtime_ping_crud.get_showtime_ping(
         session=session,
@@ -402,6 +432,7 @@ def _create_showtime_ping(
             sender_id=sender_id,
             receiver_id=receiver_id,
             created_at=now_amsterdam_naive(),
+            receiver_had_selection_at_creation=receiver_had_selection_at_creation,
         )
         if sender_status != GoingStatus.GOING:
             # Sending an invite implies interest, unless the sender is
@@ -611,6 +642,35 @@ def get_showtime_visibility(
         showtime_id=showtime_id,
         movie_id=showtime.movie_id,
         mode=mode,
+    )
+
+
+def get_uninvited_selected_friends_for_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    actor_id: UUID,
+) -> UninvitedSelectedFriendsPublic:
+    """Friends already going/interested but not yet ping-connected to the actor.
+
+    Used by the mobile client to warn before switching to INVITED_ONLY: these
+    friends can currently see the actor's status and would otherwise silently
+    lose that visibility, since they were never invited or inviting.
+    """
+    showtime = showtimes_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
+    if showtime is None:
+        raise ShowtimeNotFoundError(showtime_id)
+
+    friend_ids = showtime_visibility_crud.get_uninvited_selected_friend_ids_for_showtime(
+        session=session,
+        owner_id=actor_id,
+        showtime_id=showtime_id,
+    )
+    friends = user_crud.get_users_by_ids(session=session, user_ids=friend_ids)
+    return UninvitedSelectedFriendsPublic(
+        friends=[user_converters.to_public(friend) for friend in friends]
     )
 
 

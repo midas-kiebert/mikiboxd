@@ -20,11 +20,15 @@ import { useState } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
+import type { UserReportReason } from "shared";
 
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import FriendVisibilityControl from "@/components/friends/FriendVisibilityControl";
+import ReportUserDialog from "@/components/friends/ReportUserDialog";
+import { ThemedText } from "@/components/themed-text";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useFriendActions } from "@/hooks/useFriendActions";
 import { useFriendStatusSharing } from "@/hooks/useFriendStatusSharing";
+import { useUserModeration } from "@/hooks/useUserModeration";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
@@ -44,7 +48,10 @@ export default function FriendAgendaOptions({
   const router = useRouter();
 
   const [isRemoveDialogVisible, setIsRemoveDialogVisible] = useState(false);
+  const [isBlockDialogVisible, setIsBlockDialogVisible] = useState(false);
+  const [isReportDialogVisible, setIsReportDialogVisible] = useState(false);
   const { removeFriend, isBusy } = useFriendActions();
+  const { blockUser, reportUser, isBusy: isModerationBusy } = useUserModeration();
   const { sharesStatus: displayedSharesStatus, change: changeStatusSharing } =
     useFriendStatusSharing(friendId, sharesStatus);
 
@@ -60,6 +67,22 @@ export default function FriendAgendaOptions({
     // The agenda behind this friend disappears the moment they are no longer a
     // friend, so leave the screen right away rather than leaving the user on a
     // page they can no longer see.
+    router.back();
+  };
+
+  const handleConfirmBlock = () => {
+    setIsBlockDialogVisible(false);
+    triggerSelectionHaptic();
+    blockUser(friendId);
+    // Blocking removes the friendship, so this screen's data disappears the
+    // same way it does after Remove — same reasoning as handleConfirmRemove.
+    router.back();
+  };
+
+  const handleSelectReportReason = (reason: UserReportReason) => {
+    reportUser({ userId: friendId, reason });
+    setIsReportDialogVisible(false);
+    // Reporting blocks by default, so the friendship is gone the same way.
     router.back();
   };
 
@@ -83,6 +106,30 @@ export default function FriendAgendaOptions({
           </TouchableOpacity>
         }
       />
+      <View style={styles.moderationRow}>
+        <TouchableOpacity
+          style={styles.moderationLink}
+          onPress={() => setIsBlockDialogVisible(true)}
+          disabled={isModerationBusy}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Block ${friendName}`}
+        >
+          <MaterialIcons name="block" size={13} color={colors.textSecondary} />
+          <ThemedText style={styles.moderationLinkText}>Block</ThemedText>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.moderationLink}
+          onPress={() => setIsReportDialogVisible(true)}
+          disabled={isModerationBusy}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Report ${friendName}`}
+        >
+          <MaterialIcons name="flag" size={13} color={colors.textSecondary} />
+          <ThemedText style={styles.moderationLinkText}>Report</ThemedText>
+        </TouchableOpacity>
+      </View>
       <ConfirmDialog
         visible={isRemoveDialogVisible}
         icon="person-remove-alt-1"
@@ -92,6 +139,23 @@ export default function FriendAgendaOptions({
         cancelLabel="Cancel"
         onConfirm={handleConfirmRemove}
         onCancel={() => setIsRemoveDialogVisible(false)}
+      />
+      <ConfirmDialog
+        visible={isBlockDialogVisible}
+        icon="block"
+        title={`Block ${friendName}?`}
+        message="You will no longer be friends, and neither of you can friend-request or invite the other again. They are not told you blocked them."
+        confirmLabel="Block"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmBlock}
+        onCancel={() => setIsBlockDialogVisible(false)}
+      />
+      <ReportUserDialog
+        visible={isReportDialogVisible}
+        userName={friendName}
+        isSubmitting={isModerationBusy}
+        onSelectReason={handleSelectReportReason}
+        onCancel={() => setIsReportDialogVisible(false)}
       />
     </View>
   );
@@ -118,5 +182,21 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "center",
       justifyContent: "center",
       opacity: 0.6,
+    },
+    moderationRow: {
+      flexDirection: "row",
+      gap: 18,
+      marginTop: 10,
+    },
+    moderationLink: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingVertical: 4,
+    },
+    moderationLinkText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: colors.textSecondary,
     },
   });

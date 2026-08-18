@@ -9,6 +9,7 @@ from .user import UserPublic
 __all__ = [
     "ShowtimePingPublic",
     "SentShowtimePingPublic",
+    "ShowtimePingLinkToken",
 ]
 
 
@@ -34,3 +35,7 @@ class SentShowtimePingPublic(SQLModel):
     created_at: DateTime
     seen_at: DateTime | None
     dismissed_at: DateTime | None
+
+
+class ShowtimePingLinkToken(SQLModel):
+    token: str

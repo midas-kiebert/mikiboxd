@@ -33,6 +33,7 @@ import { applyDisplayPreset, type DisplayPreset } from '@/components/filters/sav
 import {
   getSelectedStatusesFromShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
+import { tabletCappedContentStyle } from '@/constants/tablet-layout';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useIsSignedIn } from '@/utils/auth-session';
 import { useIsAnyBlockingOverlayOpen } from '@/utils/blocking-overlays';
@@ -434,7 +435,7 @@ export default function MainShowtimesScreen() {
 const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    movieFeed: { padding: 16 },
+    movieFeed: { ...tabletCappedContentStyle, padding: 16 },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });

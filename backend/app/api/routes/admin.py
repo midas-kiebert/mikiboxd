@@ -11,11 +11,12 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi import status as http_status
 
 from app.api.deps import SessionDep, get_current_active_superuser
-from app.core.enums import ShowtimeReportStatus
+from app.core.enums import ShowtimeReportStatus, UserReportStatus
 from app.crud import movie as movie_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_report as showtime_report_crud
 from app.crud import user as user_crud
+from app.crud import user_report as user_report_crud
 from app.models.auth_schemas import Message
 from app.models.movie import MovieUpdate
 from app.models.user import is_report_banned
@@ -32,6 +33,7 @@ from app.schemas.scrape_monitor import (
     ScrapeRecapView,
 )
 from app.schemas.showtime_report import ShowtimeReportAdminView, ShowtimeReportUpdate
+from app.schemas.user_report import UserReportAdminView, UserReportUpdate
 from app.services import analytics_dashboard as analytics_dashboard_service
 from app.services import scrape_monitor as scrape_monitor_service
 from app.utils import now_amsterdam_naive
@@ -199,6 +201,57 @@ def update_showtime_report(
         now_amsterdam_naive() if payload.status != ShowtimeReportStatus.OPEN else None
     )
     showtime_report_crud.update_status(
+        report=report, status=payload.status, resolved_at=resolved_at
+    )
+    session.commit()
+    return Message(message="Report updated successfully")
+
+
+@router.get("/user-reports", response_model=list[UserReportAdminView])
+def list_user_reports(
+    *, session: SessionDep, status: UserReportStatus | None = None
+) -> list[UserReportAdminView]:
+    """The moderation queue for reports about people.
+
+    Separate from /showtime-reports because the two are triaged by different
+    questions: whether a screening is real, versus whether an account is abusive.
+    `report_count` is every report about that account, not just the ones this
+    status filter shows.
+    """
+    rows = user_report_crud.list_reports(session=session, status=status)
+    return [
+        UserReportAdminView(
+            id=report.id,
+            reported_id=reported.id,
+            reported_display_name=reported.display_name,
+            reported_email=reported.email,
+            reporter_id=reporter.id,
+            reporter_email=reporter.email,
+            reason=report.reason,
+            message=report.message,
+            status=report.status,
+            created_at=report.created_at,
+            resolved_at=report.resolved_at,
+            report_count=report_count,
+        )
+        for report, reported, reporter, report_count in rows
+        if report.id is not None
+    ]
+
+
+@router.patch("/user-reports/{report_id}", response_model=Message)
+def update_user_report(
+    *, session: SessionDep, report_id: int, payload: UserReportUpdate
+) -> Message:
+    report = user_report_crud.get_report_by_id(session=session, report_id=report_id)
+    if report is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Report not found"
+        )
+    resolved_at = (
+        now_amsterdam_naive() if payload.status != UserReportStatus.OPEN else None
+    )
+    user_report_crud.update_status(
         report=report, status=payload.status, resolved_at=resolved_at
     )
     session.commit()

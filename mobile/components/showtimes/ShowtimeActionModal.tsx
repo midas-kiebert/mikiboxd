@@ -73,6 +73,7 @@ import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import FriendListRow, { type FriendWatchStatus } from "@/components/friends/FriendListRow";
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
+import InviteBeforePrivateDialog from "@/components/showtimes/InviteBeforePrivateDialog";
 import SheetBackdrop from "@/components/sheets/SheetBackdrop";
 import {
   getFriendWatchKindMeta,
@@ -385,6 +386,12 @@ export default function ShowtimeActionModal({
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<FriendWatchKind | null>(null);
   const [isDismissInviteDialogVisible, setIsDismissInviteDialogVisible] = useState(false);
+  // Friends already going/interested but not yet invited, surfaced right
+  // before a switch to INVITED_ONLY so they aren't silently hidden.
+  const [inviteBeforePrivateCandidates, setInviteBeforePrivateCandidates] = useState<
+    UserPublic[]
+  >([]);
+  const [isInviteBeforePrivateVisible, setIsInviteBeforePrivateVisible] = useState(false);
   // Same custom fade, plus a subtle scale-in for the confirm card.
   const dismissDialogAnim = useRef(new Animated.Value(0)).current;
   const dismissDialogScale = useMemo(
@@ -700,8 +707,21 @@ export default function ShowtimeActionModal({
     setIsVisibilityExpanded(next);
   }, [isVisibilityExpanded, visibilityCaretRotation]);
 
-  const handleVisibilityModeSelect = useCallback(
+  const applyVisibilityMode = useCallback(
     (mode: VisibilityMode) => {
+      if (!showtime) return;
+      triggerSelectionHaptic();
+      // Optimistically reflect the new mode before the request lands.
+      queryClient.setQueryData(visibilityQueryKey, (prev: typeof visibility) =>
+        prev ? { ...prev, mode } : prev
+      );
+      updateVisibilityMode({ showtimeId: showtime.id, mode });
+    },
+    [showtime, queryClient, visibilityQueryKey, updateVisibilityMode]
+  );
+
+  const handleVisibilityModeSelect = useCallback(
+    async (mode: VisibilityMode) => {
       LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
       Animated.timing(visibilityCaretRotation, {
         toValue: 0,
@@ -710,21 +730,48 @@ export default function ShowtimeActionModal({
       }).start();
       setIsVisibilityExpanded(false);
       if (!showtime || mode === visibility?.mode) return;
-      triggerSelectionHaptic();
-      // Optimistically reflect the new mode before the request lands.
-      queryClient.setQueryData(visibilityQueryKey, (prev: typeof visibility) =>
-        prev ? { ...prev, mode } : prev
-      );
-      updateVisibilityMode({ showtimeId: showtime.id, mode });
+
+      if (mode === "INVITED_ONLY") {
+        try {
+          const { friends } = await queryClient.fetchQuery({
+            queryKey: ["showtimes", "uninvitedSelectedFriends", showtime.id],
+            queryFn: () =>
+              ShowtimesService.getUninvitedSelectedFriendsForShowtime({
+                showtimeId: showtime.id,
+              }),
+          });
+          if (friends.length > 0) {
+            setInviteBeforePrivateCandidates(friends);
+            setIsInviteBeforePrivateVisible(true);
+            return;
+          }
+        } catch {
+          // If the lookup fails, fall through and apply the mode switch as
+          // normal rather than blocking the user on an unrelated request.
+        }
+      }
+
+      applyVisibilityMode(mode);
     },
-    [
-      showtime,
-      visibility?.mode,
-      queryClient,
-      visibilityQueryKey,
-      updateVisibilityMode,
-      visibilityCaretRotation,
-    ]
+    [showtime, visibility?.mode, queryClient, applyVisibilityMode]
+  );
+
+  const handleInviteBeforePrivateSkip = useCallback(() => {
+    setIsInviteBeforePrivateVisible(false);
+    applyVisibilityMode("INVITED_ONLY");
+  }, [applyVisibilityMode]);
+
+  const handleInviteBeforePrivateConfirm = useCallback(
+    (selectedIds: string[]) => {
+      setIsInviteBeforePrivateVisible(false);
+      if (showtime) {
+        for (const friendId of selectedIds) {
+          pingFriendForShowtime({ showtimeId: showtime.id, friendId });
+        }
+      }
+      applyVisibilityMode("INVITED_ONLY");
+    },
+    [showtime, pingFriendForShowtime, applyVisibilityMode]
   );
 
   const visibilityMeta = visibility ? getVisibilityModeMeta(visibility.mode, colors) : null;
@@ -917,8 +964,11 @@ export default function ShowtimeActionModal({
       Alert.alert("Error", "Could not build invite link.");
       return;
     }
-    const pingUrl = buildShowtimePingUrl(showtime.id, currentUser.id);
     try {
+      const { token } = await ShowtimesService.createShowtimePingLinkToken({
+        showtimeId: showtime.id,
+      });
+      const pingUrl = buildShowtimePingUrl(showtime.id, token);
       await Share.share({
         message: pingUrl,
         url: pingUrl,
@@ -1599,7 +1649,7 @@ export default function ShowtimeActionModal({
                           styles.visibilityOption,
                           isSelected && { borderColor: optionMeta.color, backgroundColor: colors.surfaceMuted },
                         ]}
-                        onPress={() => handleVisibilityModeSelect(mode)}
+                        onPress={() => void handleVisibilityModeSelect(mode)}
                         activeOpacity={0.8}
                       >
                         <View style={[styles.visibilityOptionIcon, { backgroundColor: optionMeta.color }]}>
@@ -1964,6 +2014,13 @@ export default function ShowtimeActionModal({
           </Animated.View>
         </Animated.View>
       </Modal>
+
+      <InviteBeforePrivateDialog
+        visible={isInviteBeforePrivateVisible}
+        friends={inviteBeforePrivateCandidates}
+        onConfirm={handleInviteBeforePrivateConfirm}
+        onSkip={handleInviteBeforePrivateSkip}
+      />
       </QueryClientProvider>
     </BottomSheetModal>
   );

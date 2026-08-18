@@ -138,6 +138,29 @@ class Settings(BaseSettings):
     # with this as the `aud` claim (no separate OAuth client is needed).
     APPLE_CLIENT_ID: str = "com.midaskiebert.mikino"
 
+    # Credentials for Apple's token endpoints, needed only to *revoke* a user's
+    # Sign in with Apple tokens when they delete their account — which Apple
+    # requires of any app offering Sign in with Apple (guideline 5.1.1(v) and
+    # https://developer.apple.com/support/offering-account-deletion-in-your-app/).
+    #
+    # All three come from the Apple Developer portal: the team ID, the key ID of
+    # a "Sign in with Apple" private key, and the contents of that key's .p8
+    # file (PEM, newlines intact — in an env var, "\n" escapes are accepted and
+    # unescaped by `apple_client_secret`).
+    #
+    # Unset by default, and unset means revocation is skipped with a warning
+    # rather than blocking the deletion: a user asking to delete their account
+    # must always succeed, whatever Apple's endpoint is doing.
+    APPLE_TEAM_ID: str | None = None
+    APPLE_KEY_ID: str | None = None
+    APPLE_PRIVATE_KEY: str | None = None
+
+    @property
+    def apple_token_revocation_configured(self) -> bool:
+        return bool(
+            self.APPLE_TEAM_ID and self.APPLE_KEY_ID and self.APPLE_PRIVATE_KEY
+        )
+
     # Accepted audiences for Google ID tokens: the iOS, Android, and Web OAuth
     # client IDs from Google Cloud Console. The mobile app requests an ID token
     # scoped to the Web client (`webClientId`), so that one is the one that

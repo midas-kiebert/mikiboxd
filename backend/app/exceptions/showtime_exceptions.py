@@ -63,15 +63,6 @@ class ShowtimePingNonFriendError(AppError):
         super().__init__("You can only invite your friends.")
 
 
-class ShowtimePingAlreadySelectedError(AppError):
-    status_code = status.HTTP_409_CONFLICT
-    openapi_description = "Returned when inviting a friend who already marked the showtime as going/interested."
-    openapi_example = {"detail": "This friend already selected this showtime."}
-
-    def __init__(self):
-        super().__init__("This friend already selected this showtime.")
-
-
 class ShowtimePingAlreadySentError(AppError):
     status_code = status.HTTP_409_CONFLICT
     openapi_description = (
@@ -105,22 +96,26 @@ class ShowtimePingSelfError(AppError):
 
 class ShowtimePingSenderNotFoundError(AppError):
     status_code = status.HTTP_404_NOT_FOUND
-    openapi_description = "Returned when an invite link sender cannot be resolved."
+    openapi_description = (
+        "Returned when an invite link's token is valid but the user it names "
+        "no longer exists."
+    )
     openapi_example = {"detail": "Sender for this invite link was not found."}
 
     def __init__(self):
         super().__init__("Sender for this invite link was not found.")
 
 
-class ShowtimePingSenderAmbiguousError(AppError):
-    status_code = status.HTTP_409_CONFLICT
+class ShowtimePingInvalidLinkError(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
     openapi_description = (
-        "Returned when an invite link sender identifier matches multiple users."
+        "Returned when an invite link's token is missing, tampered with, or "
+        "was minted for a different showtime."
     )
-    openapi_example = {"detail": "Invite link sender is ambiguous. Use a user ID link."}
+    openapi_example = {"detail": "This invite link is invalid."}
 
     def __init__(self):
-        super().__init__("Invite link sender is ambiguous. Use a user ID link.")
+        super().__init__("This invite link is invalid.")
 
 
 class ShowtimeSeatValidationError(AppError):

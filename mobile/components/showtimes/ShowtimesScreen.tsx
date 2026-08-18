@@ -23,6 +23,7 @@ import FilterPills, {
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { tabletCappedContentStyle } from "@/constants/tablet-layout";
 
 type ShowtimesListContentProps = {
   showtimes: ShowtimePublic[];
@@ -348,6 +349,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.background,
     },
     listContent: {
+      ...tabletCappedContentStyle,
       paddingTop: 12,
       paddingHorizontal: 16,
       // Matches the movie feeds' padding: a list short enough not to render the

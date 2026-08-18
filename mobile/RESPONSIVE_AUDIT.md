@@ -46,7 +46,7 @@ Severity vocabulary:
 | 13 | Movie page back button is a 38pt touch target | nitpick | ✅ |
 | 14 | Showtimes list has no bottom padding, movie feeds do | nitpick | ✅ |
 | 15 | Cinema pill starves the movie title on narrow cards | looks unprofessional | ❌ judgement call |
-| 16 | Everything stretches to full width on a tablet | looks unprofessional | ❌ restructuring |
+| 16 | Everything stretches to full width on a tablet | looks unprofessional | ~ partial (main lists capped, sheets still open) |
 | 17 | Movie detail header eats a third of an SE screen | looks unprofessional | ❌ restructuring |
 | 18 | Card heights are fixed in points and ignore font scale generally | looks unprofessional | ❌ restructuring |
 | 19 | Friend badges are 14pt tall touch targets | nitpick | ❌ by design |
@@ -372,13 +372,20 @@ poster and ~570pt of near-empty info area holding a 15pt title. The
 Line lengths in the settings and movie-detail screens run far past comfortable
 reading measure.
 
-**Why not fixed:** the fix is a product decision about what the tablet
-experience should be, and every option is a restructuring. The cheap, defensible
-version is a shared `maxWidth: 640` + `alignSelf: "center"` on list content
-containers and sheet scroll content, which would make tablets look deliberate
-rather than stretched. The good version is a two-column master/detail layout for
-the showtimes list. Given the brief ranks tablets last, I flag rather than
-guess.
+**Partially fixed (2026-08-18).** The cheap version — `constants/tablet-layout.ts`'s
+`tabletCappedContentStyle` (`maxWidth: 640` + `alignSelf: "center"`) — is now
+applied to the four main-feed list containers: the showtimes tab, the movies
+feed, the second movies feed on the main showtimes screen, and the friends
+list. That is what a reviewer sees first and what the App Store 5.1.1(v)
+rejection was actually reviewed on (an iPad Air 11").
+
+Deliberately not applied to `FiltersModal`'s `scrollContent` or the
+`AppBottomSheet` sheets: both have a pinned header/footer that spans the sheet's
+full width, and centering only the scrollable middle at 640 while the footer
+buttons stay edge-to-edge would look like two mismatched widths rather than one
+deliberate layout — worse than the current stretch, and not verifiable without
+a device. Left as the still-open part of this finding, along with the good
+version (a two-column master/detail layout for the showtimes list).
 
 ### 17. Movie detail header eats a third of an SE screen
 

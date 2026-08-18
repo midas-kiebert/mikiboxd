@@ -9,8 +9,9 @@ from fastapi import status as http_status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.deps import SessionDep
+from app.core import apple_auth
 from app.core.config import settings
-from app.core.enums import AnalyticsEventName
+from app.core.enums import AnalyticsEventName, SocialProvider
 from app.core.security import (
     InvalidSocialToken,
     create_access_token,
@@ -123,6 +124,20 @@ def login_social_token(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Inactive user",
         )
+
+    # Apple only. Stored so that deleting this account can revoke the user's
+    # Sign in with Apple tokens, which Apple requires — see core/apple_auth.py.
+    # Best-effort throughout: no sign-in fails because the exchange did not work,
+    # and a code that yields nothing leaves any token from an earlier sign-in
+    # alone rather than clearing a good one.
+    if body.provider is SocialProvider.APPLE and body.authorization_code:
+        apple_refresh_token = apple_auth.exchange_authorization_code(
+            body.authorization_code
+        )
+        if apple_refresh_token:
+            user.apple_refresh_token = apple_refresh_token
+            session.add(user)
+
     analytics_event_crud.create_event(
         session=session,
         user_id=user.id,

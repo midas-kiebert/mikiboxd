@@ -62,6 +62,13 @@ def send_email(
         AssertionError: If email settings are not configured.
         EmailDeliveryError: If the SMTP server returns a 4xx/5xx response.
     """
+    if settings.TESTING:
+        # Belt-and-suspenders: even if a test forgets to mock send_email, this
+        # stops the real SMTP call. Callers already treat delivery failures as
+        # non-fatal (see call sites' try/except), so raising here is safe.
+        raise RuntimeError(
+            "send_email() was called during a test run without being mocked"
+        )
     if not settings.emails_enabled:
         raise RuntimeError("no provided configuration for email variables")
     message = emails.Message(
@@ -154,7 +161,7 @@ def generate_watchlist_digest_email(
             "cinema_name": showtime.cinema.name,
             "datetime_label": showtime.datetime.strftime("%a, %b %d at %H:%M"),
             "poster_link": movie.poster_link,
-            "mikino_link": f"{settings.FRONTEND_HOST}/movie/{movie.id}",
+            "mikino_link": f"{settings.PUBLIC_HOST}/movie/{movie.id}",
             "letterboxd_link": (
                 f"https://letterboxd.com/film/{movie.letterboxd_slug}/"
                 if movie.letterboxd_slug
@@ -177,6 +184,43 @@ def generate_watchlist_digest_email(
             "unsubscribe_link": unsubscribe_link,
         },
     )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_user_report_email(
+    *,
+    reported_display_name: str | None,
+    reported_email: str,
+    reason_label: str,
+    message: str | None,
+    reporter_email: str,
+    open_report_count: int,
+) -> EmailData:
+    """Generate the internal notification sent on every report about a user.
+
+    Guideline 1.2 asks for timely responses to concerns, so a report about a
+    person is mailed rather than only queued — the open-report count is in the
+    subject because a second or third report about the same account is the
+    signal worth acting on immediately.
+
+    Plain inline HTML rather than a Jinja template, matching
+    `generate_showtime_report_email`: internal moderation mail, not a branded
+    user-facing email.
+    """
+    reported_label = reported_display_name or "(no username)"
+    subject = (
+        f"{BRAND_NAME} - User report: {reported_label} ({reason_label})"
+        f"{f' — {open_report_count} open' if open_report_count > 1 else ''}"
+    )
+    admin_link = f"{settings.FRONTEND_HOST}/admin/user-reports"
+    html_content = f"""
+    <p>Reported account: <strong>{html.escape(reported_label)}</strong> ({html.escape(reported_email)})</p>
+    <p>Reason: {html.escape(reason_label)}</p>
+    <p>Message: {html.escape(message) if message else "(none)"}</p>
+    <p>Reported by: {html.escape(reporter_email)}</p>
+    <p>Open reports about this account: {open_report_count}</p>
+    <p><a href="{admin_link}">Open the user-reports dashboard</a></p>
+    """
     return EmailData(html_content=html_content, subject=subject)
 
 

@@ -7,6 +7,8 @@ import type { ReactNode } from 'react';
 import { DateTime } from 'luxon';
 import { useQuery } from '@tanstack/react-query';
 import useAuth from 'shared/hooks/useAuth';
+
+import { useIsSignedIn } from '@/utils/auth-session';
 import { MoviesService, ShowtimesService } from 'shared';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import FiltersModal from '@/components/filters/FiltersModal';
@@ -75,6 +77,10 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   } = useSharedTabFilters();
 
   const { user } = useAuth();
+  // Status ("going / interested / friends going") and saved presets are both
+  // statements about an account. Hidden for a guest here, in the one place
+  // every screen opens this sheet through, rather than at each call site.
+  const isSignedIn = useIsSignedIn();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
@@ -161,7 +167,7 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         groupByMovie={groupByMovie}
         setGroupByMovie={setGroupByMovie}
         showGroupByMovie={showGroupByMovie}
-        showPresets={showPresets}
+        showPresets={showPresets && isSignedIn}
         watchlistOnly={effectiveWatchlistOnly}
         setWatchlistOnly={setWatchlistOnly}
         hideWatched={effectiveHideWatched}
@@ -169,7 +175,7 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         canUseWatchlistFilter={hasLetterboxdUsername}
         selectedShowtimeFilter={selectedShowtimeFilter}
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}
-        showStatusFilter
+        showStatusFilter={isSignedIn}
         selectedDays={selectedDays}
         setSelectedDays={setSelectedDays}
         selectedTimeRanges={selectedTimeRanges}

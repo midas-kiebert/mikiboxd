@@ -2,7 +2,6 @@ import base64
 import json
 import re
 import sys
-import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -10,7 +9,6 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from rapidfuzz import fuzz
 from sqlmodel import Session, col, delete, select
 
 from app.api.deps import get_db_context
@@ -37,17 +35,25 @@ from app.scraping.tmdb_runtime import (
     reset_tmdb_runtime_state,
 )
 from app.services import scrape_sync as scrape_sync_service
+from app.services.scrape_recap_render import RecapRunMetrics, render_recap_html
 from app.services.scrape_sync import DeletedShowtimeInfo
-from app.utils import clean_title, now_amsterdam_naive
+from app.services.showtime_title_conflict import (
+    CINEMA_SCRAPER_STREAM_PREFIX,
+    CINEVILLE_STREAM_PREFIX,
+    DETECTED_BY_CLEANUP,
+    TITLE_NORMALIZE_PATTERN,
+    SourceDisagreement,
+    cinema_scraper_match_is_stale,
+    consume_source_disagreements,
+    record_source_disagreement,
+    titles_conflict_match,
+)
+from app.utils import now_amsterdam_naive
 
 RECAP_EMAIL_TO = "scraper.mikino@midaskiebert.nl"
 RECAP_AGGREGATION_WINDOW = timedelta(hours=24)
+RECAP_RETENTION_WINDOW = timedelta(days=7)
 STAGE_PATTERN = re.compile(r"(^|\s)stage=([^|]+)")
-TITLE_NORMALIZE_PATTERN = re.compile(r"[^a-z0-9]+")
-CINEVILLE_STREAM_PREFIX = "cineville:"
-CINEMA_SCRAPER_STREAM_PREFIX = "cinema_scraper:"
-SINGLE_TOKEN_SIMILARITY_THRESHOLD = 92.0
-TITLE_SIMILARITY_THRESHOLD = 85.0
 TMDB_LOW_CONFIDENCE_THRESHOLD = 80.0
 TMDB_RECAP_ATTACHMENT_MAX_ITEMS = 300
 TMDB_RESOLUTION_AUDIT_DIR_NAME = "tmp_tmdb_resolution_audit"
@@ -84,6 +90,7 @@ class PendingMissDetail:
 @dataclass
 class _ShowtimeSourceFlags:
     showtime_id: int
+    movie_id: int
     movie_title: str
     cinema_id: int
     datetime: datetime
@@ -91,44 +98,13 @@ class _ShowtimeSourceFlags:
     has_cinema_scraper_source: bool = False
 
 
-def _normalize_title_for_conflict_match(title: str) -> str:
-    cleaned = clean_title(title)
-    folded = unicodedata.normalize("NFKD", cleaned)
-    ascii_only = "".join(ch for ch in folded if not unicodedata.combining(ch))
-    normalized = TITLE_NORMALIZE_PATTERN.sub(" ", ascii_only.lower())
-    return re.sub(r"\s+", " ", normalized).strip()
-
-
-def _titles_conflict_match(left_title: str, right_title: str) -> bool:
-    left = _normalize_title_for_conflict_match(left_title)
-    right = _normalize_title_for_conflict_match(right_title)
-    if not left or not right:
-        return False
-    if left == right:
-        return True
-
-    left_tokens = set(left.split())
-    right_tokens = set(right.split())
-    if not left_tokens or not right_tokens:
-        return False
-
-    if len(left_tokens) > 1 and len(right_tokens) > 1:
-        if left_tokens.issubset(right_tokens) or right_tokens.issubset(left_tokens):
-            return True
-        similarity = max(
-            float(fuzz.token_set_ratio(left, right)),
-            float(fuzz.ratio(left, right)),
-        )
-        return similarity >= TITLE_SIMILARITY_THRESHOLD
-
-    similarity = max(
-        float(fuzz.token_sort_ratio(left, right)),
-        float(fuzz.ratio(left, right)),
-    )
-    return similarity >= SINGLE_TOKEN_SIMILARITY_THRESHOLD
-
-
 def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowtimeInfo]:
+    """Remove Cineville duplicates of a screening a cinema scraper also listed.
+
+    A backstop for rows the insert-time guard in ``upsert_showtime`` cannot
+    catch: duplicates already in the database, and slots where Cineville was
+    scraped before the cinema's own site listed the screening.
+    """
     stmt = (
         select(
             ShowtimeSourcePresence,
@@ -167,6 +143,7 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
         if existing is None:
             existing = _ShowtimeSourceFlags(
                 showtime_id=int(showtime_id),
+                movie_id=int(showtime.movie_id),
                 movie_title=str(movie.title),
                 cinema_id=int(showtime.cinema_id),
                 datetime=showtime.datetime,
@@ -182,6 +159,7 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
             existing.has_cinema_scraper_source = True
 
     ids_to_delete: set[int] = set()
+    reassignments: dict[int, int] = {}  # showtime_id -> corrected movie_id
     for slot_showtime_ids in showtimes_by_slot.values():
         cinema_scraper_showtimes = [
             showtimes[showtime_id]
@@ -198,11 +176,40 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
             if candidate.has_cinema_scraper_source:
                 continue
 
-            if any(
-                _titles_conflict_match(candidate.movie_title, other.movie_title)
-                for other in cinema_scraper_showtimes
-            ):
+            conflicting = next(
+                (
+                    other
+                    for other in cinema_scraper_showtimes
+                    if titles_conflict_match(candidate.movie_title, other.movie_title)
+                ),
+                None,
+            )
+            if conflicting is not None:
+                stale = cinema_scraper_match_is_stale(
+                    session=session,
+                    cinema_scraper_movie_id=conflicting.movie_id,
+                    cineville_movie_id=candidate.movie_id,
+                )
+                if stale:
+                    # The cinema scraper's row has the wrong movie tied to the
+                    # right screening — correct it in place rather than
+                    # deleting it, then remove Cineville's now-redundant row.
+                    reassignments[conflicting.showtime_id] = candidate.movie_id
                 ids_to_delete.add(candidate.showtime_id)
+                record_source_disagreement(
+                    SourceDisagreement(
+                        cinema_id=candidate.cinema_id,
+                        showtime_datetime=candidate.datetime,
+                        cineville_movie_id=candidate.movie_id,
+                        cineville_movie_title=candidate.movie_title,
+                        cinema_scraper_movie_id=conflicting.movie_id,
+                        cinema_scraper_movie_title=conflicting.movie_title,
+                        detected_by=DETECTED_BY_CLEANUP,
+                        kept_movie_id=(
+                            candidate.movie_id if stale else conflicting.movie_id
+                        ),
+                    )
+                )
 
     if not ids_to_delete:
         return []
@@ -222,7 +229,19 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
         )
         for showtime in deleted_showtimes
     ]
+    # Deleted before the reassignment below is flushed: a reassigned row's new
+    # (cinema_id, datetime, movie_id) is the very triple the row being deleted
+    # here currently occupies, so updating first would trip the unique
+    # constraint on a row that's about to be freed anyway.
     session.execute(delete(Showtime).where(col(Showtime.id).in_(ids_to_delete)))
+
+    if reassignments:
+        session.flush()
+        for showtime in session.exec(
+            select(Showtime).where(col(Showtime.id).in_(reassignments))
+        ).all():
+            showtime.movie_id = reassignments[showtime.id]
+            session.add(showtime)
     session.commit()
     return deleted_infos
 
@@ -233,6 +252,7 @@ def _combine_summaries(
     new: ScrapeExecutionSummary,
 ) -> ScrapeExecutionSummary:
     current.deleted_showtimes.extend(new.deleted_showtimes)
+    current.conflict_deleted_showtimes.extend(new.conflict_deleted_showtimes)
     current.errors.extend(new.errors)
     current.missing_cinemas.extend(new.missing_cinemas)
     current.missing_cinema_insert_failures.extend(new.missing_cinema_insert_failures)
@@ -370,7 +390,7 @@ def _load_cinema_name_by_id() -> dict[int, str]:
 
 
 def _stream_display_name(source_stream: str, cinema_name_by_id: dict[int, str]) -> str:
-    if not source_stream.startswith("cinema_scraper:"):
+    if not source_stream.startswith(CINEMA_SCRAPER_STREAM_PREFIX):
         return source_stream
     _, _, suffix = source_stream.partition(":")
     if not suffix.isdigit():
@@ -525,142 +545,6 @@ def _letterboxd_failure_breakdown(
             event_type = "unknown_failure"
         counts[event_type] = counts.get(event_type, 0) + 1
     return counts
-
-
-def _render_letterboxd_failure_item(failure: dict[str, Any]) -> str:
-    parts: list[str] = []
-    parts.append(str(failure.get("timestamp", "unknown_time")))
-    parts.append(f"event={failure.get('event_type', 'unknown_failure')}")
-    if failure.get("tmdb_id") is not None:
-        parts.append(f"tmdb_id={failure.get('tmdb_id')}")
-    if failure.get("status_code") is not None:
-        parts.append(f"status={failure.get('status_code')}")
-    if failure.get("reason") is not None:
-        parts.append(f"reason={failure.get('reason')}")
-    if failure.get("url") is not None:
-        parts.append(f"url={failure.get('url')}")
-
-    response_meta_raw = failure.get("response_meta")
-    if isinstance(response_meta_raw, dict):
-        cf_ray = response_meta_raw.get("cf_ray")
-        if cf_ray:
-            parts.append(f"cf_ray={cf_ray}")
-        server = response_meta_raw.get("server")
-        if server:
-            parts.append(f"server={server}")
-        consecutive_403_count = response_meta_raw.get("consecutive_403_count")
-        if consecutive_403_count is not None:
-            parts.append(f"consecutive_403={consecutive_403_count}")
-        attempt = response_meta_raw.get("attempt")
-        attempts_total = response_meta_raw.get("attempts_total")
-        if attempt is not None and attempts_total is not None:
-            parts.append(f"attempt={attempt}/{attempts_total}")
-
-    block_remaining_seconds = failure.get("block_remaining_seconds")
-    if block_remaining_seconds is not None:
-        parts.append(f"cooldown_remaining={block_remaining_seconds}s")
-
-    return "<li>" + escape(" | ".join(parts)) + "</li>"
-
-
-def _render_low_confidence_tmdb_item(item: dict[str, Any]) -> str:
-    payload_raw = item.get("payload")
-    payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
-    decision_raw = item.get("decision")
-    decision: dict[str, Any] = decision_raw if isinstance(decision_raw, dict) else {}
-    tmdb_id_raw = item.get("tmdb_id")
-    tmdb_link = None
-    if isinstance(tmdb_id_raw, int) or (
-        isinstance(tmdb_id_raw, str) and tmdb_id_raw.isdigit()
-    ):
-        tmdb_link = f"https://www.themoviedb.org/movie/{tmdb_id_raw}"
-
-    reason = str(decision.get("reason", "selected_best_candidate"))
-    reason_text = {
-        "selected_best_candidate": "best candidate selected",
-        "ambiguous_good_options": "selected despite close alternatives",
-    }.get(reason, reason.replace("_", " "))
-    best_raw = decision.get("best")
-    best: dict[str, Any] = best_raw if isinstance(best_raw, dict) else {}
-    best_title = str(best.get("title", "")).strip()
-    best_year = best.get("release_year")
-    best_summary = ""
-    if best_title:
-        best_summary = f" | best={escape(best_title)}"
-        if isinstance(best_year, int):
-            best_summary += f" ({best_year})"
-
-    directors_raw = payload.get("director_names")
-    directors = directors_raw if isinstance(directors_raw, list) else []
-    actors_raw = payload.get("actor_names")
-    actors = actors_raw if isinstance(actors_raw, list) else []
-    year_raw = payload.get("year")
-    duration_raw = payload.get("duration_minutes")
-    langs_raw = payload.get("spoken_languages")
-    langs = langs_raw if isinstance(langs_raw, list) else []
-
-    line = (
-        f"{escape(str(item.get('timestamp', 'unknown_time')))} | "
-        f"title={escape(str(payload.get('title_query', '<unknown>')))} | "
-        f"tmdb_id={escape(str(tmdb_id_raw))} | "
-        f"confidence=<b>{float(item.get('confidence', 0.0)):.1f}</b> | "
-        f"reason={escape(reason_text)}"
-        f"{best_summary} | "
-        f"cache={escape(str(item.get('cache_source', 'unknown')))}"
-    )
-    if tmdb_link is not None:
-        line += f' | <a href="{escape(tmdb_link, quote=True)}">tmdb page</a>'
-    query_info = (
-        "query="
-        f"{escape(str(payload.get('title_query', '<unknown>')))} | "
-        f"directors={escape(', '.join(str(name) for name in directors) or '-')} | "
-        f"actors={escape(', '.join(str(name) for name in actors[:5]) or '-')} | "
-        f"year={escape(str(year_raw if year_raw is not None else '-'))} | "
-        f"duration={escape(str(duration_raw if duration_raw is not None else '-'))} | "
-        f"languages={escape(', '.join(str(code) for code in langs) or '-')}"
-    )
-    return "<li>" + line + f"<br/>{query_info}</li>"
-
-
-def _render_tmdb_miss_item(item: dict[str, Any]) -> str:
-    payload_raw = item.get("payload")
-    payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
-    decision_raw = item.get("decision")
-    decision: dict[str, Any] = decision_raw if isinstance(decision_raw, dict) else {}
-    reason = str(decision.get("reason", "unknown"))
-    reason_text = {
-        "no_candidates": "no TMDB candidates",
-        "no_scored_candidates": "no usable candidates after scoring",
-        "insufficient_evidence": "insufficient evidence",
-        "ambiguous_good_options": "ambiguous between good options",
-        "invalid_best_candidate": "invalid best candidate",
-    }.get(reason, reason.replace("_", " "))
-
-    directors_raw = payload.get("director_names")
-    directors = directors_raw if isinstance(directors_raw, list) else []
-    actors_raw = payload.get("actor_names")
-    actors = actors_raw if isinstance(actors_raw, list) else []
-    year_raw = payload.get("year")
-    duration_raw = payload.get("duration_minutes")
-    langs_raw = payload.get("spoken_languages")
-    langs = langs_raw if isinstance(langs_raw, list) else []
-
-    line = (
-        f"{escape(str(item.get('timestamp', 'unknown_time')))} | "
-        f"title={escape(str(payload.get('title_query', '<unknown>')))} | "
-        f"reason={escape(reason_text)} | "
-        f"cache={escape(str(item.get('cache_source', 'unknown')))}"
-    )
-    query_info = (
-        "query="
-        f"{escape(str(payload.get('title_query', '<unknown>')))} | "
-        f"directors={escape(', '.join(str(name) for name in directors) or '-')} | "
-        f"actors={escape(', '.join(str(name) for name in actors[:5]) or '-')} | "
-        f"year={escape(str(year_raw if year_raw is not None else '-'))} | "
-        f"duration={escape(str(duration_raw if duration_raw is not None else '-'))} | "
-        f"languages={escape(', '.join(str(code) for code in langs) or '-')}"
-    )
-    return "<li>" + line + f"<br/>{query_info}</li>"
 
 
 def _compact_json_bytes(payload: Any) -> bytes:
@@ -1174,274 +1058,134 @@ def _compact_tmdb_lookup_for_attachment(lookup: dict[str, Any]) -> dict[str, Any
     }
 
 
-def _load_scrape_run_status_counts(
-    *,
-    started_at,
-    finished_at,
-) -> dict[str, int]:
-    try:
-        with get_db_context() as session:
-            rows = list(
-                session.exec(
-                    select(ScrapeRun.status).where(
-                        ScrapeRun.started_at >= started_at,
-                        ScrapeRun.started_at <= finished_at,
-                    )
-                ).all()
-            )
-    except Exception as e:
-        logger.error(f"Failed to load scrape-run status counts. Error: {e}")
-        return {"success": 0, "degraded": 0, "failed": 0}
-    counts = {"success": 0, "degraded": 0, "failed": 0}
-    for status in rows:
-        key = _status_key(status)
-        counts[key] = counts.get(key, 0) + 1
-    return counts
+def _deleted_showtime_line(showtime: DeletedShowtimeInfo) -> str:
+    return (
+        f"{showtime.datetime.isoformat()} - "
+        f"{showtime.movie_title} @ {showtime.cinema_name} "
+        f"(showtime_id={showtime.showtime_id}, movie_id={showtime.movie_id}, "
+        f"cinema_id={showtime.cinema_id})"
+    )
 
 
-def _render_recap_html(
-    *,
-    started_at,
-    finished_at,
-    tmdb_lookups: list[dict],
-    tmdb_misses: list[dict],
-    letterboxd_failures: list[dict[str, Any]],
-    deleted_showtimes: list[DeletedShowtimeInfo],
-    errors: list[str],
-    missing_cinemas: list[str],
-    missing_cinema_insert_failures: list[str],
-    new_future_showtime_count: int,
-    new_future_movie_labels: list[str],
-    future_showtime_count_before: int,
-    future_showtime_count_after: int,
-    future_movie_count_before: int,
-    future_movie_count_after: int,
-    tmdb_cache_counts: dict[str, int],
-    scrape_status_counts: dict[str, int],
-    scrape_run_details: list[ScrapeRunDetail],
-    cinema_scraper_details: list[ScrapeRunDetail],
-    cinema_scraper_status_counts: dict[str, int],
+def _source_disagreement_line(
+    disagreement: SourceDisagreement,
     cinema_name_by_id: dict[int, str],
-    recovered_presence_count: int,
-    pending_miss_details: list[PendingMissDetail],
-    tmdb_miss_titles: list[tuple[str, int]],
-    low_confidence_lookups: list[dict[str, Any]],
-    low_confidence_threshold: float,
-    error_stage_counts: dict[str, int],
-    letterboxd_failure_counts: dict[str, int],
 ) -> str:
-    deleted_items = (
-        "".join(
-            "<li>"
-            f"{escape(showtime.datetime.isoformat())} - "
-            f"{escape(showtime.movie_title)} "
-            f"@ {escape(showtime.cinema_name)} "
-            f"(showtime_id={showtime.showtime_id}, movie_id={showtime.movie_id}, cinema_id={showtime.cinema_id})"
-            "</li>"
-            for showtime in deleted_showtimes
-        )
-        or "<li>None</li>"
+    cinema_name = cinema_name_by_id.get(
+        disagreement.cinema_id, f"cinema_id={disagreement.cinema_id}"
+    )
+    return (
+        f"{disagreement.showtime_datetime.isoformat()} @ {cinema_name} | "
+        f"cineville: {disagreement.cineville_movie_title} "
+        f"(movie_id={disagreement.cineville_movie_id}) | "
+        f"cinema scraper: {disagreement.cinema_scraper_movie_title} "
+        f"(movie_id={disagreement.cinema_scraper_movie_id}) | "
+        f"kept movie_id={disagreement.kept_movie_id} "
+        f"({disagreement.detected_by})"
     )
 
-    tmdb_miss_items = (
-        "".join(_render_tmdb_miss_item(item) for item in tmdb_misses[:200])
-        or "<li>None</li>"
-    )
-    tmdb_miss_title_items = (
-        "".join(
-            f"<li>{escape(title)}: <b>{count}</b></li>"
-            for title, count in tmdb_miss_titles[:25]
-        )
-        or "<li>None</li>"
-    )
-    low_confidence_items = (
-        "".join(
-            _render_low_confidence_tmdb_item(item)
-            for item in low_confidence_lookups[:50]
-        )
-        or "<li>None</li>"
-    )
 
-    error_items = (
-        "".join(f"<li>{escape(error)}</li>" for error in errors) or "<li>None</li>"
-    )
-    error_stage_items = (
-        "".join(
-            f"<li>{escape(stage)}: <b>{count}</b></li>"
-            for stage, count in sorted(
-                error_stage_counts.items(),
-                key=lambda item: (-item[1], item[0]),
-            )
-        )
-        or "<li>None</li>"
-    )
+def _drop_source_disagreements_resolved_since(
+    disagreements: list[SourceDisagreement],
+) -> list[SourceDisagreement]:
+    """Drop disagreements a later phase of the same run already fixed.
 
-    missing_cinema_items = (
-        "".join(f"<li>{escape(cinema_name)}</li>" for cinema_name in missing_cinemas)
-        or "<li>None</li>"
-    )
-    missing_cinema_insert_failure_items = (
-        "".join(f"<li>{escape(item)}</li>" for item in missing_cinema_insert_failures)
-        or "<li>None</li>"
-    )
-
-    new_movie_items = (
-        "".join(f"<li>{escape(label)}</li>" for label in new_future_movie_labels[:50])
-        or "<li>None</li>"
-    )
-
-    tmdb_cache_breakdown_items = "".join(
-        f"<li>{escape(source)}: <b>{count}</b></li>"
-        for source, count in sorted(tmdb_cache_counts.items())
-    )
-    tmdb_hit_count = sum(
-        tmdb_cache_counts.get(key, 0) for key in ("memory", "database", "singleflight")
-    )
-    tmdb_hit_rate = (
-        (tmdb_hit_count / len(tmdb_lookups)) * 100.0 if tmdb_lookups else 0.0
-    )
-
-    scrape_status_items = "".join(
-        f"<li>{escape(status)}: <b>{count}</b></li>"
-        for status, count in sorted(scrape_status_counts.items())
-    )
-    cinema_scraper_status_items = (
-        "".join(
-            f"<li>{escape(status)}: <b>{count}</b></li>"
-            for status, count in sorted(cinema_scraper_status_counts.items())
-        )
-        or "<li>None</li>"
-    )
-    deactivate_at = scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE
-    pending_miss_counts = Counter(
-        detail.missing_streak for detail in pending_miss_details
-    )
-    pending_miss_metric_items = "".join(
-        f"<li>Missed {streak}x "
-        f"({deactivate_at - streak} more from deletion): "
-        f"<b>{pending_miss_counts.get(streak, 0)}</b></li>"
-        for streak in range(1, deactivate_at)
-    )
-    pending_miss_items = (
-        "".join(
-            "<li>"
-            f"missed {detail.missing_streak}x | "
-            f"{escape(detail.source_stream)} | "
-            f"{escape(detail.movie_title)} "
-            f"@ {escape(detail.cinema_name)} "
-            f"({escape(detail.showtime_datetime.isoformat())}, showtime_id={detail.showtime_id})"
-            "</li>"
-            for detail in pending_miss_details
-        )
-        or "<li>None</li>"
-    )
-    run_detail_items = (
-        "".join(
-            "<li>"
-            f"{escape(detail.started_at.isoformat())} | "
-            f"{escape(detail.source_stream)} | "
-            f"status={escape(detail.status)} | "
-            f"duration={f'{detail.duration_seconds:.1f}s' if detail.duration_seconds is not None else '-'} | "
-            f"observed={detail.observed_showtime_count if detail.observed_showtime_count is not None else '-'}"
-            + (f" | error={escape(detail.error)}" if detail.error else "")
-            + "</li>"
-            for detail in scrape_run_details
-        )
-        or "<li>None</li>"
-    )
-    cinema_scraper_detail_items = (
-        "".join(
-            "<li>"
-            f"{escape(detail.started_at.isoformat())} | "
-            f"{escape(_stream_display_name(detail.source_stream, cinema_name_by_id))} | "
-            f"status={escape(detail.status)} | "
-            f"duration={f'{detail.duration_seconds:.1f}s' if detail.duration_seconds is not None else '-'} | "
-            f"observed={detail.observed_showtime_count if detail.observed_showtime_count is not None else '-'}"
-            + (f" | error={escape(detail.error)}" if detail.error else "")
-            + "</li>"
-            for detail in cinema_scraper_details
-        )
-        or "<li>None</li>"
-    )
-    letterboxd_failure_items = (
-        "".join(
-            _render_letterboxd_failure_item(failure) for failure in letterboxd_failures
-        )
-        or "<li>None</li>"
-    )
-    letterboxd_failure_breakdown_items = (
-        "".join(
-            f"<li>{escape(event_type)}: <b>{count}</b></li>"
-            for event_type, count in sorted(
-                letterboxd_failure_counts.items(),
-                key=lambda item: (-item[1], item[0]),
-            )
-        )
-        or "<li>None</li>"
-    )
-    return f"""
-    <h2>Scrape Recap</h2>
-    <p>Started: <code>{escape(started_at.isoformat())}</code></p>
-    <p>Finished: <code>{escape(finished_at.isoformat())}</code></p>
-    <p>Duration: <b>{(finished_at - started_at)}</b></p>
-    <h3>Run Metrics</h3>
-    <ul>
-      <li>New future showtimes: <b>{new_future_showtime_count}</b></li>
-      <li>New movies among future showtimes: <b>{len(new_future_movie_labels)}</b></li>
-      <li>Future showtimes before run: <b>{future_showtime_count_before}</b></li>
-      <li>Future showtimes after run: <b>{future_showtime_count_after}</b></li>
-      <li>Future movies before run: <b>{future_movie_count_before}</b></li>
-      <li>Future movies after run: <b>{future_movie_count_after}</b></li>
-      <li>Previously missing, now seen again: <b>{recovered_presence_count}</b></li>
-      {pending_miss_metric_items}
-    </ul>
-    <p>Total TMDB lookups sent: <b>{len(tmdb_lookups)}</b></p>
-    <p>TMDB cache hit rate: <b>{tmdb_hit_rate:.1f}%</b></p>
-    <p>TMDB ID not found count: <b>{len(tmdb_misses)}</b></p>
-    <p>Low-confidence TMDB matches (&lt; {low_confidence_threshold:.1f}): <b>{len(low_confidence_lookups)}</b></p>
-    <p>Future showtimes deleted (no longer found): <b>{len(deleted_showtimes)}</b></p>
-    <p>Error count: <b>{len(errors)}</b></p>
-    <p>Letterboxd failure count: <b>{len(letterboxd_failures)}</b></p>
-    <p>Missing cinemas count: <b>{len(missing_cinemas)}</b></p>
-    <p>Missing-cinema insert failure count: <b>{len(missing_cinema_insert_failures)}</b></p>
-    <p>Total scrape streams recorded: <b>{len(scrape_run_details)}</b></p>
-    <p>Cinema scraper streams recorded: <b>{len(cinema_scraper_details)}</b></p>
-    <h3>New Movies In Future Showtimes</h3>
-    <ul>{new_movie_items}</ul>
-    <h3>Showtimes No Longer Found (Future Only)</h3>
-    <ul>{deleted_items}</ul>
-    <h3>Pending Misses (Upcoming Showtimes)</h3>
-    <ul>{pending_miss_items}</ul>
-    <h3>Missing Cinemas</h3>
-    <ul>{missing_cinema_items}</ul>
-    <h3>Missing Cinema Insert Failures</h3>
-    <ul>{missing_cinema_insert_failure_items}</ul>
-    <h3>TMDB Cache Breakdown</h3>
-    <ul>{tmdb_cache_breakdown_items}</ul>
-    <h3>Scrape Run Statuses</h3>
-    <ul>{scrape_status_items}</ul>
-    <h3>Cinema Scraper Statuses</h3>
-    <ul>{cinema_scraper_status_items}</ul>
-    <h3>Letterboxd Failure Breakdown</h3>
-    <ul>{letterboxd_failure_breakdown_items}</ul>
-    <h3>TMDB Miss Titles (Top)</h3>
-    <ul>{tmdb_miss_title_items}</ul>
-    <h3>Low-Confidence TMDB Matches</h3>
-    <ul>{low_confidence_items}</ul>
-    <h3>Error Stages</h3>
-    <ul>{error_stage_items}</ul>
-    <h3>Per-Stream Run Details</h3>
-    <ul>{run_detail_items}</ul>
-    <h3>Per Cinema Scraper Detail</h3>
-    <ul>{cinema_scraper_detail_items}</ul>
-    <h3>Letterboxd Failure Events</h3>
-    <ul>{letterboxd_failure_items}</ul>
-    <h3>TMDB ID Not Found</h3>
-    <ul>{tmdb_miss_items}</ul>
-    <h3>Errors</h3>
-    <ul>{error_items}</ul>
-    <p>Attachments include TMDB lookups, Letterboxd failures, and full run details.</p>
+    Cineville scrapers run before cinema scrapers in ``run()``, so the insert
+    guard can flag a slot as disputed using the cinema scraper's *previous*
+    match, and then that cinema scraper's own pass — minutes later, same run —
+    re-resolves the title and ``get_showtime_reassignment_candidate`` quietly
+    relinks the showtime to the correct movie before the recap is even built.
+    Reporting the stale snapshot as an unresolved disagreement is misleading:
+    reconcile against the current row before it goes in the recap.
     """
+    if not disagreements:
+        return disagreements
+    slots = {(d.cinema_id, d.showtime_datetime) for d in disagreements}
+    with get_db_context() as session:
+        current_movie_ids = {
+            (cinema_id, showtime_datetime): (
+                session.exec(
+                    select(Showtime.movie_id).where(
+                        Showtime.cinema_id == cinema_id,
+                        Showtime.datetime == showtime_datetime,
+                    )
+                ).first()
+            )
+            for cinema_id, showtime_datetime in slots
+        }
+    return [
+        disagreement
+        for disagreement in disagreements
+        if current_movie_ids.get(
+            (disagreement.cinema_id, disagreement.showtime_datetime)
+        )
+        == disagreement.kept_movie_id
+    ]
+
+
+def _dedupe_source_disagreements(
+    disagreements: list[SourceDisagreement],
+) -> list[SourceDisagreement]:
+    """One entry per screening+pairing.
+
+    A slot is re-checked on every Cineville showtime that lands in it, and the
+    cleanup can see the same pairing the insert guard already reported.
+    """
+    by_key: dict[tuple[int, datetime, int, int], SourceDisagreement] = {}
+    for disagreement in disagreements:
+        key = (
+            disagreement.cinema_id,
+            disagreement.showtime_datetime,
+            disagreement.cineville_movie_id,
+            disagreement.cinema_scraper_movie_id,
+        )
+        by_key.setdefault(key, disagreement)
+    return sorted(
+        by_key.values(),
+        key=lambda item: (item.showtime_datetime, item.cinema_id),
+    )
+
+
+def _pending_miss_line(detail: PendingMissDetail) -> str:
+    return (
+        f"missed {detail.missing_streak}x | "
+        f"{detail.source_stream} | "
+        f"{detail.movie_title} @ {detail.cinema_name} "
+        f"({detail.showtime_datetime.isoformat()}, showtime_id={detail.showtime_id})"
+    )
+
+
+def _deleted_showtime_payload(showtime: DeletedShowtimeInfo) -> dict[str, Any]:
+    return {
+        "showtime_id": showtime.showtime_id,
+        "movie_id": showtime.movie_id,
+        "movie_title": showtime.movie_title,
+        "cinema_id": showtime.cinema_id,
+        "cinema_name": showtime.cinema_name,
+        "datetime": showtime.datetime.isoformat(),
+        "ticket_link": showtime.ticket_link,
+    }
+
+
+def _run_detail_payload(
+    detail: ScrapeRunDetail,
+    cinema_name_by_id: dict[int, str],
+) -> dict[str, Any]:
+    return {
+        "source_stream": detail.source_stream,
+        "source_stream_display": _stream_display_name(
+            detail.source_stream,
+            cinema_name_by_id,
+        ),
+        "status": detail.status,
+        "started_at": detail.started_at.isoformat(),
+        "finished_at": (
+            detail.finished_at.isoformat() if detail.finished_at is not None else None
+        ),
+        "duration_seconds": detail.duration_seconds,
+        "observed_showtime_count": detail.observed_showtime_count,
+        "error": detail.error,
+    }
 
 
 def _store_run_recap(
@@ -1454,13 +1198,16 @@ def _store_run_recap(
     before_snapshot: FutureSnapshot,
     after_snapshot: FutureSnapshot,
 ) -> None:
-    """Render this run's recap and persist it for the daily aggregated email."""
+    """Persist this run's recap metrics + attachments for the daily email."""
     tmdb_misses = [lookup for lookup in tmdb_lookups if lookup["tmdb_id"] is None]
 
     deleted_showtimes = _dedupe_deleted_showtimes(summary.deleted_showtimes)
     deleted_showtimes = [
         showtime for showtime in deleted_showtimes if showtime.datetime >= finished_at
     ]
+    conflict_deleted_showtimes = _dedupe_deleted_showtimes(
+        summary.conflict_deleted_showtimes
+    )
 
     errors = list(summary.errors)
     errors.extend(
@@ -1473,14 +1220,13 @@ def _store_run_recap(
         dict.fromkeys(summary.missing_cinema_insert_failures)
     )
     tmdb_cache_counts = _tmdb_cache_breakdown(tmdb_lookups)
+    tmdb_cache_hit_count = sum(
+        tmdb_cache_counts.get(key, 0) for key in ("memory", "database", "singleflight")
+    )
     tmdb_miss_titles = _tmdb_miss_title_counts(tmdb_misses)
     low_confidence_lookups = _tmdb_low_confidence_lookups(
         tmdb_lookups,
         threshold=TMDB_LOW_CONFIDENCE_THRESHOLD,
-    )
-    scrape_status_counts = _load_scrape_run_status_counts(
-        started_at=started_at,
-        finished_at=finished_at,
     )
     scrape_run_details = _load_scrape_run_details(
         started_at=started_at,
@@ -1489,14 +1235,12 @@ def _store_run_recap(
     cinema_scraper_details = [
         detail
         for detail in scrape_run_details
-        if detail.source_stream.startswith("cinema_scraper:")
+        if detail.source_stream.startswith(CINEMA_SCRAPER_STREAM_PREFIX)
     ]
-    cinema_scraper_status_counts: dict[str, int] = {}
-    for detail in cinema_scraper_details:
-        cinema_scraper_status_counts[detail.status] = (
-            cinema_scraper_status_counts.get(detail.status, 0) + 1
-        )
     cinema_name_by_id = _load_cinema_name_by_id()
+    source_disagreements = _drop_source_disagreements_resolved_since(
+        _dedupe_source_disagreements(consume_source_disagreements())
+    )
     letterboxd_failure_counts = _letterboxd_failure_breakdown(letterboxd_failures)
     recovered_presence_count = scrape_sync_service.consume_recovered_presence_count()
     pending_miss_details = _load_pending_miss_details()
@@ -1506,35 +1250,40 @@ def _store_run_recap(
     new_future_movie_ids = after_snapshot.movie_ids - before_snapshot.movie_ids
     new_future_movie_labels = _load_movie_labels(new_future_movie_ids)
 
-    html = _render_recap_html(
+    metrics = RecapRunMetrics(
         started_at=started_at,
         finished_at=finished_at,
-        tmdb_lookups=tmdb_lookups,
-        tmdb_misses=tmdb_misses,
-        letterboxd_failures=letterboxd_failures,
-        deleted_showtimes=deleted_showtimes,
-        errors=errors,
-        missing_cinemas=missing_cinemas,
-        missing_cinema_insert_failures=missing_cinema_insert_failures,
         new_future_showtime_count=len(new_future_showtime_ids),
         new_future_movie_labels=new_future_movie_labels,
         future_showtime_count_before=len(before_snapshot.showtime_ids),
         future_showtime_count_after=len(after_snapshot.showtime_ids),
         future_movie_count_before=len(before_snapshot.movie_ids),
         future_movie_count_after=len(after_snapshot.movie_ids),
-        tmdb_cache_counts=tmdb_cache_counts,
-        scrape_status_counts=scrape_status_counts,
-        scrape_run_details=scrape_run_details,
-        cinema_scraper_details=cinema_scraper_details,
-        cinema_scraper_status_counts=cinema_scraper_status_counts,
-        cinema_name_by_id=cinema_name_by_id,
         recovered_presence_count=recovered_presence_count,
-        pending_miss_details=pending_miss_details,
-        tmdb_miss_titles=tmdb_miss_titles,
-        low_confidence_lookups=low_confidence_lookups,
+        missing_streak_to_deactivate=(scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE),
+        pending_miss_counts_by_streak=dict(
+            Counter(detail.missing_streak for detail in pending_miss_details)
+        ),
+        pending_miss_lines=[
+            _pending_miss_line(detail) for detail in pending_miss_details
+        ],
+        tmdb_lookup_count=len(tmdb_lookups),
+        tmdb_cache_hit_count=tmdb_cache_hit_count,
+        tmdb_miss_count=len(tmdb_misses),
+        tmdb_miss_title_counts=tmdb_miss_titles,
+        low_confidence_count=len(low_confidence_lookups),
         low_confidence_threshold=TMDB_LOW_CONFIDENCE_THRESHOLD,
-        error_stage_counts=error_stage_counts,
-        letterboxd_failure_counts=letterboxd_failure_counts,
+        deleted_showtime_lines=[
+            _deleted_showtime_line(showtime) for showtime in deleted_showtimes
+        ],
+        conflict_deleted_count=len(conflict_deleted_showtimes),
+        source_disagreement_lines=[
+            _source_disagreement_line(disagreement, cinema_name_by_id)
+            for disagreement in source_disagreements
+        ],
+        error_count=len(errors),
+        letterboxd_failure_count=len(letterboxd_failures),
+        missing_cinemas=missing_cinemas,
     )
 
     tmdb_low_confidence_compact = [
@@ -1545,153 +1294,150 @@ def _store_run_recap(
         _compact_tmdb_lookup_for_attachment(lookup)
         for lookup in tmdb_misses[:TMDB_RECAP_ATTACHMENT_MAX_ITEMS]
     ]
-    tmdb_lookup_attachment_data = _compact_json_bytes(
+    timestamp = f"{started_at:%Y%m%d_%H%M%S}"
+    attachments = [
         {
-            "meta": {
-                "total_lookups": len(tmdb_lookups),
-                "cache_breakdown": tmdb_cache_counts,
-                "miss_count": len(tmdb_misses),
-                "low_confidence_threshold": TMDB_LOW_CONFIDENCE_THRESHOLD,
-                "low_confidence_count": len(low_confidence_lookups),
-                "max_items_per_section": TMDB_RECAP_ATTACHMENT_MAX_ITEMS,
-            },
-            "low_confidence": tmdb_low_confidence_compact,
-            "misses": tmdb_misses_compact,
-        }
-    )
-    tmdb_lookup_attachment_name = f"tmdb_lookups_{started_at:%Y%m%d_%H%M%S}.json"
-
-    scrape_runs_attachment_data = _compact_json_bytes(
-        [
-            {
-                "source_stream": detail.source_stream,
-                "source_stream_display": _stream_display_name(
-                    detail.source_stream,
-                    cinema_name_by_id,
-                ),
-                "status": detail.status,
-                "started_at": detail.started_at.isoformat(),
-                "finished_at": (
-                    detail.finished_at.isoformat()
-                    if detail.finished_at is not None
-                    else None
-                ),
-                "duration_seconds": detail.duration_seconds,
-                "observed_showtime_count": detail.observed_showtime_count,
-                "error": detail.error,
-            }
-            for detail in scrape_run_details
-        ]
-    )
-    scrape_runs_attachment_name = f"scrape_runs_{started_at:%Y%m%d_%H%M%S}.json"
-    cinema_scraper_runs_attachment_data = _compact_json_bytes(
-        [
-            {
-                "source_stream": detail.source_stream,
-                "source_stream_display": _stream_display_name(
-                    detail.source_stream,
-                    cinema_name_by_id,
-                ),
-                "status": detail.status,
-                "started_at": detail.started_at.isoformat(),
-                "finished_at": (
-                    detail.finished_at.isoformat()
-                    if detail.finished_at is not None
-                    else None
-                ),
-                "duration_seconds": detail.duration_seconds,
-                "observed_showtime_count": detail.observed_showtime_count,
-                "error": detail.error,
-            }
-            for detail in cinema_scraper_details
-        ]
-    )
-    cinema_scraper_runs_attachment_name = (
-        f"cinema_scraper_runs_{started_at:%Y%m%d_%H%M%S}.json"
-    )
-
-    letterboxd_failures_attachment_data = _compact_json_bytes(
-        letterboxd_failures,
-    )
-    letterboxd_failures_attachment_name = (
-        f"letterboxd_failures_{started_at:%Y%m%d_%H%M%S}.json"
-    )
-    pending_misses_attachment_data = _compact_json_bytes(
-        {
-            "missing_streak_to_deactivate": (
-                scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE
-            ),
-            "recovered_presence_count": recovered_presence_count,
-            "counts_by_missing_streak": {
-                str(streak): count
-                for streak, count in sorted(
-                    Counter(
-                        detail.missing_streak for detail in pending_miss_details
-                    ).items()
-                )
-            },
-            "pending_misses": [
+            "filename": f"tmdb_lookups_{timestamp}.json",
+            "mime_type": "application/json",
+            "data": _compact_json_bytes(
                 {
-                    "source_stream": detail.source_stream,
-                    "movie_title": detail.movie_title,
-                    "cinema_name": detail.cinema_name,
-                    "showtime_datetime": detail.showtime_datetime.isoformat(),
-                    "showtime_id": detail.showtime_id,
-                    "missing_streak": detail.missing_streak,
+                    "meta": {
+                        "total_lookups": len(tmdb_lookups),
+                        "cache_breakdown": tmdb_cache_counts,
+                        "miss_count": len(tmdb_misses),
+                        "low_confidence_threshold": TMDB_LOW_CONFIDENCE_THRESHOLD,
+                        "low_confidence_count": len(low_confidence_lookups),
+                        "max_items_per_section": TMDB_RECAP_ATTACHMENT_MAX_ITEMS,
+                    },
+                    "low_confidence": tmdb_low_confidence_compact,
+                    "misses": tmdb_misses_compact,
                 }
-                for detail in pending_miss_details
-            ],
-        }
-    )
-    pending_misses_attachment_name = f"pending_misses_{started_at:%Y%m%d_%H%M%S}.json"
-    missing_cinema_insert_failures_attachment_data = _compact_json_bytes(
-        missing_cinema_insert_failures,
-    )
-    missing_cinema_insert_failures_attachment_name = (
-        f"missing_cinema_insert_failures_{started_at:%Y%m%d_%H%M%S}.json"
-    )
+            ),
+        },
+        {
+            "filename": f"scrape_runs_{timestamp}.json",
+            "mime_type": "application/json",
+            "data": _compact_json_bytes(
+                [
+                    _run_detail_payload(detail, cinema_name_by_id)
+                    for detail in scrape_run_details
+                ]
+            ),
+        },
+        {
+            "filename": f"cinema_scraper_runs_{timestamp}.json",
+            "mime_type": "application/json",
+            "data": _compact_json_bytes(
+                [
+                    _run_detail_payload(detail, cinema_name_by_id)
+                    for detail in cinema_scraper_details
+                ]
+            ),
+        },
+        {
+            "filename": f"letterboxd_failures_{timestamp}.json",
+            "mime_type": "application/json",
+            "data": _compact_json_bytes(
+                {
+                    "counts_by_event_type": letterboxd_failure_counts,
+                    "failures": letterboxd_failures,
+                }
+            ),
+        },
+        {
+            "filename": f"errors_{timestamp}.json",
+            "mime_type": "application/json",
+            "data": _compact_json_bytes(
+                {
+                    "counts_by_stage": error_stage_counts,
+                    "errors": errors,
+                    "missing_cinema_insert_failures": missing_cinema_insert_failures,
+                }
+            ),
+        },
+        {
+            "filename": f"source_disagreements_{timestamp}.json",
+            "mime_type": "application/json",
+            "data": _compact_json_bytes(
+                [
+                    {
+                        "cinema_id": disagreement.cinema_id,
+                        "cinema_name": cinema_name_by_id.get(disagreement.cinema_id),
+                        "showtime_datetime": (
+                            disagreement.showtime_datetime.isoformat()
+                        ),
+                        "cineville_movie_id": disagreement.cineville_movie_id,
+                        "cineville_movie_title": disagreement.cineville_movie_title,
+                        "cinema_scraper_movie_id": (
+                            disagreement.cinema_scraper_movie_id
+                        ),
+                        "cinema_scraper_movie_title": (
+                            disagreement.cinema_scraper_movie_title
+                        ),
+                        "kept_movie_id": disagreement.kept_movie_id,
+                        "detected_by": disagreement.detected_by,
+                    }
+                    for disagreement in source_disagreements
+                ]
+            ),
+        },
+        {
+            "filename": f"showtime_deletions_{timestamp}.json",
+            "mime_type": "application/json",
+            "data": _compact_json_bytes(
+                {
+                    "no_longer_found": [
+                        _deleted_showtime_payload(showtime)
+                        for showtime in deleted_showtimes
+                    ],
+                    "duplicate_title_removed": [
+                        _deleted_showtime_payload(showtime)
+                        for showtime in conflict_deleted_showtimes
+                    ],
+                }
+            ),
+        },
+        {
+            "filename": f"pending_misses_{timestamp}.json",
+            "mime_type": "application/json",
+            "data": _compact_json_bytes(
+                {
+                    "missing_streak_to_deactivate": (
+                        scrape_sync_service.MISSING_STREAK_TO_DEACTIVATE
+                    ),
+                    "recovered_presence_count": recovered_presence_count,
+                    "counts_by_missing_streak": {
+                        str(streak): count
+                        for streak, count in sorted(
+                            metrics.pending_miss_counts_by_streak.items()
+                        )
+                    },
+                    "pending_misses": [
+                        {
+                            "source_stream": detail.source_stream,
+                            "movie_title": detail.movie_title,
+                            "cinema_name": detail.cinema_name,
+                            "showtime_datetime": detail.showtime_datetime.isoformat(),
+                            "showtime_id": detail.showtime_id,
+                            "missing_streak": detail.missing_streak,
+                        }
+                        for detail in pending_miss_details
+                    ],
+                }
+            ),
+        },
+    ]
 
     subject = (
         "Cinema Scrape Recap "
         f"{started_at:%Y-%m-%d %H:%M} -> {finished_at:%Y-%m-%d %H:%M}"
     )
-    attachments = [
-        {
-            "filename": tmdb_lookup_attachment_name,
-            "data": tmdb_lookup_attachment_data,
-            "mime_type": "application/json",
-        },
-        {
-            "filename": scrape_runs_attachment_name,
-            "data": scrape_runs_attachment_data,
-            "mime_type": "application/json",
-        },
-        {
-            "filename": cinema_scraper_runs_attachment_name,
-            "data": cinema_scraper_runs_attachment_data,
-            "mime_type": "application/json",
-        },
-        {
-            "filename": letterboxd_failures_attachment_name,
-            "data": letterboxd_failures_attachment_data,
-            "mime_type": "application/json",
-        },
-        {
-            "filename": pending_misses_attachment_name,
-            "data": pending_misses_attachment_data,
-            "mime_type": "application/json",
-        },
-        {
-            "filename": missing_cinema_insert_failures_attachment_name,
-            "data": missing_cinema_insert_failures_attachment_data,
-            "mime_type": "application/json",
-        },
-    ]
     _persist_run_recap(
         started_at=started_at,
         finished_at=finished_at,
         subject=subject,
-        html=html,
+        html=render_recap_html([metrics]),
+        metrics=metrics,
         attachments=attachments,
     )
 
@@ -1702,9 +1448,10 @@ def _persist_run_recap(
     finished_at: datetime,
     subject: str,
     html: str,
+    metrics: RecapRunMetrics,
     attachments: list[dict[str, Any]],
 ) -> None:
-    """Store this run's rendered recap + attachments for the daily digest."""
+    """Store this run's recap metrics, rendered HTML and attachments."""
     serialized_attachments = [
         {
             "filename": attachment["filename"],
@@ -1720,19 +1467,37 @@ def _persist_run_recap(
                 finished_at=finished_at,
                 subject=subject,
                 html=html,
+                metrics_json=json.dumps(metrics.to_payload(), ensure_ascii=False),
                 attachments_json=json.dumps(serialized_attachments),
             )
         )
         session.commit()
 
 
+def _recap_metrics_or_none(recap: ScrapeRecap) -> RecapRunMetrics | None:
+    try:
+        payload = json.loads(recap.metrics_json)
+    except ValueError:
+        payload = None
+    if not isinstance(payload, dict) or not payload:
+        return None
+    try:
+        return RecapRunMetrics.from_payload(payload)
+    except (KeyError, TypeError, ValueError):
+        logger.warning(
+            "Recap %s has unreadable metrics; falling back to its HTML.", recap.id
+        )
+        return None
+
+
 def send_daily_recap() -> bool:
     """Email one recap covering every scrape run stored in the last 24 hours.
 
-    Runs are rendered per-run (``_store_run_recap``) and stitched together here,
-    so the scrape can run several times a day while only one recap email is
-    sent. Sent recaps are deleted; stragglers older than the window are pruned
-    so a failed send can't let the table grow unbounded.
+    Each run stores its own metrics (``_store_run_recap``); this renders them as
+    one document grouped by statistic, so the scrape can run several times a day
+    while only one recap email is sent. Sent recaps are deleted; stragglers older
+    than the window are pruned so a failed send can't let the table grow
+    unbounded.
     """
     now = now_amsterdam_naive()
     window_start = now - RECAP_AGGREGATION_WINDOW
@@ -1755,17 +1520,18 @@ def send_daily_recap() -> bool:
             f"Cinema Scrape Daily Recap {first_started:%Y-%m-%d %H:%M} -> "
             f"{last_finished:%Y-%m-%d %H:%M} ({len(recaps)} run(s))"
         )
-        sections = [
-            f"<h1>Daily scrape recap — {len(recaps)} run(s) in the last 24h</h1>"
-        ]
+        run_metrics: list[RecapRunMetrics] = []
+        legacy_run_html: list[str] = []
         attachments: list[dict[str, Any]] = []
         for recap in recaps:
-            sections.append(
-                "<hr/>"
-                f"<h1>Run {escape(recap.started_at.isoformat())} &rarr; "
-                f"{escape(recap.finished_at.isoformat())}</h1>"
-                f"{recap.html}"
-            )
+            metrics = _recap_metrics_or_none(recap)
+            if metrics is not None:
+                run_metrics.append(metrics)
+            else:
+                legacy_run_html.append(
+                    f"<h3>Run {escape(recap.started_at.isoformat())} &rarr; "
+                    f"{escape(recap.finished_at.isoformat())}</h3>{recap.html}"
+                )
             for attachment in json.loads(recap.attachments_json):
                 attachments.append(
                     {
@@ -1774,7 +1540,10 @@ def send_daily_recap() -> bool:
                         "mime_type": attachment["mime_type"],
                     }
                 )
-        html = "".join(sections)
+        html = (
+            f"<h1>Daily scrape recap — {len(recaps)} run(s) in the last 24h</h1>"
+            + render_recap_html(run_metrics, legacy_run_html=legacy_run_html)
+        )
         sent_ids = [recap.id for recap in recaps]
 
     send_email(
@@ -1785,11 +1554,12 @@ def send_daily_recap() -> bool:
     )
 
     with get_db_context() as session:
-        session.execute(delete(ScrapeRecap).where(col(ScrapeRecap.id).in_(sent_ids)))
-        # Prune any stragglers from earlier failed sends so the table stays small.
+        # Sent recaps are kept for a week (rather than deleted immediately) so the
+        # monitor API has recent data between daily sends; the window filter above
+        # already keeps them out of the next email once they age past 24h.
         session.execute(
             delete(ScrapeRecap).where(
-                col(ScrapeRecap.started_at) < now - 2 * RECAP_AGGREGATION_WINDOW
+                col(ScrapeRecap.started_at) < now - RECAP_RETENTION_WINDOW
             )
         )
         session.commit()
@@ -1801,6 +1571,9 @@ def run() -> None:
     started_at = now_amsterdam_naive()
     reset_tmdb_runtime_state()
     reset_letterboxd_request_budget()
+    # An interrupted run never reaches `_store_run_recap`, so drain here too or
+    # its disagreements would be reported against the next run.
+    consume_source_disagreements()
     before_snapshot = _load_future_snapshot(snapshot_time=started_at)
     summary = ScrapeExecutionSummary()
     tmdb_lookups: list[dict] = []
@@ -1846,7 +1619,7 @@ def run() -> None:
         try:
             with get_db_context() as session:
                 conflict_deleted = _delete_cineville_title_conflicts(session=session)
-            summary.deleted_showtimes.extend(conflict_deleted)
+            summary.conflict_deleted_showtimes.extend(conflict_deleted)
             logger.info(
                 "Cineville conflict cleanup finished. Deleted %s showtime(s).",
                 len(conflict_deleted),

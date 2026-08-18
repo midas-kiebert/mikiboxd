@@ -3,12 +3,13 @@ from uuid import UUID
 
 from sqlmodel import SQLModel
 
-from .showtime import ShowtimeLoggedIn
+from .showtime import ShowtimePublic
 from .user import UserPublic
 
 __all__ = [
     "ShowtimePingPublic",
     "SentShowtimePingPublic",
+    "ShowtimePingLinkToken",
 ]
 
 
@@ -21,7 +22,7 @@ class ShowtimePingPublic(SQLModel):
     cinema_name: str
     datetime: DateTime
     ticket_link: str | None
-    showtime: ShowtimeLoggedIn
+    showtime: ShowtimePublic
     sender: UserPublic
     created_at: DateTime
     seen_at: DateTime | None
@@ -34,3 +35,7 @@ class SentShowtimePingPublic(SQLModel):
     created_at: DateTime
     seen_at: DateTime | None
     dismissed_at: DateTime | None
+
+
+class ShowtimePingLinkToken(SQLModel):
+    token: str

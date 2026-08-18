@@ -1,14 +1,19 @@
 /**
- * Shared handling for `mikino.nl/ping/{showtimeId}/{sender}` invite links.
+ * Shared handling for `mikino.nl/ping/{showtimeId}/{token}` invite links.
  *
  * The link is acted on in exactly one place — the root layout, which reads the
  * URL itself both at launch and while the app is running. The `/ping` route
  * expo-router lands on is only a bouncer back to the tabs.
+ *
+ * `token` is a signed, server-minted token (see `ping-link-token`), not a raw
+ * user ID — the receiving server verifies it names the real sender before
+ * recording the invite, so a link can't be forged by substituting someone
+ * else's ID in the URL.
  */
 import type { QueryClient } from "@tanstack/react-query";
 import { ShowtimesService } from "shared";
 
-export type ShowtimeInviteLink = { showtimeId: number; sender: string };
+export type ShowtimeInviteLink = { showtimeId: number; token: string };
 
 const INVITE_PATH_PATTERN = /^\/ping\/([^/]+)\/([^/]+)\/?$/;
 
@@ -30,13 +35,13 @@ export function parseInviteLinkUrl(url: string): ShowtimeInviteLink | null {
 
 function parseInviteLinkParts(
   rawShowtimeId: string | undefined,
-  rawSender: string | undefined
+  rawToken: string | undefined
 ): ShowtimeInviteLink | null {
   let decodedShowtimeId = rawShowtimeId ?? "";
-  let decodedSender = rawSender ?? "";
+  let decodedToken = rawToken ?? "";
   try {
     decodedShowtimeId = decodeURIComponent(decodedShowtimeId);
-    decodedSender = decodeURIComponent(decodedSender);
+    decodedToken = decodeURIComponent(decodedToken);
   } catch {
     // Keep the raw values; the checks below still reject anything unusable.
   }
@@ -44,10 +49,10 @@ function parseInviteLinkParts(
   const parsedShowtimeId = Number.parseInt(decodedShowtimeId.trim(), 10);
   if (!Number.isInteger(parsedShowtimeId) || parsedShowtimeId <= 0) return null;
 
-  const trimmedSender = decodedSender.trim();
-  if (trimmedSender.length === 0) return null;
+  const trimmedToken = decodedToken.trim();
+  if (trimmedToken.length === 0) return null;
 
-  return { showtimeId: parsedShowtimeId, sender: trimmedSender };
+  return { showtimeId: parsedShowtimeId, token: trimmedToken };
 }
 
 /**
@@ -56,13 +61,13 @@ function parseInviteLinkParts(
  */
 export async function registerInviteLink({
   showtimeId,
-  sender,
+  token,
   queryClient,
 }: ShowtimeInviteLink & { queryClient: QueryClient }): Promise<void> {
   try {
     await ShowtimesService.receivePingFromLink({
       showtimeId,
-      senderIdentifier: sender,
+      token,
     });
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["me", "showtimePings"] }),

@@ -30,7 +30,12 @@ export default function ManagePresetsModal({
 }: ManagePresetsModalProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { presets, isLoading, remove, setFavorite, move } = useDisplayPresets();
+  // Mounted alongside the filters sheet whether or not it is open, so the query
+  // is held back until it actually is — and a guest, who has no presets and no
+  // way to reach this, never fires it at all.
+  const { presets, isLoading, remove, setFavorite, move } = useDisplayPresets({
+    enabled: visible,
+  });
 
   const favoriteHasCinemas = presets.some(
     (p) => p.isFavorite && p.cinemaIds != null

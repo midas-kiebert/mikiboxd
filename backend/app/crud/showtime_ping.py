@@ -3,7 +3,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, or_, select
 
 from app.core.enums import ShowtimePingSort
 from app.models.showtime import Showtime
@@ -38,12 +38,14 @@ def create_showtime_ping(
     sender_id: UUID,
     receiver_id: UUID,
     created_at: datetime,
+    receiver_had_selection_at_creation: bool = False,
 ) -> ShowtimePing:
     ping = ShowtimePing(
         showtime_id=showtime_id,
         sender_id=sender_id,
         receiver_id=receiver_id,
         created_at=created_at,
+        receiver_had_selection_at_creation=receiver_had_selection_at_creation,
     )
     session.add(ping)
     session.flush()
@@ -72,6 +74,7 @@ def get_ping_counterpart_ids_for_showtime(
     session: Session,
     owner_id: UUID,
     showtime_id: int,
+    eligible_only: bool = False,
 ) -> set[UUID]:
     """Friends bound to the owner by a ping for this showtime, either direction.
 
@@ -79,46 +82,63 @@ def get_ping_counterpart_ids_for_showtime(
     visible to R (S invited them) and R's status is visible to S (they invited
     R back, i.e. R was invited by S). This returns, for the owner, the set of
     the *other* party in every ping the owner sent or received for the showtime.
+
+    `eligible_only` excludes pings whose receiver already had a selection
+    before the ping existed — nobody "accepted" those, so they must not
+    grant visibility. Callers building the identity/UI graph (e.g. "who did
+    I invite") should leave this False; visibility computation must pass True.
     """
-    sent_receiver_ids = session.exec(
-        select(ShowtimePing.receiver_id).where(
-            ShowtimePing.showtime_id == showtime_id,
-            ShowtimePing.sender_id == owner_id,
-        )
-    ).all()
-    received_sender_ids = session.exec(
-        select(ShowtimePing.sender_id).where(
-            ShowtimePing.showtime_id == showtime_id,
-            ShowtimePing.receiver_id == owner_id,
-        )
-    ).all()
+    sent_stmt = select(ShowtimePing.receiver_id).where(
+        ShowtimePing.showtime_id == showtime_id,
+        ShowtimePing.sender_id == owner_id,
+    )
+    received_stmt = select(ShowtimePing.sender_id).where(
+        ShowtimePing.showtime_id == showtime_id,
+        ShowtimePing.receiver_id == owner_id,
+    )
+    if eligible_only:
+        eligible = col(ShowtimePing.receiver_had_selection_at_creation).is_(False)
+        sent_stmt = sent_stmt.where(eligible)
+        received_stmt = received_stmt.where(eligible)
+    sent_receiver_ids = session.exec(sent_stmt).all()
+    received_sender_ids = session.exec(received_stmt).all()
     return set(sent_receiver_ids) | set(received_sender_ids)
 
 
 def _sent_receiver_ids(
-    *, session: Session, sender_id: UUID, showtime_id: int
+    *,
+    session: Session,
+    sender_id: UUID,
+    showtime_id: int,
+    eligible_only: bool = False,
 ) -> set[UUID]:
-    return set(
-        session.exec(
-            select(ShowtimePing.receiver_id).where(
-                ShowtimePing.showtime_id == showtime_id,
-                ShowtimePing.sender_id == sender_id,
-            )
-        ).all()
+    stmt = select(ShowtimePing.receiver_id).where(
+        ShowtimePing.showtime_id == showtime_id,
+        ShowtimePing.sender_id == sender_id,
     )
+    if eligible_only:
+        stmt = stmt.where(
+            col(ShowtimePing.receiver_had_selection_at_creation).is_(False)
+        )
+    return set(session.exec(stmt).all())
 
 
 def _received_sender_ids(
-    *, session: Session, receiver_id: UUID, showtime_id: int
+    *,
+    session: Session,
+    receiver_id: UUID,
+    showtime_id: int,
+    eligible_only: bool = False,
 ) -> set[UUID]:
-    return set(
-        session.exec(
-            select(ShowtimePing.sender_id).where(
-                ShowtimePing.showtime_id == showtime_id,
-                ShowtimePing.receiver_id == receiver_id,
-            )
-        ).all()
+    stmt = select(ShowtimePing.sender_id).where(
+        ShowtimePing.showtime_id == showtime_id,
+        ShowtimePing.receiver_id == receiver_id,
     )
+    if eligible_only:
+        stmt = stmt.where(
+            col(ShowtimePing.receiver_had_selection_at_creation).is_(False)
+        )
+    return set(session.exec(stmt).all())
 
 
 def get_chain_invited_user_ids_with_connector(
@@ -126,6 +146,7 @@ def get_chain_invited_user_ids_with_connector(
     session: Session,
     viewer_id: UUID,
     showtime_id: int,
+    eligible_only: bool = False,
 ) -> dict[UUID, UUID]:
     """One-hop chain: people connected to the viewer through an accepted connector,
     mapped to the connector responsible for reaching each of them (deterministic
@@ -140,14 +161,26 @@ def get_chain_invited_user_ids_with_connector(
     connector), matching how direct and co-invited visibility already ignore
     mode and opt-out. Limited to one hop: a chain-invitee's own invitees are
     not pulled in.
+
+    `eligible_only` excludes pings whose receiver already had a selection
+    before the ping existed (see `get_ping_counterpart_ids_for_showtime`) from
+    every edge in the chain — such an edge may neither act as a connector nor
+    be reached through one. Leave False for the identity/UI graph, True for
+    visibility computation.
     """
     result: dict[UUID, UUID] = {}
 
     forward_connectors = _sent_receiver_ids(
-        session=session, sender_id=viewer_id, showtime_id=showtime_id
+        session=session,
+        sender_id=viewer_id,
+        showtime_id=showtime_id,
+        eligible_only=eligible_only,
     )
     backward_connectors = _received_sender_ids(
-        session=session, receiver_id=viewer_id, showtime_id=showtime_id
+        session=session,
+        receiver_id=viewer_id,
+        showtime_id=showtime_id,
+        eligible_only=eligible_only,
     )
 
     for connector_id in sorted(forward_connectors | backward_connectors, key=str):
@@ -156,11 +189,17 @@ def get_chain_invited_user_ids_with_connector(
         reached: set[UUID] = set()
         if connector_id in forward_connectors:
             reached |= _sent_receiver_ids(
-                session=session, sender_id=connector_id, showtime_id=showtime_id
+                session=session,
+                sender_id=connector_id,
+                showtime_id=showtime_id,
+                eligible_only=eligible_only,
             )
         if connector_id in backward_connectors:
             reached |= _received_sender_ids(
-                session=session, receiver_id=connector_id, showtime_id=showtime_id
+                session=session,
+                receiver_id=connector_id,
+                showtime_id=showtime_id,
+                eligible_only=eligible_only,
             )
         reached.discard(viewer_id)
         for user_id in reached:
@@ -174,11 +213,15 @@ def get_chain_invited_user_ids(
     session: Session,
     viewer_id: UUID,
     showtime_id: int,
+    eligible_only: bool = False,
 ) -> set[UUID]:
     """See `get_chain_invited_user_ids_with_connector` for the underlying relation."""
     return set(
         get_chain_invited_user_ids_with_connector(
-            session=session, viewer_id=viewer_id, showtime_id=showtime_id
+            session=session,
+            viewer_id=viewer_id,
+            showtime_id=showtime_id,
+            eligible_only=eligible_only,
         )
     )
 
@@ -188,12 +231,14 @@ def get_active_received_inviter_ids(
     session: Session,
     receiver_id: UUID,
     showtime_id: int,
+    eligible_only: bool = False,
 ) -> set[UUID]:
     """Senders of the viewer's still-active (non-dismissed) invites for a showtime."""
     inviter_ids_by_showtime_id = get_active_received_inviter_ids_for_showtimes(
         session=session,
         receiver_id=receiver_id,
         showtime_ids=[showtime_id],
+        eligible_only=eligible_only,
     )
     return inviter_ids_by_showtime_id.get(showtime_id, set())
 
@@ -203,10 +248,14 @@ def get_active_received_inviter_ids_for_showtimes(
     session: Session,
     receiver_id: UUID,
     showtime_ids: list[int],
+    eligible_only: bool = False,
 ) -> dict[int, set[UUID]]:
     """`get_active_received_inviter_ids` for many showtimes in one query.
 
     Showtimes without an active received invite are absent from the result.
+
+    `eligible_only` excludes pings whose receiver already had a selection
+    before the ping existed — see `get_ping_counterpart_ids_for_showtime`.
     """
     if len(showtime_ids) == 0:
         return {}
@@ -216,6 +265,10 @@ def get_active_received_inviter_ids_for_showtimes(
         ShowtimePing.receiver_id == receiver_id,
         col(ShowtimePing.dismissed_at).is_(None),
     )
+    if eligible_only:
+        stmt = stmt.where(
+            col(ShowtimePing.receiver_had_selection_at_creation).is_(False)
+        )
     inviter_ids_by_showtime_id: dict[int, set[UUID]] = {}
     for showtime_id, sender_id in session.exec(stmt).all():
         inviter_ids_by_showtime_id.setdefault(showtime_id, set()).add(sender_id)
@@ -227,6 +280,7 @@ def get_co_invited_user_ids(
     session: Session,
     viewer_id: UUID,
     showtime_id: int,
+    eligible_only: bool = False,
 ) -> set[UUID]:
     """Other people invited by anyone who has an active invite out to the viewer.
 
@@ -235,7 +289,10 @@ def get_co_invited_user_ids(
     """
     return set(
         get_co_invited_user_ids_with_inviter(
-            session=session, viewer_id=viewer_id, showtime_id=showtime_id
+            session=session,
+            viewer_id=viewer_id,
+            showtime_id=showtime_id,
+            eligible_only=eligible_only,
         )
     )
 
@@ -245,17 +302,26 @@ def get_co_invited_user_ids_with_inviter(
     session: Session,
     viewer_id: UUID,
     showtime_id: int,
+    eligible_only: bool = False,
 ) -> dict[UUID, UUID]:
     """Co-invitees mapped to the shared inviter who invited each of them.
 
     Same invite group as `get_co_invited_user_ids`, but attributes each
     co-invitee to one of the viewer's active inviters — whichever invited them
     (deterministic when more than one inviter sent that person an invite).
+
+    `eligible_only` requires the inviter→viewer edge to be an eligible ping
+    (see `get_ping_counterpart_ids_for_showtime`) — an inviter the viewer only
+    reaches through a flagged ping cannot be used to derive co-invitees.
+    Deliberately does NOT also filter the inviter→co-invitee edge below: that
+    edge belongs to the co-invitee's own graph, not the viewer's, so it stays
+    unfiltered even under `eligible_only`.
     """
     inviter_ids = get_active_received_inviter_ids(
         session=session,
         receiver_id=viewer_id,
         showtime_id=showtime_id,
+        eligible_only=eligible_only,
     )
     if len(inviter_ids) == 0:
         return {}
@@ -558,3 +624,33 @@ def delete_received_past_showtime_pings(
         session.delete(ping)
     session.flush()
     return len(past_pings)
+
+
+def delete_pings_between_users(
+    *,
+    session: Session,
+    user_id: UUID,
+    other_id: UUID,
+) -> int:
+    """Delete every invite between two users, in both directions.
+
+    Called when one blocks the other: an invite is a standing piece of contact
+    (it sits in the receiver's notification centre and grants mutual visibility
+    on that showtime), so leaving it in place would leave the block half-applied.
+
+    Visibility is rebuilt by the caller — deleting the rows here changes what
+    both users may see of each other's status.
+    """
+    stmt = select(ShowtimePing).where(
+        or_(
+            (col(ShowtimePing.sender_id) == user_id)
+            & (col(ShowtimePing.receiver_id) == other_id),
+            (col(ShowtimePing.sender_id) == other_id)
+            & (col(ShowtimePing.receiver_id) == user_id),
+        )
+    )
+    pings = list(session.exec(stmt).all())
+    for ping in pings:
+        session.delete(ping)
+    session.flush()
+    return len(pings)

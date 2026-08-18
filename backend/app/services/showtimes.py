@@ -2,12 +2,14 @@ from datetime import timedelta
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
+from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
+from app.converters import user as user_converters
 from app.core.enums import GoingStatus, VisibilityMode
-from app.crud import cinema_preset as cinema_presets_crud
+from app.core.security import generate_showtime_ping_token, verify_showtime_ping_token
+from app.core.viewer import ViewerId
 from app.crud import friendship as friendship_crud
 from app.crud import movie as movies_crud
 from app.crud import showtime as showtimes_crud
@@ -15,24 +17,28 @@ from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.exceptions.base import AppError
+from app.exceptions.moderation_exceptions import UserBlockedError
 from app.exceptions.showtime_exceptions import (
     ShowtimeNotFoundError,
-    ShowtimePingAlreadySelectedError,
     ShowtimePingAlreadySentError,
+    ShowtimePingInvalidLinkError,
     ShowtimePingNonFriendError,
     ShowtimePingPastShowtimeError,
     ShowtimePingSelfError,
-    ShowtimePingSenderAmbiguousError,
     ShowtimePingSenderNotFoundError,
     ShowtimeSeatValidationError,
 )
 from app.inputs.movie import Filters
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime, ShowtimeCreate
-from app.schemas.showtime import ShowtimeLoggedIn
-from app.schemas.showtime_ping import SentShowtimePingPublic
-from app.schemas.showtime_visibility import ShowtimeVisibilityPublic
-from app.services import push_notifications
+from app.schemas.showtime import ShowtimePublic
+from app.schemas.showtime_ping import SentShowtimePingPublic, ShowtimePingLinkToken
+from app.schemas.showtime_visibility import (
+    ShowtimeVisibilityPublic,
+    UninvitedSelectedFriendsPublic,
+)
+from app.services import moderation as moderation_service
+from app.services import push_notifications, showtime_title_conflict, viewer_context
 from app.utils import now_amsterdam_naive
 from app.validators.cinema_seating import CinemaSeatingPreset, validate_seat_for_preset
 
@@ -71,6 +77,23 @@ def _apply_end_datetime_fallback(
     )
 
 
+def _find_conflicting_cinema_scraper_showtime(
+    *,
+    session: Session,
+    showtime_create: ShowtimeCreate,
+) -> Showtime | None:
+    movie = movies_crud.get_movie_by_id(session=session, id=showtime_create.movie_id)
+    if movie is None:
+        return None
+    return showtime_title_conflict.find_conflicting_cinema_scraper_showtime(
+        session=session,
+        cinema_id=showtime_create.cinema_id,
+        showtime_datetime=showtime_create.datetime,
+        movie_id=showtime_create.movie_id,
+        movie_title=movie.title,
+    )
+
+
 def _normalize_seat_value(value: str | None) -> str | None:
     if value is None:
         return None
@@ -98,17 +121,18 @@ def get_showtime_by_id(
     *,
     session: Session,
     showtime_id: int,
-    current_user: UUID,
-) -> ShowtimeLoggedIn:
+    current_user: ViewerId,
+) -> ShowtimePublic:
     """
-    Get a showtime by its ID for a logged-in user.
+    Get a showtime by its ID, annotated for the requesting viewer.
 
     Parameters:
         session (Session): Database session.
         showtime_id (int): ID of the showtime to retrieve.
-        current_user (UUID): ID of the current user.
+        current_user (ViewerId): Who to annotate for; None for an anonymous
+            visitor — see `app.core.viewer`.
     Returns:
-        ShowtimeLoggedIn: The showtime details for the logged-in user.
+        ShowtimePublic: The showtime details for the requesting viewer.
     Raises:
         ShowtimeNotFoundError: If the showtime with the given ID does not exist.
     """
@@ -118,7 +142,7 @@ def get_showtime_by_id(
     )
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
-    showtime_public = showtime_converters.to_logged_in(
+    showtime_public = showtime_converters.to_public(
         showtime=showtime, session=session, user_id=current_user
     )
     return showtime_public
@@ -134,7 +158,7 @@ def update_showtime_selection(
     seat_number: str | None = None,
     visibility_mode: VisibilityMode | None = None,
     update_seat: bool = False,
-) -> ShowtimeLoggedIn:
+) -> ShowtimePublic:
     previous_status = user_crud.get_showtime_going_status(
         session=session,
         showtime_id=showtime_id,
@@ -219,7 +243,7 @@ def update_showtime_selection(
         except Exception as e:
             session.rollback()
             raise AppError from e
-    showtime_logged_in = showtime_converters.to_logged_in(
+    showtime_logged_in = showtime_converters.to_public(
         showtime=showtime, session=session, user_id=user_id
     )
 
@@ -247,12 +271,14 @@ def ping_friend_for_showtime(
     showtime_id: int,
     actor_id: UUID,
     friend_id: UUID,
-) -> tuple[Message, int]:
-    """Create the ping and return (message, ping_id).
+) -> tuple[Message, int, bool]:
+    """Create the ping and return (message, ping_id, should_notify).
 
     The caller is responsible for scheduling the push notification as a
     background task so the sender has a 5-second window to uninvite before
-    the notification fires.
+    the notification fires. `should_notify` is False when the friend already
+    had a selection before this ping — they already know, and this ping
+    grants no extra visibility, so it isn't a "real" invite to announce.
     """
     _create_showtime_ping(
         session=session,
@@ -268,7 +294,29 @@ def ping_friend_for_showtime(
         receiver_id=friend_id,
     )
     assert ping is not None and ping.id is not None
-    return Message(message="Friend invited successfully"), ping.id
+    should_notify = not ping.receiver_had_selection_at_creation
+    return Message(message="Friend invited successfully"), ping.id, should_notify
+
+
+def create_showtime_ping_link_token(
+    *,
+    session: Session,
+    showtime_id: int,
+    sender_id: UUID,
+) -> ShowtimePingLinkToken:
+    """Mint the signed token embedded in a shared `/ping/{showtime_id}/{token}` link.
+
+    Binds the link to the user actually sharing it, so `receive_ping_from_link`
+    can trust the sender it names instead of taking an unverified ID or display
+    name from the URL — see that function's docstring for why that mattered.
+    """
+    showtime = showtimes_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
+    if showtime is None:
+        raise ShowtimeNotFoundError(showtime_id)
+    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=sender_id)
+    return ShowtimePingLinkToken(token=token)
 
 
 def receive_ping_from_link(
@@ -276,29 +324,25 @@ def receive_ping_from_link(
     session: Session,
     showtime_id: int,
     receiver_id: UUID,
-    sender_identifier: str,
+    token: str,
 ) -> Message:
-    normalized_identifier = sender_identifier.strip()
-    if not normalized_identifier:
-        raise ShowtimePingSenderNotFoundError()
+    """Record the invite carried by a shared link, once its token checks out.
 
-    sender_id: UUID
-    try:
-        sender_id = UUID(normalized_identifier)
-        sender = user_crud.get_user_by_id(session=session, user_id=sender_id)
-        if sender is None:
-            raise ShowtimePingSenderNotFoundError()
-    except ValueError:
-        try:
-            sender = user_crud.get_user_by_display_name(
-                session=session,
-                display_name=normalized_identifier,
-            )
-        except MultipleResultsFound as error:
-            raise ShowtimePingSenderAmbiguousError() from error
-        if sender is None:
-            raise ShowtimePingSenderNotFoundError()
-        sender_id = sender.id
+    The token is signed by `create_showtime_ping_link_token` at share time, so
+    the sender it names is provably the person who generated the link — unlike
+    a raw user ID or display name in the URL, which anyone could substitute to
+    fabricate an invite from someone who never sent one.
+    """
+    decoded = verify_showtime_ping_token(token)
+    if decoded is None:
+        raise ShowtimePingInvalidLinkError()
+    sender_id, token_showtime_id = decoded
+    if token_showtime_id != showtime_id:
+        raise ShowtimePingInvalidLinkError()
+
+    sender = user_crud.get_user_by_id(session=session, user_id=sender_id)
+    if sender is None:
+        raise ShowtimePingSenderNotFoundError()
 
     try:
         _create_showtime_ping(
@@ -325,6 +369,14 @@ def _create_showtime_ping(
     if sender_id == receiver_id:
         raise ShowtimePingSelfError()
 
+    # Checked here rather than in the two callers so it covers both a direct
+    # invite and one carried by a shared link — an invite is contact, and a
+    # block has to stop all of it. Symmetric: see services/moderation.py.
+    if moderation_service.is_contact_blocked(
+        session=session, user_id=sender_id, other_id=receiver_id
+    ):
+        raise UserBlockedError
+
     showtime = showtimes_crud.get_showtime_by_id(
         session=session, showtime_id=showtime_id
     )
@@ -350,17 +402,13 @@ def _create_showtime_ping(
         showtime_id=showtime_id,
         user_id=receiver_id,
     )
-    if friend_status in (GoingStatus.GOING, GoingStatus.INTERESTED):
-        friend_status_is_visible = (
-            showtime_visibility_crud.is_showtime_visible_to_viewer_for_ids(
-                session=session,
-                owner_id=receiver_id,
-                showtime_id=showtime_id,
-                viewer_id=sender_id,
-            )
-        )
-        if friend_status_is_visible:
-            raise ShowtimePingAlreadySelectedError()
+    # A friend who is already going/interested can still be invited — it just
+    # doesn't count as an "accepted" invite (see receiver_had_selection_at_creation),
+    # so it grants no extra visibility and isn't notified.
+    receiver_had_selection_at_creation = friend_status in (
+        GoingStatus.GOING,
+        GoingStatus.INTERESTED,
+    )
 
     existing_ping = showtime_ping_crud.get_showtime_ping(
         session=session,
@@ -384,6 +432,7 @@ def _create_showtime_ping(
             sender_id=sender_id,
             receiver_id=receiver_id,
             created_at=now_amsterdam_naive(),
+            receiver_had_selection_at_creation=receiver_had_selection_at_creation,
         )
         if sender_status != GoingStatus.GOING:
             # Sending an invite implies interest, unless the sender is
@@ -596,6 +645,37 @@ def get_showtime_visibility(
     )
 
 
+def get_uninvited_selected_friends_for_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    actor_id: UUID,
+) -> UninvitedSelectedFriendsPublic:
+    """Friends already going/interested but not yet ping-connected to the actor.
+
+    Used by the mobile client to warn before switching to INVITED_ONLY: these
+    friends can currently see the actor's status and would otherwise silently
+    lose that visibility, since they were never invited or inviting.
+    """
+    showtime = showtimes_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
+    if showtime is None:
+        raise ShowtimeNotFoundError(showtime_id)
+
+    friend_ids = (
+        showtime_visibility_crud.get_uninvited_selected_friend_ids_for_showtime(
+            session=session,
+            owner_id=actor_id,
+            showtime_id=showtime_id,
+        )
+    )
+    friends = user_crud.get_users_by_ids(session=session, user_ids=friend_ids)
+    return UninvitedSelectedFriendsPublic(
+        friends=[user_converters.to_public(friend) for friend in friends]
+    )
+
+
 def update_showtime_visibility(
     *,
     session: Session,
@@ -717,6 +797,7 @@ def upsert_showtime(
     session: Session,
     showtime_create: ShowtimeCreate,
     commit: bool = True,
+    yield_to_conflicting_showtime: bool = False,
 ) -> Showtime | None:
     """
     Insert or update a showtime and return the resulting database row.
@@ -726,6 +807,13 @@ def upsert_showtime(
 
     Returns None (creating nothing) if this exact showtime was previously
     deleted by an admin from the reports page — see DeletedShowtime.
+
+    ``yield_to_conflicting_showtime`` is for the Cineville path: rather than
+    adding a second row for a screening a cinema scraper already listed under a
+    near-identical title, return that row so the Cineville presence attaches to
+    it. Without this the duplicate is created every run and deleted again by
+    ``_delete_cineville_title_conflicts``, which churned the same handful of
+    showtimes through the recap's deletion list on every single scrape.
     """
     # Prefer exact unique match so metadata fallbacks (for example end_datetime)
     # can be applied on unchanged showtimes instead of hitting unique-violation
@@ -755,6 +843,14 @@ def upsert_showtime(
         datetime=showtime_create.datetime,
     ):
         return None
+
+    if existing_showtime is None and yield_to_conflicting_showtime:
+        conflicting_showtime = _find_conflicting_cinema_scraper_showtime(
+            session=session,
+            showtime_create=showtime_create,
+        )
+        if conflicting_showtime is not None:
+            return conflicting_showtime
 
     _apply_end_datetime_fallback(
         session=session,
@@ -846,30 +942,20 @@ def upsert_showtime(
 def get_main_page_showtimes(
     *,
     session: Session,
-    current_user_id: UUID,
+    current_user_id: ViewerId,
     limit: int,
     offset: int,
     filters: Filters,
-) -> list[ShowtimeLoggedIn]:
-    if filters.selected_cinema_ids is None:
-        favorite_preset = cinema_presets_crud.get_user_favorite_preset(
-            session=session,
-            user_id=current_user_id,
-        )
-        if favorite_preset is not None:
-            filters.selected_cinema_ids = list(favorite_preset.cinema_ids)
-        else:
-            # Compatibility fallback for users still on legacy cinema selections.
-            filters.selected_cinema_ids = user_crud.get_selected_cinemas_ids(
-                session=session,
-                user_id=current_user_id,
-            )
+) -> list[ShowtimePublic]:
+    viewer_context.apply_viewer_defaults(
+        session=session, viewer_id=current_user_id, filters=filters
+    )
 
     letterboxd_username = None
     if filters.watchlist_only or filters.hide_watched:
-        letterboxd_username = user_crud.get_letterboxd_username(
+        letterboxd_username = viewer_context.letterboxd_username_for(
             session=session,
-            user_id=current_user_id,
+            viewer_id=current_user_id,
         )
     showtimes = showtimes_crud.get_main_page_showtimes(
         session=session,
@@ -880,7 +966,7 @@ def get_main_page_showtimes(
         letterboxd_username=letterboxd_username,
     )
     return [
-        showtime_converters.to_logged_in(
+        showtime_converters.to_public(
             showtime=showtime, session=session, user_id=current_user_id
         )
         for showtime in showtimes
@@ -890,27 +976,18 @@ def get_main_page_showtimes(
 def count_main_page_showtimes(
     *,
     session: Session,
-    current_user_id: UUID,
+    current_user_id: ViewerId,
     filters: Filters,
 ) -> int:
-    if filters.selected_cinema_ids is None:
-        favorite_preset = cinema_presets_crud.get_user_favorite_preset(
-            session=session,
-            user_id=current_user_id,
-        )
-        if favorite_preset is not None:
-            filters.selected_cinema_ids = list(favorite_preset.cinema_ids)
-        else:
-            filters.selected_cinema_ids = user_crud.get_selected_cinemas_ids(
-                session=session,
-                user_id=current_user_id,
-            )
+    viewer_context.apply_viewer_defaults(
+        session=session, viewer_id=current_user_id, filters=filters
+    )
 
     letterboxd_username = None
     if filters.watchlist_only or filters.hide_watched:
-        letterboxd_username = user_crud.get_letterboxd_username(
+        letterboxd_username = viewer_context.letterboxd_username_for(
             session=session,
-            user_id=current_user_id,
+            viewer_id=current_user_id,
         )
     return showtimes_crud.count_main_page_showtimes(
         session=session,

@@ -38,16 +38,26 @@ import { useFetchSentRequests } from 'shared/hooks/useFetchSentRequests';
 import QRCode from 'react-native-qrcode-svg';
 
 import { ThemedText } from '@/components/themed-text';
+import { tabletCappedContentStyle } from '@/constants/tablet-layout';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import FriendCard from '@/components/friends/FriendCard';
+import SignedOutPanel from '@/components/auth/SignedOutPanel';
 import ShareInviteLinkButton from '@/components/friends/ShareInviteLinkButton';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
 import SegmentedControl, { type SegmentedOption } from '@/components/ui/SegmentedControl';
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
+import { useIsSignedIn } from '@/utils/auth-session';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
+
+/** What signing in would put on this tab, in the order it would appear. */
+const FRIENDS_HIGHLIGHTS = [
+  "See which screenings your friends are going to",
+  "Invite them along, or accept an invite",
+  "Find people by username, or share your own link",
+] as const;
 
 /** Friend rows carry the visibility control, so their skeleton is taller than a plain user row. */
 const FRIEND_ROW_SKELETON_HEIGHT = 104;
@@ -88,6 +98,10 @@ export default function FriendsScreen() {
   const styles = createStyles(colors);
   // React Query client used for cache updates and invalidation.
   const queryClient = useQueryClient();
+  // Every list on this tab is a relationship between two accounts. A guest has
+  // neither end of one, so the tab shows what it would be for instead — and no
+  // query below it runs.
+  const isSignedIn = useIsSignedIn();
 
   // Current text typed into the search input.
   const [searchQuery, setSearchQuery] = useState('');
@@ -128,17 +142,22 @@ export default function FriendsScreen() {
   } = useFetchUsers({
     limit: 20,
     filters: userFilters,
-    enabled: isDiscovering && hasUserSearch,
+    enabled: isSignedIn && isDiscovering && hasUserSearch,
   });
 
   const { data: friendsData, isFetching: isFetchingFriends } = useFetchFriends({
-    enabled: !isDiscovering,
+    enabled: isSignedIn && !isDiscovering,
   });
-  const { data: receivedRequests, isFetching: isFetchingReceived } = useFetchReceivedRequests();
-  const { data: sentRequests } = useFetchSentRequests({ enabled: !isDiscovering });
+  const { data: receivedRequests, isFetching: isFetchingReceived } = useFetchReceivedRequests({
+    enabled: isSignedIn,
+  });
+  const { data: sentRequests } = useFetchSentRequests({
+    enabled: isSignedIn && !isDiscovering,
+  });
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => MeService.getCurrentUser(),
+    enabled: isSignedIn,
   });
 
   // Flatten/derive list data for rendering efficiency.
@@ -264,6 +283,15 @@ export default function FriendsScreen() {
   );
 
   // Render/output using the state and derived values prepared above.
+  if (!isSignedIn) {
+    return (
+      <TopSafeAreaView style={styles.container}>
+        <TopBar title="Friends" icon="person.2.fill" />
+        <SignedOutPanel feature="friends" bullets={FRIENDS_HIGHLIGHTS} />
+      </TopSafeAreaView>
+    );
+  }
+
   return (
     <TopSafeAreaView style={styles.container}>
       <TopBar title="Friends" icon="person.2.fill" />
@@ -391,6 +419,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       paddingTop: 12,
     },
     content: {
+      ...tabletCappedContentStyle,
       padding: 16,
       paddingTop: 4,
       paddingBottom: 24,

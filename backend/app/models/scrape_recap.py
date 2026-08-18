@@ -18,6 +18,11 @@ class ScrapeRecap(SQLModel, table=True):
     finished_at: dt.datetime
     subject: str
     html: str
+    # This run's figures (see `RecapRunMetrics`). The daily email is rendered
+    # from every run's metrics at once so each statistic can show its combined
+    # value plus each run's, rather than stitching the per-run `html` blobs
+    # together. `html` is still stored for the admin monitor's per-run view.
+    metrics_json: str = "{}"
     # JSON array of {"filename", "mime_type", "data_b64"} for the run's
     # diagnostic attachments (TMDB lookups, scrape-run details, etc.).
     attachments_json: str = "[]"

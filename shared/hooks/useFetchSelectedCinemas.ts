@@ -16,12 +16,20 @@ export const prefetchSelectedCinemas = (queryClient: QueryClient): Promise<void>
         queryFn: fetchSelectedCinemas,
     });
 
-export function useFetchSelectedCinemas(): UseQueryResult<MeGetCinemaSelectionsResponse, Error>{
+type UseFetchSelectedCinemasProps = {
+    /** Off for a signed-out visitor: this reads an account that isn't there. */
+    enabled?: boolean;
+};
+
+export function useFetchSelectedCinemas(
+    { enabled = true }: UseFetchSelectedCinemasProps = {}
+): UseQueryResult<MeGetCinemaSelectionsResponse, Error>{
     const result = useQuery<MeGetCinemaSelectionsResponse, Error>({
         queryKey: selectedCinemasQueryKey,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         queryFn: fetchSelectedCinemas,
+        enabled,
         staleTime: 0,
         gcTime: 5 * 60 * 1000, // 5 minutes
     });

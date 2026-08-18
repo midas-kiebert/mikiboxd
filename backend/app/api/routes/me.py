@@ -22,7 +22,11 @@ from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
 from app.schemas.analytics_event import AnalyticsEventCreate
-from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
+from app.schemas.cinema_preset import (
+    CinemaPresetCreate,
+    CinemaPresetPublic,
+    CinemaPresetRename,
+)
 from app.schemas.letterboxd_list import (
     LetterboxdListCreate,
     LetterboxdListPublic,
@@ -30,11 +34,13 @@ from app.schemas.letterboxd_list import (
 from app.schemas.notification import NotificationFeedItem
 from app.schemas.push_token import PushTokenDelete, PushTokenRegister
 from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
-from app.schemas.showtime import ShowtimeLoggedIn
+from app.schemas.showtime import ShowtimePublic
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe, UserWithFriendStatus
+from app.schemas.user_block import BlockedUserPublic
 from app.services import letterboxd_lists as letterboxd_lists_service
 from app.services import me as me_service
+from app.services import moderation as moderation_service
 from app.services import users as users_service
 from app.services import watched as watched_service
 from app.services import watchlist as watchlist_service
@@ -178,13 +184,29 @@ def create_cinema_preset(
     )
 
 
+@router.patch("/cinema-presets/{preset_id}", response_model=CinemaPresetPublic)
+def rename_cinema_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    preset_id: UUID,
+    payload: CinemaPresetRename,
+) -> CinemaPresetPublic:
+    return me_service.rename_cinema_preset(
+        session=session,
+        user_id=current_user.id,
+        preset_id=preset_id,
+        name=payload.name,
+    )
+
+
 @router.put("/cinema-presets/{preset_id}/favorite", response_model=CinemaPresetPublic)
 def set_favorite_cinema_preset(
     session: SessionDep,
     current_user: CurrentUser,
     preset_id: UUID,
 ) -> CinemaPresetPublic:
-    favorite = me_service.set_favorite_cinema_preset(
+    """Point "my cinemas" at this preset's cinemas — a copy, not a handover."""
+    favorite = me_service.apply_cinema_preset_as_favorite(
         session=session,
         user_id=current_user.id,
         preset_id=preset_id,
@@ -310,14 +332,14 @@ def count_my_showtimes(
     )
 
 
-@router.get("/showtimes", response_model=list[ShowtimeLoggedIn])
+@router.get("/showtimes", response_model=list[ShowtimePublic])
 def get_my_showtimes(
     session: SessionDep,
     current_user: CurrentUser,
     limit: int = Query(10, ge=1, le=50),
     offset: int = Query(0, ge=0),
     filters: Filters = Depends(get_filters),
-) -> list[ShowtimeLoggedIn]:
+) -> list[ShowtimePublic]:
     return users_service.get_selected_showtimes(
         session=session,
         user_id=current_user.id,
@@ -328,7 +350,7 @@ def get_my_showtimes(
     )
 
 
-@router.get("/agenda", response_model=list[ShowtimeLoggedIn])
+@router.get("/agenda", response_model=list[ShowtimePublic])
 def get_my_agenda(
     session: SessionDep,
     current_user: CurrentUser,
@@ -339,7 +361,7 @@ def get_my_agenda(
     ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-) -> list[ShowtimeLoggedIn]:
+) -> list[ShowtimePublic]:
     if snapshot_time is None:
         snapshot_time = now_amsterdam_naive()
     return me_service.get_agenda_showtimes(
@@ -557,6 +579,21 @@ def get_friends(
     *, session: SessionDep, current_user: CurrentUser
 ) -> list[UserWithFriendStatus]:
     return users_service.get_friends(session=session, user_id=current_user.id)
+
+
+@router.get("/blocked-users", response_model=list[BlockedUserPublic])
+def get_blocked_users(
+    *, session: SessionDep, current_user: CurrentUser
+) -> list[BlockedUserPublic]:
+    """The accounts this user has blocked, newest first.
+
+    The only place a blocked account is still visible to them — search, friends
+    and invites all leave it out — so this list is also the only way back to
+    unblocking one.
+    """
+    return moderation_service.list_blocked_users(
+        session=session, blocker_id=current_user.id
+    )
 
 
 @router.get("/requests/sent", response_model=list[UserWithFriendStatus])

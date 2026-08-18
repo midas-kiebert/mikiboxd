@@ -100,9 +100,9 @@ export default function ShowtimeRow({
       </View>
       {showFriends ? (
         <FriendBadges
-          friendsGoing={showtime.friends_going}
-          friendsInterested={showtime.friends_interested}
-          friendsPending={showtime.pending_invited_friends}
+          friendsGoing={showtime.viewer?.friends_going}
+          friendsInterested={showtime.viewer?.friends_interested}
+          friendsPending={showtime.viewer?.pending_invited_friends}
           variant={isCompact ? "compact" : "default"}
           style={styles.friendRow}
         />

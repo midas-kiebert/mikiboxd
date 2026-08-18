@@ -23,7 +23,7 @@ from app.services import movies as movies_services
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_services
 
-CINEMA = "Studio/K"
+CINEMA_KEY = "studio-k"
 # The old /films/ overview page now 301s to the homepage; /specials/ ("Actueel")
 # is its replacement and lists the same currently-playing films.
 FILMS_URL = "https://studio-k.nu/specials/"
@@ -84,13 +84,14 @@ def extract_film_slugs(html: str) -> list[str]:
 
 class StudioKScraper(BaseCinemaScraper):
     def __init__(self) -> None:
+        self.cinema_key = CINEMA_KEY
         with get_db_context() as session:
-            self.cinema_id = cinema_crud.get_cinema_id_by_name(
-                session=session, name=CINEMA
+            self.cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=CINEMA_KEY
             )
             if not self.cinema_id:
-                logger.error(f"Cinema {CINEMA} not found in database")
-                raise ValueError(f"Cinema {CINEMA} not found in database")
+                logger.error(f"Cinema {CINEMA_KEY} not found in database")
+                raise ValueError(f"Cinema {CINEMA_KEY} not found in database")
 
     def _process_film_slug(
         self, slug: str

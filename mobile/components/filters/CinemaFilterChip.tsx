@@ -5,10 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { MeService } from "shared";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useCinemaSelection } from "@/hooks/useCinemaSelection";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
@@ -21,11 +22,23 @@ type CinemaFilterChipProps = {
    * (movie / friend agenda) pass their own local cinema modal opener.
    */
   onOpenCinemaModal?: () => void;
+  /**
+   * Searching by cinema name makes a cinema selection redundant — the query
+   * already narrows to matching cinemas — so the chip reads "All cinemas" and
+   * stops opening anything while it's true. The underlying selection is left
+   * untouched, only overridden at the query layer (see the tab screens), so
+   * it's exactly what it was before the moment this goes false again.
+   */
+  disabled?: boolean;
 };
 
 const DROPDOWN_WIDTH = 252;
 
-export default function CinemaFilterChip({ onOpenFilters, onOpenCinemaModal }: CinemaFilterChipProps) {
+export default function CinemaFilterChip({
+  onOpenFilters,
+  onOpenCinemaModal,
+  disabled = false,
+}: CinemaFilterChipProps) {
   const colors = useThemeColors();
   const { openCinemaModal } = useFiltersModal();
   const styles = createStyles(colors);
@@ -52,20 +65,29 @@ export default function CinemaFilterChip({ onOpenFilters, onOpenCinemaModal }: C
   }, [dropdownVisible, caretRotation]);
 
   const { data: allCinemas = [] } = useFetchCinemas();
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
-  const { selections: sessionCinemaIds, setSelections: setSessionCinemaIds } =
-    useSessionCinemaSelections();
+  // See FiltersModal: the cinema list is public, the saved picks and named
+  // presets are not, and a guest's selection persists to the device instead.
+  const isSignedIn = useIsSignedIn();
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
+  const { cinemaIds: sessionCinemaIds, setCinemaIds: setSessionCinemaIds } =
+    useCinemaSelection();
   const { data: cinemaPresets = [] } = useQuery({
     queryKey: ["cinema-presets"],
     queryFn: () => MeService.getCinemaPresets(),
+    enabled: isSignedIn,
   });
 
   const effectiveIds = sessionCinemaIds ?? preferredCinemaIds ?? [];
   const sortedEffectiveIds = Array.from(new Set(effectiveIds)).sort((a, b) => a - b);
   const sig = JSON.stringify(sortedEffectiveIds);
 
+  // An empty selection is every cinema, not none — the feed is unfiltered
+  // either way, and "0 cinemas" over a full list was simply wrong. See
+  // useCinemaSelection, which stops an empty selection being written at all;
+  // this covers the moment before the cinema list has loaded to resolve it.
   const isAllCinemas =
-    allCinemas.length > 0 && sortedEffectiveIds.length === allCinemas.length;
+    sortedEffectiveIds.length === 0 ||
+    (allCinemas.length > 0 && sortedEffectiveIds.length === allCinemas.length);
   const matchingPreset = isAllCinemas
     ? null
     : cinemaPresets.find(
@@ -73,10 +95,13 @@ export default function CinemaFilterChip({ onOpenFilters, onOpenCinemaModal }: C
           JSON.stringify(Array.from(new Set(p.cinema_ids)).sort((a, b) => a - b)) === sig
       );
 
-  const label = isAllCinemas
+  const label = disabled
     ? "All cinemas"
-    : matchingPreset?.name ?? `${sortedEffectiveIds.length} cinemas`;
+    : isAllCinemas
+      ? "All cinemas"
+      : matchingPreset?.name ?? `${sortedEffectiveIds.length} cinemas`;
 
+  // Only ever read inside the dropdown, which a guest never opens.
   const hintText =
     cinemaPresets.length === 0
       ? "Select cinemas and save presets"
@@ -116,16 +141,43 @@ export default function CinemaFilterChip({ onOpenFilters, onOpenCinemaModal }: C
     (onOpenCinemaModal ?? openCinemaModal)();
   };
 
+  // The dropdown exists to offer saved cinema presets, which belong to an
+  // account. Without one it has nothing to list, so the pill skips it entirely
+  // and goes straight to the picker rather than opening a menu whose only row
+  // is the link to that picker.
+  const handleChipPress = () => {
+    if (disabled) return;
+    if (!isSignedIn) {
+      handleOpenFilters();
+      return;
+    }
+    openDropdown();
+  };
+
   return (
     <>
       <View ref={chipRef} collapsable={false} onLayout={handleChipLayout}>
-        <TouchableOpacity style={styles.chip} onPress={openDropdown} activeOpacity={0.75}>
-          <ThemedText style={styles.chipLabel} numberOfLines={1}>
+        <TouchableOpacity
+          style={[styles.chip, disabled && styles.chipDisabled]}
+          onPress={handleChipPress}
+          activeOpacity={disabled ? 1 : 0.75}
+          disabled={disabled}
+        >
+          <ThemedText
+            style={[styles.chipLabel, disabled && styles.chipLabelDisabled]}
+            numberOfLines={1}
+          >
             {label}
           </ThemedText>
-          <Animated.View style={{ transform: [{ rotate: caretSpin }] }}>
-            <MaterialIcons name="expand-more" size={13} color={colors.pillText} />
-          </Animated.View>
+          {disabled ? null : isSignedIn ? (
+            <Animated.View style={{ transform: [{ rotate: caretSpin }] }}>
+              <MaterialIcons name="expand-more" size={13} color={colors.pillText} />
+            </Animated.View>
+          ) : (
+            // Nothing expands, so the caret would be a lie; the pill reads as
+            // the button to the picker that it is.
+            <MaterialIcons name="tune" size={13} color={colors.pillText} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -217,11 +269,17 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderColor: colors.pillBorder,
       alignSelf: "center",
     },
+    chipDisabled: {
+      opacity: 0.5,
+    },
     chipLabel: {
       fontSize: 12,
       fontWeight: "500",
       color: colors.pillText,
       flexShrink: 1,
+    },
+    chipLabelDisabled: {
+      color: colors.textSecondary,
     },
     dropdown: {
       position: "absolute",

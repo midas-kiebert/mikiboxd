@@ -122,7 +122,10 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
     ];
   }
 
-  const canOpenFriendShowtimes = user.is_friend && !isBusy;
+  // Friends open straight onto their agenda; everyone else opens onto the
+  // same route's non-friend profile card, which is also where block/report
+  // live — so the row needs to stay tappable for non-friends too.
+  const canOpenFriendShowtimes = !isBusy;
 
   const handleOpenFriendShowtimes = () => {
     if (!canOpenFriendShowtimes) return;
@@ -195,24 +198,22 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
           );
         })}
         {user.is_friend ? (
-          <>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={(event) => {
-                event.stopPropagation();
-                handleRemovePress();
-              }}
-              disabled={isBusy}
-              activeOpacity={0.7}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove ${friendName} as a friend`}
-            >
-              <MaterialIcons name="person-remove-alt-1" size={17} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
-          </>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={(event) => {
+              event.stopPropagation();
+              handleRemovePress();
+            }}
+            disabled={isBusy}
+            activeOpacity={0.7}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${friendName} as a friend`}
+          >
+            <MaterialIcons name="person-remove-alt-1" size={17} color={colors.textSecondary} />
+          </TouchableOpacity>
         ) : null}
+        <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
       </View>
     </TouchableOpacity>
   );

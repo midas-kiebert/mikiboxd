@@ -2,10 +2,12 @@
  * Expo Router screen/module for (tabs) / settings. It controls navigation and screen-level state for this route.
  */
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   LayoutAnimation,
   type LayoutChangeEvent,
+  Linking,
   ScrollView,
   StyleSheet,
   Switch,
@@ -20,6 +22,7 @@ import { triggerSelectionHaptic } from '@/utils/long-press';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import {
   CINEVILLE_DIGITS_LENGTH,
   CINEVILLE_PREFIX,
@@ -38,10 +41,11 @@ import {
   useFeatureTipsEnabled,
 } from '@/utils/feature-tips';
 import { startIntro } from '@/utils/intro';
-import { markSignedOut } from '@/utils/auth-session';
+import { markSignedOut, useIsSignedIn } from '@/utils/auth-session';
 import useAuth from 'shared/hooks/useAuth';
 import {
   MeService,
+  UtilsService,
   type ApiError,
   type CinemaPresetPublic,
   type DigestFrequency,
@@ -53,9 +57,12 @@ import { emailPattern, handleError, usernameMaxLength, usernamePattern } from 's
 import { unregisterPushTokenForCurrentDevice } from '@/utils/push-notifications';
 import NotificationPreferenceList from '@/components/notifications/NotificationPreferenceList';
 import LetterboxdSection from '@/components/settings/LetterboxdSection';
+import SignedOutPanel from '@/components/auth/SignedOutPanel';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import EmailVerificationRequiredDialog from '@/components/ui/EmailVerificationRequiredDialog';
+import { useEmailVerificationPolling } from '@/hooks/useCurrentUser';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
+import { PRIVACY_POLICY_URL, SUPPORT_PAGE_URL } from '@/constants/legal-links';
 
 // Placeholder for the danger zone card's height until it has been measured
 // once. Sized from the card's own styles (18pt padding top and bottom, roughly
@@ -99,6 +106,12 @@ export default function SettingsScreen() {
     markSignedOut();
     router.replace('/login');
   });
+  // Settings is two things stacked: preferences that belong to this device
+  // (appearance, the Cineville card, the legal notices) and preferences that
+  // belong to an account (profile, notifications, Letterboxd, the account
+  // itself). A guest gets the first set, which works exactly as it does for
+  // anyone else, and an offer where the second would be.
+  const isSignedIn = useIsSignedIn();
   // The intro normally runs once, for a brand-new account. Superusers get the
   // replay button in release builds too, so it can be checked on a real device
   // without making an account for every run.
@@ -128,9 +141,17 @@ export default function SettingsScreen() {
   const [digestCinemaPresetId, setDigestCinemaPresetId] = useState<string | null>(null);
   const [digestAdvancedOpen, setDigestAdvancedOpen] = useState(false);
   const [isUpdatingDigest, setIsUpdatingDigest] = useState(false);
+  const [isDigestFrequencyInfoVisible, setIsDigestFrequencyInfoVisible] = useState(false);
+  // Explanation copy for the Eager/Lazy frequency modes, kept on the backend so
+  // it can be updated whenever the digest algorithm itself changes.
+  const { data: digestFrequencyInfo } = useQuery({
+    queryKey: ['watchlist-digest-frequency-info'],
+    queryFn: () => UtilsService.getWatchlistDigestFrequencyInfo(),
+    staleTime: Infinity,
+  });
   // Always fetched (not gated on the advanced picker): needed to resolve the
   // curated top-500 default below even when the picker has never been opened.
-  const { data: digestLists = [] } = useFetchLetterboxdLists();
+  const { data: digestLists = [] } = useFetchLetterboxdLists(isSignedIn);
   const { data: cinemaPresets = [] } = useQuery<CinemaPresetPublic[]>({
     queryKey: ['cinema-presets'],
     queryFn: () => MeService.getCinemaPresets(),
@@ -159,6 +180,22 @@ export default function SettingsScreen() {
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
   const [isLogoutDialogVisible, setIsLogoutDialogVisible] = useState(false);
   const [isEmailVerificationRequired, setIsEmailVerificationRequired] = useState(false);
+  // Shown after a save that changed the email: the backend sends a fresh
+  // confirmation link to the new address, and nothing else on screen says so.
+  const [verificationSentTo, setVerificationSentTo] = useState<string | null>(null);
+  // The address the last save started from, so the mutation's success handler
+  // can tell an email change from a username-only one. A ref rather than the
+  // user object: by then the account query has been invalidated.
+  const emailBeforeSaveRef = useRef('');
+  // While the address is unconfirmed the account is re-read every few seconds,
+  // so opening the link in a mail app turns the badge over while Settings is
+  // still on screen. The returned flag drives the spinner next to it.
+  // Only while Settings is the screen being looked at: this tab stays mounted
+  // behind the others, and a poll nobody can see is just traffic.
+  const isSettingsFocused = useIsFocused();
+  const isCheckingVerification = useEmailVerificationPolling(
+    isSettingsFocused && isSignedIn && user !== undefined && !user.email_verified
+  );
   // The danger zone is collapsed by default so it takes an extra, deliberate
   // tap to reach account deletion.
   const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
@@ -177,7 +214,9 @@ export default function SettingsScreen() {
   const handleDangerCardLayout = useCallback((event: LayoutChangeEvent) => {
     setDangerCardHeight(event.nativeEvent.layout.height);
   }, []);
-  const dangerZoneReservedSpace = dangerCardHeight + SECTION_GAP;
+  // Nothing to reserve room for when the danger zone isn't rendered at all,
+  // which is the guest's Settings — the space would just be a gap at the end.
+  const dangerZoneReservedSpace = isSignedIn ? dangerCardHeight + SECTION_GAP : 0;
   const dangerCaretSpin = useMemo(
     () => dangerCaretRotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }),
     [dangerCaretRotation]
@@ -234,9 +273,20 @@ export default function SettingsScreen() {
   // Profile updates are persisted to backend and then current-user cache is refreshed.
   const profileMutation = useMutation({
     mutationFn: (data: UserUpdate) => MeService.updateUserMe({ requestBody: data }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       setProfile((prev) => ({ ...prev, current_password: '' }));
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+      const newEmail = variables.email?.trim() ?? '';
+      const emailChanged =
+        newEmail !== '' &&
+        newEmail.toLowerCase() !== emailBeforeSaveRef.current.trim().toLowerCase();
+      // A changed address is unconfirmed again and gets a link sent to it. That
+      // is the part the user has to act on, so it replaces the plain "saved"
+      // notice rather than stacking a second dialog behind it.
+      if (emailChanged) {
+        setVerificationSentTo(newEmail);
+        return;
+      }
       Alert.alert('Success', 'Profile updated successfully.');
     },
     onError: (error) => {
@@ -326,6 +376,7 @@ export default function SettingsScreen() {
       return;
     }
 
+    emailBeforeSaveRef.current = user?.email ?? '';
     profileMutation.mutate({
       display_name: normalizedUsername,
       email: profile.email,
@@ -352,6 +403,16 @@ export default function SettingsScreen() {
       current_password: hasPassword ? passwords.current_password : null,
       new_password: passwords.new_password,
     });
+  };
+
+  const handleOpenPrivacyPolicy = () => {
+    triggerSelectionHaptic();
+    void Linking.openURL(PRIVACY_POLICY_URL);
+  };
+
+  const handleOpenSupport = () => {
+    triggerSelectionHaptic();
+    void Linking.openURL(SUPPORT_PAGE_URL);
   };
 
   // Run a confirmed destructive action and handle the result.
@@ -430,11 +491,11 @@ export default function SettingsScreen() {
     );
   };
 
-  // "My watchlist" is no longer a selectable source: without a Letterboxd
-  // username it silently resolved to nothing, so a brand-new digest source is
-  // now the curated top-500 list instead. Only fires once — after the update
-  // lands, `user.notify_watchlist_digest_list_id` is no longer null and this
-  // bails out on subsequent renders.
+  // "My watchlist" (a null list_id) resolves to nothing without a connected
+  // Letterboxd account, so a brand-new digest source defaults to the curated
+  // top-500 list instead. Only fires once — after the update lands,
+  // `user.notify_watchlist_digest_list_id` is no longer null and this bails
+  // out on subsequent renders.
   useEffect(() => {
     if (!user || user.notify_watchlist_digest_list_id || user.letterboxd_username) return;
     if (digestListId) return;
@@ -445,6 +506,27 @@ export default function SettingsScreen() {
     void handleDigestUpdate(
       { notify_watchlist_digest_list_id: defaultList.id },
       () => setDigestListId(defaultList.id),
+      () => {}
+    );
+  }, [user, digestLists, digestListId]);
+
+  // Once a Letterboxd account is connected, "My watchlist" becomes a real
+  // source again. If the curated top-500 list is still selected, it's almost
+  // certainly still sitting there from the fallback above — from before the
+  // account was connected, or from before this list was selectable at all —
+  // so switch it back to the watchlist. A deliberately-picked different list
+  // is left untouched. Self-terminating: once the switch lands, digestListId
+  // is null and this bails on subsequent renders, same as the effect above.
+  useEffect(() => {
+    if (!user || !user.letterboxd_username) return;
+    if (digestListId === null) return;
+    const curatedTop500 = digestLists.find(
+      (list) => list.is_curated && list.list_slug === 'letterboxds-top-500-films'
+    );
+    if (!curatedTop500 || digestListId !== curatedTop500.id) return;
+    void handleDigestUpdate(
+      { notify_watchlist_digest_list_id: null },
+      () => setDigestListId(null),
       () => {}
     );
   }, [user, digestLists, digestListId]);
@@ -499,6 +581,13 @@ export default function SettingsScreen() {
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
       >
+        {!isSignedIn ? (
+          <View style={styles.section}>
+            <SignedOutPanel feature="profile" variant="card" />
+          </View>
+        ) : null}
+
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>My profile</ThemedText>
           <View style={styles.card}>
@@ -528,9 +617,22 @@ export default function SettingsScreen() {
                   onPress={() => setIsEmailVerificationRequired(true)}
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 >
-                  <MaterialIcons name="warning" size={13} color={colors.yellow.secondary} />
+                  {/* The spinner takes the warning icon's place rather than
+                      sitting beside it, so the row never shifts width as the
+                      poll comes and goes. */}
+                  <View style={styles.emailStatusIcon}>
+                    {isCheckingVerification ? (
+                      <ActivityIndicator
+                        size="small"
+                        color={colors.yellow.secondary}
+                        style={styles.emailStatusSpinner}
+                      />
+                    ) : (
+                      <MaterialIcons name="warning" size={13} color={colors.yellow.secondary} />
+                    )}
+                  </View>
                   <ThemedText style={[styles.emailStatusText, { color: colors.yellow.secondary }]}>
-                    Not verified
+                    {isCheckingVerification ? 'Checking...' : 'Not verified'}
                   </ThemedText>
                 </TouchableOpacity>
               )}
@@ -574,11 +676,14 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        ) : null}
 
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Letterboxd</ThemedText>
           <LetterboxdSection />
         </View>
+        ) : null}
 
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Appearance</ThemedText>
@@ -610,7 +715,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {canReplayIntro ? (
+        {canReplayIntro && isSignedIn ? (
           <View style={styles.section}>
             <ThemedText style={styles.sectionTitle}>Developer</ThemedText>
             <View style={styles.card}>
@@ -668,6 +773,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Notifications</ThemedText>
           <View style={styles.card}>
@@ -678,7 +784,7 @@ export default function SettingsScreen() {
             <View style={styles.notificationToggleRow}>
               <View style={styles.notificationToggleHeader}>
                 <View style={styles.notificationToggleTextContainer}>
-                  <ThemedText style={styles.notificationToggleTitle}>Watchlist digest</ThemedText>
+                  <ThemedText style={styles.notificationToggleTitle}>Notify on new showtimes</ThemedText>
                   <ThemedText style={styles.notificationToggleDescription}>
                     Email me when a watchlisted movie gets a showtime it didn&apos;t have before.
                   </ThemedText>
@@ -692,7 +798,17 @@ export default function SettingsScreen() {
                 />
               </View>
               <View style={styles.notificationChannelRow}>
-                <ThemedText style={styles.notificationChannelLabel}>Frequency</ThemedText>
+                <View style={styles.digestFrequencyLabelRow}>
+                  <ThemedText style={styles.notificationChannelLabel}>Frequency</ThemedText>
+                  <TouchableOpacity
+                    onPress={() => setIsDigestFrequencyInfoVisible(true)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="What do Eager and Lazy mean?"
+                  >
+                    <MaterialIcons name="info-outline" size={15} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.notificationChannelPill}>
                   <TouchableOpacity
                     style={[
@@ -710,7 +826,7 @@ export default function SettingsScreen() {
                         digestFrequency === 'daily' && styles.notificationChannelOptionTextActive,
                       ]}
                     >
-                      Daily
+                      Eager
                     </ThemedText>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -731,7 +847,7 @@ export default function SettingsScreen() {
                           styles.notificationChannelOptionTextActive,
                       ]}
                     >
-                      Smart
+                      Lazy
                     </ThemedText>
                   </TouchableOpacity>
                 </View>
@@ -748,6 +864,26 @@ export default function SettingsScreen() {
                 <>
                   <ThemedText style={styles.notificationChannelLabel}>Source</ThemedText>
                   <View style={styles.digestListOptions}>
+                    {user?.letterboxd_username ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.digestListOption,
+                          digestListId === null && styles.digestListOptionActive,
+                        ]}
+                        onPress={() => handleDigestListChange(null)}
+                        disabled={!user || isUpdatingDigest}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText
+                          style={[
+                            styles.digestListOptionText,
+                            digestListId === null && styles.digestListOptionTextActive,
+                          ]}
+                        >
+                          My watchlist
+                        </ThemedText>
+                      </TouchableOpacity>
+                    ) : null}
                     {digestLists.map((list) => (
                       <TouchableOpacity
                         key={list.id}
@@ -831,7 +967,9 @@ export default function SettingsScreen() {
             ) : null}
           </View>
         </View>
+        ) : null}
 
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Tips</ThemedText>
           <View style={styles.card}>
@@ -858,7 +996,9 @@ export default function SettingsScreen() {
             ) : null}
           </View>
         </View>
+        ) : null}
 
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>{hasPassword ? 'Password' : 'Add password'}</ThemedText>
           <View style={styles.card}>
@@ -909,7 +1049,9 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        ) : null}
 
+        {isSignedIn ? (
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Account</ThemedText>
           <View style={styles.card}>
@@ -924,6 +1066,7 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        ) : null}
 
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>About</ThemedText>
@@ -935,9 +1078,51 @@ export default function SettingsScreen() {
               MiKiNO is not affiliated with Letterboxd, Cineville, or any of the cinemas listed in
               the app.
             </ThemedText>
+            <TouchableOpacity
+              style={styles.aboutLinkRow}
+              onPress={handleOpenPrivacyPolicy}
+              activeOpacity={0.7}
+              accessibilityRole="link"
+              accessibilityLabel="Open the privacy policy"
+            >
+              <MaterialIcons name="privacy-tip" size={16} color={colors.textSecondary} />
+              <ThemedText style={styles.aboutLinkText}>Privacy policy</ThemedText>
+              <MaterialIcons name="open-in-new" size={13} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.aboutLinkRow}
+              onPress={handleOpenSupport}
+              activeOpacity={0.7}
+              accessibilityRole="link"
+              accessibilityLabel="Contact support"
+            >
+              <MaterialIcons name="mail-outline" size={16} color={colors.textSecondary} />
+              <ThemedText style={styles.aboutLinkText}>Contact support</ThemedText>
+              <MaterialIcons name="open-in-new" size={13} color={colors.textSecondary} />
+            </TouchableOpacity>
           </View>
         </View>
 
+        {isSignedIn ? (
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Privacy</ThemedText>
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.aboutLinkRow}
+              onPress={() => router.push('/blocked-users')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="View blocked accounts"
+            >
+              <MaterialIcons name="block" size={16} color={colors.textSecondary} />
+              <ThemedText style={styles.aboutLinkText}>Blocked accounts</ThemedText>
+              <MaterialIcons name="chevron-right" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        ) : null}
+
+        {isSignedIn ? (
         <View style={styles.section}>
           <TouchableOpacity
             style={styles.dangerZoneHeader}
@@ -971,6 +1156,7 @@ export default function SettingsScreen() {
             </View>
           ) : null}
         </View>
+        ) : null}
       </ScrollView>
       <ConfirmDialog
         visible={isLogoutDialogVisible}
@@ -992,9 +1178,33 @@ export default function SettingsScreen() {
         onConfirm={handleConfirmDeleteAccount}
         onCancel={() => setIsDeleteDialogVisible(false)}
       />
+      <ConfirmDialog
+        visible={isDigestFrequencyInfoVisible}
+        icon="info-outline"
+        title="Eager vs Lazy"
+        message={
+          digestFrequencyInfo
+            ? `${digestFrequencyInfo.daily.label}: ${digestFrequencyInfo.daily.description}\n\n${digestFrequencyInfo.weekly_or_urgent.label}: ${digestFrequencyInfo.weekly_or_urgent.description}`
+            : 'Loading...'
+        }
+        confirmLabel="Got it"
+        tone="primary"
+        onConfirm={() => setIsDigestFrequencyInfoVisible(false)}
+        onCancel={() => setIsDigestFrequencyInfoVisible(false)}
+      />
       <EmailVerificationRequiredDialog
         visible={isEmailVerificationRequired}
         onClose={() => setIsEmailVerificationRequired(false)}
+      />
+      <ConfirmDialog
+        visible={verificationSentTo !== null}
+        icon="mark-email-unread"
+        title="Confirm your new email"
+        message={`Your profile is saved. We sent a confirmation link to ${verificationSentTo ?? ''} — open it to confirm the address is yours. Until then nothing can be emailed to you.`}
+        confirmLabel="Got it"
+        tone="primary"
+        onConfirm={() => setVerificationSentTo(null)}
+        onCancel={() => setVerificationSentTo(null)}
       />
     </TopSafeAreaView>
   );
@@ -1054,6 +1264,17 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
+    },
+    emailStatusIcon: {
+      width: 13,
+      height: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emailStatusSpinner: {
+      // RN's smallest spinner is ~20pt; scaled down to sit on the icon's line
+      // without pushing the row taller.
+      transform: [{ scale: 0.65 }],
     },
     emailStatusText: {
       fontSize: 12,
@@ -1127,6 +1348,19 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       fontSize: 12,
       color: colors.textSecondary,
     },
+    aboutLinkRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 10,
+      marginTop: 2,
+    },
+    aboutLinkText: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+    },
     notificationToggleRow: {
       gap: 10,
       borderWidth: 1,
@@ -1164,6 +1398,11 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     notificationChannelLabel: {
       fontSize: 11,
       color: colors.textSecondary,
+    },
+    digestFrequencyLabelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
     },
     notificationChannelPill: {
       flexDirection: 'row',

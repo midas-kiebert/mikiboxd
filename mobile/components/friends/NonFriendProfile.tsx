@@ -15,13 +15,17 @@
  * screen, watching the same query, swaps this out for the real agenda the
  * moment `is_friend` turns true.
  */
+import { useState } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import type { UserWithFriendStatus } from "shared";
+import type { UserReportReason, UserWithFriendStatus } from "shared";
 
+import ReportUserDialog from "@/components/friends/ReportUserDialog";
 import { ThemedText } from "@/components/themed-text";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useFriendActions } from "@/hooks/useFriendActions";
 import { useOptimisticFriendStatus } from "@/hooks/useFriendStatus";
+import { useUserModeration } from "@/hooks/useUserModeration";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
@@ -37,6 +41,9 @@ export default function NonFriendProfile({ user: seed }: NonFriendProfileProps) 
   const styles = createStyles(colors);
   const { sendRequest, acceptRequest, declineRequest, cancelRequest, isBusy } = useFriendActions();
   const { user, override, setOverride } = useOptimisticFriendStatus<Override>(seed);
+  const { blockUser, unblockUser, reportUser, isBusy: isModerationBusy } = useUserModeration();
+  const [isBlockDialogVisible, setIsBlockDialogVisible] = useState(false);
+  const [isReportDialogVisible, setIsReportDialogVisible] = useState(false);
 
   const runAction = (next: Override, action: () => void) => {
     triggerSelectionHaptic();
@@ -47,6 +54,23 @@ export default function NonFriendProfile({ user: seed }: NonFriendProfileProps) 
   const displayUser = user ?? seed;
   const name = displayUser.display_name?.trim() || "This user";
   const avatarColors = getAvatarColors(displayUser.id, colors);
+  const isBlocked = displayUser.is_blocked;
+
+  const handleConfirmBlock = () => {
+    setIsBlockDialogVisible(false);
+    triggerSelectionHaptic();
+    blockUser(displayUser.id);
+  };
+
+  const handleUnblock = () => {
+    triggerSelectionHaptic();
+    unblockUser(displayUser.id);
+  };
+
+  const handleSelectReportReason = (reason: UserReportReason) => {
+    reportUser({ userId: displayUser.id, reason });
+    setIsReportDialogVisible(false);
+  };
 
   const status: "friend" | "received" | "sent" | "none" =
     override === "friend"
@@ -144,7 +168,64 @@ export default function NonFriendProfile({ user: seed }: NonFriendProfileProps) 
             <ThemedText style={styles.primaryButtonText}>Add Friend</ThemedText>
           </TouchableOpacity>
         ) : null}
+
+        {isBlocked ? (
+          <TouchableOpacity
+            style={[styles.moderationLink, styles.moderationRow]}
+            onPress={handleUnblock}
+            disabled={isModerationBusy}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`Unblock ${name}`}
+          >
+            <MaterialIcons name="block" size={14} color={colors.textSecondary} />
+            <ThemedText style={styles.moderationLinkText}>Unblock</ThemedText>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.moderationRow}>
+            <TouchableOpacity
+              style={styles.moderationLink}
+              onPress={() => setIsBlockDialogVisible(true)}
+              disabled={isModerationBusy}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Block ${name}`}
+            >
+              <MaterialIcons name="block" size={14} color={colors.textSecondary} />
+              <ThemedText style={styles.moderationLinkText}>Block</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.moderationLink}
+              onPress={() => setIsReportDialogVisible(true)}
+              disabled={isModerationBusy}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Report ${name}`}
+            >
+              <MaterialIcons name="flag" size={14} color={colors.textSecondary} />
+              <ThemedText style={styles.moderationLinkText}>Report</ThemedText>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
+
+      <ConfirmDialog
+        visible={isBlockDialogVisible}
+        icon="block"
+        title={`Block ${name}?`}
+        message="They will no longer be able to friend-request or invite you, and any friendship or invite between you is removed. They are not told you blocked them."
+        confirmLabel="Block"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmBlock}
+        onCancel={() => setIsBlockDialogVisible(false)}
+      />
+      <ReportUserDialog
+        visible={isReportDialogVisible}
+        userName={name}
+        isSubmitting={isModerationBusy}
+        onSelectReason={handleSelectReportReason}
+        onCancel={() => setIsReportDialogVisible(false)}
+      />
     </View>
   );
 }
@@ -237,6 +318,22 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     ghostButtonText: {
       fontSize: 15,
       fontWeight: "700",
+      color: colors.textSecondary,
+    },
+    moderationRow: {
+      flexDirection: "row",
+      gap: 18,
+      marginTop: 18,
+    },
+    moderationLink: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingVertical: 6,
+    },
+    moderationLinkText: {
+      fontSize: 13,
+      fontWeight: "600",
       color: colors.textSecondary,
     },
   });

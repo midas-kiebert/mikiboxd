@@ -1,15 +1,20 @@
-"""Movie endpoints."""
+"""Movie endpoints.
+
+These are browse endpoints: what is playing is public, so they answer without a
+token as well as with one, and annotate the result with the requester's own
+data only when there is a requester. See `app.core.viewer`.
+"""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from fastapi.responses import HTMLResponse
 
-from app.api.deps import CurrentUser, SessionDep
+from app.api.deps import OPTIONAL_AUTH_OPENAPI_EXTRA, CurrentViewer, SessionDep
 from app.core.config import settings
 from app.inputs.movie import Filters, get_filters
 from app.models.movie import Movie
-from app.schemas.movie import MovieLoggedIn, MovieSummaryLoggedIn
-from app.schemas.showtime import ShowtimeInMovieLoggedIn
+from app.schemas.movie import MoviePublic, MovieSummaryPublic
+from app.schemas.showtime import ShowtimeInMoviePublic
 from app.services import movies as movies_service
 from app.services.share_preview import (
     DEFAULT_SHARE_PREVIEW_IMAGE,
@@ -19,31 +24,35 @@ from app.services.share_preview import (
 router = APIRouter(prefix="/movies", tags=["movies"])
 
 
-@router.get("/count")
+@router.get("/count", openapi_extra=OPTIONAL_AUTH_OPENAPI_EXTRA)
 def count_movies(
     session: SessionDep,
-    current_user: CurrentUser,
+    viewer: CurrentViewer,
     filters: Filters = Depends(get_filters),
 ) -> int:
     return movies_service.count_movie_summaries(
         session=session,
-        user_id=current_user.id,
+        user_id=viewer,
         filters=filters,
     )
 
 
-@router.get("/", response_model=list[MovieSummaryLoggedIn])
+@router.get(
+    "/",
+    response_model=list[MovieSummaryPublic],
+    openapi_extra=OPTIONAL_AUTH_OPENAPI_EXTRA,
+)
 def read_movies(
     session: SessionDep,
-    current_user: CurrentUser,
+    viewer: CurrentViewer,
     offset: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=50),
     showtime_limit: int = Query(5, ge=1, le=10),
     filters: Filters = Depends(get_filters),
-) -> list[MovieSummaryLoggedIn]:
+) -> list[MovieSummaryPublic]:
     movies = movies_service.get_movie_summaries(
         session=session,
-        user_id=current_user.id,
+        user_id=viewer,
         limit=limit,
         offset=offset,
         showtime_limit=showtime_limit,
@@ -52,20 +61,24 @@ def read_movies(
     return movies
 
 
-@router.get("/{id}/showtimes", response_model=list[ShowtimeInMovieLoggedIn])
+@router.get(
+    "/{id}/showtimes",
+    response_model=list[ShowtimeInMoviePublic],
+    openapi_extra=OPTIONAL_AUTH_OPENAPI_EXTRA,
+)
 def read_movie_showtimes(
     *,
     session: SessionDep,
     id: int,
-    current_user: CurrentUser,
+    viewer: CurrentViewer,
     limit: int = Query(10, ge=1, le=50),
     offset: int = Query(0, ge=0),
     filters: Filters = Depends(get_filters),
-) -> list[ShowtimeInMovieLoggedIn]:
+) -> list[ShowtimeInMoviePublic]:
     return movies_service.get_movie_showtimes(
         session=session,
         movie_id=id,
-        current_user=current_user.id,
+        current_user=viewer,
         limit=limit,
         offset=offset,
         filters=filters,
@@ -101,19 +114,21 @@ def get_movie_share_preview(*, session: SessionDep, id: int) -> HTMLResponse:
 
 
 # KEEP AT THE BOTTOM
-@router.get("/{id}", response_model=MovieLoggedIn)
+@router.get(
+    "/{id}", response_model=MoviePublic, openapi_extra=OPTIONAL_AUTH_OPENAPI_EXTRA
+)
 def read_movie(
     *,
     session: SessionDep,
     id: int,
-    current_user: CurrentUser,
+    viewer: CurrentViewer,
     showtime_limit: int | None = Query(None, ge=0, le=200),
     filters: Filters = Depends(get_filters),
-) -> MovieLoggedIn:
+) -> MoviePublic:
     movie = movies_service.get_movie_by_id(
         session=session,
         movie_id=id,
-        current_user=current_user.id,
+        current_user=viewer,
         showtime_limit=showtime_limit,
         filters=filters,
     )

@@ -609,6 +609,7 @@ def get_users(
     limit: int,
     offset: int,
     current_user_id: UUID,
+    excluded_user_ids: set[UUID] | None = None,
 ) -> list[User]:
     """
     Get a list of users based on a search query, excluding the current user.
@@ -619,13 +620,19 @@ def get_users(
         limit (int): The maximum number of users to return.
         offset (int): The offset for pagination.
         current_user_id (UUID): The ID of the current user to exclude from results.
+        excluded_user_ids (set[UUID] | None): Further ids to leave out — blocked
+            users and users who have blocked the searcher. Excluded in SQL
+            rather than filtered afterwards so `limit` still returns a full page.
     Returns:
         list[User]: A list of User objects matching the search criteria.
     """
     stmt = select(User).where(col(User.display_name).isnot(None))
     if query:
         stmt = stmt.where(col(User.display_name).ilike(f"%{query}%"))
-    stmt = stmt.where(col(User.id) != current_user_id).limit(limit).offset(offset)
+    stmt = stmt.where(col(User.id) != current_user_id)
+    if excluded_user_ids:
+        stmt = stmt.where(col(User.id).notin_(excluded_user_ids))
+    stmt = stmt.limit(limit).offset(offset)
 
     users: list[User] = list(session.exec(stmt).all())
     return users

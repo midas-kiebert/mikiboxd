@@ -52,7 +52,7 @@ import {
   type GoingStatus,
   type MeGetCurrentUserResponse,
   type SentShowtimePingPublic,
-  type ShowtimeLoggedIn,
+  type ShowtimePublic,
   type UserPublic,
   type VisibilityMode,
 } from "shared";
@@ -71,8 +71,12 @@ import {
 } from "@/components/showtimes/visibility-mode";
 import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
-import FriendListRow, { type FriendWatchStatus } from "@/components/friends/FriendListRow";
+import FriendListRow, {
+  type FriendPingStatus,
+  type FriendWatchStatus,
+} from "@/components/friends/FriendListRow";
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
+import InviteBeforePrivateDialog from "@/components/showtimes/InviteBeforePrivateDialog";
 import SheetBackdrop from "@/components/sheets/SheetBackdrop";
 import {
   getFriendWatchKindMeta,
@@ -90,6 +94,8 @@ import {
   isSyntheticMovieId,
 } from "@/constants/synthetic-movies";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
+import { useIsSignedIn } from "@/utils/auth-session";
+import { useSignInGate } from "@/components/auth/SignInGateProvider";
 import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
 import { EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
@@ -137,7 +143,7 @@ const REPORT_REASON_OPTIONS: { value: ReportReason; label: string }[] = [
 
 type ShowtimeActionModalProps = {
   visible: boolean;
-  showtime: ShowtimeLoggedIn | null;
+  showtime: ShowtimePublic | null;
   /** True while a showtime opened by id is still being fetched. */
   isLoadingShowtime?: boolean;
   /** Present when the sheet was opened from an invite (ping). */
@@ -337,7 +343,23 @@ export default function ShowtimeActionModal({
   const invitedSectionYRef = useRef(0);
   // 80% by default; a full-height detent so scrolling up first lifts the sheet
   // to the top of the screen before the content itself scrolls.
-  const snapPoints = useMemo(() => ["80%", "100%"], []);
+  // Everything on this sheet below the status buttons is about people — the
+  // friends coming, who you invited, who can see you're going. A guest has
+  // none of it and no way to get any without an account, so those sections are
+  // absent rather than rendered permanently empty. The status buttons stay:
+  // tapping one is how a guest finds out an account is what they're for (see
+  // ShowtimeModalProvider's gate), and the screening itself — film, cinema,
+  // time, ticket link — is public and unchanged.
+  const isSignedIn = useIsSignedIn();
+  const { promptForAccount } = useSignInGate();
+
+  // A guest sees the header, the status buttons and the ticket row — roughly
+  // half of what a signed-in sheet holds — so it opens at half the height
+  // rather than as a mostly-empty tall sheet. Both keep the full-height snap.
+  const snapPoints = useMemo(
+    () => (isSignedIn ? ["80%", "100%"] : ["52%", "100%"]),
+    [isSignedIn]
+  );
 
   // Drive the gorhom sheet imperatively from the controlled `visible` prop
   // (same approach as FiltersModal): present() on open, close() on programmatic
@@ -362,11 +384,17 @@ export default function ShowtimeActionModal({
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
   const [isReportDialogVisible, setIsReportDialogVisible] = useState(false);
   const { user } = useAuth();
-  const canReport = user ? user.can_report : true;
+  const canReport = isSignedIn && (user ? user.can_report : true);
   const [isVisibilityExpanded, setIsVisibilityExpanded] = useState(false);
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<FriendWatchKind | null>(null);
   const [isDismissInviteDialogVisible, setIsDismissInviteDialogVisible] = useState(false);
+  // Friends already going/interested but not yet invited, surfaced right
+  // before a switch to INVITED_ONLY so they aren't silently hidden.
+  const [inviteBeforePrivateCandidates, setInviteBeforePrivateCandidates] = useState<
+    UserPublic[]
+  >([]);
+  const [isInviteBeforePrivateVisible, setIsInviteBeforePrivateVisible] = useState(false);
   // Same custom fade, plus a subtle scale-in for the confirm card.
   const dismissDialogAnim = useRef(new Animated.Value(0)).current;
   const dismissDialogScale = useMemo(
@@ -399,7 +427,7 @@ export default function ShowtimeActionModal({
   // The tour runs on mock data: every request it could make would be about a
   // showtime that does not exist, and the answers are already invented.
   const isTour = tour !== null;
-  const sheetDataEnabled = visible && selectedShowtimeId !== null && !isTour;
+  const sheetDataEnabled = visible && selectedShowtimeId !== null && !isTour && isSignedIn;
 
   // Window positions of the controls the tour explains, read on demand rather
   // than on layout: layout fires while the sheet is still rising, so it would
@@ -564,9 +592,9 @@ export default function ShowtimeActionModal({
 
 
   useEffect(() => {
-    setSeatRowDraft(showtime?.seat_row ?? "");
-    setSeatNumberDraft(showtime?.seat_number ?? "");
-  }, [showtime?.id, showtime?.seat_row, showtime?.seat_number]);
+    setSeatRowDraft(showtime?.viewer?.seat_row ?? "");
+    setSeatNumberDraft(showtime?.viewer?.seat_number ?? "");
+  }, [showtime?.id, showtime?.viewer?.seat_row, showtime?.viewer?.seat_number]);
 
   // ─── Friends + invite data ─────────────────────────────────────────────────
   // Friends + already-pinged ids load whenever the sheet is open so the "Invited"
@@ -591,11 +619,33 @@ export default function ShowtimeActionModal({
   const { mutate: pingFriendForShowtime, isPending: isPingingFriend } = useMutation({
     mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
       ShowtimesService.pingFriendForShowtime({ showtimeId, friendId }),
+    // The row's "Invited" state reads off `sentPings`, so without an
+    // optimistic entry it only flips once the request round-trips and the
+    // invalidated query refetches — paint it immediately instead.
+    onMutate: async ({ friendId }) => {
+      await queryClient.cancelQueries({ queryKey: sentPingsQueryKey });
+      const previousPings = queryClient.getQueryData<SentShowtimePingPublic[]>(sentPingsQueryKey);
+      const friendName = friends?.find((f) => f.id === friendId)?.display_name?.trim() || "Friend";
+      const optimisticPing: SentShowtimePingPublic = {
+        id: -Date.now(),
+        receiver_id: friendId,
+        receiver_name: friendName,
+        created_at: new Date().toISOString(),
+        seen_at: null,
+        dismissed_at: null,
+      };
+      queryClient.setQueryData<SentShowtimePingPublic[]>(sentPingsQueryKey, (prev) => [
+        ...(prev ?? []),
+        optimisticPing,
+      ]);
+      return { previousPings };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sentPingsQueryKey });
       trackEvent("invite_sent");
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
+      queryClient.setQueryData(sentPingsQueryKey, context?.previousPings);
       const detail =
         typeof error === "object" &&
         error !== null &&
@@ -658,13 +708,24 @@ export default function ShowtimeActionModal({
   const { mutate: updateVisibilityMode } = useMutation({
     mutationFn: ({ showtimeId, mode }: { showtimeId: number; mode: VisibilityMode }) =>
       ShowtimesService.updateShowtimeVisibility({ showtimeId, requestBody: { mode } }),
+    onMutate: async ({ mode }) => {
+      await queryClient.cancelQueries({ queryKey: visibilityQueryKey });
+      const previousVisibility = queryClient.getQueryData(visibilityQueryKey);
+      queryClient.setQueryData(visibilityQueryKey, (prev: typeof visibility) =>
+        prev ? { ...prev, mode } : prev
+      );
+      return { previousVisibility };
+    },
     onSuccess: (updated) => {
       queryClient.setQueryData(visibilityQueryKey, updated);
       queryClient.invalidateQueries({ queryKey: ["showtimes"] });
       queryClient.invalidateQueries({ queryKey: ["movie"] });
       queryClient.invalidateQueries({ queryKey: ["movies"] });
     },
-    onError: () => {
+    onError: (_error, _variables, context) => {
+      // Roll back — otherwise the sheet keeps showing the mode the user
+      // picked even though the backend never actually applied it.
+      queryClient.setQueryData(visibilityQueryKey, context?.previousVisibility);
       Alert.alert("Error", "Could not update who can see your status.");
     },
   });
@@ -682,8 +743,19 @@ export default function ShowtimeActionModal({
     setIsVisibilityExpanded(next);
   }, [isVisibilityExpanded, visibilityCaretRotation]);
 
-  const handleVisibilityModeSelect = useCallback(
+  const applyVisibilityMode = useCallback(
     (mode: VisibilityMode) => {
+      if (!showtime) return;
+      triggerSelectionHaptic();
+      // Optimistic patch + rollback-on-error both live in the mutation's
+      // onMutate/onError now, so every caller gets the same behavior.
+      updateVisibilityMode({ showtimeId: showtime.id, mode });
+    },
+    [showtime, updateVisibilityMode]
+  );
+
+  const handleVisibilityModeSelect = useCallback(
+    async (mode: VisibilityMode) => {
       LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
       Animated.timing(visibilityCaretRotation, {
         toValue: 0,
@@ -692,20 +764,88 @@ export default function ShowtimeActionModal({
       }).start();
       setIsVisibilityExpanded(false);
       if (!showtime || mode === visibility?.mode) return;
-      triggerSelectionHaptic();
-      // Optimistically reflect the new mode before the request lands.
-      queryClient.setQueryData(visibilityQueryKey, (prev: typeof visibility) =>
-        prev ? { ...prev, mode } : prev
-      );
-      updateVisibilityMode({ showtimeId: showtime.id, mode });
+
+      if (mode === "INVITED_ONLY") {
+        try {
+          const { friends } = await queryClient.fetchQuery({
+            queryKey: ["showtimes", "uninvitedSelectedFriends", showtime.id],
+            queryFn: () =>
+              ShowtimesService.getUninvitedSelectedFriendsForShowtime({
+                showtimeId: showtime.id,
+              }),
+          });
+          if (friends.length > 0) {
+            setInviteBeforePrivateCandidates(friends);
+            setIsInviteBeforePrivateVisible(true);
+            return;
+          }
+        } catch {
+          // If the lookup fails, fall through and apply the mode switch as
+          // normal rather than blocking the user on an unrelated request.
+        }
+      }
+
+      applyVisibilityMode(mode);
+    },
+    [showtime, visibility?.mode, queryClient, applyVisibilityMode]
+  );
+
+  const handleInviteBeforePrivateSkip = useCallback(() => {
+    setIsInviteBeforePrivateVisible(false);
+    applyVisibilityMode("INVITED_ONLY");
+  }, [applyVisibilityMode]);
+
+  const handleInviteBeforePrivateConfirm = useCallback(
+    async (selectedIds: string[]) => {
+      setIsInviteBeforePrivateVisible(false);
+      if (showtime) {
+        const showtimeId = showtime.id;
+        // Bypasses the shared pingFriendForShowtime mutation on purpose: this
+        // is a best-effort courtesy invite alongside the mode switch, not the
+        // user directly pressing "Invite" on this friend, so a friend who
+        // turns out to already be invited (a race with another invite path,
+        // or this same tap landing twice) shouldn't surface an alert — the
+        // outcome the user wants (friend invited) already holds either way.
+        // Paint them as invited right away, same as the single-invite mutation
+        // — otherwise the invite panel would show them as still invitable
+        // until the invalidated query below wins its race with these writes.
+        queryClient.setQueryData<SentShowtimePingPublic[]>(sentPingsQueryKey, (prev) => [
+          ...(prev ?? []),
+          ...selectedIds.map((friendId, index): SentShowtimePingPublic => ({
+            id: -Date.now() - index,
+            receiver_id: friendId,
+            receiver_name:
+              inviteBeforePrivateCandidates.find((friend) => friend.id === friendId)
+                ?.display_name?.trim() || "Friend",
+            created_at: new Date().toISOString(),
+            seen_at: null,
+            dismissed_at: null,
+          })),
+        ]);
+        // One at a time, awaited: each invite (and the visibility switch
+        // right after) rebuilds the same showtime's effective-visibility rows
+        // on the backend, and firing them concurrently deadlocks Postgres —
+        // seen on staging as a 500 on the visibility PUT and friends silently
+        // not invited. There's no way to invite a handful of friends here
+        // faster without that risk, so sequential is the correct fix, not
+        // just a workaround.
+        for (const friendId of selectedIds) {
+          try {
+            await ShowtimesService.pingFriendForShowtime({ showtimeId, friendId });
+          } catch {
+            // Best-effort, see comment above.
+          }
+        }
+        queryClient.invalidateQueries({ queryKey: sentPingsQueryKey });
+      }
+      applyVisibilityMode("INVITED_ONLY");
     },
     [
       showtime,
-      visibility?.mode,
       queryClient,
-      visibilityQueryKey,
-      updateVisibilityMode,
-      visibilityCaretRotation,
+      sentPingsQueryKey,
+      applyVisibilityMode,
+      inviteBeforePrivateCandidates,
     ]
   );
 
@@ -714,8 +854,8 @@ export default function ShowtimeActionModal({
   // ─── Seat handling ─────────────────────────────────────────────────────────
   const normalizedSeatRowDraft = seatRowDraft.trim() || null;
   const normalizedSeatNumberDraft = seatNumberDraft.trim() || null;
-  const normalizedCurrentSeatRow = showtime?.seat_row?.trim() || null;
-  const normalizedCurrentSeatNumber = showtime?.seat_number?.trim() || null;
+  const normalizedCurrentSeatRow = showtime?.viewer?.seat_row?.trim() || null;
+  const normalizedCurrentSeatNumber = showtime?.viewer?.seat_number?.trim() || null;
   const cinemaSeating = showtime?.cinema?.seating?.trim().toLowerCase() ?? "";
   const seatInputConfig = useMemo(() => getSeatInputConfig(cinemaSeating), [cinemaSeating]);
   const seatRowValidationError = useMemo(
@@ -744,11 +884,11 @@ export default function ShowtimeActionModal({
 
   const hasInvite = Boolean(invite && invite.senders.length > 0);
   const notGoingActsAsDismiss = Boolean(invite && onDismissInvite);
-  const isGoingSelected = showtime?.going === "GOING";
-  const isInterestedSelected = showtime?.going === "INTERESTED";
+  const isGoingSelected = showtime?.viewer?.going === "GOING";
+  const isInterestedSelected = showtime?.viewer?.going === "INTERESTED";
   // When invited, the Not-going button is a dismiss affordance, not a status —
   // so don't render it as "selected" even if the stored status is NOT_GOING.
-  const isNotGoingSelected = showtime?.going === "NOT_GOING" && !hasInvite;
+  const isNotGoingSelected = showtime?.viewer?.going === "NOT_GOING" && !hasInvite;
   const shouldShowSeatButton = isGoingSelected && !isFreeSeating;
   const hasTicketLink = Boolean(showtime?.ticket_link);
 
@@ -840,14 +980,14 @@ export default function ShowtimeActionModal({
 
 
   const handleOpenSeatDialog = () => {
-    if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) return;
-    setSeatRowDraft(showtime.seat_row ?? "");
-    setSeatNumberDraft(showtime.seat_number ?? "");
+    if (!showtime || isUpdatingStatus || showtime.viewer?.going !== "GOING" || isFreeSeating) return;
+    setSeatRowDraft(showtime.viewer?.seat_row ?? "");
+    setSeatNumberDraft(showtime.viewer?.seat_number ?? "");
     setIsSeatDialogVisible(true);
   };
 
   const handleSaveSeat = () => {
-    if (!showtime || isUpdatingStatus || showtime.going !== "GOING" || isFreeSeating) return;
+    if (!showtime || isUpdatingStatus || showtime.viewer?.going !== "GOING" || isFreeSeating) return;
     if (seatValidationError) {
       Alert.alert("Invalid seat", seatValidationError);
       return;
@@ -899,8 +1039,11 @@ export default function ShowtimeActionModal({
       Alert.alert("Error", "Could not build invite link.");
       return;
     }
-    const pingUrl = buildShowtimePingUrl(showtime.id, currentUser.id);
     try {
+      const { token } = await ShowtimesService.createShowtimePingLinkToken({
+        showtimeId: showtime.id,
+      });
+      const pingUrl = buildShowtimePingUrl(showtime.id, token);
       await Share.share({
         message: pingUrl,
         url: pingUrl,
@@ -912,12 +1055,12 @@ export default function ShowtimeActionModal({
 
   // ─── Derivations ────────────────────────────────────────────────────────────
   const friendsGoingIds = useMemo(
-    () => new Set((showtime?.friends_going ?? []).map((friend) => friend.id)),
-    [showtime?.friends_going]
+    () => new Set((showtime?.viewer?.friends_going ?? []).map((friend) => friend.id)),
+    [showtime?.viewer?.friends_going]
   );
   const friendsInterestedIds = useMemo(
-    () => new Set((showtime?.friends_interested ?? []).map((friend) => friend.id)),
-    [showtime?.friends_interested]
+    () => new Set((showtime?.viewer?.friends_interested ?? []).map((friend) => friend.id)),
+    [showtime?.viewer?.friends_interested]
   );
 
   const pingedReceiverIds = useMemo(
@@ -926,12 +1069,12 @@ export default function ShowtimeActionModal({
   );
 
   const friendsWatchlisted = useMemo(
-    () => showtime?.friends_watchlisted ?? [],
-    [showtime?.friends_watchlisted]
+    () => showtime?.viewer?.friends_watchlisted ?? [],
+    [showtime?.viewer?.friends_watchlisted]
   );
   const friendsWatched = useMemo(
-    () => showtime?.friends_watched ?? [],
-    [showtime?.friends_watched]
+    () => showtime?.viewer?.friends_watched ?? [],
+    [showtime?.viewer?.friends_watched]
   );
   // Only the non-empty relationships get a marker.
   const watchMarkers = useMemo(
@@ -961,20 +1104,24 @@ export default function ShowtimeActionModal({
     [watchedIds, watchlistedIds]
   );
 
+  // Pinged wins over going/interested: a friend can be both (invites to an
+  // already-selected friend are allowed now), and once invited that's the
+  // state that matters — otherwise the row would show "Invite" forever for
+  // exactly the friends this feature made invitable.
   const getPingAvailability = useCallback(
     (friendId: string): FriendPingAvailability =>
-      friendsGoingIds.has(friendId)
-        ? "going"
-        : friendsInterestedIds.has(friendId)
-          ? "interested"
-          : pingedReceiverIds.has(friendId)
-            ? "pinged"
+      pingedReceiverIds.has(friendId)
+        ? "pinged"
+        : friendsGoingIds.has(friendId)
+          ? "going"
+          : friendsInterestedIds.has(friendId)
+            ? "interested"
             : "eligible",
     [friendsGoingIds, friendsInterestedIds, pingedReceiverIds]
   );
 
-  const getPingStatusLabel = (availability: FriendPingAvailability) =>
-    availability === "going" ? "Going" : availability === "interested" ? "Interested" : null;
+  const getPingRowStatus = (availability: FriendPingAvailability): FriendPingStatus =>
+    availability === "going" ? "GOING" : availability === "interested" ? "INTERESTED" : null;
 
   const friendsForPing = useMemo(() => {
     const availabilityRank: Record<FriendPingAvailability, number> = {
@@ -1004,8 +1151,10 @@ export default function ShowtimeActionModal({
       });
   }, [friends, getPingAvailability, getWatchStatus, watchlistedIds]);
 
-  // The list shows friends you can still invite + those who already set a
-  // going/interested status (muted); already-pinged friends live in the summary.
+  // The list shows every friend you can still invite, including those who
+  // already set a going/interested status on their own (their status shows
+  // next to the button, but inviting them still works — it just won't notify
+  // them); already-pinged friends live in the summary instead.
   const filteredFriendsForPing = useMemo(() => {
     const invitable = friendsForPing.filter((friend) => friend.availability !== "pinged");
     const query = pingSearchQuery.trim().toLowerCase();
@@ -1013,9 +1162,10 @@ export default function ShowtimeActionModal({
     return invitable.filter((friend) => friend.label.toLowerCase().includes(query));
   }, [friendsForPing, pingSearchQuery]);
 
-  // The top eligible result is what Enter selects (and what we visually highlight).
+  // The top result is what Enter selects (and what we visually highlight) — the
+  // list already excludes already-pinged friends, so anyone left is invitable.
   const firstEligibleFriendId = useMemo(
-    () => filteredFriendsForPing.find((friend) => friend.availability === "eligible")?.id ?? null,
+    () => filteredFriendsForPing[0]?.id ?? null,
     [filteredFriendsForPing]
   );
 
@@ -1048,9 +1198,9 @@ export default function ShowtimeActionModal({
       : null;
   const spokenLanguage = formatLanguageCode(showtime?.movie.original_language);
 
-  const coInvitedFriends = showtime?.co_invited_friends ?? [];
-  const nonFriendParticipants = showtime?.non_friend_participants ?? [];
-  const invitedByUsers = showtime?.invited_by ?? [];
+  const coInvitedFriends = showtime?.viewer?.co_invited_friends ?? [];
+  const nonFriendParticipants = showtime?.viewer?.non_friend_participants ?? [];
+  const invitedByUsers = showtime?.viewer?.invited_by ?? [];
   const invitedYouLabel = hasInvite ? formatInvitedYou(invite!.senders) : null;
   const inviterNames = hasInvite ? formatInviterNames(invite!.senders) : null;
 
@@ -1158,8 +1308,8 @@ export default function ShowtimeActionModal({
   // the "Invited" section below already lists who you've invited and their
   // status — so audience visibility is based on going/interested only.
   const hasAudience =
-    (showtime?.friends_going.length ?? 0) > 0 ||
-    (showtime?.friends_interested.length ?? 0) > 0;
+    (showtime?.viewer?.friends_going?.length ?? 0) > 0 ||
+    (showtime?.viewer?.friends_interested?.length ?? 0) > 0;
 
   const statusOptions = [
     {
@@ -1314,12 +1464,12 @@ export default function ShowtimeActionModal({
                   <ThemedText style={styles.directorText} numberOfLines={1}>
                     <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
                     {showtime.movie.directors.join(", ")}
-                    {showtime.movie.release_year ? ` (${showtime.movie.release_year})` : null}
+                    {showtime.movie.release_year ? ` · ${showtime.movie.release_year}` : null}
                   </ThemedText>
                 ) : isSyntheticMovie ? (
                   <ThemedText style={styles.directorText} numberOfLines={1}>
                     <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
-                    {`${UNKNOWN_METADATA_PLACEHOLDER} (${UNKNOWN_METADATA_PLACEHOLDER})`}
+                    {`${UNKNOWN_METADATA_PLACEHOLDER} · ${UNKNOWN_METADATA_PLACEHOLDER}`}
                   </ThemedText>
                 ) : null}
                 {dateLabel ? (
@@ -1329,7 +1479,11 @@ export default function ShowtimeActionModal({
                   <ThemedText style={styles.timeText}>{timeLabel}</ThemedText>
                 ) : null}
                 <View style={styles.cinemaBadgeRow}>
-                  <CinemaPill cinema={showtime.cinema} disabledIfSameId={disabledCinemaId} />
+                  <CinemaPill
+                    cinema={showtime.cinema}
+                    disabledIfSameId={disabledCinemaId}
+                    onNavigate={onClose}
+                  />
                   <SubtitlesBadges subtitles={showtime.subtitles} />
                 </View>
               </View>
@@ -1382,6 +1536,7 @@ export default function ShowtimeActionModal({
             {/* Friends going / interested, with the report link anchored just
                 above its top divider — absolutely positioned so it doesn't
                 claim any extra vertical space in the layout. */}
+            {isSignedIn ? (
             <View style={[styles.audienceBox, !hasAudience && styles.audienceBoxEmpty]}>
               {canReport && (
                 <TouchableOpacity
@@ -1396,8 +1551,8 @@ export default function ShowtimeActionModal({
               )}
               {hasAudience ? (
                 <FriendBadges
-                  friendsGoing={showtime.friends_going}
-                  friendsInterested={showtime.friends_interested}
+                  friendsGoing={showtime.viewer?.friends_going}
+                  friendsInterested={showtime.viewer?.friends_interested}
                   variant="default"
                   maxVisible={30}
                   disabledUserId={disabledUserId}
@@ -1409,6 +1564,7 @@ export default function ShowtimeActionModal({
                 </ThemedText>
               )}
             </View>
+            ) : null}
 
             {/* Optional "X invited you." banner */}
             {invitedYouLabel ? (
@@ -1516,11 +1672,33 @@ export default function ShowtimeActionModal({
               ) : null}
             </View>
 
+            {/* What an account would add here, in place of the four sections a
+                guest doesn't get. One line rather than a panel: the sheet is
+                about this screening, not about signing up. */}
+            {!isSignedIn ? (
+              <TouchableOpacity
+                style={styles.signInPrompt}
+                onPress={() => {
+                  triggerSelectionHaptic();
+                  promptForAccount("invite");
+                }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+              >
+                <MaterialIcons name="mail-outline" size={16} color={colors.blue.secondary} />
+                <ThemedText style={styles.signInPromptText}>
+                  Log in to invite friends
+                </ThemedText>
+                <MaterialIcons name="arrow-forward" size={14} color={colors.blue.secondary} />
+              </TouchableOpacity>
+            ) : null}
+
             {/* Who can see your status for this showtime — inline dropdown.
                 The section (and its header height) renders as soon as the showtime
                 does, even before the visibility query resolves, with a skeleton
                 badge in place of the real one — otherwise the row pops in once the
                 fetch lands and visibly shifts everything below it (worse on Android). */}
+            {isSignedIn ? (
             <View style={styles.visibilitySection}>
               <TouchableOpacity
                 style={styles.visibilityHeader}
@@ -1553,7 +1731,7 @@ export default function ShowtimeActionModal({
                           styles.visibilityOption,
                           isSelected && { borderColor: optionMeta.color, backgroundColor: colors.surfaceMuted },
                         ]}
-                        onPress={() => handleVisibilityModeSelect(mode)}
+                        onPress={() => void handleVisibilityModeSelect(mode)}
                         activeOpacity={0.8}
                       >
                         <View style={[styles.visibilityOptionIcon, { backgroundColor: optionMeta.color }]}>
@@ -1576,8 +1754,10 @@ export default function ShowtimeActionModal({
                 </View>
               ) : null}
             </View>
+            ) : null}
 
             {/* Who you've invited */}
+            {isSignedIn ? (
             <View
               style={styles.invitedSection}
               onLayout={(event) => {
@@ -1653,8 +1833,10 @@ export default function ShowtimeActionModal({
                 </View>
               )}
             </View>
+            ) : null}
 
             {/* Share (always one tap, no expand) + Invite friends (collapsible, blue invite coding) */}
+            {isSignedIn ? (
             <View style={styles.inviteBarRow}>
               <TouchableOpacity
                 style={styles.shareButton}
@@ -1680,6 +1862,7 @@ export default function ShowtimeActionModal({
                 </Animated.View>
               </TouchableOpacity>
             </View>
+            ) : null}
 
             {showInviteFriends ? (
               <View style={styles.invitePanel}>
@@ -1709,9 +1892,7 @@ export default function ShowtimeActionModal({
                     ) : (
                       <View style={styles.inviteList}>
                         {filteredFriendsForPing.map((friend) => {
-                          const isEligible = friend.availability === "eligible";
                           const isHighlighted =
-                            isEligible &&
                             friend.id === firstEligibleFriendId &&
                             pingSearchQuery.trim().length > 0;
                           return (
@@ -1720,10 +1901,10 @@ export default function ShowtimeActionModal({
                               userId={friend.id}
                               name={friend.label}
                               watchStatus={friend.watchStatus}
-                              statusLabel={getPingStatusLabel(friend.availability)}
+                              pingStatus={getPingRowStatus(friend.availability)}
                               mode="invite"
                               highlighted={isHighlighted}
-                              disabled={!isEligible || isPingingFriend}
+                              disabled={isPingingFriend}
                               onInvite={() => handlePingFriend(friend.id)}
                             />
                           );
@@ -1859,9 +2040,9 @@ export default function ShowtimeActionModal({
           getState: (friendId) => {
             const availability = getPingAvailability(friendId);
             return {
-              statusLabel: getPingStatusLabel(availability),
+              pingStatus: getPingRowStatus(availability),
               invited: availability === "pinged",
-              disabled: availability !== "eligible" || isPingingFriend,
+              disabled: isPingingFriend,
             };
           },
           onInvite: handlePingFriend,
@@ -1913,6 +2094,13 @@ export default function ShowtimeActionModal({
           </Animated.View>
         </Animated.View>
       </Modal>
+
+      <InviteBeforePrivateDialog
+        visible={isInviteBeforePrivateVisible}
+        friends={inviteBeforePrivateCandidates}
+        onConfirm={handleInviteBeforePrivateConfirm}
+        onSkip={handleInviteBeforePrivateSkip}
+      />
       </QueryClientProvider>
     </BottomSheetModal>
   );
@@ -2230,6 +2418,17 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
 
     inviteBarRow: { flexDirection: "row", gap: 8 },
+    signInPrompt: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      marginTop: 14,
+      paddingVertical: 11,
+      borderRadius: 12,
+      backgroundColor: colors.blue.primary,
+    },
+    signInPromptText: { fontSize: 13, fontWeight: "700", color: colors.blue.secondary },
     shareButton: {
       flexDirection: "row",
       alignItems: "center",

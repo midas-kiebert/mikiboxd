@@ -3,7 +3,7 @@ from uuid import UUID
 
 from sqlmodel import Session, col, delete, select
 
-from app.core.enums import VisibilityMode
+from app.core.enums import GoingStatus, VisibilityMode
 from app.crud import showtime_ping as showtime_ping_crud
 from app.models.friendship import Friendship
 from app.models.showtime_selection import ShowtimeSelection
@@ -46,6 +46,48 @@ def _all_friend_ids(*, session: Session, owner_id: UUID) -> set[UUID]:
             select(Friendship.friend_id).where(col(Friendship.user_id) == owner_id)
         ).all()
     )
+
+
+def get_uninvited_selected_friend_ids_for_showtime(
+    *,
+    session: Session,
+    owner_id: UUID,
+    showtime_id: int,
+) -> list[UUID]:
+    """Friends already GOING/INTERESTED on this showtime with no ping (in
+    either direction, eligible or not) connecting them to the owner yet.
+
+    Used to warn the owner, before they switch to INVITED_ONLY, which
+    currently-visible friends would otherwise silently lose visibility.
+    Deliberately ignores the current visibility mode, `shares_status`, and
+    the `ShowtimeVisibilityEffective` cache — this must surface friends
+    regardless of whether they're visible right now.
+    """
+    friend_ids = _all_friend_ids(session=session, owner_id=owner_id)
+    if len(friend_ids) == 0:
+        return []
+
+    selected_friend_ids = set(
+        session.exec(
+            select(ShowtimeSelection.user_id).where(
+                ShowtimeSelection.showtime_id == showtime_id,
+                col(ShowtimeSelection.user_id).in_(friend_ids),
+                col(ShowtimeSelection.going_status).in_(
+                    [GoingStatus.GOING, GoingStatus.INTERESTED]
+                ),
+            )
+        ).all()
+    )
+    if len(selected_friend_ids) == 0:
+        return []
+
+    already_pinged_ids = showtime_ping_crud.get_ping_counterpart_ids_for_showtime(
+        session=session,
+        owner_id=owner_id,
+        showtime_id=showtime_id,
+        eligible_only=False,
+    )
+    return sorted(selected_friend_ids - already_pinged_ids, key=str)
 
 
 def _status_sharing_friend_ids(*, session: Session, owner_id: UUID) -> set[UUID]:
@@ -124,6 +166,7 @@ def get_owner_default_modes_for_showtimes(
             session=session,
             receiver_id=owner_id,
             showtime_ids=showtime_ids,
+            eligible_only=True,
         )
     )
     all_inviter_ids = {
@@ -206,16 +249,19 @@ def _compute_effective_visible_friend_ids_for_showtime(
         session=session,
         owner_id=owner_id,
         showtime_id=showtime_id,
+        eligible_only=True,
     )
     co_invited_ids = showtime_ping_crud.get_co_invited_user_ids(
         session=session,
         viewer_id=owner_id,
         showtime_id=showtime_id,
+        eligible_only=True,
     )
     chain_invited_ids = showtime_ping_crud.get_chain_invited_user_ids(
         session=session,
         viewer_id=owner_id,
         showtime_id=showtime_id,
+        eligible_only=True,
     )
     return (
         base_visible_ids | direct_invited_ids | co_invited_ids | chain_invited_ids

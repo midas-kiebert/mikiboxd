@@ -20,7 +20,7 @@ from app.services import movies as movies_services
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_services
 
-CINEMA = "LAB111"
+CINEMA_KEY = "lab111"
 
 # lab111.nl returns 402 Payment Required to the default python-requests
 # User-Agent (bot protection); a browser User-Agent gets the real agenda page.
@@ -47,13 +47,14 @@ def clean_title(title: str) -> str:
 
 class LAB111Scraper(BaseCinemaScraper):
     def __init__(self) -> None:
+        self.cinema_key = CINEMA_KEY
         with get_db_context() as session:
-            self.cinema_id = cinema_crud.get_cinema_id_by_name(
-                session=session, name=CINEMA
+            self.cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=CINEMA_KEY
             )
             if not self.cinema_id:
-                logger.error(f"Cinema {CINEMA} not found in database")
-                raise ValueError(f"Cinema {CINEMA} not found in database")
+                logger.error(f"Cinema {CINEMA_KEY} not found in database")
+                raise ValueError(f"Cinema {CINEMA_KEY} not found in database")
 
     def _process_film_div(
         self,

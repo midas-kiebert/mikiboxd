@@ -49,7 +49,7 @@ class Response(BaseModel):
     data: Data
 
 
-CINEMA = "Eye"
+CINEMA_KEY = "eye"
 
 
 def _eye_subtitles(original_language: str | None) -> list[str] | None:
@@ -156,9 +156,10 @@ def _pick_best_tmdb_candidate(
 
 class EyeScraper(BaseCinemaScraper):
     def __init__(self) -> None:
+        self.cinema_key = CINEMA_KEY
         with get_db_context() as session:
-            self.cinema_id = cinema_crud.get_cinema_id_by_name(
-                session=session, name=CINEMA
+            self.cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=CINEMA_KEY
             )
 
     def scrape(self) -> list[tuple[str, int]]:

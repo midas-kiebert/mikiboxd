@@ -40,10 +40,10 @@ export function useFetchMainPageShowtimes(
         ShowtimesGetMainPageShowtimesResponse,
         Error,
         InfiniteData<ShowtimesGetMainPageShowtimesResponse>,
-        [string, string, ShowtimesFilters],
+        [string, string, string | undefined, ShowtimesFilters],
         number
     >({
-        queryKey: ["showtimes", "main", filters],
+        queryKey: ["showtimes", "main", snapshotTime, filters],
         enabled,
         refetchOnMount: false,
         refetchOnWindowFocus: false,

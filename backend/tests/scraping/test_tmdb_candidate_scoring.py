@@ -510,3 +510,248 @@ def test_title_mismatch_with_people_runtime_year_can_be_decent() -> None:
         has_viable_higher_option=True,
     )
     assert quality == tmdb.DECENT
+
+
+def _lily_chou_chou_candidates() -> tuple[
+    list[PreEnrichmentTmdbMovieCandidate],
+    dict[int, tmdb.TmdbMovieDetails],
+]:
+    """KINO Rotterdam's `all-about-lily-chou-chou-2001` listing, as TMDB answers it.
+
+    TMDB titles the film by its romanized original, so the English listing only
+    matches it through an alternative title. The making-of documentary is
+    credited to the same director, carries the film's own cast, and its literal
+    title contains the query — every signal except the release year and the
+    documentary genre points the wrong way.
+    """
+    film = PreEnrichmentTmdbMovieCandidate(
+        id=16664,
+        title="Riri Shushu no Subete",
+        original_title="リリイ・シュシュのすべて",
+        release_year=2001,
+        original_language="ja",
+        popularity=6.4,
+        source_buckets={"searched", "directed", "acted"},
+    )
+    documentary = PreEnrichmentTmdbMovieCandidate(
+        id=744884,
+        title='All About "All About Lily Chou-Chou"',
+        original_title="リリイ・シュシュのすべてのすべて",
+        release_year=2002,
+        original_language="ja",
+        popularity=1.1,
+        source_buckets={"searched", "directed"},
+    )
+    film_cast = ["Hayato Ichihara", "Shugo Oshinari", "Yu Aoi", "Ayumi Ito"]
+    details_by_id = {
+        16664: tmdb.TmdbMovieDetails(
+            title="Riri Shushu no Subete",
+            original_title="リリイ・シュシュのすべて",
+            release_year=2001,
+            directors=["Shunji Iwai"],
+            poster_url=None,
+            original_language="ja",
+            spoken_languages=["ja"],
+            runtime_minutes=146,
+            cast_names=film_cast,
+            genre_ids=[18, 80],
+            alternative_titles=["All About Lily Chou-Chou"],
+        ),
+        744884: tmdb.TmdbMovieDetails(
+            title='All About "All About Lily Chou-Chou"',
+            original_title="リリイ・シュシュのすべてのすべて",
+            release_year=2002,
+            directors=["Naoto Shiraishi", "Shunji Iwai"],
+            poster_url=None,
+            original_language="ja",
+            spoken_languages=["ja"],
+            runtime_minutes=87,
+            cast_names=["Aya Watanabe", *film_cast, "Shunji Iwai"],
+            genre_ids=[99],
+            alternative_titles=[],
+        ),
+    }
+    return [film, documentary], details_by_id
+
+
+def _resolve_with_enrichment(
+    *,
+    title_query: str,
+    year: int | None,
+    director_names: list[str],
+    actor_names: list[str],
+    candidate_pool: list[PreEnrichmentTmdbMovieCandidate],
+    details_by_id: dict[int, tmdb.TmdbMovieDetails],
+) -> tmdb.TmdbLookupResult:
+    pre_candidates = tmdb.run_pre_enrichment_phase(
+        title_query=title_query,
+        title_variants=[title_query],
+        candidate_pool=candidate_pool,
+        year=year,
+        spoken_languages=[],
+    )
+    return tmdb.finalize_resolution(
+        title_variants=[title_query],
+        pre_candidates=pre_candidates,
+        director_names=director_names,
+        actor_names=actor_names,
+        duration_minutes=None,
+        spoken_languages=[],
+        details_by_id=dict(details_by_id),
+        enrichment_candidate_ids=[
+            candidate.movie.id for candidate in pre_candidates
+        ],
+    )
+
+
+def test_translated_title_film_beats_same_director_making_of() -> None:
+    candidate_pool, details_by_id = _lily_chou_chou_candidates()
+
+    result = _resolve_with_enrichment(
+        title_query="all about lily chou chou",
+        year=2001,
+        director_names=["Shunji Iwai"],
+        actor_names=["Hayato Ichihara"],
+        candidate_pool=candidate_pool,
+        details_by_id=details_by_id,
+    )
+
+    assert result.tmdb_id == 16664
+
+
+def test_alternative_title_lifts_pre_enrichment_quality() -> None:
+    """The rescore is what puts the two on equal footing.
+
+    Without it the film stays a full quality level below the documentary and the
+    tie-breaks — which is where the documentary genre is noticed — never run.
+    """
+    candidate_pool, details_by_id = _lily_chou_chou_candidates()
+    pre_candidates = tmdb.run_pre_enrichment_phase(
+        title_query="all about lily chou chou",
+        title_variants=["all about lily chou chou"],
+        candidate_pool=candidate_pool,
+        year=2001,
+        spoken_languages=[],
+    )
+    pre_by_id = {candidate.movie.id: candidate for candidate in pre_candidates}
+    assert pre_by_id[16664].title_quality == tmdb.CONTRADICTORY
+    assert pre_by_id[16664].quality < pre_by_id[744884].quality
+
+    enriched, _, _ = tmdb.apply_enrichment_to_candidates(
+        pre_candidates=pre_candidates,
+        title_variants=["all about lily chou chou"],
+        details_by_id=dict(details_by_id),
+        query_duration_minutes=None,
+        spoken_languages=[],
+        director_names=["Shunji Iwai"],
+        actor_names=["Hayato Ichihara"],
+    )
+    post_by_id = {candidate.movie.id: candidate for candidate in enriched}
+    assert post_by_id[16664].title_quality == tmdb.GOOD
+    assert post_by_id[16664].quality == post_by_id[744884].quality
+
+
+def test_enrichment_titles_never_lower_a_candidates_title_quality() -> None:
+    candidate = tmdb.CandidateQuality(
+        movie=PreEnrichmentTmdbMovieCandidate(
+            id=42,
+            title="Persona",
+            original_title=None,
+            release_year=1966,
+            original_language="sv",
+            popularity=1.0,
+            source_buckets={"searched", "directed"},
+        ),
+        source_quality=tmdb.EXCELLENT,
+        title_quality=tmdb.EXCELLENT,
+        year_quality=tmdb.GOOD,
+        language_quality=tmdb.NONE,
+        quality=tmdb.EXCELLENT,
+    )
+
+    title_quality, pre_quality = tmdb._rescore_title_after_enrichment(
+        candidate=candidate,
+        enrichment=tmdb.EnrichmentQuality(
+            runtime_quality=tmdb.NONE,
+            language_quality=tmdb.NONE,
+            director_quality=tmdb.GOOD,
+            actor_quality=tmdb.NONE,
+            title_quality=tmdb.CONTRADICTORY,
+        ),
+    )
+
+    assert title_quality == tmdb.EXCELLENT
+    assert pre_quality == tmdb.EXCELLENT
+
+
+def test_ambiguous_tie_prefers_the_exact_release_year() -> None:
+    def _tied_candidate(
+        movie_id: int, title: str, release_year: int, year_quality: tmdb.Quality
+    ) -> tmdb.CandidateQuality:
+        return tmdb.CandidateQuality(
+            movie=PreEnrichmentTmdbMovieCandidate(
+                id=movie_id,
+                title=title,
+                original_title=None,
+                release_year=release_year,
+                original_language="en",
+                popularity=1.0,
+                source_buckets={"searched", "directed", "acted"},
+            ),
+            source_quality=tmdb.EXCELLENT,
+            title_quality=tmdb.GOOD,
+            year_quality=year_quality,
+            language_quality=tmdb.NONE,
+            quality=tmdb.EXCELLENT,
+        )
+
+    result = tmdb.pick_tmdb_result(
+        candidates=[
+            _tied_candidate(900, "The Wanderer", 1982, tmdb.DECENT),
+            _tied_candidate(901, "The Wanderer", 1975, tmdb.GOOD),
+        ],
+        reason="post_enrichment_quality_resolution",
+        details_by_id={900: None, 901: None},
+        enrichment_by_id={},
+    )
+
+    assert result.tmdb_id == 901
+    assert result.decision is not None
+    disambiguation = result.decision["disambiguation"]
+    assert [signal["signal"] for signal in disambiguation["active_signals"]] == [
+        "prefer_exact_year"
+    ]
+
+
+def test_exact_year_signal_stays_inactive_without_a_query_year() -> None:
+    """Every candidate scores year_quality NONE when the listing has no year, so
+    the signal must not fire and hand the win to an arbitrary candidate."""
+
+    def _yearless_candidate(movie_id: int) -> tmdb.CandidateQuality:
+        return tmdb.CandidateQuality(
+            movie=PreEnrichmentTmdbMovieCandidate(
+                id=movie_id,
+                title="The Wanderer",
+                original_title=None,
+                release_year=1982,
+                original_language="en",
+                popularity=1.0,
+                source_buckets={"searched", "directed", "acted"},
+            ),
+            source_quality=tmdb.EXCELLENT,
+            title_quality=tmdb.GOOD,
+            year_quality=tmdb.NONE,
+            language_quality=tmdb.NONE,
+            quality=tmdb.EXCELLENT,
+        )
+
+    result = tmdb.pick_tmdb_result(
+        candidates=[_yearless_candidate(910), _yearless_candidate(911)],
+        reason="post_enrichment_quality_resolution",
+        details_by_id={910: None, 911: None},
+        enrichment_by_id={},
+    )
+
+    assert result.tmdb_id is None
+    assert result.decision is not None
+    assert result.decision.get("reason") == "ambiguous_top_quality"

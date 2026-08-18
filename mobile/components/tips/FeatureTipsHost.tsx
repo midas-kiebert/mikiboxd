@@ -23,7 +23,7 @@ import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
 import { useFetchSentRequests } from "shared/hooks/useFetchSentRequests";
 
-import { useCinemaPresets } from "@/components/filters/cinema-presets";
+import { findMyCinemasPreset, useCinemaPresets } from "@/components/filters/cinema-presets";
 import {
   displayPresetsQueryKey,
   fetchDisplayPresets,
@@ -80,11 +80,17 @@ export default function FeatureTipsHost() {
 
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
 
-  // Once a preset exists the user has found the feature; that stays true even
-  // if every preset is later deleted, so this never re-checks preset count
-  // after the first save (see `retireCinemaPresetTip`, called on save).
+  // The tip nudges the user to set their cinemas, so it asks whether that row
+  // exists — not whether the list is empty. The list never is: the backend
+  // always prepends a synthetic "All Cinemas" entry, which made the old
+  // `length === 0` test permanently false and the tip unreachable.
+  // Once set, the user has found the feature; that stays true even if they
+  // later clear everything, so this never re-checks after the first save (see
+  // `retireCinemaPresetTip`, called on save).
   const shouldSuggestCinemaPreset =
-    Boolean(cinemas?.length) && cinemaPresets !== undefined && cinemaPresets.length === 0;
+    Boolean(cinemas?.length) &&
+    cinemaPresets !== undefined &&
+    findMyCinemasPreset(cinemaPresets) === null;
   const shouldSuggestAddFriends =
     friends !== undefined && sentRequests !== undefined &&
     friends.length === 0 && sentRequests.length === 0;

@@ -20,12 +20,9 @@ from app.models.city import City, CityCreate
 from app.models.letterboxd import Letterboxd
 from app.models.movie import Movie, MovieCreate
 from app.models.showtime import Showtime, ShowtimeCreate
-from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User, UserCreate, UserRegister
 from app.schemas.cinema import CinemaPublic
 from app.schemas.city import CityPublic
-from app.schemas.movie import MovieSummaryLoggedIn
-from app.schemas.showtime import ShowtimeInMovieLoggedIn
 from app.schemas.user import UserPublic
 from app.validators.cinema_seating import CinemaSeatingPreset
 
@@ -41,12 +38,9 @@ __all__ = [
     "user_register_factory",
     "user_create_factory",
     "user_factory",
-    "showtime_in_movie_logged_in_factory",
     "cinema_public_factory",
     "city_public_factory",
     "user_public_factory",
-    "showtime_logged_in_factory",
-    "movie_summary_logged_in_factory",
 ]
 
 
@@ -92,7 +86,9 @@ class CinemaCreateFactory(Factory):
     class Meta:
         model = CinemaCreate
 
+    key = Sequence(lambda n: f"cinema-create-{n}")
     name = Faker("company")
+    aliases = LazyFunction(list)
     cineville = Faker("boolean", chance_of_getting_true=50)
     badge_bg_color = Faker("color")
     badge_text_color = Faker("color")
@@ -111,7 +107,9 @@ class CinemaFactory(SQLModelFactory):
         model = Cinema
 
     id = Sequence(lambda n: n + 1)
+    key = Sequence(lambda n: f"cinema-{n}")
     name = Faker("company")
+    aliases = LazyFunction(list)
     cineville = Faker("boolean", chance_of_getting_true=50)
     badge_bg_color = Faker("color")
     badge_text_color = Faker("color")
@@ -264,69 +262,6 @@ class UserPublicFactory(Factory):
 @pytest.fixture
 def user_public_factory():
     return UserPublicFactory
-
-
-class ShowtimeInMovieLoggedInFactory(Factory):
-    class Meta:
-        model = ShowtimeInMovieLoggedIn
-
-    id = Sequence(lambda n: n + 1)
-    datetime = Faker("date_time_between", start_date="+1d", end_date="+30d")
-    theatre = Faker("sentence", nb_words=2)
-    ticket_link = Faker("url")
-    cinema = SubFactory(CinemaPublicFactory)
-    friends_going = LazyFunction(lambda: [UserPublicFactory() for _ in range(3)])
-    friends_interested = LazyFunction(lambda: [UserPublicFactory() for _ in range(2)])
-    going = Faker("boolean", chance_of_getting_true=50)
-
-
-@pytest.fixture
-def showtime_in_movie_logged_in_factory():
-    return ShowtimeInMovieLoggedInFactory
-
-
-class MovieSummaryLoggedInFactory(Factory):
-    class Meta:
-        model = MovieSummaryLoggedIn
-
-    id = Sequence(lambda n: n + 1)
-    title = Faker("sentence", nb_words=3)
-    poster_link = Faker("image_url", width=300, height=450)
-    letterboxd_slug = Faker("slug")
-    showtimes = LazyFunction(
-        lambda: [ShowtimeInMovieLoggedInFactory() for _ in range(3)]
-    )
-    cinemas = LazyFunction(lambda: [CinemaPublicFactory() for _ in range(2)])
-    last_showtime_datetime = Faker(
-        "date_time_this_year", before_now=True, after_now=True
-    )
-    total_showtimes = Faker("random_int", min=1, max=10)
-    friends_going = LazyFunction(lambda: [UserPublicFactory() for _ in range(3)])
-    going = Faker("boolean", chance_of_getting_true=50)
-
-
-@pytest.fixture
-def movie_summary_logged_in_factory():
-    return MovieSummaryLoggedInFactory
-
-
-class ShowtimeLoggedInFactory(Factory):
-    class Meta:
-        model = ShowtimeSelection
-
-    id = Sequence(lambda n: n + 1)
-    datetime = Faker("date_time_between", start_date="+1d", end_date="+30d")
-    theatre = Faker("sentence", nb_words=2)
-    ticket_link = Faker("url")
-    cinema = SubFactory(CinemaPublicFactory)
-    movie = SubFactory(MovieSummaryLoggedInFactory)
-    friends_going = LazyFunction(lambda: [UserPublicFactory() for _ in range(3)])
-    going = Faker("boolean", chance_of_getting_true=50)
-
-
-@pytest.fixture
-def showtime_logged_in_factory():
-    return ShowtimeLoggedInFactory
 
 
 class UserCreateFactory(Factory):

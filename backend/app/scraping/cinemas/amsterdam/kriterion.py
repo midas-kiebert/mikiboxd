@@ -25,7 +25,7 @@ from app.services import movies as movies_services
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_services
 
-CINEMA = "Kriterion"
+CINEMA_KEY = "kriterion"
 
 # The feed sits behind bot protection that 402/403s the default python-requests
 # User-Agent (the old storage.googleapis.com buffer URL 403'd outright); a
@@ -78,9 +78,10 @@ def parse_languages(value: str | None) -> list[str] | None:
 
 class KriterionScraper(BaseCinemaScraper):
     def __init__(self) -> None:
+        self.cinema_key = CINEMA_KEY
         with get_db_context() as session:
-            self.cinema_id = cinema_crud.get_cinema_id_by_name(
-                session=session, name=CINEMA
+            self.cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=CINEMA_KEY
             )
 
     def scrape(self) -> list[tuple[str, int]]:

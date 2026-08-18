@@ -38,6 +38,7 @@ services:
       - DOMAIN=${DOMAIN}
       - API_HOST=${API_HOST?Variable not set}
       - FRONTEND_HOST=${FRONTEND_HOST?Variable not set}
+      - PUBLIC_HOST=${PUBLIC_HOST?Variable not set}
       - POSTGRES_SERVER=db
       - POSTGRES_PORT=${POSTGRES_PORT}
       - POSTGRES_DB=${POSTGRES_DB}
@@ -83,6 +84,7 @@ services:
       - DOMAIN=${DOMAIN}
       - API_HOST=${API_HOST?Variable not set}
       - FRONTEND_HOST=${FRONTEND_HOST?Variable not set}
+      - PUBLIC_HOST=${PUBLIC_HOST?Variable not set}
       - ENVIRONMENT=${ENVIRONMENT}
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
       - SECRET_KEY=${SECRET_KEY?Variable not set}
@@ -122,6 +124,7 @@ services:
       - DOMAIN=${DOMAIN}
       - API_HOST=${API_HOST?Variable not set}
       - FRONTEND_HOST=${FRONTEND_HOST?Variable not set}
+      - PUBLIC_HOST=${PUBLIC_HOST?Variable not set}
       - ENVIRONMENT=${ENVIRONMENT}
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
       - SECRET_KEY=${SECRET_KEY?Variable not set}

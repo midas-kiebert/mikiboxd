@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     ENVIRONMENT: Environment = Environment.LOCAL
     DEBUG: bool = False
 
+    # Set by scripts/test.sh. Forces emails_enabled off so the test suite never
+    # sends real mail through whatever SMTP creds happen to be in .env.
+    TESTING: bool = False
+
     @field_validator("DEBUG", mode="before")
     @classmethod
     def _normalize_debug_aliases(cls, value: Any) -> Any:
@@ -120,6 +124,12 @@ class Settings(BaseSettings):
     # for a fresh one (POST /me/resend-verification).
     EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24 * 14
 
+    # Bearer key for the read-only /monitor/scrape/* routes (scrape-run/recap
+    # health data for machine consumers, e.g. an unattended monitoring agent,
+    # that can't hold a user JWT). Unset means those routes refuse every
+    # request rather than falling open.
+    SCRAPE_MONITOR_API_KEY: str | None = None
+
     # -------------------------------------------------------------------------
     # Social sign-in
     # -------------------------------------------------------------------------
@@ -127,6 +137,27 @@ class Settings(BaseSettings):
     # The app's bundle ID — native Sign in with Apple issues identity tokens
     # with this as the `aud` claim (no separate OAuth client is needed).
     APPLE_CLIENT_ID: str = "com.midaskiebert.mikino"
+
+    # Credentials for Apple's token endpoints, needed only to *revoke* a user's
+    # Sign in with Apple tokens when they delete their account — which Apple
+    # requires of any app offering Sign in with Apple (guideline 5.1.1(v) and
+    # https://developer.apple.com/support/offering-account-deletion-in-your-app/).
+    #
+    # All three come from the Apple Developer portal: the team ID, the key ID of
+    # a "Sign in with Apple" private key, and the contents of that key's .p8
+    # file (PEM, newlines intact — in an env var, "\n" escapes are accepted and
+    # unescaped by `apple_client_secret`).
+    #
+    # Unset by default, and unset means revocation is skipped with a warning
+    # rather than blocking the deletion: a user asking to delete their account
+    # must always succeed, whatever Apple's endpoint is doing.
+    APPLE_TEAM_ID: str | None = None
+    APPLE_KEY_ID: str | None = None
+    APPLE_PRIVATE_KEY: str | None = None
+
+    @property
+    def apple_token_revocation_configured(self) -> bool:
+        return bool(self.APPLE_TEAM_ID and self.APPLE_KEY_ID and self.APPLE_PRIVATE_KEY)
 
     # Accepted audiences for Google ID tokens: the iOS, Android, and Web OAuth
     # client IDs from Google Cloud Console. The mobile app requests an ID token
@@ -145,6 +176,10 @@ class Settings(BaseSettings):
     # Used by the backend to generate absolute links to itself in emails
     # (e.g. one-click unsubscribe links, which must hit the API directly).
     API_HOST: str = "http://localhost:8000"
+    # Used by the backend to generate customer-facing links in emails (e.g. the
+    # watchlist digest's movie links). Unlike FRONTEND_HOST, which points at the
+    # admin dashboard, this points at the public marketing/app site.
+    PUBLIC_HOST: str = "http://localhost:5173"
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(_parse_cors)
     ] = []
@@ -272,10 +307,18 @@ class Settings(BaseSettings):
     # Lowest mobile app `version` (from app.json, sent as X-Client-Version) still
     # allowed to call the API. Requests from an older native build get a 426
     # Upgrade Required instead of hitting routes they don't understand — see
-    # app/core/client_version.py. `None` disables the gate entirely (every
-    # version is accepted), which is the default so this stays inert until a
-    # breaking mobile change actually needs it.
-    MIN_SUPPORTED_CLIENT_VERSION: str | None = None
+    # app/core/client_version.py. `None` disables the gate for that platform
+    # (every version is accepted), which is the default so this stays inert
+    # until a breaking mobile change actually needs it.
+    #
+    # Per-platform on purpose: App Store review runs to weeks where Play review
+    # runs to a day, so the two floors are never raised at the same moment and
+    # a shared setting would force the faster store to wait for the slower one.
+    # Raise each one only once that platform's release is actually installed —
+    # the X-Client-Version header on live traffic is what tells you, not the
+    # store listing, since an approved build still takes days to roll out.
+    MIN_SUPPORTED_CLIENT_VERSION_IOS: str | None = None
+    MIN_SUPPORTED_CLIENT_VERSION_ANDROID: str | None = None
 
     # Store links surfaced in the 426 response so the app can deep-link straight
     # to the update instead of hardcoding store URLs into the client.
@@ -284,7 +327,9 @@ class Settings(BaseSettings):
         "https://play.google.com/store/apps/details?id=com.midaskiebert.mikino"
     )
 
-    @field_validator("MIN_SUPPORTED_CLIENT_VERSION")
+    @field_validator(
+        "MIN_SUPPORTED_CLIENT_VERSION_IOS", "MIN_SUPPORTED_CLIENT_VERSION_ANDROID"
+    )
     @classmethod
     def _validate_min_supported_client_version(cls, value: str | None) -> str | None:
         if value is not None:

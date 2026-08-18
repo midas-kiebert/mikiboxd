@@ -15,7 +15,6 @@ import type { SearchField } from 'shared/client';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
 import { DateTime } from 'luxon';
-import { useQueryClient } from '@tanstack/react-query';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
@@ -32,11 +31,18 @@ import {
   getSelectedStatusesFromShowtimeFilter,
   toSharedTabShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
+import { tabletCappedContentStyle } from '@/constants/tablet-layout';
 import { useThemeColors } from '@/hooks/use-theme-color';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import MovieCard from '@/components/movies/MovieCard';
+import { useIsSignedIn } from '@/utils/auth-session';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
+
+// One request per pause in typing, not one per keystroke — see
+// useDebouncedValue and (tabs)/index.tsx's identical guard.
+const SEARCH_DEBOUNCE_MS = 280;
 
 export default function MovieScreen() {
   const router = useRouter();
@@ -45,10 +51,13 @@ export default function MovieScreen() {
   const styles = createStyles(colors);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchField, setSearchField] = useState<SearchField>('title');
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, SEARCH_DEBOUNCE_MS);
+  // Clearing the field drops the results immediately — waiting out the
+  // debounce to remove what the user just deleted would feel broken.
+  const effectiveSearchQuery = searchQuery.trim().length > 0 ? debouncedSearchQuery : '';
   const [refreshing, setRefreshing] = useState(false);
   const { openFiltersModal } = useFiltersModal();
   const isFocused = useIsFocused();
-  const queryClient = useQueryClient();
 
   const {
     selectedShowtimeFilter,
@@ -82,6 +91,7 @@ export default function MovieScreen() {
   } = useSharedTabFilters();
 
   const { user } = useAuth();
+  const isSignedIn = useIsSignedIn();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
@@ -104,7 +114,9 @@ export default function MovieScreen() {
     [selectedRuntimeRanges]
   );
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  // No account, no saved cinemas to fall back to — a guest's picks are the
+  // session selection itself (see hooks/useCinemaSelection).
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
 
   useEffect(() => {
     if (hasLetterboxdUsername || !watchlistOnly) return;
@@ -116,9 +128,15 @@ export default function MovieScreen() {
     setHideWatched(false);
   }, [hasLetterboxdUsername, setHideWatched, hideWatched]);
 
+  // A cinema-name search already narrows results to matching cinemas, so a
+  // cinema selection on top of it would only ever narrow further — the pill
+  // reads as "All cinemas" and the query drops the filter to match, while
+  // sessionCinemaIds itself is left alone (see CinemaFilterChip's `disabled`).
+  const isSearchingByCinema = searchField === "cinema" && effectiveSearchQuery.trim().length > 0;
+
   const movieFilters = useMemo<MovieFilters>(
     () => ({
-      query: searchQuery,
+      query: effectiveSearchQuery,
       searchField,
       watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
       hideWatched: effectiveAppliedHideWatched ? true : undefined,
@@ -126,7 +144,7 @@ export default function MovieScreen() {
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       runtimeMin: runtimeBounds.runtimeMin,
       runtimeMax: runtimeBounds.runtimeMax,
-      selectedCinemaIds: sessionCinemaIds,
+      selectedCinemaIds: isSearchingByCinema ? undefined : sessionCinemaIds,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(selectedShowtimeFilter),
       watchlistExclude: effectiveWatchlistExclude ? true : undefined,
       watchedOnly: effectiveWatchedOnly ? true : undefined,
@@ -135,7 +153,7 @@ export default function MovieScreen() {
       selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
     }),
     [
-      searchQuery,
+      effectiveSearchQuery,
       searchField,
       effectiveAppliedWatchlistOnly,
       effectiveAppliedHideWatched,
@@ -148,6 +166,7 @@ export default function MovieScreen() {
       runtimeBounds.runtimeMin,
       runtimeBounds.runtimeMax,
       sessionCinemaIds,
+      isSearchingByCinema,
       selectedShowtimeFilter,
       selectedLanguages,
     ]
@@ -161,11 +180,7 @@ export default function MovieScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await refreshInfiniteQueryWithFreshSnapshot({
-        queryClient,
-        queryKey: ['movies', movieFilters],
-        setSnapshotTime,
-      });
+      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
     } finally {
       setRefreshing(false);
     }
@@ -258,6 +273,7 @@ export default function MovieScreen() {
         selectedLanguages={selectedLanguages}
         setSelectedLanguages={setSelectedLanguages}
         onOpenFilters={() => openFiltersModal({ showGroupByMovie: false })}
+        cinemaFilterDisabled={isSearchingByCinema}
         onClearAll={() => {
           setSelectedShowtimeFilter(toSharedTabShowtimeFilter('all'));
           setWatchlistOnly(false);
@@ -295,7 +311,7 @@ export default function MovieScreen() {
 const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    movieFeed: { padding: 16 },
+    movieFeed: { ...tabletCappedContentStyle, padding: 16 },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });

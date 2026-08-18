@@ -75,6 +75,19 @@ export type AnalyticsOverview = {
   notifications_clicked: number
 }
 
+/**
+ * One row of the "Blocked accounts" list.
+ *
+ * Carries the display name rather than only the id so the list is readable
+ * without a second request per row — the blocked user is deliberately not
+ * reachable through search any more, so the client cannot look them up.
+ */
+export type BlockedUserPublic = {
+  id: string
+  display_name: string | null
+  blocked_at: string
+}
+
 export type Body_login_login_access_token = {
   grant_type?: string | null
   username: string
@@ -88,6 +101,7 @@ export type CinemaPresetCreate = {
   name: string
   cinema_ids?: Array<number>
   is_favorite?: boolean | null
+  overwrite?: boolean
 }
 
 export type CinemaPresetPublic = {
@@ -100,9 +114,19 @@ export type CinemaPresetPublic = {
   updated_at: string
 }
 
+/**
+ * The only field of a saved preset the user can edit after the fact.
+ *
+ * Its cinemas are changed by re-picking them in the sheet and saving over the
+ * preset, so a rename never carries a selection with it.
+ */
+export type CinemaPresetRename = {
+  name: string
+}
+
 export type CinemaPublic = {
   /**
-   * Name of the cinema
+   * Display name of the cinema, shown to users
    */
   name: string
   cineville: boolean
@@ -111,7 +135,6 @@ export type CinemaPublic = {
   seating?: CinemaSeatingPreset
   id: number
   city: CityPublic
-  test?: number
 }
 
 /**
@@ -167,6 +190,16 @@ export type CoInvitedFriendPublic = {
  * showtimes is happening soon — see app/services/watchlist_digest.py.
  */
 export type DigestFrequency = "daily" | "weekly_or_urgent"
+
+export type DigestFrequencyInfo = {
+  label: string
+  description: string
+}
+
+export type DigestFrequencyInfoResponse = {
+  daily: DigestFrequencyInfo
+  weekly_or_urgent: DigestFrequencyInfo
+}
 
 export type FriendStatusSharingUpdate = {
   shares_status: boolean
@@ -226,7 +259,10 @@ export type MovieInShowtime = {
   description?: string | null
 }
 
-export type MovieLoggedIn = {
+/**
+ * A movie page: the film, and every screening matching the filters.
+ */
+export type MoviePublic = {
   id: number
   title: string
   original_title?: string | null
@@ -239,12 +275,22 @@ export type MovieLoggedIn = {
   languages?: Array<string> | null
   original_language?: string | null
   description?: string | null
-  showtimes: Array<ShowtimeInMovieLoggedIn>
-  friends_watchlisted?: Array<UserPublic>
-  friends_watched?: Array<UserPublic>
+  showtimes: Array<ShowtimeInMoviePublic>
+  viewer?: MovieViewerState | null
+  /**
+   * @deprecated
+   */
+  readonly friends_watchlisted?: Array<UserPublic>
+  /**
+   * @deprecated
+   */
+  readonly friends_watched?: Array<UserPublic>
 }
 
-export type MovieSummaryLoggedIn = {
+/**
+ * A movie card: the film, and the screenings it currently has.
+ */
+export type MovieSummaryPublic = {
   id: number
   title: string
   original_title?: string | null
@@ -257,13 +303,36 @@ export type MovieSummaryLoggedIn = {
   languages?: Array<string> | null
   original_language?: string | null
   description?: string | null
-  showtimes: Array<ShowtimeInMovieLoggedIn>
+  showtimes: Array<ShowtimeInMoviePublic>
   cinemas: Array<CinemaPublic>
   last_showtime_datetime: string | null
   total_showtimes: number
-  friends_going: Array<UserPublic>
-  friends_interested: Array<UserPublic>
+  viewer?: MovieSummaryViewerState | null
+  /**
+   * @deprecated
+   */
+  readonly going?: GoingStatus
+  /**
+   * @deprecated
+   */
+  readonly friends_going?: Array<UserPublic>
+  /**
+   * @deprecated
+   */
+  readonly friends_interested?: Array<UserPublic>
+}
+
+/**
+ * What a movie card means to the person who asked for it.
+ *
+ * Same reasoning as `ShowtimeViewerState`: everything here is about the
+ * requester rather than the film, so it is carried apart from it and is
+ * absent — not empty — when there is no requester.
+ */
+export type MovieSummaryViewerState = {
   going: GoingStatus
+  friends_going?: Array<UserPublic>
+  friends_interested?: Array<UserPublic>
 }
 
 export type MovieUpdate = {
@@ -277,6 +346,14 @@ export type MovieUpdate = {
   description?: string | null
   tmdb_last_enriched_at?: string | null
   tmdb_cache_id?: number | null
+}
+
+/**
+ * What a movie page means to the person who asked for it.
+ */
+export type MovieViewerState = {
+  friends_watchlisted?: Array<UserPublic>
+  friends_watched?: Array<UserPublic>
 }
 
 export type NewPassword = {
@@ -326,7 +403,7 @@ export type NotificationFeedItem = {
   created_at: string
   seen_at: string | null
   actor: UserPublic | null
-  showtime: ShowtimeLoggedIn | null
+  showtime: ShowtimePublic | null
 }
 
 export type source = "notification" | "ping" | "friend_request"
@@ -477,7 +554,10 @@ export type SentShowtimePingPublic = {
   dismissed_at: string | null
 }
 
-export type ShowtimeInMovieLoggedIn = {
+/**
+ * A screening listed under a movie, so it carries no movie of its own.
+ */
+export type ShowtimeInMoviePublic = {
   datetime: string
   end_datetime?: string | null
   ticket_link?: string | null
@@ -486,39 +566,70 @@ export type ShowtimeInMovieLoggedIn = {
   tmdb_cache_id?: number | null
   id: number
   cinema: CinemaPublic
-  friends_going: Array<UserPublic>
-  friends_interested: Array<UserPublic>
+  viewer?: ShowtimeInMovieViewerState | null
+  /**
+   * @deprecated
+   */
+  readonly going?: GoingStatus
+  /**
+   * @deprecated
+   */
+  readonly seat_row?: string | null
+  /**
+   * @deprecated
+   */
+  readonly seat_number?: string | null
+  /**
+   * @deprecated
+   */
+  readonly friends_going?: Array<UserPublic>
+  /**
+   * @deprecated
+   */
+  readonly friends_interested?: Array<UserPublic>
+  /**
+   * @deprecated
+   */
+  readonly invited_by?: Array<UserPublic>
+  /**
+   * @deprecated
+   */
+  readonly invite_ping_ids?: Array<number>
+  /**
+   * @deprecated
+   */
+  readonly co_invited_friends?: Array<CoInvitedFriendPublic>
+  /**
+   * @deprecated
+   */
+  readonly pending_invited_friends?: Array<UserPublic>
+}
+
+/**
+ * What a showtime means to the person who asked for it.
+ *
+ * Kept apart from the showtime itself because it is the one part of the
+ * response that is *not* the same for everyone: the screening is public, this
+ * is the requester's own relationship to it. Carried as `viewer` on the
+ * schemas below, where `None` means nobody was asking — see `app.core.viewer`.
+ * Nesting it rather than flattening it is what makes those two cases
+ * distinguishable at all: a flat `friends_going: []` cannot say whether the
+ * viewer has no friends going or whether there is no viewer.
+ */
+export type ShowtimeInMovieViewerState = {
   going: GoingStatus
   seat_row?: string | null
   seat_number?: string | null
+  friends_going?: Array<UserPublic>
+  friends_interested?: Array<UserPublic>
   invited_by?: Array<UserPublic>
   invite_ping_ids?: Array<number>
   co_invited_friends?: Array<CoInvitedFriendPublic>
   pending_invited_friends?: Array<UserPublic>
 }
 
-export type ShowtimeLoggedIn = {
-  datetime: string
-  end_datetime?: string | null
-  ticket_link?: string | null
-  subtitles?: Array<string> | null
-  scrape_source?: string | null
-  tmdb_cache_id?: number | null
-  id: number
-  movie: MovieInShowtime
-  cinema: CinemaPublic
-  friends_going: Array<UserPublic>
-  friends_interested: Array<UserPublic>
-  going: GoingStatus
-  seat_row?: string | null
-  seat_number?: string | null
-  invited_by?: Array<UserPublic>
-  invite_ping_ids?: Array<number>
-  co_invited_friends?: Array<CoInvitedFriendPublic>
-  pending_invited_friends?: Array<UserPublic>
-  friends_watchlisted?: Array<UserPublic>
-  friends_watched?: Array<UserPublic>
-  non_friend_participants?: Array<NonFriendParticipantPublic>
+export type ShowtimePingLinkToken = {
+  token: string
 }
 
 export type ShowtimePingPublic = {
@@ -530,7 +641,7 @@ export type ShowtimePingPublic = {
   cinema_name: string
   datetime: string
   ticket_link: string | null
-  showtime: ShowtimeLoggedIn
+  showtime: ShowtimePublic
   sender: UserPublic
   created_at: string
   seen_at: string | null
@@ -540,6 +651,73 @@ export type ShowtimePingPublic = {
  * Sort order options for the pings list endpoint.
  */
 export type ShowtimePingSort = "ping_created_at" | "showtime_datetime"
+
+/**
+ * A screening: which film, which cinema, when, and where to buy a ticket.
+ *
+ * Public in the literal sense — identical for everyone and served without a
+ * token. Anything that varies by who is asking lives under `viewer`.
+ */
+export type ShowtimePublic = {
+  datetime: string
+  end_datetime?: string | null
+  ticket_link?: string | null
+  subtitles?: Array<string> | null
+  scrape_source?: string | null
+  tmdb_cache_id?: number | null
+  id: number
+  movie: MovieInShowtime
+  cinema: CinemaPublic
+  viewer?: ShowtimeViewerState | null
+  /**
+   * @deprecated
+   */
+  readonly going?: GoingStatus
+  /**
+   * @deprecated
+   */
+  readonly seat_row?: string | null
+  /**
+   * @deprecated
+   */
+  readonly seat_number?: string | null
+  /**
+   * @deprecated
+   */
+  readonly friends_going?: Array<UserPublic>
+  /**
+   * @deprecated
+   */
+  readonly friends_interested?: Array<UserPublic>
+  /**
+   * @deprecated
+   */
+  readonly invited_by?: Array<UserPublic>
+  /**
+   * @deprecated
+   */
+  readonly invite_ping_ids?: Array<number>
+  /**
+   * @deprecated
+   */
+  readonly co_invited_friends?: Array<CoInvitedFriendPublic>
+  /**
+   * @deprecated
+   */
+  readonly pending_invited_friends?: Array<UserPublic>
+  /**
+   * @deprecated
+   */
+  readonly friends_watchlisted?: Array<UserPublic>
+  /**
+   * @deprecated
+   */
+  readonly friends_watched?: Array<UserPublic>
+  /**
+   * @deprecated
+   */
+  readonly non_friend_participants?: Array<NonFriendParticipantPublic>
+}
 
 export type ShowtimeReportAdminView = {
   id: number
@@ -594,6 +772,28 @@ export type ShowtimeSelectionUpdate = {
   visibility_mode?: VisibilityMode | null
 }
 
+/**
+ * The full viewer state, for the showtime sheet.
+ *
+ * The extra fields cost queries that a list of rows does not pay for, which is
+ * why the two shapes differ rather than one carrying empty defaults — an empty
+ * list should mean "none", never "we didn't look".
+ */
+export type ShowtimeViewerState = {
+  going: GoingStatus
+  seat_row?: string | null
+  seat_number?: string | null
+  friends_going?: Array<UserPublic>
+  friends_interested?: Array<UserPublic>
+  invited_by?: Array<UserPublic>
+  invite_ping_ids?: Array<number>
+  co_invited_friends?: Array<CoInvitedFriendPublic>
+  pending_invited_friends?: Array<UserPublic>
+  friends_watchlisted?: Array<UserPublic>
+  friends_watched?: Array<UserPublic>
+  non_friend_participants?: Array<NonFriendParticipantPublic>
+}
+
 export type ShowtimeVisibilityPublic = {
   showtime_id: number
   movie_id: number
@@ -607,6 +807,7 @@ export type ShowtimeVisibilityUpdate = {
 export type SocialLoginRequest = {
   provider: SocialProvider
   token: string
+  authorization_code?: string | null
 }
 
 export type SocialLoginResponse = {
@@ -674,6 +875,10 @@ export type Token = {
   token_type?: string
 }
 
+export type UninvitedSelectedFriendsPublic = {
+  friends: Array<UserPublic>
+}
+
 export type UpdatePassword = {
   current_password?: string | null
   new_password: string
@@ -733,9 +938,58 @@ export type UserRegister = {
   display_name?: string | null
 }
 
+export type UserReportAdminView = {
+  id: number
+  reported_id: string
+  reported_display_name: string | null
+  reported_email: string
+  reporter_id: string
+  reporter_email: string
+  reason: UserReportReason
+  message: string | null
+  status: UserReportStatus
+  created_at: string
+  resolved_at: string | null
+  report_count: number
+}
+
 export type UserReportBanUpdate = {
   banned: boolean
   duration_days?: number | null
+}
+
+export type UserReportCreate = {
+  reason: UserReportReason
+  message?: string | null
+  block_user?: boolean
+}
+
+/**
+ * Why a user is reporting another user.
+ *
+ * Scoped to what is actually possible in MiKiNO: there is no messaging or
+ * free-text between users, so reasons like harassment or bullying (which
+ * would need a channel to say something in) don't apply. What remains is
+ * what a username, a friend request, or an invite can actually do wrong.
+ */
+export type UserReportReason =
+  | "objectionable_username"
+  | "impersonation"
+  | "repeated_unwanted_contact"
+  | "spam"
+  | "other"
+
+/**
+ * Moderation state of a user-submitted report about another user.
+ *
+ * Mirrors `ShowtimeReportStatus` rather than sharing it: the two queues are
+ * triaged separately and nothing should make it possible to move a report
+ * about a person into a state that only means something for a screening.
+ */
+export type UserReportStatus = "open" | "resolved" | "dismissed"
+
+export type UserReportUpdate = {
+  status: UserReportStatus
 }
 
 export type UserUpdate = {
@@ -771,6 +1025,7 @@ export type UserWithFriendStatus = {
   sent_request: boolean
   received_request: boolean
   shares_status?: boolean
+  is_blocked?: boolean
 }
 
 export type ValidationError = {
@@ -856,6 +1111,19 @@ export type AdminUpdateShowtimeReportData = {
 
 export type AdminUpdateShowtimeReportResponse = Message
 
+export type AdminListUserReportsData = {
+  status?: UserReportStatus | null
+}
+
+export type AdminListUserReportsResponse = Array<UserReportAdminView>
+
+export type AdminUpdateUserReportData = {
+  reportId: number
+  requestBody: UserReportUpdate
+}
+
+export type AdminUpdateUserReportResponse = Message
+
 export type AdminUpdateUserReportBanData = {
   requestBody: UserReportBanUpdate
   userId: string
@@ -926,6 +1194,9 @@ export type FriendsRemoveFriendData = {
 }
 
 export type FriendsRemoveFriendResponse = Message
+
+export type LetterboxdListsGetCuratedLetterboxdListsResponse =
+  Array<LetterboxdListPublic>
 
 export type LoginLoginAccessTokenData = {
   formData: Body_login_login_access_token
@@ -1003,17 +1274,24 @@ export type MeGetFavoriteCinemaPresetResponse = CinemaPresetPublic | null
 
 export type MeClearFavoriteCinemaPresetResponse = Message
 
-export type MeSetFavoriteCinemaPresetData = {
+export type MeRenameCinemaPresetData = {
   presetId: string
+  requestBody: CinemaPresetRename
 }
 
-export type MeSetFavoriteCinemaPresetResponse = CinemaPresetPublic
+export type MeRenameCinemaPresetResponse = CinemaPresetPublic
 
 export type MeDeleteCinemaPresetData = {
   presetId: string
 }
 
 export type MeDeleteCinemaPresetResponse = Message
+
+export type MeSetFavoriteCinemaPresetData = {
+  presetId: string
+}
+
+export type MeSetFavoriteCinemaPresetResponse = CinemaPresetPublic
 
 export type MeResendEmailVerificationResponse = Message
 
@@ -1127,7 +1405,7 @@ export type MeGetMyShowtimesData = {
   watchlistOnly?: boolean
 }
 
-export type MeGetMyShowtimesResponse = Array<ShowtimeLoggedIn>
+export type MeGetMyShowtimesResponse = Array<ShowtimePublic>
 
 export type MeGetMyAgendaData = {
   includeInterested?: boolean
@@ -1140,7 +1418,7 @@ export type MeGetMyAgendaData = {
   snapshotTime?: string | null
 }
 
-export type MeGetMyAgendaResponse = Array<ShowtimeLoggedIn>
+export type MeGetMyAgendaResponse = Array<ShowtimePublic>
 
 export type MeGetMyShowtimePingsData = {
   limit?: number
@@ -1208,6 +1486,8 @@ export type MeRemoveLetterboxdListData = {
 export type MeRemoveLetterboxdListResponse = Message
 
 export type MeGetFriendsResponse = Array<UserWithFriendStatus>
+
+export type MeGetBlockedUsersResponse = Array<BlockedUserPublic>
 
 export type MeGetSentFriendRequestsResponse = Array<UserWithFriendStatus>
 
@@ -1344,7 +1624,7 @@ export type MoviesReadMoviesData = {
   watchlistOnly?: boolean
 }
 
-export type MoviesReadMoviesResponse = Array<MovieSummaryLoggedIn>
+export type MoviesReadMoviesResponse = Array<MovieSummaryPublic>
 
 export type MoviesReadMovieShowtimesData = {
   days?: Array<string> | null
@@ -1399,7 +1679,7 @@ export type MoviesReadMovieShowtimesData = {
   watchlistOnly?: boolean
 }
 
-export type MoviesReadMovieShowtimesResponse = Array<ShowtimeInMovieLoggedIn>
+export type MoviesReadMovieShowtimesResponse = Array<ShowtimeInMoviePublic>
 
 export type MoviesReadMovieData = {
   days?: Array<string> | null
@@ -1453,14 +1733,39 @@ export type MoviesReadMovieData = {
   watchlistOnly?: boolean
 }
 
-export type MoviesReadMovieResponse = MovieLoggedIn
+export type MoviesReadMovieResponse = MoviePublic
+
+export type ScrapeMonitorGetScrapeRunsData = {
+  hours?: number
+}
+
+export type ScrapeMonitorGetScrapeRunsResponse = ScrapeMonitorResponse
+
+export type ScrapeMonitorListScrapeRecapsData = {
+  limit?: number
+}
+
+export type ScrapeMonitorListScrapeRecapsResponse = Array<ScrapeRecapView>
+
+export type ScrapeMonitorGetScrapeRecapData = {
+  recapId: number
+}
+
+export type ScrapeMonitorGetScrapeRecapResponse = ScrapeRecapDetail
+
+export type ScrapeMonitorGetScrapeRecapAttachmentData = {
+  filename: string
+  recapId: number
+}
+
+export type ScrapeMonitorGetScrapeRecapAttachmentResponse = unknown
 
 export type ShowtimesUpdateShowtimeSelectionData = {
   requestBody: ShowtimeSelectionUpdate
   showtimeId: number
 }
 
-export type ShowtimesUpdateShowtimeSelectionResponse = ShowtimeLoggedIn
+export type ShowtimesUpdateShowtimeSelectionResponse = ShowtimePublic
 
 export type ShowtimesPingFriendForShowtimeData = {
   friendId: string
@@ -1476,9 +1781,15 @@ export type ShowtimesUninviteFriendFromShowtimeData = {
 
 export type ShowtimesUninviteFriendFromShowtimeResponse = Message
 
-export type ShowtimesReceivePingFromLinkData = {
-  senderIdentifier: string
+export type ShowtimesCreateShowtimePingLinkTokenData = {
   showtimeId: number
+}
+
+export type ShowtimesCreateShowtimePingLinkTokenResponse = ShowtimePingLinkToken
+
+export type ShowtimesReceivePingFromLinkData = {
+  showtimeId: number
+  token: string
 }
 
 export type ShowtimesReceivePingFromLinkResponse = Message
@@ -1522,6 +1833,13 @@ export type ShowtimesUpdateShowtimeVisibilityData = {
 }
 
 export type ShowtimesUpdateShowtimeVisibilityResponse = ShowtimeVisibilityPublic
+
+export type ShowtimesGetUninvitedSelectedFriendsForShowtimeData = {
+  showtimeId: number
+}
+
+export type ShowtimesGetUninvitedSelectedFriendsForShowtimeResponse =
+  UninvitedSelectedFriendsPublic
 
 export type ShowtimesCountMainPageShowtimesData = {
   days?: Array<string> | null
@@ -1627,13 +1945,13 @@ export type ShowtimesGetMainPageShowtimesData = {
   watchlistOnly?: boolean
 }
 
-export type ShowtimesGetMainPageShowtimesResponse = Array<ShowtimeLoggedIn>
+export type ShowtimesGetMainPageShowtimesResponse = Array<ShowtimePublic>
 
 export type ShowtimesGetShowtimeByIdData = {
   showtimeId: number
 }
 
-export type ShowtimesGetShowtimeByIdResponse = ShowtimeLoggedIn
+export type ShowtimesGetShowtimeByIdResponse = ShowtimePublic
 
 export type UsersUnsubscribeWatchlistDigestData = {
   token: string
@@ -1666,6 +1984,25 @@ export type UsersGetUserFriendStatusData = {
 }
 
 export type UsersGetUserFriendStatusResponse = UserWithFriendStatus
+
+export type UsersBlockUserData = {
+  userId: string
+}
+
+export type UsersBlockUserResponse = Message
+
+export type UsersUnblockUserData = {
+  userId: string
+}
+
+export type UsersUnblockUserResponse = Message
+
+export type UsersReportUserData = {
+  requestBody: UserReportCreate
+  userId: string
+}
+
+export type UsersReportUserResponse = Message
 
 export type UsersGetUserData = {
   userId: string
@@ -1726,9 +2063,12 @@ export type UsersGetUserSelectedShowtimesData = {
   watchlistOnly?: boolean
 }
 
-export type UsersGetUserSelectedShowtimesResponse = Array<ShowtimeLoggedIn>
+export type UsersGetUserSelectedShowtimesResponse = Array<ShowtimePublic>
 
 export type UtilsHealthCheckResponse = boolean
+
+export type UtilsGetWatchlistDigestFrequencyInfoResponse =
+  DigestFrequencyInfoResponse
 
 export type UtilsSearchTmdbCacheEntriesData = {
   title: string

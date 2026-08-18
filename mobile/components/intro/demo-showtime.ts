@@ -24,7 +24,7 @@ import {
   ShowtimesService,
   type CinemaPublic,
   type MovieInShowtime,
-  type ShowtimeLoggedIn,
+  type ShowtimePublic,
   type UserPublic,
 } from "shared";
 import { showtimeVisibilityQueryKey } from "shared/hooks/useShowtimeVisibility";
@@ -92,7 +92,7 @@ const buildDemoTimes = (): { datetime: string; endDatetime: string } => {
   };
 };
 
-const buildFallbackShowtime = (): ShowtimeLoggedIn => {
+const buildFallbackShowtime = (): ShowtimePublic => {
   const { datetime, endDatetime } = buildDemoTimes();
   return {
     id: DEMO_SHOWTIME_ID,
@@ -102,28 +102,30 @@ const buildFallbackShowtime = (): ShowtimeLoggedIn => {
     subtitles: ["en"],
     movie: DEMO_MOVIE,
     cinema: DEMO_CINEMA,
-    going: "NOT_GOING",
-    friends_going: [],
-    friends_interested: [],
+    viewer: { going: "NOT_GOING" },
   };
 };
 
 /** Strip anything personal off a real showtime and dress it for the tour. */
-const toDemoShowtime = (showtime: ShowtimeLoggedIn | undefined): ShowtimeLoggedIn => ({
+const toDemoShowtime = (showtime: ShowtimePublic | undefined): ShowtimePublic => ({
   ...(showtime ?? buildFallbackShowtime()),
   id: DEMO_SHOWTIME_ID,
-  going: "NOT_GOING",
-  seat_row: null,
-  seat_number: null,
-  friends_going: DEMO_FRIENDS_GOING,
-  friends_interested: DEMO_FRIENDS_INTERESTED,
-  friends_watchlisted: [],
-  friends_watched: [],
-  invited_by: [],
-  invite_ping_ids: [],
-  co_invited_friends: [],
-  pending_invited_friends: [],
-  non_friend_participants: [],
+  // Replaced wholesale rather than merged: the tour shows its own cast, and
+  // anything left over from the real showtime would be the viewer's own data.
+  viewer: {
+    going: "NOT_GOING",
+    seat_row: null,
+    seat_number: null,
+    friends_going: DEMO_FRIENDS_GOING,
+    friends_interested: DEMO_FRIENDS_INTERESTED,
+    friends_watchlisted: [],
+    friends_watched: [],
+    invited_by: [],
+    invite_ping_ids: [],
+    co_invited_friends: [],
+    pending_invited_friends: [],
+    non_friend_participants: [],
+  },
 });
 
 /**
@@ -136,7 +138,7 @@ const toDemoShowtime = (showtime: ShowtimeLoggedIn | undefined): ShowtimeLoggedI
  * opens, so the sheet does not visibly swap the fallback listing for a real one
  * while the user is reading about it.
  */
-export function useDemoShowtime(): ShowtimeLoggedIn {
+export function useDemoShowtime(): ShowtimePublic {
   const queryClient = useQueryClient();
 
   const { data } = useQuery({

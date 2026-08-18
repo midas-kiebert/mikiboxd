@@ -39,19 +39,19 @@ def clean_title(title: str) -> str:
 class GenericEagerlyScraper(BaseCinemaScraper):
     def __init__(
         self,
-        cinema: str,
+        cinema_key: str,
         url_base: str,
         theatre_filter: str = "",
         subtitle_venue_aliases: list[str] | None = None,
     ) -> None:
-        self.cinema = cinema
+        self.cinema_key = cinema_key
         with get_db_context() as session:
-            self.cinema_id = cinema_crud.get_cinema_id_by_name(
-                session=session, name=cinema
+            self.cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=cinema_key
             )
             if not self.cinema_id:
-                logger.error(f"Cinema {cinema} not found in database")
-                raise ValueError(f"Cinema {cinema} not found in database")
+                logger.error(f"Cinema {cinema_key} not found in database")
+                raise ValueError(f"Cinema {cinema_key} not found in database")
 
         self.url_base = url_base
         self.url = f"{url_base}/fk-feed/agenda"
@@ -195,14 +195,14 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         return movie, showtimes
 
     def scrape(self) -> list[tuple[str, int]]:
-        # logger.trace(f"Running {self.cinema} scraper...")
+        # logger.trace(f"Running {self.cinema_key} scraper...")
         response = requests.get(self.url)
         response.raise_for_status()
 
         data = response.json()
 
         if not data:
-            logger.debug(f"No data found for cinema {self.cinema}")
+            logger.debug(f"No data found for cinema {self.cinema_key}")
             raise Exception
 
         work_items = [
@@ -227,7 +227,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                     result = future.result()
                 except Exception:
                     logger.exception(
-                        f"Error processing movie entry for cinema {self.cinema}"
+                        f"Error processing movie entry for cinema {self.cinema_key}"
                     )
                     continue
                 if result is None:

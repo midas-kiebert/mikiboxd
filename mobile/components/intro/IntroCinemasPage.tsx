@@ -1,10 +1,11 @@
 /**
  * Intro page 1 — pick your cinemas.
  *
- * Same job as `CinemaPresetTip`, minus the naming step: someone who has been in
- * the app for ten seconds should not be asked to name anything, so the first
- * preset is created under a fixed name and set as the favorite. It can be
- * renamed later from the cinema filter's Manage presets page.
+ * Same job as `CinemaPresetTip`: writes the user's cinemas, the selection every
+ * screen falls back to. Nothing is named here — naming belongs to presets, and
+ * presets are a power feature someone ten seconds into the app has no use for.
+ * The row this creates can be renamed later from the cinema filter's Manage
+ * presets page, but it never has to be.
  *
  * Saving also applies the selection to this session and retires the cinema
  * preset tip, so the user is never nudged towards a feature they just used —
@@ -14,7 +15,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MeService, type CinemaPresetCreate } from "shared";
+import { MeService } from "shared";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
@@ -27,9 +28,6 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { retireCinemaPresetTip } from "@/utils/feature-tips";
 import { triggerSelectionHaptic } from "@/utils/long-press";
-
-/** The name the first preset gets, since the intro does not stop to ask. */
-const DEFAULT_PRESET_NAME = "Favorite Cinemas";
 
 /** Placeholder rows drawn while the cinema list is still in flight. */
 const SKELETON_ROW_COUNT = 8;
@@ -55,18 +53,18 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
 
   const saveMutation = useMutation({
-    mutationFn: (requestBody: CinemaPresetCreate) =>
-      MeService.createCinemaPreset({ requestBody }),
-    onSuccess: (_data, requestBody) => {
+    mutationFn: (cinemaIds: number[]) =>
+      MeService.setCinemaSelections({ requestBody: cinemaIds }),
+    onSuccess: (_data, cinemaIds) => {
       // The user just declared these their cinemas, so show them straight away
-      // rather than making them open the filter and pick the preset again.
-      setSessionCinemaIds(sortCinemaIds(requestBody.cinema_ids));
+      // rather than making them open the filter and pick them again.
+      setSessionCinemaIds(cinemaIds);
       invalidateCinemaPresets(queryClient);
       retireCinemaPresetTip();
       onDone();
     },
     onError: (error) => {
-      console.error("Error saving cinema preset from the intro:", error);
+      console.error("Error saving cinemas from the intro:", error);
       Alert.alert("Could not save", "Your cinemas were not saved. Please try again.");
     },
   });
@@ -105,20 +103,14 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
 
   const handleSave = useCallback(() => {
     // Nothing ticked counts as saving nothing at all — the same as Skip. A
-    // preset with no cinemas in it is a filter that hides every showtime, and
-    // creating one would also retire the cinema tip over a choice the user
+    // selection with no cinemas in it is a filter that hides every showtime,
+    // and saving one would also retire the cinema tip over a choice the user
     // never really made.
     if (selectedCount === 0) {
       onDone();
       return;
     }
-    saveMutation.mutate({
-      name: DEFAULT_PRESET_NAME,
-      cinema_ids: sortCinemaIds(selectedIds),
-      // The first preset is the one the user wants on startup; the cinema
-      // filter's Manage presets page is where that gets changed later.
-      is_favorite: true,
-    });
+    saveMutation.mutate(sortCinemaIds(selectedIds));
   }, [onDone, saveMutation, selectedCount, selectedIds]);
 
   // Render/output using the state and handlers prepared above.

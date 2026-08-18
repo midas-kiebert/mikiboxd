@@ -1,5 +1,7 @@
 .vscode
 node_modules/
+.venv/
+backend/.venv/
 /test-results/
 /playwright-report/
 /blob-report/

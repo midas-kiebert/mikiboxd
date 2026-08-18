@@ -8,7 +8,7 @@ from sqlmodel import SQLModel
 from app.core.enums import DigestFrequency, NotificationChannel
 
 if TYPE_CHECKING:
-    from .showtime import ShowtimeLoggedIn
+    from .showtime import ShowtimePublic
 
 __all__ = [
     "UserPublic",
@@ -75,7 +75,13 @@ class UserWithFriendStatus(UserPublic):
     # Whether the current user shares their status with this friend by default
     # (True unless they've opted out; opted-out friends only see status on invite).
     shares_status: bool = True
+    # Whether the *current user* has blocked this one, which is what the profile
+    # screen needs to label its button Block or Unblock. Never the other
+    # direction: being blocked by someone must not be visible to the person
+    # blocked, or the block itself becomes a message. Defaults False because the
+    # search path excludes blocked users outright and never needs to compute it.
+    is_blocked: bool = False
 
 
 class UserWithShowtimesPublic(UserPublic):
-    showtimes_going: list["ShowtimeLoggedIn"]
+    showtimes_going: list["ShowtimePublic"]

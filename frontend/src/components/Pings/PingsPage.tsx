@@ -18,7 +18,7 @@ import { DateTime } from "luxon"
 import { useEffect, useMemo, useState } from "react"
 import {
   MeService,
-  type ShowtimeLoggedIn,
+  type ShowtimePublic,
   type ShowtimePingPublic,
 } from "shared"
 import { useFetchShowtimePings } from "shared/hooks/useFetchShowtimePings"
@@ -28,7 +28,7 @@ type PingSortMode = "ping-date" | "showtime-date"
 
 type GroupedPingCard = {
   showtimeId: number
-  showtime: ShowtimeLoggedIn
+  showtime: ShowtimePublic
   pingIds: number[]
   senders: ShowtimePingPublic["sender"][]
   latestPingCreatedAt: string
@@ -213,7 +213,7 @@ const PingsPage = () => {
                 <Box>
                   <ShowtimeCard
                     showtime={ping.showtime}
-                    going_status={ping.showtime.going}
+                    going_status={ping.showtime.viewer?.going}
                   />
                 </Box>
               </RouterLink>

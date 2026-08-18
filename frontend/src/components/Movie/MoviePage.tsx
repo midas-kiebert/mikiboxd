@@ -24,8 +24,8 @@ import {
   ShowtimesService,
   type ShowtimesUpdateShowtimeSelectionResponse,
 } from "shared"
-import type { GoingStatus, ShowtimeInMovieLoggedIn } from "shared"
-import type { MovieSummaryLoggedIn } from "shared"
+import type { GoingStatus, ShowtimeInMoviePublic } from "shared"
+import type { MovieSummaryPublic } from "shared"
 import { useFetchFriends } from "shared/hooks/useFetchFriends"
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas"
 import useTrackEvent from "shared/hooks/useTrackEvent"
@@ -42,7 +42,7 @@ type UpdateCacheData = {
 }
 
 type InfiniteMoviesData = {
-  pages: MovieSummaryLoggedIn[][]
+  pages: MovieSummaryPublic[][]
   pageParams: unknown[]
 }
 
@@ -51,7 +51,7 @@ const MoviePage = () => {
   const queryClient = useQueryClient()
   const { trackEvent } = useTrackEvent()
   const [selectedShowtime, setSelectedShowtime] =
-    useState<ShowtimeInMovieLoggedIn | null>(null)
+    useState<ShowtimeInMoviePublic | null>(null)
   const [pingListOpen, setPingListOpen] = useState(false)
   const [pingedFriendIds, setPingedFriendIds] = useState<string[]>([])
   const [selectedDays, setSelectedDays] = useState<Date[]>([])
@@ -170,9 +170,12 @@ const MoviePage = () => {
 
     // new showtimes with going flag updated
     const updatedShowtimes = showtimes.map((s) =>
-      s.id === showtimeId ? { ...s, going: newValue } : s,
+      s.id === showtimeId
+        ? { ...s, viewer: { ...s.viewer, going: newValue } }
+        : s,
     )
-    const going = updatedShowtimes.some((s) => s.going) // true if going to any showtime
+    // true if going to any showtime
+    const going = updatedShowtimes.some((s) => s.viewer?.going)
 
     const movieQueries = queryClient.getQueriesData<InfiniteMoviesData>({
       queryKey: ["movies"],
@@ -182,7 +185,9 @@ const MoviePage = () => {
 
       const newPages = oldData.pages.map((page) => {
         const newResults = page.map((movie) =>
-          movie.id === movieId ? { ...movie, going: going } : movie,
+          movie.id === movieId
+            ? { ...movie, viewer: { ...movie.viewer, going } }
+            : movie,
         )
         return newResults
       })
@@ -211,7 +216,7 @@ const MoviePage = () => {
       updateCacheAfterShowtimeToggle({
         movieId: data.movie.id,
         showtimeId: data.id,
-        newValue: data.going,
+        newValue: data.viewer?.going ?? "NOT_GOING",
       })
     },
     onError: (error) => {
@@ -281,7 +286,7 @@ const MoviePage = () => {
                       <Button
                         maxW={150}
                         variant={
-                          selectedShowtime.going === "GOING"
+                          selectedShowtime.viewer?.going === "GOING"
                             ? "solid"
                             : "surface"
                         }
@@ -296,7 +301,7 @@ const MoviePage = () => {
                       <Button
                         maxW={150}
                         variant={
-                          selectedShowtime.going === "INTERESTED"
+                          selectedShowtime.viewer?.going === "INTERESTED"
                             ? "solid"
                             : "surface"
                         }

@@ -134,6 +134,13 @@ class User(_UserBase, table=True):
     # at most one linked identity per provider, and most users will have zero or one.
     apple_sub: str | None = Field(default=None, unique=True, index=True)
     google_sub: str | None = Field(default=None, unique=True, index=True)
+    # Apple's refresh token for this account, kept for exactly one purpose:
+    # revoking the user's Sign in with Apple tokens when they delete their
+    # account, which Apple requires (see core/apple_auth.py). Never used to act
+    # on the user's behalf, and never leaves the backend. None for accounts that
+    # signed in before this shipped, or when Apple's code exchange did not
+    # produce one — deletion then proceeds without revoking.
+    apple_refresh_token: str | None = Field(default=None)
     # Drives the digest lookback window and prevents double-sends; not user-facing.
     notify_watchlist_digest_last_sent_at: datetime | None = Field(default=None)
     # Bookkeeping for the switch-to-push-until-reverified behaviour on email

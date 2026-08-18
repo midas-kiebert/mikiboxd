@@ -6,7 +6,6 @@ import { FlatList, Linking, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import { DateTime } from "luxon";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { useIsFocused } from "@react-navigation/native";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
@@ -14,6 +13,7 @@ import { useFetchMovies } from "shared/hooks/useFetchMovies";
 import useAuth from "shared/hooks/useAuth";
 
 import ShowtimesScreen, { ShowtimesScreenSkeleton } from "@/components/showtimes/ShowtimesScreen";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
 import FiltersButtonRow from "@/components/filters/FiltersButtonRow";
 import FiltersModal from "@/components/filters/FiltersModal";
@@ -27,11 +27,16 @@ import { getRuntimeBoundsFromSelections } from "@/components/filters/runtime-ran
 import {
   getSelectedStatusesFromShowtimeFilter,
 } from "@/components/filters/shared-tab-filters";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
 import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
 import { getCinemaColorPalette } from "@/utils/cinema-color";
+
+// One request per pause in typing, not one per keystroke — see
+// useDebouncedValue and (tabs)/index.tsx's identical guard.
+const SEARCH_DEBOUNCE_MS = 280;
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
@@ -208,6 +213,9 @@ function CinemaShowtimesContent({
     setSelectedLanguages,
   } = useSharedTabFilters();
   const { user } = useAuth();
+  // The status filter is about who is going; a guest has no such answer to
+  // filter by, so it is not offered here either (see FiltersModalProvider).
+  const isSignedIn = useIsSignedIn();
   const isFocused = useIsFocused();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
@@ -233,7 +241,10 @@ function CinemaShowtimesContent({
     [selectedRuntimeRanges]
   );
   const { data: cinemas } = useFetchCinemas();
-  const queryClient = useQueryClient();
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, SEARCH_DEBOUNCE_MS);
+  // Clearing the field drops the results immediately — waiting out the
+  // debounce to remove what the user just deleted would feel broken.
+  const effectiveSearchQuery = searchQuery.trim().length > 0 ? debouncedSearchQuery : "";
 
   useEffect(() => {
     if (hasLetterboxdUsername || !watchlistOnly) return;
@@ -264,7 +275,7 @@ function CinemaShowtimesContent({
 
   // ─── Showtimes query ─────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({
-    query: searchQuery || undefined,
+    query: effectiveSearchQuery || undefined,
     selectedCinemaIds: [cinemaId],
     days: resolvedApiDays,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
@@ -280,7 +291,7 @@ function CinemaShowtimesContent({
     selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
   }), [
     cinemaId,
-    searchQuery,
+    effectiveSearchQuery,
     resolvedApiDays,
     appliedShowtimeFilter,
     selectedTimeRanges,
@@ -313,7 +324,7 @@ function CinemaShowtimesContent({
 
   // ─── Movies query (Group by Movie mode) ──────────────────────────────────────
   const moviesFilters = useMemo(() => ({
-    query: searchQuery || undefined,
+    query: effectiveSearchQuery || undefined,
     selectedCinemaIds: [cinemaId],
     days: resolvedApiDays,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
@@ -329,7 +340,7 @@ function CinemaShowtimesContent({
     selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
   }), [
     cinemaId,
-    searchQuery,
+    effectiveSearchQuery,
     resolvedApiDays,
     appliedShowtimeFilter,
     selectedTimeRanges,
@@ -364,19 +375,9 @@ function CinemaShowtimesContent({
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      if (groupByMovie) {
-        await refreshInfiniteQueryWithFreshSnapshot({
-          queryClient,
-          queryKey: ["movies", moviesFilters],
-          setSnapshotTime,
-        });
-      } else {
-        await refreshInfiniteQueryWithFreshSnapshot({
-          queryClient,
-          queryKey: ["showtimes", "main", showtimesFilters],
-          setSnapshotTime,
-        });
-      }
+      // One snapshot drives both the showtimes and movies queries, so which
+      // mode is on screen no longer changes what a refresh has to do.
+      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
     } finally {
       setRefreshing(false);
     }
@@ -480,7 +481,7 @@ function CinemaShowtimesContent({
               canUseWatchlistFilter={hasLetterboxdUsername}
               selectedShowtimeFilter={selectedShowtimeFilter}
               setSelectedShowtimeFilter={setSelectedShowtimeFilter}
-              showStatusFilter
+              showStatusFilter={isSignedIn}
               selectedDays={selectedDays}
               setSelectedDays={setSelectedDays}
               selectedTimeRanges={selectedTimeRanges}
@@ -518,7 +519,7 @@ function CinemaShowtimesContent({
         canUseWatchlistFilter={hasLetterboxdUsername}
         selectedShowtimeFilter={selectedShowtimeFilter}
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}
-        showStatusFilter
+        showStatusFilter={isSignedIn}
         showCinemas={false}
         selectedDays={selectedDays}
         setSelectedDays={setSelectedDays}

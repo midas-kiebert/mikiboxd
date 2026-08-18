@@ -8,6 +8,7 @@ This module creates the `app` instance and wires everything together:
 """
 
 from logging import getLogger
+from typing import Any
 
 import sentry_sdk
 from fastapi import FastAPI, Request, status
@@ -21,6 +22,7 @@ from app.core.config import settings
 from app.core.enums import Environment
 from app.core.middleware import ClientVersionGateMiddleware
 from app.exceptions.base import AppError
+from app.schemas.legacy_viewer_compat import mark_deprecated_fields_optional
 
 logger = getLogger(__name__)
 
@@ -64,11 +66,26 @@ if settings.ENABLE_GZIP:
         compresslevel=settings.GZIP_COMPRESS_LEVEL,
     )
 
-# Rejects requests from mobile builds older than MIN_SUPPORTED_CLIENT_VERSION.
-# A no-op while that setting is unset (see app/core/config.py).
+# Rejects requests from mobile builds older than that platform's
+# MIN_SUPPORTED_CLIENT_VERSION_*. A no-op while those settings are unset (see
+# app/core/config.py).
 app.add_middleware(ClientVersionGateMiddleware)
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+_fastapi_openapi = app.openapi
+
+
+def _openapi() -> dict[str, Any]:
+    """The generated spec, with the legacy viewer mirrors made optional.
+
+    Goes away with `app.schemas.legacy_viewer_compat`.
+    """
+    return mark_deprecated_fields_optional(_fastapi_openapi())
+
+
+app.openapi = _openapi  # type: ignore[method-assign]
 
 
 @app.exception_handler(AppError)

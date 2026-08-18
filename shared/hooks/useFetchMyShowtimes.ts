@@ -32,10 +32,10 @@ export function useFetchMyShowtimes(
         MeGetMyShowtimesResponse,
         Error,
         InfiniteData<MeGetMyShowtimesResponse>,
-        [string, string, ShowtimesFilters],
+        [string, string, string | undefined, ShowtimesFilters],
         number
     >({
-        queryKey: ["showtimes", "me", filters],
+        queryKey: ["showtimes", "me", snapshotTime, filters],
         enabled,
         refetchOnMount: false,
         refetchOnWindowFocus: false,

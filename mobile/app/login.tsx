@@ -11,6 +11,7 @@ import type { Body_login_login_access_token as AccessToken } from 'shared'
 import AuthPrimaryButton from '@/components/auth/AuthPrimaryButton'
 import AuthScreenShell from '@/components/auth/AuthScreenShell'
 import AuthTextField from '@/components/auth/AuthTextField'
+import BrowseWithoutAccountLink from '@/components/auth/BrowseWithoutAccountLink'
 import SocialSignInSection from '@/components/auth/SocialSignInSection'
 import { ThemedText } from '@/components/themed-text'
 import { useThemeColors } from '@/hooks/use-theme-color'
@@ -72,16 +73,20 @@ export default function LoginScreen() {
             title="Welcome back"
             error={error}
             footer={
-                <TouchableOpacity
-                    onPress={goToSignUp}
-                    disabled={isSubmitting || isSocialSignInBusy}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                >
-                    <ThemedText style={styles.linkText}>
-                        Don&apos;t have an account? <ThemedText style={styles.link}>Sign Up</ThemedText>
-                    </ThemedText>
-                </TouchableOpacity>
+                <>
+                    <TouchableOpacity
+                        onPress={goToSignUp}
+                        disabled={isSubmitting || isSocialSignInBusy}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                    >
+                        <ThemedText style={styles.linkText}>
+                            Don&apos;t have an account? <ThemedText style={styles.link}>Sign Up</ThemedText>
+                        </ThemedText>
+                    </TouchableOpacity>
+                    <View style={styles.footerDivider} />
+                    <BrowseWithoutAccountLink disabled={isSubmitting || isSocialSignInBusy} />
+                </>
             }
         >
             {/* One-tap sign-in/sign-up: no navigation to /signup needed for either
@@ -208,6 +213,13 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
             fontSize: 13,
             color: colors.tint,
             fontWeight: '600',
+        },
+        // Sets "browse without an account" apart from the sign-up link above it:
+        // one is another way to get an account, the other is choosing not to.
+        footerDivider: {
+            height: 1,
+            alignSelf: 'stretch',
+            backgroundColor: colors.divider,
         },
         devButton: {
             paddingTop: 14,

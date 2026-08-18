@@ -41,3 +41,8 @@ class ShowtimePing(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
     seen_at: datetime | None = Field(default=None, nullable=True)
     dismissed_at: datetime | None = Field(default=None, nullable=True)
+    # Set once at creation, never mutated. True means the receiver already had
+    # a GOING/INTERESTED selection before this ping existed, so they never
+    # "accepted" an invite here — this edge must not grant mutual visibility
+    # in either direction (see crud/showtime_ping.py eligible_only filtering).
+    receiver_had_selection_at_creation: bool = Field(default=False, nullable=False)

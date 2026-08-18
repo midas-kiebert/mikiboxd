@@ -45,10 +45,10 @@ export function useFetchUserShowtimes(
         UsersGetUserSelectedShowtimesResponse,
         Error,
         InfiniteData<UsersGetUserSelectedShowtimesResponse>,
-        [string, string, string, ShowtimesFilters],
+        [string, string, string, string | undefined, ShowtimesFilters],
         number
     >({
-        queryKey: ["showtimes", "user", userId, filters],
+        queryKey: ["showtimes", "user", userId, snapshotTime, filters],
         enabled,
         refetchOnMount: false,
         refetchOnWindowFocus: false,

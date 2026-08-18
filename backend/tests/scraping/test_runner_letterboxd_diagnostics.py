@@ -3,33 +3,6 @@ from typing import Any
 from app.scraping import runner
 
 
-def test_render_letterboxd_failure_item_includes_response_meta() -> None:
-    item = runner._render_letterboxd_failure_item(
-        {
-            "timestamp": "2026-02-21T02:02:37.346266Z",
-            "event_type": "http_403_observed",
-            "tmdb_id": 655424,
-            "status_code": 403,
-            "reason": "http_403_probable_automated_block",
-            "url": "https://letterboxd.com/tmdb/655424/",
-            "block_remaining_seconds": 900,
-            "response_meta": {
-                "cf_ray": "9d15ba620aa79fc6-AMS",
-                "server": "cloudflare",
-                "consecutive_403_count": 2,
-                "attempt": 2,
-                "attempts_total": 3,
-            },
-        }
-    )
-
-    assert "http_403_observed" in item
-    assert "cf_ray=9d15ba620aa79fc6-AMS" in item
-    assert "consecutive_403=2" in item
-    assert "attempt=2/3" in item
-    assert "cooldown_remaining=900s" in item
-
-
 def test_tmdb_low_confidence_lookups_filters_and_sorts() -> None:
     lookups: list[dict[str, Any]] = [
         {
@@ -60,83 +33,5 @@ def test_tmdb_low_confidence_lookups_filters_and_sorts() -> None:
     assert [item["confidence"] for item in filtered] == [42.5, 55.0]
 
 
-def test_render_low_confidence_tmdb_item_is_concise() -> None:
-    item = {
-        "timestamp": "2026-02-25T22:00:00",
-        "tmdb_id": 422,
-        "confidence": 79.4,
-        "cache_source": "network",
-        "decision": {
-            "status": "accepted",
-            "reason": "selected_best_candidate",
-            "good_option_count": 3,
-            "second_good_margin": 1.234,
-        },
-        "payload": {
-            "version": 10,
-            "title_query": "otto e mezzo",
-            "title_variants": ["otto e mezzo"],
-            "director_names": ["Federico Fellini"],
-            "actor_names": [
-                "Marcello Mastroianni",
-                "Claudia Cardinale",
-                "Anouk Aimee",
-            ],
-            "year": 1963,
-            "duration_minutes": 138,
-            "spoken_languages": ["it"],
-        },
-    }
-
-    html = runner._render_low_confidence_tmdb_item(item)
-
-    assert "confidence=<b>79.4</b>" in html
-    assert "https://www.themoviedb.org/movie/422" in html
-    assert "reason=best candidate selected" in html
-    assert "query=otto e mezzo" in html
-    assert "directors=Federico Fellini" in html
-    assert "actors=Marcello Mastroianni, Claudia Cardinale, Anouk Aimee" in html
-    assert "languages=it" in html
-    assert "payload=" not in html
-    assert "decision=" not in html
-
-
 def test_tmdb_low_confidence_threshold_is_80() -> None:
     assert runner.TMDB_LOW_CONFIDENCE_THRESHOLD == 80.0
-
-
-def test_render_tmdb_miss_item_is_concise() -> None:
-    item = {
-        "timestamp": "2026-02-25T23:42:10.678118",
-        "cache_source": "network",
-        "tmdb_id": None,
-        "decision": {
-            "status": "rejected",
-            "reason": "ambiguous_good_options",
-            "good_option_count": 18,
-            "second_good_margin": 1.002,
-        },
-        "payload": {
-            "version": 10,
-            "title_query": "youth",
-            "title_variants": ["youth"],
-            "director_names": ["Wang Bing"],
-            "actor_names": [],
-            "year": 2023,
-            "duration_minutes": 215,
-            "spoken_languages": ["zh"],
-        },
-    }
-
-    html = runner._render_tmdb_miss_item(item)
-
-    assert "title=youth" in html
-    assert "reason=ambiguous between good options" in html
-    assert "query=youth" in html
-    assert "directors=Wang Bing" in html
-    assert "actors=-" in html
-    assert "year=2023" in html
-    assert "duration=215" in html
-    assert "languages=zh" in html
-    assert "payload=" not in html
-    assert "decision=" not in html

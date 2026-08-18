@@ -22,6 +22,7 @@ jobs:
           STACK_NAME=${{ secrets.STACK_NAME || 'mikiboxd' }}
           FRONTEND_HOST=${{ vars.FRONTEND_HOST }}
           API_HOST=${{ vars.API_HOST || 'http://localhost:8000' }}
+          PUBLIC_HOST=${{ vars.PUBLIC_HOST || 'http://localhost:8000' }}
           DOMAIN=${{ vars.DOMAIN }}
           DOCKER_IMAGE_BACKEND=${{ vars.DOCKER_IMAGE_BACKEND }}
           SECRET_KEY=${{ secrets.SECRET_KEY || 'just-for-ci' }}

@@ -9,6 +9,7 @@ import { useFetchNotificationUnseenCount } from "shared/hooks/useFetchNotificati
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useNotificationCenter } from "@/components/notifications/NotificationCenterProvider";
 import { useUnseenSnoozedTipCount } from "@/utils/feature-tips";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { IconSymbol, type IconSymbolName } from "@/components/ui/icon-symbol";
 
 /**
@@ -56,8 +57,14 @@ export default function TopBar({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const { openNotificationCenter } = useNotificationCenter();
+  // The notification centre is a record of things that happened to *you* — a
+  // friend request, an invite, a match. A guest has none of that, so the bell
+  // is not shown at all rather than opening onto an empty list that can only
+  // ever stay empty.
+  const isSignedIn = useIsSignedIn();
+  const showBell = showNotificationBell && isSignedIn;
   const { data: unseenCount = 0 } = useFetchNotificationUnseenCount({
-    enabled: showNotificationBell,
+    enabled: showBell,
   });
   // Snoozed feature tips are local reminders that sit in the same feed, so they
   // count towards the same badge.
@@ -177,7 +184,7 @@ export default function TopBar({
           </View>
         )}
       </View>
-      {showNotificationBell ? (
+      {showBell ? (
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel="Open notifications"

@@ -49,6 +49,8 @@ type ActiveFilterChipsProps = {
   onOpenFilters?: () => void;
   /** Optional override for the cinema chip's "select cinemas" action (used outside the tab provider). */
   onOpenCinemaModal?: () => void;
+  /** True while searching by cinema name — see CinemaFilterChip's `disabled`. */
+  cinemaFilterDisabled?: boolean;
   onClearAll?: () => void;
   /** Render inline (no bottom border, no background) with a leading vertical divider. */
   inline?: boolean;
@@ -106,6 +108,7 @@ export default function ActiveFilterChips({
   setSelectedLanguages = () => {},
   onOpenFilters,
   onOpenCinemaModal,
+  cinemaFilterDisabled = false,
   onClearAll,
   inline = false,
 }: ActiveFilterChipsProps) {
@@ -286,7 +289,11 @@ export default function ActiveFilterChips({
           }}
         >
           {onOpenFilters && (
-            <CinemaFilterChip onOpenFilters={onOpenFilters} onOpenCinemaModal={onOpenCinemaModal} />
+            <CinemaFilterChip
+              onOpenFilters={onOpenFilters}
+              onOpenCinemaModal={onOpenCinemaModal}
+              disabled={cinemaFilterDisabled}
+            />
           )}
           {chips.map((item) => (
             <TouchableOpacity

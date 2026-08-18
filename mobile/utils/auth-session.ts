@@ -23,10 +23,27 @@ import { useEffect, useState } from 'react';
 import { storage } from 'shared/storage';
 
 /**
- * `unknown` only until the stored token has been read once at startup; the app
- * shell stays behind the splash for as long as it lasts.
+ * Three real states, not two.
+ *
+ * `guest` is someone who chose to look around without an account. What is
+ * playing, where, and when is public — it is the same for everyone and needs no
+ * account to be useful — so a guest gets all of it. What they don't get is
+ * anything about themselves or their friends, which is what an account is for.
+ * See `useIsSignedIn` below, which is what feature code should ask.
+ *
+ * `signed-out` is the other thing entirely: nobody has said what they want yet,
+ * so the app opens on the door rather than inside.
+ *
+ * `unknown` lasts only until the stored session has been read once at startup;
+ * the app shell stays behind the splash for as long as it does.
  */
-export type AuthStatus = 'unknown' | 'signed-in' | 'signed-out';
+export type AuthStatus = 'unknown' | 'signed-in' | 'guest' | 'signed-out';
+
+/**
+ * Set when the user chooses to browse without an account, so a relaunch puts
+ * them back where they were rather than at the door they already walked past.
+ */
+const GUEST_MODE_KEY = 'browsing_as_guest';
 
 let status: AuthStatus = 'unknown';
 
@@ -39,14 +56,20 @@ const setStatus = (next: AuthStatus): void => {
 };
 
 /**
- * Read the stored token once, at app start. A sign-in that somehow beat this
+ * Read the stored session once, at app start. A sign-in that somehow beat this
  * read wins: the token it just wrote is newer than whatever was on disk when
  * this started.
  */
 export const loadAuthSession = async (): Promise<void> => {
   const token = await storage.getItem('access_token').catch(() => null);
+  if (token) {
+    if (status !== 'unknown') return;
+    setStatus('signed-in');
+    return;
+  }
+  const wasBrowsingAsGuest = await storage.getItem(GUEST_MODE_KEY).catch(() => null);
   if (status !== 'unknown') return;
-  setStatus(token ? 'signed-in' : 'signed-out');
+  setStatus(wasBrowsingAsGuest ? 'guest' : 'signed-out');
 };
 
 /**
@@ -54,10 +77,30 @@ export const loadAuthSession = async (): Promise<void> => {
  * navigating into the app, in the same synchronous block, so React batches the
  * two together and the route guard never sees one without the other.
  */
-export const markSignedIn = (): void => setStatus('signed-in');
+export const markSignedIn = (): void => {
+  // The guest flag only ever decides where a *sessionless* launch lands, and
+  // this device now has a session. Left behind, it would quietly send a later
+  // logout into the tabs instead of to the login screen.
+  void storage.removeItem(GUEST_MODE_KEY);
+  setStatus('signed-in');
+};
 
 /** Announce a session that has just ended — logout, or a refresh that failed. */
-export const markSignedOut = (): void => setStatus('signed-out');
+export const markSignedOut = (): void => {
+  // A guest has no session to lose. This is reached from the API error path,
+  // where the 401 that triggered it means "that endpoint needs an account", not
+  // "your account is gone" — ejecting them to the login screen mid-browse would
+  // be the app punishing them for tapping something it should have gated.
+  if (status === 'guest') return;
+  void storage.removeItem(GUEST_MODE_KEY);
+  setStatus('signed-out');
+};
+
+/** Announce that the user chose to look around without an account. */
+export const enterGuestMode = (): void => {
+  void storage.setItem(GUEST_MODE_KEY, '1');
+  setStatus('guest');
+};
 
 export const useAuthStatus = (): AuthStatus => {
   const [snapshot, setSnapshot] = useState(status);
@@ -74,3 +117,14 @@ export const useAuthStatus = (): AuthStatus => {
 
   return snapshot;
 };
+
+/**
+ * Whether there is an account behind the current session — the question almost
+ * every feature actually wants to ask. Guests are browsing, not signed in, so
+ * anything that writes to an account, or reads one, must gate on this rather
+ * than on "are we past the login screen".
+ */
+export const useIsSignedIn = (): boolean => useAuthStatus() === 'signed-in';
+
+/** Whether the user is looking around without an account. */
+export const useIsGuest = (): boolean => useAuthStatus() === 'guest';

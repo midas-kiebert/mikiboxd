@@ -5,7 +5,7 @@ import React from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
-import { type ShowtimeLoggedIn } from "shared";
+import { type ShowtimePublic } from "shared";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 
 import { useRouter } from "expo-router";
@@ -14,6 +14,7 @@ import { ThemedText } from "@/components/themed-text";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useShowtimeModal, type OpenOptions } from "@/components/showtimes/ShowtimeModalProvider";
+import { useIsSignedIn } from "@/utils/auth-session";
 import TopBar from "@/components/layout/TopBar";
 import SearchBar from "@/components/inputs/SearchBar";
 import FilterPills, {
@@ -22,9 +23,10 @@ import FilterPills, {
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { tabletCappedContentStyle } from "@/constants/tablet-layout";
 
 type ShowtimesListContentProps = {
-  showtimes: ShowtimeLoggedIn[];
+  showtimes: ShowtimePublic[];
   isLoading: boolean;
   isFetching: boolean;
   isFetchingNextPage: boolean;
@@ -36,6 +38,8 @@ type ShowtimesListContentProps = {
   openModalOptions?: OpenOptions;
   /** Carry the showtimes-tab filters over when long-pressing into the movie page. */
   inheritFiltersOnMovieNav?: boolean;
+  /** Scrolls away with the list, unlike filterRow which stays pinned above it. */
+  listHeader?: React.ReactElement | null;
 };
 
 export function ShowtimesListContent({
@@ -50,9 +54,10 @@ export function ShowtimesListContent({
   emptyText = "No showtimes found",
   openModalOptions,
   inheritFiltersOnMovieNav = false,
+  listHeader,
 }: ShowtimesListContentProps) {
   const router = useRouter();
-  const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimeLoggedIn) =>
+  const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimePublic) =>
     router.push({
       pathname: "/movie/[id]",
       params: {
@@ -65,9 +70,13 @@ export function ShowtimesListContent({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const { openShowtimeModal } = useShowtimeModal();
+  const isSignedIn = useIsSignedIn();
   // Every card here opens the showtime sheet, so its visibility mode is
-  // fetched up front — otherwise the sheet's mode pill loads on open.
-  usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id));
+  // fetched up front — otherwise the sheet's mode pill loads on open. The pill
+  // is on the signed-in sheet only, so for a guest there is nothing to warm.
+  usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id), {
+    enabled: isSignedIn,
+  });
 
   // Always mounted at a fixed height: it doubles as the list's end spacer, so
   // reaching the bottom never changes the layout under the user's scroll.
@@ -111,6 +120,9 @@ export function ShowtimesListContent({
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          listHeader ? <View style={styles.listHeaderWrapper}>{listHeader}</View> : undefined
+        }
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
         onEndReached={() => {
@@ -141,7 +153,7 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   topBarOnTitleSuffixPress?: () => void;
   topBarLinkUrl?: string;
   topBarAvatarInitial?: string;
-  showtimes: ShowtimeLoggedIn[];
+  showtimes: ShowtimePublic[];
   isLoading: boolean;
   isFetching: boolean;
   isFetchingNextPage: boolean;
@@ -166,6 +178,8 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   emptyText?: string;
   openModalOptions?: OpenOptions;
   inheritFiltersOnMovieNav?: boolean;
+  /** Scrolls away with the list, unlike filterRow which stays pinned above it. */
+  listHeader?: React.ReactElement | null;
 };
 
 export default function ShowtimesScreen<TFilterId extends string = string>({
@@ -195,6 +209,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   emptyText = "No showtimes found",
   openModalOptions,
   inheritFiltersOnMovieNav,
+  listHeader,
 }: ShowtimesScreenProps<TFilterId>) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -238,6 +253,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
           emptyText={emptyText}
           openModalOptions={openModalOptions}
           inheritFiltersOnMovieNav={inheritFiltersOnMovieNav}
+          listHeader={listHeader}
         />
       )}
     </TopSafeAreaView>
@@ -343,11 +359,20 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.background,
     },
     listContent: {
+      ...tabletCappedContentStyle,
       paddingTop: 12,
       paddingHorizontal: 16,
       // Matches the movie feeds' padding: a list short enough not to render the
       // end-of-list spacer would otherwise butt straight against the tab bar.
       paddingBottom: 16,
+    },
+    // listHeader supplies its own horizontal padding/divider (it's a full-width
+    // section like the card list rows above it), so cancel out listContent's
+    // own inset rather than double it up.
+    listHeaderWrapper: {
+      marginHorizontal: -16,
+      marginTop: -12,
+      marginBottom: 12,
     },
     skeletonSearch: {
       paddingHorizontal: 16,

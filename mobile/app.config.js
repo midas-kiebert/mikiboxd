@@ -71,6 +71,13 @@ module.exports = ({ config }) => {
   // The Web OAuth client ID — used as `webClientId` when configuring
   // GoogleSignin at app startup, and as the token audience the backend checks.
   const googleWebClientId = process.env.GOOGLE_WEB_CLIENT_ID
+  // Without a GoogleService-Info.plist, RNGoogleSignIn can't derive the iOS
+  // client ID on its own and configure() throws at startup. The URL scheme is
+  // just that client ID in reversed-DNS form, so derive it back instead of
+  // keeping a second env var in sync.
+  const googleIosClientId = googleIosUrlScheme
+    ? `${googleIosUrlScheme.replace(/^com\.googleusercontent\.apps\./, "")}.apps.googleusercontent.com`
+    : undefined
 
   const plugins = [
     ...(config.plugins || []),
@@ -99,6 +106,7 @@ module.exports = ({ config }) => {
     extra: {
       ...config.extra,
       ...(googleWebClientId ? { googleWebClientId } : {}),
+      ...(googleIosClientId ? { googleIosClientId } : {}),
     },
     android: {
       ...androidWithoutGoogleServices,

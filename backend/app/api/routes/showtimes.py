@@ -10,7 +10,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi import status as http_status
 from fastapi.responses import HTMLResponse
 
-from app.api.deps import CurrentUser, SessionDep, get_db_context
+from app.api.deps import (
+    OPTIONAL_AUTH_OPENAPI_EXTRA,
+    CurrentUser,
+    CurrentViewer,
+    SessionDep,
+    get_db_context,
+)
 from app.core.config import settings
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_report as showtime_report_crud
@@ -24,12 +30,13 @@ from app.mailer import (
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime
 from app.models.user import is_report_banned
-from app.schemas.showtime import ShowtimeLoggedIn, ShowtimeSelectionUpdate
-from app.schemas.showtime_ping import SentShowtimePingPublic
+from app.schemas.showtime import ShowtimePublic, ShowtimeSelectionUpdate
+from app.schemas.showtime_ping import SentShowtimePingPublic, ShowtimePingLinkToken
 from app.schemas.showtime_report import ShowtimeReportCreate
 from app.schemas.showtime_visibility import (
     ShowtimeVisibilityPublic,
     ShowtimeVisibilityUpdate,
+    UninvitedSelectedFriendsPublic,
 )
 from app.services import push_notifications
 from app.services import showtimes as showtimes_service
@@ -55,14 +62,14 @@ _PING_NOTIFICATION_DELAY_SECONDS = 0 if os.getenv("TESTING") == "true" else 5  #
 _MAX_VISIBILITY_BATCH_SIZE = 200
 
 
-@router.put("/selection/{showtime_id}", response_model=ShowtimeLoggedIn)
+@router.put("/selection/{showtime_id}", response_model=ShowtimePublic)
 def update_showtime_selection(
     *,
     session: SessionDep,
     showtime_id: int,
     payload: ShowtimeSelectionUpdate,
     current_user: CurrentUser,
-) -> ShowtimeLoggedIn:
+) -> ShowtimePublic:
     should_update_seat = (
         "seat_row" in payload.model_fields_set
         or "seat_number" in payload.model_fields_set
@@ -118,35 +125,55 @@ def ping_friend_for_showtime(
     friend_id: UUID,
     current_user: CurrentUser,
 ) -> Message:
-    message, ping_id = showtimes_service.ping_friend_for_showtime(
+    message, ping_id, should_notify = showtimes_service.ping_friend_for_showtime(
         session=session,
         showtime_id=showtime_id,
         actor_id=current_user.id,
         friend_id=friend_id,
     )
-    background_tasks.add_task(
-        _notify_after_delay,
-        ping_id=ping_id,
-        sender_id=current_user.id,
-        receiver_id=friend_id,
-        showtime_id=showtime_id,
-    )
+    if should_notify:
+        background_tasks.add_task(
+            _notify_after_delay,
+            ping_id=ping_id,
+            sender_id=current_user.id,
+            receiver_id=friend_id,
+            showtime_id=showtime_id,
+        )
     return message
 
 
-@router.post("/{showtime_id}/ping-link/{sender_identifier}", response_model=Message)
+@router.post("/{showtime_id}/ping-link-token", response_model=ShowtimePingLinkToken)
+def create_showtime_ping_link_token(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> ShowtimePingLinkToken:
+    """Mint the signed token embedded in this showtime's shared invite link.
+
+    Called when the current user taps "Share" — the resulting token proves,
+    to whoever opens the link, that this user (and no one else) generated it.
+    """
+    return showtimes_service.create_showtime_ping_link_token(
+        session=session,
+        showtime_id=showtime_id,
+        sender_id=current_user.id,
+    )
+
+
+@router.post("/{showtime_id}/ping-link/{token}", response_model=Message)
 def receive_ping_from_link(
     *,
     session: SessionDep,
     showtime_id: int,
-    sender_identifier: str,
+    token: str,
     current_user: CurrentUser,
 ) -> Message:
     return showtimes_service.receive_ping_from_link(
         session=session,
         showtime_id=showtime_id,
         receiver_id=current_user.id,
-        sender_identifier=sender_identifier,
+        token=token,
     )
 
 
@@ -350,6 +377,28 @@ def get_showtime_visibility(
     )
 
 
+@router.get(
+    "/{showtime_id}/visibility/uninvited-selected-friends",
+    response_model=UninvitedSelectedFriendsPublic,
+)
+def get_uninvited_selected_friends_for_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> UninvitedSelectedFriendsPublic:
+    """Friends already going/interested but not yet invited to this showtime.
+
+    Used to prompt the actor, before switching to INVITED_ONLY, to invite
+    friends who would otherwise silently lose visibility into their status.
+    """
+    return showtimes_service.get_uninvited_selected_friends_for_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+    )
+
+
 @router.put("/{showtime_id}/visibility", response_model=ShowtimeVisibilityPublic)
 def update_showtime_visibility(
     *,
@@ -371,32 +420,35 @@ def update_showtime_visibility(
         )
 
 
-@router.get("/count")
+# Browse endpoint: the schedule is public, so this answers with or without a
+# token — see `app.core.viewer`.
+@router.get("/count", openapi_extra=OPTIONAL_AUTH_OPENAPI_EXTRA)
 def count_main_page_showtimes(
     *,
     session: SessionDep,
-    current_user: CurrentUser,
+    viewer: CurrentViewer,
     filters: Filters = Depends(get_filters),
 ) -> int:
     return showtimes_service.count_main_page_showtimes(
         session=session,
-        current_user_id=current_user.id,
+        current_user_id=viewer,
         filters=filters,
     )
 
 
-@router.get("/")
+# Browse endpoint — see count_main_page_showtimes above.
+@router.get("/", openapi_extra=OPTIONAL_AUTH_OPENAPI_EXTRA)
 def get_main_page_showtimes(
     *,
     session: SessionDep,
-    current_user: CurrentUser,
+    viewer: CurrentViewer,
     limit: int = 10,
     offset: int = 0,
     filters: Filters = Depends(get_filters),
-) -> list[ShowtimeLoggedIn]:
+) -> list[ShowtimePublic]:
     return showtimes_service.get_main_page_showtimes(
         session=session,
-        current_user_id=current_user.id,
+        current_user_id=viewer,
         limit=limit,
         offset=offset,
         filters=filters,
@@ -405,17 +457,24 @@ def get_main_page_showtimes(
 
 # Declared last so the literal routes above (/count, /visibility/batch, /) are
 # matched first and never shadowed by this dynamic single-segment route.
-@router.get("/{showtime_id}", response_model=ShowtimeLoggedIn)
+@router.get(
+    "/{showtime_id}",
+    response_model=ShowtimePublic,
+    openapi_extra=OPTIONAL_AUTH_OPENAPI_EXTRA,
+)
 def get_showtime_by_id(
     *,
     session: SessionDep,
     showtime_id: int,
-    current_user: CurrentUser,
-) -> ShowtimeLoggedIn:
+    viewer: CurrentViewer,
+) -> ShowtimePublic:
+    # Browse endpoint — see count_main_page_showtimes above. Shared links land
+    # here, so it has to open for someone who has never used the app.
+    #
     # ShowtimeNotFoundError (an AppError, 404) is converted to JSON by the
     # global app exception handler, so no explicit try/except is needed here.
     return showtimes_service.get_showtime_by_id(
         session=session,
         showtime_id=showtime_id,
-        current_user=current_user.id,
+        current_user=viewer,
     )

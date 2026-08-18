@@ -126,7 +126,7 @@ export default function FriendVisibilityControl({
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
     container: {
-      gap: 6,
+      gap: 4,
     },
     labelRow: {
       flexDirection: "row",

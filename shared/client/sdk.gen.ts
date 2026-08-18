@@ -22,6 +22,10 @@ import type {
   AdminListShowtimeReportsResponse,
   AdminUpdateShowtimeReportData,
   AdminUpdateShowtimeReportResponse,
+  AdminListUserReportsData,
+  AdminListUserReportsResponse,
+  AdminUpdateUserReportData,
+  AdminUpdateUserReportResponse,
   AdminUpdateUserReportBanData,
   AdminUpdateUserReportBanResponse,
   AdminGetScrapeRunsData,
@@ -45,6 +49,7 @@ import type {
   FriendsSetFriendStatusSharingResponse,
   FriendsRemoveFriendData,
   FriendsRemoveFriendResponse,
+  LetterboxdListsGetCuratedLetterboxdListsResponse,
   LoginLoginAccessTokenData,
   LoginLoginAccessTokenResponse,
   LoginLoginSocialTokenData,
@@ -73,10 +78,12 @@ import type {
   MeCreateCinemaPresetResponse,
   MeGetFavoriteCinemaPresetResponse,
   MeClearFavoriteCinemaPresetResponse,
-  MeSetFavoriteCinemaPresetData,
-  MeSetFavoriteCinemaPresetResponse,
+  MeRenameCinemaPresetData,
+  MeRenameCinemaPresetResponse,
   MeDeleteCinemaPresetData,
   MeDeleteCinemaPresetResponse,
+  MeSetFavoriteCinemaPresetData,
+  MeSetFavoriteCinemaPresetResponse,
   MeResendEmailVerificationResponse,
   MeUpdatePasswordMeData,
   MeUpdatePasswordMeResponse,
@@ -110,6 +117,7 @@ import type {
   MeRemoveLetterboxdListData,
   MeRemoveLetterboxdListResponse,
   MeGetFriendsResponse,
+  MeGetBlockedUsersResponse,
   MeGetSentFriendRequestsResponse,
   MeGetReceivedFriendRequestsResponse,
   MeGetCinemaSelectionsResponse,
@@ -129,12 +137,22 @@ import type {
   MoviesReadMovieShowtimesResponse,
   MoviesReadMovieData,
   MoviesReadMovieResponse,
+  ScrapeMonitorGetScrapeRunsData,
+  ScrapeMonitorGetScrapeRunsResponse,
+  ScrapeMonitorListScrapeRecapsData,
+  ScrapeMonitorListScrapeRecapsResponse,
+  ScrapeMonitorGetScrapeRecapData,
+  ScrapeMonitorGetScrapeRecapResponse,
+  ScrapeMonitorGetScrapeRecapAttachmentData,
+  ScrapeMonitorGetScrapeRecapAttachmentResponse,
   ShowtimesUpdateShowtimeSelectionData,
   ShowtimesUpdateShowtimeSelectionResponse,
   ShowtimesPingFriendForShowtimeData,
   ShowtimesPingFriendForShowtimeResponse,
   ShowtimesUninviteFriendFromShowtimeData,
   ShowtimesUninviteFriendFromShowtimeResponse,
+  ShowtimesCreateShowtimePingLinkTokenData,
+  ShowtimesCreateShowtimePingLinkTokenResponse,
   ShowtimesReceivePingFromLinkData,
   ShowtimesReceivePingFromLinkResponse,
   ShowtimesReportShowtimeData,
@@ -149,6 +167,8 @@ import type {
   ShowtimesGetShowtimeVisibilityResponse,
   ShowtimesUpdateShowtimeVisibilityData,
   ShowtimesUpdateShowtimeVisibilityResponse,
+  ShowtimesGetUninvitedSelectedFriendsForShowtimeData,
+  ShowtimesGetUninvitedSelectedFriendsForShowtimeResponse,
   ShowtimesCountMainPageShowtimesData,
   ShowtimesCountMainPageShowtimesResponse,
   ShowtimesGetMainPageShowtimesData,
@@ -165,11 +185,18 @@ import type {
   UsersRegisterUserResponse,
   UsersGetUserFriendStatusData,
   UsersGetUserFriendStatusResponse,
+  UsersBlockUserData,
+  UsersBlockUserResponse,
+  UsersUnblockUserData,
+  UsersUnblockUserResponse,
+  UsersReportUserData,
+  UsersReportUserResponse,
   UsersGetUserData,
   UsersGetUserResponse,
   UsersGetUserSelectedShowtimesData,
   UsersGetUserSelectedShowtimesResponse,
   UtilsHealthCheckResponse,
+  UtilsGetWatchlistDigestFrequencyInfoResponse,
   UtilsSearchTmdbCacheEntriesData,
   UtilsSearchTmdbCacheEntriesResponse,
   UtilsCorrectTmdbCacheEntryData,
@@ -387,6 +414,59 @@ export class AdminService {
     return __request(OpenAPI, {
       method: "PATCH",
       url: "/api/v1/admin/showtime-reports/{report_id}",
+      path: {
+        report_id: data.reportId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * List User Reports
+   * The moderation queue for reports about people.
+   *
+   * Separate from /showtime-reports because the two are triaged by different
+   * questions: whether a screening is real, versus whether an account is abusive.
+   * `report_count` is every report about that account, not just the ones this
+   * status filter shows.
+   * @param data The data for the request.
+   * @param data.status
+   * @returns UserReportAdminView Successful Response
+   * @throws ApiError
+   */
+  public static listUserReports(
+    data: AdminListUserReportsData = {},
+  ): CancelablePromise<AdminListUserReportsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/admin/user-reports",
+      query: {
+        status: data.status,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update User Report
+   * @param data The data for the request.
+   * @param data.reportId
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static updateUserReport(
+    data: AdminUpdateUserReportData,
+  ): CancelablePromise<AdminUpdateUserReportResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/admin/user-reports/{report_id}",
       path: {
         report_id: data.reportId,
       },
@@ -663,6 +743,20 @@ export class FriendsService {
       errors: {
         422: "Validation Error",
       },
+    })
+  }
+}
+
+export class LetterboxdListsService {
+  /**
+   * Get Curated Letterboxd Lists
+   * @returns LetterboxdListPublic Successful Response
+   * @throws ApiError
+   */
+  public static getCuratedLetterboxdLists(): CancelablePromise<LetterboxdListsGetCuratedLetterboxdListsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/letterboxd-lists/curated",
     })
   }
 }
@@ -1005,21 +1099,24 @@ export class MeService {
   }
 
   /**
-   * Set Favorite Cinema Preset
+   * Rename Cinema Preset
    * @param data The data for the request.
    * @param data.presetId
+   * @param data.requestBody
    * @returns CinemaPresetPublic Successful Response
    * @throws ApiError
    */
-  public static setFavoriteCinemaPreset(
-    data: MeSetFavoriteCinemaPresetData,
-  ): CancelablePromise<MeSetFavoriteCinemaPresetResponse> {
+  public static renameCinemaPreset(
+    data: MeRenameCinemaPresetData,
+  ): CancelablePromise<MeRenameCinemaPresetResponse> {
     return __request(OpenAPI, {
-      method: "PUT",
-      url: "/api/v1/me/cinema-presets/{preset_id}/favorite",
+      method: "PATCH",
+      url: "/api/v1/me/cinema-presets/{preset_id}",
       path: {
         preset_id: data.presetId,
       },
+      body: data.requestBody,
+      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },
@@ -1039,6 +1136,29 @@ export class MeService {
     return __request(OpenAPI, {
       method: "DELETE",
       url: "/api/v1/me/cinema-presets/{preset_id}",
+      path: {
+        preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Set Favorite Cinema Preset
+   * Point "my cinemas" at this preset's cinemas — a copy, not a handover.
+   * @param data The data for the request.
+   * @param data.presetId
+   * @returns CinemaPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static setFavoriteCinemaPreset(
+    data: MeSetFavoriteCinemaPresetData,
+  ): CancelablePromise<MeSetFavoriteCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/me/cinema-presets/{preset_id}/favorite",
       path: {
         preset_id: data.presetId,
       },
@@ -1168,7 +1288,7 @@ export class MeService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static getMyShowtimes(
@@ -1212,7 +1332,7 @@ export class MeService {
    * @param data.snapshotTime Only show showtimes after this moment
    * @param data.limit
    * @param data.offset
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static getMyAgenda(
@@ -1512,6 +1632,23 @@ export class MeService {
   }
 
   /**
+   * Get Blocked Users
+   * The accounts this user has blocked, newest first.
+   *
+   * The only place a blocked account is still visible to them — search, friends
+   * and invites all leave it out — so this list is also the only way back to
+   * unblocking one.
+   * @returns BlockedUserPublic Successful Response
+   * @throws ApiError
+   */
+  public static getBlockedUsers(): CancelablePromise<MeGetBlockedUsersResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/blocked-users",
+    })
+  }
+
+  /**
    * Get Sent Friend Requests
    * @returns UserWithFriendStatus Successful Response
    * @throws ApiError
@@ -1711,7 +1848,7 @@ export class MoviesService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns MovieSummaryLoggedIn Successful Response
+   * @returns MovieSummaryPublic Successful Response
    * @throws ApiError
    */
   public static readMovies(
@@ -1771,7 +1908,7 @@ export class MoviesService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns ShowtimeInMovieLoggedIn Successful Response
+   * @returns ShowtimeInMoviePublic Successful Response
    * @throws ApiError
    */
   public static readMovieShowtimes(
@@ -1832,7 +1969,7 @@ export class MoviesService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns MovieLoggedIn Successful Response
+   * @returns MoviePublic Successful Response
    * @throws ApiError
    */
   public static readMovie(
@@ -1871,13 +2008,107 @@ export class MoviesService {
   }
 }
 
+export class ScrapeMonitorService {
+  /**
+   * Get Scrape Runs
+   * Per-stream scrape-run history with deltas + anomaly flags (JSON = script/LLM friendly).
+   * @param data The data for the request.
+   * @param data.hours
+   * @returns ScrapeMonitorResponse Successful Response
+   * @throws ApiError
+   */
+  public static getScrapeRuns(
+    data: ScrapeMonitorGetScrapeRunsData = {},
+  ): CancelablePromise<ScrapeMonitorGetScrapeRunsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/monitor/scrape/runs",
+      query: {
+        hours: data.hours,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * List Scrape Recaps
+   * @param data The data for the request.
+   * @param data.limit
+   * @returns ScrapeRecapView Successful Response
+   * @throws ApiError
+   */
+  public static listScrapeRecaps(
+    data: ScrapeMonitorListScrapeRecapsData = {},
+  ): CancelablePromise<ScrapeMonitorListScrapeRecapsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/monitor/scrape/recaps",
+      query: {
+        limit: data.limit,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Scrape Recap
+   * @param data The data for the request.
+   * @param data.recapId
+   * @returns ScrapeRecapDetail Successful Response
+   * @throws ApiError
+   */
+  public static getScrapeRecap(
+    data: ScrapeMonitorGetScrapeRecapData,
+  ): CancelablePromise<ScrapeMonitorGetScrapeRecapResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/monitor/scrape/recaps/{recap_id}",
+      path: {
+        recap_id: data.recapId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Scrape Recap Attachment
+   * Raw attachment bytes (the machine-readable per-run traces: TMDB lookups, run details).
+   * @param data The data for the request.
+   * @param data.recapId
+   * @param data.filename
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static getScrapeRecapAttachment(
+    data: ScrapeMonitorGetScrapeRecapAttachmentData,
+  ): CancelablePromise<ScrapeMonitorGetScrapeRecapAttachmentResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/monitor/scrape/recaps/{recap_id}/attachments/{filename}",
+      path: {
+        recap_id: data.recapId,
+        filename: data.filename,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+}
+
 export class ShowtimesService {
   /**
    * Update Showtime Selection
    * @param data The data for the request.
    * @param data.showtimeId
    * @param data.requestBody
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static updateShowtimeSelection(
@@ -1946,10 +2177,36 @@ export class ShowtimesService {
   }
 
   /**
+   * Create Showtime Ping Link Token
+   * Mint the signed token embedded in this showtime's shared invite link.
+   *
+   * Called when the current user taps "Share" — the resulting token proves,
+   * to whoever opens the link, that this user (and no one else) generated it.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns ShowtimePingLinkToken Successful Response
+   * @throws ApiError
+   */
+  public static createShowtimePingLinkToken(
+    data: ShowtimesCreateShowtimePingLinkTokenData,
+  ): CancelablePromise<ShowtimesCreateShowtimePingLinkTokenResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/showtimes/{showtime_id}/ping-link-token",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Receive Ping From Link
    * @param data The data for the request.
    * @param data.showtimeId
-   * @param data.senderIdentifier
+   * @param data.token
    * @returns Message Successful Response
    * @throws ApiError
    */
@@ -1958,10 +2215,10 @@ export class ShowtimesService {
   ): CancelablePromise<ShowtimesReceivePingFromLinkResponse> {
     return __request(OpenAPI, {
       method: "POST",
-      url: "/api/v1/showtimes/{showtime_id}/ping-link/{sender_identifier}",
+      url: "/api/v1/showtimes/{showtime_id}/ping-link/{token}",
       path: {
         showtime_id: data.showtimeId,
-        sender_identifier: data.senderIdentifier,
+        token: data.token,
       },
       errors: {
         422: "Validation Error",
@@ -2109,6 +2366,32 @@ export class ShowtimesService {
   }
 
   /**
+   * Get Uninvited Selected Friends For Showtime
+   * Friends already going/interested but not yet invited to this showtime.
+   *
+   * Used to prompt the actor, before switching to INVITED_ONLY, to invite
+   * friends who would otherwise silently lose visibility into their status.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns UninvitedSelectedFriendsPublic Successful Response
+   * @throws ApiError
+   */
+  public static getUninvitedSelectedFriendsForShowtime(
+    data: ShowtimesGetUninvitedSelectedFriendsForShowtimeData,
+  ): CancelablePromise<ShowtimesGetUninvitedSelectedFriendsForShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/{showtime_id}/visibility/uninvited-selected-friends",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Count Main Page Showtimes
    * @param data The data for the request.
    * @param data.query
@@ -2184,7 +2467,7 @@ export class ShowtimesService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static getMainPageShowtimes(
@@ -2224,7 +2507,7 @@ export class ShowtimesService {
    * Get Showtime By Id
    * @param data The data for the request.
    * @param data.showtimeId
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static getShowtimeById(
@@ -2374,6 +2657,85 @@ export class UsersService {
   }
 
   /**
+   * Block User
+   * Block a user: no contact in either direction from here on.
+   *
+   * Tears down the friendship, any pending request and every standing invite
+   * between the two accounts — see services/moderation.py for why a block has to
+   * be a teardown rather than a flag.
+   * @param data The data for the request.
+   * @param data.userId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static blockUser(
+    data: UsersBlockUserData,
+  ): CancelablePromise<UsersBlockUserResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/users/{user_id}/block",
+      path: {
+        user_id: data.userId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Unblock User
+   * Lift a block. Does not restore the friendship or invites it removed.
+   * @param data The data for the request.
+   * @param data.userId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static unblockUser(
+    data: UsersUnblockUserData,
+  ): CancelablePromise<UsersUnblockUserResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/users/{user_id}/block",
+      path: {
+        user_id: data.userId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Report User
+   * Report a user for moderation, and block them unless asked not to.
+   *
+   * Mails the report to the operator as well as recording it, so guideline 1.2's
+   * "timely responses to concerns" has something to respond from.
+   * @param data The data for the request.
+   * @param data.userId
+   * @param data.requestBody
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static reportUser(
+    data: UsersReportUserData,
+  ): CancelablePromise<UsersReportUserResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/users/{user_id}/report",
+      path: {
+        user_id: data.userId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Get User
    * Get a user by their ID.
    * @param data The data for the request.
@@ -2419,7 +2781,7 @@ export class UsersService {
    * @param data.runtimeMin Minimum movie runtime in minutes
    * @param data.runtimeMax Maximum movie runtime in minutes
    * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
-   * @returns ShowtimeLoggedIn Successful Response
+   * @returns ShowtimePublic Successful Response
    * @throws ApiError
    */
   public static getUserSelectedShowtimes(
@@ -2469,6 +2831,18 @@ export class UtilsService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/utils/health-check/",
+    })
+  }
+
+  /**
+   * Get Watchlist Digest Frequency Info
+   * @returns DigestFrequencyInfoResponse Successful Response
+   * @throws ApiError
+   */
+  public static getWatchlistDigestFrequencyInfo(): CancelablePromise<UtilsGetWatchlistDigestFrequencyInfoResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/utils/watchlist-digest-frequency-info/",
     })
   }
 

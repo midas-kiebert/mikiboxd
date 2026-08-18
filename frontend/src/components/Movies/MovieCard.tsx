@@ -3,12 +3,12 @@
  */
 import { Flex } from "@chakra-ui/react"
 import React from "react"
-import type { MovieSummaryLoggedIn } from "shared"
+import type { MovieSummaryPublic } from "shared"
 import MovieInfoBox from "./MovieInfoBox"
 import MoviePoster from "./MoviePoster"
 
 type MovieCardProps = {
-  movie: MovieSummaryLoggedIn
+  movie: MovieSummaryPublic
 }
 
 const goingBgMap: Record<string, string> = {
@@ -21,7 +21,7 @@ const MovieCard = React.memo(function MovieCard({ movie }: MovieCardProps) {
   return (
     <>
       <Flex
-        bg={goingBgMap[movie.going]}
+        bg={goingBgMap[movie.viewer?.going ?? "NOT_GOING"]}
         borderBottom={"1px solid"}
         borderColor={"gray.200"}
         py={3}

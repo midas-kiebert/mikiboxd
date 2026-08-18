@@ -215,6 +215,14 @@ def to_public(
     )
 
 
+def list_curated_lists(*, session: Session) -> list[LetterboxdListPublic]:
+    """The shared, non-account lists — readable by anyone, signed in or not."""
+    return [
+        to_public(session=session, letterboxd_list=letterboxd_list)
+        for letterboxd_list in lists_crud.get_curated_lists(session=session)
+    ]
+
+
 def list_available_lists(
     *, session: Session, user_id: UUID
 ) -> list[LetterboxdListPublic]:

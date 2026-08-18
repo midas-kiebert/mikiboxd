@@ -19,7 +19,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import type { Language } from "shared/client";
-import type { MovieLoggedIn, ShowtimeInMovieLoggedIn } from "shared";
+import type { MoviePublic, ShowtimePublic, ShowtimeInMoviePublic } from "shared";
 import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
@@ -51,6 +51,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import { formatLanguageCode } from "@/utils/language";
 import {
@@ -68,10 +69,36 @@ const WATCH_MARKER_GAP = 8;
 /** A marker pill: 13pt icon/11pt count plus its 3pt vertical padding. */
 const WATCH_MARKER_HEIGHT = 21;
 
+/**
+ * The showtime sheet's shape, built from a row on this page.
+ *
+ * A row carries the viewer state a list pays for; the sheet also shows which
+ * friends have the film watchlisted or watched, which the movie query has
+ * already fetched once for the whole page. `non_friend_participants` is left
+ * out rather than defaulted to empty — the sheet loads its own, and an empty
+ * list here would claim "nobody" before anyone had looked.
+ *
+ * There is nothing to attach for a guest, whose rows carry no viewer at all.
+ */
+const withMovieWatchLists = (
+  showtime: ShowtimeInMoviePublic,
+  movie: MoviePublic
+): ShowtimePublic => ({
+  ...showtime,
+  movie,
+  viewer: showtime.viewer
+    ? {
+        ...showtime.viewer,
+        friends_watchlisted: movie.viewer?.friends_watchlisted ?? [],
+        friends_watched: movie.viewer?.friends_watched ?? [],
+      }
+    : null,
+});
+
 type MovieShowtimeSection = {
   key: string;
   title: string;
-  data: ShowtimeInMovieLoggedIn[];
+  data: ShowtimeInMoviePublic[];
 };
 
 type MovieStyles = ReturnType<typeof createStyles>;
@@ -222,7 +249,10 @@ function MovieContent({
   // global "my cinemas" preference shared everywhere.
   const shared = useSharedTabFilters();
   const { sessionCinemaIds, setSessionCinemaIds } = shared;
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  // A guest has no account-side "my cinemas" to compare against; theirs is the
+  // session selection itself, which is already `sessionCinemaIds`.
+  const isSignedIn = useIsSignedIn();
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
 
   const shouldInheritFilters = useMemo(
     () => (Array.isArray(inheritFilters) ? inheritFilters[0] : inheritFilters) === "1",
@@ -320,7 +350,7 @@ function MovieContent({
     selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
   }), [resolvedApiDays, appliedShowtimeFilter, selectedTimeRanges, sessionCinemaIds, selectedLanguages]);
 
-  const { data: movie, isLoading: isMovieLoading, isError: isMovieError } = useQuery<MovieLoggedIn, Error>({
+  const { data: movie, isLoading: isMovieLoading, isError: isMovieError } = useQuery<MoviePublic, Error>({
     queryKey: ["movie", movieId],
     queryFn: () =>
       MoviesService.readMovie({
@@ -350,7 +380,9 @@ function MovieContent({
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
   // Each row here opens the showtime sheet, so its visibility mode is fetched
   // up front — including for a showtime deep-linked via `targetShowtimeId`.
-  usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id));
+  usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id), {
+    enabled: isSignedIn,
+  });
 
   const showtimeSections = useMemo<MovieShowtimeSection[]>(() => {
     const sectionMap = new Map<string, MovieShowtimeSection>();
@@ -390,11 +422,7 @@ function MovieContent({
     if (!Number.isFinite(movieId) || movieId === 0) return;
     setRefreshing(true);
     try {
-      await refreshInfiniteQueryWithFreshSnapshot<ShowtimeInMovieLoggedIn[]>({
-        queryClient,
-        queryKey: ["movie", movieId, "showtimes", showtimesFilters],
-        setSnapshotTime,
-      });
+      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
       await queryClient.invalidateQueries({ queryKey: ["movie", movieId] });
     } finally {
       setRefreshing(false);
@@ -451,12 +479,7 @@ function MovieContent({
 
     openedTargetRef.current = targetShowtimeId;
     openShowtimeModal(
-      {
-        ...matchingShowtime,
-        movie,
-        friends_watchlisted: movie.friends_watchlisted ?? [],
-        friends_watched: movie.friends_watched ?? [],
-      },
+      withMovieWatchLists(matchingShowtime, movie),
       { openedFrom: { movieId } }
     );
   }, [targetShowtimeId, showtimes, movie, openShowtimeModal, movieId]);
@@ -465,8 +488,8 @@ function MovieContent({
   // sheet: icon + count only, in their own right-hand column of the header.
   // Tapping one opens the list, which is where the relationship is spelled out.
   // Only the non-empty relationships get a marker.
-  const friendsWatchlisted = movie?.friends_watchlisted ?? [];
-  const friendsWatched = movie?.friends_watched ?? [];
+  const friendsWatchlisted = movie?.viewer?.friends_watchlisted ?? [];
+  const friendsWatched = movie?.viewer?.friends_watched ?? [];
   const watchMarkers = (
     [
       { kind: "watchlisted" as const, count: friendsWatchlisted.length },
@@ -515,12 +538,12 @@ function MovieContent({
                   <ThemedText style={styles.directorText} numberOfLines={2}>
                     <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
                     {movie.directors.join(", ")}
-                    {movie.release_year ? ` (${movie.release_year})` : null}
+                    {movie.release_year ? ` · ${movie.release_year}` : null}
                   </ThemedText>
                 ) : isSynthetic ? (
                   <ThemedText style={styles.directorText} numberOfLines={2}>
                     <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
-                    {`${UNKNOWN_METADATA_PLACEHOLDER} (${UNKNOWN_METADATA_PLACEHOLDER})`}
+                    {`${UNKNOWN_METADATA_PLACEHOLDER} · ${UNKNOWN_METADATA_PLACEHOLDER}`}
                   </ThemedText>
                 ) : movie.release_year ? (
                   <ThemedText style={styles.directorText}>{movie.release_year}</ThemedText>
@@ -578,6 +601,16 @@ function MovieContent({
                   </View>
                 ) : null}
               </View>
+              <TouchableOpacity
+                style={styles.shareBtn}
+                onPress={() => void handleShareMovie()}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Share this movie"
+              >
+                <MaterialIcons name="share" size={12} color={colors.pillText} />
+                <ThemedText style={styles.shareBtnText}>Share</ThemedText>
+              </TouchableOpacity>
             </View>
           ) : (
             <MovieHeaderSkeleton styles={styles} />
@@ -614,16 +647,6 @@ function MovieContent({
                 if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
               }}
             />
-            <TouchableOpacity
-              style={styles.shareBtn}
-              onPress={() => void handleShareMovie()}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Share this movie"
-            >
-              <MaterialIcons name="share" size={14} color={colors.pillText} />
-              <ThemedText style={styles.filterBtnText}>Share</ThemedText>
-            </TouchableOpacity>
           </View>
           <View style={styles.divider} />
           <SectionList
@@ -642,21 +665,16 @@ function MovieContent({
                 <TouchableOpacity
                   style={[
                     styles.showtimeCardGlow,
-                    item.going === "GOING"
+                    item.viewer?.going === "GOING"
                       ? styles.showtimeCardGlowGoing
-                      : item.going === "INTERESTED"
+                      : item.viewer?.going === "INTERESTED"
                         ? styles.showtimeCardGlowInterested
                         : undefined,
                   ]}
                   onPress={() => {
                     if (movie) {
                       openShowtimeModal(
-                        {
-                          ...item,
-                          movie,
-                          friends_watchlisted: movie.friends_watchlisted ?? [],
-                          friends_watched: movie.friends_watched ?? [],
-                        },
+                        withMovieWatchLists(item, movie),
                         { openedFrom: { movieId } }
                       );
                       return;
@@ -672,9 +690,9 @@ function MovieContent({
                   <View
                     style={[
                       styles.showtimeCard,
-                      item.going === "GOING"
+                      item.viewer?.going === "GOING"
                         ? styles.showtimeCardGoing
-                        : item.going === "INTERESTED"
+                        : item.viewer?.going === "INTERESTED"
                           ? styles.showtimeCardInterested
                         : undefined,
                     ]}
@@ -773,6 +791,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 16,
     },
     staticHeader: {
+      position: "relative",
       flexDirection: "row",
       gap: 14,
       paddingHorizontal: 16,
@@ -807,16 +826,23 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.pillText,
     },
     shareBtn: {
+      position: "absolute",
+      bottom: 8,
+      right: 16,
       flexDirection: "row",
       alignItems: "center",
-      gap: 5,
-      paddingHorizontal: 14,
-      paddingVertical: 7,
-      marginRight: 16,
-      borderRadius: 18,
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 3,
+      borderRadius: 14,
       backgroundColor: colors.pillBackground,
       borderWidth: 1,
       borderColor: colors.pillBorder,
+    },
+    shareBtnText: {
+      fontSize: 11,
+      fontWeight: "500",
+      color: colors.pillText,
     },
     centered: {
       flex: 1,
@@ -849,20 +875,24 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     directorText: {
       fontSize: 12,
+      lineHeight: 16,
       color: colors.textSecondary,
     },
     directorLabel: {
       fontSize: 11,
+      lineHeight: 16,
       fontWeight: "800",
       letterSpacing: 0.6,
       color: colors.textSecondary,
     },
     metaText: {
       fontSize: 12,
+      lineHeight: 16,
       color: colors.textSecondary,
     },
     metaLabel: {
       fontSize: 11,
+      lineHeight: 16,
       fontWeight: "800",
       letterSpacing: 0.6,
       color: colors.textSecondary,

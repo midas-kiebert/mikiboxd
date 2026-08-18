@@ -18,6 +18,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 
 export type FriendWatchStatus = FriendWatchKind | null;
+export type FriendPingStatus = "GOING" | "INTERESTED" | null;
 
 type FriendListRowProps = {
   /** Drives the avatar tint, so a friend keeps their color across the app. */
@@ -25,8 +26,12 @@ type FriendListRowProps = {
   name: string;
   /** Letterboxd relationship to the film, shown as a small trailing marker. */
   watchStatus?: FriendWatchStatus;
-  /** "Going" / "Interested" — shown muted in place of the invite button. */
-  statusLabel?: string | null;
+  /**
+   * invite mode: already going/interested on their own — tints the row the
+   * same green/orange as the showtime sheet's own status, rather than a text
+   * label, so it reads the same way at a glance everywhere in the app.
+   */
+  pingStatus?: FriendPingStatus;
   mode?: "invite" | "display";
   /** invite mode: already pinged → shows an "Invited" check instead of the button. */
   invited?: boolean;
@@ -43,7 +48,7 @@ export default function FriendListRow({
   userId,
   name,
   watchStatus = null,
-  statusLabel = null,
+  pingStatus = null,
   mode = "invite",
   invited = false,
   highlighted = false,
@@ -57,9 +62,14 @@ export default function FriendListRow({
 
   const avatarColors = getAvatarColors(userId, colors);
   const watchMeta = watchStatus ? getFriendWatchKindMeta(watchStatus, colors) : null;
+  // Same green/orange the showtime sheet itself uses for going/interested.
+  const pingStatusPalette =
+    pingStatus === "GOING" ? colors.green : pingStatus === "INTERESTED" ? colors.orange : null;
 
   const isInvite = mode === "invite";
-  const canInvite = isInvite && !invited && !statusLabel && !disabled && Boolean(onInvite);
+  // A friend already going/interested can still be invited — it just won't
+  // notify them — so the row is tinted for context but the button stays live.
+  const canInvite = isInvite && !invited && !disabled && Boolean(onInvite);
   // The row itself always opens the friend's page when a handler is given —
   // in invite mode that's a separate action from the labelled Invite button
   // (which stops its own press from reaching the row), so nobody invites a
@@ -83,12 +93,10 @@ export default function FriendListRow({
 
       {isInvite ? (
         invited ? (
-          <View style={styles.invitedTag}>
-            <MaterialIcons name="check" size={14} color={colors.green.secondary} />
-            <ThemedText style={styles.invitedTagText}>Invited</ThemedText>
+          <View style={[styles.inviteButton, styles.invitedButton]}>
+            <MaterialIcons name="check" size={13} color={colors.textSecondary} />
+            <ThemedText style={styles.invitedButtonText}>Invited</ThemedText>
           </View>
-        ) : statusLabel ? (
-          <ThemedText style={styles.statusText}>{statusLabel}</ThemedText>
         ) : (
           <TouchableOpacity
             style={[styles.inviteButton, !canInvite && styles.inviteButtonDisabled]}
@@ -115,21 +123,24 @@ export default function FriendListRow({
     </>
   );
 
+  const rowStyle = [
+    styles.row,
+    pingStatusPalette && {
+      borderColor: pingStatusPalette.border,
+      backgroundColor: pingStatusPalette.primary,
+    },
+    // The search-highlight tint is a temporary, more urgent signal than a
+    // standing going/interested status, so it wins when both apply.
+    highlighted && styles.rowHighlighted,
+    disabled && styles.rowDisabled,
+  ];
+
   if (!rowPress) {
-    return (
-      <View style={[styles.row, highlighted && styles.rowHighlighted, disabled && styles.rowDisabled]}>
-        {content}
-      </View>
-    );
+    return <View style={rowStyle}>{content}</View>;
   }
 
   return (
-    <TouchableOpacity
-      style={[styles.row, highlighted && styles.rowHighlighted, disabled && styles.rowDisabled]}
-      onPress={rowPress}
-      disabled={disabled}
-      activeOpacity={0.7}
-    >
+    <TouchableOpacity style={rowStyle} onPress={rowPress} disabled={disabled} activeOpacity={0.7}>
       {content}
     </TouchableOpacity>
   );
@@ -175,12 +186,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "600",
       color: colors.text,
     },
-    statusText: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: colors.textSecondary,
-      paddingRight: 4,
-    },
     inviteButton: {
       flexDirection: "row",
       alignItems: "center",
@@ -200,15 +205,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "700",
       color: colors.blue.secondary,
     },
-    invitedTag: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 3,
-      paddingRight: 4,
+    invitedButton: {
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.surfaceMuted,
     },
-    invitedTagText: {
-      fontSize: 11,
+    invitedButtonText: {
+      fontSize: 12,
       fontWeight: "700",
-      color: colors.green.secondary,
+      color: colors.textSecondary,
     },
   });

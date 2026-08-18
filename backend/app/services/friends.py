@@ -12,8 +12,10 @@ from app.exceptions.friends_exceptions import (
     FriendshipAlreadyExistsError,
     FriendshipNotFoundError,
 )
+from app.exceptions.moderation_exceptions import UserBlockedError
 from app.exceptions.user_exceptions import OneOrMoreUsersNotFound
 from app.models.auth_schemas import Message
+from app.services import moderation as moderation_service
 from app.services import push_notifications
 
 
@@ -38,9 +40,19 @@ def create_friend_request(
 
     Raises:
         FriendRequestAlreadyExistsError: If a friend request already exists.
+        UserBlockedError: If either user has blocked the other.
         OneOrMoreUsersNotFound: If one or both users do not exist.
         AppError: For any other (unexpected) errors.
     """
+    # Before anything else, including the already-friends and mutual-request
+    # shortcuts below: a blocked pair must not be able to reach either of them.
+    # This is the loop that made blocking necessary — declining a request only
+    # deletes the row, so without this check the same sender can re-send forever.
+    if moderation_service.is_contact_blocked(
+        session=session, user_id=sender_id, other_id=receiver_id
+    ):
+        raise UserBlockedError
+
     if friendship_crud.are_users_friends(
         session=session, user_id=sender_id, friend_id=receiver_id
     ):

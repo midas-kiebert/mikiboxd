@@ -15,7 +15,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import type { UserPublic } from "shared";
 
-import FriendListRow from "@/components/friends/FriendListRow";
+import FriendListRow, { type FriendPingStatus } from "@/components/friends/FriendListRow";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { getFriendWatchKindMeta, type FriendWatchKind } from "@/components/friends/friend-watch-kind";
 import { ThemedText } from "@/components/themed-text";
@@ -28,8 +28,8 @@ const FADE_OUT_MS = 120;
 
 /** Per-friend invite state, resolved by the sheet that owns the ping data. */
 export type FriendWatchInviteState = {
-  /** "Going" / "Interested" — replaces the invite button when set. */
-  statusLabel: string | null;
+  /** Already going/interested on their own — tints the row, doesn't block inviting. */
+  pingStatus: FriendPingStatus;
   invited: boolean;
   disabled: boolean;
 };
@@ -149,7 +149,7 @@ export default function FriendWatchListModal({
                   userId={friend.id}
                   name={name}
                   mode={rowInvite ? "invite" : "display"}
-                  statusLabel={inviteState?.statusLabel ?? null}
+                  pingStatus={inviteState?.pingStatus ?? null}
                   invited={inviteState?.invited ?? false}
                   disabled={inviteState?.disabled ?? false}
                   onInvite={rowInvite ? () => rowInvite.onInvite(friend.id) : undefined}

@@ -8,12 +8,22 @@
  * which is what lets the root layout's guard hold the "no account without a
  * username" rule on every route change rather than only at the sign-in call site.
  */
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { MeService, type UserMe } from 'shared'
 
 import { useAuthStatus } from '@/utils/auth-session'
 
 export const currentUserQueryKey = ['currentUser'] as const
+
+/** How often the account is re-read while waiting for a confirmation link. */
+const VERIFICATION_POLL_INTERVAL_MS = 4000
+/**
+ * The account request usually answers in well under a frame or two, so the
+ * spinner it drives would flicker rather than read as "checking". Held this
+ * long so each poll is actually seen.
+ */
+const VERIFICATION_SPINNER_MIN_MS = 600
 
 export function useCurrentUser(): UserMe | undefined {
     const isAuthenticated = useAuthStatus() === 'signed-in'
@@ -25,6 +35,41 @@ export function useCurrentUser(): UserMe | undefined {
     // The cache outlives a session, so a signed-out app must not keep reporting
     // the account that just left as the current one.
     return isAuthenticated ? data : undefined
+}
+
+/**
+ * Re-reads the account every few seconds while `isWaiting` (i.e. the email is
+ * still unconfirmed), so the confirmation link being opened elsewhere — in a
+ * mail app, on a laptop — turns the badge over on its own rather than waiting
+ * for the user to leave the screen and come back.
+ *
+ * Returns whether a check is currently in flight, for the caller to show: the
+ * point of the polling is that the user can see it happening, otherwise a
+ * screen that looks frozen on "Not verified" invites them to hunt for a button.
+ */
+export function useEmailVerificationPolling(isWaiting: boolean): boolean {
+    const isAuthenticated = useAuthStatus() === 'signed-in'
+    const isEnabled = isAuthenticated && isWaiting
+    const { isFetching } = useQuery({
+        queryKey: currentUserQueryKey,
+        queryFn: MeService.getCurrentUser,
+        enabled: isEnabled,
+        refetchInterval: isEnabled ? VERIFICATION_POLL_INTERVAL_MS : false,
+    })
+    const [isHeld, setIsHeld] = useState(false)
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    useEffect(() => {
+        if (!isFetching) return
+        setIsHeld(true)
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+        timeoutRef.current = setTimeout(() => setIsHeld(false), VERIFICATION_SPINNER_MIN_MS)
+        return () => {
+            if (timeoutRef.current) clearTimeout(timeoutRef.current)
+        }
+    }, [isFetching])
+
+    return isEnabled && (isFetching || isHeld)
 }
 
 /**

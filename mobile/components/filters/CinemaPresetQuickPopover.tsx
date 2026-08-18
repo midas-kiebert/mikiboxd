@@ -16,12 +16,13 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useQuery } from "@tanstack/react-query";
 import { MeService, type CinemaPresetPublic } from "shared";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
 import { ThemedText } from "@/components/themed-text";
 import { type FilterPillLongPressPosition } from "@/components/filters/FilterPills";
 import { loadCinemaPresetOrder, sortCinemaPresetsByOrder } from "@/components/filters/cinema-preset-order";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useCinemaSelection } from "@/hooks/useCinemaSelection";
+import { useIsSignedIn } from "@/utils/auth-session";
 
 type CinemaPresetQuickPopoverProps = {
   visible: boolean;
@@ -66,8 +67,11 @@ export default function CinemaPresetQuickPopover({
     });
   }, []);
 
-  const { selections: sessionCinemaIds, setSelections } = useSessionCinemaSelections();
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  const { cinemaIds: sessionCinemaIds, setCinemaIds: setSelections } = useCinemaSelection();
+  // See FiltersModal: a guest has no saved picks to fall back to, and their
+  // selection persists to the device instead.
+  const isSignedIn = useIsSignedIn();
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
   const selectedCinemaIds = useMemo(
     () => sessionCinemaIds ?? preferredCinemaIds ?? EMPTY_CINEMA_IDS,
     [preferredCinemaIds, sessionCinemaIds]
@@ -81,6 +85,7 @@ export default function CinemaPresetQuickPopover({
   const { data: presets = [], isLoading } = useQuery({
     queryKey: ["cinema-presets"],
     queryFn: () => MeService.getCinemaPresets(),
+    enabled: isSignedIn,
     staleTime: 60_000,
   });
 

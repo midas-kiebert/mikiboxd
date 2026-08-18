@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, type View } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { DateTime } from 'luxon';
-import { useQueryClient } from '@tanstack/react-query';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
@@ -34,12 +33,21 @@ import { applyDisplayPreset, type DisplayPreset } from '@/components/filters/sav
 import {
   getSelectedStatusesFromShowtimeFilter,
 } from '@/components/filters/shared-tab-filters';
+import { tabletCappedContentStyle } from '@/constants/tablet-layout';
 import { useThemeColors } from '@/hooks/use-theme-color';
+import { useIsSignedIn } from '@/utils/auth-session';
 import { useIsAnyBlockingOverlayOpen } from '@/utils/blocking-overlays';
 import { useIntroPhase } from '@/utils/intro';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
+
+// One request per pause in typing, not one per keystroke — five requests for
+// "alkmaar" racing each other otherwise, and whichever lands last (not
+// necessarily the one for the finished word) is what the list is left
+// showing. See useDebouncedValue.
+const SEARCH_DEBOUNCE_MS = 280;
 
 export default function MainShowtimesScreen() {
   const colors = useThemeColors();
@@ -53,12 +61,15 @@ export default function MainShowtimesScreen() {
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [searchField, setSearchField] = useState<SearchField>('title');
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, SEARCH_DEBOUNCE_MS);
+  // Clearing the field drops the results immediately — waiting out the
+  // debounce to remove what the user just deleted would feel broken.
+  const effectiveSearchQuery = searchQuery.trim().length > 0 ? debouncedSearchQuery : '';
   const [isFilterTransitionLoading, setIsFilterTransitionLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { openFiltersModal } = useFiltersModal();
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
   const isFocused = useIsFocused();
-  const queryClient = useQueryClient();
   // The intro's last step highlights this screen's Filters button in place.
   const filtersButtonRef = useRef<View>(null);
   const introPhase = useIntroPhase();
@@ -97,6 +108,7 @@ export default function MainShowtimesScreen() {
   } = useSharedTabFilters();
 
   const { user } = useAuth();
+  const isSignedIn = useIsSignedIn();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveAppliedWatchlistOnly = hasLetterboxdUsername ? appliedWatchlistOnly : false;
@@ -105,7 +117,10 @@ export default function MainShowtimesScreen() {
   const effectiveWatchlistExclude = hasLetterboxdUsername ? watchlistExclude : false;
   const effectiveWatchedOnly = hasLetterboxdUsername ? watchedOnly : false;
 
-  const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  // "Clear all" restores the account's saved cinemas. A guest has none to
+  // restore to — the session selection *is* what they saved — so their cinema
+  // choice is deliberately left alone by it.
+  const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
 
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
@@ -131,11 +146,17 @@ export default function MainShowtimesScreen() {
     setHideWatched(false);
   }, [hasLetterboxdUsername, setHideWatched, hideWatched]);
 
+  // A cinema-name search already narrows results to matching cinemas, so a
+  // cinema selection on top of it would only ever narrow further — the pill
+  // reads as "All cinemas" and the query drops the filter to match, while
+  // sessionCinemaIds itself is left alone (see CinemaFilterChip's `disabled`).
+  const isSearchingByCinema = searchField === "cinema" && effectiveSearchQuery.trim().length > 0;
+
   // ─── Showtimes query ────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({
-    query: searchQuery || undefined,
+    query: effectiveSearchQuery || undefined,
     searchField,
-    selectedCinemaIds: sessionCinemaIds,
+    selectedCinemaIds: isSearchingByCinema ? undefined : sessionCinemaIds,
     days: resolvedApiDays,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
     runtimeMin: runtimeBounds.runtimeMin,
@@ -149,10 +170,10 @@ export default function MainShowtimesScreen() {
     excludeListIds: excludeListIds.length > 0 ? excludeListIds : undefined,
     selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
   }), [
-    searchQuery, searchField, appliedShowtimeFilter, resolvedApiDays, selectedTimeRanges,
-    runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, effectiveAppliedWatchlistOnly,
-    effectiveAppliedHideWatched, selectedListIds, excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly,
-    selectedLanguages,
+    effectiveSearchQuery, searchField, appliedShowtimeFilter, resolvedApiDays, selectedTimeRanges,
+    runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, isSearchingByCinema,
+    effectiveAppliedWatchlistOnly, effectiveAppliedHideWatched, selectedListIds, excludeListIds,
+    effectiveWatchlistExclude, effectiveWatchedOnly, selectedLanguages,
   ]);
 
   const activeShowtimesQuery = useFetchMainPageShowtimes({
@@ -165,7 +186,7 @@ export default function MainShowtimesScreen() {
   // ─── Movies query (Group by Movie mode) ─────────────────────────────────────
   const movieFilters = useMemo<MovieFilters>(
     () => ({
-      query: searchQuery,
+      query: effectiveSearchQuery,
       searchField,
       watchlistOnly: effectiveAppliedWatchlistOnly ? true : undefined,
       hideWatched: effectiveAppliedHideWatched ? true : undefined,
@@ -173,7 +194,7 @@ export default function MainShowtimesScreen() {
       timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
       runtimeMin: runtimeBounds.runtimeMin,
       runtimeMax: runtimeBounds.runtimeMax,
-      selectedCinemaIds: sessionCinemaIds,
+      selectedCinemaIds: isSearchingByCinema ? undefined : sessionCinemaIds,
       selectedStatuses: getSelectedStatusesFromShowtimeFilter(appliedShowtimeFilter),
       watchlistExclude: effectiveWatchlistExclude ? true : undefined,
       watchedOnly: effectiveWatchedOnly ? true : undefined,
@@ -182,9 +203,9 @@ export default function MainShowtimesScreen() {
       selectedLanguages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
     }),
     [
-      searchQuery, searchField, effectiveAppliedWatchlistOnly, effectiveAppliedHideWatched, resolvedApiDays, selectedTimeRanges,
-      runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, appliedShowtimeFilter, selectedListIds,
-      excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly, selectedLanguages,
+      effectiveSearchQuery, searchField, effectiveAppliedWatchlistOnly, effectiveAppliedHideWatched, resolvedApiDays, selectedTimeRanges,
+      runtimeBounds.runtimeMin, runtimeBounds.runtimeMax, sessionCinemaIds, isSearchingByCinema, appliedShowtimeFilter,
+      selectedListIds, excludeListIds, effectiveWatchlistExclude, effectiveWatchedOnly, selectedLanguages,
     ]
   );
   const moviesQuery = useFetchMovies({
@@ -232,19 +253,9 @@ export default function MainShowtimesScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      if (groupByMovie) {
-        await refreshInfiniteQueryWithFreshSnapshot({
-          queryClient,
-          queryKey: ['movies', movieFilters],
-          setSnapshotTime,
-        });
-      } else {
-        await refreshInfiniteQueryWithFreshSnapshot({
-          queryClient,
-          queryKey: ['showtimes', 'main', showtimesFilters],
-          setSnapshotTime,
-        });
-      }
+      // One snapshot drives both the showtimes and movies queries, so which
+      // mode is on screen no longer changes what a refresh has to do.
+      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
     } finally {
       setRefreshing(false);
     }
@@ -312,7 +323,7 @@ export default function MainShowtimesScreen() {
       setIsFilterTransitionLoading(true);
       setSelectedShowtimeFilter(v);
     },
-    showStatusFilter: true,
+    showStatusFilter: isSignedIn,
     selectedDays,
     setSelectedDays,
     selectedTimeRanges,
@@ -326,6 +337,7 @@ export default function MainShowtimesScreen() {
     selectedLanguages,
     setSelectedLanguages,
     onOpenFilters: () => openFiltersModal({ showGroupByMovie: true, showPresets: true }),
+    cinemaFilterDisabled: isSearchingByCinema,
     onClearAll: () => {
       setIsFilterTransitionLoading(true);
       setSelectedShowtimeFilter('all');
@@ -423,7 +435,7 @@ export default function MainShowtimesScreen() {
 const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    movieFeed: { padding: 16 },
+    movieFeed: { ...tabletCappedContentStyle, padding: 16 },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });

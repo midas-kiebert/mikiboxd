@@ -5,11 +5,15 @@
  * Without a Letterboxd username the watchlist/watched cards have nothing to
  * work with, so their place is taken by a prompt for that username.
  *
- * Every movie-set filter lives here as a card you can set to Include or Exclude:
- * the Letterboxd watchlist / watched, plus Letterboxd *lists* (curated ones such
- * as the Top 500, and custom lists pasted in by the user). Includes combine as a
- * union and excludes are subtracted, so you can e.g. include Watchlist + Top 500
- * while excluding Watched. Each card shows when its data was last synced.
+ * Every movie-set filter lives here as a one-line card: the Letterboxd
+ * watchlist / watched, plus Letterboxd *lists* (curated ones such as the Top
+ * 500, and custom lists pasted in by the user). Ticking a card's checkbox
+ * includes it; the smaller "Hide" button next to it excludes it. Includes
+ * combine as a union and excludes are subtracted, so you can e.g. include
+ * Watchlist + Top 500 while excluding Watched. The checkbox carries the common
+ * case and Hide is deliberately the quieter control — a card can only be in one
+ * of the two states, so ticking clears a hide and vice versa. Each card shows
+ * when its data was last synced.
  *
  * Syncing: watchlist/watched refresh automatically on app open; curated lists
  * refresh weekly server-side; custom lists refresh on app open when stale. A
@@ -23,12 +27,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { MeService, type LetterboxdListPublic } from "shared";
 import useAuth from "shared/hooks/useAuth";
 import {
+  useFetchCuratedLetterboxdLists,
   useFetchLetterboxdLists,
   useLetterboxdListMutations,
 } from "shared/hooks/useLetterboxdLists";
 
 import { FilterSubLabel } from "@/components/filters/FilterSection";
 import LetterboxdUsernamePrompt from "@/components/filters/LetterboxdUsernamePrompt";
+import SignedOutPanel from "@/components/auth/SignedOutPanel";
+import { useIsSignedIn } from "@/utils/auth-session";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useOptimisticValue } from "@/hooks/useOptimisticValue";
@@ -85,7 +92,15 @@ export default function FilterMoviesSection({
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  const { data: lists = [], isLoading: listsLoading } = useFetchLetterboxdLists();
+  // Two sources, one shape. The account endpoint answers with the user's own
+  // lists *and* the curated ones; without an account only the curated half
+  // exists, and it is public — filtering by the Top 250 is browsing, not an
+  // account feature. `user` is undefined for a signed-out visitor.
+  const isSignedIn = useIsSignedIn();
+  const accountLists = useFetchLetterboxdLists(Boolean(user));
+  const curatedOnly = useFetchCuratedLetterboxdLists(!isSignedIn);
+  const lists = (isSignedIn ? accountLists.data : curatedOnly.data) ?? [];
+  const listsLoading = isSignedIn ? accountLists.isLoading : curatedOnly.isLoading;
   const { addList, syncList, removeList } = useLetterboxdListMutations();
 
   const [newUrl, setNewUrl] = useState("");
@@ -190,6 +205,11 @@ export default function FilterMoviesSection({
   return (
     <>
       <FilterSubLabel label="Watchlist & watched" isFirst />
+      {/* The two modes are not symmetric and neither is self-evident, so the
+          section says once what ticking and hiding do. It sits above the first
+          block that actually renders cards — above a sign-in prompt it would be
+          explaining controls that aren't there. */}
+      {canUseWatchlistFilter && <ModeHint colors={colors} />}
       {canUseWatchlistFilter ? (
         <>
           <FilterItemCard
@@ -213,12 +233,17 @@ export default function FilterMoviesSection({
             colors={colors}
           />
         </>
-      ) : (
+      ) : isSignedIn ? (
         <LetterboxdUsernamePrompt />
+      ) : (
+        // Connecting Letterboxd writes a username onto an account, so there is
+        // nothing to offer a guest here but the account itself.
+        <SignedOutPanel variant="card" feature="letterboxd" />
       )}
 
       {/* Curated lists */}
       <FilterSubLabel label="Curated lists" />
+      {!canUseWatchlistFilter && <ModeHint colors={colors} />}
       {listsLoading && curatedLists.length === 0 ? (
         <ActivityIndicator color={colors.tint} style={{ marginVertical: 8 }} />
       ) : (
@@ -235,63 +260,78 @@ export default function FilterMoviesSection({
         ))
       )}
 
-      {/* Custom lists */}
-      <FilterSubLabel label="Your lists" />
-      {customLists.map((list) => (
-        <ListItemCard
-          key={list.id}
-          list={list}
-          mode={listMode(list.id)}
-          onChangeMode={(m) => setListMode(list.id, m)}
-          syncing={syncingId === list.id}
-          onSync={() => handleSyncList(list.id)}
-          onRemove={() => handleRemoveList(list)}
-          colors={colors}
-        />
-      ))}
-      {customLists.length === 0 && !listsLoading && (
-        <ThemedText style={styles.emptyHint}>
-          Add any Letterboxd list to filter by it.
-        </ThemedText>
-      )}
+      {/* Custom lists — adding one attaches it to an account, so this whole
+          half of the section belongs to signed-in users. A guest gets the
+          curated lists above and no mention of the rest. */}
+      {isSignedIn ? (
+        <>
+        <FilterSubLabel label="Your lists" />
+        {customLists.map((list) => (
+          <ListItemCard
+            key={list.id}
+            list={list}
+            mode={listMode(list.id)}
+            onChangeMode={(m) => setListMode(list.id, m)}
+            syncing={syncingId === list.id}
+            onSync={() => handleSyncList(list.id)}
+            onRemove={() => handleRemoveList(list)}
+            colors={colors}
+          />
+        ))}
+        {customLists.length === 0 && !listsLoading && (
+          <ThemedText style={styles.emptyHint}>
+            Add any Letterboxd list to filter by it.
+          </ThemedText>
+        )}
 
-      {/* Add a list */}
-      <View style={styles.addRow}>
-        <TextInput
-          style={styles.addInput}
-          value={newUrl}
-          onChangeText={setNewUrl}
-          placeholder="Paste a Letterboxd list URL"
-          placeholderTextColor={colors.textSecondary}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          returnKeyType="done"
-          onSubmitEditing={handleAdd}
-        />
-        <TouchableOpacity
-          style={[styles.addButton, (!newUrl.trim() || addList.isPending) && styles.addButtonDisabled]}
-          onPress={handleAdd}
-          disabled={!newUrl.trim() || addList.isPending}
-          activeOpacity={0.8}
-        >
-          {addList.isPending ? (
-            <ActivityIndicator size="small" color={colors.pillActiveText} />
-          ) : (
-            <MaterialIcons name="add" size={18} color={colors.pillActiveText} />
-          )}
-        </TouchableOpacity>
-      </View>
-      {addList.isError && (
-        <ThemedText style={styles.errorText}>
-          Couldn&apos;t add that list. Check the URL and try again.
-        </ThemedText>
-      )}
+        {/* Add a list */}
+        <View style={styles.addRow}>
+          <TextInput
+            style={styles.addInput}
+            value={newUrl}
+            onChangeText={setNewUrl}
+            placeholder="Paste a Letterboxd list URL"
+            placeholderTextColor={colors.textSecondary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            returnKeyType="done"
+            onSubmitEditing={handleAdd}
+          />
+          <TouchableOpacity
+            style={[styles.addButton, (!newUrl.trim() || addList.isPending) && styles.addButtonDisabled]}
+            onPress={handleAdd}
+            disabled={!newUrl.trim() || addList.isPending}
+            activeOpacity={0.8}
+          >
+            {addList.isPending ? (
+              <ActivityIndicator size="small" color={colors.pillActiveText} />
+            ) : (
+              <MaterialIcons name="add" size={18} color={colors.pillActiveText} />
+            )}
+          </TouchableOpacity>
+        </View>
+        {addList.isError && (
+          <ThemedText style={styles.errorText}>
+            Couldn&apos;t add that list. Check the URL and try again.
+          </ThemedText>
+        )}
+        </>
+      ) : null}
     </>
   );
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+function ModeHint({ colors }: { colors: Colors }) {
+  const styles = createStyles(colors);
+  return (
+    <ThemedText style={styles.modeHint}>
+      Tick a list to show only its films · Hide to leave them out
+    </ThemedText>
+  );
+}
 
 function ListItemCard({
   list,
@@ -349,112 +389,94 @@ function FilterItemCard({
 }) {
   const styles = createStyles(colors);
   const { value: displayMode, change } = useOptimisticValue(mode, onChangeMode);
-  const borderColor =
-    displayMode === "include"
-      ? colors.green.secondary
-      : displayMode === "exclude"
-        ? colors.red.secondary
-        : colors.divider;
+  const included = displayMode === "include";
+  const excluded = displayMode === "exclude";
+  const borderColor = included
+    ? colors.green.border
+    : excluded
+      ? colors.red.border
+      : colors.divider;
   return (
     <View style={[styles.card, { borderColor }]}>
-      <View style={styles.cardTop}>
-        <View style={styles.cardTextBlock}>
+      {/* The checkbox and the text next to it are one target: ticking a list is
+          the common case, so it gets the widest half of the row. */}
+      <Pressable
+        // `pressed` updates synchronously on touch-down, so the row dims
+        // instantly even while the movie list re-filters in the background.
+        style={({ pressed }) => [styles.selectRow, pressed && styles.pressed]}
+        onPress={() => change(included ? "off" : "include")}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: included }}
+        accessibilityLabel={`Show only films from ${title}`}
+      >
+        <View style={[styles.checkbox, included && styles.checkboxChecked]}>
+          {included && (
+            <MaterialIcons name="check" size={14} color={colors.pillActiveText} />
+          )}
+        </View>
+        <View style={[styles.cardTextBlock, excluded && styles.cardTextBlockExcluded]}>
           <ThemedText style={styles.cardTitle} numberOfLines={1}>
             {title}
           </ThemedText>
-          <View style={styles.cardSubtitleRow}>
-            <ThemedText style={styles.cardSubtitle} numberOfLines={1}>
-              {subtitle}
-            </ThemedText>
-            {onSync && (stale || syncing) && (
-              <TouchableOpacity onPress={onSync} disabled={syncing} hitSlop={8} activeOpacity={0.7}>
-                {syncing ? (
-                  <ActivityIndicator size="small" color={colors.textSecondary} />
-                ) : (
-                  <MaterialIcons name="sync" size={14} color={colors.tint} />
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
+          <ThemedText style={styles.cardSubtitle} numberOfLines={1}>
+            {subtitle}
+          </ThemedText>
         </View>
-        {onRemove && (
-          <TouchableOpacity onPress={onRemove} hitSlop={8} activeOpacity={0.7} style={styles.removeButton}>
-            <MaterialIcons name="close" size={18} color={colors.red.secondary} />
-          </TouchableOpacity>
-        )}
-      </View>
-      <IncludeExcludeToggle mode={displayMode} onChange={change} colors={colors} />
+      </Pressable>
+      {onSync && (stale || syncing) && (
+        <TouchableOpacity onPress={onSync} disabled={syncing} hitSlop={8} activeOpacity={0.7}>
+          {syncing ? (
+            <ActivityIndicator size="small" color={colors.textSecondary} />
+          ) : (
+            <MaterialIcons name="sync" size={16} color={colors.tint} />
+          )}
+        </TouchableOpacity>
+      )}
+      <HideButton
+        active={excluded}
+        onPress={() => change(excluded ? "off" : "exclude")}
+        colors={colors}
+      />
+      {onRemove && (
+        <TouchableOpacity onPress={onRemove} hitSlop={8} activeOpacity={0.7}>
+          <MaterialIcons name="close" size={16} color={colors.textSecondary} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
-function IncludeExcludeToggle({
-  mode,
-  onChange,
-  colors,
-}: {
-  mode: ItemMode;
-  onChange: (mode: ItemMode) => void;
-  colors: Colors;
-}) {
-  const styles = createStyles(colors);
-  return (
-    <View style={styles.toggleRow}>
-      <Segment
-        label="Show"
-        icon="visibility"
-        active={mode === "include"}
-        activeBg={colors.green.primary}
-        activeFg={colors.green.secondary}
-        onPress={() => onChange(mode === "include" ? "off" : "include")}
-        colors={colors}
-      />
-      <Segment
-        label="Hide"
-        icon="visibility-off"
-        active={mode === "exclude"}
-        activeBg={colors.red.primary}
-        activeFg={colors.red.secondary}
-        onPress={() => onChange(mode === "exclude" ? "off" : "exclude")}
-        colors={colors}
-      />
-    </View>
-  );
-}
-
-function Segment({
-  label,
-  icon,
+/**
+ * The secondary half of a card's control: excluding a list is the rarer wish,
+ * so it stays a labelled ghost button rather than a second checkbox — an
+ * unlabelled eye icon would read as "preview", not "leave these out".
+ */
+function HideButton({
   active,
-  activeBg,
-  activeFg,
   onPress,
   colors,
 }: {
-  label: string;
-  icon: keyof typeof MaterialIcons.glyphMap;
   active: boolean;
-  activeBg: string;
-  activeFg: string;
   onPress: () => void;
   colors: Colors;
 }) {
   const styles = createStyles(colors);
-  const fg = active ? activeFg : colors.pillText;
+  const fg = active ? colors.red.secondary : colors.pillText;
   return (
     <Pressable
-      // `pressed` updates synchronously on touch-down, so the segment dims
-      // instantly even while the movie list re-filters in the background.
       style={({ pressed }) => [
-        styles.segment,
-        { backgroundColor: active ? activeBg : colors.surfaceMuted },
-        pressed && styles.segmentPressed,
+        styles.hideButton,
+        active ? styles.hideButtonActive : styles.hideButtonIdle,
+        pressed && styles.pressed,
       ]}
       android_ripple={{ color: fg }}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={active ? "Stop hiding these films" : "Hide these films"}
     >
-      <MaterialIcons name={icon} size={15} color={fg} />
-      <ThemedText style={[styles.segmentLabel, { color: fg }]}>{label}</ThemedText>
+      <MaterialIcons name="visibility-off" size={13} color={fg} />
+      <ThemedText style={[styles.hideLabel, { color: fg }]}>Hide</ThemedText>
     </Pressable>
   );
 }
@@ -462,34 +484,56 @@ function Segment({
 const createStyles = (colors: Colors) =>
   StyleSheet.create({
     card: {
+      flexDirection: "row",
+      alignItems: "center",
       borderRadius: 12,
       borderWidth: 1.5,
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      marginBottom: 8,
+      paddingLeft: 10,
+      paddingRight: 10,
+      paddingVertical: 7,
+      marginBottom: 6,
       gap: 8,
     },
-    cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
-    cardTextBlock: { flex: 1 },
-    cardTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
-    cardSubtitleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 1 },
-    cardSubtitle: { fontSize: 12, color: colors.textSecondary, flexShrink: 1 },
-    removeButton: { padding: 2 },
-    toggleRow: { flexDirection: "row", gap: 6 },
-    segment: {
-      flex: 1,
-      flexDirection: "row",
+    selectRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 9 },
+    pressed: { opacity: 0.55 },
+    checkbox: {
+      width: 20,
+      height: 20,
+      borderRadius: 6,
+      borderWidth: 1.5,
+      borderColor: colors.pillBorder,
+      backgroundColor: colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",
-      gap: 5,
-      paddingVertical: 8,
-      borderRadius: 10,
+    },
+    checkboxChecked: {
+      backgroundColor: colors.green.secondary,
+      borderColor: colors.green.secondary,
+    },
+    cardTextBlock: { flex: 1 },
+    // Hiding a list is the same filter as not ticking it plus a subtraction, so
+    // the row recedes rather than shouting — the red border carries the state.
+    cardTextBlockExcluded: { opacity: 0.55 },
+    // Explicit line heights: ThemedText's default type ships lineHeight 24,
+    // which survives a fontSize override and would undo the compact rows.
+    cardTitle: { fontSize: 14, lineHeight: 18, fontWeight: "600", color: colors.text },
+    cardSubtitle: { fontSize: 11.5, lineHeight: 15, color: colors.textSecondary },
+    hideButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+      borderRadius: 9,
+      borderWidth: 1,
       overflow: "hidden",
     },
-    segmentPressed: { opacity: 0.55 },
-    segmentLabel: { fontSize: 12.5, fontWeight: "700" },
+    hideButtonIdle: { backgroundColor: colors.cardBackground, borderColor: colors.pillBorder },
+    hideButtonActive: { backgroundColor: colors.red.primary, borderColor: colors.red.border },
+    hideLabel: { fontSize: 12, lineHeight: 15, fontWeight: "700" },
+    modeHint: { fontSize: 11.5, lineHeight: 15, color: colors.textSecondary, marginTop: -4, marginBottom: 8 },
     emptyHint: { fontSize: 12, color: colors.textSecondary, marginBottom: 8 },
     addRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
     addInput: {

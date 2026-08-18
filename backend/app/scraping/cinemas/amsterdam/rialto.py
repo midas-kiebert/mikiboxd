@@ -101,18 +101,18 @@ class RialtoDePijpScraper(BaseCinemaScraper):
     film metadata we need, so every listed show is fetched independently.
     """
 
-    CINEMA = "Rialto De Pijp"
+    cinema_key = "rialto-de-pijp"
     TICKETS_BASE_URL = "https://tickets-depijp.rialtofilm.nl"
     _SHOW_LINK_RE = re.compile(r"^/nl-NL/Show/Details/")
 
     def __init__(self) -> None:
         with get_db_context() as session:
-            self.cinema_id = cinema_crud.get_cinema_id_by_name(
-                session=session, name=self.CINEMA
+            self.cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=self.cinema_key
             )
             if not self.cinema_id:
-                logger.error(f"Cinema {self.CINEMA} not found in database")
-                raise ValueError(f"Cinema {self.CINEMA} not found in database")
+                logger.error(f"Cinema {self.cinema_key} not found in database")
+                raise ValueError(f"Cinema {self.cinema_key} not found in database")
 
     def _process_show_path(
         self, path: str
@@ -163,7 +163,7 @@ class RialtoDePijpScraper(BaseCinemaScraper):
         )
         if tmdb_id is None:
             logger.warning(
-                f"No TMDB id found for {title_query} ({self.CINEMA}), skipping"
+                f"No TMDB id found for {title_query} ({self.cinema_key}), skipping"
             )
             return None
 
@@ -228,7 +228,7 @@ class RialtoDePijpScraper(BaseCinemaScraper):
             {str(a["href"]) for a in soup.find_all("a", href=self._SHOW_LINK_RE)}
         )
         if not paths:
-            logger.debug(f"No shows found for {self.CINEMA}")
+            logger.debug(f"No shows found for {self.cinema_key}")
             return []
 
         max_workers = min(len(paths), self.item_concurrency()) or 1
@@ -285,7 +285,7 @@ class RialtoVUScraper(BaseCinemaScraper):
     fetched.
     """
 
-    CINEMA = "Rialto VU"
+    cinema_key = "rialto-vu"
     BASE_URL = "https://griffioen.vu.nl"
     _SHOW_ITEM_RE = re.compile(
         r"data-showid=\"\d+\" onclick=\"document\.location='(/film/[^']+)'\""
@@ -295,12 +295,12 @@ class RialtoVUScraper(BaseCinemaScraper):
 
     def __init__(self) -> None:
         with get_db_context() as session:
-            self.cinema_id = cinema_crud.get_cinema_id_by_name(
-                session=session, name=self.CINEMA
+            self.cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=self.cinema_key
             )
             if not self.cinema_id:
-                logger.error(f"Cinema {self.CINEMA} not found in database")
-                raise ValueError(f"Cinema {self.CINEMA} not found in database")
+                logger.error(f"Cinema {self.cinema_key} not found in database")
+                raise ValueError(f"Cinema {self.cinema_key} not found in database")
 
     def _fetch_unique_film_paths(self) -> list[str]:
         paths: dict[str, str] = {}
@@ -387,7 +387,7 @@ class RialtoVUScraper(BaseCinemaScraper):
         )
         if tmdb_id is None:
             logger.warning(
-                f"No TMDB id found for {title_query} ({self.CINEMA}), skipping"
+                f"No TMDB id found for {title_query} ({self.cinema_key}), skipping"
             )
             return None
 
@@ -475,7 +475,7 @@ class RialtoVUScraper(BaseCinemaScraper):
         assert self.cinema_id is not None
         film_paths = self._fetch_unique_film_paths()
         if not film_paths:
-            logger.debug(f"No films found for {self.CINEMA}")
+            logger.debug(f"No films found for {self.cinema_key}")
             return []
 
         max_workers = min(len(film_paths), self.item_concurrency()) or 1

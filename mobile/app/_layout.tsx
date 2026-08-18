@@ -33,6 +33,8 @@ import { loadThemePreference, useThemePreference } from '@/utils/theme-preferenc
 import { loadFeatureTips } from '@/utils/feature-tips';
 import { loadIntroState, useIsIntroActive } from '@/utils/intro';
 import { loadAuthSession, markSignedIn, markSignedOut, useAuthStatus } from '@/utils/auth-session';
+import { loadGuestCinemaSelection } from '@/utils/guest-cinema-selection';
+import { SignInGateProvider } from '@/components/auth/SignInGateProvider';
 import { currentUserQueryKey, hasUsername, isMissingUsername, useCurrentUser } from '@/hooks/useCurrentUser';
 import { markUsernameResolved, useIsUsernameRequired } from '@/utils/username-gate';
 import { markAppReady, useIsAppReady } from '@/utils/app-ready';
@@ -95,8 +97,14 @@ const INSTANT_SCREEN_OPTIONS = {
 // the backend checks against settings.GOOGLE_CLIENT_IDS. Skipped entirely in
 // Expo Go, which doesn't bundle this native module.
 const googleWebClientId = Constants.expoConfig?.extra?.googleWebClientId as string | undefined;
+// iOS-only: without a GoogleService-Info.plist, RNGoogleSignIn can't derive
+// its own client ID and throws at configure() time without this.
+const googleIosClientId = Constants.expoConfig?.extra?.googleIosClientId as string | undefined;
 if (isGoogleSignInAvailable && googleWebClientId) {
-  getGoogleSignin().GoogleSignin.configure({ webClientId: googleWebClientId });
+  getGoogleSignin().GoogleSignin.configure({
+    webClientId: googleWebClientId,
+    ...(googleIosClientId ? { iosClientId: googleIosClientId } : {}),
+  });
 }
 
 setStorage({
@@ -242,6 +250,12 @@ void loadFeatureTips();
 // created on this device, which is well after the splash is gone.
 void loadIntroState();
 
+// A guest's cinema picks shape their very first feed, so this is read alongside
+// the session rather than after it. The splash does not wait on it: the filter
+// state seeds itself the moment it lands, and until then the feed is the
+// unfiltered catalogue, which is the right thing to show anyway.
+void loadGuestCinemaSelection();
+
 // Screenshot-mode bypass for App Store screenshot automation (CI only — see
 // .github/workflows/ios-screenshots.yml): writes a real, pre-fetched staging
 // token straight to storage and marks the session signed in immediately,
@@ -290,9 +304,14 @@ function RootLayourContent() {
   // Single source of truth for "is there a session", shared with the screens
   // that start and end one so this never disagrees with them mid-navigation.
   const authStatus = useAuthStatus()
-  // True only until the stored token has been read once, at startup.
+  // True only until the stored session has been read once, at startup.
   const isChecking = authStatus === 'unknown'
   const isAuthenticated = authStatus === 'signed-in'
+  // Browsing without an account. Allowed everywhere the catalogue lives, and
+  // nowhere an account is the subject — see the route guard below.
+  const isGuest = authStatus === 'guest'
+  // Whether the app shell should be up at all, rather than the login screen.
+  const isInsideApp = isAuthenticated || isGuest
   // Splash gating: theme loaded, critical caches warmed, and whether the
   // branded overlay is still mounted.
   const [themeReady, setThemeReady] = useState(false)
@@ -464,21 +483,34 @@ function RootLayourContent() {
     // branch below fired against a navigator that did not exist.
     if (!rootSegment) return
 
-    // Two explicit lists rather than one and its inverse. A route that is in
-    // neither is left alone, which is what `pick-username` needs: it is reached
+    // Three explicit lists rather than one and its inverse. A route that is in
+    // none is left alone, which is what `pick-username` needs: it is reached
     // *while* signing in, so it must neither demand a session it is halfway to
     // establishing nor be treated as a signed-out screen to be redirected away
     // from once one exists.
-    const authRoutes = new Set(['(tabs)', 'movie', 'friend-showtimes', 'cinema-showtimes', 'add-friend', 'ping'])
+    //
+    // `browseRoutes` is the catalogue — what is playing, where, and when. It is
+    // the same for everyone and needs no account to be worth reading, so a guest
+    // is let in. `accountRoutes` are the ones *about* a person: they cannot be
+    // rendered for nobody, so they still send a guest to the login screen.
+    //
+    // `ping` sits with the browse routes despite being an invite link, because
+    // the route itself does nothing but bow out (see its screen); the invite is
+    // handled by the effect below, which shows a guest the screening and leaves
+    // accepting it to the sheet's own gate.
+    const browseRoutes = new Set(['(tabs)', 'movie', 'cinema-showtimes', 'ping'])
+    const accountRoutes = new Set(['friend-showtimes', 'add-friend', 'blocked-users'])
     const signedOutRoutes = new Set(['login', 'signup', 'recover-password'])
     // Protected in release builds — the real flow only ever arrives already
     // signed in. In dev it stays neutral so the login screen's "Preview
     // pick-username screen" shortcut, taken while signed out, is not bounced
     // straight back to /login.
-    if (!__DEV__) authRoutes.add('pick-username')
+    if (!__DEV__) accountRoutes.add('pick-username')
 
-    if (!isAuthenticated && authRoutes.has(rootSegment)) {
-      // User is not authenticated but trying to access protected routes
+    const isBlockedRoute = accountRoutes.has(rootSegment) || (!isGuest && browseRoutes.has(rootSegment))
+
+    if (!isAuthenticated && isBlockedRoute) {
+      // Not signed in, on a route that needs an account.
       // Remember the deep link (everything except the plain tabs home) so the
       // login flow can resume it after the user signs in.
       if (rootSegment !== '(tabs)') {
@@ -500,7 +532,7 @@ function RootLayourContent() {
       // logout, say) starts from a clean slate.
       issuedRedirectRef.current = null
     }
-  }, [isAuthenticated, owesUsername, router, segments, pathname, isChecking, navigationState, redirectTo])
+  }, [isAuthenticated, isGuest, owesUsername, router, segments, pathname, isChecking, navigationState, redirectTo])
 
   const handleNotificationResponse = useCallback(
     async (response: Notifications.NotificationResponse) => {
@@ -584,14 +616,22 @@ function RootLayourContent() {
       if (!invite) return
 
       if (!isAuthenticated) {
-        // Stored so the login screen resumes where the link was headed. The
+        // Stored so the login flow resumes where the link was headed. The
         // invite itself is picked up by this effect re-running once a session
         // exists, which re-reads the same launch URL — hence `isAuthenticated`
         // in the deps.
         void storage.setItem(
           PENDING_DEEP_LINK_PATH_KEY,
-          `/ping/${invite.showtimeId}/${invite.sender}`
+          `/ping/${invite.showtimeId}/${invite.token}`
         )
+        // A guest can still be shown the screening they were invited to — that
+        // is public, and it is the thing the link is actually about. Accepting
+        // the invite is not, so the sheet's own gate does the asking, at the
+        // moment they reach for it rather than the moment they open the link.
+        if (isGuest) {
+          closeAllBlockingOverlays()
+          openShowtimeModalById(invite.showtimeId, { requireUpcoming: true })
+        }
         return
       }
 
@@ -604,8 +644,14 @@ function RootLayourContent() {
       // started, and opening a screening that is already over invites nothing.
       // The backend rejects the ping for the same reason, which
       // registerInviteLink swallows.
-      openShowtimeModalById(invite.showtimeId, { requireUpcoming: true })
-      void registerInviteLink({ ...invite, queryClient })
+      // `awaitBeforeFetch`: the ping must be recorded server-side before the
+      // showtime is fetched, or the sheet's first render (viewer.invited_by,
+      // the "invited by" banner) misses the invite it was just opened for —
+      // it would only show up after closing and reopening the sheet.
+      openShowtimeModalById(invite.showtimeId, {
+        requireUpcoming: true,
+        awaitBeforeFetch: () => registerInviteLink({ ...invite, queryClient }),
+      })
     }
 
     void Linking.getInitialURL()
@@ -619,7 +665,7 @@ function RootLayourContent() {
       cancelled = true
       subscription.remove()
     }
-  }, [isAppReady, isChecking, isAuthenticated, openShowtimeModalById, queryClient])
+  }, [isAppReady, isChecking, isAuthenticated, isGuest, openShowtimeModalById, queryClient])
 
   useEffect(() => {
     void configureNotificationCategories().catch((error) => {
@@ -678,7 +724,7 @@ function RootLayourContent() {
         // of always defaulting to (tabs) and letting the auth-guard effect
         // below redirect afterwards — that redirect used to be visible as a
         // flash of (tabs) sliding away into /login on a logged-out cold start.
-        initialRouteName={isAuthenticated ? '(tabs)' : 'login'}
+        initialRouteName={isInsideApp ? '(tabs)' : 'login'}
         screenOptions={{
           headerShown: false,
           // iOS-style card slide with the previous-screen parallax, run in JS so
@@ -713,15 +759,12 @@ function RootLayourContent() {
         <JsStack.Screen name="friend-showtimes/[id]" />
         <JsStack.Screen name="cinema-showtimes/[id]" />
         <JsStack.Screen name="add-friend/[receiverId]" />
+        <JsStack.Screen name="blocked-users" />
         {/* Renders nothing and pops itself the moment it is handled, so it must
             never animate: sliding an empty card in and back out again was the
             whole of the invite link's "glitchy" open, and it happens over a
             screen the user is already looking at when the app was running. */}
         <JsStack.Screen name="ping/[showtimeId]/[sender]" options={INSTANT_SCREEN_OPTIONS} />
-        <JsStack.Screen
-          name="modal"
-          options={{ presentation: 'modal', title: 'Modal', ...TransitionPresets.ModalSlideFromBottomIOS }}
-        />
       </JsStack>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
         </>
@@ -801,11 +844,16 @@ export default function RootLayout() {
         <BottomSheetModalProvider>
           <QueryClientProvider client={queryClient}>
             <ThemeProvider value={theme}>
-              <ShowtimeModalProvider>
-                <NotificationCenterProvider>
-                  <RootLayourContent />
-                </NotificationCenterProvider>
-              </ShowtimeModalProvider>
+              {/* Above the sheet and notification providers, so the sign-in
+                  prompt it raises survives the surface the tap came from —
+                  several of those close themselves on press. */}
+              <SignInGateProvider>
+                <ShowtimeModalProvider>
+                  <NotificationCenterProvider>
+                    <RootLayourContent />
+                  </NotificationCenterProvider>
+                </ShowtimeModalProvider>
+              </SignInGateProvider>
             </ThemeProvider>
           </QueryClientProvider>
         </BottomSheetModalProvider>

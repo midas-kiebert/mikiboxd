@@ -4,12 +4,12 @@ import { useIsMobile } from "@/hooks/useIsMobile"
 import { Center, Spinner } from "@chakra-ui/react"
 import { useWindowVirtualizer } from "@tanstack/react-virtual"
 import { useEffect } from "react"
-import type { MovieSummaryLoggedIn } from "shared"
+import type { MovieSummaryPublic } from "shared"
 import MovieCard from "./MovieCard"
 import MoviesContainer from "./MoviesContainer"
 
 type MoviesProps = {
-  movies: Array<MovieSummaryLoggedIn>
+  movies: Array<MovieSummaryPublic>
   isLoading: boolean
 }
 

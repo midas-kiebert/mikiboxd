@@ -21,6 +21,36 @@ def load_yaml_data(file_path: Path) -> list[dict]:
         return yaml.safe_load(file)
 
 
+def assert_known_fields(cinemas: list[dict]) -> None:
+    """A misspelled field is silently dropped by model_validate, not rejected.
+
+    That is how `aliaes:` cost a cinema its aliases — and with them the name
+    Cineville knows it by — without anything in the seed output looking wrong.
+    """
+    known = set(CinemaCreate.model_fields) | {"city"}
+    for cinema in cinemas:
+        unknown = sorted(set(cinema) - known)
+        if unknown:
+            raise ValueError(
+                f"Unknown field(s) {unknown} on cinema '{cinema.get('key')}' "
+                "in cinemas.yaml"
+            )
+
+
+def assert_unique_keys(cinemas: list[dict]) -> None:
+    """Two cinemas sharing a key would upsert over each other, silently.
+
+    Cheap to check here, and the only place it can be caught before it costs a
+    cinema its showtimes.
+    """
+    seen: set[str] = set()
+    for cinema in cinemas:
+        key = cinema["key"]
+        if key in seen:
+            raise ValueError(f"Duplicate cinema key in cinemas.yaml: {key}")
+        seen.add(key)
+
+
 def seed_cities_and_cinemas():
     cities = load_yaml_data(cities_yaml_path)
     with get_db_context() as session:
@@ -32,12 +62,17 @@ def seed_cities_and_cinemas():
 
     city_name_to_id = {city["name"]: city["id"] for city in cities}
     cinemas = load_yaml_data(cinemas_yaml_path)
+    assert_known_fields(cinemas)
+    assert_unique_keys(cinemas)
     with get_db_context() as session:
         for cinema in cinemas:
             city_name = cinema.pop("city")
             cinema["city_id"] = city_name_to_id.get(city_name)
             cinema_create = CinemaCreate.model_validate(cinema)
-            print(f"Seeding cinema: {cinema_create.name} in city: {city_name}")
+            print(
+                f"Seeding cinema: {cinema_create.key} "
+                f"({cinema_create.name}) in city: {city_name}"
+            )
             cinema_crud.upsert_cinema(session=session, cinema=cinema_create)
         session.commit()
 

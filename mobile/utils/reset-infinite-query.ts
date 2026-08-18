@@ -33,30 +33,24 @@ export function buildSnapshotTime() {
   return DateTime.now().setZone(SNAPSHOT_TIME_ZONE).toFormat(SNAPSHOT_TIME_FORMAT);
 }
 
-export async function refreshInfiniteQueryWithFreshSnapshot<T>({
-  queryClient,
-  queryKey,
+export async function refreshInfiniteQueryWithFreshSnapshot({
   setSnapshotTime,
 }: {
-  queryClient: QueryClient;
-  queryKey: QueryKey;
   setSnapshotTime: (snapshotTime: string) => void;
 }) {
   const nextSnapshotTime = buildSnapshotTime();
+  // The snapshot is part of every showtime/movie query key, so publishing a new
+  // one *is* the refetch: the observer moves to a key with no cached pages and
+  // fetches from page 0. Nothing here invalidates or trims, and nothing waits
+  // for a commit — an earlier version did both, and the wait was the bug. It
+  // relied on a double requestAnimationFrame landing after React's commit,
+  // which on Android it does not reliably do, so the refetch went out with the
+  // previous render's snapshot and the list came back showing showtimes that
+  // had already started.
   setSnapshotTime(nextSnapshotTime);
-  // Wait for the snapshot state update to render AND commit before refetching.
-  // The query fetches with `snapshotTime` captured from the render closure, so
-  // invalidating before the commit lands refetches with the stale snapshot —
-  // that's the "had to pull twice" bug. A double rAF reliably fires after
-  // React's commit, so the refetch always uses the fresh snapshot.
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-  });
-  // Hold the loading state for at least MIN_REFRESH_VISIBLE_MS so the refetch is
-  // always visibly obvious, even when it completes instantly.
-  const minVisible = new Promise<void>((resolve) =>
-    setTimeout(resolve, MIN_REFRESH_VISIBLE_MS)
-  );
-  await Promise.all([resetInfiniteQuery<T>(queryClient, queryKey), minVisible]);
+  // The list draws skeletons while the new snapshot's first page is in flight
+  // (see ShowtimesScreen), so all this has to do is keep the pull-to-refresh
+  // spinner up long enough to be seen when the response is instant.
+  await new Promise<void>((resolve) => setTimeout(resolve, MIN_REFRESH_VISIBLE_MS));
   return nextSnapshotTime;
 }

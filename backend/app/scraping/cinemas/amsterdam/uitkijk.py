@@ -27,7 +27,7 @@ from app.utils import to_amsterdam_time
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-CINEMA = "De Uitkijk"
+CINEMA_KEY = "de-uitkijk"
 
 
 def clean_title(title: str) -> str:
@@ -58,13 +58,14 @@ class Response(BaseModel):
 
 class UitkijkScraper(BaseCinemaScraper):
     def __init__(self) -> None:
+        self.cinema_key = CINEMA_KEY
         with get_db_context() as session:
-            self.cinema_id = cinema_crud.get_cinema_id_by_name(
-                session=session, name=CINEMA
+            self.cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=CINEMA_KEY
             )
             if not self.cinema_id:
-                logger.error(f"Cinema {CINEMA} not found in database")
-                raise ValueError(f"Cinema {CINEMA} not found in database")
+                logger.error(f"Cinema {CINEMA_KEY} not found in database")
+                raise ValueError(f"Cinema {CINEMA_KEY} not found in database")
 
     def scrape(self) -> list[tuple[str, int]]:
         if not self.cinema_id:

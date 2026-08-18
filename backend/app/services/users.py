@@ -9,6 +9,7 @@ from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
 from app.core.config import settings
 from app.core.security import generate_email_verification_token
+from app.core.username_filter import assert_display_name_allowed
 from app.crud import cinema as cinemas_crud
 from app.crud import friendship as friendship_crud
 from app.crud import user as users_crud
@@ -24,8 +25,9 @@ from app.exceptions.user_exceptions import (
 from app.inputs.movie import Filters
 from app.mailer import generate_verify_email_email, send_email
 from app.models.user import User, UserCreate, UserRegister
-from app.schemas.showtime import ShowtimeLoggedIn
+from app.schemas.showtime import ShowtimePublic
 from app.schemas.user import UserPublic, UserWithFriendStatus
+from app.services import moderation as moderation_service
 from app.validators.username import is_valid_username
 
 logger = logging.getLogger(__name__)
@@ -78,7 +80,12 @@ def get_user_friend_status(
     if not user_db:
         raise UserNotFound(user_id)
     return user_converters.to_with_friend_status(
-        user_db, session=session, current_user=current_user_id
+        user_db,
+        session=session,
+        current_user=current_user_id,
+        is_blocked=moderation_service.has_blocked(
+            session=session, blocker_id=current_user_id, blocked_id=user_id
+        ),
     )
 
 
@@ -108,6 +115,9 @@ def get_users(
         limit=limit,
         offset=offset,
         current_user_id=current_user_id,
+        excluded_user_ids=moderation_service.get_hidden_user_ids(
+            session=session, user_id=current_user_id
+        ),
     )
     sharing_friend_ids = friendship_crud.get_status_sharing_friend_ids(
         session=session, owner_id=current_user_id
@@ -131,7 +141,7 @@ def get_selected_showtimes(
     limit: int,
     offset: int,
     filters: Filters,
-) -> list[ShowtimeLoggedIn]:
+) -> list[ShowtimePublic]:
     """
     Get the showtimes selected by a user.
 
@@ -139,7 +149,7 @@ def get_selected_showtimes(
         session (Session): Database session.
         user_id (UUID): ID of the user whose selected showtimes are to be retrieved.
     Returns:
-        list[ShowtimeLoggedIn]: List of showtimes selected by the user.
+        list[ShowtimePublic]: List of showtimes selected by the user.
     """
     is_friend = friendship_crud.are_users_friends(
         session=session,
@@ -167,7 +177,7 @@ def get_selected_showtimes(
         letterboxd_username=letterboxd_username,
     )
     return [
-        showtime_converters.to_logged_in(
+        showtime_converters.to_public(
             showtime=showtime, session=session, user_id=current_user_id
         )
         for showtime in showtimes
@@ -384,6 +394,10 @@ def register_user(
         raise UsernameRequired()
     if not is_valid_username(normalized_display_name):
         raise InvalidUsername()
+    # Guideline 1.2's objectionable-content filter. A username is the only free
+    # text other users read, so it is refused at the door rather than left to a
+    # report — see core/username_filter.py for what that does and does not catch.
+    assert_display_name_allowed(normalized_display_name)
 
     existing_user = users_crud.get_user_by_display_name(
         session=session,

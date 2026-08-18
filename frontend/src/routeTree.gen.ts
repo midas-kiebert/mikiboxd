@@ -13,6 +13,7 @@ import { Route as SupportRouteImport } from './routes/support'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as FriendShowtimesRouteImport } from './routes/friend-showtimes'
 import { Route as FriendGroupsRouteImport } from './routes/friend-groups'
@@ -56,6 +57,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
   id: '/recover-password',
   path: '/recover-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -186,6 +192,7 @@ export interface FileRoutesByFullPath {
   '/friend-groups': typeof FriendGroupsRoute
   '/friend-showtimes': typeof FriendShowtimesRouteWithChildren
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -214,6 +221,7 @@ export interface FileRoutesByTo {
   '/friend-groups': typeof FriendGroupsRoute
   '/friend-showtimes': typeof FriendShowtimesRouteWithChildren
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -245,6 +253,7 @@ export interface FileRoutesById {
   '/friend-groups': typeof FriendGroupsRoute
   '/friend-showtimes': typeof FriendShowtimesRouteWithChildren
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -277,6 +286,7 @@ export interface FileRouteTypes {
     | '/friend-groups'
     | '/friend-showtimes'
     | '/login'
+    | '/privacy'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -305,6 +315,7 @@ export interface FileRouteTypes {
     | '/friend-groups'
     | '/friend-showtimes'
     | '/login'
+    | '/privacy'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -335,6 +346,7 @@ export interface FileRouteTypes {
     | '/friend-groups'
     | '/friend-showtimes'
     | '/login'
+    | '/privacy'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -366,6 +378,7 @@ export interface RootRouteChildren {
   FriendGroupsRoute: typeof FriendGroupsRoute
   FriendShowtimesRoute: typeof FriendShowtimesRouteWithChildren
   LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
@@ -403,6 +416,13 @@ declare module '@tanstack/react-router' {
       path: '/recover-password'
       fullPath: '/recover-password'
       preLoaderRoute: typeof RecoverPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -641,6 +661,7 @@ const rootRouteChildren: RootRouteChildren = {
   FriendGroupsRoute: FriendGroupsRoute,
   FriendShowtimesRoute: FriendShowtimesRouteWithChildren,
   LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,

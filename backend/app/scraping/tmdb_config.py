@@ -64,7 +64,12 @@ TMDB_STALE_REFRESH_MAX_PROBABILITY = _env_probability(
 FUZZ_THRESHOLD = 60
 RELAXED_FUZZ_THRESHOLD = 45
 STRONG_METADATA_FUZZ_THRESHOLD = 35
-TMDB_LOOKUP_PAYLOAD_VERSION = 14
+# Part of every lookup cache key: bump whenever a matcher change should be
+# allowed to re-decide titles that already resolved, otherwise the old answer is
+# served from `tmdblookupcache` forever. 15 = post-enrichment title rescore +
+# the exact-year tie-break. Admin corrections survive a bump: they are matched on
+# the normalized title, not the payload hash (see `_get_manual_override_for_title`).
+TMDB_LOOKUP_PAYLOAD_VERSION = 15
 TMDB_MATCH_RUNTIME_ENRICHMENT_LIMIT = _env_non_negative_int(
     "TMDB_MATCH_RUNTIME_ENRICHMENT_LIMIT",
     10,

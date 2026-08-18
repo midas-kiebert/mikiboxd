@@ -270,6 +270,63 @@ export default function SpotlightOverlay({
               { top: hole.top, left: hole.left + hole.width, right: 0, height: hole.height },
             ]}
           />
+          {/*
+           * The four panes above stop flush against the hole's square bounding
+           * box, leaving its corners fully see-through — squared off rather than
+           * matching the rounded ring. These four pieces plug just the corners:
+           * each is exactly radius x radius, dim-colored, with only the corner
+           * nearest the hole's center rounded off, which (since the piece's side
+           * equals the radius) carves out precisely the quarter-circle the ring
+           * traces, and leaves the rest dim.
+           */}
+          <View
+            style={[
+              styles.dim,
+              {
+                top: hole.top,
+                left: hole.left,
+                width: HOLE_BORDER_RADIUS,
+                height: HOLE_BORDER_RADIUS,
+                borderBottomRightRadius: HOLE_BORDER_RADIUS,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.dim,
+              {
+                top: hole.top,
+                left: hole.left + hole.width - HOLE_BORDER_RADIUS,
+                width: HOLE_BORDER_RADIUS,
+                height: HOLE_BORDER_RADIUS,
+                borderBottomLeftRadius: HOLE_BORDER_RADIUS,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.dim,
+              {
+                top: hole.top + hole.height - HOLE_BORDER_RADIUS,
+                left: hole.left,
+                width: HOLE_BORDER_RADIUS,
+                height: HOLE_BORDER_RADIUS,
+                borderTopRightRadius: HOLE_BORDER_RADIUS,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.dim,
+              {
+                top: hole.top + hole.height - HOLE_BORDER_RADIUS,
+                left: hole.left + hole.width - HOLE_BORDER_RADIUS,
+                width: HOLE_BORDER_RADIUS,
+                height: HOLE_BORDER_RADIUS,
+                borderTopLeftRadius: HOLE_BORDER_RADIUS,
+              },
+            ]}
+          />
           <Animated.View
             pointerEvents="none"
             style={[

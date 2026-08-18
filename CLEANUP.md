@@ -17,7 +17,10 @@ Legend:
 - [x] `security.py` — JWT creation, password hashing/verification, password reset tokens (moved from `utils.py`)
 - [x] `enums.py` — App-wide enums (GoingStatus, TimeOfDay, etc.)
 - [x] `client_version.py` — Dotted-integer version parsing/comparison for the mobile update gate
-- [x] `middleware.py` — `ClientVersionGateMiddleware`: 426s requests from mobile builds older than `MIN_SUPPORTED_CLIENT_VERSION`
+- [x] `middleware.py` — `ClientVersionGateMiddleware`: 426s requests from mobile builds older than that platform's `MIN_SUPPORTED_CLIENT_VERSION_*`. Per-platform floors, because App Store review runs weeks behind Play and a shared floor would hold the faster store hostage to the slower one
+- [x] `viewer.py` — `ViewerId` (`UUID | None`): who a read is being annotated for. `None` is a legitimate anonymous viewer, entitled to the public catalogue and none of the personal annotations — threaded through the browse routes, services, converters and crud so one code path serves signed-in and signed-out alike
+- [x] `username_filter.py` — Objectionable-username denylist for App Store guideline 1.2 (slurs, child-safety terms, hardcore sexual content, staff impersonation only — deliberately minimal, see its module docstring); leet-speak folding + a small `_ALLOWED_WORDS` strip to dodge the Scunthorpe problem (`Hitchcock` must pass)
+- [x] `apple_auth.py` — Apple's OAuth token endpoints as a *client* (code exchange at sign-in, revocation at account deletion) — required so deleting an account also revokes its Sign in with Apple tokens (guideline 5.1.1(v)). Fails soft throughout: nothing here may block an account deletion
 
 ---
 
@@ -50,6 +53,7 @@ Legend:
 - [x] `routes/showtimes.py` — Showtime endpoints (list, selection, visibility, pings)
 - [x] `routes/friends.py` — Friend request and friendship endpoints
 - [x] `routes/cinemas.py` — Cinema listing endpoints
+- [x] `routes/letterboxd_lists.py` — The curated (shared, non-account) Letterboxd lists, readable without a token — filtering the catalogue by the Top 250 is browsing, not an account action; adding/removing your own lists stays on `/me/letterboxd-lists`
 - [x] `routes/users.py` — User lookup endpoints (admin + public profiles)
 - [x] `routes/utils.py` — Utility endpoints (health check, TMDB cache override)
 - [ ] `routes/admin.py` — Superuser-only endpoints (analytics overview, movie/showtime moderation, showtime reports)
@@ -63,7 +67,7 @@ Legend:
 
 - [x] `auth_schemas.py` — Token and token-payload shapes (not a DB model)
 - [x] `user.py` — User account (email, password hash, settings, flags)
-- [x] `cinema.py` — Cinema venue (name, city, coords, seating preset)
+- [x] `cinema.py` — Cinema venue (`key` identity + display `name` + `aliases`, city, seating preset). `CinemaBase` holds only what clients are served; `key`/`aliases` are backend-only and sit on `Cinema`/`CinemaCreate`
 - [x] `cinema_selection.py` — Which cinemas a user has selected
 - [x] `cinema_preset.py` — Saved named sets of cinema selections
 - [x] `movie.py` — Movie metadata (title, duration, genres, poster). Positive id = TMDB id; negative id = synthetic listing (e.g. sneak preview) via `sneak_preview_movie()` / `is_synthetic_movie_id`
@@ -74,7 +78,7 @@ Legend:
 - [x] `showtime_visibility.py` — Per-showtime visibility mode + effective-visibility cache
 - [x] `showtime_source_presence.py` — Tracks which scraper provided a showtime
 - [x] `scrape_run.py` — Metadata about each scraping execution
-- [x] `scrape_recap.py` — Stored per-run scrape recap (stitched into one daily email)
+- [x] `scrape_recap.py` — Stored per-run scrape recap (metrics + HTML + attachments; the day's rows are rendered into one email)
 - [x] `friendship.py` — Accepted friend relationships (+ per-friend `shares_status`)
 - [x] `filter_preset.py` — Saved filter configurations (movies or showtimes scope)
 - ~~`friend_group.py`~~ — deleted (friend groups retired in the visibility overhaul)
@@ -87,6 +91,8 @@ Legend:
 - [ ] `watchlist_digest_notified_movie.py` — Per-user record of movies already sent/seen in the digest
 - [ ] `analytics_event.py` — Single usage-analytics event (name + free-form properties)
 - [ ] `showtime_report.py` — User-submitted report that a showtime is wrong
+- [x] `user_block.py` — One user blocking another; directional storage, symmetric effect (see `crud/user_block.is_blocked_either_way`)
+- [x] `user_report.py` — User-submitted report about another user; mirrors `showtime_report.py`
 
 ---
 
@@ -98,12 +104,13 @@ Legend:
 
 - [ ] `user.py` — Public/private user representations
 - [ ] `cinema.py` — Cinema response shape
-- [ ] `movie.py` — Movie response shape (with watchlist status, friend data)
-- [ ] `showtime.py` — Showtime response shape (with selections, visibility)
+- [ ] `movie.py` — Movie response shape. `MoviePublic`/`MovieSummaryPublic` are the film itself; whatever depends on who asked lives under a nullable `viewer` block (`MovieViewerState`/`MovieSummaryViewerState`), absent for an anonymous read
+- [ ] `showtime.py` — Showtime response shape. Same split: `ShowtimePublic`/`ShowtimeInMoviePublic` are public, `ShowtimeViewerState`/`ShowtimeInMovieViewerState` carry selections, invites and friend annotations. The two viewer shapes differ rather than sharing one with empty defaults, so an empty list always means "none" and never "we didn't look"
+- [x] `legacy_viewer_compat.py` — TEMPORARY. Deprecation note shared by the flat `going`/`friends_going`/... mirrors that keep pre-1.1.0 app builds working now that those fields live under `viewer`. Delete this file and the `LEGACY_VIEWER_FIELDS` blocks once no old build is still calling
 - [ ] `showtime_ping.py` — Ping response shape
 - [x] `notification.py` — Merged notification-centre feed item shape
 - [x] `showtime_visibility.py` — Per-showtime visibility mode response shape
-- [ ] `cinema_preset.py` — Cinema preset response shape
+- [ ] `cinema_preset.py` — Cinema preset response shapes: `CinemaPresetCreate` (with `overwrite`, the explicit opt-in to replacing a same-named preset), `CinemaPresetRename`, `CinemaPresetPublic`
 - [ ] `filter_preset.py` — Filter preset response shape
 - [x] `friendship.py` — Friend status-sharing toggle request shape
 - [ ] `push_token.py` — Push token registration shape
@@ -113,6 +120,8 @@ Legend:
 - [x] `scrape_monitor.py` — Admin scrape-run/recap response shapes (deltas + anomaly flags)
 - [ ] `showtime_report.py` — Showtime report create/update/admin-view shapes
 - [ ] `admin.py` — Admin movie/showtime moderation request/response shapes
+- [x] `user_block.py` — Blocked-account list-row shape
+- [x] `user_report.py` — User report create/update/admin-view shapes; `UserReportCreate.block_user` defaults true — reporting and blocking are one client gesture
 
 ---
 
@@ -130,7 +139,7 @@ Legend:
 - [x] `notification.py` — Notification-centre row queries (upsert, feed, decay)
 - [ ] `friendship.py` — Friend request and friendship queries (+ status-sharing)
 - ~~`friend_group.py`~~ — deleted (friend groups retired)
-- [ ] `cinema.py` — Cinema queries
+- [ ] `cinema.py` — Cinema queries. Resolve by `get_cinema_id_by_key`; `get_cinema_id_by_name_or_alias` is only for names arriving from outside (Cineville venues). `upsert_cinema` matches on key so a rename in cinemas.yaml edits the row in place
 - [ ] `cinema_preset.py` — Cinema preset CRUD
 - [ ] `filter_preset.py` — Filter preset CRUD
 - [ ] `watchlist.py` — Watchlist selection CRUD
@@ -138,6 +147,8 @@ Legend:
 - [ ] `city.py` — City queries
 - [ ] `analytics_event.py` — Event creation and dashboard aggregation queries
 - [ ] `showtime_report.py` — Report creation, listing (joined), status updates
+- [x] `user_block.py` — Block create/delete, symmetric `is_blocked_either_way`, `get_hidden_user_ids` (both directions folded into one set — the one every list-filtering caller wants)
+- [x] `user_report.py` — Report creation, duplicate-open-report check, listing (joined, scalar-subquery count so status filtering doesn't shrink it)
 
 ---
 
@@ -156,9 +167,13 @@ Legend:
 - [ ] `watchlist.py` — Watchlist sync logic
 - [ ] `watched.py` — Watched-list sync logic
 - [x] `letterboxd_sync.py` — Shared sync cooldown for `watchlist.py`/`watched.py` (counts failed attempts, not just successes)
+- [x] `viewer_context.py` — Settles the browse filters that depend on who is asking: fills in `selected_cinema_ids` from the account's favourite cinema preset (then its legacy selection), and resolves the Letterboxd username the watchlist filters read against. For an anonymous viewer it leaves cinemas unrestricted — the whole catalogue, not an empty feed — and drops Letterboxd list ids, which can only belong to an account. Replaces the copy of that block that sat in each of the four movie/showtime list+count entry points
 - [ ] `scrape_sync.py` — Triggers scraping from the API layer
 - [ ] `analytics_dashboard.py` — Aggregates AnalyticsEvent/Notification/ShowtimePing/User data for the admin overview
 - [x] `scrape_monitor.py` — Read-only aggregation of ScrapeRun/ScrapeRecap for the admin scrape monitor (deltas + anomaly flags)
+- [x] `scrape_recap_render.py` — `RecapRunMetrics` + the recap renderer; the daily email is grouped by statistic (combined value, then each run's) instead of stitching per-run reports, and the long diagnostic dumps live in JSON attachments only
+- [x] `showtime_title_conflict.py` — Recognizing the same screening listed by Cineville and a cinema scraper under near-identical titles; used both to stop the duplicate being inserted (`upsert_showtime`) and to clean up existing ones (`runner._delete_cineville_title_conflicts`). Also collects the resulting `SourceDisagreement`s, which the recap reports as TMDB matches to review
+- [x] `moderation.py` — Blocking (a teardown of friendship/requests/invites + visibility rebuild, not a flag) and reporting another user, together — App Store guideline 1.2. Reporting blocks by default; the two are still separate rows so unblocking never withdraws a report. Mails the operator on every new report, best-effort
 
 ---
 
@@ -188,6 +203,9 @@ Legend:
 - [ ] `watchlist_exceptions.py` — Watchlist-related errors
 - [ ] `city_exceptions.py` — City-related errors
 - [ ] `scraper_exceptions.py` — Scraping-specific errors
+- [x] `cinema_preset_exceptions.py` — Cinema preset errors: not found, empty name, and the 409 raised when a preset name is already taken (create and rename both need it, and the client turns it into a "replace?" prompt rather than a failure)
+- [ ] `letterboxd_list_exceptions.py` — Letterboxd list scrape/sync errors
+- [x] `moderation_exceptions.py` — Block/report self-target and not-found errors, plus `UserBlockedError` (deliberately vague — never tells the sender which direction the block runs, so it can't be used to confirm a block landed) and `ObjectionableUsernameError`
 
 ---
 
@@ -268,6 +286,9 @@ Legend:
 - [ ] Add tests for `crud/showtime_visibility.py` (default-mode resolution covered by `tests/crud/test_showtime_visibility_defaults.py`)
 - [ ] Add tests for `crud/user.py` (time-range filtering)
 - [ ] `tests/api/test_admin.py` — Admin route gating, analytics overview, movie/showtime moderation, showtime reports
+- [x] `tests/api/test_anonymous_browse.py` — The browse endpoints answered without a token: catalogue in full, no personal annotations, `/me/*` still 401
+- [x] `tests/api/test_client_compatibility.py` — Legacy flat mirrors match the `viewer` block, and the version gate's per-platform floors are independent
+- [x] `tests/test_cinemas_yaml.py` — `data/cinemas.yaml` carries no field the seeder would silently drop, and no duplicate keys
 
 ---
 
@@ -462,6 +483,7 @@ Only components created or reworked during the cleanup are listed here; the rest
 `mobile/components/` predates this checklist.
 
 - [x] `ui/ConfirmDialog.tsx` — Reusable themed confirm dialog (fade + scale over a dimmed backdrop); the app-wide replacement for `Alert.alert` whenever the user is asked to decide something
+- [x] `showtimes/InviteBeforePrivateDialog.tsx` — Checkbox-list variant of `ConfirmDialog`, shown right before a showtime switches to INVITED_ONLY when friends are already going/interested but never pinged; offers to invite them (non-notifying) so they don't silently lose visibility
 - [x] `ui/AnimatedHeight.tsx` — Measures its children and tweens its own height to match, for content that grows and shrinks under the user (search results arriving, an empty state replacing a list). Used instead of `LayoutAnimation` where the change comes from a query resolving rather than a tap, since `configureNext` has to be armed before the update that moves things
 - [x] `ui/LoadMoreFooter.tsx` — The spinner at the bottom of a paginated list, tweening its own height and opacity so a loaded page glides in instead of snapping up a whole row the instant the spinner unmounts. Shared by every infinite list (showtimes, movies, friends, cinema/friend/movie detail). Not `AnimatedHeight`: there is nothing to measure, and the fade has to run *with* the collapse rather than after it
 - [x] `auth/AuthScreenShell.tsx` — The frame every auth screen sits in (brand mark, title, subtitle, keyboard handling, and the error banner, which is tweened in rather than inserted under the user). Exists so log in / sign up / pick a username / recover password cannot drift apart — this is the first thing anyone sees of the app
@@ -529,7 +551,21 @@ Only components created or reworked during the cleanup are listed here; the rest
 - ~~`tips/FeatureTipCard.tsx`~~ — deleted (the inline card was superseded by the blocking `FeatureTipModal`)
 - [x] `hooks/useCurrentUser.ts` — The signed-in account (same `currentUser` query key as `shared/hooks/useAuth`, but enabled from the global auth session rather than that hook's own token read, so it is live on every launch and from the moment a sign-in is announced) plus the predicate the app is gated on: `hasUsername`/`isMissingUsername`, positive checks both ways so an account that has not loaded is never read as either
 - [x] `utils/username-gate.ts` — "This session owes a username", known synchronously, raised by a social sign-in in the same block as `markSignedIn` so the route guard has an answer before the account loads. In memory only, unlike `intro.ts`: a stored flag outliving its account would strand a user on the username screen
+- [x] `auth/SignInGateProvider.tsx` — One place to ask "does this need an account?", and one dialog to answer it. `requireAccount(feature)` returns true when the caller may proceed and false when it has put the prompt up instead, so an account-only affordance anywhere in the app gates itself in one line. Mounted above the sheet/notification providers so the prompt outlives the surface the tap came from
+- [x] `auth/SignInRequiredDialog.tsx` — What a guest sees when they tap something an account is needed for. Not a `ConfirmDialog`: it asks for two different yeses (make an account, or use the one you have), with dismissal as a quiet third option
+- [x] `auth/SignedOutPanel.tsx` — What a guest sees instead of a tab that has nothing to show them (Agenda, Friends), and as a card at the top of Settings. Reads the same copy table as the dialog, so the sentence on the Friends tab is the one they read again if they tap "Invite" three screens later
+- [x] `auth/account-features.ts` — The copy table both of the above read: for each thing an account is for, an icon, a title naming the *feature* rather than the restriction, and one sentence on what it does
+- [x] `auth/BrowseWithoutAccountLink.tsx` — The way past the door, on both auth screens. A quiet link rather than a third button competing with Apple/Google; hidden when the user is already browsing as a guest
+- [x] `utils/guest-cinema-selection.ts` — A guest's chosen cinemas, kept on the device (a signed-in user's live on their account). Empty means all cinemas, which is where a guest starts; `claimGuestCinemaSelection` hands them to the account on sign-up so the picking is not repeated
+- [x] `hooks/useCinemaSelection.ts` — The session's cinema selection plus persistence for guests, so every picker in the app saves a guest's choice by doing nothing different from what it already did
 - [x] `hooks/useSingleFireNavigation.ts` — Wraps a `router.push`/`replace` call so a double-tap only fires it once; `expo-router` navigation is async, so a disabled-on-submit re-render lags behind a fast double-tap and stacks the destination screen twice. Resets on screen focus. Rolled out to every push-on-press site found across the app (movie/friend/cinema cards, showtime long-press, login's sign-up/forgot-password links, the notification centre)
+- [x] `hooks/useUserModeration.ts` — Block/unblock/report-user mutations behind one hook, mirroring `useFriendActions`; invalidates `["users"]` since a block changes search, friend-status and the friends list at once
+- [x] `friends/ReportUserDialog.tsx` — "Report this person" reason picker (`ConfirmDialog`'s fade/scale chrome, a reason list instead of two buttons); reporting blocks by default, offered from `NonFriendProfile` and `FriendAgendaOptions`
+- [x] `friends/NonFriendProfile.tsx` — Gained Block/Report (or Unblock, once blocked) links below the existing friend-request actions — App Store Review guideline 1.2's blocking/reporting mechanism for the one profile screen a stranger is ever shown
+- [x] `friends/FriendAgendaOptions.tsx` — Gained the same Block/Report pair below the visibility control; blocking a friend removes the friendship, same as Remove
+- `app/blocked-users.tsx` — "Blocked accounts" screen off Settings → Privacy: the one place a blocked account is still visible, since search/friends/invites all filter them out; unblock-only, does not restore what blocking removed
+- [x] `constants/tablet-layout.ts` — `tabletCappedContentStyle` (maxWidth 640 + centered), the cheap fix for `RESPONSIVE_AUDIT.md` finding 16; applied to the four main-feed list containers, deliberately not to `FiltersModal`/`AppBottomSheet` (would mismatch their full-width pinned footers)
+- ~~`app/modal.tsx`~~ — deleted (leftover Expo Router template screen — "This is a modal" — that was never navigated to; flagged as `RESPONSIVE_AUDIT.md` finding 22)
 
 ---
 
@@ -560,7 +596,7 @@ Only components created or reworked during the cleanup are listed here; the rest
 - [ ] `backend/Dockerfile` — Backend image (multi-stage, uv, uvicorn)
 - [ ] `frontend/Dockerfile` — Frontend image (Vite build + Nginx)
 - [ ] `.env` structure — What variables are required? What are the defaults?
-- [ ] `alembic/versions/` — 74 migrations: understand the schema evolution
+- [ ] `alembic/versions/` — 106 migrations: understand the schema evolution
 - [ ] `.pre-commit-config.yaml` — What hooks run on commit?
 
 ---

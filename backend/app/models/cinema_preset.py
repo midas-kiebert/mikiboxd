@@ -16,6 +16,12 @@ from app.utils import now_amsterdam_naive
 DEFAULT_CINEMA_PRESET_ID = uuid.UUID("00000000-0000-0000-0000-000000000003")
 DEFAULT_CINEMA_PRESET_NAME = "All Cinemas"
 
+# The name of the one preset every user has whether they asked for it or not:
+# the cinemas they actually go to, applied on startup. It is a real row, marked
+# by `is_favorite` rather than by this name — the name is only what the manage
+# screen shows, and the user is free to change it. Nothing may key off it.
+FAVORITE_CINEMA_PRESET_NAME = "My Cinemas"
+
 
 class CinemaPreset(SQLModel, table=True):
     __table_args__ = (

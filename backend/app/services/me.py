@@ -9,8 +9,10 @@ from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
+from app.core import apple_auth
 from app.core.enums import NotificationChannel, NotificationType, ShowtimePingSort
 from app.core.security import verify_password
+from app.core.username_filter import assert_display_name_allowed
 from app.crud import cinema as cinemas_crud
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import friendship as friendship_crud
@@ -22,6 +24,11 @@ from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
+from app.exceptions.cinema_preset_exceptions import (
+    CinemaPresetNameRequired,
+    CinemaPresetNameTaken,
+    CinemaPresetNotFound,
+)
 from app.exceptions.user_exceptions import (
     DisplayNameAlreadyExists,
     EmailAlreadyExists,
@@ -35,6 +42,7 @@ from app.exceptions.user_exceptions import (
 from app.models.cinema_preset import (
     DEFAULT_CINEMA_PRESET_ID,
     DEFAULT_CINEMA_PRESET_NAME,
+    FAVORITE_CINEMA_PRESET_NAME,
     CinemaPreset,
 )
 from app.models.push_token import PushToken
@@ -44,7 +52,7 @@ from app.models.user import User, UserUpdate
 from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
 from app.schemas.notification import NotificationFeedItem, NotificationFeedType
 from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
-from app.schemas.showtime import ShowtimeLoggedIn
+from app.schemas.showtime import ShowtimePublic
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe
 from app.services import users as users_service
@@ -135,6 +143,9 @@ def update_me(
         if username_changed:
             if not is_valid_username(requested_display_name):
                 raise InvalidUsername()
+            # Applied on rename as well as creation: a filter that only ran at
+            # signup would be one settings visit away from being pointless.
+            assert_display_name_allowed(requested_display_name)
             existing_user = users_crud.get_user_by_display_name(
                 session=session,
                 display_name=requested_display_name,
@@ -266,6 +277,27 @@ def delete_me(
     session: Session,
     current_user: User,
 ) -> None:
+    """Delete the account, revoking its Apple tokens first.
+
+    Apple requires an app offering Sign in with Apple to revoke the user's
+    tokens on account deletion — without it the Apple ID keeps MiKiNO listed
+    under "Sign in with Apple" and a later sign-in silently re-links to an
+    account that no longer exists. See `core/apple_auth.py`.
+
+    Revocation happens *before* the row goes, since the token lives on it, and
+    its outcome is deliberately ignored: someone asking to delete their account
+    must always succeed, whatever Apple's endpoint is doing. A token that
+    outlives a failed revoke is logged and left — the account is gone either way.
+    """
+    if current_user.apple_refresh_token:
+        revoked = apple_auth.revoke_refresh_token(current_user.apple_refresh_token)
+        if not revoked:
+            logger.warning(
+                "Could not revoke Apple tokens for user %s; deleting the account "
+                "anyway",
+                current_user.id,
+            )
+
     session.delete(current_user)
     session.commit()
 
@@ -478,6 +510,33 @@ def _get_all_cinema_ids(*, session: Session) -> list[int]:
     return sorted(cinema.id for cinema in cinemas_crud.get_cinemas(session=session))
 
 
+def _free_cinema_preset_name(
+    *,
+    session: Session,
+    user_id: UUID,
+    base_name: str,
+) -> str:
+    """`base_name`, or the first numbered variant the user does not already use.
+
+    Names are unique per user, so a user who happens to have a preset called
+    "My Cinemas" would otherwise either hit the constraint or have that preset
+    overwritten when their favorite row is first created for them.
+    """
+    candidate = base_name
+    suffix = 1
+    while (
+        cinema_presets_crud.get_user_preset_by_name(
+            session=session,
+            user_id=user_id,
+            name=candidate,
+        )
+        is not None
+    ):
+        suffix += 1
+        candidate = f"{base_name} {suffix}"
+    return candidate
+
+
 def _build_default_cinema_preset(*, session: Session) -> CinemaPresetPublic:
     now = now_amsterdam_naive()
     return CinemaPresetPublic.model_validate(
@@ -517,6 +576,14 @@ def save_cinema_preset(
     user_id: UUID,
     payload: CinemaPresetCreate,
 ) -> CinemaPresetPublic:
+    """Create a named preset, or replace an existing one the caller named.
+
+    Names used to upsert silently, which was survivable while a name was the
+    only way to address a preset. Now that presets can be renamed, reusing a
+    name is far more likely to be an accident than an intention, so a clash is
+    a 409 unless the caller says `overwrite` — the client asks first and sends
+    it on the second tap.
+    """
     now = now_amsterdam_naive()
     preset_name = payload.name.strip()
     cinema_ids = _normalize_cinema_ids(payload.cinema_ids)
@@ -526,6 +593,8 @@ def save_cinema_preset(
         user_id=user_id,
         name=preset_name,
     )
+    if existing is not None and not payload.overwrite:
+        raise CinemaPresetNameTaken()
 
     if should_set_favorite:
         cinema_presets_crud.clear_user_favorite_preset(
@@ -553,6 +622,50 @@ def save_cinema_preset(
 
     session.commit()
     return _to_cinema_preset_public(preset)
+
+
+def rename_cinema_preset(
+    *,
+    session: Session,
+    user_id: UUID,
+    preset_id: UUID,
+    name: str,
+) -> CinemaPresetPublic:
+    """Rename a saved preset, including the favorite one.
+
+    The favorite is identified by its flag, never by its name, so the user is
+    free to call their cinemas whatever they like without any of the code that
+    reads the favorite losing track of it.
+    """
+    now = now_amsterdam_naive()
+    preset_name = name.strip()
+    if not preset_name:
+        raise CinemaPresetNameRequired()
+
+    preset = cinema_presets_crud.get_user_preset_by_id(
+        session=session,
+        user_id=user_id,
+        preset_id=preset_id,
+    )
+    if preset is None:
+        raise CinemaPresetNotFound()
+
+    clashing = cinema_presets_crud.get_user_preset_by_name(
+        session=session,
+        user_id=user_id,
+        name=preset_name,
+    )
+    if clashing is not None and clashing.id != preset.id:
+        raise CinemaPresetNameTaken()
+
+    renamed = cinema_presets_crud.rename_preset(
+        session=session,
+        preset=preset,
+        name=preset_name,
+        now=now,
+    )
+    session.commit()
+    return _to_cinema_preset_public(renamed)
 
 
 def delete_cinema_preset(
@@ -588,13 +701,20 @@ def get_favorite_cinema_preset(
     return _to_cinema_preset_public(favorite)
 
 
-def set_favorite_cinema_preset(
+def apply_cinema_preset_as_favorite(
     *,
     session: Session,
     user_id: UUID,
     preset_id: UUID,
 ) -> CinemaPresetPublic | None:
-    now = now_amsterdam_naive()
+    """Point "my cinemas" at what a saved preset covers.
+
+    Copies the cinemas across rather than moving the favorite flag onto the
+    preset. Moving it would leave the row the user thinks of as "my cinemas"
+    sitting in the list as an ordinary preset under that same name, and would
+    quietly turn a preset they saved for one purpose into the thing applied on
+    every startup. One row is the favorite, always, and it keeps its identity.
+    """
     preset = cinema_presets_crud.get_user_preset_by_id(
         session=session,
         user_id=user_id,
@@ -603,18 +723,12 @@ def set_favorite_cinema_preset(
     if preset is None:
         return None
 
-    cinema_presets_crud.clear_user_favorite_preset(
+    set_favorite_cinema_ids(
         session=session,
         user_id=user_id,
+        cinema_ids=list(preset.cinema_ids),
     )
-    favorite = cinema_presets_crud.set_preset_favorite(
-        session=session,
-        preset=preset,
-        is_favorite=True,
-        now=now,
-    )
-    session.commit()
-    return _to_cinema_preset_public(favorite)
+    return get_favorite_cinema_preset(session=session, user_id=user_id)
 
 
 def clear_favorite_cinema_preset(
@@ -662,33 +776,18 @@ def set_favorite_cinema_ids(
         user_id=user_id,
     )
     if favorite is None:
-        fallback_name = "Preferred"
-        existing_named = cinema_presets_crud.get_user_preset_by_name(
+        cinema_presets_crud.create_preset(
             session=session,
             user_id=user_id,
-            name=fallback_name,
+            name=_free_cinema_preset_name(
+                session=session,
+                user_id=user_id,
+                base_name=FAVORITE_CINEMA_PRESET_NAME,
+            ),
+            cinema_ids=normalized_ids,
+            is_favorite=True,
+            now=now,
         )
-        if existing_named is None:
-            cinema_presets_crud.create_preset(
-                session=session,
-                user_id=user_id,
-                name=fallback_name,
-                cinema_ids=normalized_ids,
-                is_favorite=True,
-                now=now,
-            )
-        else:
-            cinema_presets_crud.clear_user_favorite_preset(
-                session=session,
-                user_id=user_id,
-            )
-            cinema_presets_crud.update_preset(
-                session=session,
-                preset=existing_named,
-                cinema_ids=normalized_ids,
-                is_favorite=True,
-                now=now,
-            )
     else:
         cinema_presets_crud.update_preset(
             session=session,
@@ -719,7 +818,7 @@ def get_received_showtime_pings(
 
     sender_cache: dict[UUID, User | None] = {}
     showtime_cache: dict[int, Showtime | None] = {}
-    showtime_public_cache: dict[int, ShowtimeLoggedIn] = {}
+    showtime_public_cache: dict[int, ShowtimePublic] = {}
     result: list[ShowtimePingPublic] = []
 
     for ping in pings:
@@ -742,7 +841,7 @@ def get_received_showtime_pings(
 
         showtime_public = showtime_public_cache.get(showtime.id)
         if showtime_public is None:
-            showtime_public = showtime_converters.to_logged_in(
+            showtime_public = showtime_converters.to_public(
                 showtime=showtime,
                 session=session,
                 user_id=user_id,
@@ -781,7 +880,7 @@ def get_agenda_showtimes(
     include_invited: bool,
     limit: int,
     offset: int,
-) -> list[ShowtimeLoggedIn]:
+) -> list[ShowtimePublic]:
     showtimes = showtimes_crud.get_agenda_showtimes(
         session=session,
         user_id=user_id,
@@ -792,7 +891,7 @@ def get_agenda_showtimes(
         offset=offset,
     )
     return [
-        showtime_converters.to_logged_in(
+        showtime_converters.to_public(
             showtime=showtime,
             session=session,
             user_id=user_id,
@@ -922,20 +1021,20 @@ def get_notification_feed(
     fetch_count = limit + offset
 
     user_cache: dict[UUID, User | None] = {}
-    showtime_public_cache: dict[int, ShowtimeLoggedIn | None] = {}
+    showtime_public_cache: dict[int, ShowtimePublic | None] = {}
 
     def resolve_user(uid: UUID) -> User | None:
         if uid not in user_cache:
             user_cache[uid] = users_crud.get_user_by_id(session=session, user_id=uid)
         return user_cache[uid]
 
-    def resolve_showtime_public(sid: int) -> ShowtimeLoggedIn | None:
+    def resolve_showtime_public(sid: int) -> ShowtimePublic | None:
         if sid not in showtime_public_cache:
             showtime = showtimes_crud.get_showtime_by_id(
                 session=session, showtime_id=sid
             )
             showtime_public_cache[sid] = (
-                showtime_converters.to_logged_in(
+                showtime_converters.to_public(
                     showtime=showtime, session=session, user_id=user_id
                 )
                 if showtime is not None

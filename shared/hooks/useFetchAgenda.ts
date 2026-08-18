@@ -22,10 +22,10 @@ export function useFetchAgenda(
         MeGetMyAgendaResponse,
         Error,
         InfiniteData<MeGetMyAgendaResponse>,
-        [string, string, { includeInterested: boolean; includeInvited: boolean }],
+        [string, string, string | undefined, { includeInterested: boolean; includeInvited: boolean }],
         number
     >({
-        queryKey: ["showtimes", "agenda", { includeInterested, includeInvited }],
+        queryKey: ["showtimes", "agenda", snapshotTime, { includeInterested, includeInvited }],
         enabled,
         refetchOnMount: false,
         refetchOnWindowFocus: false,

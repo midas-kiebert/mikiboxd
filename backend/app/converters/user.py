@@ -149,6 +149,7 @@ def to_with_friend_status(
     session: Session,
     current_user: UUID,
     sharing_friend_ids: set[UUID] | None = None,
+    is_blocked: bool = False,
 ) -> UserWithFriendStatus:
     """
     Converts a User object to a UserWithFriendStatus object, including friendship status
@@ -161,6 +162,9 @@ def to_with_friend_status(
         sharing_friend_ids (set[UUID] | None): The friends the current user
             shares their status with (i.e. not opted out), pre-loaded by the
             caller to avoid a per-user query. When None, it is loaded here.
+        is_blocked (bool): Whether the current user has blocked this user. Passed
+            in rather than looked up, since the callers that need it know it and
+            the search path deliberately never asks.
     Returns:
         UserWithFriendStatus: The converted UserWithFriendStatus object with friendship details.
     Raises:
@@ -196,6 +200,7 @@ def to_with_friend_status(
         received_request=received_request,
         # Sharing by default: only opted-out friends are absent from the set.
         shares_status=(not is_friend) or (user.id in sharing_friend_ids),
+        is_blocked=is_blocked,
     )
 
 
@@ -223,7 +228,7 @@ def to_with_showtimes_public(
 
     User.model_validate(user)
     showtimes = [
-        showtime_converters.to_logged_in(
+        showtime_converters.to_public(
             showtime=showtime, session=session, user_id=user.id
         )
         for showtime in user_crud.get_selected_showtimes(

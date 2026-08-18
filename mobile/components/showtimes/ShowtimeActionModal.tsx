@@ -1084,14 +1084,18 @@ export default function ShowtimeActionModal({
     [watchedIds, watchlistedIds]
   );
 
+  // Pinged wins over going/interested: a friend can be both (invites to an
+  // already-selected friend are allowed now), and once invited that's the
+  // state that matters — otherwise the row would show "Invite" forever for
+  // exactly the friends this feature made invitable.
   const getPingAvailability = useCallback(
     (friendId: string): FriendPingAvailability =>
-      friendsGoingIds.has(friendId)
-        ? "going"
-        : friendsInterestedIds.has(friendId)
-          ? "interested"
-          : pingedReceiverIds.has(friendId)
-            ? "pinged"
+      pingedReceiverIds.has(friendId)
+        ? "pinged"
+        : friendsGoingIds.has(friendId)
+          ? "going"
+          : friendsInterestedIds.has(friendId)
+            ? "interested"
             : "eligible",
     [friendsGoingIds, friendsInterestedIds, pingedReceiverIds]
   );

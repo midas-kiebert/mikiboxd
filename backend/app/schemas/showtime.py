@@ -119,62 +119,62 @@ class ShowtimePublic(ShowtimeBase):
     viewer: "ShowtimeViewerState | None" = None
 
     # --- LEGACY_VIEWER_FIELDS: delete this whole block with the shim ---
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def going(self) -> GoingStatus:
         return self.viewer.going if self.viewer else GoingStatus.NOT_GOING
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def seat_row(self) -> str | None:
         return self.viewer.seat_row if self.viewer else None
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def seat_number(self) -> str | None:
         return self.viewer.seat_number if self.viewer else None
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def friends_going(self) -> Sequence["UserPublic"]:
         return self.viewer.friends_going if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def friends_interested(self) -> Sequence["UserPublic"]:
         return self.viewer.friends_interested if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def invited_by(self) -> Sequence["UserPublic"]:
         return self.viewer.invited_by if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def invite_ping_ids(self) -> Sequence[int]:
         return self.viewer.invite_ping_ids if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def co_invited_friends(self) -> Sequence["CoInvitedFriendPublic"]:
         return self.viewer.co_invited_friends if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def pending_invited_friends(self) -> Sequence["UserPublic"]:
         return self.viewer.pending_invited_friends if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def friends_watchlisted(self) -> Sequence["UserPublic"]:
         return self.viewer.friends_watchlisted if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def friends_watched(self) -> Sequence["UserPublic"]:
         return self.viewer.friends_watched if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def non_friend_participants(self) -> Sequence["NonFriendParticipantPublic"]:
         return self.viewer.non_friend_participants if self.viewer else []
@@ -191,47 +191,47 @@ class ShowtimeInMoviePublic(ShowtimeBase):
     viewer: "ShowtimeInMovieViewerState | None" = None
 
     # --- LEGACY_VIEWER_FIELDS: delete this whole block with the shim ---
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def going(self) -> GoingStatus:
         return self.viewer.going if self.viewer else GoingStatus.NOT_GOING
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def seat_row(self) -> str | None:
         return self.viewer.seat_row if self.viewer else None
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def seat_number(self) -> str | None:
         return self.viewer.seat_number if self.viewer else None
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def friends_going(self) -> Sequence["UserPublic"]:
         return self.viewer.friends_going if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def friends_interested(self) -> Sequence["UserPublic"]:
         return self.viewer.friends_interested if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def invited_by(self) -> Sequence["UserPublic"]:
         return self.viewer.invited_by if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def invite_ping_ids(self) -> Sequence[int]:
         return self.viewer.invite_ping_ids if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def co_invited_friends(self) -> Sequence["CoInvitedFriendPublic"]:
         return self.viewer.co_invited_friends if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def pending_invited_friends(self) -> Sequence["UserPublic"]:
         return self.viewer.pending_invited_friends if self.viewer else []

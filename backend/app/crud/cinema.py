@@ -1,3 +1,4 @@
+from sqlalchemy import any_
 from sqlmodel import Session, col, or_, select
 
 from app.models.cinema import Cinema, CinemaCreate
@@ -49,7 +50,7 @@ def get_cinema_id_by_name_or_alias(
         NoResultFound: If no cinema matches by name or alias.
     """
     stmt = select(Cinema.id).where(
-        or_(col(Cinema.name) == name, col(Cinema.aliases).any(name))
+        or_(col(Cinema.name) == name, name == any_(col(Cinema.aliases)))
     )
     cinema_id = session.exec(stmt).one()
     return cinema_id

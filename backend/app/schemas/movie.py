@@ -58,17 +58,17 @@ class MovieSummaryPublic(MovieBase):
     viewer: "MovieSummaryViewerState | None" = None
 
     # --- LEGACY_VIEWER_FIELDS: delete this whole block with the shim ---
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def going(self) -> GoingStatus:
         return self.viewer.going if self.viewer else GoingStatus.NOT_GOING
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def friends_going(self) -> list["UserPublic"]:
         return self.viewer.friends_going if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def friends_interested(self) -> list["UserPublic"]:
         return self.viewer.friends_interested if self.viewer else []
@@ -86,12 +86,12 @@ class MoviePublic(MovieBase):
     viewer: "MovieViewerState | None" = None
 
     # --- LEGACY_VIEWER_FIELDS: delete this whole block with the shim ---
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def friends_watchlisted(self) -> list["UserPublic"]:
         return self.viewer.friends_watchlisted if self.viewer else []
 
-    @computed_field(deprecated=LEGACY_VIEWER_FIELD)
+    @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
     @property
     def friends_watched(self) -> list["UserPublic"]:
         return self.viewer.friends_watched if self.viewer else []

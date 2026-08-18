@@ -93,8 +93,8 @@ def list_reports(
     )
     stmt = (
         select(UserReport, reported_user, reporter_user, report_count)  # type: ignore[call-overload]
-        .join(reported_user, reported_user.id == col(UserReport.reported_id))
-        .join(reporter_user, reporter_user.id == col(UserReport.reporter_id))
+        .join(reported_user, col(reported_user.id) == col(UserReport.reported_id))
+        .join(reporter_user, col(reporter_user.id) == col(UserReport.reporter_id))
         .order_by(col(UserReport.created_at).desc())
     )
     if status is not None:

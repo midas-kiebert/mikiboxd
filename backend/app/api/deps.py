@@ -19,7 +19,7 @@ See: https://fastapi.tiangolo.com/tutorial/dependencies/
 import hmac
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Annotated
+from typing import Annotated, Any
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -207,7 +207,7 @@ CurrentViewer = Annotated[ViewerId, Depends(get_viewer_id)]
 # the published requirement ends up "bearer token, or nothing". Pass this on
 # every route that takes a `CurrentViewer`, so the contract says out loud what
 # the code does.
-OPTIONAL_AUTH_OPENAPI_EXTRA = {"security": [{}]}
+OPTIONAL_AUTH_OPENAPI_EXTRA: dict[str, Any] = {"security": [{}]}
 
 
 def get_current_active_superuser(current_user: CurrentUser) -> User:

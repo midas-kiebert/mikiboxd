@@ -171,7 +171,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderBottomWidth: 1,
       borderBottomColor: colors.divider,
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingVertical: 8,
     },
     // No label, no colour of its own: this is the one action here meant to be
     // stumbled on rarely, not read as an equal peer of the visibility control.
@@ -186,13 +186,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     moderationRow: {
       flexDirection: "row",
       gap: 18,
-      marginTop: 10,
+      marginTop: 6,
     },
     moderationLink: {
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
-      paddingVertical: 4,
+      paddingVertical: 2,
     },
     moderationLinkText: {
       fontSize: 12,

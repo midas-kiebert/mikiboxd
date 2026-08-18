@@ -1464,12 +1464,12 @@ export default function ShowtimeActionModal({
                   <ThemedText style={styles.directorText} numberOfLines={1}>
                     <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
                     {showtime.movie.directors.join(", ")}
-                    {showtime.movie.release_year ? ` (${showtime.movie.release_year})` : null}
+                    {showtime.movie.release_year ? ` · ${showtime.movie.release_year}` : null}
                   </ThemedText>
                 ) : isSyntheticMovie ? (
                   <ThemedText style={styles.directorText} numberOfLines={1}>
                     <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
-                    {`${UNKNOWN_METADATA_PLACEHOLDER} (${UNKNOWN_METADATA_PLACEHOLDER})`}
+                    {`${UNKNOWN_METADATA_PLACEHOLDER} · ${UNKNOWN_METADATA_PLACEHOLDER}`}
                   </ThemedText>
                 ) : null}
                 {dateLabel ? (

@@ -370,11 +370,6 @@ function FriendShowtimesContent({
         onSearchChange={onSearchChange}
         filterRow={
           <>
-            <FriendAgendaOptions
-              friendId={friend.id}
-              friendName={topBarTitle}
-              sharesStatus={friend.shares_status ?? true}
-            />
             {filtersButtonRow}
             <ActiveFilterChips
               onOpenFilters={() => setFiltersModalVisible(true)}
@@ -408,6 +403,13 @@ function FriendShowtimesContent({
               onClearAll={handleClearAll}
             />
           </>
+        }
+        listHeader={
+          <FriendAgendaOptions
+            friendId={friend.id}
+            friendName={topBarTitle}
+            sharesStatus={friend.shares_status ?? true}
+          />
         }
         emptyText="No showtimes in this agenda"
         openModalOptions={{ openedFrom: { userId: userId ?? undefined } }}

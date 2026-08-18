@@ -34,6 +34,7 @@ jobs:
           TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
           TMDB_KEY=${{ secrets.TMDB_KEY }}
           FRONTEND_HOST=https://dashboard.mikino.nl
+          PUBLIC_HOST=https://mikino.nl
           API_HOST=https://api.mikino.nl
           POSTGRES_TESTING_SERVER=db
           POSTGRES_TESTING_POST=5432

@@ -45,9 +45,38 @@ class TmdbCacheCorrectionRequest(SQLModel):
     confidence: float | None = None
 
 
+class DigestFrequencyInfo(SQLModel):
+    label: str
+    description: str
+
+
+class DigestFrequencyInfoResponse(SQLModel):
+    daily: DigestFrequencyInfo
+    weekly_or_urgent: DigestFrequencyInfo
+
+
 @router.get("/health-check/")
 async def health_check() -> bool:
     return True
+
+
+@router.get("/watchlist-digest-frequency-info/")
+async def get_watchlist_digest_frequency_info() -> DigestFrequencyInfoResponse:
+    return DigestFrequencyInfoResponse(
+        daily=DigestFrequencyInfo(
+            label="Eager",
+            description=(
+                "Sends an email the same day a watchlisted movie gets a new showtime."
+            ),
+        ),
+        weekly_or_urgent=DigestFrequencyInfo(
+            label="Lazy",
+            description=(
+                "Holds new showtimes back and sends one email a week, unless one of "
+                "them is happening within 3 days — then it sends right away."
+            ),
+        ),
+    )
 
 
 @router.get(

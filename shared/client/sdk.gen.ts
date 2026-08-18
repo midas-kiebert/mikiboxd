@@ -196,6 +196,7 @@ import type {
   UsersGetUserSelectedShowtimesData,
   UsersGetUserSelectedShowtimesResponse,
   UtilsHealthCheckResponse,
+  UtilsGetWatchlistDigestFrequencyInfoResponse,
   UtilsSearchTmdbCacheEntriesData,
   UtilsSearchTmdbCacheEntriesResponse,
   UtilsCorrectTmdbCacheEntryData,
@@ -2830,6 +2831,18 @@ export class UtilsService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/utils/health-check/",
+    })
+  }
+
+  /**
+   * Get Watchlist Digest Frequency Info
+   * @returns DigestFrequencyInfoResponse Successful Response
+   * @throws ApiError
+   */
+  public static getWatchlistDigestFrequencyInfo(): CancelablePromise<UtilsGetWatchlistDigestFrequencyInfoResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/utils/watchlist-digest-frequency-info/",
     })
   }
 

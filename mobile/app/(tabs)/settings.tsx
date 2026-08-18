@@ -45,6 +45,7 @@ import { markSignedOut, useIsSignedIn } from '@/utils/auth-session';
 import useAuth from 'shared/hooks/useAuth';
 import {
   MeService,
+  UtilsService,
   type ApiError,
   type CinemaPresetPublic,
   type DigestFrequency,
@@ -140,6 +141,14 @@ export default function SettingsScreen() {
   const [digestCinemaPresetId, setDigestCinemaPresetId] = useState<string | null>(null);
   const [digestAdvancedOpen, setDigestAdvancedOpen] = useState(false);
   const [isUpdatingDigest, setIsUpdatingDigest] = useState(false);
+  const [isDigestFrequencyInfoVisible, setIsDigestFrequencyInfoVisible] = useState(false);
+  // Explanation copy for the Eager/Lazy frequency modes, kept on the backend so
+  // it can be updated whenever the digest algorithm itself changes.
+  const { data: digestFrequencyInfo } = useQuery({
+    queryKey: ['watchlist-digest-frequency-info'],
+    queryFn: () => UtilsService.getWatchlistDigestFrequencyInfo(),
+    staleTime: Infinity,
+  });
   // Always fetched (not gated on the advanced picker): needed to resolve the
   // curated top-500 default below even when the picker has never been opened.
   const { data: digestLists = [] } = useFetchLetterboxdLists(isSignedIn);
@@ -482,11 +491,11 @@ export default function SettingsScreen() {
     );
   };
 
-  // "My watchlist" is no longer a selectable source: without a Letterboxd
-  // username it silently resolved to nothing, so a brand-new digest source is
-  // now the curated top-500 list instead. Only fires once — after the update
-  // lands, `user.notify_watchlist_digest_list_id` is no longer null and this
-  // bails out on subsequent renders.
+  // "My watchlist" (a null list_id) resolves to nothing without a connected
+  // Letterboxd account, so a brand-new digest source defaults to the curated
+  // top-500 list instead. Only fires once — after the update lands,
+  // `user.notify_watchlist_digest_list_id` is no longer null and this bails
+  // out on subsequent renders.
   useEffect(() => {
     if (!user || user.notify_watchlist_digest_list_id || user.letterboxd_username) return;
     if (digestListId) return;
@@ -497,6 +506,27 @@ export default function SettingsScreen() {
     void handleDigestUpdate(
       { notify_watchlist_digest_list_id: defaultList.id },
       () => setDigestListId(defaultList.id),
+      () => {}
+    );
+  }, [user, digestLists, digestListId]);
+
+  // Once a Letterboxd account is connected, "My watchlist" becomes a real
+  // source again. If the curated top-500 list is still selected, it's almost
+  // certainly still sitting there from the fallback above — from before the
+  // account was connected, or from before this list was selectable at all —
+  // so switch it back to the watchlist. A deliberately-picked different list
+  // is left untouched. Self-terminating: once the switch lands, digestListId
+  // is null and this bails on subsequent renders, same as the effect above.
+  useEffect(() => {
+    if (!user || !user.letterboxd_username) return;
+    if (digestListId === null) return;
+    const curatedTop500 = digestLists.find(
+      (list) => list.is_curated && list.list_slug === 'letterboxds-top-500-films'
+    );
+    if (!curatedTop500 || digestListId !== curatedTop500.id) return;
+    void handleDigestUpdate(
+      { notify_watchlist_digest_list_id: null },
+      () => setDigestListId(null),
       () => {}
     );
   }, [user, digestLists, digestListId]);
@@ -754,7 +784,7 @@ export default function SettingsScreen() {
             <View style={styles.notificationToggleRow}>
               <View style={styles.notificationToggleHeader}>
                 <View style={styles.notificationToggleTextContainer}>
-                  <ThemedText style={styles.notificationToggleTitle}>Watchlist digest</ThemedText>
+                  <ThemedText style={styles.notificationToggleTitle}>Notify on new showtimes</ThemedText>
                   <ThemedText style={styles.notificationToggleDescription}>
                     Email me when a watchlisted movie gets a showtime it didn&apos;t have before.
                   </ThemedText>
@@ -768,7 +798,17 @@ export default function SettingsScreen() {
                 />
               </View>
               <View style={styles.notificationChannelRow}>
-                <ThemedText style={styles.notificationChannelLabel}>Frequency</ThemedText>
+                <View style={styles.digestFrequencyLabelRow}>
+                  <ThemedText style={styles.notificationChannelLabel}>Frequency</ThemedText>
+                  <TouchableOpacity
+                    onPress={() => setIsDigestFrequencyInfoVisible(true)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="What do Eager and Lazy mean?"
+                  >
+                    <MaterialIcons name="info-outline" size={15} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.notificationChannelPill}>
                   <TouchableOpacity
                     style={[
@@ -786,7 +826,7 @@ export default function SettingsScreen() {
                         digestFrequency === 'daily' && styles.notificationChannelOptionTextActive,
                       ]}
                     >
-                      Daily
+                      Eager
                     </ThemedText>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -807,7 +847,7 @@ export default function SettingsScreen() {
                           styles.notificationChannelOptionTextActive,
                       ]}
                     >
-                      Smart
+                      Lazy
                     </ThemedText>
                   </TouchableOpacity>
                 </View>
@@ -824,6 +864,26 @@ export default function SettingsScreen() {
                 <>
                   <ThemedText style={styles.notificationChannelLabel}>Source</ThemedText>
                   <View style={styles.digestListOptions}>
+                    {user?.letterboxd_username ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.digestListOption,
+                          digestListId === null && styles.digestListOptionActive,
+                        ]}
+                        onPress={() => handleDigestListChange(null)}
+                        disabled={!user || isUpdatingDigest}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText
+                          style={[
+                            styles.digestListOptionText,
+                            digestListId === null && styles.digestListOptionTextActive,
+                          ]}
+                        >
+                          My watchlist
+                        </ThemedText>
+                      </TouchableOpacity>
+                    ) : null}
                     {digestLists.map((list) => (
                       <TouchableOpacity
                         key={list.id}
@@ -1118,6 +1178,20 @@ export default function SettingsScreen() {
         onConfirm={handleConfirmDeleteAccount}
         onCancel={() => setIsDeleteDialogVisible(false)}
       />
+      <ConfirmDialog
+        visible={isDigestFrequencyInfoVisible}
+        icon="info-outline"
+        title="Eager vs Lazy"
+        message={
+          digestFrequencyInfo
+            ? `${digestFrequencyInfo.daily.label}: ${digestFrequencyInfo.daily.description}\n\n${digestFrequencyInfo.weekly_or_urgent.label}: ${digestFrequencyInfo.weekly_or_urgent.description}`
+            : 'Loading...'
+        }
+        confirmLabel="Got it"
+        tone="primary"
+        onConfirm={() => setIsDigestFrequencyInfoVisible(false)}
+        onCancel={() => setIsDigestFrequencyInfoVisible(false)}
+      />
       <EmailVerificationRequiredDialog
         visible={isEmailVerificationRequired}
         onClose={() => setIsEmailVerificationRequired(false)}
@@ -1324,6 +1398,11 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     notificationChannelLabel: {
       fontSize: 11,
       color: colors.textSecondary,
+    },
+    digestFrequencyLabelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
     },
     notificationChannelPill: {
       flexDirection: 'row',

@@ -38,6 +38,8 @@ type ShowtimesListContentProps = {
   openModalOptions?: OpenOptions;
   /** Carry the showtimes-tab filters over when long-pressing into the movie page. */
   inheritFiltersOnMovieNav?: boolean;
+  /** Scrolls away with the list, unlike filterRow which stays pinned above it. */
+  listHeader?: React.ReactElement | null;
 };
 
 export function ShowtimesListContent({
@@ -52,6 +54,7 @@ export function ShowtimesListContent({
   emptyText = "No showtimes found",
   openModalOptions,
   inheritFiltersOnMovieNav = false,
+  listHeader,
 }: ShowtimesListContentProps) {
   const router = useRouter();
   const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimePublic) =>
@@ -117,6 +120,9 @@ export function ShowtimesListContent({
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          listHeader ? <View style={styles.listHeaderWrapper}>{listHeader}</View> : undefined
+        }
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
         onEndReached={() => {
@@ -172,6 +178,8 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   emptyText?: string;
   openModalOptions?: OpenOptions;
   inheritFiltersOnMovieNav?: boolean;
+  /** Scrolls away with the list, unlike filterRow which stays pinned above it. */
+  listHeader?: React.ReactElement | null;
 };
 
 export default function ShowtimesScreen<TFilterId extends string = string>({
@@ -201,6 +209,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   emptyText = "No showtimes found",
   openModalOptions,
   inheritFiltersOnMovieNav,
+  listHeader,
 }: ShowtimesScreenProps<TFilterId>) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -244,6 +253,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
           emptyText={emptyText}
           openModalOptions={openModalOptions}
           inheritFiltersOnMovieNav={inheritFiltersOnMovieNav}
+          listHeader={listHeader}
         />
       )}
     </TopSafeAreaView>
@@ -355,6 +365,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       // Matches the movie feeds' padding: a list short enough not to render the
       // end-of-list spacer would otherwise butt straight against the tab bar.
       paddingBottom: 16,
+    },
+    // listHeader supplies its own horizontal padding/divider (it's a full-width
+    // section like the card list rows above it), so cancel out listContent's
+    // own inset rather than double it up.
+    listHeaderWrapper: {
+      marginHorizontal: -16,
+      marginTop: -12,
+      marginBottom: 12,
     },
     skeletonSearch: {
       paddingHorizontal: 16,

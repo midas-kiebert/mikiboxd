@@ -191,6 +191,16 @@ export type CoInvitedFriendPublic = {
  */
 export type DigestFrequency = "daily" | "weekly_or_urgent"
 
+export type DigestFrequencyInfo = {
+  label: string
+  description: string
+}
+
+export type DigestFrequencyInfoResponse = {
+  daily: DigestFrequencyInfo
+  weekly_or_urgent: DigestFrequencyInfo
+}
+
 export type FriendStatusSharingUpdate = {
   shares_status: boolean
 }
@@ -2056,6 +2066,9 @@ export type UsersGetUserSelectedShowtimesData = {
 export type UsersGetUserSelectedShowtimesResponse = Array<ShowtimePublic>
 
 export type UtilsHealthCheckResponse = boolean
+
+export type UtilsGetWatchlistDigestFrequencyInfoResponse =
+  DigestFrequencyInfoResponse
 
 export type UtilsSearchTmdbCacheEntriesData = {
   title: string

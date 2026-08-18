@@ -161,7 +161,7 @@ def generate_watchlist_digest_email(
             "cinema_name": showtime.cinema.name,
             "datetime_label": showtime.datetime.strftime("%a, %b %d at %H:%M"),
             "poster_link": movie.poster_link,
-            "mikino_link": f"{settings.FRONTEND_HOST}/movie/{movie.id}",
+            "mikino_link": f"{settings.PUBLIC_HOST}/movie/{movie.id}",
             "letterboxd_link": (
                 f"https://letterboxd.com/film/{movie.letterboxd_slug}/"
                 if movie.letterboxd_slug

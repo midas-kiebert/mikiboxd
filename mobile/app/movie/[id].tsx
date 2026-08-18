@@ -538,12 +538,12 @@ function MovieContent({
                   <ThemedText style={styles.directorText} numberOfLines={2}>
                     <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
                     {movie.directors.join(", ")}
-                    {movie.release_year ? ` (${movie.release_year})` : null}
+                    {movie.release_year ? ` · ${movie.release_year}` : null}
                   </ThemedText>
                 ) : isSynthetic ? (
                   <ThemedText style={styles.directorText} numberOfLines={2}>
                     <ThemedText style={styles.directorLabel}>DIRECTED BY </ThemedText>
-                    {`${UNKNOWN_METADATA_PLACEHOLDER} (${UNKNOWN_METADATA_PLACEHOLDER})`}
+                    {`${UNKNOWN_METADATA_PLACEHOLDER} · ${UNKNOWN_METADATA_PLACEHOLDER}`}
                   </ThemedText>
                 ) : movie.release_year ? (
                   <ThemedText style={styles.directorText}>{movie.release_year}</ThemedText>
@@ -601,6 +601,16 @@ function MovieContent({
                   </View>
                 ) : null}
               </View>
+              <TouchableOpacity
+                style={styles.shareBtn}
+                onPress={() => void handleShareMovie()}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Share this movie"
+              >
+                <MaterialIcons name="share" size={12} color={colors.pillText} />
+                <ThemedText style={styles.shareBtnText}>Share</ThemedText>
+              </TouchableOpacity>
             </View>
           ) : (
             <MovieHeaderSkeleton styles={styles} />
@@ -637,16 +647,6 @@ function MovieContent({
                 if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
               }}
             />
-            <TouchableOpacity
-              style={styles.shareBtn}
-              onPress={() => void handleShareMovie()}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Share this movie"
-            >
-              <MaterialIcons name="share" size={14} color={colors.pillText} />
-              <ThemedText style={styles.filterBtnText}>Share</ThemedText>
-            </TouchableOpacity>
           </View>
           <View style={styles.divider} />
           <SectionList
@@ -791,6 +791,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 16,
     },
     staticHeader: {
+      position: "relative",
       flexDirection: "row",
       gap: 14,
       paddingHorizontal: 16,
@@ -825,16 +826,23 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.pillText,
     },
     shareBtn: {
+      position: "absolute",
+      bottom: 8,
+      right: 16,
       flexDirection: "row",
       alignItems: "center",
-      gap: 5,
-      paddingHorizontal: 14,
-      paddingVertical: 7,
-      marginRight: 16,
-      borderRadius: 18,
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 3,
+      borderRadius: 14,
       backgroundColor: colors.pillBackground,
       borderWidth: 1,
       borderColor: colors.pillBorder,
+    },
+    shareBtnText: {
+      fontSize: 11,
+      fontWeight: "500",
+      color: colors.pillText,
     },
     centered: {
       flex: 1,
@@ -867,20 +875,24 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     directorText: {
       fontSize: 12,
+      lineHeight: 16,
       color: colors.textSecondary,
     },
     directorLabel: {
       fontSize: 11,
+      lineHeight: 16,
       fontWeight: "800",
       letterSpacing: 0.6,
       color: colors.textSecondary,
     },
     metaText: {
       fontSize: 12,
+      lineHeight: 16,
       color: colors.textSecondary,
     },
     metaLabel: {
       fontSize: 11,
+      lineHeight: 16,
       fontWeight: "800",
       letterSpacing: 0.6,
       color: colors.textSecondary,

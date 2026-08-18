@@ -178,6 +178,10 @@ class Settings(BaseSettings):
     # Used by the backend to generate absolute links to itself in emails
     # (e.g. one-click unsubscribe links, which must hit the API directly).
     API_HOST: str = "http://localhost:8000"
+    # Used by the backend to generate customer-facing links in emails (e.g. the
+    # watchlist digest's movie links). Unlike FRONTEND_HOST, which points at the
+    # admin dashboard, this points at the public marketing/app site.
+    PUBLIC_HOST: str = "http://localhost:5173"
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(_parse_cors)
     ] = []

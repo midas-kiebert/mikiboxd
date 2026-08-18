@@ -214,14 +214,6 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
     if not ids_to_delete:
         return []
 
-    if reassignments:
-        for showtime in session.exec(
-            select(Showtime).where(col(Showtime.id).in_(reassignments))
-        ).all():
-            showtime.movie_id = reassignments[showtime.id]
-            session.add(showtime)
-        session.flush()
-
     deleted_showtimes = list(
         session.exec(select(Showtime).where(col(Showtime.id).in_(ids_to_delete))).all()
     )
@@ -237,7 +229,19 @@ def _delete_cineville_title_conflicts(*, session: Session) -> list[DeletedShowti
         )
         for showtime in deleted_showtimes
     ]
+    # Deleted before the reassignment below is flushed: a reassigned row's new
+    # (cinema_id, datetime, movie_id) is the very triple the row being deleted
+    # here currently occupies, so updating first would trip the unique
+    # constraint on a row that's about to be freed anyway.
     session.execute(delete(Showtime).where(col(Showtime.id).in_(ids_to_delete)))
+
+    if reassignments:
+        session.flush()
+        for showtime in session.exec(
+            select(Showtime).where(col(Showtime.id).in_(reassignments))
+        ).all():
+            showtime.movie_id = reassignments[showtime.id]
+            session.add(showtime)
     session.commit()
     return deleted_infos
 

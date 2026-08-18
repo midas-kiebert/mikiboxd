@@ -88,13 +88,19 @@ def test_ping_friend_for_showtime_requires_friendship(
     assert response.json()["detail"] == "You can only invite your friends."
 
 
-def test_ping_friend_for_showtime_rejects_when_already_selected(
+def test_ping_friend_for_showtime_does_not_notify_when_already_selected(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,
     user_factory,
     showtime_factory,
+    mocker,
 ) -> None:
+    """Pinging an already going/interested friend succeeds, but silently.
+
+    Nobody accepted anything, so it must not fire the "you were invited"
+    push — see the `receiver_had_selection_at_creation` flag on the ping.
+    """
     friend = user_factory()
     showtime = showtime_factory()
     friend_id = friend.id
@@ -114,16 +120,19 @@ def test_ping_friend_for_showtime_rejects_when_already_selected(
     )
     db_transaction.commit()
 
+    notify_ping = mocker.patch("app.services.push_notifications.notify_user_on_showtime_ping")
+
     response = client.post(
         f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping/{friend_id}",
         headers=normal_user_token_headers,
     )
 
-    assert response.status_code == 409
-    assert response.json()["detail"] == "This friend already selected this showtime."
+    assert response.status_code == 200
+    assert response.json() == {"message": "Friend invited successfully"}
+    notify_ping.assert_not_called()
 
 
-def test_ping_friend_for_showtime_allows_ping_when_selection_is_hidden(
+def test_ping_friend_for_showtime_does_not_notify_when_selection_is_hidden(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,
@@ -131,6 +140,9 @@ def test_ping_friend_for_showtime_allows_ping_when_selection_is_hidden(
     showtime_factory,
     mocker,
 ) -> None:
+    """Same rule even when the existing selection was invisible to the sender:
+    what matters is whether the friend already had one, not whether the
+    sender could see it."""
     friend = user_factory()
     showtime = showtime_factory()
     friend_id = friend.id
@@ -168,7 +180,7 @@ def test_ping_friend_for_showtime_allows_ping_when_selection_is_hidden(
 
     assert response.status_code == 200
     assert response.json() == {"message": "Friend invited successfully"}
-    notify_ping.assert_called_once()
+    notify_ping.assert_not_called()
 
 
 def test_ping_friend_for_showtime_rejects_duplicate_ping(
@@ -1788,6 +1800,27 @@ def test_friend_who_invited_you_sees_your_status(
     friendship_crud.create_friendship(
         session=db_transaction, user_id=current_user_id, friend_id=inviter_id
     )
+    db_transaction.commit()
+
+    inviter_login = client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": inviter_email, "password": "password"},
+    )
+    assert inviter_login.status_code == 200
+    inviter_headers = {
+        "Authorization": f"Bearer {inviter_login.json()['access_token']}"
+    }
+
+    # The inviter invites you to the showtime before you have any selection on
+    # it, so the ping is a "real" invite and grants visibility (a ping sent
+    # after you already have a selection is visibility-inert instead — see
+    # test_ping_friend_for_showtime_does_not_grant_visibility_when_already_selected).
+    ping_response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping/{current_user_id}",
+        headers=inviter_headers,
+    )
+    assert ping_response.status_code == 200
+
     showtime_crud.add_showtime_selection(
         session=db_transaction,
         showtime_id=showtime_id,
@@ -1802,22 +1835,6 @@ def test_friend_who_invited_you_sees_your_status(
         now=now_amsterdam_naive(),
     )
     db_transaction.commit()
-
-    inviter_login = client.post(
-        f"{settings.API_V1_STR}/login/access-token",
-        data={"username": inviter_email, "password": "password"},
-    )
-    assert inviter_login.status_code == 200
-    inviter_headers = {
-        "Authorization": f"Bearer {inviter_login.json()['access_token']}"
-    }
-
-    # The inviter invites you to the showtime.
-    ping_response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping/{current_user_id}",
-        headers=inviter_headers,
-    )
-    assert ping_response.status_code == 200
     db_transaction.expire_all()
     # A friend who invited you always sees your status, even under INVITED_ONLY.
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {

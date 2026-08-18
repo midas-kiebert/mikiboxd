@@ -18,6 +18,7 @@ from app.services import friends as friends_services
 def test_create_friend_request_success(
     mocker: MockerFixture,
 ):
+    mocker.patch("app.services.moderation.is_contact_blocked", return_value=False)
     mocker.patch("app.crud.friendship.are_users_friends", return_value=False)
     mocker.patch("app.crud.friendship.has_sent_friend_request", return_value=False)
     mock_crud = mocker.patch("app.crud.friendship.create_friend_request")
@@ -59,6 +60,7 @@ def test_create_friend_failure(
     org_exc,
     expected_exc,
 ):
+    mocker.patch("app.services.moderation.is_contact_blocked", return_value=False)
     mocker.patch("app.crud.friendship.are_users_friends", return_value=False)
     mocker.patch("app.crud.friendship.has_sent_friend_request", return_value=False)
     mock_crud = mocker.patch("app.crud.friendship.create_friend_request")

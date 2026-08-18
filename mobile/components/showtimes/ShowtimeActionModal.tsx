@@ -708,13 +708,24 @@ export default function ShowtimeActionModal({
   const { mutate: updateVisibilityMode } = useMutation({
     mutationFn: ({ showtimeId, mode }: { showtimeId: number; mode: VisibilityMode }) =>
       ShowtimesService.updateShowtimeVisibility({ showtimeId, requestBody: { mode } }),
+    onMutate: async ({ mode }) => {
+      await queryClient.cancelQueries({ queryKey: visibilityQueryKey });
+      const previousVisibility = queryClient.getQueryData(visibilityQueryKey);
+      queryClient.setQueryData(visibilityQueryKey, (prev: typeof visibility) =>
+        prev ? { ...prev, mode } : prev
+      );
+      return { previousVisibility };
+    },
     onSuccess: (updated) => {
       queryClient.setQueryData(visibilityQueryKey, updated);
       queryClient.invalidateQueries({ queryKey: ["showtimes"] });
       queryClient.invalidateQueries({ queryKey: ["movie"] });
       queryClient.invalidateQueries({ queryKey: ["movies"] });
     },
-    onError: () => {
+    onError: (_error, _variables, context) => {
+      // Roll back — otherwise the sheet keeps showing the mode the user
+      // picked even though the backend never actually applied it.
+      queryClient.setQueryData(visibilityQueryKey, context?.previousVisibility);
       Alert.alert("Error", "Could not update who can see your status.");
     },
   });
@@ -736,13 +747,11 @@ export default function ShowtimeActionModal({
     (mode: VisibilityMode) => {
       if (!showtime) return;
       triggerSelectionHaptic();
-      // Optimistically reflect the new mode before the request lands.
-      queryClient.setQueryData(visibilityQueryKey, (prev: typeof visibility) =>
-        prev ? { ...prev, mode } : prev
-      );
+      // Optimistic patch + rollback-on-error both live in the mutation's
+      // onMutate/onError now, so every caller gets the same behavior.
       updateVisibilityMode({ showtimeId: showtime.id, mode });
     },
-    [showtime, queryClient, visibilityQueryKey, updateVisibilityMode]
+    [showtime, updateVisibilityMode]
   );
 
   const handleVisibilityModeSelect = useCallback(
@@ -787,7 +796,7 @@ export default function ShowtimeActionModal({
   }, [applyVisibilityMode]);
 
   const handleInviteBeforePrivateConfirm = useCallback(
-    (selectedIds: string[]) => {
+    async (selectedIds: string[]) => {
       setIsInviteBeforePrivateVisible(false);
       if (showtime) {
         const showtimeId = showtime.id;
@@ -813,8 +822,19 @@ export default function ShowtimeActionModal({
             dismissed_at: null,
           })),
         ]);
+        // One at a time, awaited: each invite (and the visibility switch
+        // right after) rebuilds the same showtime's effective-visibility rows
+        // on the backend, and firing them concurrently deadlocks Postgres —
+        // seen on staging as a 500 on the visibility PUT and friends silently
+        // not invited. There's no way to invite a handful of friends here
+        // faster without that risk, so sequential is the correct fix, not
+        // just a workaround.
         for (const friendId of selectedIds) {
-          ShowtimesService.pingFriendForShowtime({ showtimeId, friendId }).catch(() => {});
+          try {
+            await ShowtimesService.pingFriendForShowtime({ showtimeId, friendId });
+          } catch {
+            // Best-effort, see comment above.
+          }
         }
         queryClient.invalidateQueries({ queryKey: sentPingsQueryKey });
       }

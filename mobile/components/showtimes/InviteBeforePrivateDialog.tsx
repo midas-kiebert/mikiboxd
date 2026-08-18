@@ -46,9 +46,14 @@ export default function InviteBeforePrivateDialog({
   // Every friend starts checked — the default is to keep everyone who can
   // currently see the owner's status able to keep seeing it.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Guards against a fast double-tap firing onConfirm/onSkip twice before the
+  // parent's `visible` prop flips back to false and this dialog starts
+  // unmounting — a second confirm would try to invite the same friends again.
+  const hasSubmittedRef = useRef(false);
   useEffect(() => {
     if (visible) {
       setSelectedIds(new Set(friends.map((friend) => friend.id)));
+      hasSubmittedRef.current = false;
     }
     // Only reseed when the dialog opens, so unchecking a friend mid-session
     // isn't clobbered by an unrelated re-render of `friends`.
@@ -87,16 +92,24 @@ export default function InviteBeforePrivateDialog({
   }, []);
 
   const handleConfirm = useCallback(() => {
+    if (hasSubmittedRef.current) return;
+    hasSubmittedRef.current = true;
     triggerSelectionHaptic();
     onConfirm(Array.from(selectedIds));
   }, [onConfirm, selectedIds]);
 
+  const handleSkip = useCallback(() => {
+    if (hasSubmittedRef.current) return;
+    hasSubmittedRef.current = true;
+    onSkip();
+  }, [onSkip]);
+
   if (!isMounted) return null;
 
   return (
-    <Modal transparent statusBarTranslucent visible animationType="none" onRequestClose={onSkip}>
+    <Modal transparent statusBarTranslucent visible animationType="none" onRequestClose={handleSkip}>
       <Animated.View style={[styles.backdrop, { opacity: anim }]}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onSkip} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={handleSkip} />
         <Animated.View style={[styles.card, { transform: [{ scale }] }]}>
           <View style={[styles.iconCircle, { backgroundColor: colors.surfaceMuted }]}>
             <MaterialIcons name="visibility-off" size={20} color={colors.tint} />
@@ -143,7 +156,7 @@ export default function InviteBeforePrivateDialog({
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.button, styles.cancelButton]}
-              onPress={onSkip}
+              onPress={handleSkip}
               activeOpacity={0.8}
             >
               <ThemedText style={styles.cancelText}>Skip</ThemedText>

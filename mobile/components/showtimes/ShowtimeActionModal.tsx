@@ -768,13 +768,21 @@ export default function ShowtimeActionModal({
     (selectedIds: string[]) => {
       setIsInviteBeforePrivateVisible(false);
       if (showtime) {
+        const showtimeId = showtime.id;
+        // Bypasses the shared pingFriendForShowtime mutation on purpose: this
+        // is a best-effort courtesy invite alongside the mode switch, not the
+        // user directly pressing "Invite" on this friend, so a friend who
+        // turns out to already be invited (a race with another invite path,
+        // or this same tap landing twice) shouldn't surface an alert — the
+        // outcome the user wants (friend invited) already holds either way.
         for (const friendId of selectedIds) {
-          pingFriendForShowtime({ showtimeId: showtime.id, friendId });
+          ShowtimesService.pingFriendForShowtime({ showtimeId, friendId }).catch(() => {});
         }
+        queryClient.invalidateQueries({ queryKey: sentPingsQueryKey });
       }
       applyVisibilityMode("INVITED_ONLY");
     },
-    [showtime, pingFriendForShowtime, applyVisibilityMode]
+    [showtime, queryClient, sentPingsQueryKey, applyVisibilityMode]
   );
 
   const visibilityMeta = visibility ? getVisibilityModeMeta(visibility.mode, colors) : null;

@@ -619,11 +619,33 @@ export default function ShowtimeActionModal({
   const { mutate: pingFriendForShowtime, isPending: isPingingFriend } = useMutation({
     mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
       ShowtimesService.pingFriendForShowtime({ showtimeId, friendId }),
+    // The row's "Invited" state reads off `sentPings`, so without an
+    // optimistic entry it only flips once the request round-trips and the
+    // invalidated query refetches — paint it immediately instead.
+    onMutate: async ({ friendId }) => {
+      await queryClient.cancelQueries({ queryKey: sentPingsQueryKey });
+      const previousPings = queryClient.getQueryData<SentShowtimePingPublic[]>(sentPingsQueryKey);
+      const friendName = friends?.find((f) => f.id === friendId)?.display_name?.trim() || "Friend";
+      const optimisticPing: SentShowtimePingPublic = {
+        id: -Date.now(),
+        receiver_id: friendId,
+        receiver_name: friendName,
+        created_at: new Date().toISOString(),
+        seen_at: null,
+        dismissed_at: null,
+      };
+      queryClient.setQueryData<SentShowtimePingPublic[]>(sentPingsQueryKey, (prev) => [
+        ...(prev ?? []),
+        optimisticPing,
+      ]);
+      return { previousPings };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sentPingsQueryKey });
       trackEvent("invite_sent");
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
+      queryClient.setQueryData(sentPingsQueryKey, context?.previousPings);
       const detail =
         typeof error === "object" &&
         error !== null &&
@@ -775,6 +797,22 @@ export default function ShowtimeActionModal({
         // turns out to already be invited (a race with another invite path,
         // or this same tap landing twice) shouldn't surface an alert — the
         // outcome the user wants (friend invited) already holds either way.
+        // Paint them as invited right away, same as the single-invite mutation
+        // — otherwise the invite panel would show them as still invitable
+        // until the invalidated query below wins its race with these writes.
+        queryClient.setQueryData<SentShowtimePingPublic[]>(sentPingsQueryKey, (prev) => [
+          ...(prev ?? []),
+          ...selectedIds.map((friendId, index): SentShowtimePingPublic => ({
+            id: -Date.now() - index,
+            receiver_id: friendId,
+            receiver_name:
+              inviteBeforePrivateCandidates.find((friend) => friend.id === friendId)
+                ?.display_name?.trim() || "Friend",
+            created_at: new Date().toISOString(),
+            seen_at: null,
+            dismissed_at: null,
+          })),
+        ]);
         for (const friendId of selectedIds) {
           ShowtimesService.pingFriendForShowtime({ showtimeId, friendId }).catch(() => {});
         }
@@ -782,7 +820,13 @@ export default function ShowtimeActionModal({
       }
       applyVisibilityMode("INVITED_ONLY");
     },
-    [showtime, queryClient, sentPingsQueryKey, applyVisibilityMode]
+    [
+      showtime,
+      queryClient,
+      sentPingsQueryKey,
+      applyVisibilityMode,
+      inviteBeforePrivateCandidates,
+    ]
   );
 
   const visibilityMeta = visibility ? getVisibilityModeMeta(visibility.mode, colors) : null;

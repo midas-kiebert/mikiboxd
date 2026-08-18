@@ -1072,8 +1072,10 @@ export default function ShowtimeActionModal({
       });
   }, [friends, getPingAvailability, getWatchStatus, watchlistedIds]);
 
-  // The list shows friends you can still invite + those who already set a
-  // going/interested status (muted); already-pinged friends live in the summary.
+  // The list shows every friend you can still invite, including those who
+  // already set a going/interested status on their own (their status shows
+  // next to the button, but inviting them still works — it just won't notify
+  // them); already-pinged friends live in the summary instead.
   const filteredFriendsForPing = useMemo(() => {
     const invitable = friendsForPing.filter((friend) => friend.availability !== "pinged");
     const query = pingSearchQuery.trim().toLowerCase();
@@ -1081,9 +1083,10 @@ export default function ShowtimeActionModal({
     return invitable.filter((friend) => friend.label.toLowerCase().includes(query));
   }, [friendsForPing, pingSearchQuery]);
 
-  // The top eligible result is what Enter selects (and what we visually highlight).
+  // The top result is what Enter selects (and what we visually highlight) — the
+  // list already excludes already-pinged friends, so anyone left is invitable.
   const firstEligibleFriendId = useMemo(
-    () => filteredFriendsForPing.find((friend) => friend.availability === "eligible")?.id ?? null,
+    () => filteredFriendsForPing[0]?.id ?? null,
     [filteredFriendsForPing]
   );
 
@@ -1810,9 +1813,7 @@ export default function ShowtimeActionModal({
                     ) : (
                       <View style={styles.inviteList}>
                         {filteredFriendsForPing.map((friend) => {
-                          const isEligible = friend.availability === "eligible";
                           const isHighlighted =
-                            isEligible &&
                             friend.id === firstEligibleFriendId &&
                             pingSearchQuery.trim().length > 0;
                           return (
@@ -1824,7 +1825,7 @@ export default function ShowtimeActionModal({
                               statusLabel={getPingStatusLabel(friend.availability)}
                               mode="invite"
                               highlighted={isHighlighted}
-                              disabled={!isEligible || isPingingFriend}
+                              disabled={isPingingFriend}
                               onInvite={() => handlePingFriend(friend.id)}
                             />
                           );
@@ -1962,7 +1963,7 @@ export default function ShowtimeActionModal({
             return {
               statusLabel: getPingStatusLabel(availability),
               invited: availability === "pinged",
-              disabled: availability !== "eligible" || isPingingFriend,
+              disabled: isPingingFriend,
             };
           },
           onInvite: handlePingFriend,

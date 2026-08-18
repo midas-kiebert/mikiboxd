@@ -104,8 +104,7 @@ export default function InviteBeforePrivateDialog({
           <ThemedText style={styles.title}>Keep these friends in the loop?</ThemedText>
           <ThemedText style={styles.message}>
             These friends already see your status here but haven&apos;t been invited. Switching
-            to invite-only will hide it from them unless you invite them now — they won&apos;t be
-            notified.
+            to invite-only will hide it from them unless you invite them now.
           </ThemedText>
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
             {friends.map((friend) => {

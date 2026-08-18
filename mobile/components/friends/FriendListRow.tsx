@@ -25,7 +25,7 @@ type FriendListRowProps = {
   name: string;
   /** Letterboxd relationship to the film, shown as a small trailing marker. */
   watchStatus?: FriendWatchStatus;
-  /** "Going" / "Interested" — shown muted in place of the invite button. */
+  /** "Going" / "Interested" — shown next to the invite button, not instead of it. */
   statusLabel?: string | null;
   mode?: "invite" | "display";
   /** invite mode: already pinged → shows an "Invited" check instead of the button. */
@@ -59,7 +59,10 @@ export default function FriendListRow({
   const watchMeta = watchStatus ? getFriendWatchKindMeta(watchStatus, colors) : null;
 
   const isInvite = mode === "invite";
-  const canInvite = isInvite && !invited && !statusLabel && !disabled && Boolean(onInvite);
+  // A friend already going/interested can still be invited (it just won't
+  // notify them) — the status label sits next to the button as context
+  // rather than replacing it.
+  const canInvite = isInvite && !invited && !disabled && Boolean(onInvite);
   // The row itself always opens the friend's page when a handler is given —
   // in invite mode that's a separate action from the labelled Invite button
   // (which stops its own press from reaching the row), so nobody invites a
@@ -87,27 +90,30 @@ export default function FriendListRow({
             <MaterialIcons name="check" size={14} color={colors.green.secondary} />
             <ThemedText style={styles.invitedTagText}>Invited</ThemedText>
           </View>
-        ) : statusLabel ? (
-          <ThemedText style={styles.statusText}>{statusLabel}</ThemedText>
         ) : (
-          <TouchableOpacity
-            style={[styles.inviteButton, !canInvite && styles.inviteButtonDisabled]}
-            onPress={(event) => {
-              event.stopPropagation();
-              onInvite?.();
-            }}
-            disabled={!canInvite}
-            activeOpacity={0.8}
-            hitSlop={6}
-            accessibilityRole="button"
-            accessibilityLabel={`Invite ${name} to this showtime`}
-          >
-            <MaterialIcons name="mail-outline" size={13} color={colors.blue.secondary} />
-            <ThemedText style={styles.inviteButtonText}>Invite</ThemedText>
-            {highlighted ? (
-              <MaterialIcons name="keyboard-return" size={13} color={colors.blue.secondary} />
+          <>
+            {statusLabel ? (
+              <ThemedText style={styles.statusText}>{statusLabel}</ThemedText>
             ) : null}
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.inviteButton, !canInvite && styles.inviteButtonDisabled]}
+              onPress={(event) => {
+                event.stopPropagation();
+                onInvite?.();
+              }}
+              disabled={!canInvite}
+              activeOpacity={0.8}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`Invite ${name} to this showtime`}
+            >
+              <MaterialIcons name="mail-outline" size={13} color={colors.blue.secondary} />
+              <ThemedText style={styles.inviteButtonText}>Invite</ThemedText>
+              {highlighted ? (
+                <MaterialIcons name="keyboard-return" size={13} color={colors.blue.secondary} />
+              ) : null}
+            </TouchableOpacity>
+          </>
         )
       ) : rowPress ? (
         <MaterialIcons name="chevron-right" size={18} color={colors.textSecondary} />

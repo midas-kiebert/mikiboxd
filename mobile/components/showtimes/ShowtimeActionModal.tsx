@@ -71,7 +71,10 @@ import {
 } from "@/components/showtimes/visibility-mode";
 import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
-import FriendListRow, { type FriendWatchStatus } from "@/components/friends/FriendListRow";
+import FriendListRow, {
+  type FriendPingStatus,
+  type FriendWatchStatus,
+} from "@/components/friends/FriendListRow";
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
 import InviteBeforePrivateDialog from "@/components/showtimes/InviteBeforePrivateDialog";
 import SheetBackdrop from "@/components/sheets/SheetBackdrop";
@@ -1041,8 +1044,8 @@ export default function ShowtimeActionModal({
     [friendsGoingIds, friendsInterestedIds, pingedReceiverIds]
   );
 
-  const getPingStatusLabel = (availability: FriendPingAvailability) =>
-    availability === "going" ? "Going" : availability === "interested" ? "Interested" : null;
+  const getPingRowStatus = (availability: FriendPingAvailability): FriendPingStatus =>
+    availability === "going" ? "GOING" : availability === "interested" ? "INTERESTED" : null;
 
   const friendsForPing = useMemo(() => {
     const availabilityRank: Record<FriendPingAvailability, number> = {
@@ -1822,7 +1825,7 @@ export default function ShowtimeActionModal({
                               userId={friend.id}
                               name={friend.label}
                               watchStatus={friend.watchStatus}
-                              statusLabel={getPingStatusLabel(friend.availability)}
+                              pingStatus={getPingRowStatus(friend.availability)}
                               mode="invite"
                               highlighted={isHighlighted}
                               disabled={isPingingFriend}
@@ -1961,7 +1964,7 @@ export default function ShowtimeActionModal({
           getState: (friendId) => {
             const availability = getPingAvailability(friendId);
             return {
-              statusLabel: getPingStatusLabel(availability),
+              pingStatus: getPingRowStatus(availability),
               invited: availability === "pinged",
               disabled: isPingingFriend,
             };

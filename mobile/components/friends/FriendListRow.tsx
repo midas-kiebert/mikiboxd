@@ -18,6 +18,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 
 export type FriendWatchStatus = FriendWatchKind | null;
+export type FriendPingStatus = "GOING" | "INTERESTED" | null;
 
 type FriendListRowProps = {
   /** Drives the avatar tint, so a friend keeps their color across the app. */
@@ -25,8 +26,12 @@ type FriendListRowProps = {
   name: string;
   /** Letterboxd relationship to the film, shown as a small trailing marker. */
   watchStatus?: FriendWatchStatus;
-  /** "Going" / "Interested" — shown next to the invite button, not instead of it. */
-  statusLabel?: string | null;
+  /**
+   * invite mode: already going/interested on their own — tints the row the
+   * same green/orange as the showtime sheet's own status, rather than a text
+   * label, so it reads the same way at a glance everywhere in the app.
+   */
+  pingStatus?: FriendPingStatus;
   mode?: "invite" | "display";
   /** invite mode: already pinged → shows an "Invited" check instead of the button. */
   invited?: boolean;
@@ -43,7 +48,7 @@ export default function FriendListRow({
   userId,
   name,
   watchStatus = null,
-  statusLabel = null,
+  pingStatus = null,
   mode = "invite",
   invited = false,
   highlighted = false,
@@ -57,11 +62,13 @@ export default function FriendListRow({
 
   const avatarColors = getAvatarColors(userId, colors);
   const watchMeta = watchStatus ? getFriendWatchKindMeta(watchStatus, colors) : null;
+  // Same green/orange the showtime sheet itself uses for going/interested.
+  const pingStatusPalette =
+    pingStatus === "GOING" ? colors.green : pingStatus === "INTERESTED" ? colors.orange : null;
 
   const isInvite = mode === "invite";
-  // A friend already going/interested can still be invited (it just won't
-  // notify them) — the status label sits next to the button as context
-  // rather than replacing it.
+  // A friend already going/interested can still be invited — it just won't
+  // notify them — so the row is tinted for context but the button stays live.
   const canInvite = isInvite && !invited && !disabled && Boolean(onInvite);
   // The row itself always opens the friend's page when a handler is given —
   // in invite mode that's a separate action from the labelled Invite button
@@ -91,29 +98,24 @@ export default function FriendListRow({
             <ThemedText style={styles.invitedTagText}>Invited</ThemedText>
           </View>
         ) : (
-          <>
-            {statusLabel ? (
-              <ThemedText style={styles.statusText}>{statusLabel}</ThemedText>
+          <TouchableOpacity
+            style={[styles.inviteButton, !canInvite && styles.inviteButtonDisabled]}
+            onPress={(event) => {
+              event.stopPropagation();
+              onInvite?.();
+            }}
+            disabled={!canInvite}
+            activeOpacity={0.8}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={`Invite ${name} to this showtime`}
+          >
+            <MaterialIcons name="mail-outline" size={13} color={colors.blue.secondary} />
+            <ThemedText style={styles.inviteButtonText}>Invite</ThemedText>
+            {highlighted ? (
+              <MaterialIcons name="keyboard-return" size={13} color={colors.blue.secondary} />
             ) : null}
-            <TouchableOpacity
-              style={[styles.inviteButton, !canInvite && styles.inviteButtonDisabled]}
-              onPress={(event) => {
-                event.stopPropagation();
-                onInvite?.();
-              }}
-              disabled={!canInvite}
-              activeOpacity={0.8}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel={`Invite ${name} to this showtime`}
-            >
-              <MaterialIcons name="mail-outline" size={13} color={colors.blue.secondary} />
-              <ThemedText style={styles.inviteButtonText}>Invite</ThemedText>
-              {highlighted ? (
-                <MaterialIcons name="keyboard-return" size={13} color={colors.blue.secondary} />
-              ) : null}
-            </TouchableOpacity>
-          </>
+          </TouchableOpacity>
         )
       ) : rowPress ? (
         <MaterialIcons name="chevron-right" size={18} color={colors.textSecondary} />
@@ -121,21 +123,24 @@ export default function FriendListRow({
     </>
   );
 
+  const rowStyle = [
+    styles.row,
+    pingStatusPalette && {
+      borderColor: pingStatusPalette.border,
+      backgroundColor: pingStatusPalette.primary,
+    },
+    // The search-highlight tint is a temporary, more urgent signal than a
+    // standing going/interested status, so it wins when both apply.
+    highlighted && styles.rowHighlighted,
+    disabled && styles.rowDisabled,
+  ];
+
   if (!rowPress) {
-    return (
-      <View style={[styles.row, highlighted && styles.rowHighlighted, disabled && styles.rowDisabled]}>
-        {content}
-      </View>
-    );
+    return <View style={rowStyle}>{content}</View>;
   }
 
   return (
-    <TouchableOpacity
-      style={[styles.row, highlighted && styles.rowHighlighted, disabled && styles.rowDisabled]}
-      onPress={rowPress}
-      disabled={disabled}
-      activeOpacity={0.7}
-    >
+    <TouchableOpacity style={rowStyle} onPress={rowPress} disabled={disabled} activeOpacity={0.7}>
       {content}
     </TouchableOpacity>
   );
@@ -180,12 +185,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 14,
       fontWeight: "600",
       color: colors.text,
-    },
-    statusText: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: colors.textSecondary,
-      paddingRight: 4,
     },
     inviteButton: {
       flexDirection: "row",

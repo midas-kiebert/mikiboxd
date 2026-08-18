@@ -89,9 +89,6 @@ export default function SignInRequiredDialog({
           </View>
           <ThemedText style={styles.title}>{copy.title}</ThemedText>
           <ThemedText style={styles.message}>{copy.message}</ThemedText>
-          <ThemedText style={styles.hint}>
-            It takes a moment, and you can keep browsing either way.
-          </ThemedText>
           {/* Stacked, not side by side: these are two different yeses rather
               than a confirm/cancel pair, so neither should read as the way out. */}
           <View style={styles.actions}>

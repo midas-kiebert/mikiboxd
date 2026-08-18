@@ -393,9 +393,12 @@ def get_cinemas_for_movie(
     return cinemas
 
 
-# "-", "'" and plain spaces are treated as interchangeable (and droppable) so that
-# e.g. "da" / "d a" / "d-a" all match a title containing "d'a".
-_SEPARATOR_CHARS_REGEX = r"[-' ]"
+# "-", "'", ".", "/" and plain spaces are treated as interchangeable (and
+# droppable) so that e.g. "da" / "d a" / "d-a" all match a title containing
+# "d'a". "." and "/" are in here for the cinemas whose display name carries one:
+# without them "Studio K" finds nothing at "Studio/K", and "Th Dakota" nothing at
+# "Th. Dakota" — the two spellings a user is most likely to type.
+_SEPARATOR_CHARS_REGEX = r"[-'./ ]"
 
 
 def _strip_separators(value: str) -> str:

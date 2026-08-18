@@ -2,6 +2,7 @@
  * Expo Router screen/module for (tabs) / settings. It controls navigation and screen-level state for this route.
  */
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   LayoutAnimation,
@@ -20,6 +21,7 @@ import { triggerSelectionHaptic } from '@/utils/long-press';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import {
   CINEVILLE_DIGITS_LENGTH,
   CINEVILLE_PREFIX,
@@ -56,6 +58,7 @@ import LetterboxdSection from '@/components/settings/LetterboxdSection';
 import SignedOutPanel from '@/components/auth/SignedOutPanel';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import EmailVerificationRequiredDialog from '@/components/ui/EmailVerificationRequiredDialog';
+import { useEmailVerificationPolling } from '@/hooks/useCurrentUser';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 
 // Placeholder for the danger zone card's height until it has been measured
@@ -166,6 +169,22 @@ export default function SettingsScreen() {
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
   const [isLogoutDialogVisible, setIsLogoutDialogVisible] = useState(false);
   const [isEmailVerificationRequired, setIsEmailVerificationRequired] = useState(false);
+  // Shown after a save that changed the email: the backend sends a fresh
+  // confirmation link to the new address, and nothing else on screen says so.
+  const [verificationSentTo, setVerificationSentTo] = useState<string | null>(null);
+  // The address the last save started from, so the mutation's success handler
+  // can tell an email change from a username-only one. A ref rather than the
+  // user object: by then the account query has been invalidated.
+  const emailBeforeSaveRef = useRef('');
+  // While the address is unconfirmed the account is re-read every few seconds,
+  // so opening the link in a mail app turns the badge over while Settings is
+  // still on screen. The returned flag drives the spinner next to it.
+  // Only while Settings is the screen being looked at: this tab stays mounted
+  // behind the others, and a poll nobody can see is just traffic.
+  const isSettingsFocused = useIsFocused();
+  const isCheckingVerification = useEmailVerificationPolling(
+    isSettingsFocused && isSignedIn && user !== undefined && !user.email_verified
+  );
   // The danger zone is collapsed by default so it takes an extra, deliberate
   // tap to reach account deletion.
   const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
@@ -243,9 +262,20 @@ export default function SettingsScreen() {
   // Profile updates are persisted to backend and then current-user cache is refreshed.
   const profileMutation = useMutation({
     mutationFn: (data: UserUpdate) => MeService.updateUserMe({ requestBody: data }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       setProfile((prev) => ({ ...prev, current_password: '' }));
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+      const newEmail = variables.email?.trim() ?? '';
+      const emailChanged =
+        newEmail !== '' &&
+        newEmail.toLowerCase() !== emailBeforeSaveRef.current.trim().toLowerCase();
+      // A changed address is unconfirmed again and gets a link sent to it. That
+      // is the part the user has to act on, so it replaces the plain "saved"
+      // notice rather than stacking a second dialog behind it.
+      if (emailChanged) {
+        setVerificationSentTo(newEmail);
+        return;
+      }
       Alert.alert('Success', 'Profile updated successfully.');
     },
     onError: (error) => {
@@ -335,6 +365,7 @@ export default function SettingsScreen() {
       return;
     }
 
+    emailBeforeSaveRef.current = user?.email ?? '';
     profileMutation.mutate({
       display_name: normalizedUsername,
       email: profile.email,
@@ -544,9 +575,22 @@ export default function SettingsScreen() {
                   onPress={() => setIsEmailVerificationRequired(true)}
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 >
-                  <MaterialIcons name="warning" size={13} color={colors.yellow.secondary} />
+                  {/* The spinner takes the warning icon's place rather than
+                      sitting beside it, so the row never shifts width as the
+                      poll comes and goes. */}
+                  <View style={styles.emailStatusIcon}>
+                    {isCheckingVerification ? (
+                      <ActivityIndicator
+                        size="small"
+                        color={colors.yellow.secondary}
+                        style={styles.emailStatusSpinner}
+                      />
+                    ) : (
+                      <MaterialIcons name="warning" size={13} color={colors.yellow.secondary} />
+                    )}
+                  </View>
                   <ThemedText style={[styles.emailStatusText, { color: colors.yellow.secondary }]}>
-                    Not verified
+                    {isCheckingVerification ? 'Checking...' : 'Not verified'}
                   </ThemedText>
                 </TouchableOpacity>
               )}
@@ -1025,6 +1069,16 @@ export default function SettingsScreen() {
         visible={isEmailVerificationRequired}
         onClose={() => setIsEmailVerificationRequired(false)}
       />
+      <ConfirmDialog
+        visible={verificationSentTo !== null}
+        icon="mark-email-unread"
+        title="Confirm your new email"
+        message={`Your profile is saved. We sent a confirmation link to ${verificationSentTo ?? ''} — open it to confirm the address is yours. Until then nothing can be emailed to you.`}
+        confirmLabel="Got it"
+        tone="primary"
+        onConfirm={() => setVerificationSentTo(null)}
+        onCancel={() => setVerificationSentTo(null)}
+      />
     </TopSafeAreaView>
   );
 }
@@ -1083,6 +1137,17 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
+    },
+    emailStatusIcon: {
+      width: 13,
+      height: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emailStatusSpinner: {
+      // RN's smallest spinner is ~20pt; scaled down to sit on the icon's line
+      // without pushing the row taller.
+      transform: [{ scale: 0.65 }],
     },
     emailStatusText: {
       fontSize: 12,

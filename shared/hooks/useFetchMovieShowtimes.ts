@@ -35,10 +35,10 @@ export function useFetchMovieShowtimes(
         MoviesReadMovieShowtimesResponse,
         Error,
         InfiniteData<MoviesReadMovieShowtimesResponse>,
-        [string, number, string, ShowtimesFilters],
+        [string, number, string, string | undefined, ShowtimesFilters],
         number
     >({
-        queryKey: ["movie", movieId, "showtimes", filters],
+        queryKey: ["movie", movieId, "showtimes", snapshotTime, filters],
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,

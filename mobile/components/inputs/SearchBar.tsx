@@ -7,7 +7,7 @@
  * instead, because a dropdown attaches to its bottom edge and a pill cannot
  * line up with a list of rows.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   BackHandler,
@@ -28,6 +28,7 @@ import { useIsFocused } from "@react-navigation/native";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useIsSignedIn } from "@/utils/auth-session";
 import type { SearchField } from "shared/client";
 
 type SearchBarProps = {
@@ -98,7 +99,8 @@ const SEARCH_FIELD_PLACEHOLDER: Record<SearchField, string> = {
 };
 
 const OPTION_HEIGHT = 46;
-const DROPDOWN_CONTENT_HEIGHT = OPTION_HEIGHT * SEARCH_FIELD_OPTIONS.length;
+/** Searching by friend needs friends, which needs an account. */
+const ACCOUNT_ONLY_SEARCH_FIELDS: ReadonlySet<SearchField> = new Set(["friend"]);
 const OPEN_DURATION_MS = 220;
 const CLOSE_DURATION_MS = 170;
 /** Corner radius of the standalone pill; half its height or more reads as round. */
@@ -136,6 +138,16 @@ export default function SearchBar({
   } | null>(null);
   const openProgress = useRef(new Animated.Value(0)).current;
   const caretRotation = useRef(new Animated.Value(0)).current;
+
+  const isSignedIn = useIsSignedIn();
+  const searchFieldOptions = useMemo(
+    () =>
+      isSignedIn
+        ? SEARCH_FIELD_OPTIONS
+        : SEARCH_FIELD_OPTIONS.filter((option) => !ACCOUNT_ONLY_SEARCH_FIELDS.has(option.id)),
+    [isSignedIn]
+  );
+  const dropdownContentHeight = OPTION_HEIGHT * searchFieldOptions.length;
 
   const showModeSelector = onChangeSearchField !== undefined;
   const activeSearchField = searchField ?? "title";
@@ -313,16 +325,16 @@ export default function SearchBar({
                 width: dropdownLayout.width,
                 height: openProgress.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0, DROPDOWN_CONTENT_HEIGHT],
+                  outputRange: [0, dropdownContentHeight],
                 }),
                 opacity: openProgress,
               },
             ]}
           >
-            {SEARCH_FIELD_OPTIONS.map((option, index) => {
+            {searchFieldOptions.map((option, index) => {
               const isActive = option.id === activeSearchField;
               const isFirst = index === 0;
-              const isLast = index === SEARCH_FIELD_OPTIONS.length - 1;
+              const isLast = index === searchFieldOptions.length - 1;
               return (
                 <TouchableOpacity
                   key={option.id}

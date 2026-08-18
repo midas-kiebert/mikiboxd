@@ -15,8 +15,10 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.enums import GoingStatus
 from app.crud import friendship as friendship_crud
+from app.crud import letterboxd_list as lists_crud
 from app.crud import showtime as showtime_crud
 from app.crud import user as user_crud
+from app.models.letterboxd_list import LetterboxdList, LetterboxdListFilm
 from app.models.user import User
 
 
@@ -258,3 +260,98 @@ def test_expired_token_is_still_rejected_rather_than_treated_as_anonymous(
     )
 
     assert response.status_code == 401
+
+
+def _list_with_movie(
+    session: Session, *, movie_id: int, slug: str, is_curated: bool
+) -> LetterboxdList:
+    letterboxd_list = lists_crud.create_list(
+        session=session,
+        letterboxd_list=LetterboxdList(
+            owner="someone", list_slug=slug, is_curated=is_curated
+        ),
+    )
+    lists_crud.replace_list_films(
+        session=session,
+        list_id=letterboxd_list.id,
+        films=[
+            LetterboxdListFilm(
+                list_id=letterboxd_list.id,
+                letterboxd_slug=slug + "-film",
+                movie_id=movie_id,
+            )
+        ],
+    )
+    return letterboxd_list
+
+
+def test_anonymous_can_filter_by_a_curated_list(
+    client: TestClient,
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    """The curated lists belong to nobody, so filtering by one is just browsing.
+
+    Dropping the filter (as every other list id is dropped) would have answered
+    a request for "films on the Top 250" with the entire catalogue.
+    """
+    on_list = showtime_factory()
+    off_list = showtime_factory()
+    curated = _list_with_movie(
+        db_transaction, movie_id=on_list.movie_id, slug="curated", is_curated=True
+    )
+    db_transaction.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/",
+        params={"list_ids": [str(curated.id)]},
+    )
+
+    assert response.status_code == 200
+    returned_ids = {item["id"] for item in response.json()}
+    assert on_list.id in returned_ids
+    assert off_list.id not in returned_ids
+
+
+def test_anonymous_list_filter_ignores_someone_elses_list(
+    client: TestClient,
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    """A non-curated list id can only be another account's, or a guess.
+
+    Honouring it would leak which films are on a private list; applying it as
+    sent would also be meaningless. It is dropped, and the feed stays whole.
+    """
+    showtime = showtime_factory()
+    other = showtime_factory()
+    private_list = _list_with_movie(
+        db_transaction, movie_id=showtime.movie_id, slug="private", is_curated=False
+    )
+    db_transaction.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/",
+        params={"list_ids": [str(private_list.id)]},
+    )
+
+    assert response.status_code == 200
+    returned_ids = {item["id"] for item in response.json()}
+    assert {showtime.id, other.id} <= returned_ids
+
+
+def test_curated_lists_are_readable_without_a_token(
+    client: TestClient,
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    showtime = showtime_factory()
+    _list_with_movie(
+        db_transaction, movie_id=showtime.movie_id, slug="public-curated", is_curated=True
+    )
+    db_transaction.commit()
+
+    response = client.get(f"{settings.API_V1_STR}/letterboxd-lists/curated")
+
+    assert response.status_code == 200
+    assert "public-curated" in [item["list_slug"] for item in response.json()]

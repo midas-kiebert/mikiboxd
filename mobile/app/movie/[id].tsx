@@ -422,11 +422,7 @@ function MovieContent({
     if (!Number.isFinite(movieId) || movieId === 0) return;
     setRefreshing(true);
     try {
-      await refreshInfiniteQueryWithFreshSnapshot<ShowtimeInMoviePublic[]>({
-        queryClient,
-        queryKey: ["movie", movieId, "showtimes", showtimesFilters],
-        setSnapshotTime,
-      });
+      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
       await queryClient.invalidateQueries({ queryKey: ["movie", movieId] });
     } finally {
       setRefreshing(false);

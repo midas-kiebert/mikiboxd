@@ -51,6 +51,7 @@ Legend:
 - [x] `routes/showtimes.py` — Showtime endpoints (list, selection, visibility, pings)
 - [x] `routes/friends.py` — Friend request and friendship endpoints
 - [x] `routes/cinemas.py` — Cinema listing endpoints
+- [x] `routes/letterboxd_lists.py` — The curated (shared, non-account) Letterboxd lists, readable without a token — filtering the catalogue by the Top 250 is browsing, not an account action; adding/removing your own lists stays on `/me/letterboxd-lists`
 - [x] `routes/users.py` — User lookup endpoints (admin + public profiles)
 - [x] `routes/utils.py` — Utility endpoints (health check, TMDB cache override)
 - [ ] `routes/admin.py` — Superuser-only endpoints (analytics overview, movie/showtime moderation, showtime reports)
@@ -105,7 +106,7 @@ Legend:
 - [ ] `showtime_ping.py` — Ping response shape
 - [x] `notification.py` — Merged notification-centre feed item shape
 - [x] `showtime_visibility.py` — Per-showtime visibility mode response shape
-- [ ] `cinema_preset.py` — Cinema preset response shape
+- [ ] `cinema_preset.py` — Cinema preset response shapes: `CinemaPresetCreate` (with `overwrite`, the explicit opt-in to replacing a same-named preset), `CinemaPresetRename`, `CinemaPresetPublic`
 - [ ] `filter_preset.py` — Filter preset response shape
 - [x] `friendship.py` — Friend status-sharing toggle request shape
 - [ ] `push_token.py` — Push token registration shape
@@ -193,6 +194,8 @@ Legend:
 - [ ] `watchlist_exceptions.py` — Watchlist-related errors
 - [ ] `city_exceptions.py` — City-related errors
 - [ ] `scraper_exceptions.py` — Scraping-specific errors
+- [x] `cinema_preset_exceptions.py` — Cinema preset errors: not found, empty name, and the 409 raised when a preset name is already taken (create and rename both need it, and the client turns it into a "replace?" prompt rather than a failure)
+- [ ] `letterboxd_list_exceptions.py` — Letterboxd list scrape/sync errors
 
 ---
 
@@ -275,6 +278,7 @@ Legend:
 - [ ] `tests/api/test_admin.py` — Admin route gating, analytics overview, movie/showtime moderation, showtime reports
 - [x] `tests/api/test_anonymous_browse.py` — The browse endpoints answered without a token: catalogue in full, no personal annotations, `/me/*` still 401
 - [x] `tests/api/test_client_compatibility.py` — Legacy flat mirrors match the `viewer` block, and the version gate's per-platform floors are independent
+- [x] `tests/test_cinemas_yaml.py` — `data/cinemas.yaml` carries no field the seeder would silently drop, and no duplicate keys
 
 ---
 

@@ -72,6 +72,11 @@ def get_curated_lists(*, session: Session) -> list[LetterboxdList]:
     return list(session.exec(stmt).all())
 
 
+def get_curated_list_ids(*, session: Session) -> set[UUID]:
+    stmt = select(LetterboxdList.id).where(col(LetterboxdList.is_curated).is_(True))
+    return set(session.exec(stmt).all())
+
+
 def user_list_link_exists(*, session: Session, user_id: UUID, list_id: UUID) -> bool:
     return session.get(UserLetterboxdList, (user_id, list_id)) is not None
 

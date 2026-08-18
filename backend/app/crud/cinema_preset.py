@@ -110,6 +110,20 @@ def update_preset(
     return preset
 
 
+def rename_preset(
+    *,
+    session: Session,
+    preset: CinemaPreset,
+    name: str,
+    now: datetime,
+) -> CinemaPreset:
+    preset.name = name
+    preset.updated_at = now
+    session.add(preset)
+    session.flush()
+    return preset
+
+
 def clear_user_favorite_preset(
     *,
     session: Session,
@@ -124,20 +138,6 @@ def clear_user_favorite_preset(
         favorite.is_favorite = False
         session.add(favorite)
     session.flush()
-
-
-def set_preset_favorite(
-    *,
-    session: Session,
-    preset: CinemaPreset,
-    is_favorite: bool,
-    now: datetime,
-) -> CinemaPreset:
-    preset.is_favorite = is_favorite
-    preset.updated_at = now
-    session.add(preset)
-    session.flush()
-    return preset
 
 
 def delete_preset(

@@ -6,12 +6,14 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import {
+  LetterboxdListsService,
   MeService,
   type LetterboxdListPublic,
   type MeGetLetterboxdListsResponse,
 } from "../client";
 
 const LETTERBOXD_LISTS_KEY = ["me", "letterboxd-lists"] as const;
+const CURATED_LETTERBOXD_LISTS_KEY = ["letterboxd-lists", "curated"] as const;
 
 export function useFetchLetterboxdLists(
   enabled = true
@@ -19,6 +21,25 @@ export function useFetchLetterboxdLists(
   return useQuery<MeGetLetterboxdListsResponse, Error>({
     queryKey: LETTERBOXD_LISTS_KEY,
     queryFn: () => MeService.getLetterboxdLists(),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * The shared curated lists, readable without an account.
+ *
+ * A signed-in user gets these inside `useFetchLetterboxdLists` already (the
+ * account endpoint returns their own lists plus the curated set), so this is
+ * for the signed-out case only — filtering by the Top 250 is a browse action
+ * and does not need a login to sit behind it.
+ */
+export function useFetchCuratedLetterboxdLists(
+  enabled = true
+): UseQueryResult<LetterboxdListPublic[], Error> {
+  return useQuery<LetterboxdListPublic[], Error>({
+    queryKey: CURATED_LETTERBOXD_LISTS_KEY,
+    queryFn: () => LetterboxdListsService.getCuratedLetterboxdLists(),
     enabled,
     staleTime: 60_000,
   });

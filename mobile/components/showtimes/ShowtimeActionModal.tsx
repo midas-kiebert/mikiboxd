@@ -91,6 +91,7 @@ import {
 } from "@/constants/synthetic-movies";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { useIsSignedIn } from "@/utils/auth-session";
+import { useSignInGate } from "@/components/auth/SignInGateProvider";
 import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
 import { EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
@@ -338,7 +339,23 @@ export default function ShowtimeActionModal({
   const invitedSectionYRef = useRef(0);
   // 80% by default; a full-height detent so scrolling up first lifts the sheet
   // to the top of the screen before the content itself scrolls.
-  const snapPoints = useMemo(() => ["80%", "100%"], []);
+  // Everything on this sheet below the status buttons is about people — the
+  // friends coming, who you invited, who can see you're going. A guest has
+  // none of it and no way to get any without an account, so those sections are
+  // absent rather than rendered permanently empty. The status buttons stay:
+  // tapping one is how a guest finds out an account is what they're for (see
+  // ShowtimeModalProvider's gate), and the screening itself — film, cinema,
+  // time, ticket link — is public and unchanged.
+  const isSignedIn = useIsSignedIn();
+  const { promptForAccount } = useSignInGate();
+
+  // A guest sees the header, the status buttons and the ticket row — roughly
+  // half of what a signed-in sheet holds — so it opens at half the height
+  // rather than as a mostly-empty tall sheet. Both keep the full-height snap.
+  const snapPoints = useMemo(
+    () => (isSignedIn ? ["80%", "100%"] : ["52%", "100%"]),
+    [isSignedIn]
+  );
 
   // Drive the gorhom sheet imperatively from the controlled `visible` prop
   // (same approach as FiltersModal): present() on open, close() on programmatic
@@ -363,14 +380,6 @@ export default function ShowtimeActionModal({
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
   const [isReportDialogVisible, setIsReportDialogVisible] = useState(false);
   const { user } = useAuth();
-  // Everything on this sheet below the status buttons is about people — the
-  // friends coming, who you invited, who can see you're going. A guest has
-  // none of it and no way to get any without an account, so those sections are
-  // absent rather than rendered permanently empty. The status buttons stay:
-  // tapping one is how a guest finds out an account is what they're for (see
-  // ShowtimeModalProvider's gate), and the screening itself — film, cinema,
-  // time, ticket link — is public and unchanged.
-  const isSignedIn = useIsSignedIn();
   const canReport = isSignedIn && (user ? user.can_report : true);
   const [isVisibilityExpanded, setIsVisibilityExpanded] = useState(false);
   // Which "watchlisted/watched by friends" popup is open, if any.
@@ -1338,7 +1347,11 @@ export default function ShowtimeActionModal({
                   <ThemedText style={styles.timeText}>{timeLabel}</ThemedText>
                 ) : null}
                 <View style={styles.cinemaBadgeRow}>
-                  <CinemaPill cinema={showtime.cinema} disabledIfSameId={disabledCinemaId} />
+                  <CinemaPill
+                    cinema={showtime.cinema}
+                    disabledIfSameId={disabledCinemaId}
+                    onNavigate={onClose}
+                  />
                   <SubtitlesBadges subtitles={showtime.subtitles} />
                 </View>
               </View>
@@ -1526,6 +1539,27 @@ export default function ShowtimeActionModal({
                 </TouchableOpacity>
               ) : null}
             </View>
+
+            {/* What an account would add here, in place of the four sections a
+                guest doesn't get. One line rather than a panel: the sheet is
+                about this screening, not about signing up. */}
+            {!isSignedIn ? (
+              <TouchableOpacity
+                style={styles.signInPrompt}
+                onPress={() => {
+                  triggerSelectionHaptic();
+                  promptForAccount("invite");
+                }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+              >
+                <MaterialIcons name="mail-outline" size={16} color={colors.blue.secondary} />
+                <ThemedText style={styles.signInPromptText}>
+                  Log in to invite friends
+                </ThemedText>
+                <MaterialIcons name="arrow-forward" size={14} color={colors.blue.secondary} />
+              </TouchableOpacity>
+            ) : null}
 
             {/* Who can see your status for this showtime — inline dropdown.
                 The section (and its header height) renders as soon as the showtime
@@ -2247,6 +2281,17 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
 
     inviteBarRow: { flexDirection: "row", gap: 8 },
+    signInPrompt: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      marginTop: 14,
+      paddingVertical: 11,
+      borderRadius: 12,
+      backgroundColor: colors.blue.primary,
+    },
+    signInPromptText: { fontSize: 13, fontWeight: "700", color: colors.blue.secondary },
     shareButton: {
       flexDirection: "row",
       alignItems: "center",

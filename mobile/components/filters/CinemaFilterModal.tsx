@@ -2,10 +2,18 @@
  * Mobile filter UI component: Cinema Filter Modal.
  *
  * Laid out like FiltersModal: a scroll box holding nothing but the cinemas
- * themselves, plus a footer pinned below it for the actions that end the visit
- * (saving the selection as a preset, and managing presets). Presets are applied
- * from the top bar and from the Filters sheet, not from in here, so the list is
- * never a wall of preset cards standing between the user and the cinemas.
+ * themselves, plus a footer pinned below it for the actions that end the visit.
+ * Presets are applied from the top bar and from the Filters sheet, not from in
+ * here, so the list is never a wall of preset cards standing between the user
+ * and the cinemas.
+ *
+ * The footer carries two unequal jobs. Setting *your cinemas* — the selection
+ * applied on startup — is something every user wants and nobody should have to
+ * name, so it is one prominent tap with no dialog behind it. Saving a *named
+ * preset* is a power feature most users never need, so it is a demoted text
+ * button; it still opens a name dialog, but prefilled, so the field never
+ * blocks the save. Applying without saving anything needs no button at all:
+ * closing the sheet already commits the selection to the session.
  *
  * The cinemas are drawn by the shared {@link CinemaPickerList}, so the sheet and
  * the cinema-preset feature tip pick cinemas in exactly the same way.
@@ -25,6 +33,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { QueryClientProvider, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  ApiError,
   MeService,
   type CinemaPresetCreate,
   type CinemaPresetPublic,
@@ -35,7 +44,13 @@ import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { ThemedText } from "@/components/themed-text";
 import CinemaPickerList from "@/components/filters/CinemaPickerList";
 import { serializeCinemaIds, sortCinemaIds } from "@/components/filters/cinema-grouping";
-import { invalidateCinemaPresets, useCinemaPresets } from "@/components/filters/cinema-presets";
+import {
+  findMyCinemasPreset,
+  findNamedCinemaPresets,
+  invalidateCinemaPresets,
+  nextCinemaPresetName,
+  useCinemaPresets,
+} from "@/components/filters/cinema-presets";
 import {
   loadCinemaPresetOrder,
   sanitizeCinemaPresetOrderIds,
@@ -58,6 +73,8 @@ type CinemaFilterModalProps = {
 
 type CinemaModalPage = "selection" | "presets";
 
+const formatCinemaCount = (count: number) => `${count} cinema${count === 1 ? "" : "s"}`;
+
 const setsMatch = (left: Set<number>, right: Set<number>) => {
   if (left.size !== right.size) return false;
   for (const id of left) { if (!right.has(id)) return false; }
@@ -76,7 +93,20 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
   const presetNameInputRef = useRef<TextInput>(null);
   const [presetError, setPresetError] = useState<string | null>(null);
   const [isSavePresetDialogVisible, setIsSavePresetDialogVisible] = useState(false);
-  const [saveAsFavorite, setSaveAsFavorite] = useState(false);
+  // Set when the backend reports the typed name is taken. The save button then
+  // offers to replace that preset, so overwriting is always a second, deliberate
+  // tap rather than something that happens silently behind a reused name.
+  const [isReplacingNamedPreset, setIsReplacingNamedPreset] = useState(false);
+  // The preset being renamed from the manage page, if any.
+  const [presetBeingRenamed, setPresetBeingRenamed] = useState<CinemaPresetPublic | null>(null);
+  const [presetPendingDeletion, setPresetPendingDeletion] = useState<CinemaPresetPublic | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const renameInputRef = useRef<TextInput>(null);
+  const [renameValue, setRenameValue] = useState("");
+  // Flips the moment "Set as my cinemas" is tapped, so the button reports the
+  // result on the same frame instead of after the round trip. Holds the
+  // selection it was tapped for, so editing the picker afterwards re-arms it.
+  const [savedMyCinemasSignature, setSavedMyCinemasSignature] = useState<string | null>(null);
   const [presetOrderIds, setPresetOrderIds] = useState<readonly string[]>([]);
 
   const { data: cinemas } = useFetchCinemas();
@@ -90,10 +120,14 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
   });
   const { cinemaIds: sessionCinemaIds, setCinemaIds: setSessionCinemaIds } = useCinemaSelection();
 
-  const selectedCinemas = useMemo(
-    () => sessionCinemaIds ?? favoriteCinemaIds ?? [],
-    [sessionCinemaIds, favoriteCinemaIds],
-  );
+  // Picking nothing is picking everything (see useCinemaSelection), so the
+  // picker opens with every cinema ticked rather than with an empty list that
+  // contradicts the feed behind it.
+  const selectedCinemas = useMemo(() => {
+    const chosen = sessionCinemaIds ?? favoriteCinemaIds ?? [];
+    if (chosen.length > 0) return chosen;
+    return (cinemas ?? []).map((cinema) => cinema.id);
+  }, [sessionCinemaIds, favoriteCinemaIds, cinemas]);
   const [localSelectedCinemaSet, setLocalSelectedCinemaSet] = useState<Set<number>>(
     () => new Set(selectedCinemas),
   );
@@ -138,9 +172,12 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     setLocalSelectedCinemaSet(new Set(selectedCinemas));
     setPresetError(null);
     setPresetName("");
-    presetNameInputRef.current?.clear();
     setIsSavePresetDialogVisible(false);
-    setSaveAsFavorite(false);
+    setIsReplacingNamedPreset(false);
+    setPresetBeingRenamed(null);
+    setPresetPendingDeletion(null);
+    setRenameError(null);
+    setSavedMyCinemasSignature(null);
     setPage(initialPage);
   }, [visible, selectedCinemas, initialPage]);
 
@@ -158,54 +195,108 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     return () => { isMounted = false; };
   }, [visible]);
 
+  // "Set as my cinemas": no name, no dialog, one round trip. The endpoint
+  // creates the user's preset row the first time and overwrites it after that,
+  // so this is the same button whether or not they have one yet.
+  const saveMyCinemasMutation = useMutation({
+    mutationFn: (cinemaIds: number[]) =>
+      MeService.setCinemaSelections({ requestBody: cinemaIds }),
+    onSuccess: (_data, cinemaIds) => {
+      // Applied straight away rather than at close: the user just declared
+      // these their cinemas, and the feed behind the sheet should agree.
+      setSessionCinemaIds(cinemaIds);
+      invalidateCinemaPresets(queryClient);
+      retireCinemaPresetTip();
+    },
+    onError: () => {
+      setSavedMyCinemasSignature(null);
+      Alert.alert("Could not save", "Your cinemas were not saved. Please try again.");
+    },
+  });
+
   const savePresetMutation = useMutation({
     mutationFn: (requestBody: CinemaPresetCreate) => MeService.createCinemaPreset({ requestBody }),
     onSuccess: () => {
       setPresetError(null);
       setPresetName("");
-      presetNameInputRef.current?.clear();
-      setSaveAsFavorite(false);
+      setIsReplacingNamedPreset(false);
       setIsSavePresetDialogVisible(false);
       invalidateCinemaPresets(queryClient);
       retireCinemaPresetTip();
     },
-    onError: () => {
+    onError: (error) => {
+      // 409 means the name is taken. That is a question, not a failure: keep
+      // the dialog open with the name intact and let the next tap replace it.
+      if (error instanceof ApiError && error.status === 409) {
+        setIsReplacingNamedPreset(true);
+        setPresetError("You already have a preset with that name.");
+        return;
+      }
       setPresetError("Could not save cinema preset. Please try again.");
+    },
+  });
+
+  const renamePresetMutation = useMutation({
+    mutationFn: ({ presetId, name }: { presetId: string; name: string }) =>
+      MeService.renameCinemaPreset({ presetId, requestBody: { name } }),
+    onSuccess: () => {
+      setPresetBeingRenamed(null);
+      setRenameError(null);
+      invalidateCinemaPresets(queryClient);
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409) {
+        setRenameError("You already have a preset with that name.");
+        return;
+      }
+      setRenameError("Could not rename this preset. Please try again.");
     },
   });
 
   const deletePresetMutation = useMutation({
     mutationFn: (presetId: string) => MeService.deleteCinemaPreset({ presetId }),
     onSuccess: () => {
+      setPresetPendingDeletion(null);
       invalidateCinemaPresets(queryClient);
+    },
+    onError: () => {
+      setPresetPendingDeletion(null);
+      Alert.alert("Could not delete", "That preset was not deleted. Please try again.");
     },
   });
 
-  const setFavoritePresetMutation = useMutation({
+  // Copies a preset's cinemas into the user's own row rather than handing the
+  // role over to it — see the backend's `apply_cinema_preset_as_favorite`.
+  const useAsMyCinemasMutation = useMutation({
     mutationFn: (presetId: string) => MeService.setFavoriteCinemaPreset({ presetId }),
     onSuccess: () => {
       invalidateCinemaPresets(queryClient);
     },
   });
 
+  // The user's own cinemas are pinned above the list and never reordered, so
+  // only the named presets take part in the saved ordering.
+  const myCinemasPreset = useMemo(() => findMyCinemasPreset(presets), [presets]);
+  const namedPresets = useMemo(() => findNamedCinemaPresets(presets), [presets]);
+
   const orderedPresets = useMemo(
-    () => sortCinemaPresetsByOrder(presets, presetOrderIds),
-    [presetOrderIds, presets],
+    () => sortCinemaPresetsByOrder(namedPresets, presetOrderIds),
+    [presetOrderIds, namedPresets],
   );
   const presetsForRender = useMemo(
-    () => (orderedPresets.length > 0 || presets.length === 0 ? orderedPresets : presets),
-    [orderedPresets, presets],
+    () => (orderedPresets.length > 0 || namedPresets.length === 0 ? orderedPresets : namedPresets),
+    [orderedPresets, namedPresets],
   );
 
   useEffect(() => {
-    if (presetOrderIds.length === 0 || presets.length === 0) return;
-    const presetIdSet = new Set(presets.map((p) => p.id));
+    if (presetOrderIds.length === 0 || namedPresets.length === 0) return;
+    const presetIdSet = new Set(namedPresets.map((p) => p.id));
     const trimmedOrder = presetOrderIds.filter((id) => presetIdSet.has(id));
     if (trimmedOrder.length === presetOrderIds.length) return;
     const normalizedOrder = sanitizeCinemaPresetOrderIds(trimmedOrder);
     setPresetOrderIds(normalizedOrder);
     saveCinemaPresetOrder(normalizedOrder).catch(() => undefined);
-  }, [presetOrderIds, presets]);
+  }, [presetOrderIds, namedPresets]);
 
   const cinemaList = useMemo(() => cinemas ?? [], [cinemas]);
   const allCinemaIds = useMemo(() => cinemaList.map((c) => c.id), [cinemaList]);
@@ -215,13 +306,22 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     () => serializeCinemaIds(localSelectedCinemaSet),
     [localSelectedCinemaSet],
   );
-  const selectionMatchesPreset = useMemo(
-    () => presets.some((p) => serializeCinemaIds(p.cinema_ids) === currentSelectionSignature),
-    [currentSelectionSignature, presets],
+  // Already saved either because the stored row says so, or because the tap
+  // just happened and the round trip has not landed yet.
+  const isCurrentSelectionMyCinemas =
+    savedMyCinemasSignature === currentSelectionSignature ||
+    (myCinemasPreset !== null &&
+      serializeCinemaIds(myCinemasPreset.cinema_ids) === currentSelectionSignature);
+  const selectionMatchesNamedPreset = useMemo(
+    () => namedPresets.some((p) => serializeCinemaIds(p.cinema_ids) === currentSelectionSignature),
+    [currentSelectionSignature, namedPresets],
   );
-  // Nothing to save while the selection is already a preset, and a preset
-  // covering no cinema would filter every showtime away.
-  const canSaveSelection = selectedCount > 0 && !selectionMatchesPreset;
+  // A selection covering no cinema would filter every showtime away, so neither
+  // action is offered for one. Beyond that the two disable independently: the
+  // same cinemas can be both your default and a named preset, and saving one
+  // has no bearing on whether the other is worth a tap.
+  const canSaveMyCinemas = selectedCount > 0 && !isCurrentSelectionMyCinemas;
+  const canSaveAsPreset = selectedCount > 0 && !selectionMatchesNamedPreset;
 
   const handleToggle = useCallback((cinemaId: number) => {
     setLocalSelectedCinemaSet((current) => {
@@ -263,21 +363,47 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
   }, []);
 
   const handleDeletePreset = useCallback((preset: CinemaPresetPublic) => {
-    Alert.alert(
-      "Delete preset?",
-      `Are you sure you want to delete "${preset.name}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => deletePresetMutation.mutate(preset.id) },
-      ],
-      { cancelable: true },
-    );
-  }, [deletePresetMutation]);
+    triggerSelectionHaptic();
+    setPresetPendingDeletion(preset);
+  }, []);
 
-  const handleSetFavoritePreset = useCallback((preset: CinemaPresetPublic) => {
-    if (preset.is_favorite) return;
-    setFavoritePresetMutation.mutate(preset.id);
-  }, [setFavoritePresetMutation]);
+  const handleCancelDelete = useCallback(() => {
+    if (deletePresetMutation.isPending) return;
+    setPresetPendingDeletion(null);
+  }, [deletePresetMutation.isPending]);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!presetPendingDeletion) return;
+    deletePresetMutation.mutate(presetPendingDeletion.id);
+  }, [deletePresetMutation, presetPendingDeletion]);
+
+  const handleUseAsMyCinemas = useCallback((preset: CinemaPresetPublic) => {
+    triggerSelectionHaptic();
+    useAsMyCinemasMutation.mutate(preset.id);
+  }, [useAsMyCinemasMutation]);
+
+  const handleStartRename = useCallback((preset: CinemaPresetPublic) => {
+    triggerSelectionHaptic();
+    setRenameError(null);
+    setRenameValue(preset.name);
+    setPresetBeingRenamed(preset);
+  }, []);
+
+  const handleCancelRename = useCallback(() => {
+    if (renamePresetMutation.isPending) return;
+    setPresetBeingRenamed(null);
+    setRenameError(null);
+  }, [renamePresetMutation.isPending]);
+
+  const handleConfirmRename = useCallback(() => {
+    const trimmed = renameValue.trim();
+    if (!presetBeingRenamed || !trimmed) return;
+    if (trimmed === presetBeingRenamed.name) {
+      setPresetBeingRenamed(null);
+      return;
+    }
+    renamePresetMutation.mutate({ presetId: presetBeingRenamed.id, name: trimmed });
+  }, [presetBeingRenamed, renamePresetMutation, renameValue]);
 
   const persistPresetOrder = useCallback((orderedIds: readonly string[]) => {
     const normalizedOrder = sanitizeCinemaPresetOrderIds(orderedIds);
@@ -294,29 +420,44 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     persistPresetOrder(reordered.map((p) => p.id));
   }, [persistPresetOrder, presetsForRender]);
 
+  const handleSaveMyCinemas = useCallback(() => {
+    if (!canSaveMyCinemas) return;
+    triggerSelectionHaptic();
+    // Recorded before the request so the button reports "saved" this frame.
+    setSavedMyCinemasSignature(currentSelectionSignature);
+    saveMyCinemasMutation.mutate(sortCinemaIds(localSelectedCinemaSet));
+  }, [
+    canSaveMyCinemas,
+    currentSelectionSignature,
+    localSelectedCinemaSet,
+    saveMyCinemasMutation,
+  ]);
+
   const handleSavePreset = useCallback(() => {
     const trimmed = presetName.trim();
     if (!trimmed) { setPresetError("Enter a preset name."); return; }
     savePresetMutation.mutate({
       name: trimmed,
       cinema_ids: sortCinemaIds(localSelectedCinemaSet),
-      is_favorite: saveAsFavorite,
+      overwrite: isReplacingNamedPreset,
     });
-  }, [localSelectedCinemaSet, presetName, saveAsFavorite, savePresetMutation]);
+  }, [isReplacingNamedPreset, localSelectedCinemaSet, presetName, savePresetMutation]);
 
   const handleOpenSavePresetDialog = useCallback(() => {
-    if (!canSaveSelection) return;
+    if (!canSaveAsPreset) return;
     triggerSelectionHaptic();
-    setPresetName("");
-    presetNameInputRef.current?.clear();
+    // Prefilled, so the dialog opens on a name that already works: the user
+    // types only if they care what it is called.
+    setPresetName(nextCinemaPresetName(presets));
     setPresetError(null);
-    setSaveAsFavorite(false);
+    setIsReplacingNamedPreset(false);
     setIsSavePresetDialogVisible(true);
-  }, [canSaveSelection]);
+  }, [canSaveAsPreset, presets]);
 
   const handleCloseSavePresetDialog = useCallback(() => {
     if (savePresetMutation.isPending) return;
     setIsSavePresetDialogVisible(false);
+    setIsReplacingNamedPreset(false);
     setPresetError(null);
   }, [savePresetMutation.isPending]);
 
@@ -360,81 +501,145 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="large" color={colors.tint} />
                 </View>
-              ) : presetsForRender.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                  <ThemedText style={styles.emptyText}>No presets yet.</ThemedText>
-                </View>
               ) : (
                 <>
-                  <ThemedText style={styles.hintText}>
-                    The starred preset is applied on startup. Use the arrows to reorder.
-                  </ThemedText>
-                  {presetsForRender.map((item, index) => {
-                    const favoriteDisabled = item.is_favorite || setFavoritePresetMutation.isPending;
-                    const deleteDisabled = deletePresetMutation.isPending;
-                    const canMoveUp = index > 0;
-                    const canMoveDown = index < presetsForRender.length - 1;
-                    const n = item.cinema_ids.length;
-                    return (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={styles.manageRow}
-                        onPress={() => { handleApplyPreset(item); setPage("selection"); }}
-                        activeOpacity={0.88}
-                      >
+                  {/* Pinned above the presets and never reordered: this is not
+                      one of the presets, it is the selection every other screen
+                      falls back to. */}
+                  <ThemedText style={styles.manageSectionTitle}>Your preferred cinemas</ThemedText>
+                  <View style={styles.manageCard}>
+                    {myCinemasPreset ? (
+                      <>
                         <TouchableOpacity
-                          style={[styles.iconBtn, !canMoveUp && styles.iconBtnDisabled]}
-                          onPress={(e) => { e.stopPropagation(); if (canMoveUp) handleMovePreset(index, index - 1); }}
-                          disabled={!canMoveUp}
+                          style={styles.manageNameBlock}
+                          onPress={() => { handleApplyPreset(myCinemasPreset); setPage("selection"); }}
                           activeOpacity={0.7}
-                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Apply ${myCinemasPreset.name}`}
                         >
-                          <MaterialIcons name="keyboard-arrow-up" size={20} color={colors.textSecondary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.iconBtn, !canMoveDown && styles.iconBtnDisabled]}
-                          onPress={(e) => { e.stopPropagation(); if (canMoveDown) handleMovePreset(index, index + 1); }}
-                          disabled={!canMoveDown}
-                          activeOpacity={0.7}
-                          hitSlop={6}
-                        >
-                          <MaterialIcons name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
-                        </TouchableOpacity>
-                        <View style={styles.manageNameBlock}>
-                          <ThemedText style={styles.manageName} numberOfLines={1}>{item.name}</ThemedText>
-                          <ThemedText style={styles.manageMeta} numberOfLines={1}>
-                            {n} cinema{n === 1 ? "" : "s"}
+                          <ThemedText style={styles.manageName} numberOfLines={1}>
+                            {myCinemasPreset.name}
                           </ThemedText>
+                          <ThemedText style={styles.manageMeta} numberOfLines={1}>
+                            {formatCinemaCount(myCinemasPreset.cinema_ids.length)} · applied on startup
+                          </ThemedText>
+                        </TouchableOpacity>
+                        <View style={styles.manageActions}>
+                          <TouchableOpacity
+                            style={styles.manageAction}
+                            onPress={() => handleStartRename(myCinemasPreset)}
+                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            hitSlop={6}
+                          >
+                            <MaterialIcons name="edit" size={15} color={colors.textSecondary} />
+                            <ThemedText style={styles.manageActionText}>Rename</ThemedText>
+                          </TouchableOpacity>
                         </View>
-                        <TouchableOpacity
-                          style={[
-                            styles.iconBtn,
-                            item.is_favorite && styles.iconBtnFavorite,
-                            favoriteDisabled && !item.is_favorite && styles.iconBtnDisabled,
-                          ]}
-                          onPress={(e) => { e.stopPropagation(); handleSetFavoritePreset(item); }}
-                          activeOpacity={0.7}
-                          disabled={favoriteDisabled}
-                          hitSlop={6}
-                        >
-                          <MaterialIcons
-                            name={item.is_favorite ? "star" : "star-border"}
-                            size={18}
-                            color={item.is_favorite ? colors.yellow.secondary : colors.textSecondary}
-                          />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.iconBtn, deleteDisabled && styles.iconBtnDisabled]}
-                          onPress={(e) => { e.stopPropagation(); handleDeletePreset(item); }}
-                          activeOpacity={0.7}
-                          disabled={deleteDisabled}
-                          hitSlop={6}
-                        >
-                          <MaterialIcons name="delete-outline" size={18} color={colors.red.secondary} />
-                        </TouchableOpacity>
-                      </TouchableOpacity>
-                    );
-                  })}
+                      </>
+                    ) : (
+                      <ThemedText style={styles.manageMeta}>
+                        Not set yet. Pick your preferred cinemas and tap “Set as my preferred cinemas”.
+                      </ThemedText>
+                    )}
+                  </View>
+
+                  <ThemedText style={styles.manageSectionTitle}>Saved presets</ThemedText>
+                  {presetsForRender.length === 0 ? (
+                    <View style={styles.emptyContainer}>
+                      <ThemedText style={styles.emptyText}>
+                        No saved presets.
+                      </ThemedText>
+                    </View>
+                  ) : (
+                    <>
+                      <ThemedText style={styles.hintText}>
+                        Tap a preset to apply it to the picker. Use the arrows to reorder.
+                      </ThemedText>
+                      {presetsForRender.map((item, index) => {
+                        const canMoveUp = index > 0;
+                        const canMoveDown = index < presetsForRender.length - 1;
+                        return (
+                          <View key={item.id} style={styles.manageCard}>
+                            <View style={styles.manageCardHeader}>
+                              <TouchableOpacity
+                                style={styles.manageNameBlock}
+                                onPress={() => { handleApplyPreset(item); setPage("selection"); }}
+                                activeOpacity={0.7}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Apply ${item.name}`}
+                              >
+                                <ThemedText style={styles.manageName} numberOfLines={1}>
+                                  {item.name}
+                                </ThemedText>
+                                <ThemedText style={styles.manageMeta} numberOfLines={1}>
+                                  {formatCinemaCount(item.cinema_ids.length)}
+                                </ThemedText>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.iconBtn, !canMoveUp && styles.iconBtnDisabled]}
+                                onPress={() => { if (canMoveUp) handleMovePreset(index, index - 1); }}
+                                disabled={!canMoveUp}
+                                activeOpacity={0.7}
+                                hitSlop={6}
+                                accessibilityLabel="Move preset up"
+                              >
+                                <MaterialIcons name="keyboard-arrow-up" size={20} color={colors.textSecondary} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.iconBtn, !canMoveDown && styles.iconBtnDisabled]}
+                                onPress={() => { if (canMoveDown) handleMovePreset(index, index + 1); }}
+                                disabled={!canMoveDown}
+                                activeOpacity={0.7}
+                                hitSlop={6}
+                                accessibilityLabel="Move preset down"
+                              >
+                                <MaterialIcons name="keyboard-arrow-down" size={20} color={colors.textSecondary} />
+                              </TouchableOpacity>
+                            </View>
+                            {/* Worded rather than iconographic: these change
+                                saved data, and a bare glyph is a guess. */}
+                            <View style={styles.manageActions}>
+                              <TouchableOpacity
+                                style={styles.manageAction}
+                                onPress={() => handleStartRename(item)}
+                                activeOpacity={0.7}
+                                accessibilityRole="button"
+                                hitSlop={6}
+                              >
+                                <MaterialIcons name="edit" size={15} color={colors.textSecondary} />
+                                <ThemedText style={styles.manageActionText}>Rename</ThemedText>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.manageAction}
+                                onPress={() => handleUseAsMyCinemas(item)}
+                                activeOpacity={0.7}
+                                disabled={useAsMyCinemasMutation.isPending}
+                                accessibilityRole="button"
+                                hitSlop={6}
+                              >
+                                <MaterialIcons name="star-border" size={15} color={colors.textSecondary} />
+                                <ThemedText style={styles.manageActionText}>Set as preferred cinemas</ThemedText>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.manageAction}
+                                onPress={() => handleDeletePreset(item)}
+                                activeOpacity={0.7}
+                                disabled={deletePresetMutation.isPending}
+                                accessibilityRole="button"
+                                hitSlop={6}
+                              >
+                                <MaterialIcons name="delete-outline" size={15} color={colors.red.secondary} />
+                                <ThemedText style={[styles.manageActionText, styles.manageActionTextDestructive]}>
+                                  Delete
+                                </ThemedText>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </>
+                  )}
                 </>
               )}
             </BottomSheetScrollView>
@@ -490,50 +695,80 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                   account, and an empty bordered strip reads as broken. */}
               {isSignedIn ? (
               <View style={[styles.footer, { paddingBottom: bottomInset + 12 }]}>
+                {/* The one action nearly every user wants, and the only one
+                    that needs no name: it writes the selection applied on
+                    startup, creating it the first time. */}
                 <TouchableOpacity
                   style={[
                     styles.footerButton,
-                    canSaveSelection
+                    canSaveMyCinemas
                       ? styles.footerButtonHighlighted
                       : styles.footerButtonDisabled,
                   ]}
-                  onPress={handleOpenSavePresetDialog}
+                  onPress={handleSaveMyCinemas}
                   activeOpacity={0.8}
-                  disabled={!canSaveSelection}
+                  disabled={!canSaveMyCinemas}
                   accessibilityRole="button"
                 >
                   <MaterialIcons
-                    name="bookmark-add"
+                    name={isCurrentSelectionMyCinemas ? "check" : "star-border"}
                     size={17}
-                    color={canSaveSelection ? colors.green.secondary : colors.textSecondary}
+                    color={canSaveMyCinemas ? colors.green.secondary : colors.textSecondary}
                   />
                   <ThemedText
                     style={[
                       styles.footerButtonText,
-                      canSaveSelection && styles.footerButtonTextHighlighted,
+                      canSaveMyCinemas && styles.footerButtonTextHighlighted,
                     ]}
                     numberOfLines={1}
                   >
-                    Save current selection
+                    {isCurrentSelectionMyCinemas ? "These are your preferred cinemas" : "Set as preferred cinemas"}
                   </ThemedText>
                 </TouchableOpacity>
-                {presets.length > 0 && (
+                {/* Demoted to a text row: presets are a power feature, and
+                    giving them equal weight is what made the naming step read
+                    as a required step rather than an optional one. Always
+                    present all the same, or a first preset is never made. */}
+                <View style={styles.footerLinks}>
                   <TouchableOpacity
-                    style={[styles.footerButton, styles.managePresetsButton]}
+                    style={[
+                      styles.footerLinkButton,
+                      !canSaveAsPreset && styles.footerLinkButtonDisabled,
+                    ]}
+                    onPress={handleOpenSavePresetDialog}
+                    activeOpacity={0.7}
+                    disabled={!canSaveAsPreset}
+                    hitSlop={6}
+                    accessibilityRole="button"
+                  >
+                    <MaterialIcons
+                      name={selectionMatchesNamedPreset ? "bookmark" : "bookmark-add"}
+                      size={14}
+                      color={canSaveAsPreset ? colors.tint : colors.textSecondary}
+                    />
+                    <ThemedText
+                      style={[styles.footerLink, !canSaveAsPreset && styles.footerLinkDisabled]}
+                      numberOfLines={1}
+                    >
+                      {selectionMatchesNamedPreset ? "Already a preset" : "Save as preset"}
+                    </ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.footerLinkButton}
                     onPress={() => {
                       triggerSelectionHaptic();
                       setPage("presets");
                     }}
-                    activeOpacity={0.8}
+                    activeOpacity={0.7}
+                    hitSlop={6}
                     accessibilityRole="button"
-                    accessibilityLabel="Manage presets"
                   >
-                    <MaterialIcons name="tune" size={17} color={colors.textSecondary} />
-                    <ThemedText style={styles.footerButtonText} numberOfLines={1}>
-                      Presets
+                    <MaterialIcons name="tune" size={14} color={colors.tint} />
+                    <ThemedText style={styles.footerLink} numberOfLines={1}>
+                      Manage presets
                     </ThemedText>
                   </TouchableOpacity>
-                )}
+                </View>
               </View>
               ) : null}
             </>
@@ -553,75 +788,192 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
             activeOpacity={1}
             onPress={handleCloseSavePresetDialog}
           />
-          <View style={styles.dialogCard}>
-            <View style={styles.dialogHeader}>
-              <ThemedText style={styles.dialogTitle}>Save as preset</ThemedText>
-              <ThemedText style={styles.dialogSubtitle}>
-                Save your current cinema selection to reuse it later.
-              </ThemedText>
-            </View>
-            <TextInput
-              ref={presetNameInputRef}
-              onChangeText={(value) => {
-                setPresetName(value);
-                if (presetError) setPresetError(null);
-              }}
-              placeholder="Cinema preset name"
-              placeholderTextColor={colors.textSecondary}
-              style={styles.dialogInput}
-              maxLength={80}
-              autoCapitalize="words"
-              autoCorrect={false}
-              autoFocus
-            />
-            <TouchableOpacity
-              style={styles.favoriteToggle}
-              onPress={() => setSaveAsFavorite((current) => !current)}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons
-                name={saveAsFavorite ? "check-box" : "check-box-outline-blank"}
-                size={20}
-                color={saveAsFavorite ? colors.tint : colors.textSecondary}
-              />
-              <View style={styles.favoriteToggleText}>
-                <ThemedText style={styles.favoriteToggleTitle}>Save as default preset</ThemedText>
-                <ThemedText style={styles.favoriteToggleSubtitle}>
-                  This marks the preset as your favorite.
+          {/* Mounted only while open so the field picks up a fresh suggested
+              name (and the autofocus) on every visit. */}
+          {isSavePresetDialogVisible ? (
+            <View style={styles.dialogCard}>
+              <View style={styles.dialogHeader}>
+                <ThemedText style={styles.dialogTitle}>Save as preset</ThemedText>
+                <ThemedText style={styles.dialogSubtitle}>
+                  A named selection you can switch to later. Your preferred cinemas stay what they are.
                 </ThemedText>
               </View>
-            </TouchableOpacity>
-            {presetError ? (
-              <ThemedText style={styles.presetErrorText}>{presetError}</ThemedText>
-            ) : null}
-            <View style={styles.dialogActions}>
-              <TouchableOpacity
-                style={[styles.dialogButton, styles.dialogButtonSecondary]}
-                onPress={handleCloseSavePresetDialog}
-                activeOpacity={0.8}
-                disabled={savePresetMutation.isPending}
-              >
-                <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextSecondary]}>
-                  Cancel
-                </ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.dialogButton,
-                  styles.dialogButtonPrimary,
-                  (savePresetMutation.isPending || presetName.trim().length === 0) &&
-                    styles.dialogButtonDisabled,
-                ]}
-                onPress={handleSavePreset}
-                activeOpacity={0.8}
-                disabled={savePresetMutation.isPending || presetName.trim().length === 0}
-              >
-                <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextPrimary]}>
-                  {savePresetMutation.isPending ? "Saving..." : "Save"}
-                </ThemedText>
-              </TouchableOpacity>
+              <TextInput
+                ref={presetNameInputRef}
+                defaultValue={presetName}
+                onChangeText={(value) => {
+                  setPresetName(value);
+                  if (presetError) setPresetError(null);
+                  // A different name is a different question: stop offering to
+                  // replace the preset the last one collided with.
+                  if (isReplacingNamedPreset) setIsReplacingNamedPreset(false);
+                }}
+                placeholder="Cinema preset name"
+                placeholderTextColor={colors.textSecondary}
+                style={styles.dialogInput}
+                maxLength={80}
+                autoCapitalize="words"
+                autoCorrect={false}
+                selectTextOnFocus
+                autoFocus
+              />
+              {presetError ? (
+                <ThemedText style={styles.presetErrorText}>{presetError}</ThemedText>
+              ) : null}
+              <View style={styles.dialogActions}>
+                <TouchableOpacity
+                  style={[styles.dialogButton, styles.dialogButtonSecondary]}
+                  onPress={handleCloseSavePresetDialog}
+                  activeOpacity={0.8}
+                  disabled={savePresetMutation.isPending}
+                >
+                  <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextSecondary]}>
+                    Cancel
+                  </ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.dialogButton,
+                    styles.dialogButtonPrimary,
+                    (savePresetMutation.isPending || presetName.trim().length === 0) &&
+                      styles.dialogButtonDisabled,
+                  ]}
+                  onPress={handleSavePreset}
+                  activeOpacity={0.8}
+                  disabled={savePresetMutation.isPending || presetName.trim().length === 0}
+                >
+                  <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextPrimary]}>
+                    {savePresetMutation.isPending
+                      ? "Saving..."
+                      : isReplacingNamedPreset
+                        ? "Replace"
+                        : "Save"}
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          ) : null}
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
+        visible={presetBeingRenamed !== null}
+        animationType="fade"
+        onRequestClose={handleCancelRename}
+      >
+        <View style={styles.dialogBackdrop}>
+          <TouchableOpacity
+            style={styles.dialogBackdropPressable}
+            activeOpacity={1}
+            onPress={handleCancelRename}
+          />
+          {presetBeingRenamed !== null ? (
+            <View style={styles.dialogCard}>
+              <View style={styles.dialogHeader}>
+                <ThemedText style={styles.dialogTitle}>Rename preset</ThemedText>
+                <ThemedText style={styles.dialogSubtitle}>
+                  Only the name changes — the cinemas it covers stay the same.
+                </ThemedText>
+              </View>
+              <TextInput
+                ref={renameInputRef}
+                defaultValue={presetBeingRenamed.name}
+                onChangeText={(value) => {
+                  setRenameValue(value);
+                  if (renameError) setRenameError(null);
+                }}
+                placeholder="Preset name"
+                placeholderTextColor={colors.textSecondary}
+                style={styles.dialogInput}
+                maxLength={80}
+                autoCapitalize="words"
+                autoCorrect={false}
+                selectTextOnFocus
+                autoFocus
+              />
+              {renameError ? (
+                <ThemedText style={styles.presetErrorText}>{renameError}</ThemedText>
+              ) : null}
+              <View style={styles.dialogActions}>
+                <TouchableOpacity
+                  style={[styles.dialogButton, styles.dialogButtonSecondary]}
+                  onPress={handleCancelRename}
+                  activeOpacity={0.8}
+                  disabled={renamePresetMutation.isPending}
+                >
+                  <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextSecondary]}>
+                    Cancel
+                  </ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.dialogButton,
+                    styles.dialogButtonPrimary,
+                    (renamePresetMutation.isPending || renameValue.trim().length === 0) &&
+                      styles.dialogButtonDisabled,
+                  ]}
+                  onPress={handleConfirmRename}
+                  activeOpacity={0.8}
+                  disabled={renamePresetMutation.isPending || renameValue.trim().length === 0}
+                >
+                  <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextPrimary]}>
+                    {renamePresetMutation.isPending ? "Saving..." : "Rename"}
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </Modal>
+      <Modal
+        transparent
+        visible={presetPendingDeletion !== null}
+        animationType="fade"
+        onRequestClose={handleCancelDelete}
+      >
+        <View style={styles.dialogBackdrop}>
+          <TouchableOpacity
+            style={styles.dialogBackdropPressable}
+            activeOpacity={1}
+            onPress={handleCancelDelete}
+          />
+          {presetPendingDeletion !== null ? (
+            <View style={styles.dialogCard}>
+              <View style={styles.dialogHeader}>
+                <ThemedText style={styles.dialogTitle}>Delete preset?</ThemedText>
+                <ThemedText style={styles.dialogSubtitle}>
+                  “{presetPendingDeletion.name}” will be removed. Your cinemas are not affected.
+                </ThemedText>
+              </View>
+              <View style={styles.dialogActions}>
+                <TouchableOpacity
+                  style={[styles.dialogButton, styles.dialogButtonSecondary]}
+                  onPress={handleCancelDelete}
+                  activeOpacity={0.8}
+                  disabled={deletePresetMutation.isPending}
+                >
+                  <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextSecondary]}>
+                    Cancel
+                  </ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.dialogButton,
+                    styles.dialogButtonDestructive,
+                    deletePresetMutation.isPending && styles.dialogButtonDisabled,
+                  ]}
+                  onPress={handleConfirmDelete}
+                  activeOpacity={0.8}
+                  disabled={deletePresetMutation.isPending}
+                >
+                  <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextDestructive]}>
+                    {deletePresetMutation.isPending ? "Deleting..." : "Delete"}
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
         </View>
       </Modal>
     </>
@@ -649,9 +1001,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     headerAction: { fontSize: 13, fontWeight: "700", color: colors.tint },
     // Pinned footer (mirrors FiltersModal's preset actions)
     footer: {
-      flexDirection: "row",
-      alignItems: "stretch",
-      gap: 8,
       paddingHorizontal: 20,
       paddingTop: 12,
       borderTopWidth: 1,
@@ -669,9 +1018,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderWidth: 1.5,
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
-      // "Save current selection" is the primary of the two, so it takes the
-      // leftover width while "Presets" stays at its label's size.
-      flex: 1,
+      // Full width: it is the only button on its row, and the preset actions
+      // below it are deliberately not competing for the same weight.
+      alignSelf: "stretch",
     },
     // Saving is only worth a tap once the selection is actually new, so the
     // button stays quiet until then — a soft tinted fill rather than an outline,
@@ -681,29 +1030,77 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderColor: colors.green.primary,
     },
     footerButtonDisabled: { opacity: 0.5 },
-    managePresetsButton: { flex: 0 },
     footerButtonText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
     footerButtonTextHighlighted: { color: colors.green.secondary },
-    // Manage presets page
-    emptyContainer: { paddingVertical: 40, alignItems: "center", justifyContent: "center" },
-    emptyText: { fontSize: 14, color: colors.textSecondary, textAlign: "center" },
-    hintText: { fontSize: 12, color: colors.textSecondary, marginBottom: 8 },
-    manageRow: {
+    // The preset row under the primary button. Recessed chips rather than the
+    // primary's raised fill: they read as an aside, not as a second thing to
+    // decide about, while still being obviously tappable — bare text at the two
+    // outer edges looked stranded. Centred, so the pair sits under the button
+    // as one group.
+    footerLinks: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
+      justifyContent: "center",
+      gap: 8,
+      paddingTop: 10,
+    },
+    footerLinkButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 10,
+      backgroundColor: colors.surfaceMuted,
+    },
+    footerLinkButtonDisabled: { opacity: 0.6 },
+    // Explicit lineHeight: ThemedText's default type carries 24, which survives
+    // the fontSize override and would make these chips button-height.
+    footerLink: { fontSize: 12, lineHeight: 16, fontWeight: "700", color: colors.tint },
+    footerLinkDisabled: { color: colors.textSecondary },
+    // Manage presets page
+    emptyContainer: { paddingVertical: 24, alignItems: "center", justifyContent: "center" },
+    emptyText: { fontSize: 13, color: colors.textSecondary, textAlign: "center" },
+    hintText: { fontSize: 12, color: colors.textSecondary, marginBottom: 8 },
+    manageSectionTitle: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.textSecondary,
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+      marginBottom: 8,
+      marginTop: 4,
+    },
+    manageCard: {
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
-      paddingLeft: 12,
-      paddingRight: 8,
-      paddingVertical: 8,
-      marginBottom: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginBottom: 10,
+      gap: 2,
     },
+    manageCardHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
     manageNameBlock: { flex: 1, gap: 2 },
     manageName: { fontSize: 14, fontWeight: "600", color: colors.text },
     manageMeta: { fontSize: 11, color: colors.textSecondary },
+    // A second line of worded buttons rather than a row of glyphs: these edit
+    // and delete saved data, so each one says what it does.
+    manageActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      columnGap: 16,
+      rowGap: 6,
+      marginTop: 8,
+      paddingTop: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
+    },
+    manageAction: { flexDirection: "row", alignItems: "center", gap: 4 },
+    manageActionText: { fontSize: 12, fontWeight: "600", color: colors.textSecondary },
+    manageActionTextDestructive: { color: colors.red.secondary },
     iconBtn: {
       width: 32,
       height: 32,
@@ -712,7 +1109,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       justifyContent: "center",
       backgroundColor: colors.surfaceMuted,
     },
-    iconBtnFavorite: { backgroundColor: colors.yellow.primary },
     iconBtnDisabled: { opacity: 0.4 },
     // Save preset dialog
     presetErrorText: { fontSize: 12, color: colors.red.secondary },
@@ -745,10 +1141,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 14,
       fontWeight: "500",
     },
-    favoriteToggle: { flexDirection: "row", alignItems: "center", columnGap: 10, paddingVertical: 2 },
-    favoriteToggleText: { flex: 1, gap: 1 },
-    favoriteToggleTitle: { fontSize: 13, fontWeight: "700", color: colors.text },
-    favoriteToggleSubtitle: { fontSize: 11, color: colors.textSecondary },
     dialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 2 },
     dialogButton: {
       minHeight: 38,
@@ -760,6 +1152,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     dialogButtonPrimary: { backgroundColor: colors.tint, borderColor: colors.tint },
     dialogButtonSecondary: { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+    dialogButtonDestructive: { backgroundColor: colors.red.primary },
+    dialogButtonTextDestructive: { color: colors.red.secondary },
     dialogButtonDisabled: { opacity: 0.5 },
     dialogButtonText: { fontSize: 12, fontWeight: "700" },
     dialogButtonTextPrimary: { color: colors.pillActiveText },

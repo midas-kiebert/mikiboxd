@@ -1225,19 +1225,24 @@ def test_cinema_presets_and_favorite_cinema_selection(
     assert weekend_create.status_code == 200
     weekend_id = weekend_create.json()["id"]
 
+    # Promoting a preset copies its cinemas into the user's own row; the preset
+    # itself stays an ordinary preset rather than becoming the startup one.
     set_favorite = client.put(
         f"{settings.API_V1_STR}/me/cinema-presets/{weekend_id}/favorite",
         headers=normal_user_token_headers,
     )
     assert set_favorite.status_code == 200
     assert set_favorite.json()["is_favorite"] is True
+    assert set_favorite.json()["id"] != weekend_id
+    my_cinemas_id = set_favorite.json()["id"]
+    assert set_favorite.json()["name"] == "My Cinemas"
 
     favorite_preset = client.get(
         f"{settings.API_V1_STR}/me/cinema-presets/favorite",
         headers=normal_user_token_headers,
     )
     assert favorite_preset.status_code == 200
-    assert favorite_preset.json()["id"] == weekend_id
+    assert favorite_preset.json()["id"] == my_cinemas_id
     assert favorite_preset.json()["cinema_ids"] == [4, 5]
 
     legacy_selected = client.get(
@@ -1257,7 +1262,9 @@ def test_cinema_presets_and_favorite_cinema_selection(
     assert by_id[default_preset_id]["name"] == "All Cinemas"
     assert by_id[default_preset_id]["is_default"] is True
     assert by_id[weekday_id]["is_favorite"] is False
-    assert by_id[weekend_id]["is_favorite"] is True
+    assert by_id[weekend_id]["is_favorite"] is False
+    assert by_id[weekend_id]["cinema_ids"] == [4, 5]
+    assert by_id[my_cinemas_id]["is_favorite"] is True
 
     legacy_set = client.post(
         f"{settings.API_V1_STR}/me/cinemas",
@@ -1271,6 +1278,8 @@ def test_cinema_presets_and_favorite_cinema_selection(
         headers=normal_user_token_headers,
     )
     assert favorite_after_legacy_set.status_code == 200
+    # Still the same row: setting cinemas overwrites it rather than adding one.
+    assert favorite_after_legacy_set.json()["id"] == my_cinemas_id
     assert favorite_after_legacy_set.json()["cinema_ids"] == [2, 6]
 
     delete_response = client.delete(
@@ -1284,6 +1293,191 @@ def test_cinema_presets_and_favorite_cinema_selection(
         headers=normal_user_token_headers,
     )
     assert delete_default_response.status_code == 404
+
+
+def test_cinema_preset_name_clash_needs_an_explicit_overwrite(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    """Reusing a name is a 409 the client turns into a "replace?" prompt.
+
+    It used to upsert silently, which was tolerable while a name was the only
+    handle on a preset. Now that presets can be renamed, a reused name is far
+    more likely to be a collision than an intention.
+    """
+    created = client.post(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+        json={"name": "Preset 1", "cinema_ids": [1, 2]},
+    )
+    assert created.status_code == 200
+    preset_id = created.json()["id"]
+
+    clash = client.post(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+        json={"name": "Preset 1", "cinema_ids": [3]},
+    )
+    assert clash.status_code == 409
+
+    unchanged = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+    )
+    by_id = {preset["id"]: preset for preset in unchanged.json()}
+    assert by_id[preset_id]["cinema_ids"] == [1, 2]
+
+    replaced = client.post(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+        json={"name": "Preset 1", "cinema_ids": [3], "overwrite": True},
+    )
+    assert replaced.status_code == 200
+    assert replaced.json()["id"] == preset_id
+    assert replaced.json()["cinema_ids"] == [3]
+
+
+def test_rename_cinema_preset(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    first = client.post(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+        json={"name": "Preset 1", "cinema_ids": [1]},
+    )
+    assert first.status_code == 200
+    first_id = first.json()["id"]
+
+    second = client.post(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+        json={"name": "Preset 2", "cinema_ids": [2]},
+    )
+    assert second.status_code == 200
+
+    renamed = client.patch(
+        f"{settings.API_V1_STR}/me/cinema-presets/{first_id}",
+        headers=normal_user_token_headers,
+        json={"name": "Sunday afternoons"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Sunday afternoons"
+    # A rename touches the name and nothing else.
+    assert renamed.json()["cinema_ids"] == [1]
+
+    taken = client.patch(
+        f"{settings.API_V1_STR}/me/cinema-presets/{first_id}",
+        headers=normal_user_token_headers,
+        json={"name": "Preset 2"},
+    )
+    assert taken.status_code == 409
+
+    # Renaming to the name it already has is a no-op, not a self-collision.
+    same = client.patch(
+        f"{settings.API_V1_STR}/me/cinema-presets/{first_id}",
+        headers=normal_user_token_headers,
+        json={"name": "Sunday afternoons"},
+    )
+    assert same.status_code == 200
+
+    missing = client.patch(
+        f"{settings.API_V1_STR}/me/cinema-presets/00000000-0000-0000-0000-0000000000ff",
+        headers=normal_user_token_headers,
+        json={"name": "Nowhere"},
+    )
+    assert missing.status_code == 404
+
+
+def test_renaming_my_cinemas_keeps_it_the_favorite(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    """The favorite is found by its flag, never by its name.
+
+    Three iterations of the app auto-named this row differently, and the user
+    can now rename it themselves, so any name-matching would lose track of it.
+    """
+    assert (
+        client.post(
+            f"{settings.API_V1_STR}/me/cinemas",
+            headers=normal_user_token_headers,
+            json=[1, 2],
+        ).status_code
+        == 200
+    )
+
+    favorite = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert favorite.status_code == 200
+    assert favorite.json()["name"] == "My Cinemas"
+    favorite_id = favorite.json()["id"]
+
+    renamed = client.patch(
+        f"{settings.API_V1_STR}/me/cinema-presets/{favorite_id}",
+        headers=normal_user_token_headers,
+        json={"name": "Round the corner"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["is_favorite"] is True
+
+    after = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert after.json()["id"] == favorite_id
+    assert after.json()["name"] == "Round the corner"
+
+    # And it is still the row a plain cinema write lands on.
+    assert (
+        client.post(
+            f"{settings.API_V1_STR}/me/cinemas",
+            headers=normal_user_token_headers,
+            json=[3],
+        ).status_code
+        == 200
+    )
+    final = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert final.json()["id"] == favorite_id
+    assert final.json()["cinema_ids"] == [3]
+
+
+def test_my_cinemas_row_does_not_clobber_a_preset_of_the_same_name(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    mine = client.post(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+        json={"name": "My Cinemas", "cinema_ids": [7, 8]},
+    )
+    assert mine.status_code == 200
+    mine_id = mine.json()["id"]
+
+    assert (
+        client.post(
+            f"{settings.API_V1_STR}/me/cinemas",
+            headers=normal_user_token_headers,
+            json=[1],
+        ).status_code
+        == 200
+    )
+
+    favorite = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert favorite.status_code == 200
+    assert favorite.json()["id"] != mine_id
+    assert favorite.json()["name"] == "My Cinemas 2"
+
+    presets = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+    )
+    by_id = {preset["id"]: preset for preset in presets.json()}
+    assert by_id[mine_id]["cinema_ids"] == [7, 8]
 
 
 def test_legacy_preferred_cinemas_still_work_on_me_cinemas(

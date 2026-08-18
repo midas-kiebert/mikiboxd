@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { DateTime } from 'luxon';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { UsersService, type GoingStatus, type UserWithFriendStatus } from 'shared';
 import { useFetchUserShowtimes } from 'shared/hooks/useFetchUserShowtimes';
 import { usePrefetchShowtimeVisibility } from 'shared/hooks/useShowtimeVisibility';
@@ -26,11 +26,16 @@ import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-util
 import FriendAgendaOptions from '@/components/friends/FriendAgendaOptions';
 import NonFriendProfile from '@/components/friends/NonFriendProfile';
 import AgendaTogglePill from '@/components/showtimes/AgendaTogglePill';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { getAvatarColors, getAvatarInitial } from '@/utils/avatar-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
+
+// One request per pause in typing, not one per keystroke — see
+// useDebouncedValue and (tabs)/index.tsx's identical guard.
+const SEARCH_DEBOUNCE_MS = 280;
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
@@ -204,7 +209,6 @@ function FriendShowtimesContent({
     setHideWatched(false);
   }, [hasLetterboxdUsername, setHideWatched, hideWatched]);
 
-  const queryClient = useQueryClient();
 
   // Same query key/shape `useFriendStatus` polls elsewhere (e.g. a showtime's
   // invite list), so a change made from either place lands here too.
@@ -229,8 +233,13 @@ function FriendShowtimesContent({
   );
   const topBarAvatarInitial = useMemo(() => getAvatarInitial(topBarTitle), [topBarTitle]);
 
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, SEARCH_DEBOUNCE_MS);
+  // Clearing the field drops the results immediately — waiting out the
+  // debounce to remove what the user just deleted would feel broken.
+  const effectiveSearchQuery = searchQuery.trim().length > 0 ? debouncedSearchQuery : '';
+
   const showtimesFilters = useMemo(() => ({
-    query: searchQuery || undefined,
+    query: effectiveSearchQuery || undefined,
     days: resolvedApiDays,
     selectedCinemaIds: effectiveCinemaIds ?? undefined,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
@@ -253,7 +262,7 @@ function FriendShowtimesContent({
     effectiveCinemaIds,
     includeInterested,
     resolvedApiDays,
-    searchQuery,
+    effectiveSearchQuery,
     selectedTimeRanges,
   ]);
 
@@ -281,11 +290,7 @@ function FriendShowtimesContent({
     if (!userId) return;
     setRefreshing(true);
     try {
-      await refreshInfiniteQueryWithFreshSnapshot({
-        queryClient,
-        queryKey: ['showtimes', 'user', userId, showtimesFilters],
-        setSnapshotTime,
-      });
+      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
     } finally {
       setRefreshing(false);
     }

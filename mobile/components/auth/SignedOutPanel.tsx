@@ -96,11 +96,6 @@ export default function SignedOutPanel({
       {/* Says out loud that nothing has been taken away: the rest of the app
           keeps working exactly as it did a second ago. Only on the full-screen
           variant — in Settings the sections below it already say as much. */}
-      {isCard ? null : (
-        <ThemedText style={styles.footnote}>
-          Browsing what&apos;s on doesn&apos;t need an account.
-        </ThemedText>
-      )}
     </View>
   );
 }

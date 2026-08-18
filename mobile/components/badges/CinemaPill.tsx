@@ -20,6 +20,12 @@ type CinemaPillProps = {
   cinema: CinemaPublic;
   variant?: "compact" | "default";
   disabledIfSameId?: number;
+  /**
+   * Run just before navigating away. Callers that render this pill inside an
+   * overlay pass their close handler: leaving the showtime sheet standing over
+   * the cinema page the tap just opened hides the page the user asked for.
+   */
+  onNavigate?: () => void;
 };
 
 type VariantStyles = {
@@ -29,7 +35,12 @@ type VariantStyles = {
 
 const CINEMA_PILL_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
-export default function CinemaPill({ cinema, variant = "default", disabledIfSameId }: CinemaPillProps) {
+export default function CinemaPill({
+  cinema,
+  variant = "default",
+  disabledIfSameId,
+  onNavigate,
+}: CinemaPillProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
   const goToCinemaShowtimes = useSingleFireNavigation((c: CinemaPublic) =>
@@ -67,6 +78,7 @@ export default function CinemaPill({ cinema, variant = "default", disabledIfSame
   const handlePress = (event: GestureResponderEvent) => {
     if (isDisabled) return;
     event.stopPropagation();
+    onNavigate?.();
     goToCinemaShowtimes(cinema);
   };
 

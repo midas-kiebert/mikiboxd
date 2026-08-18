@@ -21,6 +21,22 @@ def load_yaml_data(file_path: Path) -> list[dict]:
         return yaml.safe_load(file)
 
 
+def assert_known_fields(cinemas: list[dict]) -> None:
+    """A misspelled field is silently dropped by model_validate, not rejected.
+
+    That is how `aliaes:` cost a cinema its aliases — and with them the name
+    Cineville knows it by — without anything in the seed output looking wrong.
+    """
+    known = set(CinemaCreate.model_fields) | {"city"}
+    for cinema in cinemas:
+        unknown = sorted(set(cinema) - known)
+        if unknown:
+            raise ValueError(
+                f"Unknown field(s) {unknown} on cinema '{cinema.get('key')}' "
+                "in cinemas.yaml"
+            )
+
+
 def assert_unique_keys(cinemas: list[dict]) -> None:
     """Two cinemas sharing a key would upsert over each other, silently.
 
@@ -46,6 +62,7 @@ def seed_cities_and_cinemas():
 
     city_name_to_id = {city["name"]: city["id"] for city in cities}
     cinemas = load_yaml_data(cinemas_yaml_path)
+    assert_known_fields(cinemas)
     assert_unique_keys(cinemas)
     with get_db_context() as session:
         for cinema in cinemas:

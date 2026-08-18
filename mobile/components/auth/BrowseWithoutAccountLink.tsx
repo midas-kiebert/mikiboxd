@@ -7,9 +7,11 @@
  * competing with Apple/Google: it is the way out of the form for someone who
  * did not want a form, not a fourth way to sign in.
  *
- * Hidden when the user is already browsing as a guest, which is how they got
- * here: they pushed this screen from a feature that needs an account, and
- * "browse without an account" would offer them what they already have.
+ * Shown to a guest too, wording changed. They reached this screen from a
+ * feature that needs an account, so the offer is not "start browsing" — they
+ * already are — but a way back out of a form they have decided not to fill in.
+ * Leaving it out stranded them on a screen whose only exit was the system back
+ * gesture.
  */
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -17,16 +19,13 @@ import { useRouter } from "expo-router";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { enterGuestMode, useIsGuest } from "@/utils/auth-session";
+import { enterGuestMode } from "@/utils/auth-session";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 export default function BrowseWithoutAccountLink({ disabled }: { disabled?: boolean }) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
-  const isGuest = useIsGuest();
-
-  if (isGuest) return null;
 
   const startBrowsing = () => {
     triggerSelectionHaptic();
@@ -44,11 +43,13 @@ export default function BrowseWithoutAccountLink({ disabled }: { disabled?: bool
       disabled={disabled}
       activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel="Browse without an account"
+      accessibilityLabel="Continue without an account"
       hitSlop={6}
     >
       <View style={styles.row}>
-        <ThemedText style={styles.label}>Browse what&apos;s on without an account</ThemedText>
+        <ThemedText style={styles.label}>
+            "Continue without an account"
+        </ThemedText>
         <MaterialIcons name="arrow-forward" size={15} color={colors.tint} />
       </View>
     </TouchableOpacity>

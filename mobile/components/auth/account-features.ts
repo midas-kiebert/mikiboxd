@@ -16,6 +16,7 @@ export type AccountFeature =
   | "friends"
   | "going"
   | "invite"
+  | "letterboxd"
   | "notifications"
   | "presets"
   | "profile"
@@ -40,7 +41,7 @@ export const ACCOUNT_FEATURE_COPY: Record<AccountFeature, AccountFeatureCopy> = 
     icon: "people",
     title: "Friends",
     message:
-      "Follow the people you go to the cinema with, and find out what they're seeing before you miss it.",
+      "Follow the people you go to the cinema with, and find out what they're seeing.",
   },
   going: {
     icon: "check-circle",
@@ -52,6 +53,12 @@ export const ACCOUNT_FEATURE_COPY: Record<AccountFeature, AccountFeatureCopy> = 
     icon: "mail",
     title: "Invite a friend",
     message: "Ask the people you watch films with to come to this screening.",
+  },
+  letterboxd: {
+    icon: "bookmark-added",
+    title: "Connect your Letterboxd",
+    message:
+      "Link your account to show only films on your watchlist, hide what you have already seen, and filter by your own lists.",
   },
   notifications: {
     icon: "notifications",

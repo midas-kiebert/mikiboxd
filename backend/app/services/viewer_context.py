@@ -10,12 +10,25 @@ answer rather than a missing one: no saved cinemas means the whole catalogue,
 not an empty feed.
 """
 
+from uuid import UUID
+
 from sqlmodel import Session
 
 from app.core.viewer import ViewerId
 from app.crud import cinema_preset as cinema_presets_crud
+from app.crud import letterboxd_list as lists_crud
 from app.crud import user as users_crud
 from app.inputs.movie import Filters
+
+
+def _keep_curated(
+    list_ids: list[UUID] | None, curated_ids: set[UUID]
+) -> list[UUID] | None:
+    """Narrow a list-id filter to the shared lists, or None if none survive."""
+    if list_ids is None:
+        return None
+    kept = [list_id for list_id in list_ids if list_id in curated_ids]
+    return kept or None
 
 
 def apply_viewer_defaults(
@@ -32,13 +45,16 @@ def apply_viewer_defaults(
     cinema selection. An anonymous viewer has neither, so the field is left as
     None, which every query reads as "no cinema restriction".
 
-    Letterboxd lists: these name rows that belong to an account, so an anonymous
-    request cannot be filtering by its own — whatever ids it sent are somebody
-    else's, or a guess. They are dropped rather than honoured.
+    Letterboxd lists: the curated ones are shared by everybody, so an anonymous
+    request may filter by them exactly as a signed-in one does. Any other id
+    names a list somebody added to their own account, which an anonymous request
+    cannot be filtering by — whatever it sent is somebody else's, or a guess —
+    so those are dropped.
     """
     if viewer_id is None:
-        filters.list_ids = None
-        filters.exclude_list_ids = None
+        curated_ids = lists_crud.get_curated_list_ids(session=session)
+        filters.list_ids = _keep_curated(filters.list_ids, curated_ids)
+        filters.exclude_list_ids = _keep_curated(filters.exclude_list_ids, curated_ids)
         return
 
     if filters.selected_cinema_ids is None:

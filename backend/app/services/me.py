@@ -22,6 +22,11 @@ from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as users_crud
 from app.exceptions.base import AppError
+from app.exceptions.cinema_preset_exceptions import (
+    CinemaPresetNameRequired,
+    CinemaPresetNameTaken,
+    CinemaPresetNotFound,
+)
 from app.exceptions.user_exceptions import (
     DisplayNameAlreadyExists,
     EmailAlreadyExists,
@@ -35,6 +40,7 @@ from app.exceptions.user_exceptions import (
 from app.models.cinema_preset import (
     DEFAULT_CINEMA_PRESET_ID,
     DEFAULT_CINEMA_PRESET_NAME,
+    FAVORITE_CINEMA_PRESET_NAME,
     CinemaPreset,
 )
 from app.models.push_token import PushToken
@@ -478,6 +484,33 @@ def _get_all_cinema_ids(*, session: Session) -> list[int]:
     return sorted(cinema.id for cinema in cinemas_crud.get_cinemas(session=session))
 
 
+def _free_cinema_preset_name(
+    *,
+    session: Session,
+    user_id: UUID,
+    base_name: str,
+) -> str:
+    """`base_name`, or the first numbered variant the user does not already use.
+
+    Names are unique per user, so a user who happens to have a preset called
+    "My Cinemas" would otherwise either hit the constraint or have that preset
+    overwritten when their favorite row is first created for them.
+    """
+    candidate = base_name
+    suffix = 1
+    while (
+        cinema_presets_crud.get_user_preset_by_name(
+            session=session,
+            user_id=user_id,
+            name=candidate,
+        )
+        is not None
+    ):
+        suffix += 1
+        candidate = f"{base_name} {suffix}"
+    return candidate
+
+
 def _build_default_cinema_preset(*, session: Session) -> CinemaPresetPublic:
     now = now_amsterdam_naive()
     return CinemaPresetPublic.model_validate(
@@ -517,6 +550,14 @@ def save_cinema_preset(
     user_id: UUID,
     payload: CinemaPresetCreate,
 ) -> CinemaPresetPublic:
+    """Create a named preset, or replace an existing one the caller named.
+
+    Names used to upsert silently, which was survivable while a name was the
+    only way to address a preset. Now that presets can be renamed, reusing a
+    name is far more likely to be an accident than an intention, so a clash is
+    a 409 unless the caller says `overwrite` — the client asks first and sends
+    it on the second tap.
+    """
     now = now_amsterdam_naive()
     preset_name = payload.name.strip()
     cinema_ids = _normalize_cinema_ids(payload.cinema_ids)
@@ -526,6 +567,8 @@ def save_cinema_preset(
         user_id=user_id,
         name=preset_name,
     )
+    if existing is not None and not payload.overwrite:
+        raise CinemaPresetNameTaken()
 
     if should_set_favorite:
         cinema_presets_crud.clear_user_favorite_preset(
@@ -553,6 +596,50 @@ def save_cinema_preset(
 
     session.commit()
     return _to_cinema_preset_public(preset)
+
+
+def rename_cinema_preset(
+    *,
+    session: Session,
+    user_id: UUID,
+    preset_id: UUID,
+    name: str,
+) -> CinemaPresetPublic:
+    """Rename a saved preset, including the favorite one.
+
+    The favorite is identified by its flag, never by its name, so the user is
+    free to call their cinemas whatever they like without any of the code that
+    reads the favorite losing track of it.
+    """
+    now = now_amsterdam_naive()
+    preset_name = name.strip()
+    if not preset_name:
+        raise CinemaPresetNameRequired()
+
+    preset = cinema_presets_crud.get_user_preset_by_id(
+        session=session,
+        user_id=user_id,
+        preset_id=preset_id,
+    )
+    if preset is None:
+        raise CinemaPresetNotFound()
+
+    clashing = cinema_presets_crud.get_user_preset_by_name(
+        session=session,
+        user_id=user_id,
+        name=preset_name,
+    )
+    if clashing is not None and clashing.id != preset.id:
+        raise CinemaPresetNameTaken()
+
+    renamed = cinema_presets_crud.rename_preset(
+        session=session,
+        preset=preset,
+        name=preset_name,
+        now=now,
+    )
+    session.commit()
+    return _to_cinema_preset_public(renamed)
 
 
 def delete_cinema_preset(
@@ -588,13 +675,20 @@ def get_favorite_cinema_preset(
     return _to_cinema_preset_public(favorite)
 
 
-def set_favorite_cinema_preset(
+def apply_cinema_preset_as_favorite(
     *,
     session: Session,
     user_id: UUID,
     preset_id: UUID,
 ) -> CinemaPresetPublic | None:
-    now = now_amsterdam_naive()
+    """Point "my cinemas" at what a saved preset covers.
+
+    Copies the cinemas across rather than moving the favorite flag onto the
+    preset. Moving it would leave the row the user thinks of as "my cinemas"
+    sitting in the list as an ordinary preset under that same name, and would
+    quietly turn a preset they saved for one purpose into the thing applied on
+    every startup. One row is the favorite, always, and it keeps its identity.
+    """
     preset = cinema_presets_crud.get_user_preset_by_id(
         session=session,
         user_id=user_id,
@@ -603,18 +697,12 @@ def set_favorite_cinema_preset(
     if preset is None:
         return None
 
-    cinema_presets_crud.clear_user_favorite_preset(
+    set_favorite_cinema_ids(
         session=session,
         user_id=user_id,
+        cinema_ids=list(preset.cinema_ids),
     )
-    favorite = cinema_presets_crud.set_preset_favorite(
-        session=session,
-        preset=preset,
-        is_favorite=True,
-        now=now,
-    )
-    session.commit()
-    return _to_cinema_preset_public(favorite)
+    return get_favorite_cinema_preset(session=session, user_id=user_id)
 
 
 def clear_favorite_cinema_preset(
@@ -662,33 +750,18 @@ def set_favorite_cinema_ids(
         user_id=user_id,
     )
     if favorite is None:
-        fallback_name = "Preferred"
-        existing_named = cinema_presets_crud.get_user_preset_by_name(
+        cinema_presets_crud.create_preset(
             session=session,
             user_id=user_id,
-            name=fallback_name,
+            name=_free_cinema_preset_name(
+                session=session,
+                user_id=user_id,
+                base_name=FAVORITE_CINEMA_PRESET_NAME,
+            ),
+            cinema_ids=normalized_ids,
+            is_favorite=True,
+            now=now,
         )
-        if existing_named is None:
-            cinema_presets_crud.create_preset(
-                session=session,
-                user_id=user_id,
-                name=fallback_name,
-                cinema_ids=normalized_ids,
-                is_favorite=True,
-                now=now,
-            )
-        else:
-            cinema_presets_crud.clear_user_favorite_preset(
-                session=session,
-                user_id=user_id,
-            )
-            cinema_presets_crud.update_preset(
-                session=session,
-                preset=existing_named,
-                cinema_ids=normalized_ids,
-                is_favorite=True,
-                now=now,
-            )
     else:
         cinema_presets_crud.update_preset(
             session=session,

@@ -22,7 +22,11 @@ from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
 from app.schemas.analytics_event import AnalyticsEventCreate
-from app.schemas.cinema_preset import CinemaPresetCreate, CinemaPresetPublic
+from app.schemas.cinema_preset import (
+    CinemaPresetCreate,
+    CinemaPresetPublic,
+    CinemaPresetRename,
+)
 from app.schemas.letterboxd_list import (
     LetterboxdListCreate,
     LetterboxdListPublic,
@@ -178,13 +182,29 @@ def create_cinema_preset(
     )
 
 
+@router.patch("/cinema-presets/{preset_id}", response_model=CinemaPresetPublic)
+def rename_cinema_preset(
+    session: SessionDep,
+    current_user: CurrentUser,
+    preset_id: UUID,
+    payload: CinemaPresetRename,
+) -> CinemaPresetPublic:
+    return me_service.rename_cinema_preset(
+        session=session,
+        user_id=current_user.id,
+        preset_id=preset_id,
+        name=payload.name,
+    )
+
+
 @router.put("/cinema-presets/{preset_id}/favorite", response_model=CinemaPresetPublic)
 def set_favorite_cinema_preset(
     session: SessionDep,
     current_user: CurrentUser,
     preset_id: UUID,
 ) -> CinemaPresetPublic:
-    favorite = me_service.set_favorite_cinema_preset(
+    """Point "my cinemas" at this preset's cinemas — a copy, not a handover."""
+    favorite = me_service.apply_cinema_preset_as_favorite(
         session=session,
         user_id=current_user.id,
         preset_id=preset_id,

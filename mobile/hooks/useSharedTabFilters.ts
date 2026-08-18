@@ -19,6 +19,7 @@ import { useSessionWatchedOnly } from "shared/hooks/useSessionWatchedOnly";
 import { useCinemaSelection } from "@/hooks/useCinemaSelection";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { useGuestCinemaSelection } from "@/utils/guest-cinema-selection";
+import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import type { PageFilterPresetState } from "@/components/filters/filter-preset-utils";
 import {
   normalizeSingleRuntimeRangeSelection,
@@ -91,6 +92,8 @@ export function useSharedTabFilters() {
   const favoriteSavedPresetQuery = useFetchFavoriteSavedPreset({ enabled: isSignedIn });
   const favoriteCinemasQuery = useFetchSelectedCinemas({ enabled: isSignedIn });
   const guestCinemaIds = useGuestCinemaSelection();
+  const { data: allCinemas } = useFetchCinemas();
+  const hasCinemaList = (allCinemas?.length ?? 0) > 0;
 
   const initialShowtimeFilter = toSharedTabShowtimeFilter(sessionShowtimeFilter);
   const initialWatchlistOnly = Boolean(sessionWatchlistOnly);
@@ -215,6 +218,13 @@ export function useSharedTabFilters() {
     // account-only thing to have, so there is nothing else here for them.
     if (!isSignedIn) {
       if (guestCinemaIds === undefined) return;
+      // A guest who has picked nothing yet gets every cinema, and that is the
+      // full list resolved into a real selection rather than an empty one —
+      // which is what useCinemaSelection does with an empty list, but only once
+      // it has the cinemas to resolve against. Seeding before then would write
+      // the empty selection this is meant to avoid, and the ref below would
+      // stop us ever coming back to fix it.
+      if (guestCinemaIds.length === 0 && !hasCinemaList) return;
       const rawSessionCinemaIds = queryClient.getQueryData<number[]>(
         SESSION_CINEMA_SELECTIONS_KEY
       );
@@ -338,6 +348,7 @@ export function useSharedTabFilters() {
     favoriteSavedPresetQuery.data,
     favoriteSavedPresetQuery.isFetched,
     guestCinemaIds,
+    hasCinemaList,
     isSignedIn,
     queryClient,
     setSessionCinemaIds,

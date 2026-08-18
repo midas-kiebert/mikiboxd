@@ -88,6 +88,11 @@ export type CinemaPresetCreate = {
   name: string
   cinema_ids?: Array<number>
   is_favorite?: boolean | null
+  overwrite?: boolean
+}
+
+export type CinemaPresetRename = {
+  name: string
 }
 
 export type CinemaPresetPublic = {
@@ -1089,6 +1094,9 @@ export type FriendsRemoveFriendData = {
 
 export type FriendsRemoveFriendResponse = Message
 
+export type LetterboxdListsGetCuratedLetterboxdListsResponse =
+  Array<LetterboxdListPublic>
+
 export type LoginLoginAccessTokenData = {
   formData: Body_login_login_access_token
 }
@@ -1164,6 +1172,13 @@ export type MeCreateCinemaPresetResponse = CinemaPresetPublic
 export type MeGetFavoriteCinemaPresetResponse = CinemaPresetPublic | null
 
 export type MeClearFavoriteCinemaPresetResponse = Message
+
+export type MeRenameCinemaPresetData = {
+  presetId: string
+  requestBody: CinemaPresetRename
+}
+
+export type MeRenameCinemaPresetResponse = CinemaPresetPublic
 
 export type MeSetFavoriteCinemaPresetData = {
   presetId: string

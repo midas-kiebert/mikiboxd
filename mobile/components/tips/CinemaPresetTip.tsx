@@ -1,13 +1,16 @@
 /**
- * Feature tip: the user browses every cinema at once and has never saved a
- * preset, so every trip to the cinema filter means picking the same places
- * again. Builds the preset inline, since the point of the tip is that the user
- * has not found the preset UI on their own.
+ * Feature tip: the user browses every cinema at once and has never set their
+ * cinemas, so every trip to the cinema filter means picking the same places
+ * again. Sets them inline, since the point of the tip is that the user has not
+ * found the cinema filter on their own.
+ *
+ * There is no naming step. This writes the selection every screen falls back
+ * to, not a named preset — a user who has not yet found the feature is the last
+ * person who should be asked to name anything, and a name prompt reads as an
+ * error to recover from rather than a choice worth making.
  *
  * The cinemas get their own scroll box so the count, the save button and the
- * dismissal controls stay on screen however long the list is. Naming happens
- * after the selection, in a second dialog, so the tip opens straight onto the
- * only decision that matters.
+ * dismissal controls stay on screen however long the list is.
  *
  * Eligibility lives in `FeatureTipsHost`; this component renders and saves.
  */
@@ -21,7 +24,7 @@ import {
   View,
 } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MeService, type CinemaPresetCreate } from "shared";
+import { MeService } from "shared";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
@@ -30,7 +33,6 @@ import { sortCinemaIds } from "@/components/filters/cinema-grouping";
 import { invalidateCinemaPresets } from "@/components/filters/cinema-presets";
 import FeatureTipModal, { FEATURE_TIP_COMPACT_PADDING } from "@/components/tips/FeatureTipModal";
 import { ThemedText } from "@/components/themed-text";
-import NamePromptDialog from "@/components/ui/NamePromptDialog";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { retireCinemaPresetTip, useDismissTip } from "@/utils/feature-tips";
 import { triggerSelectionHaptic } from "@/utils/long-press";
@@ -44,8 +46,6 @@ import { triggerSelectionHaptic } from "@/utils/long-press";
 const TIP_MAX_SCREEN_SHARE = 0.88;
 const TIP_CHROME_HEIGHT = 250;
 const PICKER_MIN_HEIGHT = 200;
-
-type SavedPreset = { name: string; cinemaCount: number };
 
 export default function CinemaPresetTip() {
   // Read flow: local state and data hooks first, then handlers, then the JSX.
@@ -61,30 +61,28 @@ export default function CinemaPresetTip() {
   const cinemaList = useMemo(() => cinemas ?? [], [cinemas]);
 
   // Deliberately starts empty rather than from what the user is currently
-  // browsing: the tip asks them to pick the cinemas worth saving as a preset,
-  // and anything pre-ticked reads as a choice already made — which they then
-  // have to undo.
+  // browsing: the tip asks them to pick the cinemas they actually go to, and
+  // anything pre-ticked reads as a choice already made — which they then have
+  // to undo.
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
-  const [isNamingPreset, setIsNamingPreset] = useState(false);
   // Saving normally makes the tip ineligible, but the confirmation is shown
   // anyway so the dialog never disappears the moment the user presses save.
-  const [savedPreset, setSavedPreset] = useState<SavedPreset | null>(null);
+  const [savedCinemaCount, setSavedCinemaCount] = useState<number | null>(null);
 
   const saveMutation = useMutation({
-    mutationFn: (requestBody: CinemaPresetCreate) =>
-      MeService.createCinemaPreset({ requestBody }),
-    onSuccess: (_data, requestBody) => {
-      setIsNamingPreset(false);
-      setSavedPreset({ name: requestBody.name, cinemaCount: requestBody.cinema_ids.length });
+    mutationFn: (cinemaIds: number[]) =>
+      MeService.setCinemaSelections({ requestBody: cinemaIds }),
+    onSuccess: (_data, cinemaIds) => {
+      setSavedCinemaCount(cinemaIds.length);
       // The user just declared these their cinemas, so apply them straight away
-      // rather than making them open the filter and pick the preset again.
-      setSessionCinemaIds(sortCinemaIds(requestBody.cinema_ids));
+      // rather than making them open the filter and pick them again.
+      setSessionCinemaIds(cinemaIds);
       invalidateCinemaPresets(queryClient);
       retireCinemaPresetTip();
     },
     onError: (error) => {
-      console.error("Error saving cinema preset from tip:", error);
-      Alert.alert("Could not save", "Your cinema preset was not saved. Please try again.");
+      console.error("Error saving cinemas from tip:", error);
+      Alert.alert("Could not save", "Your cinemas were not saved. Please try again.");
     },
   });
 
@@ -119,41 +117,23 @@ export default function CinemaPresetTip() {
     setSelectedIds(new Set());
   }, []);
 
-  // A preset covering nothing would filter every showtime away, so the name
-  // step is never reached without a cinema.
-  const handleStartSaving = useCallback(() => {
+  // A selection covering nothing would filter every showtime away, so the save
+  // is never reached without a cinema.
+  const handleSave = useCallback(() => {
     if (selectedCount === 0) return;
-    setIsNamingPreset(true);
-  }, [selectedCount]);
-
-  const handleConfirmName = useCallback(
-    (name: string) => {
-      if (selectedCount === 0) return;
-      saveMutation.mutate({
-        name,
-        cinema_ids: sortCinemaIds(selectedIds),
-        // The first preset is the one the user wants on startup; the cinema
-        // filter's Manage presets page is where that gets changed later.
-        is_favorite: true,
-      });
-    },
-    [saveMutation, selectedCount, selectedIds]
-  );
-
-  const handleCancelName = useCallback(() => {
-    setIsNamingPreset(false);
-  }, []);
+    saveMutation.mutate(sortCinemaIds(selectedIds));
+  }, [saveMutation, selectedCount, selectedIds]);
 
   // Render/output using the state and handlers prepared above.
-  if (savedPreset) {
+  if (savedCinemaCount !== null) {
     return (
       <FeatureTipModal
         tipId="cinema-presets"
         icon="check-circle"
-        title="Preset saved"
-        message={`"${savedPreset.name}" now covers ${savedPreset.cinemaCount} cinema${
-          savedPreset.cinemaCount === 1 ? "" : "s"
-        } and is applied to your showtimes. Open the cinema filter any time to switch presets or add another.`}
+        title="Cinemas saved"
+        message={`Your showtimes now come from ${savedCinemaCount} cinema${
+          savedCinemaCount === 1 ? "" : "s"
+        }. Open the cinema filter any time to change them.`}
         actionLabel="Done"
         closeOnAction
         onDismiss={dismissTip}
@@ -167,8 +147,8 @@ export default function CinemaPresetTip() {
       icon="theaters"
       title="Select your favorite cinemas"
       density="compact"
-      actionLabel="Save this preset"
-      onAction={handleStartSaving}
+      actionLabel="Set as preferred cinemas"
+      onAction={handleSave}
       isActionDisabled={selectedCount === 0}
       onDismiss={dismissTip}
     >
@@ -202,18 +182,6 @@ export default function CinemaPresetTip() {
           onSelectCinemas={handleSelectCinemas}
         />
       </ScrollView>
-
-      {/* Nested rather than a sibling: iOS is unreliable about presenting two
-          modals from the same level, and this one has to sit over the tip. */}
-      <NamePromptDialog
-        visible={isNamingPreset}
-        title="Give this preset a name:"
-        placeholder="My cinemas"
-        confirmLabel="Save"
-        isBusy={saveMutation.isPending}
-        onConfirm={handleConfirmName}
-        onCancel={handleCancelName}
-      />
     </FeatureTipModal>
   );
 }

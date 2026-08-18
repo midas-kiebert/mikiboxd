@@ -10,6 +10,7 @@ from app.api.routes import (
     admin,
     cinemas,
     friends,
+    letterboxd_lists,
     login,
     me,
     movies,
@@ -28,5 +29,6 @@ api_router.include_router(showtimes.router)
 api_router.include_router(friends.router)
 api_router.include_router(me.router)
 api_router.include_router(cinemas.router)
+api_router.include_router(letterboxd_lists.router)
 api_router.include_router(admin.router)
 api_router.include_router(scrape_monitor_api.router)

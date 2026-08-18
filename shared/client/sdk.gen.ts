@@ -45,6 +45,7 @@ import type {
   FriendsSetFriendStatusSharingResponse,
   FriendsRemoveFriendData,
   FriendsRemoveFriendResponse,
+  LetterboxdListsGetCuratedLetterboxdListsResponse,
   LoginLoginAccessTokenData,
   LoginLoginAccessTokenResponse,
   LoginLoginSocialTokenData,
@@ -73,6 +74,8 @@ import type {
   MeCreateCinemaPresetResponse,
   MeGetFavoriteCinemaPresetResponse,
   MeClearFavoriteCinemaPresetResponse,
+  MeRenameCinemaPresetData,
+  MeRenameCinemaPresetResponse,
   MeSetFavoriteCinemaPresetData,
   MeSetFavoriteCinemaPresetResponse,
   MeDeleteCinemaPresetData,
@@ -675,6 +678,20 @@ export class FriendsService {
   }
 }
 
+export class LetterboxdListsService {
+  /**
+   * Get Curated Letterboxd Lists
+   * @returns LetterboxdListPublic Successful Response
+   * @throws ApiError
+   */
+  public static getCuratedLetterboxdLists(): CancelablePromise<LetterboxdListsGetCuratedLetterboxdListsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/letterboxd-lists/curated",
+    })
+  }
+}
+
 export class LoginService {
   /**
    * Login Access Token
@@ -1009,6 +1026,31 @@ export class MeService {
     return __request(OpenAPI, {
       method: "DELETE",
       url: "/api/v1/me/cinema-presets/favorite",
+    })
+  }
+
+  /**
+   * Rename Cinema Preset
+   * @param data The data for the request.
+   * @param data.presetId
+   * @param data.requestBody
+   * @returns CinemaPresetPublic Successful Response
+   * @throws ApiError
+   */
+  public static renameCinemaPreset(
+    data: MeRenameCinemaPresetData,
+  ): CancelablePromise<MeRenameCinemaPresetResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/me/cinema-presets/{preset_id}",
+      path: {
+        preset_id: data.presetId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
     })
   }
 

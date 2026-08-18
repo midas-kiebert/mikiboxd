@@ -985,6 +985,48 @@ def test_get_movies_search_field_cinema_matches_alias(
     assert {m.id for m in movies} == {movie_match.id}
 
 
+def test_get_movies_search_field_cinema_ignores_slash_and_dot(
+    *,
+    db_transaction: Session,
+    movie_factory: Callable[..., Movie],
+    cinema_factory: Callable[..., Cinema],
+    showtime_factory: Callable[..., Showtime],
+    user_factory: Callable[..., User],
+):
+    """A cinema whose name carries "/" or "." is found by typing a space instead.
+
+    Nobody types "Studio/K" — they type "Studio K" — and before these characters
+    joined the separator set that search came back empty.
+    """
+    user = user_factory()
+    cinema_slash = cinema_factory(name="Studio/K", aliases=[])
+    cinema_dot = cinema_factory(name="Th. Dakota", aliases=[])
+    movie_slash = movie_factory(title="A Film", directors=[])
+    movie_dot = movie_factory(title="B Film", directors=[])
+    showtime_factory(movie=movie_slash, cinema=cinema_slash)
+    showtime_factory(movie=movie_dot, cinema=cinema_dot)
+
+    def search(query: str) -> set[int]:
+        movies = movie_crud.get_movies(
+            session=db_transaction,
+            current_user_id=user.id,
+            letterboxd_username=user.letterboxd_username,
+            limit=20,
+            offset=0,
+            filters=Filters(
+                snapshot_time=now_amsterdam_naive() - timedelta(minutes=1),
+                query=query,
+                search_field=SearchField.CINEMA,
+            ),
+        )
+        return {m.id for m in movies}
+
+    assert search("Studio K") == {movie_slash.id}
+    assert search("Studio/K") == {movie_slash.id}
+    assert search("Th Dakota") == {movie_dot.id}
+    assert search("Th. Dakota") == {movie_dot.id}
+
+
 def test_get_movies_search_field_friend(
     *,
     db_transaction: Session,

@@ -22,9 +22,9 @@ import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/util
 
 /** What signing in would put on this tab, in the order it would appear. */
 const AGENDA_HIGHLIGHTS = [
-  "The screenings you said you're going to",
-  "Invites your friends send you",
-  "Your seat, so you can find it later",
+  "The screenings you said you're interested in",
+  "The screenings you are going to",
+  "Invites your friends send you"
 ] as const;
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
@@ -92,11 +92,7 @@ export default function AgendaScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await refreshInfiniteQueryWithFreshSnapshot({
-        queryClient,
-        queryKey: ["showtimes", "agenda", { includeInterested, includeInvited }],
-        setSnapshotTime,
-      });
+      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
     } finally {
       setRefreshing(false);
     }

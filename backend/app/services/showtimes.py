@@ -1,3 +1,4 @@
+import secrets
 from datetime import timedelta
 from uuid import UUID
 
@@ -8,12 +9,12 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
 from app.core.enums import GoingStatus, VisibilityMode
-from app.core.security import generate_showtime_ping_token, verify_showtime_ping_token
 from app.core.viewer import ViewerId
 from app.crud import friendship as friendship_crud
 from app.crud import movie as movies_crud
 from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
+from app.crud import showtime_ping_link as showtime_ping_link_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.exceptions.base import AppError
@@ -25,7 +26,6 @@ from app.exceptions.showtime_exceptions import (
     ShowtimePingNonFriendError,
     ShowtimePingPastShowtimeError,
     ShowtimePingSelfError,
-    ShowtimePingSenderNotFoundError,
     ShowtimeSeatValidationError,
 )
 from app.inputs.movie import Filters
@@ -298,25 +298,47 @@ def ping_friend_for_showtime(
     return Message(message="Friend invited successfully"), ping.id, should_notify
 
 
+_PING_LINK_TOKEN_BYTES = 12  # ~16 url-safe chars, 96 bits — short but unguessable
+_PING_LINK_TOKEN_CREATE_ATTEMPTS = 5
+
+
 def create_showtime_ping_link_token(
     *,
     session: Session,
     showtime_id: int,
     sender_id: UUID,
 ) -> ShowtimePingLinkToken:
-    """Mint the signed token embedded in a shared `/ping/{showtime_id}/{token}` link.
+    """Mint the short code embedded in a shared `/ping/{showtime_id}/{token}` link.
 
-    Binds the link to the user actually sharing it, so `receive_ping_from_link`
-    can trust the sender it names instead of taking an unverified ID or display
-    name from the URL — see that function's docstring for why that mattered.
+    A random code looked up server-side, rather than a self-contained signed
+    token: it keeps the shared URL short (long URLs lose their WhatsApp/
+    iMessage rich preview and print as raw text instead) while still binding
+    the link to the user actually sharing it, so `receive_ping_from_link` can
+    trust the sender it names — see that function's docstring for why that
+    matters.
     """
     showtime = showtimes_crud.get_showtime_by_id(
         session=session, showtime_id=showtime_id
     )
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
-    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=sender_id)
-    return ShowtimePingLinkToken(token=token)
+
+    for _ in range(_PING_LINK_TOKEN_CREATE_ATTEMPTS):
+        token = secrets.token_urlsafe(_PING_LINK_TOKEN_BYTES)
+        try:
+            showtime_ping_link_crud.create_showtime_ping_link(
+                session=session,
+                token=token,
+                showtime_id=showtime_id,
+                sender_id=sender_id,
+            )
+            session.commit()
+            return ShowtimePingLinkToken(token=token)
+        except IntegrityError as e:
+            session.rollback()
+            if not isinstance(e.orig, UniqueViolation):
+                raise AppError from e
+    raise AppError("Could not generate a unique invite link token.")
 
 
 def receive_ping_from_link(
@@ -328,21 +350,19 @@ def receive_ping_from_link(
 ) -> Message:
     """Record the invite carried by a shared link, once its token checks out.
 
-    The token is signed by `create_showtime_ping_link_token` at share time, so
-    the sender it names is provably the person who generated the link — unlike
-    a raw user ID or display name in the URL, which anyone could substitute to
-    fabricate an invite from someone who never sent one.
+    The token is minted by `create_showtime_ping_link_token` at share time and
+    looked up here, so the sender it names is provably the person who
+    generated the link — unlike a raw user ID or display name in the URL,
+    which anyone could substitute to fabricate an invite from someone who
+    never sent one.
     """
-    decoded = verify_showtime_ping_token(token)
-    if decoded is None:
+    link = showtime_ping_link_crud.get_showtime_ping_link(session=session, token=token)
+    if link is None or link.showtime_id != showtime_id:
         raise ShowtimePingInvalidLinkError()
-    sender_id, token_showtime_id = decoded
-    if token_showtime_id != showtime_id:
-        raise ShowtimePingInvalidLinkError()
-
-    sender = user_crud.get_user_by_id(session=session, user_id=sender_id)
-    if sender is None:
-        raise ShowtimePingSenderNotFoundError()
+    # No separate "sender not found" check: the row's FK (ON DELETE CASCADE)
+    # guarantees that as long as the link exists, its sender still does too —
+    # deleting the sender's account deletes their minted links with it.
+    sender_id = link.sender_id
 
     try:
         _create_showtime_ping(

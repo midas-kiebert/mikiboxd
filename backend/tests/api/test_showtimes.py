@@ -1,21 +1,30 @@
+import secrets
 from datetime import timedelta
-from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.enums import GoingStatus, VisibilityMode
-from app.core.security import generate_showtime_ping_token
 from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_ping as showtime_ping_crud
+from app.crud import showtime_ping_link as showtime_ping_link_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.models.showtime_ping import ShowtimePing
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
 from app.utils import now_amsterdam_naive
+
+
+def _mint_ping_link_token(session: Session, *, showtime_id: int, sender_id) -> str:
+    token = secrets.token_urlsafe(12)
+    showtime_ping_link_crud.create_showtime_ping_link(
+        session=session, token=token, showtime_id=showtime_id, sender_id=sender_id
+    )
+    session.commit()
+    return token
 
 
 def _effective_viewer_ids(session: Session, owner_id, showtime_id) -> set:
@@ -459,6 +468,7 @@ def test_receive_ping_from_link_rejects_forged_sender(
 def test_receive_ping_from_link_rejects_token_for_different_showtime(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
     user_factory,
     showtime_factory,
 ) -> None:
@@ -468,7 +478,9 @@ def test_receive_ping_from_link_rejects_token_for_different_showtime(
     sender = user_factory(display_name="Cross Showtime Sender")
     minted_for = showtime_factory()
     other_showtime = showtime_factory()
-    token = generate_showtime_ping_token(showtime_id=minted_for.id, sender_id=sender.id)
+    token = _mint_ping_link_token(
+        db_transaction, showtime_id=minted_for.id, sender_id=sender.id
+    )
 
     response = client.post(
         f"{settings.API_V1_STR}/showtimes/{other_showtime.id}/ping-link/{token}",
@@ -491,7 +503,7 @@ def test_receive_ping_from_link_marks_sender_interested(
     showtime = showtime_factory()
     sender_id = sender.id
     showtime_id = showtime.id
-    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=sender_id)
+    token = _mint_ping_link_token(db_transaction, showtime_id=showtime_id, sender_id=sender_id)
 
     response = client.post(
         f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{token}",
@@ -520,7 +532,7 @@ def test_receive_ping_from_link_does_not_downgrade_going_sender(
     showtime = showtime_factory()
     sender_id = sender.id
     showtime_id = showtime.id
-    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=sender_id)
+    token = _mint_ping_link_token(db_transaction, showtime_id=showtime_id, sender_id=sender_id)
 
     showtime_crud.add_showtime_selection(
         session=db_transaction,
@@ -557,7 +569,7 @@ def test_receive_ping_from_link_is_idempotent(
     sender_id = sender.id
     showtime_id = showtime.id
     current_user_id = _normal_user_id(db_transaction)
-    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=sender_id)
+    token = _mint_ping_link_token(db_transaction, showtime_id=showtime_id, sender_id=sender_id)
 
     first_response = client.post(
         f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{token}",
@@ -595,7 +607,7 @@ def test_receive_ping_from_link_rejects_past_showtime(
     sender_id = sender.id
     showtime_id = showtime.id
     current_user_id = _normal_user_id(db_transaction)
-    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=sender_id)
+    token = _mint_ping_link_token(db_transaction, showtime_id=showtime_id, sender_id=sender_id)
 
     response = client.post(
         f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{token}",
@@ -660,25 +672,28 @@ def test_receive_ping_from_link_rejects_garbage_token(
     assert response.json()["detail"] == "This invite link is invalid."
 
 
-def test_receive_ping_from_link_rejects_deleted_sender(
-    client: TestClient,
-    normal_user_token_headers: dict[str, str],
+def test_showtime_ping_link_cascades_when_sender_deleted(
+    db_transaction: Session,
+    user_factory,
     showtime_factory,
 ) -> None:
-    """A structurally-valid token whose sender no longer exists (account
-    deleted after the link was shared) must not silently attribute the ping
-    to nobody."""
+    """A minted link must not outlive the account that minted it — otherwise a
+    link could redeem to a sender who no longer exists. The FK's ON DELETE
+    CASCADE is what `receive_ping_from_link` relies on to skip a separate
+    "sender not found" check."""
+    sender = user_factory(display_name="Deleted Sender")
     showtime = showtime_factory()
-    showtime_id = showtime.id
-    token = generate_showtime_ping_token(showtime_id=showtime_id, sender_id=uuid4())
-
-    response = client.post(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/ping-link/{token}",
-        headers=normal_user_token_headers,
+    token = _mint_ping_link_token(
+        db_transaction, showtime_id=showtime.id, sender_id=sender.id
     )
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Sender for this invite link was not found."
+    db_transaction.delete(db_transaction.get(User, sender.id))
+    db_transaction.commit()
+
+    link = showtime_ping_link_crud.get_showtime_ping_link(
+        session=db_transaction, token=token
+    )
+    assert link is None
 
 
 def test_showtime_visibility_get_and_update(

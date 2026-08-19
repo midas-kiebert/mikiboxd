@@ -94,23 +94,11 @@ class ShowtimePingSelfError(AppError):
         super().__init__("You cannot invite yourself.")
 
 
-class ShowtimePingSenderNotFoundError(AppError):
-    status_code = status.HTTP_404_NOT_FOUND
-    openapi_description = (
-        "Returned when an invite link's token is valid but the user it names "
-        "no longer exists."
-    )
-    openapi_example = {"detail": "Sender for this invite link was not found."}
-
-    def __init__(self):
-        super().__init__("Sender for this invite link was not found.")
-
-
 class ShowtimePingInvalidLinkError(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
     openapi_description = (
-        "Returned when an invite link's token is missing, tampered with, or "
-        "was minted for a different showtime."
+        "Returned when an invite link's token doesn't match any minted link, "
+        "or was minted for a different showtime."
     )
     openapi_example = {"detail": "This invite link is invalid."}
 

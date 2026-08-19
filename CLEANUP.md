@@ -74,6 +74,7 @@ Legend:
 - [x] `showtime.py` — Individual screening (datetime, cinema, movie, ticket link)
 - [x] `showtime_selection.py` — User's going/interested status on a showtime
 - [x] `showtime_ping.py` — Notification sent to a friend about a showtime
+- [ ] `showtime_ping_link.py` — Short opaque code (not a self-contained token) mapping a shared `/ping/{showtime_id}/{token}` invite link back to who minted it and for which showtime
 - [x] `notification.py` — Notification-centre entry (match / invite-response / request-accepted)
 - [x] `showtime_visibility.py` — Per-showtime visibility mode + effective-visibility cache
 - [x] `showtime_source_presence.py` — Tracks which scraper provided a showtime
@@ -136,6 +137,7 @@ Legend:
 - [ ] `showtime.py` — Showtime queries, upserts, reconciliation ⚠️ Large (518 LOC)
 - [x] `showtime_visibility.py` — Effective-visibility cache from mode + status-sharing + pings (incl. co-invitees)
 - [ ] `showtime_ping.py` — Ping queries and creation
+- [ ] `showtime_ping_link.py` — Create/look-up for a shared invite link's short code
 - [x] `notification.py` — Notification-centre row queries (upsert, feed, decay)
 - [ ] `friendship.py` — Friend request and friendship queries (+ status-sharing)
 - ~~`friend_group.py`~~ — deleted (friend groups retired)

@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Any
-from uuid import UUID
 
 import jwt
 from passlib.context import CryptContext
@@ -211,49 +210,6 @@ def verify_watchlist_digest_unsubscribe_token(token: str) -> str | None:
         return None
     sub = decoded.get("sub")
     return str(sub) if sub is not None else None
-
-
-_SHOWTIME_PING_TOKEN_TYPE = "showtime_ping"
-
-
-def generate_showtime_ping_token(*, showtime_id: int, sender_id: UUID) -> str:
-    """Sign the (showtime_id, sender_id) pair behind a shared invite link.
-
-    Binds a `/ping/{showtime_id}/{token}` link to the user who actually shared
-    it, so a receiver opening the link can't claim that some other user
-    invited them by guessing that user's ID — see
-    `verify_showtime_ping_token` and `receive_ping_from_link`. No expiry:
-    invite links are meant to stay valid forever once shared.
-    """
-    return jwt.encode(
-        {
-            "sub": str(sender_id),
-            "showtime_id": showtime_id,
-            "type": _SHOWTIME_PING_TOKEN_TYPE,
-        },
-        settings.SECRET_KEY,
-        algorithm=ALGORITHM,
-    )
-
-
-def verify_showtime_ping_token(token: str) -> tuple[UUID, int] | None:
-    """Decode and validate a showtime invite-link token.
-
-    Returns (sender_id, showtime_id), or None if the token is missing,
-    tampered with, or was minted for a different purpose.
-    """
-    try:
-        decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
-    except jwt.exceptions.InvalidTokenError:
-        return None
-    if decoded.get("type") != _SHOWTIME_PING_TOKEN_TYPE:
-        return None
-    try:
-        sender_id = UUID(str(decoded["sub"]))
-        showtime_id = int(decoded["showtime_id"])
-    except (KeyError, ValueError, TypeError):
-        return None
-    return sender_id, showtime_id
 
 
 # -----------------------------------------------------------------------------

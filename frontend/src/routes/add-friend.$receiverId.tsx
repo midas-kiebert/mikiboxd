@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { ApiError, FriendsService } from "shared"
 import { storage } from "shared/storage"
 
+import InstallAppGate from "@/components/Common/InstallAppGate"
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -25,8 +27,19 @@ const getErrorMessage = (error: unknown): string => {
 }
 
 export const Route = createFileRoute("/add-friend/$receiverId" as never)({
-  component: AddFriendLinkPage,
+  component: AddFriendLinkRoute,
 })
+
+function AddFriendLinkRoute() {
+  return (
+    <InstallAppGate
+      headline="A friend invited you to MiKiNO"
+      body="Add them back to see which films they want to see, and get invited to the screenings they are going to."
+    >
+      <AddFriendLinkPage />
+    </InstallAppGate>
+  )
+}
 
 function AddFriendLinkPage() {
   const normalizedReceiverId = useMemo(() => {

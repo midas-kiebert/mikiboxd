@@ -10,6 +10,9 @@
     "pnpm": {
         "overrides": {
             "@react-navigation/elements": "2.8.5"
-        }
+        },
+        "onlyBuiltDependencies": [
+            "@sentry/cli"
+        ]
     }
 }

@@ -1,8 +1,6 @@
 import type { Router } from 'expo-router'
 import { MeService } from 'shared'
-import { storage } from 'shared/storage'
 import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications'
-import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link'
 import { markSignedIn } from '@/utils/auth-session'
 import { claimGuestCinemaSelection } from '@/utils/guest-cinema-selection'
 import { isIntroOwed, startIntroIfPending } from '@/utils/intro'
@@ -18,22 +16,20 @@ import { isIntroOwed, startIntroIfPending } from '@/utils/intro'
 // the double redirect that used to show up as a login stalling and then
 // flicking through the wrong screen on its way to the right one.
 export async function completeLogin(router: Router) {
-    // Resume any deep link the user opened while logged out. Navigating to
-    // the stored path re-mounts the target screen, which re-runs its own
-    // side effects (e.g. /ping registers the invite, /add-friend sends the
-    // request), so no special-casing per route is needed here.
+    // A deep link the user opened while logged out is *not* followed from here.
+    // It stays in storage, and the root layout resumes it once the account is
+    // real and the intro it may owe is over.
     //
-    // Skipped for a brand-new account: a path stashed here belongs to
-    // whatever guest/previous session left it behind, not to the account
-    // being created right now. Following it stranded a new account on a
-    // stale screen outside the tabs layout, where nothing ever starts the
-    // intro it's owed — the only way out was restarting the app. A fresh
-    // account gets treated as fresh: straight to the tabs, intro included.
-    const isNewAccount = isIntroOwed()
-    const pendingDeepLinkPath = isNewAccount
-        ? null
-        : await storage.getItem(PENDING_DEEP_LINK_PATH_KEY)
-    await storage.removeItem(PENDING_DEEP_LINK_PATH_KEY)
+    // This used to be the place: it followed the path directly, and skipped it
+    // for a brand-new account because doing otherwise stranded that account on
+    // a screen outside the tabs layout, where nothing ever started the intro it
+    // was owed — the only way out was restarting the app. Skipping it also lost
+    // the link, which is the whole point of someone tapping an invite and then
+    // signing up. Deferring it to the root layout answers both: the intro runs
+    // first, on the tabs, and the link is followed on top of it afterwards.
+    //
+    // `utils/pending-deep-link` bounds how stale a stored path may be before it
+    // is dropped instead of followed.
 
     // If they narrowed the feed to their own cinemas while browsing as a guest,
     // that choice is now theirs to keep — the new account inherits it rather
@@ -79,14 +75,9 @@ export async function completeLogin(router: Router) {
     // One synchronous block, in this order:
     //  1. the session exists, so the route guard agrees with where we go next;
     //  2. a brand-new account's walkthrough goes up *now*, covering this screen,
-    //     rather than after the tabs below have painted and been seen. Skipped
-    //     when a deep link is being resumed: that screen does its own thing on
-    //     mount, and `IntroHost` will start the intro once the user reaches the
-    //     tabs, exactly as it did before;
+    //     rather than after the tabs below have painted and been seen;
     //  3. the actual navigation, which from here on happens behind the intro.
     markSignedIn()
-    if (!pendingDeepLinkPath) {
-        startIntroIfPending()
-    }
-    router.replace((pendingDeepLinkPath ?? '/(tabs)') as never)
+    startIntroIfPending()
+    router.replace('/(tabs)' as never)
 }

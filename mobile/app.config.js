@@ -79,11 +79,25 @@ module.exports = ({ config }) => {
     ? `${googleIosUrlScheme.replace(/^com\.googleusercontent\.apps\./, "")}.apps.googleusercontent.com`
     : undefined
 
+  // Crash reporting. All three are optional: without SENTRY_DSN the client
+  // no-ops at runtime, and without the org/project pair the build simply skips
+  // source-map upload instead of failing. That keeps local and fork builds
+  // working for anyone who has no Sentry credentials.
+  const sentryDsn = process.env.SENTRY_DSN
+  const sentryOrg = process.env.SENTRY_ORG
+  const sentryProject = process.env.SENTRY_PROJECT
+
   const plugins = [
     ...(config.plugins || []),
     [
       "@react-native-google-signin/google-signin",
       ...(googleIosUrlScheme ? [{ iosUrlScheme: googleIosUrlScheme }] : []),
+    ],
+    [
+      "@sentry/react-native",
+      ...(sentryOrg && sentryProject
+        ? [{ organization: sentryOrg, project: sentryProject }]
+        : []),
     ],
     [
       "expo-build-properties",
@@ -107,6 +121,7 @@ module.exports = ({ config }) => {
       ...config.extra,
       ...(googleWebClientId ? { googleWebClientId } : {}),
       ...(googleIosClientId ? { googleIosClientId } : {}),
+      ...(sentryDsn ? { sentryDsn } : {}),
     },
     android: {
       ...androidWithoutGoogleServices,

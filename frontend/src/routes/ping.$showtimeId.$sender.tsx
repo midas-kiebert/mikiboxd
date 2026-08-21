@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { ApiError, ShowtimesService } from "shared"
 import { storage } from "shared/storage"
 
+import InstallAppGate from "@/components/Common/InstallAppGate"
+
 const getErrorMessage = (error: unknown): string => {
   if (!(error instanceof ApiError)) return "Could not process the invite link."
 
@@ -22,8 +24,19 @@ const getErrorMessage = (error: unknown): string => {
 }
 
 export const Route = createFileRoute("/ping/$showtimeId/$sender" as never)({
-  component: PingLinkPage,
+  component: PingLinkRoute,
 })
+
+function PingLinkRoute() {
+  return (
+    <InstallAppGate
+      headline="You have been invited to a screening"
+      body="MiKiNO keeps your invites, tells you who else is going, and shows what else is playing near you."
+    >
+      <PingLinkPage />
+    </InstallAppGate>
+  )
+}
 
 function PingLinkPage() {
   const [pathShowtimeId, pathSender] = useMemo(() => {

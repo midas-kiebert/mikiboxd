@@ -22,6 +22,8 @@ import * as SystemUI from 'expo-system-ui';
 import * as SplashScreen from 'expo-splash-screen';
 import Constants from 'expo-constants';
 import { getGoogleSignin, isGoogleSignInAvailable } from '@/utils/google-signin';
+import * as Sentry from '@sentry/react-native';
+import { initSentry, reportError } from '@/utils/sentry';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -31,7 +33,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { loadThemePreference, useThemePreference } from '@/utils/theme-preference';
 import { loadFeatureTips } from '@/utils/feature-tips';
-import { loadIntroState, useIsIntroActive } from '@/utils/intro';
+import { loadIntroState, useIsIntroOwed } from '@/utils/intro';
 import { loadAuthSession, markSignedIn, markSignedOut, useAuthStatus } from '@/utils/auth-session';
 import { loadGuestCinemaSelection } from '@/utils/guest-cinema-selection';
 import { SignInGateProvider } from '@/components/auth/SignInGateProvider';
@@ -42,7 +44,8 @@ import { parseInviteLinkUrl, registerInviteLink } from '@/utils/showtime-invite-
 import { closeAllBlockingOverlays } from '@/utils/blocking-overlays';
 import IntroHost from '@/components/intro/IntroHost';
 import SignInNoticeHost from '@/components/auth/SignInNoticeHost';
-import { PENDING_DEEP_LINK_PATH_KEY } from '@/constants/pending-deep-link';
+import { savePendingDeepLink, takePendingDeepLink } from '@/utils/pending-deep-link';
+import { getInstallReferrerPath } from '@/utils/install-referrer';
 import AppSplash, { SPLASH_FADE_DURATION_MS } from '@/components/layout/AppSplash';
 import {
   displayPresetOrderQueryKey,
@@ -92,6 +95,11 @@ const INSTANT_SCREEN_OPTIONS = {
   },
 } as const;
 
+// Before any of the module-scope work below, so a failure in it is reported
+// rather than lost — this file's startup path is the one place that reaches
+// into Play Services without a user action behind it.
+initSentry();
+
 // Configured once at startup so GoogleSignin.signIn() is ready wherever a
 // sign-in button is rendered. webClientId sets the ID token audience, which
 // the backend checks against settings.GOOGLE_CLIENT_IDS. Skipped entirely in
@@ -101,10 +109,18 @@ const googleWebClientId = Constants.expoConfig?.extra?.googleWebClientId as stri
 // its own client ID and throws at configure() time without this.
 const googleIosClientId = Constants.expoConfig?.extra?.googleIosClientId as string | undefined;
 if (isGoogleSignInAvailable && googleWebClientId) {
-  getGoogleSignin().GoogleSignin.configure({
-    webClientId: googleWebClientId,
-    ...(googleIosClientId ? { iosClientId: googleIosClientId } : {}),
-  });
+  // configure() reaches into Play Services on Android, so a device with a
+  // stale or mid-update GMS can throw here. That must not take down module
+  // init for the whole app: sign-in is one button, and SocialSignInSection
+  // already surfaces its own error when the user actually taps it.
+  try {
+    getGoogleSignin().GoogleSignin.configure({
+      webClientId: googleWebClientId,
+      ...(googleIosClientId ? { iosClientId: googleIosClientId } : {}),
+    });
+  } catch (error) {
+    reportError('Error configuring Google Sign-In', error);
+  }
 }
 
 setStorage({
@@ -340,22 +356,31 @@ function RootLayourContent() {
   const isAppReady = useIsAppReady();
   // Prevent duplicate handling when the same notification response is replayed.
   const handledNotificationResponsesRef = useRef<Set<string>>(new Set())
-  // A notification tapped mid-walkthrough would otherwise navigate or open the
-  // showtime modal right underneath the intro, which only reveals it once the
-  // intro ends — so its routing waits for the intro to be out of the way.
-  const isIntroActive = useIsIntroActive()
-  const isIntroActiveRef = useRef(isIntroActive)
+  // Anything arriving from outside the app mid-walkthrough — a notification tap,
+  // an invite link, a deferred link carried through an install — would otherwise
+  // navigate or open the showtime modal right underneath the intro, which only
+  // reveals it once the intro ends. So its routing waits for the intro to be out
+  // of the way.
+  //
+  // "Owed", not "active": a brand-new account owes the intro from the moment it
+  // exists, a beat before the walkthrough is actually on screen, and holding on
+  // the narrower flag lets an arrival slip into that beat and open underneath.
+  //
+  // One slot is enough — two external arrivals inside a single walkthrough would
+  // need a brand-new install to already have notifications waiting for it.
+  const isIntroOwed = useIsIntroOwed()
+  const isIntroOwedRef = useRef(isIntroOwed)
   useEffect(() => {
-    isIntroActiveRef.current = isIntroActive
-  }, [isIntroActive])
-  const pendingNotificationRouteRef = useRef<(() => void) | null>(null)
+    isIntroOwedRef.current = isIntroOwed
+  }, [isIntroOwed])
+  const pendingExternalRouteRef = useRef<(() => void) | null>(null)
   useEffect(() => {
-    if (isIntroActive) return
-    const runPendingRoute = pendingNotificationRouteRef.current
+    if (isIntroOwed) return
+    const runPendingRoute = pendingExternalRouteRef.current
     if (!runPendingRoute) return
-    pendingNotificationRouteRef.current = null
+    pendingExternalRouteRef.current = null
     runPendingRoute()
-  }, [isIntroActive])
+  }, [isIntroOwed])
 
   useEffect(() => {
     // Pre-load detail route modules so first navigation to each is instant.
@@ -514,7 +539,7 @@ function RootLayourContent() {
       // Remember the deep link (everything except the plain tabs home) so the
       // login flow can resume it after the user signs in.
       if (rootSegment !== '(tabs)') {
-        void storage.setItem(PENDING_DEEP_LINK_PATH_KEY, pathname)
+        void savePendingDeepLink(pathname)
       }
       redirectTo('/login')
     } else if (isAuthenticated && owesUsername && rootSegment !== 'pick-username') {
@@ -573,8 +598,8 @@ function RootLayourContent() {
         }
         // Mid-intro, this would open/navigate right underneath the walkthrough
         // and only be revealed once it ends. Hold it until the intro is done.
-        if (isIntroActiveRef.current) {
-          pendingNotificationRouteRef.current = runRoute
+        if (isIntroOwedRef.current) {
+          pendingExternalRouteRef.current = runRoute
         } else {
           runRoute()
         }
@@ -620,10 +645,7 @@ function RootLayourContent() {
         // invite itself is picked up by this effect re-running once a session
         // exists, which re-reads the same launch URL — hence `isAuthenticated`
         // in the deps.
-        void storage.setItem(
-          PENDING_DEEP_LINK_PATH_KEY,
-          `/ping/${invite.showtimeId}/${invite.token}`
-        )
+        void savePendingDeepLink(`/ping/${invite.showtimeId}/${invite.token}`)
         // A guest can still be shown the screening they were invited to — that
         // is public, and it is the thing the link is actually about. Accepting
         // the invite is not, so the sheet's own gate does the asking, at the
@@ -635,23 +657,35 @@ function RootLayourContent() {
         return
       }
 
-      // An invite arriving from outside the app has to end up in front of the
-      // user, and a sheet left open from before would otherwise swallow it: the
-      // showtime sheet's portal slot was fixed the first time it opened, so one
-      // raised later (the notification centre, say) keeps drawing over it.
-      closeAllBlockingOverlays()
-      // `requireUpcoming`: a link keeps working long after its showtime has
-      // started, and opening a screening that is already over invites nothing.
-      // The backend rejects the ping for the same reason, which
-      // registerInviteLink swallows.
-      // `awaitBeforeFetch`: the ping must be recorded server-side before the
-      // showtime is fetched, or the sheet's first render (viewer.invited_by,
-      // the "invited by" banner) misses the invite it was just opened for —
-      // it would only show up after closing and reopening the sheet.
-      openShowtimeModalById(invite.showtimeId, {
-        requireUpcoming: true,
-        awaitBeforeFetch: () => registerInviteLink({ ...invite, queryClient }),
-      })
+      const openInvite = () => {
+        // An invite arriving from outside the app has to end up in front of the
+        // user, and a sheet left open from before would otherwise swallow it:
+        // the showtime sheet's portal slot was fixed the first time it opened,
+        // so one raised later (the notification centre, say) keeps drawing over
+        // it.
+        closeAllBlockingOverlays()
+        // `requireUpcoming`: a link keeps working long after its showtime has
+        // started, and opening a screening that is already over invites nothing.
+        // The backend rejects the ping for the same reason, which
+        // registerInviteLink swallows.
+        // `awaitBeforeFetch`: the ping must be recorded server-side before the
+        // showtime is fetched, or the sheet's first render (viewer.invited_by,
+        // the "invited by" banner) misses the invite it was just opened for —
+        // it would only show up after closing and reopening the sheet.
+        openShowtimeModalById(invite.showtimeId, {
+          requireUpcoming: true,
+          awaitBeforeFetch: () => registerInviteLink({ ...invite, queryClient }),
+        })
+      }
+
+      // Signing up *from* an invite link is the common case now that the web
+      // install panel sends people here, and it lands mid-intro: the sheet would
+      // open underneath the walkthrough and only be found once it ends.
+      if (isIntroOwedRef.current) {
+        pendingExternalRouteRef.current = openInvite
+      } else {
+        openInvite()
+      }
     }
 
     void Linking.getInitialURL()
@@ -659,6 +693,31 @@ function RootLayourContent() {
       .catch((error) => {
         console.error('Error reading launch URL:', error)
       })
+
+    // Android only: the link someone tapped before they had the app at all,
+    // carried through the Play Store install. Read alongside the launch URL
+    // rather than instead of it, and stable across this effect's re-runs for
+    // the same reason `getInitialURL` is — the run that matters is the one
+    // after a session exists.
+    void getInstallReferrerPath()
+      .then((path) => {
+        if (cancelled || !path) return
+        if (parseInviteLinkUrl(path)) {
+          // `parseInviteLinkUrl` takes a bare path as happily as a full URL.
+          handleUrl(path)
+          return
+        }
+        // The other two shapes are ordinary routes that do their own work on
+        // mount — `/add-friend` sends the request, `/movie` renders the film —
+        // so they only need following. Stored rather than pushed: a referred
+        // install arrives with no session at all, and the effect below is what
+        // follows it once there is one.
+        void savePendingDeepLink(path)
+      })
+      .catch((error) => {
+        console.error('Error reading install referrer:', error)
+      })
+
     const subscription = Linking.addEventListener('url', ({ url }) => handleUrl(url))
 
     return () => {
@@ -666,6 +725,32 @@ function RootLayourContent() {
       subscription.remove()
     }
   }, [isAppReady, isChecking, isAuthenticated, isGuest, openShowtimeModalById, queryClient])
+
+  // Follow the deep link that was waiting on a session, once there is one and
+  // the walkthrough it may owe is over. `completeLogin` deliberately leaves the
+  // path in storage rather than navigating to it itself: for a brand-new account
+  // that would land them outside the tabs layout, where the intro they are owed
+  // never starts.
+  //
+  // `owesUsername` is in the guard for the same reason the route guard has it —
+  // an account without a username goes nowhere but the screen that asks for one.
+  useEffect(() => {
+    if (!isAppReady || isChecking || !isAuthenticated || owesUsername || isIntroOwed) return
+    let cancelled = false
+
+    void takePendingDeepLink().then((path) => {
+      if (cancelled || !path) return
+      // `/ping` paths are read but not followed: that route is a bouncer that
+      // pops itself, and the invite is acted on by the effect above. Pushing it
+      // would only shuffle the stack under a sheet that just opened.
+      if (parseInviteLinkUrl(path)) return
+      router.push(path as never)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isAppReady, isChecking, isAuthenticated, owesUsername, isIntroOwed, router])
 
   useEffect(() => {
     void configureNotificationCategories().catch((error) => {
@@ -699,7 +784,7 @@ function RootLayourContent() {
 
     const pushTokenListener = Notifications.addPushTokenListener(() => {
       void registerPushTokenForCurrentDevice({ userId }).catch((error) => {
-        console.error('Error refreshing push token after token update:', error)
+        reportError('Error refreshing push token after token update', error)
       })
     })
 
@@ -800,7 +885,7 @@ function RootLayourContent() {
 
 
 
-export default function RootLayout() {
+function RootLayout() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   // Theme mode selects the matching React Navigation theme object.
   const colorScheme = useColorScheme();
@@ -861,3 +946,7 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+// Adds the error boundary that catches render-phase crashes anywhere in the
+// tree. No-op when initSentry() found no DSN.
+export default Sentry.wrap(RootLayout);

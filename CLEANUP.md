@@ -300,6 +300,7 @@ Legend:
 - [x] `theme.tsx` — Chakra UI theme: app `semanticTokens` (light+dark) from `theme/tokens.ts`, plus `ui.main` + button recipe
 - [x] `theme/tokens.ts` — Generates Chakra `app.*` semantic color tokens from `shared/theme/colors.ts` (matches the mobile palette, no drift)
 - [ ] `constants.ts` — App-wide constants
+- [x] `app-install.ts` — Store listing URLs + the phone-platform sniff behind `InstallAppGate`. iPadOS 13+ needs the `Macintosh` + `maxTouchPoints` check; `IOS_APP_STORE_URL` stays null until the App Store listing is live
 - [ ] `types.ts` — Custom TypeScript types (beyond auto-generated API types)
 - [ ] `utils.ts` — Frontend utility functions
 
@@ -341,6 +342,7 @@ Legend:
 ## Frontend — Components
 
 **Common (shared UI):**
+- [x] `InstallAppGate.tsx` — Wraps the shared-link routes (`/ping`, `/movie`, `/add-friend`): a phone with no web session gets the store instead of a login wall, because an installed app would have intercepted the link before the browser saw it. A panel rather than a redirect — universal links do fall through with the app installed, and a wrong guess must cost one tap, not a store bounce
 - [ ] `Layout.tsx` — Page layout wrapper
 - [ ] `Navbar.tsx` — Top navigation bar
 - [ ] `Sidebar.tsx` + `SidebarItems.tsx` — Desktop sidebar (legacy; still used by standalone MoviePage, replaced by NavRail elsewhere)
@@ -568,6 +570,9 @@ Only components created or reworked during the cleanup are listed here; the rest
 - `app/blocked-users.tsx` — "Blocked accounts" screen off Settings → Privacy: the one place a blocked account is still visible, since search/friends/invites all filter them out; unblock-only, does not restore what blocking removed
 - [x] `constants/tablet-layout.ts` — `tabletCappedContentStyle` (maxWidth 640 + centered), the cheap fix for `RESPONSIVE_AUDIT.md` finding 16; applied to the four main-feed list containers, deliberately not to `FiltersModal`/`AppBottomSheet` (would mismatch their full-width pinned footers)
 - ~~`app/modal.tsx`~~ — deleted (leftover Expo Router template screen — "This is a modal" — that was never navigated to; flagged as `RESPONSIVE_AUDIT.md` finding 22)
+- [x] `utils/install-referrer.ts` — Android deferred deep link: reads the Play install referrer the web install panel attached to the store URL, so someone who tapped a shared link with no app lands on that link after installing. Claimed once ever (the referrer is fixed at install time and a reinstall would otherwise replay the old one) but cached as a promise for the process, because the effect that reads it re-runs when the session appears. Path shapes are whitelisted — a referrer is attacker-supplied and this ends in a navigation. iOS has no equivalent and is told to reopen the link instead
+- [x] `utils/pending-deep-link.ts` — Read/write for the deep-link path held across a sign-in, with a 7-day bound so an abandoned link is not resumed on an unrelated login weeks later. Written by the route guard and the install referrer, followed in one place: the root layout, once the account is real *and* the intro is over. `completeLogin` used to follow it directly and dropped it entirely for new accounts, which lost exactly the invite-then-sign-up case this exists for
+- [x] `utils/sentry.ts` — Crash reporting init plus `reportError()`, for failures the app deliberately swallows and Sentry's automatic handlers therefore never see. Added because a Play Services error dialog on the store build was unreproducible on any internal build (those are plain APKs, the store one is an app bundle) and there was no telemetry to tell which native call raised it. Every entry point no-ops without a `SENTRY_DSN`, so local and fork builds are unaffected
 
 ---
 

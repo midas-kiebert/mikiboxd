@@ -21,13 +21,13 @@
  *   - a visitor with a web session, who is a deliberate web user rather than
  *     someone who arrived from a chat.
  */
-import { Button, Center, Flex, Image, Text } from "@chakra-ui/react"
+import { Button, Center, Flex, Image, Link, Text } from "@chakra-ui/react"
 import { type ReactNode, useEffect, useState } from "react"
 import { storage } from "shared/storage"
 
 import {
   type MobilePlatform,
-  STORE_NAMES,
+  STORE_BADGES,
   detectMobilePlatform,
   getInstallUrl,
 } from "@/app-install"
@@ -100,15 +100,25 @@ export default function InstallAppGate({
 
         <Text>{body}</Text>
 
-        <Button
-          bg="ui.main"
-          color="white"
-          size="lg"
-          width="100%"
-          onClick={() => window.location.assign(installUrl)}
+        {/*
+          The stores' own badge artwork rather than a styled button: both Apple
+          and Google require it for a link into their store, and it is also the
+          thing a phone user recognises without reading. A real anchor, not a
+          click handler, so the OS gets its chance to hand the URL straight to
+          the store app.
+        */}
+        <Link
+          href={installUrl}
+          display="inline-block"
+          aria-label={STORE_BADGES[platform].alt}
         >
-          Get MiKiNO on {STORE_NAMES[platform]}
-        </Button>
+          <Image
+            src={STORE_BADGES[platform].src}
+            alt={STORE_BADGES[platform].alt}
+            height={STORE_BADGES[platform].height}
+            maxW="100%"
+          />
+        </Link>
 
         {/*
           Android carries the link through the install on its own, so this is
@@ -118,8 +128,7 @@ export default function InstallAppGate({
         */}
         {platform === "ios" ? (
           <Text fontSize="xs" opacity={0.7}>
-            Once it is installed, open this link again from the chat you got it
-            in — it will open straight in the app.
+            Once it is installed, open the link you received again.
           </Text>
         ) : null}
 
@@ -130,6 +139,13 @@ export default function InstallAppGate({
         >
           Continue in browser
         </Button>
+
+        {/* Required wherever Google's badge is shown. */}
+        {platform === "android" ? (
+          <Text fontSize="10px" opacity={0.6}>
+            Google Play and the Google Play logo are trademarks of Google LLC.
+          </Text>
+        ) : null}
       </Flex>
     </Center>
   )

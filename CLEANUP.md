@@ -300,7 +300,7 @@ Legend:
 - [x] `theme.tsx` — Chakra UI theme: app `semanticTokens` (light+dark) from `theme/tokens.ts`, plus `ui.main` + button recipe
 - [x] `theme/tokens.ts` — Generates Chakra `app.*` semantic color tokens from `shared/theme/colors.ts` (matches the mobile palette, no drift)
 - [ ] `constants.ts` — App-wide constants
-- [x] `app-install.ts` — Store listing URLs + the phone-platform sniff behind `InstallAppGate`. iPadOS 13+ needs the `Macintosh` + `maxTouchPoints` check; `IOS_APP_STORE_URL` stays null until the App Store listing is live
+- [x] `app-install.ts` — Store listing URLs, the Play install-referrer payload, the phone-platform sniff and the official store badge assets (`public/assets/images/app-store-badge.svg`, `google-play-badge.png` — Apple's and Google's own artwork, unmodified, which is why the two are sized to different heights: Google's PNG bakes its required clear space into the image). iPadOS 13+ needs the `Macintosh` + `maxTouchPoints` check; `IOS_APP_STORE_URL` stays null until the App Store listing is live
 - [ ] `types.ts` — Custom TypeScript types (beyond auto-generated API types)
 - [ ] `utils.ts` — Frontend utility functions
 

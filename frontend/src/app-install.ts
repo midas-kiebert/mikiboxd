@@ -37,9 +37,31 @@ export const ANDROID_PLAY_STORE_URL =
 const INSTALL_REFERRER_SOURCE = "mikino_share"
 const INSTALL_REFERRER_PATH_PARAM = "mikino_path"
 
-export const STORE_NAMES: Record<MobilePlatform, string> = {
-  ios: "the App Store",
-  android: "Google Play",
+/**
+ * The official store badges, served from `public/assets/images/`. Both stores
+ * require their own artwork rather than a styled button, unmodified and with its
+ * aspect ratio intact, so these are sized by height alone and never recoloured,
+ * cropped or relabelled.
+ *
+ * The two heights differ on purpose. Apple's SVG is the badge and nothing else,
+ * while Google's PNG bakes the clear space they require into the image — roughly
+ * a third of its height is transparent margin — so matching the *drawn* badges
+ * means giving Google's file the larger box.
+ */
+export const STORE_BADGES: Record<
+  MobilePlatform,
+  { src: string; alt: string; height: string }
+> = {
+  ios: {
+    src: "/assets/images/app-store-badge.svg",
+    alt: "Download on the App Store",
+    height: "54px",
+  },
+  android: {
+    src: "/assets/images/google-play-badge.png",
+    alt: "Get it on Google Play",
+    height: "80px",
+  },
 }
 
 /**

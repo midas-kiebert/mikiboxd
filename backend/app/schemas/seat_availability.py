@@ -16,13 +16,16 @@ class ShowtimeSeatAvailabilityPublic(SQLModel):
 
     The same for everyone — this is a fact about the screening, not about who
     asked — which is what lets it be cached per showtime and prefetched for a
-    whole list at once. A showtime with no usable reading is simply absent from
-    the response rather than present with a null level, so the client never has
-    to tell "empty" from "unknown".
+    whole list at once. A showtime with no usable reading and no read pending
+    is simply absent from the response rather than present with a null level,
+    so the client never has to tell "empty" from "unknown". A showtime whose
+    very first reading has not landed yet, but is expected soon, is the one
+    exception: it is present with `level` absent and `checking` set, so the
+    client can say so rather than showing nothing at all.
     """
 
     showtime_id: int
-    level: SeatAvailabilityLevel
+    level: SeatAvailabilityLevel | None = None
     # Absent whenever the platform only says sold-out-or-not without a count,
     # so the detail line has to cope with a level and nothing else.
     seats_left: int | None = None
@@ -32,6 +35,11 @@ class ShowtimeSeatAvailabilityPublic(SQLModel):
     # — a property of the screening (is it full, can its ticket shop be read),
     # not of the person asking, whose own eligibility comes from `UserMe`.
     watchable: bool = False
+    # This showtime has never had a reading, but one is expected soon — either
+    # an immediate best-effort read is in flight, or the poller will pick it up
+    # on its next tick. Never true once `checked_at` is set, even if that
+    # reading came back unusable.
+    checking: bool = False
 
 
 class SoldOutWatchPublic(SQLModel):

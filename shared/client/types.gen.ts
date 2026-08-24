@@ -802,11 +802,12 @@ export type ShowtimeReportUpdate = {
  */
 export type ShowtimeSeatAvailabilityPublic = {
   showtime_id: number
-  level: SeatAvailabilityLevel
+  level?: SeatAvailabilityLevel | null
   seats_left?: number | null
   seats_capacity?: number | null
   checked_at?: string | null
   watchable?: boolean
+  checking?: boolean
 }
 
 export type ShowtimeSelectionUpdate = {

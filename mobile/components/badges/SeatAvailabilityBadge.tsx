@@ -33,7 +33,7 @@ export default function SeatAvailabilityBadge({
   const styles = createStyles(colors);
   const availability = useCachedShowtimeSeatAvailability(showtimeId ?? null);
 
-  if (!availability) return null;
+  if (!availability?.level) return null;
 
   const meta = getSeatAvailabilityMeta(availability.level, colors);
   const isCompact = variant === "compact";

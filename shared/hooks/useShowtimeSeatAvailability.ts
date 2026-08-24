@@ -178,6 +178,15 @@ export function useCachedShowtimeSeatAvailability(
   return data ?? null;
 }
 
+// While the sheet is open, availability is live rather than a one-off read —
+// interest in a showtime can flip its own seat count within seconds (a
+// showtime's very first check fires as soon as someone marks it), and nobody
+// should have to close and reopen the app to see that. Polled faster while a
+// first read is still pending, since that is the state where a visible
+// "checking..." should resolve quickly rather than sit for a minute.
+const SEAT_AVAILABILITY_OPEN_POLL_MS = 45 * 1000;
+const SEAT_AVAILABILITY_CHECKING_POLL_MS = 5 * 1000;
+
 export function useShowtimeSeatAvailability({
   showtimeId,
   enabled = true,
@@ -192,5 +201,13 @@ export function useShowtimeSeatAvailability({
       ShowtimesService.getSeatAvailability({ showtimeId: showtimeId as number }),
     staleTime: SEAT_AVAILABILITY_STALE_TIME_MS,
     gcTime: SEAT_AVAILABILITY_GC_TIME_MS,
+    refetchOnMount: "always",
+    refetchInterval: enabled
+      ? (query) =>
+          query.state.data?.checking
+            ? SEAT_AVAILABILITY_CHECKING_POLL_MS
+            : SEAT_AVAILABILITY_OPEN_POLL_MS
+      : false,
+    refetchIntervalInBackground: false,
   });
 }

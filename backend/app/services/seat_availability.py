@@ -25,6 +25,7 @@ before it starts changes by the minute.
 """
 
 import random
+import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
@@ -295,13 +296,86 @@ def request_reading_on_interest(
     )
 
 
+# How many single-showtime "first interest" reads may be in flight across the
+# whole process at once. Bounded so a burst of many people selecting many
+# showtimes at the same moment degrades to the ordinary poller cadence instead
+# of turning into an unbounded pile of concurrent ticket-shop requests — the
+# thing `mark_seat_availability_due` above is deliberately careful not to
+# cause. A quiet moment gets an answer in seconds; a busy one just falls back
+# to "within a few minutes", which is what happened before this existed.
+_IMMEDIATE_CHECK_CONCURRENCY = 6
+_immediate_check_semaphore = threading.Semaphore(_IMMEDIATE_CHECK_CONCURRENCY)
+
+
+def should_check_immediately(*, session: Session, showtime_id: int) -> bool:
+    """Whether `showtime_id` has never had a seat reading at all.
+
+    Read before `request_reading_on_interest` queues it, so the caller can
+    decide whether to also try an immediate, best-effort read — see
+    `check_now`. Only ever true once per showtime's life.
+    """
+    showtime = session.get(Showtime, showtime_id)
+    return (
+        showtime is not None
+        and showtime.seats_checked_at is None
+        and showtime.ticket_link is not None
+        and supports(showtime.ticket_link)
+    )
+
+
+def check_now(*, session: Session, showtime_id: int) -> None:
+    """Best-effort immediate read for a showtime someone just showed interest
+    in for the first time, so they are not left staring at "checking..." for
+    however long is left on the poller's five-minute tick.
+
+    Skipped outright, rather than queued, when the process is already busy
+    doing this for other showtimes — the poller remains the only guaranteed
+    path, this is purely a latency shortcut for the common, quiet case.
+    """
+    if not _immediate_check_semaphore.acquire(blocking=False):
+        return
+    try:
+        showtime = session.get(Showtime, showtime_id)
+        if (
+            showtime is None
+            or showtime.seats_checked_at is not None
+            or showtime.ticket_link is None
+        ):
+            return
+        try:
+            availability = fetch_seat_availability(ticket_link=showtime.ticket_link)
+        except SeatAvailabilityFetchError as e:
+            logger.warning(
+                f"Immediate seat availability read failed for showtime {showtime_id}: {e}"
+            )
+            return
+        now = now_amsterdam_naive()
+        crossed = apply_reading(showtime=showtime, availability=availability, now=now)
+        session.add(showtime)
+        session.commit()
+        if crossed:
+            push_notifications.send_seat_alerts(
+                session=session, showtime_ids=[showtime_id]
+            )
+    finally:
+        _immediate_check_semaphore.release()
+
+
 def to_public(showtime: Showtime) -> ShowtimeSeatAvailabilityPublic | None:
-    """This showtime's availability as the client sees it, or None if unknown."""
+    """This showtime's availability as the client sees it, or None if unknown
+    and no read is even pending."""
     level = seat_availability_level(
         seats_left=showtime.seats_left, seats_capacity=showtime.seats_capacity
     )
     if level is None:
-        return None
+        checking = showtime.seats_checked_at is None and (
+            showtime.ticket_link is not None and supports(showtime.ticket_link)
+        )
+        if not checking:
+            return None
+        return ShowtimeSeatAvailabilityPublic(
+            showtime_id=showtime.id, checking=True
+        )
     return ShowtimeSeatAvailabilityPublic(
         showtime_id=showtime.id,
         level=level,

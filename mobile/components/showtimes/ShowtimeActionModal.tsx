@@ -876,9 +876,10 @@ export default function ShowtimeActionModal({
     showtimeId: selectedShowtimeId,
     enabled: visible && selectedShowtimeId !== null && !isTour,
   });
-  const seatMeta = seatAvailability
+  const seatMeta = seatAvailability?.level
     ? getSeatAvailabilityMeta(seatAvailability.level, colors)
     : null;
+  const isCheckingSeatAvailability = Boolean(seatAvailability?.checking);
   const seatCountLabel = seatAvailability ? formatSeatCount(seatAvailability) : null;
   const seatCheckedLabel = seatAvailability
     ? formatCheckedAt(seatAvailability.checked_at)
@@ -1791,6 +1792,20 @@ export default function ShowtimeActionModal({
                 there. Tapping opens the numbers behind the icon: a level is
                 what you glance at, "31 of 312 left, checked 4 minutes ago" is
                 what you check before buying. */}
+            {isCheckingSeatAvailability ? (
+              <View style={styles.seatInfoSection}>
+                <View style={styles.seatInfoHeader}>
+                  <ThemedText style={styles.seatInfoHeaderLabel}>Availability</ThemedText>
+                  <View style={styles.seatInfoCheckingRow}>
+                    <ActivityIndicator size="small" color={colors.textSecondary} />
+                    <ThemedText style={styles.seatInfoCheckingText}>
+                      Checking availability…
+                    </ThemedText>
+                  </View>
+                </View>
+              </View>
+            ) : null}
+
             {seatAvailability && seatMeta ? (
               <View style={styles.seatInfoSection}>
                 <TouchableOpacity
@@ -2551,6 +2566,15 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 8,
       paddingVertical: 3,
       paddingHorizontal: 8,
+    },
+    seatInfoCheckingRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    seatInfoCheckingText: {
+      fontSize: 12,
+      color: colors.textSecondary,
     },
     seatInfoValueText: {
       fontSize: 12,

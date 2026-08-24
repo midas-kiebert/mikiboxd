@@ -18,6 +18,7 @@ from app.api.deps import (
     get_db_context,
 )
 from app.core.config import settings
+from app.core.enums import GoingStatus
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_report as showtime_report_crud
 from app.inputs.movie import Filters, get_filters
@@ -68,10 +69,16 @@ _PING_NOTIFICATION_DELAY_SECONDS = 0 if os.getenv("TESTING") == "true" else 5  #
 _MAX_VISIBILITY_BATCH_SIZE = 200
 
 
+def _check_seat_availability_now(showtime_id: int) -> None:
+    with get_db_context() as session:
+        seat_availability_service.check_now(session=session, showtime_id=showtime_id)
+
+
 @router.put("/selection/{showtime_id}", response_model=ShowtimePublic)
 def update_showtime_selection(
     *,
     session: SessionDep,
+    background_tasks: BackgroundTasks,
     showtime_id: int,
     payload: ShowtimeSelectionUpdate,
     current_user: CurrentUser,
@@ -80,8 +87,16 @@ def update_showtime_selection(
         "seat_row" in payload.model_fields_set
         or "seat_number" in payload.model_fields_set
     )
+    # Read before the service call queues the poller read: a never-checked
+    # showtime is worth an immediate, best-effort read so whoever just
+    # selected it is not left staring at "checking..." for up to five minutes.
+    never_checked = payload.going_status != GoingStatus.NOT_GOING and (
+        seat_availability_service.should_check_immediately(
+            session=session, showtime_id=showtime_id
+        )
+    )
     try:
-        return showtimes_service.update_showtime_selection(
+        result = showtimes_service.update_showtime_selection(
             session=session,
             showtime_id=showtime_id,
             user_id=current_user.id,
@@ -95,6 +110,9 @@ def update_showtime_selection(
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail=str(error)
         )
+    if never_checked:
+        background_tasks.add_task(_check_seat_availability_now, showtime_id)
+    return result
 
 
 async def _notify_after_delay(

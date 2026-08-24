@@ -10,7 +10,6 @@ import {
   Linking,
   ScrollView,
   StyleSheet,
-  Switch,
   TextInput,
   TouchableOpacity,
   View,
@@ -29,7 +28,12 @@ import {
   deleteCinevilleCard,
   loadCinevilleCardDigits,
   saveCinevilleCardDigits,
+  useCinevilleCardDigits,
 } from '@/utils/cineville-card';
+import {
+  setCinevilleShortcutEnabled,
+  useCinevilleShortcutEnabled,
+} from '@/utils/cineville-shortcuts';
 
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
@@ -58,7 +62,9 @@ import { unregisterPushTokenForCurrentDevice } from '@/utils/push-notifications'
 import NotificationPreferenceList from '@/components/notifications/NotificationPreferenceList';
 import LetterboxdSection from '@/components/settings/LetterboxdSection';
 import SignedOutPanel from '@/components/auth/SignedOutPanel';
+import CinevilleCardModal from '@/components/cineville/CinevilleCardModal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import AppSwitch from '@/components/ui/AppSwitch';
 import EmailVerificationRequiredDialog from '@/components/ui/EmailVerificationRequiredDialog';
 import { useEmailVerificationPolling } from '@/hooks/useCurrentUser';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
@@ -173,6 +179,13 @@ export default function SettingsScreen() {
   // Cineville card number (9 digits only, CP$ prefix is added automatically).
   const [cinevilleDigits, setCinevilleDigits] = useState('');
   const [isSavingCineville, setIsSavingCineville] = useState(false);
+  // The number as it is actually stored, which is what the barcode shows —
+  // `cinevilleDigits` is the draft in the input and may not be saved yet.
+  const savedCinevilleDigits = useCinevilleCardDigits();
+  const [isCinevilleCardVisible, setIsCinevilleCardVisible] = useState(false);
+  // Which feeds the floating pass shortcut is allowed to appear on.
+  const isShortcutOnShowtimes = useCinevilleShortcutEnabled('showtimes');
+  const isShortcutOnAgenda = useCinevilleShortcutEnabled('agenda');
   // Confirmations for the two irreversible actions on this screen. Themed
   // dialogs rather than Alert.alert, which is app-wide reserved for pure error
   // toasts — a native alert is the one surface in the app that ignores the
@@ -770,6 +783,31 @@ export default function SettingsScreen() {
                 {isSavingCineville ? 'Saving...' : 'Save card'}
               </ThemedText>
             </TouchableOpacity>
+            {savedCinevilleDigits ? (
+              <>
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={() => setIsCinevilleCardVisible(true)}
+                >
+                  <ThemedText style={styles.secondaryButtonText}>Show barcode</ThemedText>
+                </TouchableOpacity>
+                <ThemedText style={styles.label}>Shortcut button</ThemedText>
+                <View style={styles.cinevilleShortcutRow}>
+                  <ThemedText style={styles.cinevilleShortcutLabel}>On the showtimes tab</ThemedText>
+                  <AppSwitch
+                    value={isShortcutOnShowtimes}
+                    onValueChange={(value) => setCinevilleShortcutEnabled('showtimes', value)}
+                  />
+                </View>
+                <View style={styles.cinevilleShortcutRow}>
+                  <ThemedText style={styles.cinevilleShortcutLabel}>On the agenda tab</ThemedText>
+                  <AppSwitch
+                    value={isShortcutOnAgenda}
+                    onValueChange={(value) => setCinevilleShortcutEnabled('agenda', value)}
+                  />
+                </View>
+              </>
+            ) : null}
           </View>
         </View>
 
@@ -789,12 +827,10 @@ export default function SettingsScreen() {
                     Email me when a watchlisted movie gets a showtime it didn&apos;t have before.
                   </ThemedText>
                 </View>
-                <Switch
+                <AppSwitch
                   value={digestEnabled}
                   onValueChange={(value) => handleDigestToggle(value)}
                   disabled={!user || isUpdatingDigest}
-                  trackColor={{ false: colors.divider, true: colors.tint }}
-                  thumbColor="#ffffff"
                 />
               </View>
               <View style={styles.notificationChannelRow}>
@@ -980,11 +1016,9 @@ export default function SettingsScreen() {
                   Occasional reminders about features you are not using yet.
                 </ThemedText>
               </View>
-              <Switch
+              <AppSwitch
                 value={featureTipsEnabled}
                 onValueChange={setFeatureTipsEnabled}
-                trackColor={{ false: colors.divider, true: colors.tint }}
-                thumbColor="#ffffff"
               />
             </View>
             {dismissedTipCount > 0 ? (
@@ -1206,6 +1240,13 @@ export default function SettingsScreen() {
         onConfirm={() => setVerificationSentTo(null)}
         onCancel={() => setVerificationSentTo(null)}
       />
+      {savedCinevilleDigits ? (
+        <CinevilleCardModal
+          visible={isCinevilleCardVisible}
+          digits={savedCinevilleDigits}
+          onClose={() => setIsCinevilleCardVisible(false)}
+        />
+      ) : null}
     </TopSafeAreaView>
   );
 }
@@ -1465,6 +1506,24 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     },
     digestListOptionTextActive: {
       color: colors.pillActiveText,
+    },
+    cinevilleShortcutRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      borderRadius: 10,
+      paddingLeft: 10,
+      paddingRight: 6,
+      paddingVertical: 4,
+      backgroundColor: colors.background,
+    },
+    cinevilleShortcutLabel: {
+      flex: 1,
+      fontSize: 14,
+      lineHeight: 18,
     },
     cinevilleInputRow: {
       flexDirection: 'row',

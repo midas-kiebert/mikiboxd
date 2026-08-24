@@ -22,6 +22,7 @@ import FiltersRow from '@/components/filters/FiltersRow';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import FeatureTipsHost from '@/components/tips/FeatureTipsHost';
+import CinevilleCardButton from '@/components/cineville/CinevilleCardButton';
 import IntroFiltersSpotlight from '@/components/intro/IntroFiltersSpotlight';
 import { ShowtimesListContent } from '@/components/showtimes/ShowtimesScreen';
 import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
@@ -420,6 +421,8 @@ export default function MainShowtimesScreen() {
           inheritFiltersOnMovieNav
         />
       )}
+      {/* Floats over whichever feed is on screen, so it goes after both. */}
+      <CinevilleCardButton surface="showtimes" />
       {/* Renders nothing inline: the tip, if any, is a modal over the screen. */}
       <FeatureTipsHost />
       {isShowingIntroFiltersSpotlight ? (

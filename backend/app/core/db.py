@@ -12,7 +12,7 @@ is only intended to be used by the test suite. It shares the same pool settings
 as the main engine.
 """
 
-from sqlmodel import Session, col, create_engine, select
+from sqlmodel import Session, col, create_engine, select, update
 
 from app.core.config import settings
 from app.core.enums import Environment
@@ -52,18 +52,21 @@ def _seed_pro_users(session: Session) -> None:
     exercise the feature; in production it is the named accounts and nobody
     else. Run on every startup, and only ever grants — revoking someone is a
     deliberate act, not something a redeploy should do behind your back.
-    """
-    if settings.ENVIRONMENT == Environment.PRODUCTION:
-        stmt = select(User).where(col(User.email).in_(PRODUCTION_PRO_EMAILS))
-    else:
-        stmt = select(User)
 
-    granted = False
-    for user in session.exec(stmt.where(col(User.is_pro).is_(False))):
-        user.is_pro = True
-        session.add(user)
-        granted = True
-    if granted:
+    A Core `UPDATE`, deliberately not `select(User)` + ORM writes: loading a
+    `User` row deserializes every column, including `notify_channel_*`, whose
+    mapped type has no `values_callable` and so expects the enum's uppercase
+    member names — but existing rows carry the lowercase values an old
+    migration's raw-SQL default wrote, and reading one throws. Nothing before
+    this function ever did a broad `select(User)`, so that mismatch had never
+    been exercised. An `UPDATE` never decodes the row, only writes one column,
+    so it sidesteps the bug instead of tripping over it.
+    """
+    stmt = update(User).where(col(User.is_pro).is_(False)).values(is_pro=True)
+    if settings.ENVIRONMENT == Environment.PRODUCTION:
+        stmt = stmt.where(col(User.email).in_(PRODUCTION_PRO_EMAILS))
+    result = session.exec(stmt)  # type: ignore[call-overload]
+    if result.rowcount:
         session.commit()
 
 

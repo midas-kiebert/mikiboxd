@@ -91,9 +91,14 @@ def upgrade() -> None:
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS '
         "notify_on_seat_alert BOOLEAN NOT NULL DEFAULT TRUE"
     )
+    # 'PUSH'/'EMAIL', not 'push'/'email': the notify_channel_* columns store the
+    # NotificationChannel enum's member *name*, not its value, because the field
+    # has no `values_callable` (see bc34de56fa78, which fixed this exact mistake
+    # for the four earlier notify_channel_* columns after it broke a broad
+    # `select(User)` the same way).
     op.execute(
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS '
-        "notify_channel_seat_alert VARCHAR(16) NOT NULL DEFAULT 'push'"
+        "notify_channel_seat_alert VARCHAR(16) NOT NULL DEFAULT 'PUSH'"
     )
     op.execute(
         """

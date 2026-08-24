@@ -107,6 +107,26 @@ def _purge_stale_notifications() -> None:
         logger.exception("Failed to run notification purge job")
 
 
+def _refresh_seat_availability() -> None:
+    """Re-read how many seats are left for showtimes someone has selected.
+
+    Runs hourly; each showtime is re-read at most every few hours and the batch
+    is capped, so this is a trickle of requests at the cinemas' ticket shops
+    rather than a scrape. Errors are caught so a single failure does not stop
+    the scheduler.
+    """
+    from app.api.deps import get_db_context
+    from app.services import seat_availability
+
+    try:
+        with get_db_context() as session:
+            read_count = seat_availability.refresh_seat_availability(session=session)
+        if read_count > 0:
+            logger.info("Refreshed seat availability for %s showtimes", read_count)
+    except Exception:
+        logger.exception("Failed to run seat availability refresh job")
+
+
 def _refresh_watchlist_digest_queue() -> None:
     """Detect movies that just became newly available for the watchlist digest.
 
@@ -163,6 +183,11 @@ if __name__ == "__main__":
         func=_send_interested_showtime_reminders,
         trigger=CronTrigger(minute="*/15", timezone=_TIMEZONE),
         id="interested_showtime_reminders",
+    )
+    scheduler.add_job(
+        func=_refresh_seat_availability,
+        trigger=CronTrigger(minute=25, timezone=_TIMEZONE),
+        id="refresh_seat_availability",
     )
     scheduler.add_job(
         func=_purge_stale_notifications,

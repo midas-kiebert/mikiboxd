@@ -56,6 +56,11 @@ def _apply_upsert_update(
         existing_showtime.end_datetime = showtime_create.end_datetime
     if showtime_create.subtitles is not None:
         existing_showtime.subtitles = showtime_create.subtitles
+    # Only some sources name the room, and the seat availability poller fills it
+    # in for the rest — so a scrape that does not know it must leave what is
+    # already there alone rather than blanking it on every run.
+    if showtime_create.room is not None:
+        existing_showtime.room = showtime_create.room
 
 
 def _apply_end_datetime_fallback(

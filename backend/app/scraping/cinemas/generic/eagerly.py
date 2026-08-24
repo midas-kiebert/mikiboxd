@@ -16,6 +16,7 @@ from app.models.movie import (
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
+from app.scraping.seat_availability import normalize_room
 from app.scraping.subtitles import parse_subtitle_label
 from app.scraping.title_hints import parse_year_hint_from_title
 from app.scraping.tmdb_lookup import find_tmdb_id, get_tmdb_lookup_cache_id
@@ -53,8 +54,13 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                 logger.error(f"Cinema {cinema_key} not found in database")
                 raise ValueError(f"Cinema {cinema_key} not found in database")
 
-        self.url_base = url_base
-        self.url = f"{url_base}/fk-feed/agenda"
+        # Every call site passes a trailing-slash `url_base` (e.g.
+        # "https://filmhallen.nl/"), so appending "/tickets/..." below without
+        # stripping it first produced "https://filmhallen.nl//tickets/..." —
+        # a link real browsers/servers tolerate but our own URL patterns
+        # (EAGERLY_URL_PATTERN in seat_availability.py) don't match.
+        self.url_base = url_base.rstrip("/")
+        self.url = f"{self.url_base}/fk-feed/agenda"
         self.theatre_filter = theatre_filter  # For Leiden
         # Louis Hartlooper Complex and Springhaver share a subtitle label that
         # states a different language per venue, e.g.
@@ -187,6 +193,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                     datetime=date,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,
+                    room=normalize_room(theatre),
                     subtitles=subtitles,
                 )
             )

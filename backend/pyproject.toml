@@ -66,7 +66,7 @@ filterwarnings = [
 ]
 
 [tool.mypy]
-exclude = ["venv", ".venv", "alembic"]
+exclude = ["venv", ".venv", "alembic", "tests"]
 disallow_untyped_defs = false
 
 
@@ -76,7 +76,9 @@ plugins = [
 
 [tool.ruff]
 target-version = "py310"
-exclude = ["alembic"]
+exclude = ["alembic", "tests"]
+# pre-commit passes explicit file paths, which bypass `exclude` unless this is set.
+force-exclude = true
 
 [tool.ruff.lint]
 select = [

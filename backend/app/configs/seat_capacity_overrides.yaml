@@ -1,0 +1,44 @@
+# Manually-entered seat capacities for specific cinema rooms.
+#
+# Only some ticketing platforms ever reveal a room's real total (currently
+# just Eagerly's seat map — see app/scraping/seat_availability.py). Everywhere
+# else, `Showtime.seats_capacity` is a running max of every `seats_left`
+# reading and only converges on the true number after enough of them have
+# landed. An entry here is used immediately instead, as soon as any reading
+# comes in for that cinema/room — see `app/services/seat_availability.py`.
+#
+# Keyed by cinema `key` (Cinema.key / cinemas.yaml — the stable identifier,
+# not the display name), then by room name exactly as that cinema's scraper
+# writes it to `Showtime.room` (check a live showtime or the scraper itself
+# if unsure; a mismatched name here just means the override is silently
+# never used, not an error).
+#
+# Example:
+# overrides:
+#   lab111:
+#     "LAB 1": 55
+#     "LAB 4": 30
+#   eye:
+#     "Cinema 1": 312
+
+overrides:
+  lab111:
+    "LAB 1": 128
+    "LAB 2": 56
+    "LAB 3": 40
+    "LAB 4": 44
+    "LAB 8½": 55
+  eye:
+    "Cinema 1": 315
+    "Cinema 2": 127
+    "Cinema 3": 130
+    "Cinema 4": 67
+  uitkijk:
+    "Grote Zaal": 85
+  kriterion:
+    "K 1": 198
+    "K 2": 85
+    "K 3": 67
+  fchyena:
+    "Zaal 1": 60
+    "Zaal 2": 104

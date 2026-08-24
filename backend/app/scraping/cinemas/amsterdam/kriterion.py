@@ -1,3 +1,4 @@
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from re import split, sub
 
@@ -15,6 +16,7 @@ from app.models.movie import (
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
+from app.scraping.seat_availability import parse_zelite_room
 from app.scraping.title_hints import (
     parse_subtitle_hint_from_title,
     parse_year_hint_from_title,
@@ -26,6 +28,15 @@ from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_services
 
 CINEMA_KEY = "kriterion"
+
+TICKET_URL_TEMPLATE = (
+    "https://tickets.kriterion.nl/kriterion/nl/flow_configs/webshop"
+    "/steps/start/show/{id}"
+)
+# How many shows to try per room before giving up on naming it. A show that has
+# already started renders an empty header, so the first candidate can come back
+# blank without the room being unknowable.
+ROOM_NAME_ATTEMPTS = 4
 
 # The feed sits behind bot protection that 402/403s the default python-requests
 # User-Agent (the old storage.googleapis.com buffer URL 403'd outright); a
@@ -43,6 +54,7 @@ REQUEST_HEADERS = {
 class Show(BaseModel):
     id: int
     production_id: int
+    theatre_id: int | None = None
     name: str
     start_date: str
     director: str | None = None
@@ -84,6 +96,42 @@ class KriterionScraper(BaseCinemaScraper):
                 session=session, key=CINEMA_KEY
             )
 
+    @staticmethod
+    def _room_names_by_theatre_id(shows: list[Show]) -> dict[int, str]:
+        """Name each room by reading one ticket page per `theatre_id`.
+
+        shows.json numbers Kriterion's rooms (6083/6084/6085) but never names
+        them, and the numbers are the shop's internal ids — hardcoding them
+        would break silently if they were ever reissued. The checkout page does
+        name the room, and the mapping is stable, so one fetch per distinct
+        theatre_id names every showtime instead of one fetch per showtime.
+        """
+        shows_by_theatre: dict[int, list[Show]] = defaultdict(list)
+        for show in shows:
+            if show.theatre_id is not None:
+                shows_by_theatre[show.theatre_id].append(show)
+
+        room_names: dict[int, str] = {}
+        for theatre_id, theatre_shows in shows_by_theatre.items():
+            for show in theatre_shows[:ROOM_NAME_ATTEMPTS]:
+                try:
+                    response = requests.get(
+                        TICKET_URL_TEMPLATE.format(id=show.id),
+                        headers=REQUEST_HEADERS,
+                        timeout=30,
+                    )
+                    response.raise_for_status()
+                except requests.RequestException as e:
+                    logger.warning(f"Could not read Kriterion room for {show.id}: {e}")
+                    continue
+                room = parse_zelite_room(response.text)
+                if room is not None:
+                    room_names[theatre_id] = room
+                    break
+            else:
+                logger.warning(f"Could not name Kriterion theatre {theatre_id}")
+        return room_names
+
     def scrape(self) -> list[tuple[str, int]]:
         assert self.cinema_id is not None
         url_shows = "https://www.kriterion.nl/data/shows.json"
@@ -93,6 +141,8 @@ class KriterionScraper(BaseCinemaScraper):
 
         data = ShowsResponse.model_validate(response.json())
         shows = [show for show in data.shows if show.is_deleted.lower() != "true"]
+
+        room_names = self._room_names_by_theatre_id(shows)
 
         shows_by_production_id: dict[int, Show] = {}
         for show in shows:
@@ -127,10 +177,7 @@ class KriterionScraper(BaseCinemaScraper):
             if movie is None:
                 continue
             start_datetime = parser.parse(show.start_date).replace(tzinfo=None)
-            ticket_link = (
-                "https://tickets.kriterion.nl/kriterion/nl/flow_configs/"
-                f"webshop/steps/start/show/{show.id}"
-            )
+            ticket_link = TICKET_URL_TEMPLATE.format(id=show.id)
             subtitles = parse_languages(show.subtitle_languages)
             if subtitles is None:
                 subtitles = parse_subtitle_hint_from_title(show.name)
@@ -141,6 +188,7 @@ class KriterionScraper(BaseCinemaScraper):
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,
+                    room=room_names.get(show.theatre_id),
                     subtitles=subtitles,
                 )
             )

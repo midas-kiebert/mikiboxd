@@ -29,6 +29,17 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 CINEMA_KEY = "de-uitkijk"
 
+# The ladder API's show id is the id in De Uitkijk's ticket shop (the same
+# Z-ELITE webshop Kriterion and LAB111 use). www.uitkijk.nl/film/<slug> is the
+# film page, which lists every showtime, so it cannot identify one screening.
+TICKET_URL_TEMPLATE = (
+    "https://tickets.uitkijk.nl/uitkijk/nl/flow_configs/webshop/steps/start/show/{id}"
+)
+
+# De Uitkijk has exactly one screen, so unlike every other multi-room cinema
+# this needs no per-showtime lookup.
+ROOM_NAME = "De Grote Zaal"
+
 
 def clean_title(title: str) -> str:
     title = title.lower()
@@ -42,6 +53,7 @@ def clean_title(title: str) -> str:
 
 
 class Show(BaseModel):
+    id: str
     start_date: str
     title: str
     slug: str
@@ -135,7 +147,8 @@ class UitkijkScraper(BaseCinemaScraper):
                     tmdb_cache_id=cached_movie.tmdb_cache_id,
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
-                    ticket_link=f"https://www.uitkijk.nl/film/{show.slug}",
+                    ticket_link=TICKET_URL_TEMPLATE.format(id=show.id),
+                    room=ROOM_NAME,
                     subtitles=subtitles_by_slug.get(show.slug),
                 )
             )

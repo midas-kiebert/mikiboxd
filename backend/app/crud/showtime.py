@@ -427,6 +427,47 @@ def get_interested_reminder_candidates(
     return list(session.exec(stmt).all())
 
 
+def get_seat_availability_candidates(
+    *,
+    session: Session,
+    now: datetime,
+    horizon: timedelta,
+    recheck_after: timedelta,
+    minimum_notice: timedelta,
+    limit: int,
+) -> list[Showtime]:
+    """
+    Return showtimes whose seat availability is worth re-reading right now.
+
+    Only showtimes at least one user has selected: every reading is a request
+    at a real ticket shop, and the whole catalogue would be tens of thousands
+    of them. `minimum_notice` drops showtimes about to start, whose remaining
+    seats nobody can act on any more, and `recheck_after` is the per-showtime
+    cooldown. Soonest first, so a capped run spends its budget where the answer
+    matters most.
+    """
+    earliest_showtime = now + minimum_notice
+    latest_showtime = now + horizon
+    stale_before = now - recheck_after
+
+    stmt = (
+        select(Showtime)
+        .where(
+            col(Showtime.datetime) >= earliest_showtime,
+            col(Showtime.datetime) <= latest_showtime,
+            col(Showtime.ticket_link).is_not(None),
+            or_(
+                col(Showtime.seats_checked_at).is_(None),
+                col(Showtime.seats_checked_at) <= stale_before,
+            ),
+            col(Showtime.id).in_(select(col(ShowtimeSelection.showtime_id))),
+        )
+        .order_by(col(Showtime.datetime).asc())
+        .limit(limit)
+    )
+    return list(session.exec(stmt).all())
+
+
 def _build_main_page_showtimes_query(
     *,
     session: Session,

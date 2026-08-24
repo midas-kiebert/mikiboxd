@@ -172,6 +172,7 @@ Legend:
 - [x] `viewer_context.py` — Settles the browse filters that depend on who is asking: fills in `selected_cinema_ids` from the account's favourite cinema preset (then its legacy selection), and resolves the Letterboxd username the watchlist filters read against. For an anonymous viewer it leaves cinemas unrestricted — the whole catalogue, not an empty feed — and drops Letterboxd list ids, which can only belong to an account. Replaces the copy of that block that sat in each of the four movie/showtime list+count entry points
 - [ ] `scrape_sync.py` — Triggers scraping from the API layer
 - [ ] `analytics_dashboard.py` — Aggregates AnalyticsEvent/Notification/ShowtimePing/User data for the admin overview
+- [x] `seat_availability.py` — Decides which showtimes get their seat count re-read (only ones a user has selected, capped batch, one in-flight request per ticket host) and what to write down. `seats_capacity` defaults to a running max of every reading, but a platform-reported exact total (Eagerly) or a manual entry in `app/configs/seat_capacity_overrides.yaml` (keyed by cinema key + room name) sets it outright instead, immune to being undercut by a later thinner reading; `is_running_low` thresholds on whichever is larger, a flat 10 seats or 10% of that capacity
 - [x] `scrape_monitor.py` — Read-only aggregation of ScrapeRun/ScrapeRecap for the admin scrape monitor (deltas + anomaly flags)
 - [x] `scrape_recap_render.py` — `RecapRunMetrics` + the recap renderer; the daily email is grouped by statistic (combined value, then each run's) instead of stitching per-run reports, and the long diagnostic dumps live in JSON attachments only
 - [x] `showtime_title_conflict.py` — Recognizing the same screening listed by Cineville and a cinema scraper under near-identical titles; used both to stop the duplicate being inserted (`upsert_showtime`) and to clean up existing ones (`runner._delete_cineville_title_conflicts`). Also collects the resulting `SourceDisagreement`s, which the recap reports as TMDB matches to review
@@ -221,6 +222,7 @@ Legend:
 - [ ] `get_movies.py` — Fetches movies from the DB for enrichment
 - [ ] `get_showtimes.py` — Fetches showtimes from the DB for enrichment
 - [ ] `logger.py` — Scraping-specific log configuration
+- [x] `seat_availability.py` — Turns a showtime's ticket link into a seat count, room, and (Eagerly, Tricket) exact room capacity. Four platforms behind the cinemas we scrape ourselves: Z-ELITE (exact count in `data-configured-max`, max across badge types since some are per-order capped, no capacity), Tricket (the screening resource carries a full seat map + `numberOfAvailableSeats`, so capacity is `len(seats)` — no room name anywhere in the API, only a `hallId` UUID, Studio/K's two halls are 91 and 153 seats), Eagerly (exact count *and* exact capacity for all 7 sites via each site's own unauthenticated `getSeatPlanData` seat-map endpoint — "ROL"/wheelchair-space entries excluded from both, falling back to the feed's sold-out-only status for any site not in the `_EAGERLY_BOOKING_HOSTS` table). A failed fetch raises rather than returning zero
 - [x] `subtitles.py` — Parses cinema subtitle metadata (Dutch free text) into ISO-639-1 codes for `Showtime.subtitles`
 - [ ] `title_hints.py` — Subtitle/year hints recoverable from a raw scraped title/slug
 - [ ] `tmdb.py` — TMDB API client ⚠️ Large (1411 LOC)
@@ -238,7 +240,7 @@ Legend:
 - [ ] `cinemas/amsterdam/uitkijk.py` — Uitkijk scraper
 - [ ] `cinemas/amsterdam/lab111.py` — Lab111 scraper
 - [ ] `cinemas/amsterdam/themovies.py` — The Movies scraper
-- [ ] `cinemas/amsterdam/fchyena.py` — FC Hyena scraper
+- [ ] `cinemas/amsterdam/fchyena.py` — FC Hyena scraper; fixed 2026-08-24 after the Framer migration broke it — now reads the film catalogue out of the Framer CMS's binary export instead of scraping HTML (no server-rendered listing exists anymore); per-showtime ticket page scraping (Z-ELITE) is unchanged and unaffected
 - [ ] `cinemas/amsterdam/studiok.py` — Studio/K scraper
 - [ ] `cinemas/amsterdam/rialto.py` — Rialto De Pijp + Rialto VU scraper
 
@@ -254,7 +256,7 @@ Legend:
 - [ ] `cinemas/haarlem/filmkoepel.py` — Filmkoepel scraper (Eagerly)
 
 **Cinema scrapers — Generic:**
-- [ ] `cinemas/generic/eagerly.py` — Eagerly-based generic scraper
+- [ ] `cinemas/generic/eagerly.py` — Eagerly-based generic scraper; fixed 2026-08-24 a double-slash bug in every derived URL (`self.url`, `ticket_link`) since every call site passes a trailing-slash `url_base` — `self.url_base` now strips it once in `__init__` instead
 
 **Letterboxd integration:**
 - [ ] `letterboxd/load_letterboxd_data.py` — Watchlist sync ⚠️ Large (1193 LOC) — needs splitting

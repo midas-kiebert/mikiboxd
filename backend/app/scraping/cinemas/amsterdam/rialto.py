@@ -11,6 +11,7 @@ from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
+from app.scraping.seat_availability import normalize_room
 from app.scraping.subtitles import parse_subtitle_label
 from app.scraping.tmdb_lookup import find_tmdb_id, get_tmdb_lookup_cache_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
@@ -91,6 +92,21 @@ def select_text(soup: BeautifulSoup, selector: str) -> str | None:
     if not isinstance(tag, Tag):
         return None
     return tag.get_text(strip=True) or None
+
+
+def select_course_value(soup: BeautifulSoup, label: str) -> str | None:
+    """Read one `course-label` / `course-value` span pair off a Rialto VU page.
+
+    The spec list is a flat run of sibling spans rather than a table, so the
+    value is whichever `course-value` follows the label we want.
+    """
+    for label_tag in soup.select("span.course-label"):
+        if label_tag.get_text(strip=True) != label:
+            continue
+        value_tag = label_tag.find_next_sibling("span", class_="course-value")
+        if isinstance(value_tag, Tag):
+            return value_tag.get_text(strip=True) or None
+    return None
 
 
 class RialtoDePijpScraper(BaseCinemaScraper):
@@ -215,6 +231,9 @@ class RialtoDePijpScraper(BaseCinemaScraper):
             datetime=showtime_dt,
             cinema_id=self.cinema_id,
             ticket_link=url,
+            room=normalize_room(
+                select_text(soup, "div.at-show-property.at-show-location")
+            ),
             subtitles=subtitles,
         )
         return movie, showtime
@@ -446,6 +465,11 @@ class RialtoVUScraper(BaseCinemaScraper):
             if isinstance(value := option.get("value"), str)
         ] or [path]
 
+        # The spec list describes the performance this page was opened for, so
+        # the room may only be attached to that one — the other options in the
+        # dropdown are different performances and can be in a different room.
+        page_room = normalize_room(select_course_value(soup, "Ruimte"))
+
         showtimes: list[ShowtimeCreate] = []
         for value in option_values:
             match = self._DATE_SUFFIX_RE.search(value)
@@ -466,6 +490,7 @@ class RialtoVUScraper(BaseCinemaScraper):
                     datetime=showtime_dt,
                     cinema_id=self.cinema_id,
                     ticket_link=f"{self.BASE_URL}{value}",
+                    room=page_room if value == path else None,
                     subtitles=subtitles,
                 )
             )

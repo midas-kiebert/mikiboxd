@@ -19,6 +19,12 @@ class ShowtimeBase(SQLModel):
     datetime: dt.datetime = Field(index=True)
     end_datetime: dt.datetime | None = None
     ticket_link: str | None = None
+    # Which room the showtime plays in, named the way the cinema names it:
+    # "LAB 1", "Grote Zaal", "Cinema 3", "Parisienzaal". Only some sources know
+    # it — Eye's API and the Eagerly feed carry it, and for the rest the seat
+    # availability poller reads it off the ticket shop's checkout page — so a
+    # scraper that cannot see it leaves this None rather than guessing.
+    room: str | None = None
     subtitles: list[str] | None = Field(sa_column=Column(ARRAY(String)), default=None)
     # Exact source stream this showtime was last (re-)scraped from, e.g.
     # "cinema_scraper:kriterion" or "cineville:xxx" — same naming convention
@@ -56,3 +62,17 @@ class Showtime(ShowtimeBase, table=True):
     movie: "Movie" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
     cinema_id: int = Field(foreign_key="cinema.id")
     cinema: "Cinema" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    # Seat availability, refreshed by the availability poller (see
+    # services/seat_availability.py) rather than by the scrape, and only for
+    # showtimes someone has actually selected — polling every showtime would
+    # mean tens of thousands of requests at a handful of ticket shops.
+    seats_left: int | None = None
+    # Running max of every seats_left ever read for this showtime, which stands
+    # in for its capacity: a showtime is first polled weeks out while it is
+    # still near-empty, so the largest reading converges on the real number.
+    # Per-showtime rather than per-room on purpose — a room can be sold at
+    # reduced capacity for one screening, and this needs no room modelling at
+    # all to be right. A showtime first polled when it is already half sold
+    # under-reads, which makes the "nearly full" test fire late, never early.
+    seats_capacity: int | None = None
+    seats_checked_at: dt.datetime | None = None

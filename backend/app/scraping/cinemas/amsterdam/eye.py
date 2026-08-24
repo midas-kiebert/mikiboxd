@@ -15,6 +15,7 @@ from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.logger import logger
+from app.scraping.seat_availability import normalize_room
 from app.scraping.tmdb import TmdbMovieDetails
 from app.scraping.tmdb_lookup import find_tmdb_id, get_tmdb_lookup_cache_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details
@@ -237,6 +238,7 @@ class EyeScraper(BaseCinemaScraper):
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
                     ticket_link=show.ticketUrl,
+                    room=normalize_room(show.cinemaRoom),
                     subtitles=subtitles_by_production_id.get(production.id),
                 )
             )

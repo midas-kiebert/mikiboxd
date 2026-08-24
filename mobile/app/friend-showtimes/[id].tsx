@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { UsersService, type GoingStatus, type UserWithFriendStatus } from 'shared';
 import { useFetchUserShowtimes } from 'shared/hooks/useFetchUserShowtimes';
 import { usePrefetchShowtimeVisibility } from 'shared/hooks/useShowtimeVisibility';
+import { usePrefetchShowtimeSeatAvailability } from 'shared/hooks/useShowtimeSeatAvailability';
 import useAuth from 'shared/hooks/useAuth';
 
 import ShowtimesScreen, {
@@ -285,6 +286,7 @@ function FriendShowtimesContent({
 
   const showtimes = useMemo(() => data?.pages.flat() ?? [], [data]);
   usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id));
+  usePrefetchShowtimeSeatAvailability(showtimes.map((showtime) => showtime.id));
 
   const handleRefresh = async () => {
     if (!userId) return;

@@ -9,6 +9,7 @@ import { ThemedText } from "@/components/themed-text";
 import CinemaPill from "@/components/badges/CinemaPill";
 import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
+import SeatAvailabilityBadge from "@/components/badges/SeatAvailabilityBadge";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 
@@ -71,6 +72,14 @@ export default function ShowtimeRow({
   const cinemaPill = showCinema ? (
     <CinemaPill cinema={showtime.cinema} variant={isCompact ? "compact" : "default"} />
   ) : null;
+  // Renders nothing unless this showtime's availability is already cached, so
+  // rows that have no reading keep exactly the layout they had before.
+  const seatBadge = (
+    <SeatAvailabilityBadge
+      showtimeId={showtime.id}
+      variant={isCompact ? "compact" : "default"}
+    />
+  );
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -97,6 +106,7 @@ export default function ShowtimeRow({
             {cinemaPill}
           </>
         )}
+        {seatBadge}
       </View>
       {showFriends ? (
         <FriendBadges

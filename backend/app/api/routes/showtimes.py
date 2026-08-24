@@ -30,6 +30,10 @@ from app.mailer import (
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime
 from app.models.user import is_report_banned
+from app.schemas.seat_availability import (
+    ShowtimeSeatAvailabilityPublic,
+    SoldOutWatchPublic,
+)
 from app.schemas.showtime import ShowtimePublic, ShowtimeSelectionUpdate
 from app.schemas.showtime_ping import SentShowtimePingPublic, ShowtimePingLinkToken
 from app.schemas.showtime_report import ShowtimeReportCreate
@@ -39,7 +43,9 @@ from app.schemas.showtime_visibility import (
     UninvitedSelectedFriendsPublic,
 )
 from app.services import push_notifications
+from app.services import seat_availability as seat_availability_service
 from app.services import showtimes as showtimes_service
+from app.services import sold_out_watch as sold_out_watch_service
 from app.services.share_preview import (
     DEFAULT_SHARE_PREVIEW_IMAGE,
     render_share_preview_html,
@@ -341,6 +347,83 @@ def uninvite_friend_from_showtime(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Invite not found"
         )
     return Message(message="Invite cancelled successfully")
+
+
+@router.get(
+    "/seat-availability/batch", response_model=list[ShowtimeSeatAvailabilityPublic]
+)
+def get_seat_availability_batch(
+    *,
+    session: SessionDep,
+    showtime_ids: list[int] = Query(default=[]),
+) -> list[ShowtimeSeatAvailabilityPublic]:
+    """How full many showtimes are (used to prefetch a list).
+
+    Unauthenticated: how full a screening is is the same fact for everyone,
+    including someone who has never signed in, and nothing in the answer
+    depends on who asked.
+    """
+    if len(showtime_ids) > _MAX_VISIBILITY_BATCH_SIZE:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(f"At most {_MAX_VISIBILITY_BATCH_SIZE} showtime ids per request"),
+        )
+    return seat_availability_service.get_seat_availability_batch(
+        session=session, showtime_ids=showtime_ids
+    )
+
+
+@router.get(
+    "/{showtime_id}/seat-availability",
+    response_model=ShowtimeSeatAvailabilityPublic | None,
+)
+def get_seat_availability(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+) -> ShowtimeSeatAvailabilityPublic | None:
+    # Unauthenticated — see get_seat_availability_batch above. Null means there
+    # is no usable reading, which is a real answer and not an error.
+    return seat_availability_service.get_seat_availability(
+        session=session, showtime_id=showtime_id
+    )
+
+
+@router.get("/sold-out-watch", response_model=SoldOutWatchPublic | None)
+def get_sold_out_watch(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> SoldOutWatchPublic | None:
+    """The one showtime this user is waiting on a returned ticket for, if any."""
+    return sold_out_watch_service.get_watch(session=session, user_id=current_user.id)
+
+
+@router.put("/{showtime_id}/sold-out-watch", response_model=SoldOutWatchPublic)
+def start_sold_out_watch(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> SoldOutWatchPublic:
+    """Wait on this showtime for a returned ticket, replacing any earlier watch.
+
+    PUT rather than POST because a user has one watch, not a collection of
+    them: this sets where it points.
+    """
+    return sold_out_watch_service.start_watch(
+        session=session, user=current_user, showtime_id=showtime_id
+    )
+
+
+@router.delete("/sold-out-watch", response_model=Message)
+def stop_sold_out_watch(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> Message:
+    sold_out_watch_service.stop_watch(session=session, user_id=current_user.id)
+    return Message(message="No longer watching for tickets")
 
 
 @router.get("/visibility/batch", response_model=list[ShowtimeVisibilityPublic])

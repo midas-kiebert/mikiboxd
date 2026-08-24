@@ -4,6 +4,8 @@ import type { CancelablePromise } from "./core/CancelablePromise"
 import { OpenAPI } from "./core/OpenAPI"
 import { request as __request } from "./core/request"
 import type {
+  AdminSimulateSeatAvailabilityData,
+  AdminSimulateSeatAvailabilityResponse,
   AdminGetAnalyticsOverviewData,
   AdminGetAnalyticsOverviewResponse,
   AdminSearchMoviesData,
@@ -161,6 +163,14 @@ import type {
   ShowtimesGetPingedFriendIdsForShowtimeResponse,
   ShowtimesGetSentPingsForShowtimeData,
   ShowtimesGetSentPingsForShowtimeResponse,
+  ShowtimesGetSeatAvailabilityBatchData,
+  ShowtimesGetSeatAvailabilityBatchResponse,
+  ShowtimesGetSeatAvailabilityData,
+  ShowtimesGetSeatAvailabilityResponse,
+  ShowtimesGetSoldOutWatchResponse,
+  ShowtimesStopSoldOutWatchResponse,
+  ShowtimesStartSoldOutWatchData,
+  ShowtimesStartSoldOutWatchResponse,
   ShowtimesGetShowtimeVisibilityBatchData,
   ShowtimesGetShowtimeVisibilityBatchResponse,
   ShowtimesGetShowtimeVisibilityData,
@@ -206,6 +216,40 @@ import type {
 } from "./types.gen"
 
 export class AdminService {
+  /**
+   * Simulate Seat Availability
+   * Force a showtime's seat count, ratchet and "nearly sold out" notice.
+   *
+   * The feature's interesting behaviour is all in transitions that happen once
+   * and never again, and staging arrives with production's history already
+   * baked in — so on staging there is nothing left to cross. This makes a
+   * crossing happen on demand, and `reset` puts it back so it can happen again.
+   *
+   * Refused outright in production: it writes seat counts that were never read
+   * and can re-send a notice whose whole contract is that it is sent once.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @param data.requestBody
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static simulateSeatAvailability(
+    data: AdminSimulateSeatAvailabilityData,
+  ): CancelablePromise<AdminSimulateSeatAvailabilityResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/admin/showtimes/{showtime_id}/simulate-seat-availability",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
   /**
    * Get Analytics Overview
    * @param data The data for the request.
@@ -2286,6 +2330,106 @@ export class ShowtimesService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/showtimes/{showtime_id}/sent-pings",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Seat Availability Batch
+   * How full many showtimes are (used to prefetch a list).
+   *
+   * Unauthenticated: how full a screening is is the same fact for everyone,
+   * including someone who has never signed in, and nothing in the answer
+   * depends on who asked.
+   * @param data The data for the request.
+   * @param data.showtimeIds
+   * @returns ShowtimeSeatAvailabilityPublic Successful Response
+   * @throws ApiError
+   */
+  public static getSeatAvailabilityBatch(
+    data: ShowtimesGetSeatAvailabilityBatchData = {},
+  ): CancelablePromise<ShowtimesGetSeatAvailabilityBatchResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/seat-availability/batch",
+      query: {
+        showtime_ids: data.showtimeIds,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Seat Availability
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static getSeatAvailability(
+    data: ShowtimesGetSeatAvailabilityData,
+  ): CancelablePromise<ShowtimesGetSeatAvailabilityResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/{showtime_id}/seat-availability",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Sold Out Watch
+   * The one showtime this user is waiting on a returned ticket for, if any.
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static getSoldOutWatch(): CancelablePromise<ShowtimesGetSoldOutWatchResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/sold-out-watch",
+    })
+  }
+
+  /**
+   * Stop Sold Out Watch
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static stopSoldOutWatch(): CancelablePromise<ShowtimesStopSoldOutWatchResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/showtimes/sold-out-watch",
+    })
+  }
+
+  /**
+   * Start Sold Out Watch
+   * Wait on this showtime for a returned ticket, replacing any earlier watch.
+   *
+   * PUT rather than POST because a user has one watch, not a collection of
+   * them: this sets where it points.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns SoldOutWatchPublic Successful Response
+   * @throws ApiError
+   */
+  public static startSoldOutWatch(
+    data: ShowtimesStartSoldOutWatchData,
+  ): CancelablePromise<ShowtimesStartSoldOutWatchResponse> {
+    return __request(OpenAPI, {
+      method: "PUT",
+      url: "/api/v1/showtimes/{showtime_id}/sold-out-watch",
       path: {
         showtime_id: data.showtimeId,
       },

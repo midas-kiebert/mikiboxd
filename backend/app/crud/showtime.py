@@ -3,7 +3,7 @@ from datetime import datetime, time, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import func, nulls_first
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_, select
@@ -23,6 +23,10 @@ from app.models.showtime_selection import ShowtimeSelection
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
 from app.utils import now_amsterdam_naive
+
+# A selection someone has actively made. NOT_GOING rows survive as a record of
+# a decision, and must not make a showtime look like anyone still cares about it.
+ACTIVE_GOING_STATUSES = (GoingStatus.GOING, GoingStatus.INTERESTED)
 
 DAY_BUCKET_CUTOFF = time(4, 0)
 DAY_BUCKET_OFFSET = timedelta(
@@ -427,12 +431,57 @@ def get_interested_reminder_candidates(
     return list(session.exec(stmt).all())
 
 
+def clear_seat_alerts(*, session: Session, showtime_id: int) -> None:
+    """Forget that anyone was told this showtime was nearly sold out.
+
+    Only ever called by the superuser simulation hook, which is refused in
+    production — the whole point of `seat_alert_sent_at` is that nothing in the
+    normal flow can clear it.
+    """
+    selections = session.exec(
+        select(ShowtimeSelection).where(
+            ShowtimeSelection.showtime_id == showtime_id,
+            col(ShowtimeSelection.seat_alert_sent_at).is_not(None),
+        )
+    ).all()
+    for selection in selections:
+        selection.seat_alert_sent_at = None
+        session.add(selection)
+
+
+def get_seat_alert_candidates(
+    *,
+    session: Session,
+    showtime_ids: Sequence[int],
+    statuses: Sequence[GoingStatus],
+) -> list[tuple[ShowtimeSelection, Showtime]]:
+    """
+    Selections that should be told these showtimes have nearly sold out.
+
+    Only ones never told before — `seat_alert_sent_at` is the once-per-showtime
+    guarantee, and it is checked here rather than left to the caller so no
+    delivery path can skip it.
+    """
+    if len(showtime_ids) == 0:
+        return []
+
+    stmt = (
+        select(ShowtimeSelection, Showtime)
+        .join(Showtime, col(ShowtimeSelection.showtime_id) == col(Showtime.id))
+        .where(
+            col(ShowtimeSelection.showtime_id).in_(showtime_ids),
+            col(ShowtimeSelection.going_status).in_(statuses),
+            col(ShowtimeSelection.seat_alert_sent_at).is_(None),
+        )
+    )
+    return list(session.exec(stmt).all())
+
+
 def get_seat_availability_candidates(
     *,
     session: Session,
     now: datetime,
     horizon: timedelta,
-    recheck_after: timedelta,
     minimum_notice: timedelta,
     limit: int,
 ) -> list[Showtime]:
@@ -442,13 +491,16 @@ def get_seat_availability_candidates(
     Only showtimes at least one user has selected: every reading is a request
     at a real ticket shop, and the whole catalogue would be tens of thousands
     of them. `minimum_notice` drops showtimes about to start, whose remaining
-    seats nobody can act on any more, and `recheck_after` is the per-showtime
-    cooldown. Soonest first, so a capped run spends its budget where the answer
-    matters most.
+    seats nobody can act on any more. How often a given showtime comes up is
+    decided when its last reading was written down, not here — see
+    `services/seat_availability.next_check_at`; a null due time is a showtime
+    that has never been read.
+
+    Most overdue first, then soonest, so a capped run drains the backlog in the
+    order it built up rather than starving whatever sat at the end of it.
     """
     earliest_showtime = now + minimum_notice
     latest_showtime = now + horizon
-    stale_before = now - recheck_after
 
     stmt = (
         select(Showtime)
@@ -457,15 +509,47 @@ def get_seat_availability_candidates(
             col(Showtime.datetime) <= latest_showtime,
             col(Showtime.ticket_link).is_not(None),
             or_(
-                col(Showtime.seats_checked_at).is_(None),
-                col(Showtime.seats_checked_at) <= stale_before,
+                col(Showtime.seats_next_check_at).is_(None),
+                col(Showtime.seats_next_check_at) <= now,
             ),
-            col(Showtime.id).in_(select(col(ShowtimeSelection.showtime_id))),
+            col(Showtime.id).in_(
+                select(col(ShowtimeSelection.showtime_id)).where(
+                    col(ShowtimeSelection.going_status).in_(ACTIVE_GOING_STATUSES)
+                )
+            ),
         )
-        .order_by(col(Showtime.datetime).asc())
+        .order_by(
+            nulls_first(col(Showtime.seats_next_check_at).asc()),
+            col(Showtime.datetime).asc(),
+        )
         .limit(limit)
     )
     return list(session.exec(stmt).all())
+
+
+def mark_seat_availability_due(
+    *, session: Session, showtime_id: int, now: datetime, stale_before: datetime
+) -> None:
+    """Bring `showtime_id`'s next seat reading forward to the poller's next run.
+
+    Deliberately a due-time write and not a request: someone marking themselves
+    interested must never be able to make the backend hit a ticket shop, or a
+    user working through a long list would do exactly that dozens of times over.
+    The poller picks this up within minutes, with every cap it has still applied.
+
+    A reading newer than `stale_before` is left alone, as is a showtime already
+    due — the point is to rescue a screening sitting on a twelve-hour cooldown
+    from being shown a twelve-hour-old number, not to re-read a fresh one.
+    """
+    showtime = session.get(Showtime, showtime_id)
+    if showtime is None or showtime.ticket_link is None:
+        return
+    if showtime.seats_checked_at is not None and showtime.seats_checked_at > stale_before:
+        return
+    if showtime.seats_next_check_at is None or showtime.seats_next_check_at <= now:
+        return
+    showtime.seats_next_check_at = now
+    session.add(showtime)
 
 
 def _build_main_page_showtimes_query(

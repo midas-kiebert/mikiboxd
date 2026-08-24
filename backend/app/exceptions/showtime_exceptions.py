@@ -106,6 +106,40 @@ class ShowtimePingInvalidLinkError(AppError):
         super().__init__("This invite link is invalid.")
 
 
+class SoldOutWatchNotAllowedError(AppError):
+    status_code = status.HTTP_403_FORBIDDEN
+    openapi_description = (
+        "Returned when the account may not watch showtimes for returned tickets."
+    )
+    openapi_example = {"detail": "This account cannot watch showtimes for tickets."}
+
+    def __init__(self) -> None:
+        super().__init__("This account cannot watch showtimes for tickets.")
+
+
+class SoldOutWatchNotApplicableError(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+    openapi_description = (
+        "Returned when the showtime still has seats, or when its ticket shop "
+        "is one whose availability cannot be read."
+    )
+    openapi_example = {"detail": "This showtime is not sold out."}
+
+    def __init__(self) -> None:
+        super().__init__("This showtime is not sold out.")
+
+
+class SoldOutWatchCapacityError(AppError):
+    status_code = status.HTTP_409_CONFLICT
+    openapi_description = (
+        "Returned when the global limit on simultaneous ticket watches is reached."
+    )
+    openapi_example = {"detail": "Too many showtimes are being watched right now."}
+
+    def __init__(self) -> None:
+        super().__init__("Too many showtimes are being watched right now.")
+
+
 class ShowtimeSeatValidationError(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
     openapi_description = "Returned when the provided seat info is invalid."

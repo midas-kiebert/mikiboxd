@@ -1,11 +1,12 @@
-"""The running-max capacity model and the "running low" threshold."""
+"""The running-max capacity model and the busyness levels derived from it."""
 
 import pytest
 
 from app.models.showtime import Showtime
 from app.scraping.seat_availability import SeatAvailability
 from app.services import seat_availability as seat_availability_service
-from app.services.seat_availability import _apply_reading, is_running_low
+from app.core.enums import SeatAvailabilityLevel
+from app.services.seat_availability import _apply_reading, seat_availability_level
 
 
 def _showtime() -> Showtime:
@@ -28,29 +29,32 @@ def _zelite(seats_left: int | None, sold_out: bool | None, room: str | None = "L
 @pytest.mark.parametrize(
     "seats_left, seats_capacity, expected",
     [
-        # Small room: the flat floor carries it, because 10% of 40 is 4 and by
-        # then the warning is useless.
-        (11, 40, False),
-        (10, 40, True),
-        # Mid room: 10% of 128 is 12, just above the flat floor.
-        (13, 128, False),
-        (12, 128, True),
-        # Large room: 10 left in Eye's Cinema 1 would be far too late.
-        (32, 312, False),
-        (31, 312, True),
-        # Capacity not yet learned -> the flat floor alone.
-        (11, None, False),
-        (10, None, True),
-        # Sold out is a different, stronger state, not "running low".
-        (0, 128, False),
-        # Nothing known.
-        (None, 128, False),
-        (None, None, False),
+        # Sold out is its own state, never the fullest ordinary one.
+        (0, 128, SeatAvailabilityLevel.SOLD_OUT),
+        # A handful of seats is nearly sold out whatever the room's size —
+        # and knowable even before any capacity has been learned.
+        (6, 312, SeatAvailabilityLevel.NEARLY_SOLD_OUT),
+        (6, None, SeatAvailabilityLevel.NEARLY_SOLD_OUT),
+        # Above the flat floor, the fraction decides. 10% of 312 is 31.
+        (30, 312, SeatAvailabilityLevel.NEARLY_SOLD_OUT),
+        (32, 312, SeatAvailabilityLevel.BUSY),
+        (171, 312, SeatAvailabilityLevel.BUSY),
+        (172, 312, SeatAvailabilityLevel.SOME_TAKEN),
+        (249, 312, SeatAvailabilityLevel.SOME_TAKEN),
+        (250, 312, SeatAvailabilityLevel.EMPTY),
+        # Above the flat floor with no capacity to compare against, there is
+        # nothing honest to say — and "nothing" must not read as "empty".
+        (40, None, None),
+        (40, 0, None),
+        (None, 312, None),
     ],
 )
-def test_is_running_low(seats_left, seats_capacity, expected) -> None:
+def test_seat_availability_level(seats_left, seats_capacity, expected) -> None:
     assert (
-        is_running_low(seats_left=seats_left, seats_capacity=seats_capacity) is expected
+        seat_availability_level(
+            seats_left=seats_left, seats_capacity=seats_capacity
+        )
+        is expected
     )
 
 
@@ -60,8 +64,11 @@ def test_capacity_is_the_running_max_of_every_reading() -> None:
         _read(showtime, _zelite(seats_left, False))
     assert showtime.seats_left == 4
     assert showtime.seats_capacity == 120
-    assert is_running_low(
-        seats_left=showtime.seats_left, seats_capacity=showtime.seats_capacity
+    assert (
+        seat_availability_level(
+            seats_left=showtime.seats_left, seats_capacity=showtime.seats_capacity
+        )
+        is SeatAvailabilityLevel.NEARLY_SOLD_OUT
     )
 
 

@@ -108,11 +108,13 @@ def to_me(user: User, *, session: Session) -> UserMe:
         notify_on_showtime_ping=user.notify_on_showtime_ping,
         notify_on_invite_response=user.notify_on_invite_response,
         notify_on_interest_reminder=user.notify_on_interest_reminder,
+        notify_on_seat_alert=user.notify_on_seat_alert,
         notify_channel_friend_showtime_match=user.notify_channel_friend_showtime_match,
         notify_channel_friend_requests=user.notify_channel_friend_requests,
         notify_channel_showtime_ping=user.notify_channel_showtime_ping,
         notify_channel_invite_response=user.notify_channel_invite_response,
         notify_channel_interest_reminder=user.notify_channel_interest_reminder,
+        notify_channel_seat_alert=user.notify_channel_seat_alert,
         letterboxd_username=user.letterboxd_username,
         watchlist_count=watchlist_count,
         watched_count=watched_count,
@@ -139,6 +141,7 @@ def to_me(user: User, *, session: Session) -> UserMe:
             user.notify_watchlist_digest_cinema_preset_id
         ),
         can_report=not is_report_banned(user),
+        can_watch_sold_out=user.is_pro,
         has_password=user.hashed_password is not None,
     )
 

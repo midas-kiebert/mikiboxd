@@ -12,9 +12,10 @@ is only intended to be used by the test suite. It shares the same pool settings
 as the main engine.
 """
 
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, col, create_engine, select
 
 from app.core.config import settings
+from app.core.enums import Environment
 from app.crud import user as user_crud
 from app.models.user import User, UserCreate
 
@@ -36,6 +37,34 @@ engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI), **_engine_options)
 test_engine = create_engine(
     str(settings.SQLALCHEMY_DATABASE_URI_TEST), **_engine_options
 )
+
+
+# Accounts that get `is_pro` in production. There is no paid tier and no way to
+# buy this — it is a list of people, and the only thing it currently unlocks is
+# the sold-out watch, whose whole cost model assumes the list stays this short.
+PRODUCTION_PRO_EMAILS = ("mikino@midaskiebert.nl",)
+
+
+def _seed_pro_users(session: Session) -> None:
+    """Grant `is_pro` to whoever should have it in this environment.
+
+    Outside production everyone gets it, because the point of staging is to
+    exercise the feature; in production it is the named accounts and nobody
+    else. Run on every startup, and only ever grants — revoking someone is a
+    deliberate act, not something a redeploy should do behind your back.
+    """
+    if settings.ENVIRONMENT == Environment.PRODUCTION:
+        stmt = select(User).where(col(User.email).in_(PRODUCTION_PRO_EMAILS))
+    else:
+        stmt = select(User)
+
+    granted = False
+    for user in session.exec(stmt.where(col(User.is_pro).is_(False))):
+        user.is_pro = True
+        session.add(user)
+        granted = True
+    if granted:
+        session.commit()
 
 
 def init_db(session: Session) -> None:
@@ -75,6 +104,8 @@ def init_db(session: Session) -> None:
         midas.is_superuser = True
         session.add(midas)
         session.commit()
+
+    _seed_pro_users(session)
 
     # Seed the curated Letterboxd lists from configs/letterboxd_lists.yaml.
     # Idempotent: existing lists are left untouched. Films are populated lazily

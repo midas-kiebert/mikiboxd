@@ -23,6 +23,7 @@ import type { MoviePublic, ShowtimePublic, ShowtimeInMoviePublic } from "shared"
 import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
+import { usePrefetchShowtimeSeatAvailability } from "shared/hooks/useShowtimeSeatAvailability";
 
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
@@ -383,6 +384,7 @@ function MovieContent({
   usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id), {
     enabled: isSignedIn,
   });
+  usePrefetchShowtimeSeatAvailability(showtimes.map((showtime) => showtime.id));
 
   const showtimeSections = useMemo<MovieShowtimeSection[]>(() => {
     const sectionMap = new Map<string, MovieShowtimeSection>();

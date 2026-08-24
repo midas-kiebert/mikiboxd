@@ -110,10 +110,12 @@ def _purge_stale_notifications() -> None:
 def _refresh_seat_availability() -> None:
     """Re-read how many seats are left for showtimes someone has selected.
 
-    Runs hourly; each showtime is re-read at most every few hours and the batch
-    is capped, so this is a trickle of requests at the cinemas' ticket shops
-    rather than a scrape. Errors are caught so a single failure does not stop
-    the scheduler.
+    Runs every 5 minutes, which is the *tick*, not the rate: each showtime
+    carries its own due time (a nearly-full screening comes round every quarter
+    hour, an empty one twice a day), and each run is capped both overall and per
+    ticket shop. Frequent small runs are what let the cadence be that varied
+    while still spreading a backlog out instead of discharging it at once.
+    Errors are caught so a single failure does not stop the scheduler.
     """
     from app.api.deps import get_db_context
     from app.services import seat_availability
@@ -125,6 +127,26 @@ def _refresh_seat_availability() -> None:
             logger.info("Refreshed seat availability for %s showtimes", read_count)
     except Exception:
         logger.exception("Failed to run seat availability refresh job")
+
+
+def _run_sold_out_watches() -> None:
+    """Check the showtimes people are waiting on for a returned ticket.
+
+    Runs every 2 minutes, but only ever looks at watches that are actually due,
+    and there are at most a handful of those in existence at once — see
+    services/sold_out_watch.py for why that cap is the whole basis of the
+    feature. Errors are caught so a single failure does not stop the scheduler.
+    """
+    from app.api.deps import get_db_context
+    from app.services import sold_out_watch
+
+    try:
+        with get_db_context() as session:
+            notified_count = sold_out_watch.run_due_watches(session=session)
+        if notified_count > 0:
+            logger.info("Found returned tickets for %s watches", notified_count)
+    except Exception:
+        logger.exception("Failed to run sold-out watch job")
 
 
 def _refresh_watchlist_digest_queue() -> None:
@@ -186,8 +208,13 @@ if __name__ == "__main__":
     )
     scheduler.add_job(
         func=_refresh_seat_availability,
-        trigger=CronTrigger(minute=25, timezone=_TIMEZONE),
+        trigger=CronTrigger(minute="*/5", timezone=_TIMEZONE),
         id="refresh_seat_availability",
+    )
+    scheduler.add_job(
+        func=_run_sold_out_watches,
+        trigger=CronTrigger(minute="*/2", timezone=_TIMEZONE),
+        id="run_sold_out_watches",
     )
     scheduler.add_job(
         func=_purge_stale_notifications,

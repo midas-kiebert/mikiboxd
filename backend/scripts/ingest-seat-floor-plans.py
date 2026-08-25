@@ -5,15 +5,24 @@ Springhaver all run "My Cloud Cinema" booking apps whose `getSeatPlanData`
 endpoint hands back full seat geometry, not just a free/capacity count. A
 room's layout essentially never changes, so this reads it once per known room
 and stores it in `cinemaroomfloorplan` rather than being scraped on a
-schedule. Run once after deploying the `cinemaroomfloorplan` migration, and
-again by hand only if a covered cinema renovates a room:
+schedule.
 
-    python scripts/ingest-seat-floor-plans.py
+Run unconditionally from `scripts/prestart.sh` on every deploy, same as
+`seed-cities-and-cinemas.py` — but unlike that script this one does real
+outbound requests to 7 external booking sites, so it skips entirely (a single
+cheap DB count) whenever the table already has rows, rather than re-scraping
+on every deploy. That skip is what makes "run once" true across environments
+without a manual step: the first deploy after the migration (dev, then later
+prod) does the real ingest, and every deploy after that is a no-op. Pass
+`--force` to re-ingest anyway, e.g. after a covered cinema renovates a room:
+
+    python scripts/ingest-seat-floor-plans.py [--force]
 """
 
+import argparse
 import time
 
-from sqlmodel import Session
+from sqlmodel import Session, func, select
 
 from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
@@ -50,7 +59,17 @@ def _upsert_floor_plan(
     session.add(existing)
 
 
-def ingest_floor_plans() -> None:
+def _already_ingested(*, session: Session) -> bool:
+    return session.exec(select(func.count()).select_from(CinemaRoomFloorPlan)).one() > 0
+
+
+def ingest_floor_plans(*, force: bool = False) -> None:
+    if not force:
+        with get_db_context() as session:
+            if _already_ingested(session=session):
+                print("cinemaroomfloorplan already has rows, skipping (pass --force to re-ingest).")
+                return
+
     feed_cache: EagerlyFeedCache = {}
     ingested = 0
     skipped: list[str] = []
@@ -102,4 +121,11 @@ def ingest_floor_plans() -> None:
 
 
 if __name__ == "__main__":
-    ingest_floor_plans()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-ingest even if cinemaroomfloorplan already has rows.",
+    )
+    args = parser.parse_args()
+    ingest_floor_plans(force=args.force)

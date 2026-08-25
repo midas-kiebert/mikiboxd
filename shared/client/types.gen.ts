@@ -583,8 +583,8 @@ export type SeatFloorPlanPublic = {
  * One seat's position and status on a room's floor plan.
  *
  * Geometry (`position_left/top`, `width`, `height`) is the room's own,
- * stored once and never refreshed. `taken`/`is_viewer_seat`/`friend` are
- * computed fresh on every request — `taken` from a live read of the
+ * stored once and never refreshed. `taken`/`is_viewer_seat`/`friend_count`
+ * are computed fresh on every request — `taken` from a live read of the
  * cinema's own seat map, the other two from this showtime's selections.
  */
 export type SeatFloorPlanSeatPublic = {
@@ -597,7 +597,7 @@ export type SeatFloorPlanSeatPublic = {
   selectable: boolean
   taken: boolean | null
   is_viewer_seat: boolean
-  friend?: UserPublic | null
+  friend_count?: number
 }
 
 export type SentShowtimePingPublic = {

@@ -87,6 +87,7 @@ import FriendListRow, {
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
 import InviteBeforePrivateDialog from "@/components/showtimes/InviteBeforePrivateDialog";
 import SeatFloorPlan from "@/components/showtimes/SeatFloorPlan";
+import { getSeatFieldMaxLength, getSeatInputConfig, validateSeatFieldValue } from "@/components/showtimes/seat-input";
 import SheetBackdrop from "@/components/sheets/SheetBackdrop";
 import {
   getFriendWatchKindMeta,
@@ -182,15 +183,6 @@ type ShowtimeActionModalProps = {
   tour?: ShowtimeSheetTour | null;
 };
 
-// ─── Seat input helpers ───────────────────────────────────────────────────────
-
-type SeatFieldKind = "unknown" | "digits" | "letter";
-
-type SeatInputConfig = {
-  rowKind: SeatFieldKind;
-  seatKind: SeatFieldKind;
-};
-
 // Header close button geometry, shared with the watch-marker column that starts
 // just below it so the two can't collide as either one is retuned.
 const CLOSE_BUTTON_SIZE = 30;
@@ -248,45 +240,6 @@ function CommittedShowtimeReporter({
   }, [showtimeId, onCommitted]);
   return null;
 }
-
-const SEAT_UNKNOWN_PATTERN = /^(?:\d{1,2}|[A-Za-z])$/;
-const SEAT_DIGITS_PATTERN = /^\d{1,2}$/;
-const SEAT_LETTER_PATTERN = /^[A-Za-z]$/;
-
-const getSeatInputConfig = (seating: string): SeatInputConfig => {
-  switch (seating) {
-    case "row-number-seat-number":
-      return { rowKind: "digits", seatKind: "digits" };
-    case "row-letter-seat-number":
-      return { rowKind: "letter", seatKind: "digits" };
-    case "row-number-seat-letter":
-      return { rowKind: "digits", seatKind: "letter" };
-    case "row-letter-seat-letter":
-      return { rowKind: "letter", seatKind: "letter" };
-    default:
-      return { rowKind: "unknown", seatKind: "unknown" };
-  }
-};
-
-const getSeatFieldMaxLength = (kind: SeatFieldKind) => (kind === "letter" ? 1 : 2);
-
-const validateSeatFieldValue = (
-  value: string | null,
-  kind: SeatFieldKind,
-  label: "Row" | "Seat"
-) => {
-  if (value === null) return null;
-  if (kind === "digits" && !SEAT_DIGITS_PATTERN.test(value)) {
-    return `${label} must be 1-2 digits.`;
-  }
-  if (kind === "letter" && !SEAT_LETTER_PATTERN.test(value)) {
-    return `${label} must be one letter.`;
-  }
-  if (kind === "unknown" && !SEAT_UNKNOWN_PATTERN.test(value)) {
-    return `${label} must be one letter or 1-2 digits.`;
-  }
-  return null;
-};
 
 const getUniqueSenderNames = (senders: UserPublic[]): string[] =>
   senders
@@ -993,21 +946,20 @@ export default function ShowtimeActionModal({
     () => validateSeatFieldValue(normalizedSeatNumberDraft, seatInputConfig.seatKind, "Seat"),
     [normalizedSeatNumberDraft, seatInputConfig.seatKind]
   );
-  const seatPairValidationError = useMemo(() => {
-    if ((normalizedSeatRowDraft === null) !== (normalizedSeatNumberDraft === null)) {
-      return "Set both row and seat.";
-    }
-    return null;
-  }, [normalizedSeatNumberDraft, normalizedSeatRowDraft]);
-  const seatValidationError =
-    seatPairValidationError ?? seatRowValidationError ?? seatNumberValidationError;
+  const seatValidationError = seatRowValidationError ?? seatNumberValidationError;
+  // Row and seat must be set (or cleared) together — silently blocks Save
+  // rather than showing an error, since it's just an in-progress edit, not a
+  // mistake worth calling out.
+  const isSeatPairIncomplete =
+    (normalizedSeatRowDraft === null) !== (normalizedSeatNumberDraft === null);
   const isFreeSeating = cinemaSeating === "free";
   const seatLabel = formatSeatLabel(normalizedCurrentSeatRow, normalizedCurrentSeatNumber);
   const isSeatConfigured = Boolean(seatLabel);
   const hasSeatChanges =
     normalizedSeatRowDraft !== normalizedCurrentSeatRow ||
     normalizedSeatNumberDraft !== normalizedCurrentSeatNumber;
-  const canSaveSeat = hasSeatChanges && !isUpdatingStatus && seatValidationError === null;
+  const canSaveSeat =
+    hasSeatChanges && !isUpdatingStatus && seatValidationError === null && !isSeatPairIncomplete;
 
   const hasInvite = Boolean(invite && invite.senders.length > 0);
   const notGoingActsAsDismiss = Boolean(invite && onDismissInvite);
@@ -1124,26 +1076,26 @@ export default function ShowtimeActionModal({
 
   const handleOpenSeatDialog = () => {
     if (!showtime || isUpdatingStatus || showtime.viewer?.going !== "GOING" || isFreeSeating) return;
+    setSeatRowDraft(showtime.viewer?.seat_row ?? "");
+    setSeatNumberDraft(showtime.viewer?.seat_number ?? "");
     if (seatFloorPlan) {
       setIsSeatFloorPlanVisible(true);
       return;
     }
-    setSeatRowDraft(showtime.viewer?.seat_row ?? "");
-    setSeatNumberDraft(showtime.viewer?.seat_number ?? "");
     setIsSeatDialogVisible(true);
   };
 
+  // Tapping a seat on the floor plan only fills the row/seat fields — same as
+  // typing them — it does not save. Saving happens once, from either UI,
+  // through handleSaveSeat below via the Save button.
   const handleSelectFloorPlanSeat = (rowName: string, seatName: string) => {
-    if (!showtime || isUpdatingStatus) return;
-    onUpdateStatus("GOING", { seatRow: rowName, seatNumber: seatName });
-    setIsSeatFloorPlanVisible(false);
+    setSeatRowDraft(rowName);
+    setSeatNumberDraft(seatName);
   };
 
-  const handleUseTextInputInstead = () => {
+  const handleCancelSeatDialog = () => {
+    setIsSeatDialogVisible(false);
     setIsSeatFloorPlanVisible(false);
-    setSeatRowDraft(showtime?.viewer?.seat_row ?? "");
-    setSeatNumberDraft(showtime?.viewer?.seat_number ?? "");
-    setIsSeatDialogVisible(true);
   };
 
   const handleSaveSeat = () => {
@@ -1157,6 +1109,7 @@ export default function ShowtimeActionModal({
       seatNumber: normalizedSeatNumberDraft,
     });
     setIsSeatDialogVisible(false);
+    setIsSeatFloorPlanVisible(false);
   };
 
   const handlePingFriend = (friendId: string) => {
@@ -2237,9 +2190,21 @@ export default function ShowtimeActionModal({
         seats={seatFloorPlan?.seats ?? null}
         isLoading={isSeatFloorPlanVisible && seatFloorPlanQuery.isLoading}
         isError={seatFloorPlanQuery.isError}
-        onClose={() => setIsSeatFloorPlanVisible(false)}
+        cinemaName={showtime?.cinema.name ?? null}
+        movieTitle={showtime?.movie.title ?? null}
+        dateLabel={dateLabel}
+        timeRangeLabel={timeRangeLabel}
+        seatRowDraft={seatRowDraft}
+        seatNumberDraft={seatNumberDraft}
+        onChangeSeatRowDraft={setSeatRowDraft}
+        onChangeSeatNumberDraft={setSeatNumberDraft}
+        seatInputConfig={seatInputConfig}
+        seatValidationError={seatValidationError}
+        canSave={canSaveSeat}
+        isSaving={isUpdatingStatus}
         onSelectSeat={handleSelectFloorPlanSeat}
-        onUseTextInputInstead={handleUseTextInputInstead}
+        onSave={handleSaveSeat}
+        onCancel={handleCancelSeatDialog}
       />
 
       {/* Seat editor (assigned-seating cinemas only) */}

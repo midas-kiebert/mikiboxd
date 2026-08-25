@@ -4,14 +4,12 @@ from urllib.parse import urlsplit
 
 from sqlmodel import Session
 
-from app.converters import user as user_converters
 from app.core.enums import GoingStatus
 from app.core.viewer import ViewerId
 from app.crud import showtime as showtime_crud
 from app.exceptions.showtime_exceptions import ShowtimeNotFoundError
 from app.models.cinema_room_floor_plan import CinemaRoomFloorPlan
 from app.schemas.seat_floor_plan import SeatFloorPlanPublic, SeatFloorPlanSeatPublic
-from app.schemas.user import UserPublic
 from app.scraping.logger import logger
 from app.scraping.seat_availability import (
     EAGERLY_BOOKING_HOSTS,
@@ -87,7 +85,8 @@ def get_seat_floor_plan(
         if selection is not None and selection.seat_row and selection.seat_number:
             viewer_seat = (selection.seat_row.strip(), selection.seat_number.strip())
 
-    friend_by_seat: dict[tuple[str, str], UserPublic] = {}
+    # Not who — just how many, per seat.
+    friend_count_by_seat: dict[tuple[str, str], int] = {}
     if viewer is not None:
         friends_going = showtime_crud.get_friends_for_showtime(
             session=session,
@@ -100,20 +99,11 @@ def get_seat_floor_plan(
             showtime_id=showtime_id,
             user_ids=[friend.id for friend in friends_going],
         )
-        for friend in friends_going:
-            friend_selection = selections_by_user.get(friend.id)
-            if (
-                friend_selection is None
-                or not friend_selection.seat_row
-                or not friend_selection.seat_number
-            ):
+        for selection in selections_by_user.values():
+            if not selection.seat_row or not selection.seat_number:
                 continue
-            key = (friend_selection.seat_row.strip(), friend_selection.seat_number.strip())
-            friend_by_seat[key] = user_converters.to_public(
-                friend,
-                seat_row=friend_selection.seat_row,
-                seat_number=friend_selection.seat_number,
-            )
+            key = (selection.seat_row.strip(), selection.seat_number.strip())
+            friend_count_by_seat[key] = friend_count_by_seat.get(key, 0) + 1
 
     seats = []
     for seat in plan.seats:
@@ -129,7 +119,7 @@ def get_seat_floor_plan(
                 selectable=seat["selectable"],
                 taken=live_status.get(key) if live_status is not None else None,
                 is_viewer_seat=key == viewer_seat,
-                friend=friend_by_seat.get(key),
+                friend_count=friend_count_by_seat.get(key, 0),
             )
         )
 

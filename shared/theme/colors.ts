@@ -48,6 +48,13 @@ export const Colors = {
     // The recessed fill for things a hairline can't define: segmented-control
     // tracks, icon tiles, count bubbles, micro-badges and gradient stops.
     surfaceMuted: '#e6edea',
+    // Two deliberately unremarkable, solid grays for the seat floor plan's
+    // free/taken fills — dark enough that neither reads as "almost white"
+    // against the app background, but distinct from each other so a room
+    // still reads clearly at a glance. Neither should look like the more
+    // important pick, since both are equally selectable.
+    seatFree: '#5c7a70',
+    seatTaken: '#3d5049',
     notificationBadge: '#c52b30',
     divider: '#e3eae7',
     posterPlaceholder: '#dae2de',
@@ -151,6 +158,9 @@ export const Colors = {
     pillActiveBackground: tintColorDark,
     pillActiveText: '#151718',
     surfaceMuted: '#2a2a2a',
+    // See the light theme's `seatFree`/`seatTaken` for what these are for.
+    seatFree: '#6a6e70',
+    seatTaken: '#35373a',
     notificationBadge: '#d63a3a',
     divider: '#3a3a3a',
     posterPlaceholder: '#3a3a3a',

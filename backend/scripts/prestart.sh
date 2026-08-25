@@ -12,3 +12,6 @@ alembic upgrade head
 # Create initial data in DB
 python app/initial_data.py
 python scripts/seed-cities-and-cinemas.py
+
+# One-time seat floor plan ingest (self-guarding: no-op once already populated)
+python scripts/ingest-seat-floor-plans.py

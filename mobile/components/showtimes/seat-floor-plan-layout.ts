@@ -12,6 +12,9 @@ export type ScaledSeat = SeatFloorPlanSeatPublic & {
   y: number;
   scaledWidth: number;
   scaledHeight: number;
+  /** Extra tap area on each side, restoring the pre-inset slot as the hit target. */
+  hitSlopX: number;
+  hitSlopY: number;
 };
 
 export type SeatFloorPlanLayout = {
@@ -21,10 +24,27 @@ export type SeatFloorPlanLayout = {
   height: number;
 };
 
-// Leaves room for the header/close button and screen edges — a floor plan
-// that touched the device edges would read as cramped and be hard to tap
-// near the border.
-const FIT_PADDING_FACTOR = 0.9;
+// Leaves a little room so the floor plan doesn't touch the screen edges —
+// kept close to 1 so small rooms (few seats, so a small bounding box) still
+// render at a legible size rather than shrinking further than the space
+// actually available.
+const FIT_PADDING_FACTOR = 0.97;
+
+// Shrink every seat toward its own center by this fraction, regardless of how
+// tightly the source cinema packed its own grid. Some rooms (Filmhallen) leave
+// a slot of daylight between seats in the raw pixel data; others (Louis
+// Hartlooper) define seats exactly pitch-to-pitch with zero native gap, which
+// renders as one solid, unreadable block without this. A proportional inset
+// keeps the effect consistent across both.
+const SEAT_INSET_FACTOR = 0.16;
+// Never shrink a seat past this, even at a tiny scale — a gap nobody can see
+// isn't worth a seat nobody can tap.
+const MIN_RENDERED_SEAT_SIZE = 4;
+// The inset above shrinks the *visible* seat for spacing, but the tap target
+// shouldn't shrink with it — a few extra missed taps aren't worth the
+// legibility, so hitSlop always restores at least this much on every side,
+// on top of whatever the inset itself already gives back.
+const MIN_HIT_SLOP = 6;
 
 export function layoutSeatFloorPlan(
   seats: SeatFloorPlanSeatPublic[],
@@ -48,13 +68,23 @@ export function layoutSeatFloorPlan(
     (availableHeight * FIT_PADDING_FACTOR) / boundingHeight
   );
 
-  const scaledSeats = seats.map((seat) => ({
-    ...seat,
-    x: (seat.position_left - minLeft) * scale,
-    y: (seat.position_top - minTop) * scale,
-    scaledWidth: Math.max(seat.width * scale, 1),
-    scaledHeight: Math.max(seat.height * scale, 1),
-  }));
+  const scaledSeats = seats.map((seat) => {
+    const rawWidth = seat.width * scale;
+    const rawHeight = seat.height * scale;
+    const scaledWidth = Math.max(rawWidth * (1 - SEAT_INSET_FACTOR), Math.min(rawWidth, MIN_RENDERED_SEAT_SIZE));
+    const scaledHeight = Math.max(rawHeight * (1 - SEAT_INSET_FACTOR), Math.min(rawHeight, MIN_RENDERED_SEAT_SIZE));
+    return {
+      ...seat,
+      // Centered on the seat's original slot, so insetting doesn't drift the
+      // grid — only the gaps between seats grow.
+      x: (seat.position_left - minLeft) * scale + (rawWidth - scaledWidth) / 2,
+      y: (seat.position_top - minTop) * scale + (rawHeight - scaledHeight) / 2,
+      scaledWidth,
+      scaledHeight,
+      hitSlopX: Math.max((rawWidth - scaledWidth) / 2, MIN_HIT_SLOP),
+      hitSlopY: Math.max((rawHeight - scaledHeight) / 2, MIN_HIT_SLOP),
+    };
+  });
 
   return {
     seats: scaledSeats,

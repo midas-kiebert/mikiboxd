@@ -1,7 +1,5 @@
 from sqlmodel import SQLModel
 
-from app.schemas.user import UserPublic
-
 __all__ = ["SeatFloorPlanPublic", "SeatFloorPlanSeatPublic"]
 
 
@@ -9,8 +7,8 @@ class SeatFloorPlanSeatPublic(SQLModel):
     """One seat's position and status on a room's floor plan.
 
     Geometry (`position_left/top`, `width`, `height`) is the room's own,
-    stored once and never refreshed. `taken`/`is_viewer_seat`/`friend` are
-    computed fresh on every request — `taken` from a live read of the
+    stored once and never refreshed. `taken`/`is_viewer_seat`/`friend_count`
+    are computed fresh on every request — `taken` from a live read of the
     cinema's own seat map, the other two from this showtime's selections.
     """
 
@@ -27,7 +25,11 @@ class SeatFloorPlanSeatPublic(SQLModel):
     # unknown this request, not evidence either way.
     taken: bool | None
     is_viewer_seat: bool
-    friend: UserPublic | None = None
+    # How many visible friends self-reported this seat — not who, just how
+    # many, since this is a "does anyone I know sit here" marker, not a
+    # roster. Self-reported, so more than one friend landing on the same seat
+    # is expected, not a conflict to resolve.
+    friend_count: int = 0
 
 
 class SeatFloorPlanPublic(SQLModel):

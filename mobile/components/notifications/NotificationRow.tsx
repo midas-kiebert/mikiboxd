@@ -96,6 +96,21 @@ const buildPresentation = (item: NotificationFeedItem, colors: ThemeColors): Pre
         title: `${name} accepted your friend request`,
         subtitle: null,
       };
+    // The two items nobody caused: the cinema's own seat count moved.
+    case "seats_running_out":
+      return {
+        icon: "local-fire-department",
+        accent: colors.orange,
+        title: movie ? `${movie} is nearly sold out` : "Nearly sold out",
+        subtitle: formatShowtimeSubtitle(item),
+      };
+    case "seats_released":
+      return {
+        icon: "confirmation-number",
+        accent: colors.green,
+        title: movie ? `Tickets available for ${movie}` : "Tickets available",
+        subtitle: formatShowtimeSubtitle(item),
+      };
   }
 };
 

@@ -125,6 +125,7 @@ export default function MovieCard({ movie, onPress, showCinema = true }: MovieCa
                       subtitlesAfterCinema
                       isSyntheticMovie={isSynthetic}
                       showCinema={showCinema}
+                      seatAvailabilityIconOnly
                     />
                   ))}
                 </View>

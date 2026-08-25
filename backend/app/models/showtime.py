@@ -3,10 +3,12 @@
 import datetime as dt
 from typing import TYPE_CHECKING
 
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlmodel import Column, Field, Relationship, SQLModel
 
+from app.core.enums import SeatAvailabilityLevel
 from app.utils import now_amsterdam_naive
 
 if TYPE_CHECKING:
@@ -19,6 +21,12 @@ class ShowtimeBase(SQLModel):
     datetime: dt.datetime = Field(index=True)
     end_datetime: dt.datetime | None = None
     ticket_link: str | None = None
+    # Which room the showtime plays in, named the way the cinema names it:
+    # "LAB 1", "Grote Zaal", "Cinema 3", "Parisienzaal". Only some sources know
+    # it — Eye's API and the Eagerly feed carry it, and for the rest the seat
+    # availability poller reads it off the ticket shop's checkout page — so a
+    # scraper that cannot see it leaves this None rather than guessing.
+    room: str | None = None
     subtitles: list[str] | None = Field(sa_column=Column(ARRAY(String)), default=None)
     # Exact source stream this showtime was last (re-)scraped from, e.g.
     # "cinema_scraper:kriterion" or "cineville:xxx" — same naming convention
@@ -56,3 +64,48 @@ class Showtime(ShowtimeBase, table=True):
     movie: "Movie" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
     cinema_id: int = Field(foreign_key="cinema.id")
     cinema: "Cinema" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    # Seat availability, refreshed by the availability poller (see
+    # services/seat_availability.py) rather than by the scrape, and only for
+    # showtimes someone has actually selected — polling every showtime would
+    # mean tens of thousands of requests at a handful of ticket shops.
+    seats_left: int | None = None
+    # Running max of every seats_left ever read for this showtime, which stands
+    # in for its capacity: a showtime is first polled weeks out while it is
+    # still near-empty, so the largest reading converges on the real number.
+    # Per-showtime rather than per-room on purpose — a room can be sold at
+    # reduced capacity for one screening, and this needs no room modelling at
+    # all to be right. A showtime first polled when it is already half sold
+    # under-reads, which makes the "nearly full" test fire late, never early.
+    seats_capacity: int | None = None
+    seats_checked_at: dt.datetime | None = None
+    # The fullest level this screening has ever reached, which is a floor its
+    # displayed level never drops below. A capacity that grows (a better reading,
+    # or the room's total learned from a sibling screening) makes an unchanged
+    # seat count look emptier than it did, and a level that walks back down and
+    # up again is both untrue to how a screening actually fills and a way to send
+    # the same "last few seats" notice twice. Capped at LAST_FEW rather than
+    # SOLD_OUT: tickets genuinely do come back, and a screening you can buy a
+    # seat for must never still read "Sold out".
+    seats_level_floor: SeatAvailabilityLevel | None = Field(
+        default=None,
+        sa_column=Column(
+            SAEnum(
+                SeatAvailabilityLevel,
+                native_enum=False,
+                length=40,
+                values_callable=lambda enum: [member.value for member in enum],
+            ),
+            nullable=True,
+        ),
+    )
+    # When this showtime is next due for a reading. The poller selects on this
+    # alone, so every rule about *how often* a given showtime is worth reading
+    # (how full it is, how soon it starts, how long it has sat unchanged) is
+    # applied once when the interval is chosen, never re-derived in the query.
+    # Setting it to "now" is also how anything else — a user marking themselves
+    # interested — asks for a reading without making a request itself.
+    seats_next_check_at: dt.datetime | None = Field(default=None, index=True)
+    # Consecutive readings that came back with the same `seats_left`. A showtime
+    # nothing is happening to is read less and less often, up to a cap; any
+    # change resets it to zero.
+    seats_unchanged_streak: int = Field(default=0)

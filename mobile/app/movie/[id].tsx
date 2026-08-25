@@ -23,6 +23,7 @@ import type { MoviePublic, ShowtimePublic, ShowtimeInMoviePublic } from "shared"
 import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
+import { usePrefetchShowtimeSeatAvailability } from "shared/hooks/useShowtimeSeatAvailability";
 
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
@@ -383,6 +384,7 @@ function MovieContent({
   usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id), {
     enabled: isSignedIn,
   });
+  usePrefetchShowtimeSeatAvailability(showtimes.map((showtime) => showtime.id));
 
   const showtimeSections = useMemo<MovieShowtimeSection[]>(() => {
     const sectionMap = new Map<string, MovieShowtimeSection>();
@@ -608,7 +610,7 @@ function MovieContent({
                 accessibilityRole="button"
                 accessibilityLabel="Share this movie"
               >
-                <MaterialIcons name="share" size={12} color={colors.pillText} />
+                <MaterialIcons name="share" size={10} color={colors.pillText} />
                 <ThemedText style={styles.shareBtnText}>Share</ThemedText>
               </TouchableOpacity>
             </View>
@@ -795,7 +797,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flexDirection: "row",
       gap: 14,
       paddingHorizontal: 16,
-      paddingBottom: 16,
+      // Extra room below the content reserves space for the absolutely
+      // positioned shareBtn, so a tall summaryInfo (long title/director/cast)
+      // never pushes the meta/watch-marker row down into it.
+      paddingBottom: 34,
     },
     divider: {
       height: 1,
@@ -831,16 +836,16 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       right: 16,
       flexDirection: "row",
       alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 10,
-      paddingVertical: 3,
-      borderRadius: 14,
+      gap: 3,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 12,
       backgroundColor: colors.pillBackground,
       borderWidth: 1,
       borderColor: colors.pillBorder,
     },
     shareBtnText: {
-      fontSize: 11,
+      fontSize: 10,
       fontWeight: "500",
       color: colors.pillText,
     },

@@ -400,6 +400,8 @@ export type NotificationFeedItem = {
     | "invite_response"
     | "friend_request_received"
     | "friend_request_accepted"
+    | "seats_released"
+    | "seats_running_out"
   created_at: string
   seen_at: string | null
   actor: UserPublic | null
@@ -414,6 +416,8 @@ export type type =
   | "invite_response"
   | "friend_request_received"
   | "friend_request_accepted"
+  | "seats_released"
+  | "seats_running_out"
 
 export type NotificationOptInBreakdown = {
   setting: string
@@ -545,6 +549,56 @@ export type ScrapeRunView = {
  */
 export type SearchField = "title" | "director" | "actor" | "cinema" | "friend"
 
+/**
+ * How full a screening is, as a handful of buckets rather than a number.
+ *
+ * Derived from `Showtime.seats_left` against `seats_capacity` — see
+ * `app.services.seat_availability.seat_availability_level`, which is the only
+ * place the cutoffs live. A showtime we have no usable reading for has no
+ * level at all (`None`), which is deliberately not a value here: "we don't
+ * know" must never be renderable as "it's fine".
+ *
+ * Declaration order is emptiest-first and is load-bearing: `SEAT_LEVEL_ORDER`
+ * below reads it to compare two levels, which is what lets a showtime's level
+ * ratchet upwards and never fall back.
+ */
+export type SeatAvailabilityLevel =
+  | "some_taken"
+  | "busy"
+  | "very_busy"
+  | "last_few"
+  | "sold_out"
+
+/**
+ * A room's seat map for one showtime, merged with live + personal state.
+ */
+export type SeatFloorPlanPublic = {
+  showtime_id: number
+  room: string
+  seats: Array<SeatFloorPlanSeatPublic>
+}
+
+/**
+ * One seat's position and status on a room's floor plan.
+ *
+ * Geometry (`position_left/top`, `width`, `height`) is the room's own,
+ * stored once and never refreshed. `taken`/`is_viewer_seat`/`friend_count`
+ * are computed fresh on every request — `taken` from a live read of the
+ * cinema's own seat map, the other two from this showtime's selections.
+ */
+export type SeatFloorPlanSeatPublic = {
+  row_name: string
+  seat_name: string
+  position_left: number
+  position_top: number
+  width: number
+  height: number
+  selectable: boolean
+  taken: boolean | null
+  is_viewer_seat: boolean
+  friend_count?: number
+}
+
 export type SentShowtimePingPublic = {
   id: number
   receiver_id: string
@@ -561,6 +615,7 @@ export type ShowtimeInMoviePublic = {
   datetime: string
   end_datetime?: string | null
   ticket_link?: string | null
+  room?: string | null
   subtitles?: Array<string> | null
   scrape_source?: string | null
   tmdb_cache_id?: number | null
@@ -662,6 +717,7 @@ export type ShowtimePublic = {
   datetime: string
   end_datetime?: string | null
   ticket_link?: string | null
+  room?: string | null
   subtitles?: Array<string> | null
   scrape_source?: string | null
   tmdb_cache_id?: number | null
@@ -765,6 +821,29 @@ export type ShowtimeReportUpdate = {
   status: ShowtimeReportStatus
 }
 
+/**
+ * How full a screening is, and how much we can say about it.
+ *
+ * The same for everyone — this is a fact about the screening, not about who
+ * asked — which is what lets it be cached per showtime and prefetched for a
+ * whole list at once. A showtime with no usable reading and no read pending
+ * is simply absent from the response rather than present with a null level,
+ * so the client never has to tell "empty" from "unknown". A showtime whose
+ * reading has not landed yet, but is expected soon, is the one exception: it
+ * is present with `checking` set — with a level if it has ever had one, and
+ * without if this is its first — so the client can say a number is coming
+ * instead of showing nothing or a stale one with no explanation.
+ */
+export type ShowtimeSeatAvailabilityPublic = {
+  showtime_id: number
+  level?: SeatAvailabilityLevel | null
+  seats_left?: number | null
+  seats_capacity?: number | null
+  checked_at?: string | null
+  watchable?: boolean
+  checking?: boolean
+}
+
 export type ShowtimeSelectionUpdate = {
   going_status: GoingStatus
   seat_row?: string | null
@@ -804,6 +883,15 @@ export type ShowtimeVisibilityUpdate = {
   mode: VisibilityMode
 }
 
+/**
+ * Made-up numbers for the superuser simulation hook (never production).
+ */
+export type SimulateSeatAvailability = {
+  seats_left?: number | null
+  seats_capacity?: number | null
+  reset?: boolean
+}
+
 export type SocialLoginRequest = {
   provider: SocialProvider
   token: string
@@ -825,6 +913,11 @@ export type SocialLoginResponse = {
  * Third-party identity provider for social sign-in.
  */
 export type SocialProvider = "apple" | "google"
+
+export type SoldOutWatchPublic = {
+  showtime_id: number
+  created_at: string
+}
 
 /**
  * Coarse time-of-day bucket used for showtime filtering.
@@ -900,11 +993,13 @@ export type UserMe = {
   notify_on_showtime_ping: boolean
   notify_on_invite_response: boolean
   notify_on_interest_reminder: boolean
+  notify_on_seat_alert: boolean
   notify_channel_friend_showtime_match: NotificationChannel
   notify_channel_friend_requests: NotificationChannel
   notify_channel_showtime_ping: NotificationChannel
   notify_channel_invite_response: NotificationChannel
   notify_channel_interest_reminder: NotificationChannel
+  notify_channel_seat_alert: NotificationChannel
   letterboxd_username: string | null
   watchlist_count: number
   watched_count: number
@@ -921,6 +1016,7 @@ export type UserMe = {
   notify_watchlist_digest_list_id: string | null
   notify_watchlist_digest_cinema_preset_id: string | null
   can_report: boolean
+  can_watch_sold_out: boolean
   has_password: boolean
 }
 
@@ -1002,11 +1098,13 @@ export type UserUpdate = {
   notify_on_showtime_ping?: boolean | null
   notify_on_invite_response?: boolean | null
   notify_on_interest_reminder?: boolean | null
+  notify_on_seat_alert?: boolean | null
   notify_channel_friend_showtime_match?: NotificationChannel | null
   notify_channel_friend_requests?: NotificationChannel | null
   notify_channel_showtime_ping?: NotificationChannel | null
   notify_channel_invite_response?: NotificationChannel | null
   notify_channel_interest_reminder?: NotificationChannel | null
+  notify_channel_seat_alert?: NotificationChannel | null
   notify_watchlist_digest_enabled?: boolean | null
   notify_watchlist_digest_frequency?: DigestFrequency | null
   notify_watchlist_digest_list_id?: string | null
@@ -1047,6 +1145,14 @@ export type ValidationError = {
  * who invited you.
  */
 export type VisibilityMode = "ALL_FRIENDS" | "INVITED_ONLY"
+
+export type AdminSimulateSeatAvailabilityData = {
+  requestBody: SimulateSeatAvailability
+  showtimeId: number
+}
+
+export type AdminSimulateSeatAvailabilityResponse =
+  ShowtimeSeatAvailabilityPublic | null
 
 export type AdminGetAnalyticsOverviewData = {
   windowDays?: number
@@ -1767,6 +1873,12 @@ export type ShowtimesUpdateShowtimeSelectionData = {
 
 export type ShowtimesUpdateShowtimeSelectionResponse = ShowtimePublic
 
+export type ShowtimesGetShowtimeSeatmapData = {
+  showtimeId: number
+}
+
+export type ShowtimesGetShowtimeSeatmapResponse = SeatFloorPlanPublic | null
+
 export type ShowtimesPingFriendForShowtimeData = {
   friendId: string
   showtimeId: number
@@ -1813,6 +1925,30 @@ export type ShowtimesGetSentPingsForShowtimeData = {
 
 export type ShowtimesGetSentPingsForShowtimeResponse =
   Array<SentShowtimePingPublic>
+
+export type ShowtimesGetSeatAvailabilityBatchData = {
+  showtimeIds?: Array<number>
+}
+
+export type ShowtimesGetSeatAvailabilityBatchResponse =
+  Array<ShowtimeSeatAvailabilityPublic>
+
+export type ShowtimesGetSeatAvailabilityData = {
+  showtimeId: number
+}
+
+export type ShowtimesGetSeatAvailabilityResponse =
+  ShowtimeSeatAvailabilityPublic | null
+
+export type ShowtimesGetSoldOutWatchResponse = SoldOutWatchPublic | null
+
+export type ShowtimesStopSoldOutWatchResponse = Message
+
+export type ShowtimesStartSoldOutWatchData = {
+  showtimeId: number
+}
+
+export type ShowtimesStartSoldOutWatchResponse = SoldOutWatchPublic
 
 export type ShowtimesGetShowtimeVisibilityBatchData = {
   showtimeIds?: Array<number>

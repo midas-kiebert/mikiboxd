@@ -899,3 +899,74 @@ def test_count_main_page_showtimes_filters_by_selected_languages(
     )
 
     assert count == 1
+
+
+def test_mark_seat_availability_due_leaves_a_stale_reading_on_its_own_cadence(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+):
+    """A showtime that already has a seat reading, however old, must not have
+    its next-check time pulled forward by this call — only the poller's own
+    cadence should touch it."""
+    now = now_amsterdam_naive()
+    far_future = now + timedelta(days=1)
+    showtime: Showtime = showtime_factory(
+        ticket_link="https://tickets.lab111.nl/order/1",
+        seats_checked_at=now - timedelta(hours=2),
+        seats_next_check_at=far_future,
+    )
+
+    showtime_crud.mark_seat_availability_due(
+        session=db_transaction,
+        showtime_id=showtime.id,
+        now=now,
+    )
+
+    assert showtime.seats_next_check_at == far_future
+
+
+def test_mark_seat_availability_due_marks_a_never_read_showtime_due(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+):
+    """A showtime that has never been read at all still needs its first
+    reading rescued forward, so the "checking..." state has something to show."""
+    now = now_amsterdam_naive()
+    showtime: Showtime = showtime_factory(
+        ticket_link="https://tickets.lab111.nl/order/1",
+        seats_checked_at=None,
+        seats_next_check_at=None,
+    )
+
+    showtime_crud.mark_seat_availability_due(
+        session=db_transaction,
+        showtime_id=showtime.id,
+        now=now,
+    )
+
+    assert showtime.seats_next_check_at == now
+
+
+def test_mark_seat_availability_due_is_a_noop_when_already_due(
+    *,
+    db_transaction: Session,
+    showtime_factory: Callable[..., Showtime],
+):
+    """A never-read showtime that is already due needs no write at all."""
+    now = now_amsterdam_naive()
+    already_due = now - timedelta(minutes=5)
+    showtime: Showtime = showtime_factory(
+        ticket_link="https://tickets.lab111.nl/order/1",
+        seats_checked_at=None,
+        seats_next_check_at=already_due,
+    )
+
+    showtime_crud.mark_seat_availability_due(
+        session=db_transaction,
+        showtime_id=showtime.id,
+        now=now,
+    )
+
+    assert showtime.seats_next_check_at == already_due

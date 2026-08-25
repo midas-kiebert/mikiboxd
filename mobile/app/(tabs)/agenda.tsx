@@ -14,6 +14,7 @@ import { useFetchShowtimePings } from "shared/hooks/useFetchShowtimePings";
 
 import TopBar from "@/components/layout/TopBar";
 import SignedOutPanel from "@/components/auth/SignedOutPanel";
+import CinevilleCardButton from "@/components/cineville/CinevilleCardButton";
 import { ShowtimesListContent } from "@/components/showtimes/ShowtimesScreen";
 import AgendaTogglePill, { AgendaToggleRow } from "@/components/showtimes/AgendaTogglePill";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -113,6 +114,9 @@ export default function AgendaScreen() {
       <TopSafeAreaView style={styles.container}>
         <TopBar title="Agenda" icon="calendar" />
         <SignedOutPanel feature="agenda" bullets={AGENDA_HIGHLIGHTS} />
+        {/* The Cineville pass is stored on the device, so it is just as usable
+            without an account as with one. */}
+        <CinevilleCardButton surface="agenda" />
       </TopSafeAreaView>
     );
   }
@@ -153,6 +157,8 @@ export default function AgendaScreen() {
         onRefresh={handleRefresh}
         emptyText={emptyText}
       />
+      {/* Last, so it floats over the list rather than under it. */}
+      <CinevilleCardButton surface="agenda" />
     </TopSafeAreaView>
   );
 }

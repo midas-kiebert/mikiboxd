@@ -12,6 +12,7 @@ from app.models.showtime import ShowtimeCreate
 from app.scraping.base_cinema_scraper import BaseCinemaScraper
 from app.scraping.date_conversion import get_closest_exact_date
 from app.scraping.logger import logger
+from app.scraping.seat_availability import normalize_room
 from app.scraping.subtitles import parse_subtitle_label
 from app.scraping.title_hints import parse_year_hint_from_title
 from app.scraping.tmdb_lookup import find_tmdb_id, get_tmdb_lookup_cache_id
@@ -147,6 +148,7 @@ class LAB111Scraper(BaseCinemaScraper):
                     datetime=date,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,
+                    room=extract_room(day),
                     subtitles=subtitles,
                 )
             )
@@ -215,6 +217,14 @@ class LAB111Scraper(BaseCinemaScraper):
                     observed_presences.append((source_event_key, showtime.id))
             session.commit()
         return observed_presences
+
+
+def extract_room(day: Tag) -> str | None:
+    """Read the room off one showtime row (`<span class="theatre_name">LAB 4`)."""
+    theatre_tag = day.find("span", class_="theatre_name")
+    if not isinstance(theatre_tag, Tag):
+        return None
+    return normalize_room(theatre_tag.get_text(strip=True))
 
 
 def extract_name(tag: Tag, label: str) -> list[str]:

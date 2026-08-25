@@ -121,6 +121,41 @@ class DigestFrequency(str, Enum):
 
 
 @unique
+class SeatAvailabilityLevel(str, Enum):
+    """How full a screening is, as a handful of buckets rather than a number.
+
+    Derived from `Showtime.seats_left` against `seats_capacity` — see
+    `app.services.seat_availability.seat_availability_level`, which is the only
+    place the cutoffs live. A showtime we have no usable reading for has no
+    level at all (`None`), which is deliberately not a value here: "we don't
+    know" must never be renderable as "it's fine".
+
+    Declaration order is emptiest-first and is load-bearing: `SEAT_LEVEL_ORDER`
+    below reads it to compare two levels, which is what lets a showtime's level
+    ratchet upwards and never fall back.
+    """
+
+    SOME_TAKEN = "some_taken"
+    BUSY = "busy"
+    VERY_BUSY = "very_busy"
+    LAST_FEW = "last_few"
+    SOLD_OUT = "sold_out"
+
+
+# Emptiest to fullest. Levels are compared by position here, never by value.
+SEAT_LEVEL_ORDER: tuple[SeatAvailabilityLevel, ...] = tuple(SeatAvailabilityLevel)
+
+
+def is_fuller_than(
+    level: SeatAvailabilityLevel, other: SeatAvailabilityLevel | None
+) -> bool:
+    """Whether `level` is a busier bucket than `other` (None being emptiest)."""
+    if other is None:
+        return True
+    return SEAT_LEVEL_ORDER.index(level) > SEAT_LEVEL_ORDER.index(other)
+
+
+@unique
 class ShowtimePingSort(str, Enum):
     """Sort order options for the pings list endpoint."""
 
@@ -144,6 +179,10 @@ class NotificationType(str, Enum):
     INVITE_RESPONSE = "invite_response"
     # Someone accepted a friend request you sent.
     FRIEND_REQUEST_ACCEPTED = "friend_request_accepted"
+    # A showtime you were watching for a returned ticket has seats again.
+    SEATS_RELEASED = "seats_released"
+    # A showtime you marked interested in has nearly sold out.
+    SEATS_RUNNING_OUT = "seats_running_out"
 
 
 @unique

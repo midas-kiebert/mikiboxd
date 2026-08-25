@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi import status as http_status
 
 from app.api.deps import SessionDep, get_current_active_superuser
-from app.core.enums import ShowtimeReportStatus, UserReportStatus
+from app.core.config import settings
+from app.core.enums import Environment, ShowtimeReportStatus, UserReportStatus
 from app.crud import movie as movie_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_report as showtime_report_crud
@@ -32,10 +33,15 @@ from app.schemas.scrape_monitor import (
     ScrapeRecapDetail,
     ScrapeRecapView,
 )
+from app.schemas.seat_availability import (
+    ShowtimeSeatAvailabilityPublic,
+    SimulateSeatAvailability,
+)
 from app.schemas.showtime_report import ShowtimeReportAdminView, ShowtimeReportUpdate
 from app.schemas.user_report import UserReportAdminView, UserReportUpdate
 from app.services import analytics_dashboard as analytics_dashboard_service
 from app.services import scrape_monitor as scrape_monitor_service
+from app.services import seat_availability as seat_availability_service
 from app.utils import now_amsterdam_naive
 
 router = APIRouter(
@@ -43,6 +49,40 @@ router = APIRouter(
     tags=["admin"],
     dependencies=[Depends(get_current_active_superuser)],
 )
+
+
+@router.post(
+    "/showtimes/{showtime_id}/simulate-seat-availability",
+    response_model=ShowtimeSeatAvailabilityPublic | None,
+)
+def simulate_seat_availability(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    payload: SimulateSeatAvailability,
+) -> ShowtimeSeatAvailabilityPublic | None:
+    """Force a showtime's seat count, ratchet and "nearly sold out" notice.
+
+    The feature's interesting behaviour is all in transitions that happen once
+    and never again, and staging arrives with production's history already
+    baked in — so on staging there is nothing left to cross. This makes a
+    crossing happen on demand, and `reset` puts it back so it can happen again.
+
+    Refused outright in production: it writes seat counts that were never read
+    and can re-send a notice whose whole contract is that it is sent once.
+    """
+    if settings.ENVIRONMENT == Environment.PRODUCTION:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Seat availability cannot be simulated in production",
+        )
+    return seat_availability_service.simulate_reading(
+        session=session,
+        showtime_id=showtime_id,
+        seats_left=payload.seats_left,
+        seats_capacity=payload.seats_capacity,
+        reset=payload.reset,
+    )
 
 
 @router.get("/analytics/overview", response_model=AnalyticsOverview)

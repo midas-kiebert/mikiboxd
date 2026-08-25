@@ -230,7 +230,8 @@ export default function TabLayout() {
           user.notify_on_friend_showtime_match ||
           user.notify_on_friend_requests ||
           user.notify_on_showtime_ping ||
-          user.notify_on_interest_reminder;
+          user.notify_on_interest_reminder ||
+          user.notify_on_seat_alert;
 
         if (!hasAnyNotificationPreferenceEnabled) {
           await MeService.updateUserMe({
@@ -239,6 +240,7 @@ export default function TabLayout() {
               notify_on_friend_requests: true,
               notify_on_showtime_ping: true,
               notify_on_interest_reminder: true,
+              notify_on_seat_alert: true,
             },
           });
           queryClient.invalidateQueries({ queryKey: ['currentUser'] });

@@ -27,7 +27,6 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_core import MultiHostUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing_extensions import Self
 
@@ -223,7 +222,7 @@ class Settings(BaseSettings):
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> PostgresDsn:
         """The full PostgreSQL connection URI, built from the individual POSTGRES_* vars."""
-        return MultiHostUrl.build(
+        return PostgresDsn.build(
             scheme="postgresql+psycopg",
             username=self.POSTGRES_USER,
             password=self.POSTGRES_PASSWORD,
@@ -240,7 +239,7 @@ class Settings(BaseSettings):
         The test database name is the main database name with a `_test` suffix.
         This is used by the test suite so that tests never touch production data.
         """
-        return MultiHostUrl.build(
+        return PostgresDsn.build(
             scheme="postgresql+psycopg",
             username=self.POSTGRES_USER,
             password=self.POSTGRES_PASSWORD,

@@ -19,12 +19,24 @@ class _UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
+    # Access to features whose cost is per-user rather than per-request — right
+    # now only the sold-out watch, which polls one ticket shop hard on one
+    # person's behalf. There is no paid tier and nothing about this reaches the
+    # client as a tier: `UserMe` carries the one capability it unlocks
+    # (`can_watch_sold_out`) and never the flag itself, so the app has no notion
+    # of a Pro user to advertise, gate a screen behind, or get out of step with.
+    # Who has it is decided in `core/db.py`, per environment.
+    is_pro: bool = Field(default=False)
     incognito_mode: bool = Field(default=False)
     notify_on_friend_showtime_match: bool = Field(default=True)
     notify_on_friend_requests: bool = Field(default=True)
     notify_on_showtime_ping: bool = Field(default=True)
     notify_on_invite_response: bool = Field(default=True)
     notify_on_interest_reminder: bool = Field(default=True)
+    # "A showtime you're interested in is nearly sold out." Defaults on: it is
+    # only ever sent once per showtime, and only for one someone already said
+    # they cared about.
+    notify_on_seat_alert: bool = Field(default=True)
     notify_channel_friend_showtime_match: NotificationChannel = Field(
         default=NotificationChannel.PUSH
     )
@@ -38,6 +50,9 @@ class _UserBase(SQLModel):
         default=NotificationChannel.PUSH
     )
     notify_channel_interest_reminder: NotificationChannel = Field(
+        default=NotificationChannel.PUSH
+    )
+    notify_channel_seat_alert: NotificationChannel = Field(
         default=NotificationChannel.PUSH
     )
     display_name: str | None = Field(default=None, max_length=255)
@@ -96,6 +111,7 @@ class UserUpdate(SQLModel):
     notify_on_showtime_ping: bool | None = Field(default=None)
     notify_on_invite_response: bool | None = Field(default=None)
     notify_on_interest_reminder: bool | None = Field(default=None)
+    notify_on_seat_alert: bool | None = Field(default=None)
     notify_channel_friend_showtime_match: NotificationChannel | None = Field(
         default=None
     )
@@ -103,6 +119,7 @@ class UserUpdate(SQLModel):
     notify_channel_showtime_ping: NotificationChannel | None = Field(default=None)
     notify_channel_invite_response: NotificationChannel | None = Field(default=None)
     notify_channel_interest_reminder: NotificationChannel | None = Field(default=None)
+    notify_channel_seat_alert: NotificationChannel | None = Field(default=None)
     notify_watchlist_digest_enabled: bool | None = Field(default=None)
     notify_watchlist_digest_frequency: DigestFrequency | None = Field(default=None)
     notify_watchlist_digest_list_id: uuid.UUID | None = Field(default=None)

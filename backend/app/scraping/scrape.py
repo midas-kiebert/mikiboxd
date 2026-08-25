@@ -6,7 +6,7 @@ import traceback
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 import aiohttp
@@ -26,6 +26,7 @@ from app.scraping.cinemas.amsterdam.eye import EyeScraper
 from app.scraping.cinemas.amsterdam.fchyena import FCHyenaScraper
 from app.scraping.cinemas.amsterdam.filmhallen import FilmHallenScraper
 from app.scraping.cinemas.amsterdam.kriterion import KriterionScraper
+from app.scraping.cinemas.amsterdam.lab111 import CINEMA_KEY as LAB111_CINEMA_KEY
 from app.scraping.cinemas.amsterdam.lab111 import LAB111Scraper
 from app.scraping.cinemas.amsterdam.rialto import RialtoDePijpScraper, RialtoVUScraper
 from app.scraping.cinemas.amsterdam.studiok import StudioKScraper
@@ -201,12 +202,19 @@ def _persist_cineville_results_batch(
         # Cineville names a venue however it likes, which need not be our display
         # name — so aliases are matched too, and a cinema renamed here keeps
         # ingesting as long as Cineville's name for it stays in its aliases.
+        cinemas = cinema_crud.get_cinemas(session=session)
         cinema_id_by_name: dict[str, int] = {
             venue_name: cinema.id
-            for cinema in cinema_crud.get_cinemas(session=session)
+            for cinema in cinemas
             if cinema.cineville
             for venue_name in (cinema.name, *cinema.aliases)
         }
+        # Cineville's LAB111 end time is the film's bare runtime; LAB111's own
+        # programme always adds a 15-minute commercial/trailer intro on top, so
+        # match that here too rather than under-reporting the show's end time.
+        lab111_cinema_id = next(
+            (cinema.id for cinema in cinemas if cinema.key == LAB111_CINEMA_KEY), None
+        )
         inserted_movie_ids: set[int] = set()
         processed_movies = 0
         processed_showtimes = 0
@@ -247,6 +255,9 @@ def _persist_cineville_results_batch(
                                 f"Cinema not found for Cineville venue '{venue_name}'"
                             ) from None
                         cinema_id_by_name[venue_name] = cinema_id
+
+                    if end_date is not None and cinema_id == lab111_cinema_id:
+                        end_date += timedelta(minutes=15)
 
                     source_stream = f"cineville:{cinema_id}"
                     stream_started_at.setdefault(source_stream, default_started_at)

@@ -39,6 +39,7 @@ from app.schemas.showtime_visibility import (
 )
 from app.services import moderation as moderation_service
 from app.services import push_notifications, showtime_title_conflict, viewer_context
+from app.services import seat_availability as seat_availability_service
 from app.utils import now_amsterdam_naive
 from app.validators.cinema_seating import CinemaSeatingPreset, validate_seat_for_preset
 
@@ -56,6 +57,11 @@ def _apply_upsert_update(
         existing_showtime.end_datetime = showtime_create.end_datetime
     if showtime_create.subtitles is not None:
         existing_showtime.subtitles = showtime_create.subtitles
+    # Only some sources name the room, and the seat availability poller fills it
+    # in for the rest — so a scrape that does not know it must leave what is
+    # already there alone rather than blanking it on every run.
+    if showtime_create.room is not None:
+        existing_showtime.room = showtime_create.room
 
 
 def _apply_end_datetime_fallback(
@@ -230,6 +236,15 @@ def update_showtime_selection(
                     owner_id=user_id,
                     mode=visibility_mode,
                 )
+            # Caring about a showtime is what makes its seat count worth
+            # knowing. A never-read showtime is already top of the poller's
+            # queue the moment a selection exists; this is for the one that was
+            # read hours ago and is sitting out a long cooldown. Queues only —
+            # the poller does the requesting, with its own caps, so a user
+            # working through a long list cannot become a burst of traffic.
+            seat_availability_service.request_reading_on_interest(
+                session=session, showtime_id=showtime_id
+            )
             session.commit()
         except NoResultFound as e:
             session.rollback()

@@ -12,9 +12,10 @@ is only intended to be used by the test suite. It shares the same pool settings
 as the main engine.
 """
 
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, col, create_engine, select, update
 
 from app.core.config import settings
+from app.core.enums import Environment
 from app.crud import user as user_crud
 from app.models.user import User, UserCreate
 
@@ -36,6 +37,37 @@ engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI), **_engine_options)
 test_engine = create_engine(
     str(settings.SQLALCHEMY_DATABASE_URI_TEST), **_engine_options
 )
+
+
+# Accounts that get `is_pro` in production. There is no paid tier and no way to
+# buy this — it is a list of people, and the only thing it currently unlocks is
+# the sold-out watch, whose whole cost model assumes the list stays this short.
+PRODUCTION_PRO_EMAILS = ("mikino@midaskiebert.nl",)
+
+
+def _seed_pro_users(session: Session) -> None:
+    """Grant `is_pro` to whoever should have it in this environment.
+
+    Outside production everyone gets it, because the point of staging is to
+    exercise the feature; in production it is the named accounts and nobody
+    else. Run on every startup, and only ever grants — revoking someone is a
+    deliberate act, not something a redeploy should do behind your back.
+
+    A Core `UPDATE`, deliberately not `select(User)` + ORM writes: loading a
+    `User` row deserializes every column, including `notify_channel_*`, whose
+    mapped type has no `values_callable` and so expects the enum's uppercase
+    member names — but existing rows carry the lowercase values an old
+    migration's raw-SQL default wrote, and reading one throws. Nothing before
+    this function ever did a broad `select(User)`, so that mismatch had never
+    been exercised. An `UPDATE` never decodes the row, only writes one column,
+    so it sidesteps the bug instead of tripping over it.
+    """
+    stmt = update(User).where(col(User.is_pro).is_(False)).values(is_pro=True)
+    if settings.ENVIRONMENT == Environment.PRODUCTION:
+        stmt = stmt.where(col(User.email).in_(PRODUCTION_PRO_EMAILS))
+    result = session.exec(stmt)  # type: ignore[call-overload]
+    if result.rowcount:
+        session.commit()
 
 
 def init_db(session: Session) -> None:
@@ -75,6 +107,8 @@ def init_db(session: Session) -> None:
         midas.is_superuser = True
         session.add(midas)
         session.commit()
+
+    _seed_pro_users(session)
 
     # Seed the curated Letterboxd lists from configs/letterboxd_lists.yaml.
     # Idempotent: existing lists are left untouched. Films are populated lazily

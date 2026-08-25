@@ -22,16 +22,15 @@ dependencies = [
     "sentry-sdk[fastapi]<2.0.0,>=1.40.6",
     "pyjwt[crypto]<3.0.0,>=2.8.0",
     "tqdm<5.0.0,>=4.0.0",
-    "pytz<2026.0,>=2024.1",
+    "pytz>=2024.1",
     "rapidfuzz>=3.14.5,<4.0.0",
     "beautifulsoup4>=4.14.3,<5.0.0",
-    "types-pytz <2026.0.0,>=2024.1.0",
+    "types-pytz>=2024.1.0",
     "types-requests <3.0.0,>=2.31.0",
     "types-tqdm",
     "types-python-dateutil",
     "types-PyYAML",
     "sqlalchemy-utils",
-    "pre-commit",
     "pytest-mock",
     "apscheduler",
     "aiohttp",
@@ -67,7 +66,7 @@ filterwarnings = [
 ]
 
 [tool.mypy]
-exclude = ["venv", ".venv", "alembic"]
+exclude = ["venv", ".venv", "alembic", "tests"]
 disallow_untyped_defs = false
 
 
@@ -77,7 +76,9 @@ plugins = [
 
 [tool.ruff]
 target-version = "py310"
-exclude = ["alembic"]
+exclude = ["alembic", "tests"]
+# pre-commit passes explicit file paths, which bypass `exclude` unless this is set.
+force-exclude = true
 
 [tool.ruff.lint]
 select = [

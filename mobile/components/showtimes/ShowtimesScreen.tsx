@@ -7,6 +7,7 @@ import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { type ShowtimePublic } from "shared";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
+import { usePrefetchShowtimeSeatAvailability } from "shared/hooks/useShowtimeSeatAvailability";
 
 import { useRouter } from "expo-router";
 
@@ -77,6 +78,9 @@ export function ShowtimesListContent({
   usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id), {
     enabled: isSignedIn,
   });
+  // How busy each showtime is, on the other hand, is the same fact for
+  // everyone and is drawn on the card itself — so it is warmed for guests too.
+  usePrefetchShowtimeSeatAvailability(showtimes.map((showtime) => showtime.id));
 
   // Always mounted at a fixed height: it doubles as the list's end spacer, so
   // reaching the bottom never changes the layout under the user's scroll.

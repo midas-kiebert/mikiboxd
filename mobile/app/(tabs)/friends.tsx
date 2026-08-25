@@ -25,8 +25,10 @@ import {
   FlatList,
   SectionList,
   StyleSheet,
+  TouchableOpacity,
   View,
 } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -51,6 +53,7 @@ import SegmentedControl, { type SegmentedOption } from '@/components/ui/Segmente
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
 import { useIsSignedIn } from '@/utils/auth-session';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
+import { triggerSelectionHaptic } from '@/utils/long-press';
 
 /** What signing in would put on this tab, in the order it would appear. */
 const FRIENDS_HIGHLIGHTS = [
@@ -209,6 +212,12 @@ export default function FriendsScreen() {
     return built;
   }, [friends, matchName, received, sent]);
 
+  // A name typed here only ever searches people you already know, and plenty
+  // of people expect the opposite — so when it comes back with nothing, the
+  // empty state offers the search they probably meant.
+  const hasNoSearchMatches =
+    hasUserSearch && sections.every((section) => section.data.length === 0);
+
   const isLoadingFriendsView =
     (isFetchingFriends || isFetchingReceived) && friends.length === 0 && received.length === 0;
 
@@ -258,6 +267,13 @@ export default function FriendsScreen() {
     // filter to a list the user has not looked at yet.
     setSearchQuery('');
     setMode(next);
+  }, []);
+
+  // Unlike switching modes by hand, this carries the query across: the whole
+  // point is to run the name they already typed against everyone.
+  const handleSearchEveryone = useCallback(() => {
+    triggerSelectionHaptic();
+    setMode('discover');
   }, []);
 
   const inviteCard = (
@@ -386,10 +402,24 @@ export default function FriendsScreen() {
                   {hasUserSearch ? 'No matches' : 'No friends yet'}
                 </ThemedText>
                 <ThemedText style={styles.emptyText}>
-                  {hasUserSearch
-                    ? 'Nobody in your friends matches that name.'
-                    : 'Find people by name, or let them scan your QR code.'}
+                  {!hasUserSearch
+                    ? 'Find people by name, or let them scan your QR code.'
+                    : hasNoSearchMatches
+                      ? 'This box only searches people you are already friends with.'
+                      : 'Nobody in your friends matches that name.'}
                 </ThemedText>
+                {hasNoSearchMatches ? (
+                  <TouchableOpacity
+                    style={styles.emptyAction}
+                    onPress={handleSearchEveryone}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Search everyone for ${normalizedSearchQuery}`}
+                  >
+                    <MaterialIcons name="person-search" size={17} color={colors.pillActiveText} />
+                    <ThemedText style={styles.emptyActionText}>Find people instead</ThemedText>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             ) : null
           }
@@ -479,6 +509,23 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       gap: 4,
       paddingVertical: 20,
       paddingHorizontal: 16,
+    },
+    emptyAction: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      marginTop: 10,
+      borderRadius: 14,
+      backgroundColor: colors.tint,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+    },
+    emptyActionText: {
+      color: colors.pillActiveText,
+      fontSize: 14,
+      fontWeight: '700',
+      letterSpacing: 0.2,
     },
     inviteFooter: {
       paddingTop: 24,

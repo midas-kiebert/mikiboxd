@@ -29,6 +29,10 @@ REMINDER_HORIZON = timedelta(hours=24)
 REMINDER_MINIMUM_NOTICE = timedelta(hours=2)
 REMINDER_MINIMUM_DELAY_AFTER_SELECTION = timedelta(hours=2)
 ACTIVE_SHOWTIME_STATUSES = (GoingStatus.GOING, GoingStatus.INTERESTED)
+# Who hears that a showtime is nearly sold out. INTERESTED only: "going" is a
+# decision already made, and this notice exists to hurry along the people who
+# haven't made it yet.
+SEAT_ALERT_STATUSES = (GoingStatus.INTERESTED,)
 
 logger = getLogger(__name__)
 
@@ -576,6 +580,190 @@ def notify_user_on_showtime_ping(
         results = _send_expo_messages(messages)
     except Exception:
         logger.exception("Failed sending showtime invite notification")
+        return
+
+    _handle_expo_results(
+        session=session,
+        tokens=[token.token for token in push_tokens],
+        results=results,
+    )
+
+
+def send_seat_alerts(
+    *,
+    session: Session,
+    showtime_ids: list[int],
+    now: datetime | None = None,
+) -> int:
+    """Tell interested users that these showtimes have nearly sold out.
+
+    Called with the showtimes that *just* crossed the threshold, and guarded a
+    second time by `seat_alert_sent_at` on each selection, so a screening that
+    hovers around the cutoff — or a run that half-fails and is retried — cannot
+    produce a second notice.
+
+    Only `SEAT_ALERT_STATUSES`, currently INTERESTED alone: someone who has
+    already decided they're going is not the person this is trying to reach.
+    Widening it to GOING is a change to that tuple and nothing else.
+    """
+    reference_time = now or now_amsterdam_naive()
+    candidates = showtime_crud.get_seat_alert_candidates(
+        session=session,
+        showtime_ids=showtime_ids,
+        statuses=SEAT_ALERT_STATUSES,
+    )
+    if not candidates:
+        return 0
+
+    recipients_by_id = {
+        user.id: user
+        for user in user_crud.get_users_by_ids(
+            session=session,
+            user_ids=list({selection.user_id for selection, _ in candidates}),
+        )
+    }
+
+    push_user_ids = [
+        selection.user_id
+        for selection, _ in candidates
+        if (recipient := recipients_by_id.get(selection.user_id)) is not None
+        and recipient.notify_on_seat_alert
+        and recipient.notify_channel_seat_alert != NotificationChannel.EMAIL
+    ]
+    token_by_user: dict[UUID, list[str]] = defaultdict(list)
+    if push_user_ids:
+        for push_token in push_token_crud.get_push_tokens_for_users(
+            session=session, user_ids=push_user_ids
+        ):
+            token_by_user[push_token.user_id].append(push_token.token)
+
+    push_messages: list[dict] = []
+    push_message_tokens: list[str] = []
+    alerted_selections: list[ShowtimeSelection] = []
+
+    for selection, showtime in candidates:
+        recipient = recipients_by_id.get(selection.user_id)
+        if recipient is None or not recipient.notify_on_seat_alert:
+            continue
+
+        title = f"{showtime.movie.title} is nearly sold out"
+        body = (
+            f"{showtime.datetime.strftime('%a, %b %d at %H:%M')} · "
+            f"{showtime.cinema.name}"
+        )
+
+        notification_crud.upsert_notification(
+            session=session,
+            user_id=recipient.id,
+            type=NotificationType.SEATS_RUNNING_OUT,
+            actor_id=None,
+            showtime_id=showtime.id,
+            created_at=reference_time,
+        )
+
+        if recipient.notify_channel_seat_alert == NotificationChannel.EMAIL:
+            _send_email_notification(email_to=recipient.email, subject=title, body=body)
+            # Stamped whether or not the mail went out: a failed send is not a
+            # reason to try the same person again on the next crossing, and
+            # there is no second crossing to try on anyway.
+            alerted_selections.append(selection)
+            continue
+
+        for token in token_by_user.get(recipient.id, []):
+            push_messages.append(
+                {
+                    "to": token,
+                    "title": title,
+                    "body": body,
+                    "data": {
+                        "type": "seats_running_out",
+                        "showtimeId": showtime.id,
+                        "movieId": showtime.movie_id,
+                    },
+                    "priority": "high",
+                    "sound": "default",
+                    "channelId": ANDROID_PUSH_CHANNEL_ID,
+                }
+            )
+            push_message_tokens.append(token)
+        alerted_selections.append(selection)
+
+    for selection in alerted_selections:
+        selection.seat_alert_sent_at = reference_time
+        session.add(selection)
+    session.commit()
+
+    if push_messages:
+        try:
+            results = _send_expo_messages(push_messages)
+        except Exception:
+            logger.exception("Failed sending seat alerts")
+        else:
+            _handle_expo_results(
+                session=session,
+                tokens=push_message_tokens,
+                results=results,
+            )
+
+    return len(alerted_selections)
+
+
+def notify_user_on_seats_released(
+    *,
+    session: Session,
+    user_id: UUID,
+    showtime: Showtime,
+    seats_left: int,
+) -> None:
+    """Tell the watcher that a showtime they were waiting on has seats again.
+
+    Sent unconditionally rather than behind a notify_on_* preference: this is
+    the entire point of a watch the user switched on themselves, minutes ago,
+    for one screening. Turning it off is cancelling the watch.
+    """
+    seat_word = "seat" if seats_left == 1 else "seats"
+    title = f"{seats_left} {seat_word} left for {showtime.movie.title}"
+    body = (
+        f"{showtime.datetime.strftime('%a, %b %d at %H:%M')} · {showtime.cinema.name}"
+    )
+
+    notification_crud.upsert_notification(
+        session=session,
+        user_id=user_id,
+        type=NotificationType.SEATS_RELEASED,
+        actor_id=None,
+        showtime_id=showtime.id,
+        created_at=now_amsterdam_naive(),
+    )
+    session.commit()
+
+    push_tokens = push_token_crud.get_push_tokens_for_users(
+        session=session, user_ids=[user_id]
+    )
+    if not push_tokens:
+        return
+
+    messages = [
+        {
+            "to": token.token,
+            "title": title,
+            "body": body,
+            "data": {
+                "type": "seats_released",
+                "showtimeId": showtime.id,
+                "movieId": showtime.movie_id,
+            },
+            "priority": "high",
+            "sound": "default",
+            "channelId": ANDROID_PUSH_CHANNEL_ID,
+        }
+        for token in push_tokens
+    ]
+
+    try:
+        results = _send_expo_messages(messages)
+    except Exception:
+        logger.exception("Failed sending seats-released notification")
         return
 
     _handle_expo_results(

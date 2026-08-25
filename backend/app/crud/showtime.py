@@ -3,7 +3,7 @@ from datetime import datetime, time, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import Float, case, func, nulls_last
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_, select
@@ -23,6 +23,10 @@ from app.models.showtime_selection import ShowtimeSelection
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
 from app.utils import now_amsterdam_naive
+
+# A selection someone has actively made. NOT_GOING rows survive as a record of
+# a decision, and must not make a showtime look like anyone still cares about it.
+ACTIVE_GOING_STATUSES = (GoingStatus.GOING, GoingStatus.INTERESTED)
 
 DAY_BUCKET_CUTOFF = time(4, 0)
 DAY_BUCKET_OFFSET = timedelta(
@@ -425,6 +429,189 @@ def get_interested_reminder_candidates(
         .limit(limit)
     )
     return list(session.exec(stmt).all())
+
+
+def clear_seat_alerts(*, session: Session, showtime_id: int) -> None:
+    """Forget that anyone was told this showtime was nearly sold out.
+
+    Only ever called by the superuser simulation hook, which is refused in
+    production — the whole point of `seat_alert_sent_at` is that nothing in the
+    normal flow can clear it.
+    """
+    selections = session.exec(
+        select(ShowtimeSelection).where(
+            ShowtimeSelection.showtime_id == showtime_id,
+            col(ShowtimeSelection.seat_alert_sent_at).is_not(None),
+        )
+    ).all()
+    for selection in selections:
+        selection.seat_alert_sent_at = None
+        session.add(selection)
+
+
+def get_seat_alert_candidates(
+    *,
+    session: Session,
+    showtime_ids: Sequence[int],
+    statuses: Sequence[GoingStatus],
+) -> list[tuple[ShowtimeSelection, Showtime]]:
+    """
+    Selections that should be told these showtimes have nearly sold out.
+
+    Only ones never told before — `seat_alert_sent_at` is the once-per-showtime
+    guarantee, and it is checked here rather than left to the caller so no
+    delivery path can skip it.
+    """
+    if len(showtime_ids) == 0:
+        return []
+
+    stmt = (
+        select(ShowtimeSelection, Showtime)
+        .join(Showtime, col(ShowtimeSelection.showtime_id) == col(Showtime.id))
+        .where(
+            col(ShowtimeSelection.showtime_id).in_(showtime_ids),
+            col(ShowtimeSelection.going_status).in_(statuses),
+            col(ShowtimeSelection.seat_alert_sent_at).is_(None),
+        )
+    )
+    return list(session.exec(stmt).all())
+
+
+# --- Seat poller priority ---------------------------------------------------
+#
+# A due showtime's priority is how many of *its own* intervals it is overdue by,
+# not how overdue it is in minutes. That one ratio does the work of several
+# rules at once: a screening down to its last seats is on a quarter-hourly
+# cadence, so it passes 1.0 four times an hour, while a far-off screening that
+# nothing has happened to for days has backed off to a two-day interval and
+# crawls towards 1.0 — exactly the one that can afford to be skipped. And a
+# showtime passed over by the run caps keeps accumulating ratio until it wins,
+# so nothing can be starved indefinitely by busier neighbours.
+#
+# The interval is recovered from the row rather than stored: `apply_reading`
+# writes `seats_checked_at` and `seats_next_check_at` together, so the gap
+# between them *is* the interval that was chosen for it.
+_MIN_PRIORITY_INTERVAL_SECONDS = 60.0
+# ...and a ceiling on it, so a showtime whose reads keep failing — those leave
+# `seats_checked_at` untouched while pushing the due time out, inflating the
+# apparent interval — still climbs back up the queue eventually instead of
+# deprioritising itself forever.
+_MAX_PRIORITY_INTERVAL_SECONDS = 48 * 60 * 60.0
+# A count that moved on its last reading is worth more than one that did not.
+# Something is actually happening to this screening; do not let it be skipped.
+_ACTIVITY_PRIORITY_MULTIPLIER = 2.0
+
+
+def _seat_priority_score(now: datetime) -> ColumnElement[float]:
+    """How badly a due showtime wants reading, in units of its own interval."""
+    interval_seconds = func.least(
+        func.greatest(
+            func.extract(
+                "epoch",
+                col(Showtime.seats_next_check_at) - col(Showtime.seats_checked_at),
+            ),
+            _MIN_PRIORITY_INTERVAL_SECONDS,
+        ),
+        _MAX_PRIORITY_INTERVAL_SECONDS,
+    )
+    # Column on the left of the subtraction on purpose: it gives the bound
+    # parameter a type to infer from, which a bare `now - column` does not.
+    lateness_seconds = -func.extract("epoch", col(Showtime.seats_next_check_at) - now)
+    activity = case(
+        (col(Showtime.seats_unchanged_streak) == 0, _ACTIVITY_PRIORITY_MULTIPLIER),
+        else_=1.0,
+    )
+    return cast(lateness_seconds / interval_seconds * activity, Float)
+
+
+def get_seat_availability_candidates(
+    *,
+    session: Session,
+    now: datetime,
+    limit: int,
+) -> list[Showtime]:
+    """
+    Return showtimes whose seat availability is worth re-reading right now.
+
+    Only showtimes at least one user has selected: every reading is a request
+    at a real ticket shop, and the whole catalogue would be tens of thousands
+    of them.
+
+    The only bound on *when* is that the screening has not started. There is no
+    far horizon — a screening months away with one seat left is the most urgent
+    thing in the list, not the least — and no minimum notice either: somebody
+    ten minutes from the cinema can still act on a seat, and excluding the last
+    hour saved almost nothing. How often any of them comes up is already decided
+    per showtime when its last reading was written down — see
+    `services/seat_availability.next_check_at`. A null due time is a showtime
+    that has never been read.
+
+    The strict `>` is load-bearing: a sold-out screening is parked at its own
+    start time, so "due" and "has not started" can never both be true for it.
+
+    Priority, when a run cannot take everything that is due:
+
+    1. Never read at all. Someone selected it and we have nothing to show them.
+    2. Highest `_seat_priority_score` — how many of its own intervals it is
+       overdue by, doubled if its count moved on the last reading. See the
+       comment on that function for why one number covers urgency, activity and
+       starvation at once.
+    3. Fewest seats left, to break a tie between two screenings equally overdue
+       on the same cadence. Nulls last: a platform that reports status without
+       a number is not urgent, and would otherwise read as "no seats left".
+    """
+    stmt = (
+        select(Showtime)
+        .where(
+            col(Showtime.datetime) > now,
+            col(Showtime.ticket_link).is_not(None),
+            or_(
+                col(Showtime.seats_next_check_at).is_(None),
+                col(Showtime.seats_next_check_at) <= now,
+            ),
+            col(Showtime.id).in_(
+                select(col(ShowtimeSelection.showtime_id)).where(
+                    col(ShowtimeSelection.going_status).in_(ACTIVE_GOING_STATUSES)
+                )
+            ),
+        )
+        .order_by(
+            col(Showtime.seats_checked_at).is_(None).desc(),
+            _seat_priority_score(now).desc(),
+            nulls_last(col(Showtime.seats_left).asc()),
+        )
+        .limit(limit)
+    )
+    return list(session.exec(stmt).all())
+
+
+def mark_seat_availability_due(
+    *, session: Session, showtime_id: int, now: datetime
+) -> None:
+    """Bring `showtime_id`'s next seat reading forward to the poller's next run.
+
+    Deliberately a due-time write and not a request: someone marking themselves
+    interested must never be able to make the backend hit a ticket shop, or a
+    user working through a long list would do exactly that dozens of times over.
+    The poller picks this up within minutes, with every cap it has still applied.
+
+    Only a showtime that has never been read at all is affected. It is marked
+    due even though its due time is null, which is the case that makes the
+    "checking..." state visible: null means "nobody has asked for this yet"
+    everywhere it is read, so without this write a brand-new showtime would
+    show nothing at all until its first reading landed, rather than saying a
+    number was on its way. One that already has a reading, however old, is
+    left on its own cadence — interest in it needs nothing rescued.
+    """
+    showtime = session.get(Showtime, showtime_id)
+    if showtime is None or showtime.ticket_link is None:
+        return
+    if showtime.seats_checked_at is not None:
+        return
+    if showtime.seats_next_check_at is not None and showtime.seats_next_check_at <= now:
+        return
+    showtime.seats_next_check_at = now
+    session.add(showtime)
 
 
 def _build_main_page_showtimes_query(

@@ -24,6 +24,7 @@ import {
   type UserPublic,
 } from "shared";
 import { prefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
+import { showtimeSeatAvailabilityQueryKey } from "shared/hooks/useShowtimeSeatAvailability";
 
 import ShowtimeActionModal, { type ShowtimeInvite } from "@/components/showtimes/ShowtimeActionModal";
 import { useSignInGate } from "@/components/auth/SignInGateProvider";
@@ -186,12 +187,19 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
     onError: (error) => {
       console.error("Error updating showtime selection:", error);
     },
-    onSettled: () => {
+    onSettled: (_data, _error, { showtimeId }) => {
       // Broad invalidation refreshes every screen that lists this showtime.
       queryClient.invalidateQueries({ queryKey: ["showtimes"] });
       queryClient.invalidateQueries({ queryKey: ["movie"] });
       queryClient.invalidateQueries({ queryKey: ["movies"] });
       queryClient.invalidateQueries({ queryKey: ["me", "showtimePings"] });
+      // Caring about a screening is what makes the backend go and look at its
+      // seat count, so ask again straight away rather than waiting out the
+      // sheet's poll: the answer that comes back says a read is on its way,
+      // which is what puts "checking..." on screen within the same second.
+      queryClient.invalidateQueries({
+        queryKey: showtimeSeatAvailabilityQueryKey(showtimeId),
+      });
     },
   });
 

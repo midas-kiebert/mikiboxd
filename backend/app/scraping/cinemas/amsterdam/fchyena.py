@@ -1,10 +1,14 @@
+import json
 import re
+import struct
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
 from bs4.element import Tag
+from pydantic import BaseModel
 
 from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
@@ -25,6 +29,240 @@ from app.services import showtimes as showtimes_service
 
 CINEMA_KEY = "fc-hyena"
 
+FILMS_URL = "https://fchyena.nl/films"
+
+# fchyena.nl migrated to Framer, which renders the film list client-side from
+# a CMS collection instead of server-rendered HTML, so there is no
+# <li class="film"> markup to scrape anymore. This is the id Framer assigns
+# to the "Films" collection's compiled code component; it comes from the
+# component's node id in the Framer document and stays fixed across ordinary
+# republishes (only the hash suffix in its chunk filename rotates), so it's
+# used to find the right chunk without fetching every script on the page.
+FILMS_COMPONENT_ID = "Fs7yzW3IK"
+
+_MODULE_PRELOAD_RE = re.compile(
+    r'<link rel="modulepreload"[^>]*href="(https://framerusercontent\.com/sites/[^"]+\.mjs)"'
+)
+_DATA_MODULE_URL_RE = re.compile(r"https://framerusercontent\.com/modules/[^\"'`]+\.js")
+_CMS_CHUNK_RE = re.compile(r'chunks:\[new URL\("(\./[^"]+\.framercms)"')
+_PROPERTY_CONTROL_RE = re.compile(r"([A-Za-z0-9_]+):\{([^{}]*)\}")
+_TITLE_RE = re.compile(r"title:`([^`]*)`")
+
+_CMS_FIELD_TITLES = (
+    "Production ID",
+    "Slug",
+    "Ticket link",
+    "Title",
+    "Director",
+    "Cast",
+    "Language, Subtitles",
+    "Year",
+)
+
+
+class FramerCmsError(Exception):
+    """Raised when fchyena.nl's Framer CMS film data can't be located or parsed."""
+
+
+class CmsFilm(BaseModel):
+    production_id: str
+    title: str
+    director: str | None = None
+    cast: str | None = None
+    language: str | None = None
+    year: str | None = None
+
+
+class _FramerBinaryReader:
+    """Reads Framer's undocumented binary CMS export format.
+
+    Reverse-engineered from fchyena.nl's compiled JS after its migration off
+    server-rendered HTML: a type-tagged, name/value record stream. Each
+    record carries its own field count because fields left empty are omitted
+    entirely rather than written out as a null value.
+    """
+
+    __slots__ = ("data", "offset")
+
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+        self.offset = 0
+
+    def u8(self) -> int:
+        value = self.data[self.offset]
+        self.offset += 1
+        return value
+
+    def u16(self) -> int:
+        value = int.from_bytes(self.data[self.offset : self.offset + 2], "big")
+        self.offset += 2
+        return value
+
+    def u32(self) -> int:
+        value = int.from_bytes(self.data[self.offset : self.offset + 4], "big")
+        self.offset += 4
+        return value
+
+    def i64(self) -> int:
+        value = int.from_bytes(
+            self.data[self.offset : self.offset + 8], "big", signed=True
+        )
+        self.offset += 8
+        return value
+
+    def f64(self) -> float:
+        (value,) = struct.unpack_from(">d", self.data, self.offset)
+        self.offset += 8
+        return value
+
+    def string(self) -> str:
+        length = self.u32()
+        value = self.data[self.offset : self.offset + length].decode("utf-8")
+        self.offset += length
+        return value
+
+
+def _read_framer_value(reader: _FramerBinaryReader) -> object:
+    tag = reader.u8()
+    if tag == 0:  # null
+        return None
+    if tag == 1:  # Array
+        return [_read_framer_value(reader) for _ in range(reader.u16())]
+    if tag == 2:  # Boolean
+        return reader.u8() != 0
+    if tag in (3, 5, 6, 12):  # Color, Enum, File, String
+        return reader.string()
+    if tag == 4:  # Date (epoch millis)
+        return reader.i64()
+    if tag in (7, 10):  # Link, ResponsiveImage (JSON payloads)
+        return json.loads(reader.string())
+    if tag == 8:  # Number
+        return reader.f64()
+    if tag == 9:  # Object
+        return {
+            reader.string(): _read_framer_value(reader) for _ in range(reader.u16())
+        }
+    if tag == 11:  # RichText
+        flag = reader.u8()
+        return reader.u32() if flag == 0 else reader.string()
+    if tag == 13:  # VectorSetItem
+        return reader.u32()
+    raise FramerCmsError(f"Unknown Framer CMS field type tag {tag}")
+
+
+def _parse_framer_cms_records(data: bytes) -> list[dict[str, object]]:
+    reader = _FramerBinaryReader(data)
+    record_count = reader.u32()
+    records = []
+    for _ in range(record_count):
+        field_count = reader.u16()
+        record: dict[str, object] = {}
+        for _ in range(field_count):
+            name = reader.string()
+            record[name] = _read_framer_value(reader)
+        records.append(record)
+    return records
+
+
+def _property_titles(component_js: str) -> dict[str, str]:
+    """Map a CMS collection's human-readable field titles to their obfuscated keys.
+
+    Framer assigns each field a random-looking id (e.g. `kQ0YfWdY0`) that's
+    only guaranteed stable until the field itself is deleted and recreated.
+    Resolving keys by title instead of hardcoding those ids keeps this
+    working across ordinary republishes.
+    """
+    titles: dict[str, str] = {}
+    for match in _PROPERTY_CONTROL_RE.finditer(component_js):
+        key, body = match.group(1), match.group(2)
+        title_match = _TITLE_RE.search(body)
+        if title_match:
+            titles[title_match.group(1)] = key
+    return titles
+
+
+def _find_films_component_url(html: str) -> str | None:
+    for url in _MODULE_PRELOAD_RE.findall(html):
+        if f"/{FILMS_COMPONENT_ID}." in url:
+            return url
+    for url in _MODULE_PRELOAD_RE.findall(html):
+        if url.endswith(".mjs") and "framer.WHr7ivHY" not in url:
+            try:
+                response = requests.get(url, timeout=30)
+                response.raise_for_status()
+            except requests.RequestException:
+                continue
+            if "displayName:`Films`" in response.text:
+                return url
+    return None
+
+
+def fetch_cms_films() -> list[CmsFilm]:
+    """Read fchyena.nl's film catalogue out of its Framer CMS collection.
+
+    The site is now fully client-rendered (no server-rendered `<li>` list),
+    so the catalogue is read straight from the compiled binary CMS export the
+    page's JS fetches at runtime instead.
+    """
+    response = requests.get(FILMS_URL, timeout=30)
+    response.raise_for_status()
+
+    component_url = _find_films_component_url(response.text)
+    if component_url is None:
+        raise FramerCmsError("Could not find the Films CMS collection component")
+
+    component_response = requests.get(component_url, timeout=30)
+    component_response.raise_for_status()
+    component_js = component_response.text
+
+    data_module_match = _DATA_MODULE_URL_RE.search(component_js)
+    if data_module_match is None:
+        raise FramerCmsError("Could not find the Films CMS data module URL")
+    data_module_url = data_module_match.group()
+
+    data_module_response = requests.get(data_module_url, timeout=30)
+    data_module_response.raise_for_status()
+    data_module_js = data_module_response.text
+
+    chunk_urls = [
+        urljoin(data_module_url, relative_url).replace("/modules/", "/cms/")
+        for relative_url in _CMS_CHUNK_RE.findall(data_module_js)
+    ]
+    if not chunk_urls:
+        raise FramerCmsError("Could not find any Films CMS data chunks")
+
+    titles = _property_titles(component_js)
+    missing_titles = [title for title in _CMS_FIELD_TITLES if title not in titles]
+    if missing_titles:
+        raise FramerCmsError(
+            f"Films CMS collection is missing fields: {missing_titles}"
+        )
+
+    films: list[CmsFilm] = []
+    for chunk_url in chunk_urls:
+        chunk_response = requests.get(chunk_url, timeout=30)
+        chunk_response.raise_for_status()
+        for record in _parse_framer_cms_records(chunk_response.content):
+            production_id = record.get(titles["Production ID"])
+            title = record.get(titles["Title"])
+            if not isinstance(production_id, str) or not isinstance(title, str):
+                continue
+            director = record.get(titles["Director"])
+            cast = record.get(titles["Cast"])
+            language = record.get(titles["Language, Subtitles"])
+            year = record.get(titles["Year"])
+            films.append(
+                CmsFilm(
+                    production_id=production_id,
+                    title=title,
+                    director=director if isinstance(director, str) else None,
+                    cast=cast if isinstance(cast, str) else None,
+                    language=language if isinstance(language, str) else None,
+                    year=year if isinstance(year, str) and year else None,
+                )
+            )
+    return films
+
 
 def clean_title(title: str) -> str:
     title = title.lower()
@@ -43,57 +281,22 @@ class FCHyenaScraper(BaseCinemaScraper):
                 session=session, key=CINEMA_KEY
             )
 
-    def _process_film_element(
+    def _process_film(
         self,
-        film_element: Tag,
+        film: CmsFilm,
     ) -> tuple[MovieCreate, list[ShowtimeCreate]] | None:
         assert self.cinema_id is not None
-        raw_title = film_element.get("data-title")
-        if raw_title is None or not isinstance(raw_title, str):
-            return None
-        title_query = clean_title(raw_title)
-        production_id = film_element.get("data-productionid")
-        if not production_id or production_id == "0":
-            return None
-
-        director_element = film_element.find(lambda tag: tag.string == "Regie")
-        if not isinstance(director_element, Tag):
-            logger.warning(f"Could not find director for {title_query} in {CINEMA_KEY}")
-            return None
-        director_sibling = director_element.next_sibling
-        if not isinstance(director_sibling, str):
-            logger.warning(
-                f"Could not parse director for {title_query} in {CINEMA_KEY}"
-            )
-            return None
-        directors = [
-            director.strip() for director in director_sibling.strip().split(",")
-        ]
-
-        cast_element = film_element.find(lambda tag: tag.string == "Cast")
-        if isinstance(cast_element, Tag):
-            actor_sibling = cast_element.next_sibling
-            actor = (
-                actor_sibling.strip().split(",")[0]
-                if isinstance(actor_sibling, str)
-                else None
-            )
-        else:
-            logger.debug(f"Could not find actor for {title_query} in {CINEMA_KEY}")
-            actor = None
-
-        # "Taal" combines spoken language and subtitles in free text, e.g.
-        # "Engels gesproken, Nederlands ondertiteld".
-        language_element = film_element.find(lambda tag: tag.string == "Taal")
-        language_sibling = (
-            language_element.next_sibling if isinstance(language_element, Tag) else None
+        title_query = clean_title(film.title)
+        directors = (
+            [name.strip() for name in film.director.split(",")] if film.director else []
         )
-        subtitles = parse_subtitle_freetext(
-            language_sibling.strip() if isinstance(language_sibling, str) else None
-        )
+        actor = film.cast.strip().split(",")[0].strip() if film.cast else None
+        subtitles = parse_subtitle_freetext(film.language)
         if subtitles is None:
-            subtitles = parse_subtitle_hint_from_title(raw_title)
-        year = parse_year_hint_from_title(raw_title)
+            subtitles = parse_subtitle_hint_from_title(film.title)
+        year = int(film.year) if film.year and film.year.isdigit() else None
+        if year is None:
+            year = parse_year_hint_from_title(film.title)
 
         tmdb_id = find_tmdb_id(
             title_query=title_query,
@@ -123,7 +326,7 @@ class FCHyenaScraper(BaseCinemaScraper):
         movie = MovieCreate(
             id=int(tmdb_id),
             tmdb_cache_id=tmdb_cache_id,
-            title=tmdb_details.title if tmdb_details is not None else raw_title,
+            title=tmdb_details.title if tmdb_details is not None else film.title,
             letterboxd_slug=None,
             directors=tmdb_directors if tmdb_directors else None,
             release_year=(
@@ -148,9 +351,9 @@ class FCHyenaScraper(BaseCinemaScraper):
 
         showtimes_url = (
             "https://tickets.fchyena.nl/fchyena/nl/flow_configs/1/z_events_list"
-            f"?production_id={production_id}"
+            f"?production_id={film.production_id}"
         )
-        showtimes_response = requests.get(showtimes_url)
+        showtimes_response = requests.get(showtimes_url, timeout=30)
         showtimes_response.raise_for_status()
         showtimes_soup = BeautifulSoup(showtimes_response.text, "html.parser")
         rows = showtimes_soup.find_all("tr")
@@ -173,26 +376,16 @@ class FCHyenaScraper(BaseCinemaScraper):
 
     def scrape(self) -> list[tuple[str, int]]:
         assert self.cinema_id is not None
-        url = "https://fchyena.nl/films"
-        response = requests.get(url)
-        response.raise_for_status()
+        films = fetch_cms_films()
 
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        film_elements = soup.find_all("li", class_="film")
-
-        if not film_elements:
+        if not films:
             logger.debug("No films found in FC Hyena")
 
-        work_items = [film for film in film_elements if isinstance(film, Tag)]
-        max_workers = min(len(work_items), self.item_concurrency()) or 1
+        max_workers = min(len(films), self.item_concurrency()) or 1
         movies_by_id: dict[int, MovieCreate] = {}
         showtimes: list[ShowtimeCreate] = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(self._process_film_element, film_element)
-                for film_element in work_items
-            ]
+            futures = [executor.submit(self._process_film, film) for film in films]
             for future in as_completed(futures):
                 try:
                     result = future.result()

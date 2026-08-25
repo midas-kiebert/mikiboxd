@@ -69,6 +69,8 @@ _NOTIFICATION_FEED_TYPES: dict[NotificationType, NotificationFeedType] = {
     NotificationType.FRIEND_SHOWTIME_MATCH: "friend_showtime_match",
     NotificationType.INVITE_RESPONSE: "invite_response",
     NotificationType.FRIEND_REQUEST_ACCEPTED: "friend_request_accepted",
+    NotificationType.SEATS_RELEASED: "seats_released",
+    NotificationType.SEATS_RUNNING_OUT: "seats_running_out",
 }
 
 
@@ -82,6 +84,7 @@ _EMAIL_DELIVERY_FIELDS: tuple[str, ...] = (
     "notify_channel_showtime_ping",
     "notify_channel_invite_response",
     "notify_channel_interest_reminder",
+    "notify_channel_seat_alert",
 )
 
 

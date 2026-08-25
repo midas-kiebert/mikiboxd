@@ -26,3 +26,7 @@ class ShowtimeSelection(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
     updated_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
     interested_reminder_sent_at: datetime | None = Field(default=None, nullable=True)
+    # When this user was told this screening was nearly sold out. Set once and
+    # never cleared: the alert fires on the way up and only the first time, so
+    # a screening hovering around the threshold cannot notify twice.
+    seat_alert_sent_at: datetime | None = Field(default=None, nullable=True)

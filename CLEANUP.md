@@ -73,6 +73,8 @@ Legend:
 - [x] `movie.py` — Movie metadata (title, duration, genres, poster). Positive id = TMDB id; negative id = synthetic listing (e.g. sneak preview) via `sneak_preview_movie()` / `is_synthetic_movie_id`
 - [x] `showtime.py` — Individual screening (datetime, cinema, movie, ticket link)
 - [x] `showtime_selection.py` — User's going/interested status on a showtime
+- [x] `sold_out_watch.py` — One user waiting on one full showtime for a returned ticket. Unique `user_id` (not a compound key with the showtime) is the "one watch at a time" rule; one-shot, deleted once it finds a seat
+- [x] `cinema_room_capacity.py` — Largest seat count ever seen in one room of one cinema, keyed `(cinema_id, room)`. Shared across every screening in the room, which is what lets the estimate converge at all — a single showtime is read a handful of times, a busy room hundreds
 - [x] `showtime_ping.py` — Notification sent to a friend about a showtime
 - [ ] `showtime_ping_link.py` — Short opaque code (not a self-contained token) mapping a shared `/ping/{showtime_id}/{token}` invite link back to who minted it and for which showtime
 - [x] `notification.py` — Notification-centre entry (match / invite-response / request-accepted)
@@ -111,6 +113,7 @@ Legend:
 - [ ] `showtime_ping.py` — Ping response shape
 - [x] `notification.py` — Merged notification-centre feed item shape
 - [x] `showtime_visibility.py` — Per-showtime visibility mode response shape
+- [x] `seat_availability.py` — `ShowtimeSeatAvailabilityPublic` (busyness level + counts + when it was read + whether a ticket watch applies here) and `SoldOutWatchPublic`. Viewer-independent on purpose, which is what lets it be prefetched and cached per showtime; a showtime with no usable reading is omitted from a batch rather than returned with nulls
 - [ ] `cinema_preset.py` — Cinema preset response shapes: `CinemaPresetCreate` (with `overwrite`, the explicit opt-in to replacing a same-named preset), `CinemaPresetRename`, `CinemaPresetPublic`
 - [ ] `filter_preset.py` — Filter preset response shape
 - [x] `friendship.py` — Friend status-sharing toggle request shape
@@ -139,6 +142,7 @@ Legend:
 - [ ] `showtime_ping.py` — Ping queries and creation
 - [ ] `showtime_ping_link.py` — Create/look-up for a shared invite link's short code
 - [x] `notification.py` — Notification-centre row queries (upsert, feed, decay)
+- [x] `sold_out_watch.py` — Sold-out watch reads/writes; `set_watch_for_user` moves the user's single row rather than delete-and-insert, so the one-per-user constraint never sees two
 - [ ] `friendship.py` — Friend request and friendship queries (+ status-sharing)
 - ~~`friend_group.py`~~ — deleted (friend groups retired)
 - [ ] `cinema.py` — Cinema queries. Resolve by `get_cinema_id_by_key`; `get_cinema_id_by_name_or_alias` is only for names arriving from outside (Cineville venues). `upsert_cinema` matches on key so a rename in cinemas.yaml edits the row in place
@@ -172,6 +176,8 @@ Legend:
 - [x] `viewer_context.py` — Settles the browse filters that depend on who is asking: fills in `selected_cinema_ids` from the account's favourite cinema preset (then its legacy selection), and resolves the Letterboxd username the watchlist filters read against. For an anonymous viewer it leaves cinemas unrestricted — the whole catalogue, not an empty feed — and drops Letterboxd list ids, which can only belong to an account. Replaces the copy of that block that sat in each of the four movie/showtime list+count entry points
 - [ ] `scrape_sync.py` — Triggers scraping from the API layer
 - [ ] `analytics_dashboard.py` — Aggregates AnalyticsEvent/Notification/ShowtimePing/User data for the admin overview
+- [x] `seat_availability.py` — Decides which showtimes get their seat count re-read and what to write down. `seats_capacity` now comes from `CinemaRoomCapacity` when the room is known (shared across every screening in that room), else falls back to the per-showtime running max; a platform-reported exact total (Eagerly, Tricket) or a manual override always wins over either. `seat_availability_level` buckets a raw reading; `effective_seat_level` applies the ratchet on top — a screening's level is capped at its `seats_level_floor` (the fullest it has ever reached) and can only rise, never fall, except sold-out-to-not which is deliberately exempt. `apply_reading` returns whether that ratchet just crossed into `SEAT_ALERT_LEVELS`, which is the only trigger for the once-ever "nearly sold out" notice. Cadence is per showtime and written onto the row as `seats_next_check_at`, computed off the *effective* level so a ratcheted showtime keeps the cadence its shown level deserves; a run is capped both overall and per ticket host. `simulate_reading` drives the whole pipeline with made-up numbers for the superuser-only staging test hook — see `admin.py`
+- [x] `sold_out_watch.py` — The one thing that polls a ticket shop hard, and every rule that keeps that affordable: one watch per user, `is_pro` to have one at all, a global `MAX_ACTIVE_WATCHES`, and a cadence that bursts on start, tapers through the middle, and ramps back up for the two hours before the screening when tickets actually get handed back. One-shot — it deletes itself the moment it finds a seat
 - [x] `scrape_monitor.py` — Read-only aggregation of ScrapeRun/ScrapeRecap for the admin scrape monitor (deltas + anomaly flags)
 - [x] `scrape_recap_render.py` — `RecapRunMetrics` + the recap renderer; the daily email is grouped by statistic (combined value, then each run's) instead of stitching per-run reports, and the long diagnostic dumps live in JSON attachments only
 - [x] `showtime_title_conflict.py` — Recognizing the same screening listed by Cineville and a cinema scraper under near-identical titles; used both to stop the duplicate being inserted (`upsert_showtime`) and to clean up existing ones (`runner._delete_cineville_title_conflicts`). Also collects the resulting `SourceDisagreement`s, which the recap reports as TMDB matches to review
@@ -221,6 +227,7 @@ Legend:
 - [ ] `get_movies.py` — Fetches movies from the DB for enrichment
 - [ ] `get_showtimes.py` — Fetches showtimes from the DB for enrichment
 - [ ] `logger.py` — Scraping-specific log configuration
+- [x] `seat_availability.py` — Turns a showtime's ticket link into a seat count, room, and (Eagerly, Tricket) exact room capacity. Four platforms behind the cinemas we scrape ourselves: Z-ELITE (exact count in `data-configured-max`, max across badge types since some are per-order capped, no capacity), Tricket (the screening resource carries a full seat map + `numberOfAvailableSeats`, so capacity is `len(seats)` — no room name anywhere in the API, only a `hallId` UUID, Studio/K's two halls are 91 and 153 seats), Eagerly (exact count *and* exact capacity for all 7 sites via each site's own unauthenticated `getSeatPlanData` seat-map endpoint — "ROL"/wheelchair-space entries excluded from both, falling back to the feed's sold-out-only status for any site not in the `_EAGERLY_BOOKING_HOSTS` table). A failed fetch raises rather than returning zero
 - [x] `subtitles.py` — Parses cinema subtitle metadata (Dutch free text) into ISO-639-1 codes for `Showtime.subtitles`
 - [ ] `title_hints.py` — Subtitle/year hints recoverable from a raw scraped title/slug
 - [ ] `tmdb.py` — TMDB API client ⚠️ Large (1411 LOC)
@@ -238,7 +245,7 @@ Legend:
 - [ ] `cinemas/amsterdam/uitkijk.py` — Uitkijk scraper
 - [ ] `cinemas/amsterdam/lab111.py` — Lab111 scraper
 - [ ] `cinemas/amsterdam/themovies.py` — The Movies scraper
-- [ ] `cinemas/amsterdam/fchyena.py` — FC Hyena scraper
+- [ ] `cinemas/amsterdam/fchyena.py` — FC Hyena scraper; fixed 2026-08-24 after the Framer migration broke it — now reads the film catalogue out of the Framer CMS's binary export instead of scraping HTML (no server-rendered listing exists anymore); per-showtime ticket page scraping (Z-ELITE) is unchanged and unaffected
 - [ ] `cinemas/amsterdam/studiok.py` — Studio/K scraper
 - [ ] `cinemas/amsterdam/rialto.py` — Rialto De Pijp + Rialto VU scraper
 
@@ -254,7 +261,7 @@ Legend:
 - [ ] `cinemas/haarlem/filmkoepel.py` — Filmkoepel scraper (Eagerly)
 
 **Cinema scrapers — Generic:**
-- [ ] `cinemas/generic/eagerly.py` — Eagerly-based generic scraper
+- [ ] `cinemas/generic/eagerly.py` — Eagerly-based generic scraper; fixed 2026-08-24 a double-slash bug in every derived URL (`self.url`, `ticket_link`) since every call site passes a trailing-slash `url_base` — `self.url_base` now strips it once in `__init__` instead
 
 **Letterboxd integration:**
 - [ ] `letterboxd/load_letterboxd_data.py` — Watchlist sync ⚠️ Large (1193 LOC) — needs splitting
@@ -278,7 +285,8 @@ Legend:
 - [ ] Review and understand existing test structure
 - [ ] Check coverage report — identify untested services and CRUDs
 - [ ] `tests/api/` — Route-level tests (are all endpoints covered?)
-- [ ] `tests/crud/` — CRUD tests (are complex queries tested?)
+- [ ] `tests/crud/` — CRUD tests (are complex queries tested?); `test_seat_availability_candidates.py` covers the seat poller's selection + priority ordering
+- [ ] `tests/services/test_seat_availability_interest.py` — the interest-triggered live read, its per-showtime cooldown, and the `checking` state the sheet shows
 - [ ] `tests/services/` — Service tests (most critical layer)
 - [ ] `tests/converters/` — Converter tests
 - [ ] `tests/scraping/` — Scraper tests
@@ -456,6 +464,7 @@ Legend:
 - [ ] `useFetchReceivedRequests.ts` + `useFetchSentRequests.ts` — Pending requests
 - [ ] `useFetchShowtimePings.ts` + `useFetchUnseenShowtimePingCount.ts` — Pings
 - [x] `useShowtimeVisibility.ts` — Showtime visibility mode: per-showtime read plus a coalesced batch prefetch that seeds the cache so the showtime sheet opens without a loading state
+- [x] `useShowtimeSeatAvailability.ts` — Same batching for how busy a showtime is, plus `useCachedShowtimeSeatAvailability`, a read that never fetches — a list row must not be able to turn a screenful of showtimes into a screenful of requests. Ids the server had nothing for are cached as `null` so they aren't re-asked every render
 - [ ] `useFetchFavoriteFilterPreset.ts` — Saved filter preset
 - [ ] `useSessionCinemaSelections.ts` — Session-level cinema filter state
 - [ ] `useSessionDaySelections.ts` — Session-level day filter state
@@ -487,7 +496,10 @@ Only components created or reworked during the cleanup are listed here; the rest
 `mobile/components/` predates this checklist.
 
 - [x] `ui/ConfirmDialog.tsx` — Reusable themed confirm dialog (fade + scale over a dimmed backdrop); the app-wide replacement for `Alert.alert` whenever the user is asked to decide something
+- [x] `badges/SeatAvailabilityBadge.tsx` — The busyness icon on a showtime row. Reads the prefetch cache and never fetches, and renders nothing at all when there is no reading — a row of dashes where a real answer sometimes appears is worse than nothing being there
+- [x] `showtimes/seat-availability-level.ts` — Icon, wording and colour per busyness level (a green→red ramp, seat-shaped icons for the calm levels and people-shaped for the busy ones), plus the "31 of 312 seats left" / "Checked 4 minutes ago" formatters. Never recomputes a level — the backend hands one over
 - [x] `showtimes/InviteBeforePrivateDialog.tsx` — Checkbox-list variant of `ConfirmDialog`, shown right before a showtime switches to INVITED_ONLY when friends are already going/interested but never pinged; offers to invite them (non-notifying) so they don't silently lose visibility
+- [x] `showtimes/SeatSheets.tsx` — Owns which seat map is open (the editable `SeatFloorPlan`, the read-only `SeatFloorPlanPreview`, or neither) and is driven by an imperative ref rather than a prop. Exists so opening or closing one doesn't have to wait behind a re-render of `ShowtimeActionModal`, which is what made both feel slow — the sheet animation was never the delay
 - [x] `ui/AnimatedHeight.tsx` — Measures its children and tweens its own height to match, for content that grows and shrinks under the user (search results arriving, an empty state replacing a list). Used instead of `LayoutAnimation` where the change comes from a query resolving rather than a tap, since `configureNext` has to be armed before the update that moves things
 - [x] `ui/LoadMoreFooter.tsx` — The spinner at the bottom of a paginated list, tweening its own height and opacity so a loaded page glides in instead of snapping up a whole row the instant the spinner unmounts. Shared by every infinite list (showtimes, movies, friends, cinema/friend/movie detail). Not `AnimatedHeight`: there is nothing to measure, and the fade has to run *with* the collapse rather than after it
 - [x] `auth/AuthScreenShell.tsx` — The frame every auth screen sits in (brand mark, title, subtitle, keyboard handling, and the error banner, which is tweened in rather than inserted under the user). Exists so log in / sign up / pick a username / recover password cannot drift apart — this is the first thing anyone sees of the app
@@ -573,6 +585,13 @@ Only components created or reworked during the cleanup are listed here; the rest
 - [x] `utils/install-referrer.ts` — Android deferred deep link: reads the Play install referrer the web install panel attached to the store URL, so someone who tapped a shared link with no app lands on that link after installing. Claimed once ever (the referrer is fixed at install time and a reinstall would otherwise replay the old one) but cached as a promise for the process, because the effect that reads it re-runs when the session appears. Path shapes are whitelisted — a referrer is attacker-supplied and this ends in a navigation. iOS has no equivalent and is told to reopen the link instead
 - [x] `utils/pending-deep-link.ts` — Read/write for the deep-link path held across a sign-in, with a 7-day bound so an abandoned link is not resumed on an unrelated login weeks later. Written by the route guard and the install referrer, followed in one place: the root layout, once the account is real *and* the intro is over. `completeLogin` used to follow it directly and dropped it entirely for new accounts, which lost exactly the invite-then-sign-up case this exists for
 - [x] `utils/sentry.ts` — Crash reporting init plus `reportError()`, for failures the app deliberately swallows and Sentry's automatic handlers therefore never see. Added because a Play Services error dialog on the store build was unreproducible on any internal build (those are plain APKs, the store one is an app bundle) and there was no telemetry to tell which native call raised it. Every entry point no-ops without a `SENTRY_DSN`, so local and fork builds are unaffected
+- [x] `utils/code128.ts` — Code 128 encoder (symbol table, code-set-B-with-C-for-digit-runs encoding, modulo-103 checksum), written rather than pulled in as a dependency because the app needs exactly one barcode. Verified bit-for-bit against a reference implementation
+- [x] `utils/cineville-card.ts` — The device-local Cineville card number. Gained a small subscription store (`useCinevilleCardDigits`) so the agenda shortcut appears the moment the number is saved in Settings — secure storage cannot be watched, so writes announce themselves
+- [x] `components/cineville/CinevilleBarcode.tsx` — Draws an encoded value as SVG bars, sized to its container in whole pixels per module and with the quiet zones a scanner needs. Deliberately unthemed: black on white in dark mode too
+- [x] `components/cineville/CinevilleCardModal.tsx` — The Cineville pass for the door, on an `AppBottomSheet` so it can be swiped away one-handed the moment the scanner beeps: white card, human-readable number, and the screen turned up to full brightness while it is open (restored on close)
+- [x] `components/cineville/CinevilleCardButton.tsx` — The floating shortcut into the above, at the bottom of the agenda and showtimes feeds where a thumb actually reaches. Rendered for guests too since the card is stored on the device and needs no account; hidden until a number is saved, and on any feed its Settings switch is off
+- [x] `utils/cineville-shortcuts.ts` — Per-feed on/off for that shortcut, stored on the device beside the card number. Both default to on (a button that must be switched on before it can be found never is), and only an explicit "off" is persisted
+- [x] `ui/AppSwitch.tsx` — The app's on/off switch, wrapping RN's `Switch` because iOS and Android want opposite props from it: `trackColor.false` is only an *outline* on iOS, so a white `thumbColor` on a near-white card left the off state a pale empty capsule. iOS gets `ios_backgroundColor` and the system thumb, Android keeps the explicit colors, and both get the selection haptic every other control in the app fires
 
 ---
 
@@ -603,7 +622,7 @@ Only components created or reworked during the cleanup are listed here; the rest
 - [ ] `backend/Dockerfile` — Backend image (multi-stage, uv, uvicorn)
 - [ ] `frontend/Dockerfile` — Frontend image (Vite build + Nginx)
 - [ ] `.env` structure — What variables are required? What are the defaults?
-- [ ] `alembic/versions/` — 106 migrations: understand the schema evolution
+- [ ] `alembic/versions/` — 114 migrations: understand the schema evolution
 - [ ] `.pre-commit-config.yaml` — What hooks run on commit?
 
 ---

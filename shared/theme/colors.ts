@@ -48,6 +48,22 @@ export const Colors = {
     // The recessed fill for things a hairline can't define: segmented-control
     // tracks, icon tiles, count bubbles, micro-badges and gradient stops.
     surfaceMuted: '#e6edea',
+    // Two deliberately unremarkable, solid grays for the seat floor plan's
+    // free/taken fills — plain neutral gray (no green undertone) rather than
+    // reusing the app's tinted neutrals, since a hint of the brand green read
+    // as muddy/dark once every seat in a room was filled with it. Distinct
+    // enough in lightness from each other, and from the light background, to
+    // read clearly at a glance. Neither should look like the more important
+    // pick, since both are equally selectable.
+    seatFree: '#cfcfcf',
+    seatTaken: '#8c8c8c',
+    // The seat floor plan's "friend"/"you" fills — the accent trios' own
+    // `primary`/`border` tones read as too pale/washed-out as a solid seat
+    // swatch (they're tuned for pill fills with a label on top, not a
+    // standalone block of color), so these are their own, more saturated
+    // shades instead.
+    seatFriend: '#3f68c9',
+    seatYou: tintColorLight,
     notificationBadge: '#c52b30',
     divider: '#e3eae7',
     posterPlaceholder: '#dae2de',
@@ -91,6 +107,21 @@ export const Colors = {
       primary: '#fbdfe0',
       secondary: '#b62b2f',
       border: '#dc6a6e',
+    },
+    // "Last few seats", and nothing else: a hotter, more saturated red than the
+    // error `red`, so the urgent end of the busyness scale reads as urgent
+    // without borrowing the tone every form error already uses.
+    redHot: {
+      primary: '#fddbdc',
+      secondary: '#c81e24',
+      border: '#e56167',
+    },
+    // Sold out, and nothing else: the one step past `redHot`, darkened along the
+    // same hue so the two read as one scale rather than two colours.
+    redDeep: {
+      primary: '#f3cdcf',
+      secondary: '#7a1417',
+      border: '#b8595c',
     },
     gray: {
       primary: '#e2e9e6',
@@ -136,6 +167,12 @@ export const Colors = {
     pillActiveBackground: tintColorDark,
     pillActiveText: '#151718',
     surfaceMuted: '#2a2a2a',
+    // See the light theme's `seatFree`/`seatTaken`/`seatFriend`/`seatYou` for
+    // what these are for.
+    seatFree: '#6a6e70',
+    seatTaken: '#35373a',
+    seatFriend: '#5b82d9',
+    seatYou: tintColorDark,
     notificationBadge: '#d63a3a',
     divider: '#3a3a3a',
     posterPlaceholder: '#3a3a3a',
@@ -179,6 +216,20 @@ export const Colors = {
       primary: '#5a1c1c',
       secondary: '#ffb8b8',
       border: '#ffb8b8',
+    },
+    // The dark-mode twin of `redHot`: on a dark ground urgency reads as more
+    // saturation, not more darkness, so it sits between `red` and `redDeep`.
+    redHot: {
+      primary: '#631c1c',
+      secondary: '#ff9a9c',
+      border: '#ff9a9c',
+    },
+    // "Deeper" inverts on a dark ground: a darker red would sink into it, so
+    // the step past `redHot` is the more saturated one instead.
+    redDeep: {
+      primary: '#6d1a1a',
+      secondary: '#ff7378',
+      border: '#ff7378',
     },
     gray: {
       primary: '#3f4143',

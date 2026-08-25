@@ -16,13 +16,15 @@ __all__ = [
 # route dismiss/accept/decline actions to the correct endpoint.
 NotificationSource = Literal["notification", "ping", "friend_request"]
 
-# The five kinds of item the notification centre renders.
+# The kinds of item the notification centre renders.
 NotificationFeedType = Literal[
     "friend_showtime_match",
     "showtime_invite",
     "invite_response",
     "friend_request_received",
     "friend_request_accepted",
+    "seats_released",
+    "seats_running_out",
 ]
 
 
@@ -43,7 +45,8 @@ class NotificationFeedItem(SQLModel):
     type: NotificationFeedType
     created_at: DateTime
     seen_at: DateTime | None
-    # The friend / sender / accepter involved (always present for current types).
+    # The friend / sender / accepter involved. None for items nobody caused —
+    # ``seats_released`` is a cinema selling a ticket back, not a person acting.
     actor: UserPublic | None
     # Present for showtime-related types so a tap can open the showtime modal.
     showtime: ShowtimePublic | None

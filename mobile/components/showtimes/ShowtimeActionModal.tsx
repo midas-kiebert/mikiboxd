@@ -66,6 +66,7 @@ import {
   showtimeSeatAvailabilityQueryKey,
   useShowtimeSeatAvailability,
 } from "shared/hooks/useShowtimeSeatAvailability";
+import { useShowtimeSeatFloorPlan } from "shared/hooks/useShowtimeSeatFloorPlan";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
 import CinemaPill from "@/components/badges/CinemaPill";
@@ -85,6 +86,7 @@ import FriendListRow, {
 } from "@/components/friends/FriendListRow";
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
 import InviteBeforePrivateDialog from "@/components/showtimes/InviteBeforePrivateDialog";
+import SeatFloorPlan from "@/components/showtimes/SeatFloorPlan";
 import SheetBackdrop from "@/components/sheets/SheetBackdrop";
 import {
   getFriendWatchKindMeta,
@@ -393,6 +395,7 @@ export default function ShowtimeActionModal({
   const [seatRowDraft, setSeatRowDraft] = useState("");
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
+  const [isSeatFloorPlanVisible, setIsSeatFloorPlanVisible] = useState(false);
   const [isReportDialogVisible, setIsReportDialogVisible] = useState(false);
   const { user } = useAuth();
   const canReport = isSignedIn && (user ? user.can_report : true);
@@ -873,9 +876,15 @@ export default function ShowtimeActionModal({
     ? getSeatAvailabilityMeta(seatAvailability.level, colors)
     : null;
   const isCheckingSeatAvailability = Boolean(seatAvailability?.checking);
+  // The platform can tell us the room's size without ever giving us a count
+  // (an enum-only source, or a capacity read that landed before the first
+  // seats_left read did) — that's still worth a number, just not this one, so
+  // it renders as "?/312" rather than silently dropping the capacity too.
   const seatCountLabel = seatAvailability
     ? seatAvailability.seats_left === null || seatAvailability.seats_left === undefined
-      ? null
+      ? seatAvailability.seats_capacity
+        ? `?/${seatAvailability.seats_capacity}`
+        : null
       : seatAvailability.seats_capacity
         ? `${seatAvailability.seats_left}/${seatAvailability.seats_capacity}`
         : `${seatAvailability.seats_left}`
@@ -883,6 +892,18 @@ export default function ShowtimeActionModal({
   const seatCheckedLabelShort = seatAvailability
     ? formatCheckedAtShort(seatAvailability.checked_at)
     : null;
+  // A genuinely unknown reading — no level ever recorded, and none pending —
+  // as opposed to `seatAvailability` simply not having loaded yet. Only this
+  // settled "nothing to say" state gets the question-mark treatment; a query
+  // still in flight renders nothing until it resolves one way or the other.
+  const isSeatAvailabilityUnknown =
+    !seatMeta && !isCheckingSeatAvailability && seatAvailability !== undefined;
+  // Whether the card has a busyness reading (real, pending, or settled-unknown)
+  // to show at all. False only while the query is still loading, in which case
+  // a ticket link alone can still justify the card, but not a premature "we
+  // don't know" claim above it.
+  const showSeatBusynessInfo =
+    isCheckingSeatAvailability || Boolean(seatMeta) || isSeatAvailabilityUnknown;
 
   // ─── Waiting for a returned ticket ─────────────────────────────────────────
   // The account either has this or it doesn't; there is no tier to show, no
@@ -998,6 +1019,17 @@ export default function ShowtimeActionModal({
   const shouldShowSeatButton = isGoingSelected && !isFreeSeating;
   const hasTicketLink = Boolean(showtime?.ticket_link);
 
+  // Prefetched as soon as the seat button becomes relevant, not on tap, so
+  // handleOpenSeatDialog already knows whether to open the visual floor plan
+  // or fall back to the plain text fields. A cinema with no floor plan (the
+  // overwhelming majority) resolves to `null` quickly and just always falls
+  // through to the existing text-input dialog below, unchanged.
+  const seatFloorPlanQuery = useShowtimeSeatFloorPlan({
+    showtimeId: showtime?.id ?? null,
+    enabled: shouldShowSeatButton,
+  });
+  const seatFloorPlan = seatFloorPlanQuery.data ?? null;
+
   // Top tint: green going / orange interested / blue while an invite is open.
   const tintPalette = isGoingSelected
     ? colors.green
@@ -1013,6 +1045,11 @@ export default function ShowtimeActionModal({
     if (shouldShowSeatButton || !isSeatDialogVisible) return;
     setIsSeatDialogVisible(false);
   }, [isSeatDialogVisible, shouldShowSeatButton]);
+
+  useEffect(() => {
+    if (shouldShowSeatButton || !isSeatFloorPlanVisible) return;
+    setIsSeatFloorPlanVisible(false);
+  }, [isSeatFloorPlanVisible, shouldShowSeatButton]);
 
   useEffect(() => {
     if (!isDismissInviteDialogVisible) return;
@@ -1087,8 +1124,25 @@ export default function ShowtimeActionModal({
 
   const handleOpenSeatDialog = () => {
     if (!showtime || isUpdatingStatus || showtime.viewer?.going !== "GOING" || isFreeSeating) return;
+    if (seatFloorPlan) {
+      setIsSeatFloorPlanVisible(true);
+      return;
+    }
     setSeatRowDraft(showtime.viewer?.seat_row ?? "");
     setSeatNumberDraft(showtime.viewer?.seat_number ?? "");
+    setIsSeatDialogVisible(true);
+  };
+
+  const handleSelectFloorPlanSeat = (rowName: string, seatName: string) => {
+    if (!showtime || isUpdatingStatus) return;
+    onUpdateStatus("GOING", { seatRow: rowName, seatNumber: seatName });
+    setIsSeatFloorPlanVisible(false);
+  };
+
+  const handleUseTextInputInstead = () => {
+    setIsSeatFloorPlanVisible(false);
+    setSeatRowDraft(showtime?.viewer?.seat_row ?? "");
+    setSeatNumberDraft(showtime?.viewer?.seat_number ?? "");
     setIsSeatDialogVisible(true);
   };
 
@@ -1523,32 +1577,48 @@ export default function ShowtimeActionModal({
           <>
             {/* Header: poster + title + date + time·runtime + cinema badge */}
             <View style={styles.summaryRow}>
-              {/* Keyed by movie: an Image whose uri changes keeps showing the
-                  image it already has until the new one has loaded, which for
-                  an uncached poster is the previous movie's poster. */}
-              {disableMovieNavigation ? (
-                isSyntheticMovie ? (
-                  <PosterPlaceholder style={styles.poster} glyphSize={34} />
-                ) : (
-                  <Image
-                    key={showtime.movie.id}
-                    source={{ uri: showtime.movie.poster_link ?? undefined }}
-                    style={styles.poster}
-                  />
-                )
-              ) : (
-                <TouchableOpacity onPress={handleGoToMoviePage} activeOpacity={0.85}>
-                  {isSyntheticMovie ? (
-                    <PosterPlaceholder style={styles.poster} glyphSize={34} />
+              {/* Poster + "More info", stacked: the link sits right under the
+                  thing it's more info about, rather than competing with the
+                  title/badges for space in the text column next to it. */}
+              <View style={styles.posterColumn}>
+                {/* Keyed by movie: an Image whose uri changes keeps showing the
+                    image it already has until the new one has loaded, which for
+                    an uncached poster is the previous movie's poster. */}
+                {disableMovieNavigation ? (
+                  isSyntheticMovie ? (
+                    <PosterPlaceholder style={styles.poster} glyphSize={28} />
                   ) : (
                     <Image
                       key={showtime.movie.id}
                       source={{ uri: showtime.movie.poster_link ?? undefined }}
                       style={styles.poster}
                     />
-                  )}
-                </TouchableOpacity>
-              )}
+                  )
+                ) : (
+                  <TouchableOpacity onPress={handleGoToMoviePage} activeOpacity={0.85}>
+                    {isSyntheticMovie ? (
+                      <PosterPlaceholder style={styles.poster} glyphSize={28} />
+                    ) : (
+                      <Image
+                        key={showtime.movie.id}
+                        source={{ uri: showtime.movie.poster_link ?? undefined }}
+                        style={styles.poster}
+                      />
+                    )}
+                  </TouchableOpacity>
+                )}
+                {!disableMovieNavigation ? (
+                  <TouchableOpacity
+                    style={styles.moreInfoLink}
+                    onPress={handleGoToMoviePage}
+                    hitSlop={{ top: 4, bottom: 6, left: 4, right: 4 }}
+                    activeOpacity={0.7}
+                  >
+                    <ThemedText style={styles.moreInfoLinkText}>More info</ThemedText>
+                    <MaterialIcons name="chevron-right" size={13} color={colors.tint} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
               <View style={styles.summaryInfo}>
                 <ThemedText
                   style={[
@@ -1597,8 +1667,8 @@ export default function ShowtimeActionModal({
                   an icon + count; tapping one opens the list, which is where the
                   relationship is spelled out. Empty ones aren't shown at all.
                   Its own narrow column in the header, tucked under the close
-                  button: high up where there is room to spare, and out of the
-                  bottom-right corner the report link floats into. */}
+                  button: high up where there is room to spare, above where the
+                  report link sits lower down (see reportLink). */}
               {watchMarkers.length > 0 ? (
                 <View style={styles.watchMarkersColumn}>
                   {watchMarkers.map((marker) => (
@@ -1637,13 +1707,10 @@ export default function ShowtimeActionModal({
               >
                 <MaterialIcons name="close" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
-            </View>
-
-            {/* Friends going / interested, with the report link anchored just
-                above its top divider — absolutely positioned so it doesn't
-                claim any extra vertical space in the layout. */}
-            {isSignedIn ? (
-            <View style={[styles.audienceBox, !hasAudience && styles.audienceBoxEmpty]}>
+              {/* Pinned to summaryRow's own top edge (see reportLink's `top`)
+                  rather than floating off audienceBox below, so it lines up
+                  with "More info" regardless of how tall the title/audience
+                  box end up being. */}
               {canReport && (
                 <TouchableOpacity
                   style={styles.reportLink}
@@ -1655,6 +1722,10 @@ export default function ShowtimeActionModal({
                   <ThemedText style={styles.reportLinkText}>Report</ThemedText>
                 </TouchableOpacity>
               )}
+            </View>
+
+            {isSignedIn ? (
+            <View style={[styles.audienceBox, !hasAudience && styles.audienceBoxEmpty]}>
               {hasAudience ? (
                 <FriendBadges
                   friendsGoing={showtime.viewer?.friends_going}
@@ -1731,139 +1802,173 @@ export default function ShowtimeActionModal({
               ))}
             </View>
 
-            {/* Actions: Get Ticket (+ Seat) — Share moved down next to Invite friends */}
-            <View style={styles.ctaRow}>
-              {!disableMovieNavigation ? (
-                <TouchableOpacity
-                  style={styles.ctaIconButton}
-                  onPress={handleGoToMoviePage}
-                  activeOpacity={0.85}
-                >
-                  <MaterialIcons name="info-outline" size={18} color={colors.textSecondary} />
-                  <ThemedText style={styles.ctaIconButtonText} numberOfLines={1}>
-                    Movie info
-                  </ThemedText>
-                </TouchableOpacity>
-              ) : null}
-              {hasTicketLink ? (
-                <TouchableOpacity
-                  style={styles.ctaIconButton}
-                  onPress={handleOpenTicketLink}
-                  activeOpacity={0.85}
-                >
-                  <MaterialIcons name="local-activity" size={18} color={colors.textSecondary} />
-                  <ThemedText style={styles.ctaIconButtonText} numberOfLines={1}>
-                    Get ticket
-                  </ThemedText>
-                </TouchableOpacity>
-              ) : null}
-              {shouldShowSeatButton ? (
-                <TouchableOpacity
-                  style={[styles.ctaIconButton, isSeatConfigured && styles.seatButtonSet]}
-                  onPress={handleOpenSeatDialog}
-                  activeOpacity={0.85}
-                >
-                  <MaterialIcons
-                    name="event-seat"
-                    size={18}
-                    color={isSeatConfigured ? colors.green.secondary : colors.textSecondary}
-                  />
-                  <ThemedText
-                    style={[styles.ctaIconButtonText, isSeatConfigured && styles.seatButtonTextSet]}
-                    numberOfLines={1}
-                  >
-                    {seatLabel ? `Seat ${seatLabel}` : "Seat"}
-                  </ThemedText>
-                </TouchableOpacity>
-              ) : null}
-            </View>
+            {/* The old Seat/Movie-info CTA row is gone: Movie info moved up
+                into the header (see "More info" under the cinema badges) and
+                Seat now lives in the seat-availability card below, next to
+                Get ticket — both were the row's only occupants. */}
 
-            {/* How busy this screening is. Nothing renders at all when we have
-                no usable reading — a row of dashes where a real answer
+            {/* Available seats + Seat + Get ticket, folded into one card.
+                Busyness is a public fact shown whenever we have (or are about
+                to have) a reading; Seat and the ticket link used to be their
+                own buttons up in the CTA row above and now live here instead,
+                since "how full is it", "where am I sitting" and "where do I
+                buy one" are all the same decision. A card with none of the
+                three renders nothing — a row of dashes where a real answer
                 sometimes appears is worse than the answer simply not being
-                there. The seat count and colour ramp carry the meaning; there
-                is nothing hidden behind a tap. */}
-            {isCheckingSeatAvailability && !seatMeta ? (
+                there. */}
+            {showSeatBusynessInfo || hasTicketLink || shouldShowSeatButton ? (
               <View style={styles.seatInfoSection}>
-                <View style={styles.seatInfoHeader}>
-                  <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
-                  <View style={styles.seatInfoCheckingRow}>
-                    <ActivityIndicator size="small" color={colors.textSecondary} />
-                    <ThemedText style={styles.seatInfoCheckingText}>
-                      Checking availability…
-                    </ThemedText>
-                  </View>
-                </View>
-              </View>
-            ) : null}
-
-            {seatAvailability && seatMeta ? (
-              <View style={styles.seatInfoSection}>
-                <View
-                  style={[
-                    styles.seatInfoHeader,
-                    canWatchThisShowtime && styles.seatInfoHeaderWithBell,
-                  ]}
-                >
-                  <View style={styles.seatInfoTextColumn}>
+                {!showSeatBusynessInfo ? null : isCheckingSeatAvailability && !seatMeta ? (
+                  <View style={styles.seatInfoHeader}>
                     <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
-                    {/* A re-read in flight keeps the number that is already
-                        there — blanking a good answer while a fresher one is
-                        fetched is worse than showing it a few seconds stale —
-                        and says so where the timestamp normally sits. */}
-                    {isCheckingSeatAvailability ? (
-                      <View style={styles.seatInfoCheckingRow}>
-                        <ActivityIndicator size="small" color={colors.textSecondary} />
-                        <ThemedText style={styles.seatInfoCheckingText}>
-                          Checking now…
-                        </ThemedText>
-                      </View>
-                    ) : seatCheckedLabelShort ? (
-                      <ThemedText style={styles.seatInfoCheckedAt}>
-                        {seatCheckedLabelShort}
+                    <View style={styles.seatInfoCheckingRow}>
+                      <ActivityIndicator size="small" color={colors.textSecondary} />
+                      <ThemedText style={styles.seatInfoCheckingText}>
+                        Checking availability…
                       </ThemedText>
-                    ) : null}
+                    </View>
                   </View>
-                  <View style={[styles.seatInfoValue, { backgroundColor: seatMeta.color }]}>
-                    <MaterialIcons
-                      name={seatMeta.icon}
-                      size={13}
-                      color={colors.pillActiveText}
-                    />
-                    {seatCountLabel ? (
-                      <ThemedText style={styles.seatInfoValueText}>{seatCountLabel}</ThemedText>
-                    ) : null}
-                  </View>
-                  {canWatchThisShowtime ? (
-                    <TouchableOpacity
-                      style={styles.seatWatchBell}
-                      onPress={handleToggleSoldOutWatch}
-                      activeOpacity={0.7}
-                      hitSlop={SEAT_WATCH_BELL_HIT_SLOP}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: isWatchingThisShowtime }}
-                      accessibilityLabel={
-                        isWatchingThisShowtime
-                          ? "Stop watching for a returned ticket"
-                          : "Tell me if a ticket frees up"
-                      }
-                    >
+                ) : seatMeta ? (
+                  <View style={styles.seatInfoHeader}>
+                    <View style={styles.seatInfoTextColumn}>
+                      <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
+                      {/* A re-read in flight keeps the number that is already
+                          there — blanking a good answer while a fresher one is
+                          fetched is worse than showing it a few seconds stale —
+                          and says so where the timestamp normally sits. */}
+                      {isCheckingSeatAvailability ? (
+                        <View style={styles.seatInfoCheckingRow}>
+                          <ActivityIndicator size="small" color={colors.textSecondary} />
+                          <ThemedText style={styles.seatInfoCheckingText}>
+                            Checking now…
+                          </ThemedText>
+                        </View>
+                      ) : seatCheckedLabelShort ? (
+                        <ThemedText style={styles.seatInfoCheckedAt}>
+                          {seatCheckedLabelShort}
+                        </ThemedText>
+                      ) : null}
+                    </View>
+                    <View style={[styles.seatInfoValue, { backgroundColor: seatMeta.color }]}>
                       <MaterialIcons
-                        name={
-                          isWatchingThisShowtime
-                            ? "notifications-active"
-                            : "notifications-none"
-                        }
-                        size={20}
-                        color={
-                          isWatchingThisShowtime
-                            ? colors.green.secondary
-                            : colors.textSecondary
-                        }
+                        name={seatMeta.icon}
+                        size={13}
+                        color={colors.pillActiveText}
                       />
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
+                      {seatCountLabel ? (
+                        <ThemedText style={styles.seatInfoValueText}>{seatCountLabel}</ThemedText>
+                      ) : null}
+                    </View>
+                    {canWatchThisShowtime ? (
+                      <TouchableOpacity
+                        style={styles.seatWatchBell}
+                        onPress={handleToggleSoldOutWatch}
+                        activeOpacity={0.7}
+                        hitSlop={SEAT_WATCH_BELL_HIT_SLOP}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isWatchingThisShowtime }}
+                        accessibilityLabel={
+                          isWatchingThisShowtime
+                            ? "Stop watching for a returned ticket"
+                            : "Tell me if a ticket frees up"
+                        }
+                      >
+                        <MaterialIcons
+                          name={
+                            isWatchingThisShowtime
+                              ? "notifications-active"
+                              : "notifications-none"
+                          }
+                          size={20}
+                          color={
+                            isWatchingThisShowtime
+                              ? colors.green.secondary
+                              : colors.textSecondary
+                          }
+                        />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ) : (
+                  // Genuinely unknown: no reading has ever come back and none
+                  // is pending, distinct from the "checking" state above,
+                  // which knows an answer is on its way. Only shown at all
+                  // because a ticket link still gives the card something to
+                  // do — otherwise this case renders nothing, same as before.
+                  <View style={styles.seatInfoHeader}>
+                    <View style={styles.seatInfoTextColumn}>
+                      <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
+                      <ThemedText style={styles.seatInfoCheckedAt}>Not tracked</ThemedText>
+                    </View>
+                    <View style={[styles.seatInfoValue, styles.seatInfoValueUnknown]}>
+                      <MaterialIcons name="help-outline" size={13} color={colors.textSecondary} />
+                    </View>
+                  </View>
+                )}
+                {/* Get ticket first — it's an outside link, styled and
+                    ordered as the CTA it is (tint, chevron: "you're leaving
+                    the app"). Seat comes after, since setting it is normally
+                    the thing you do once you're back with a seat number in
+                    hand, not before. It deliberately does *not* borrow the
+                    ticket row's look: a bold tint label and a chevron both
+                    read as "this navigates somewhere," which is wrong for a
+                    field you fill in without leaving the sheet — so it's
+                    quieter (neutral until set, tint only for the pencil/plus)
+                    and ends in an edit affordance instead of a chevron. */}
+                {hasTicketLink ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.seatInfoTicketRow,
+                      showSeatBusynessInfo && styles.seatInfoTicketRowDivided,
+                    ]}
+                    onPress={handleOpenTicketLink}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Get ticket"
+                  >
+                    <Image
+                      source={require("@/assets/images/mikino-logo.png")}
+                      style={styles.seatInfoTicketLogo}
+                      resizeMode="contain"
+                      accessible={false}
+                    />
+                    <ThemedText style={styles.seatInfoTicketText}>Get ticket</ThemedText>
+                    <MaterialIcons name="chevron-right" size={18} color={colors.tint} />
+                  </TouchableOpacity>
+                ) : null}
+                {shouldShowSeatButton ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.seatInfoSeatRow,
+                      showSeatBusynessInfo && !hasTicketLink && styles.seatInfoTicketRowDivided,
+                    ]}
+                    onPress={handleOpenSeatDialog}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      isSeatConfigured ? `Seat ${seatLabel}, edit` : "Set your seat"
+                    }
+                  >
+                    <MaterialIcons
+                      name="event-seat"
+                      size={15}
+                      color={isSeatConfigured ? colors.green.secondary : colors.textSecondary}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.seatInfoSeatText,
+                        isSeatConfigured && styles.seatInfoSeatTextSet,
+                      ]}
+                    >
+                      {seatLabel ? `Seat ${seatLabel}` : "Set your seat"}
+                    </ThemedText>
+                    <MaterialIcons
+                      name={isSeatConfigured ? "edit" : "add-circle-outline"}
+                      size={15}
+                      color={isSeatConfigured ? colors.green.secondary : colors.tint}
+                    />
+                  </TouchableOpacity>
+                ) : null}
               </View>
             ) : null}
 
@@ -2125,6 +2230,18 @@ export default function ShowtimeActionModal({
         )}
       </BottomSheetScrollView>
 
+      {/* Visual floor plan (only the cinemas we've ingested one for) */}
+      <SeatFloorPlan
+        visible={isSeatFloorPlanVisible}
+        room={seatFloorPlan?.room ?? null}
+        seats={seatFloorPlan?.seats ?? null}
+        isLoading={isSeatFloorPlanVisible && seatFloorPlanQuery.isLoading}
+        isError={seatFloorPlanQuery.isError}
+        onClose={() => setIsSeatFloorPlanVisible(false)}
+        onSelectSeat={handleSelectFloorPlanSeat}
+        onUseTextInputInstead={handleUseTextInputInstead}
+      />
+
       {/* Seat editor (assigned-seating cinemas only) */}
       <Modal
         transparent
@@ -2335,13 +2452,22 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     loadingState: { alignItems: "center", justifyContent: "center", paddingVertical: 60 },
     loadingErrorText: { fontSize: 14, color: colors.textSecondary },
 
-    summaryRow: { flexDirection: "row", gap: 12 },
+    // `relative` so the Report link (see reportLink below) can be pinned to
+    // this row's own top edge instead of guessing an offset from audienceBox,
+    // which used to drift out of sync whenever the title/poster heights changed.
+    summaryRow: { flexDirection: "row", gap: 12, position: "relative" },
+    // A little smaller than a "real" poster thumbnail on purpose — see
+    // posterColumn below.
     poster: {
-      width: 84,
-      height: 126,
+      width: 70,
+      height: 105,
       borderRadius: 8,
       backgroundColor: colors.posterPlaceholder,
     },
+    // Poster + "More info" stacked as one unit: the link sits right under the
+    // thing it's more info about, instead of competing with the title/badges
+    // for space in the text column beside it.
+    posterColumn: { gap: 4 },
     // `minWidth: 0` so a long unbroken title or director credit shrinks and
     // ellipsises instead of pushing the watch-marker column out of the row.
     summaryInfo: { flex: 1, minWidth: 0, gap: 1 },
@@ -2365,16 +2491,18 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     dateText: { fontSize: 12.5, fontWeight: "600", color: colors.text, marginTop: -4 },
     timeText: { fontSize: 12.5, color: colors.textSecondary, marginTop: -4 },
     cinemaBadgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-    movieLinksRow: { flexDirection: "row", gap: 6, marginTop: 2 },
-    movieLinkChip: {
-      paddingHorizontal: 9,
-      paddingVertical: 4,
-      borderRadius: 20,
-      backgroundColor: colors.pillBackground,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
+    moreInfoLink: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 1,
     },
-    movieLinkChipText: { fontSize: 11, fontWeight: "600", color: colors.textSecondary },
+    // ThemedText's `type="default"` (nothing here overrides it) carries a
+    // fixed lineHeight: 24 that a fontSize override alone doesn't touch —
+    // at 12px that's ~12px of dead space straddling the glyph, which is
+    // what was pushing the audience divider down. Setting lineHeight
+    // explicitly is the fix, same reason dateText/timeText above set a
+    // negative marginTop instead: two ways of clawing back the same gap.
+    moreInfoLinkText: { fontSize: 12, lineHeight: 14, fontWeight: "700", color: colors.tint },
     closeButton: {
       position: "absolute",
       top: -10,
@@ -2388,7 +2516,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
 
     audienceBox: {
-      position: "relative",
       minHeight: 42,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderBottomWidth: StyleSheet.hairlineWidth,
@@ -2402,9 +2529,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
       textAlign: "center",
     },
+    // Pinned to summaryRow's top edge (poster height + posterColumn's gap) so
+    // it lands at the same height as "More info" under the poster, without
+    // claiming space of its own in the row's flow.
     reportLink: {
       position: "absolute",
-      top: -21,
+      top: 109,
       right: 0,
       flexDirection: "row",
       alignItems: "center",
@@ -2414,6 +2544,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     reportLinkText: {
       fontSize: 10.5,
+      lineHeight: 13,
       fontWeight: "600",
       color: colors.textSecondary,
       opacity: 0.8,
@@ -2523,24 +2654,22 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 8,
     },
 
+    // Now a real card rather than a bare row: it carries the ticket action
+    // as well as the busyness reading, so it needs its own boundary the way
+    // the CTA buttons above it do, instead of blending into the background.
     seatInfoSection: {
-      gap: 8,
+      gap: 6,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.cardBackground,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
     },
     seatInfoHeader: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      paddingVertical: 4,
-      paddingHorizontal: 2,
-      // Matches the visibility pill's inset below, which sits 28px short of
-      // the row's right edge to make room for its expand caret — this row has
-      // no caret, so the badge is pulled in by the same amount to line up.
-      paddingRight: 30,
-    },
-    // With the bell present it occupies that reserved column instead, so the
-    // seat badge keeps the same x as the visibility pill either way.
-    seatInfoHeaderWithBell: {
-      paddingRight: 2,
     },
     seatInfoTextColumn: {
       flex: 1,
@@ -2558,6 +2687,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 8,
       paddingVertical: 3,
       paddingHorizontal: 8,
+    },
+    // The "we genuinely don't know" fill — deliberately the neutral muted
+    // surface rather than any rung of the busyness ramp, so it can't be
+    // mistaken for a real (if pale) reading.
+    seatInfoValueUnknown: {
+      backgroundColor: colors.surfaceMuted,
     },
     seatInfoCheckingRow: {
       flexDirection: "row",
@@ -2584,6 +2719,56 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       width: 20,
       height: 20,
     },
+    // The former standalone "Get ticket" CTA button, folded in as the card's
+    // action row instead of a sibling of its own.
+    seatInfoTicketRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 4,
+    },
+    // Aspect-locked to the logo's own 241x144 ticket shape, same proportions
+    // as TopBar's header mark, just smaller for an inline row.
+    seatInfoTicketLogo: {
+      height: 15,
+      width: 25,
+    },
+    // Only drawn when a busyness reading (or its placeholder) sits above it —
+    // with nothing above, the ticket row is the whole card and needs no seam.
+    seatInfoTicketRowDivided: {
+      borderTopWidth: 1,
+      borderTopColor: colors.divider,
+      marginTop: 2,
+      paddingTop: 8,
+    },
+    seatInfoTicketText: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.tint,
+    },
+    // A near-copy of seatInfoTicketRow, kept separate on purpose: Get ticket
+    // leaves the app, Seat edits a field in place, and giving them the same
+    // bold-tint-plus-chevron look made the two read as the same kind of
+    // action — someone who just tapped through to a ticket shop had no
+    // reason to trust that the row under it wouldn't do the same thing.
+    // Slightly tighter vertical padding keeps it visually the *lesser* of
+    // the two rows, not a sibling CTA.
+    seatInfoSeatRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 7,
+      paddingVertical: 3,
+    },
+    seatInfoSeatText: {
+      flex: 1,
+      fontSize: 12.5,
+      fontWeight: "600",
+      color: colors.textSecondary,
+    },
+    // Once a seat is actually set, its row reads as a confirmed fact rather
+    // than a call to action — same green the old ctaRow button turned on tap.
+    seatInfoSeatTextSet: { color: colors.green.secondary },
     seatWatchHint: {
       fontSize: 12,
       color: colors.textSecondary,
@@ -2620,27 +2805,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 12,
       color: colors.textSecondary,
     },
-    ctaRow: { flexDirection: "row", gap: 8 },
-    ctaIconButton: {
-      // flex: 1 (same as statusButton) so however many of these three render,
-      // they split the row evenly, keeping "All showtimes" the exact same
-      // width as "Not going" above it rather than sizing to its own label.
-      flex: 1,
-      gap: 1,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      paddingTop: 8,
-      paddingBottom: 4,
-      paddingHorizontal: 14,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.cardBackground,
-    },
-    ctaIconButtonText: { fontSize: 11, fontWeight: "700", color: colors.textSecondary, textAlign: "center" },
-    seatButtonSet: { borderColor: colors.green.border, backgroundColor: colors.green.primary },
-    seatButtonTextSet: { color: colors.green.secondary },
-
     invitedSection: { gap: 8 },
     sectionLabel: {
       fontSize: 11,

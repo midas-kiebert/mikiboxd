@@ -570,6 +570,36 @@ export type SeatAvailabilityLevel =
   | "last_few"
   | "sold_out"
 
+/**
+ * A room's seat map for one showtime, merged with live + personal state.
+ */
+export type SeatFloorPlanPublic = {
+  showtime_id: number
+  room: string
+  seats: Array<SeatFloorPlanSeatPublic>
+}
+
+/**
+ * One seat's position and status on a room's floor plan.
+ *
+ * Geometry (`position_left/top`, `width`, `height`) is the room's own,
+ * stored once and never refreshed. `taken`/`is_viewer_seat`/`friend` are
+ * computed fresh on every request — `taken` from a live read of the
+ * cinema's own seat map, the other two from this showtime's selections.
+ */
+export type SeatFloorPlanSeatPublic = {
+  row_name: string
+  seat_name: string
+  position_left: number
+  position_top: number
+  width: number
+  height: number
+  selectable: boolean
+  taken: boolean | null
+  is_viewer_seat: boolean
+  friend?: UserPublic | null
+}
+
 export type SentShowtimePingPublic = {
   id: number
   receiver_id: string
@@ -1843,6 +1873,12 @@ export type ShowtimesUpdateShowtimeSelectionData = {
 }
 
 export type ShowtimesUpdateShowtimeSelectionResponse = ShowtimePublic
+
+export type ShowtimesGetShowtimeSeatmapData = {
+  showtimeId: number
+}
+
+export type ShowtimesGetShowtimeSeatmapResponse = SeatFloorPlanPublic | null
 
 export type ShowtimesPingFriendForShowtimeData = {
   friendId: string

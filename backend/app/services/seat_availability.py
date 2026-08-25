@@ -405,6 +405,21 @@ def check_now(*, session: Session, showtime_id: int) -> None:
             logger.warning(
                 f"Immediate seat availability read failed for showtime {showtime_id}: {e}"
             )
+            # Without this the due time this call was triggered by (set by
+            # `request_reading_on_interest`, always <= now) is never moved, so
+            # `is_read_pending` keeps reporting "checking" forever — the poller
+            # would eventually fix it by rescheduling on its own failed reads,
+            # but only for a showtime that is still an eligible candidate (has
+            # not started yet). One that has already started never comes up
+            # again, so a failed immediate check would otherwise strand it in
+            # "checking" for good.
+            showtime.seats_next_check_at = next_check_at(
+                showtime=showtime,
+                now=now_amsterdam_naive(),
+                unchanged_streak=showtime.seats_unchanged_streak,
+            )
+            session.add(showtime)
+            session.commit()
             return
         cinema = session.get(Cinema, showtime.cinema_id)
         crossed = apply_reading(

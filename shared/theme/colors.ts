@@ -92,7 +92,15 @@ export const Colors = {
       secondary: '#b62b2f',
       border: '#dc6a6e',
     },
-    // Sold out, and nothing else: the one step past `red`, darkened along the
+    // "Last few seats", and nothing else: a hotter, more saturated red than the
+    // error `red`, so the urgent end of the busyness scale reads as urgent
+    // without borrowing the tone every form error already uses.
+    redHot: {
+      primary: '#fddbdc',
+      secondary: '#c81e24',
+      border: '#e56167',
+    },
+    // Sold out, and nothing else: the one step past `redHot`, darkened along the
     // same hue so the two read as one scale rather than two colours.
     redDeep: {
       primary: '#f3cdcf',
@@ -187,8 +195,15 @@ export const Colors = {
       secondary: '#ffb8b8',
       border: '#ffb8b8',
     },
+    // The dark-mode twin of `redHot`: on a dark ground urgency reads as more
+    // saturation, not more darkness, so it sits between `red` and `redDeep`.
+    redHot: {
+      primary: '#631c1c',
+      secondary: '#ff9a9c',
+      border: '#ff9a9c',
+    },
     // "Deeper" inverts on a dark ground: a darker red would sink into it, so
-    // the step past `red` is the more saturated one instead.
+    // the step past `redHot` is the more saturated one instead.
     redDeep: {
       primary: '#6d1a1a',
       secondary: '#ff7378',

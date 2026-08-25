@@ -24,8 +24,8 @@ export type SeatAvailabilityMeta = {
  * sign. Rank is in the shape as well as the colour, which is what makes the
  * badge readable at the 12px it renders at in a list row.
  *
- * The colours ramp teal → green → yellow → orange → red → deep red, ending on
- * two reds so the two states that actually cost you a ticket are the darkest
+ * The colours ramp teal → green → yellow → orange → hot red → deep red, ending
+ * on two reds so the two states that actually cost you a ticket are the loudest
  * marks on the screen.
  *
  * The cutoffs behind these live in the backend and are never recomputed here —
@@ -74,7 +74,7 @@ export function getSeatAvailabilityMeta(
         label: "Last few seats",
         description: "Down to the final seats — this could sell out.",
         icon: "whatshot",
-        color: colors.red.secondary,
+        color: colors.redHot.secondary,
       };
     case "sold_out":
       return {

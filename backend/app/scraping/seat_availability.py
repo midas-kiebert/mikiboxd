@@ -45,6 +45,7 @@ scrape as "this showtime is gone".
 
 import json
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -211,7 +212,7 @@ EAGERLY_SOLD_OUT_STATUS = "sold-out"
 # `book.`, some `shop.`), keyed by the netloc `ticket_link` actually uses.
 # A site missing from this table just means nobody's found its booking
 # subdomain yet — `_fetch_eagerly` falls back to the feed's status enum.
-_EAGERLY_BOOKING_HOSTS: dict[str, str] = {
+EAGERLY_BOOKING_HOSTS: dict[str, str] = {
     "filmhallen.nl": "book.filmhallen.nl",
     "themovies.nl": "book.themovies.nl",
     "www.kinorotterdam.nl": "book.kinorotterdam.nl",
@@ -227,7 +228,7 @@ _EAGERLY_BOOKING_HOSTS: dict[str, str] = {
 _EAGERLY_MOBILE_DEVICE_ID = "00000000-0000-0000-0000-000000000000"
 
 
-def _eagerly_shows(
+def eagerly_shows(
     base_url: str, feed_cache: EagerlyFeedCache
 ) -> dict[str, _EagerlyShow]:
     """Map provider_id -> status/room for one Eagerly site's whole programme."""
@@ -264,16 +265,30 @@ class _EagerlySeatCount(NamedTuple):
     capacity: int
 
 
-def _fetch_eagerly_seatplan(
+def _is_bookable_eagerly_seat(seat: dict) -> bool:
+    """Whether a raw Eagerly seat entry is a real, selectable seat.
+
+    "ROL" (rolstoel, wheelchair space) marks floor space next to a seat, not a
+    seat itself — it's `seat_selectable`, but counting it would claim capacity
+    the room doesn't have. A same-section companion seat next to it is a real
+    seat and stays counted.
+    """
+    return (
+        seat.get("seat_selectable") == 1
+        and str(seat.get("seat_name") or "").strip().upper() != "ROL"
+    )
+
+
+def _fetch_eagerly_seatplan_raw(
     *, booking_host: str, cinema_id: str, show_time_id: str
-) -> _EagerlySeatCount | None:
-    """Count free/total seats from the cinema's own seat map, if it has one.
+) -> list[dict] | None:
+    """GET the cinema's own seat map and return its raw seat list, if it has one.
 
     Read-only: this only ever GETs the seat plan. Selecting a seat — which
     starts its 10-minute checkout hold — happens on a different call the real
     checkout flow makes when someone clicks one, which nothing here does.
     Returns None if the response doesn't look like a real seat plan (e.g. an
-    unrecognised show id), so the caller can fall back to the feed's status.
+    unrecognised show id), so callers can fall back to the feed's status.
     """
     url = (
         f"https://{booking_host}/webservices/cinema_seatplans/getSeatPlanData"
@@ -288,18 +303,19 @@ def _fetch_eagerly_seatplan(
             f"Eagerly seat plan for show {show_time_id} was not JSON: {e}"
         ) from e
     seats = body.get("data") if isinstance(body, dict) else None
-    if not isinstance(seats, list):
+    return seats if isinstance(seats, list) else None
+
+
+def _fetch_eagerly_seatplan(
+    *, booking_host: str, cinema_id: str, show_time_id: str
+) -> _EagerlySeatCount | None:
+    """Count free/total seats from the cinema's own seat map, if it has one."""
+    seats = _fetch_eagerly_seatplan_raw(
+        booking_host=booking_host, cinema_id=cinema_id, show_time_id=show_time_id
+    )
+    if seats is None:
         return None
-    # "ROL" (rolstoel, wheelchair space) marks floor space next to a seat,
-    # not a seat itself — it's `seat_selectable`, but counting it would claim
-    # capacity the room doesn't have. A same-section companion seat next to it
-    # is a real seat and stays counted.
-    selectable = [
-        seat
-        for seat in seats
-        if seat.get("seat_selectable") == 1
-        and str(seat.get("seat_name") or "").strip().upper() != "ROL"
-    ]
+    selectable = [seat for seat in seats if _is_bookable_eagerly_seat(seat)]
     if not selectable:
         return None
     free = sum(
@@ -312,20 +328,99 @@ def _fetch_eagerly_seatplan(
     return _EagerlySeatCount(free=free, capacity=len(selectable))
 
 
+# Floor-plan geometry fields worth persisting; everything else in the raw
+# response (ticket/lock ids, current status) is live-request-scoped and would
+# only ever be stale if stored.
+_FLOOR_PLAN_GEOMETRY_FIELDS = (
+    "row_name",
+    "seat_name",
+    "position_left",
+    "position_top",
+    "width",
+    "height",
+)
+
+
+def fetch_eagerly_seatplan_geometry(
+    *, booking_host: str, cinema_id: str, show_time_id: str
+) -> list[dict] | None:
+    """One room's full seat geometry, for permanent storage.
+
+    Used only by `scripts/ingest-seat-floor-plans.py` — a one-off ingest, not
+    something the poller calls, since a room's layout essentially never
+    changes. `selectable` here already has the ROL exclusion baked in, so
+    nothing downstream needs to know about that platform-specific quirk.
+    """
+    seats = _fetch_eagerly_seatplan_raw(
+        booking_host=booking_host, cinema_id=cinema_id, show_time_id=show_time_id
+    )
+    if seats is None:
+        return None
+    return [
+        {
+            **{field: seat.get(field) for field in _FLOOR_PLAN_GEOMETRY_FIELDS},
+            "selectable": _is_bookable_eagerly_seat(seat),
+        }
+        for seat in seats
+    ]
+
+
+# Live per-seat status is re-fetched on every request (nothing persists it),
+# so a short cache is the only thing standing between a popular showtime's
+# detail screen and hammering that cinema's booking host with duplicate reads.
+_LIVE_STATUS_CACHE_TTL_SECONDS = 25
+_live_status_cache: dict[tuple[str, str, str], tuple[float, dict]] = {}
+
+
+def fetch_eagerly_seatplan_live_status(
+    *, booking_host: str, cinema_id: str, show_time_id: str
+) -> dict[tuple[str, str], bool] | None:
+    """Which seats are currently taken, keyed by `(row_name, seat_name)`.
+
+    Returns None if the show id isn't recognised there. Filler/non-bookable
+    seats (including ROL) are left out of the map entirely — the caller's own
+    stored geometry already knows which seats are selectable.
+    """
+    cache_key = (booking_host, cinema_id, show_time_id)
+    cached = _live_status_cache.get(cache_key)
+    if cached is not None and time.monotonic() - cached[0] < _LIVE_STATUS_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    seats = _fetch_eagerly_seatplan_raw(
+        booking_host=booking_host, cinema_id=cinema_id, show_time_id=show_time_id
+    )
+    if seats is None:
+        return None
+    status = {
+        (
+            str(seat.get("row_name") or "").strip(),
+            str(seat.get("seat_name") or "").strip(),
+        ): (
+            seat.get("ticket_id") is not None
+            or seat.get("seat_lock_id") is not None
+            or seat.get("seat_status") != 0
+        )
+        for seat in seats
+        if _is_bookable_eagerly_seat(seat)
+    }
+    _live_status_cache[cache_key] = (time.monotonic(), status)
+    return status
+
+
 def _fetch_eagerly(url: str, feed_cache: EagerlyFeedCache) -> SeatAvailability:
     match = EAGERLY_URL_PATTERN.match(url)
     if match is None:
         return _UNKNOWN
     provider_id = match.group(1)
     parts = urlsplit(url)
-    show = _eagerly_shows(f"{parts.scheme}://{parts.netloc}", feed_cache).get(
+    show = eagerly_shows(f"{parts.scheme}://{parts.netloc}", feed_cache).get(
         provider_id
     )
     if show is None:
         # Dropped from the programme since the last scrape.
         return SeatAvailability(None, None, None, "eagerly")
 
-    booking_host = _EAGERLY_BOOKING_HOSTS.get(parts.netloc)
+    booking_host = EAGERLY_BOOKING_HOSTS.get(parts.netloc)
     if booking_host is not None and show.cinema_id is not None:
         seat_count = _fetch_eagerly_seatplan(
             booking_host=booking_host,

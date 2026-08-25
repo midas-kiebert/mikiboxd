@@ -149,6 +149,8 @@ import type {
   ScrapeMonitorGetScrapeRecapAttachmentResponse,
   ShowtimesUpdateShowtimeSelectionData,
   ShowtimesUpdateShowtimeSelectionResponse,
+  ShowtimesGetShowtimeSeatmapData,
+  ShowtimesGetShowtimeSeatmapResponse,
   ShowtimesPingFriendForShowtimeData,
   ShowtimesPingFriendForShowtimeResponse,
   ShowtimesUninviteFriendFromShowtimeData,
@@ -2166,6 +2168,28 @@ export class ShowtimesService {
       },
       body: data.requestBody,
       mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Showtime Seatmap
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static getShowtimeSeatmap(
+    data: ShowtimesGetShowtimeSeatmapData,
+  ): CancelablePromise<ShowtimesGetShowtimeSeatmapResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/{showtime_id}/seatmap",
+      path: {
+        showtime_id: data.showtimeId,
+      },
       errors: {
         422: "Validation Error",
       },

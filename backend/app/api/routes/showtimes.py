@@ -35,6 +35,7 @@ from app.schemas.seat_availability import (
     ShowtimeSeatAvailabilityPublic,
     SoldOutWatchPublic,
 )
+from app.schemas.seat_floor_plan import SeatFloorPlanPublic
 from app.schemas.showtime import ShowtimePublic, ShowtimeSelectionUpdate
 from app.schemas.showtime_ping import SentShowtimePingPublic, ShowtimePingLinkToken
 from app.schemas.showtime_report import ShowtimeReportCreate
@@ -45,6 +46,7 @@ from app.schemas.showtime_visibility import (
 )
 from app.services import push_notifications
 from app.services import seat_availability as seat_availability_service
+from app.services import seat_floor_plan as seat_floor_plan_service
 from app.services import showtimes as showtimes_service
 from app.services import sold_out_watch as sold_out_watch_service
 from app.services.share_preview import (
@@ -115,6 +117,25 @@ def update_showtime_selection(
     if never_checked:
         background_tasks.add_task(_check_seat_availability_now, showtime_id)
     return result
+
+
+# Not every showtime's room has a floor plan (currently only 7 Eagerly-platform
+# cinemas do), so `None` is a normal, common response here, not a 404 — a
+# catalogue-browsing openapi_extra so an anonymous visitor still gets geometry
+# and taken/free status, just with is_viewer_seat/friend left at their defaults.
+@router.get(
+    "/{showtime_id}/seatmap",
+    openapi_extra=OPTIONAL_AUTH_OPENAPI_EXTRA,
+)
+def get_showtime_seatmap(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    viewer: CurrentViewer,
+) -> SeatFloorPlanPublic | None:
+    return seat_floor_plan_service.get_seat_floor_plan(
+        session=session, showtime_id=showtime_id, viewer=viewer
+    )
 
 
 async def _notify_after_delay(

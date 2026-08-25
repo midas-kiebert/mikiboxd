@@ -383,7 +383,10 @@ def fetch_eagerly_seatplan_live_status(
     """
     cache_key = (booking_host, cinema_id, show_time_id)
     cached = _live_status_cache.get(cache_key)
-    if cached is not None and time.monotonic() - cached[0] < _LIVE_STATUS_CACHE_TTL_SECONDS:
+    if (
+        cached is not None
+        and time.monotonic() - cached[0] < _LIVE_STATUS_CACHE_TTL_SECONDS
+    ):
         return cached[1]
 
     seats = _fetch_eagerly_seatplan_raw(

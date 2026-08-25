@@ -662,9 +662,7 @@ def send_seat_alerts(
         )
 
         if recipient.notify_channel_seat_alert == NotificationChannel.EMAIL:
-            _send_email_notification(
-                email_to=recipient.email, subject=title, body=body
-            )
+            _send_email_notification(email_to=recipient.email, subject=title, body=body)
             # Stamped whether or not the mail went out: a failed send is not a
             # reason to try the same person again on the next crossing, and
             # there is no second crossing to try on anyway.

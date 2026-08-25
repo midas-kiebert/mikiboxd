@@ -516,9 +516,7 @@ def _seat_priority_score(now: datetime) -> ColumnElement[float]:
     )
     # Column on the left of the subtraction on purpose: it gives the bound
     # parameter a type to infer from, which a bare `now - column` does not.
-    lateness_seconds = -func.extract(
-        "epoch", col(Showtime.seats_next_check_at) - now
-    )
+    lateness_seconds = -func.extract("epoch", col(Showtime.seats_next_check_at) - now)
     activity = case(
         (col(Showtime.seats_unchanged_streak) == 0, _ACTIVITY_PRIORITY_MULTIPLIER),
         else_=1.0,

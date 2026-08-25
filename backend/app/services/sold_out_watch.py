@@ -149,9 +149,7 @@ def start_watch(
     if showtime.datetime - now_amsterdam_naive() <= WATCH_STOPS_BEFORE_SHOWTIME:
         raise SoldOutWatchNotApplicableError()
 
-    existing = sold_out_watch_crud.get_watch_for_user(
-        session=session, user_id=user.id
-    )
+    existing = sold_out_watch_crud.get_watch_for_user(session=session, user_id=user.id)
     # The cap counts watches, not users, so someone moving their own watch is
     # never the person turned away by it.
     if (
@@ -210,7 +208,9 @@ def run_due_watches(*, session: Session, now: datetime | None = None) -> int:
         try:
             availability = fetch_seat_availability(ticket_link=showtime.ticket_link)
         except SeatAvailabilityFetchError as e:
-            logger.warning(f"Sold-out watch read failed for showtime {showtime.id}: {e}")
+            logger.warning(
+                f"Sold-out watch read failed for showtime {showtime.id}: {e}"
+            )
             availability = None
 
         watch.checks_done += 1

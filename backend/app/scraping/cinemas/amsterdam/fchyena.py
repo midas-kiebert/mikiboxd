@@ -139,7 +139,9 @@ def _read_framer_value(reader: _FramerBinaryReader) -> object:
     if tag == 8:  # Number
         return reader.f64()
     if tag == 9:  # Object
-        return {reader.string(): _read_framer_value(reader) for _ in range(reader.u16())}
+        return {
+            reader.string(): _read_framer_value(reader) for _ in range(reader.u16())
+        }
     if tag == 11:  # RichText
         flag = reader.u8()
         return reader.u32() if flag == 0 else reader.string()
@@ -232,7 +234,9 @@ def fetch_cms_films() -> list[CmsFilm]:
     titles = _property_titles(component_js)
     missing_titles = [title for title in _CMS_FIELD_TITLES if title not in titles]
     if missing_titles:
-        raise FramerCmsError(f"Films CMS collection is missing fields: {missing_titles}")
+        raise FramerCmsError(
+            f"Films CMS collection is missing fields: {missing_titles}"
+        )
 
     films: list[CmsFilm] = []
     for chunk_url in chunk_urls:

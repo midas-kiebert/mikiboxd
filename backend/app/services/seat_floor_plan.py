@@ -65,7 +65,9 @@ def get_seat_floor_plan(
     floor plan ingested for it) — this is an expected, common condition for
     the vast majority of cinemas, not an error.
     """
-    showtime = showtime_crud.get_showtime_by_id(session=session, showtime_id=showtime_id)
+    showtime = showtime_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
     if showtime.room is None:
@@ -123,6 +125,4 @@ def get_seat_floor_plan(
             )
         )
 
-    return SeatFloorPlanPublic(
-        showtime_id=showtime_id, room=showtime.room, seats=seats
-    )
+    return SeatFloorPlanPublic(showtime_id=showtime_id, room=showtime.room, seats=seats)

@@ -75,6 +75,7 @@ def _capacity_override(*, cinema_key: str | None, room: str | None) -> int | Non
         return None
     return _capacity_overrides().get(cinema_key, {}).get(room)
 
+
 # There is no far horizon. A screening months out with a seat left is more
 # worth a request than a half-empty one tomorrow, and its own due time — set
 # from how full it is, in `next_check_at` below — already decides how often it
@@ -453,9 +454,7 @@ def to_public(showtime: Showtime) -> ShowtimeSeatAvailabilityPublic | None:
     if level is None:
         if not checking:
             return None
-        return ShowtimeSeatAvailabilityPublic(
-            showtime_id=showtime.id, checking=True
-        )
+        return ShowtimeSeatAvailabilityPublic(showtime_id=showtime.id, checking=True)
     return ShowtimeSeatAvailabilityPublic(
         showtime_id=showtime.id,
         level=level,
@@ -522,7 +521,9 @@ def _read_host(showtimes: list[Showtime]) -> dict[int, SeatAvailability]:
         except SeatAvailabilityFetchError as e:
             # Leave the last known numbers in place. A failed read is not
             # evidence of anything, least of all a full house.
-            logger.warning(f"Seat availability read failed for showtime {showtime.id}: {e}")
+            logger.warning(
+                f"Seat availability read failed for showtime {showtime.id}: {e}"
+            )
     return readings
 
 
@@ -553,9 +554,7 @@ def apply_reading(
     """
     previous_seats_left = showtime.seats_left
     previous_floor = showtime.seats_level_floor
-    _apply_reading(
-        showtime=showtime, availability=availability, cinema_key=cinema_key
-    )
+    _apply_reading(showtime=showtime, availability=availability, cinema_key=cinema_key)
 
     # A room's capacity is the same fact for every screening in it, so the two
     # estimates feed each other: this reading raises the room's number, and the
@@ -676,9 +675,7 @@ def simulate_reading(
     session.commit()
 
     if crossed:
-        push_notifications.send_seat_alerts(
-            session=session, showtime_ids=[showtime_id]
-        )
+        push_notifications.send_seat_alerts(session=session, showtime_ids=[showtime_id])
     session.refresh(showtime)
     return to_public(showtime)
 
@@ -748,9 +745,7 @@ def refresh_seat_availability(
     cinema_keys = {
         cinema.id: cinema.key for cinema in cinema_crud.get_cinemas(session=session)
     }
-    batch_showtimes = [
-        showtime for group in by_host.values() for showtime in group
-    ]
+    batch_showtimes = [showtime for group in by_host.values() for showtime in group]
     room_capacities = room_capacity_crud.get_room_capacities(
         session=session,
         cinema_ids={showtime.cinema_id for showtime in batch_showtimes},

@@ -259,7 +259,7 @@ requires-dist = [
     { name = "apscheduler" },
     { name = "bcrypt", specifier = "==4.3.0" },
     { name = "beautifulsoup4", specifier = ">=4.14.3,<5.0.0" },
-    { name = "email-validator", specifier = ">=2.1.0.post1,<3.0.0.0" },
+    { name = "email-validator", specifier = ">=2.3.0,<3.0.0.0" },
     { name = "emails", specifier = ">=0.6,<1.0" },
     { name = "factory-boy" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.114.2,<1.0.0" },

@@ -51,10 +51,10 @@ def _delay(showtime: Showtime, *, unchanged_streak: int = 0) -> timedelta:
     "seats_left, seats_capacity, starts_in, expected",
     [
         # Nearly empty and a week out: nothing worth knowing happens often.
-        (70, 100, timedelta(days=7), timedelta(hours=4)),
+        (80, 100, timedelta(days=7), timedelta(hours=4)),
         # ...but close enough to the showtime, a quiet screening can still
         # start moving.
-        (70, 100, timedelta(hours=6), timedelta(hours=2)),
+        (80, 100, timedelta(hours=6), timedelta(hours=2)),
         (50, 100, timedelta(days=7), timedelta(hours=1)),
         (50, 100, timedelta(hours=1, minutes=30), timedelta(minutes=30)),
         (30, 100, timedelta(days=7), timedelta(minutes=30)),

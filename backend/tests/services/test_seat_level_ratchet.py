@@ -72,7 +72,7 @@ def test_level_still_rises() -> None:
     showtime = _showtime(seats_capacity=100)
     _read(showtime, 90)
     assert effective_seat_level(showtime) is SeatAvailabilityLevel.SOME_TAKEN
-    _read(showtime, 60)
+    _read(showtime, 76)
     assert effective_seat_level(showtime) is SeatAvailabilityLevel.SOME_TAKEN
     _read(showtime, 45)
     assert effective_seat_level(showtime) is SeatAvailabilityLevel.BUSY

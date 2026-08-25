@@ -21,14 +21,19 @@ from app.utils import now_amsterdam_naive
 # pending, so the fixtures have to sit either side of the actual current time.
 NOW = now_amsterdam_naive()
 
+READABLE_TICKET_LINK = (
+    "https://tickets.lab111.nl/labcinema/nl/flow_configs/webshop"
+    "/steps/start/show/1293554"
+)
+
 
 def _showtime(**kwargs) -> Showtime:
+    kwargs.setdefault("ticket_link", READABLE_TICKET_LINK)
     return Showtime(
         id=1,
         movie_id=1,
         cinema_id=1,
         datetime=NOW + timedelta(days=2),
-        ticket_link="https://tickets.lab111.nl/order/1",
         **kwargs,
     )
 
@@ -122,14 +127,14 @@ def test_a_showtime_already_read_never_earns_a_second_live_request(
     fire a request per tap."""
     read_once: Showtime = showtime_factory(
         datetime=NOW + timedelta(days=2),
-        ticket_link="https://tickets.lab111.nl/order/1",
+        ticket_link=READABLE_TICKET_LINK,
         seats_left=40,
         seats_capacity=100,
         seats_checked_at=NOW - timedelta(hours=6),
     )
     never_read: Showtime = showtime_factory(
         datetime=NOW + timedelta(days=2),
-        ticket_link="https://tickets.lab111.nl/order/2",
+        ticket_link=READABLE_TICKET_LINK.replace("1293554", "1293555"),
         seats_checked_at=None,
     )
     db_transaction.flush()

@@ -9,7 +9,9 @@ from app.services import push_notifications
 
 
 def _selection(mocker, *, user_id, going_status=GoingStatus.INTERESTED):
-    return mocker.MagicMock(user_id=user_id, going_status=going_status)
+    return mocker.MagicMock(
+        user_id=user_id, going_status=going_status, seat_alert_sent_at=None
+    )
 
 
 def test_only_selections_never_alerted_before_are_queried(

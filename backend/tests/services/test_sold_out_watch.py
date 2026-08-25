@@ -16,7 +16,10 @@ from app.services.sold_out_watch import (
 )
 
 NOW = datetime(2026, 8, 24, 12, 0)
-READABLE_TICKET_LINK = "https://tickets.lab111.nl/order/1"
+READABLE_TICKET_LINK = (
+    "https://tickets.lab111.nl/labcinema/nl/flow_configs/webshop"
+    "/steps/start/show/1293554"
+)
 
 
 def _showtime(

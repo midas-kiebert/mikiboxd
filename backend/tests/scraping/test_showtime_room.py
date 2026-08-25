@@ -113,9 +113,18 @@ def test_kriterion_names_each_theatre_id_from_one_lookup(monkeypatch) -> None:
     monkeypatch.setattr(kriterion.requests, "get", _fake_get)
 
     shows = [
-        kriterion.Show(id=1, production_id=100, theatre_id=6084, name="Film A"),
-        kriterion.Show(id=1, production_id=100, theatre_id=6084, name="Film A"),
-        kriterion.Show(id=2, production_id=101, theatre_id=6083, name="Film B"),
+        kriterion.Show(
+            id=1, production_id=100, theatre_id=6084, name="Film A",
+            start_date="2026-08-24 16:30:00",
+        ),
+        kriterion.Show(
+            id=1, production_id=100, theatre_id=6084, name="Film A",
+            start_date="2026-08-24 16:30:00",
+        ),
+        kriterion.Show(
+            id=2, production_id=101, theatre_id=6083, name="Film B",
+            start_date="2026-08-24 17:10:00",
+        ),
     ]
     room_names = kriterion.KriterionScraper._room_names_by_theatre_id(shows)
 
@@ -153,8 +162,14 @@ def test_kriterion_falls_back_to_the_next_show_when_one_has_started(
     monkeypatch.setattr(kriterion.requests, "get", _fake_get)
 
     shows = [
-        kriterion.Show(id=1, production_id=100, theatre_id=6085, name="Film A"),
-        kriterion.Show(id=2, production_id=100, theatre_id=6085, name="Film A"),
+        kriterion.Show(
+            id=1, production_id=100, theatre_id=6085, name="Film A",
+            start_date="2026-08-24 18:00:00",
+        ),
+        kriterion.Show(
+            id=2, production_id=100, theatre_id=6085, name="Film A",
+            start_date="2026-08-24 19:30:00",
+        ),
     ]
     assert kriterion.KriterionScraper._room_names_by_theatre_id(shows) == {6085: "K 2"}
 
@@ -162,7 +177,12 @@ def test_kriterion_falls_back_to_the_next_show_when_one_has_started(
 def test_kriterion_show_without_a_theatre_id_is_skipped() -> None:
     from app.scraping.cinemas.amsterdam import kriterion
 
-    shows = [kriterion.Show(id=1, production_id=100, theatre_id=None, name="Film A")]
+    shows = [
+        kriterion.Show(
+            id=1, production_id=100, theatre_id=None, name="Film A",
+            start_date="2026-08-24 18:00:00",
+        )
+    ]
     assert kriterion.KriterionScraper._room_names_by_theatre_id(shows) == {}
 
 

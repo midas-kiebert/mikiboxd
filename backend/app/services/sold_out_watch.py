@@ -7,7 +7,11 @@ gone within minutes, so the ordinary seat poller's cadence — measured in hours
 would be indefensible applied to the catalogue at large. So it isn't: a watch
 covers one showtime, a user may hold one at a time, only some accounts may
 hold one at all (`User.is_pro`), and `MAX_ACTIVE_WATCHES` caps how many exist
-across everyone.
+across everyone. Those caps are also what makes the frequency defensible: the
+fast phases run at one reading a minute, which is one person refreshing a page
+while they wait — reasonable for one watch, and reasonable for five, but only
+because five is the ceiling. See the note on `INITIAL_INTERVAL` for what one
+watch actually costs a shop and what has to change if that cap ever grows.
 
 Within a watch, the frequency still tapers. Most of a watch's life is spent
 long before anything can happen, and the minutes that actually matter are the
@@ -53,10 +57,28 @@ from app.utils import now_amsterdam_naive
 # handful of ticket shops, and the number is what makes that true.
 MAX_ACTIVE_WATCHES = 5
 
+# Every interval here is a whole number of scheduler ticks on purpose. The job
+# runs every minute and can only ever read a watch on a tick, so an interval of
+# 3 on a 2-minute tick was really 4 — the numbers below mean what they say.
+#
+# One minute in the fast phases is the floor the tick allows, and it is defensible
+# only because of the caps above. What one watch costs one ticket shop, started a
+# day before the screening: 45 requests in the opening burst, ~31 through the
+# steady phase, ~48 through the idle one, and 100 in the run-up — 224 across 24
+# hours, averaging 9 an hour, peaking at 60 an hour for the 100 minutes that
+# matter. That is one person refreshing a page while they wait, which is exactly
+# what it is standing in for.
+#
+# The coupling is the thing to remember: the volume above is per *watch*, and
+# nothing stops several watches pointing at the same shop. At MAX_ACTIVE_WATCHES
+# = 5 the worst case is 5/minute at one host, still fine; if that cap ever grows,
+# this interval has to shrink with it or gain a per-host limit of its own. The
+# poller's own per-host budget is separate and does not count these.
+#
 # The opening burst: releases cluster right after someone goes looking, partly
 # because that is when they check, partly because they start watching *because*
 # something just changed.
-INITIAL_INTERVAL = timedelta(minutes=3)
+INITIAL_INTERVAL = timedelta(minutes=1)
 INITIAL_PHASE = timedelta(minutes=45)
 # The long middle, where nothing is likely to happen and the point is to still
 # be there when it does.
@@ -67,7 +89,7 @@ IDLE_INTERVAL = timedelta(minutes=20)
 # The run-up, when people who can't make it hand their tickets back. This is
 # the window the whole feature exists for.
 FINAL_APPROACH = timedelta(hours=2)
-FINAL_APPROACH_INTERVAL = timedelta(minutes=3)
+FINAL_APPROACH_INTERVAL = timedelta(minutes=1)
 # Past this point a returned ticket is no use to anyone who'd have to travel.
 WATCH_STOPS_BEFORE_SHOWTIME = timedelta(minutes=20)
 

@@ -83,9 +83,9 @@ class Showtime(ShowtimeBase, table=True):
     # or the room's total learned from a sibling screening) makes an unchanged
     # seat count look emptier than it did, and a level that walks back down and
     # up again is both untrue to how a screening actually fills and a way to send
-    # the same "nearly sold out" notice twice. Capped at NEARLY_SOLD_OUT rather
-    # than SOLD_OUT: tickets genuinely do come back, and a screening you can buy
-    # a seat for must never still read "Sold out".
+    # the same "last few seats" notice twice. Capped at LAST_FEW rather than
+    # SOLD_OUT: tickets genuinely do come back, and a screening you can buy a
+    # seat for must never still read "Sold out".
     seats_level_floor: SeatAvailabilityLevel | None = Field(
         default=None,
         sa_column=Column(

@@ -285,7 +285,7 @@ Legend:
 - [ ] Review and understand existing test structure
 - [ ] Check coverage report — identify untested services and CRUDs
 - [ ] `tests/api/` — Route-level tests (are all endpoints covered?)
-- [ ] `tests/crud/` — CRUD tests (are complex queries tested?)
+- [ ] `tests/crud/` — CRUD tests (are complex queries tested?); `test_seat_availability_candidates.py` covers the seat poller's selection + priority ordering
 - [ ] `tests/services/` — Service tests (most critical layer)
 - [ ] `tests/converters/` — Converter tests
 - [ ] `tests/scraping/` — Scraper tests
@@ -620,7 +620,7 @@ Only components created or reworked during the cleanup are listed here; the rest
 - [ ] `backend/Dockerfile` — Backend image (multi-stage, uv, uvicorn)
 - [ ] `frontend/Dockerfile` — Frontend image (Vite build + Nginx)
 - [ ] `.env` structure — What variables are required? What are the defaults?
-- [ ] `alembic/versions/` — 106 migrations: understand the schema evolution
+- [ ] `alembic/versions/` — 114 migrations: understand the schema evolution
 - [ ] `.pre-commit-config.yaml` — What hooks run on commit?
 
 ---

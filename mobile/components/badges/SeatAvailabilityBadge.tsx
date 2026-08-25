@@ -1,10 +1,12 @@
 /**
  * Mobile badge component: how busy a showtime is.
  *
- * Icon-only in a list row, where it has to compete with the time, the cinema
- * and the subtitles for a few pixels — the colour ramp carries the meaning at
- * that size, and the row's own tap already opens the sheet where the words are.
- * The `showLabel` variant is for the sheet itself.
+ * Deliberately bare — just the icon and the raw seat count (`n/m`) in the
+ * level's colour, no box or background. It has to sit quietly next to the
+ * time/cinema/subtitles in a row without reading as another pill, and there
+ * is nothing behind a tap here (that detail lives in the showtime sheet).
+ * `iconOnly` drops the count entirely for spots too tight for it (a showtime
+ * row inside a movie card).
  *
  * Reads from the prefetch cache and never fetches: a screenful of rows must not
  * become a screenful of requests. A row whose availability was never prefetched,
@@ -21,66 +23,59 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 type SeatAvailabilityBadgeProps = {
   showtimeId: number | null | undefined;
   variant?: "compact" | "default";
-  showLabel?: boolean;
+  iconOnly?: boolean;
 };
 
 export default function SeatAvailabilityBadge({
   showtimeId,
   variant = "default",
-  showLabel = false,
+  iconOnly = false,
 }: SeatAvailabilityBadgeProps) {
   const colors = useThemeColors();
-  const styles = createStyles(colors);
   const availability = useCachedShowtimeSeatAvailability(showtimeId ?? null);
 
   if (!availability?.level) return null;
 
   const meta = getSeatAvailabilityMeta(availability.level, colors);
   const isCompact = variant === "compact";
+  const { seats_left: seatsLeft, seats_capacity: capacity } = availability;
+  const countLabel =
+    seatsLeft === null || seatsLeft === undefined
+      ? null
+      : capacity
+        ? `${seatsLeft}/${capacity}`
+        : `${seatsLeft}`;
 
   return (
-    <View
-      style={[
-        styles.container,
-        isCompact ? styles.compactContainer : styles.defaultContainer,
-        { borderColor: meta.color },
-      ]}
-      accessibilityRole="image"
-      accessibilityLabel={meta.label}
-    >
+    <View style={styles.container} accessibilityRole="image" accessibilityLabel={meta.label}>
       <MaterialIcons name={meta.icon} size={isCompact ? 10 : 12} color={meta.color} />
-      {showLabel ? (
-        <ThemedText style={[styles.label, { color: meta.color }]} numberOfLines={1}>
-          {meta.label}
+      {!iconOnly && countLabel ? (
+        <ThemedText
+          style={[styles.count, isCompact ? styles.countCompact : styles.countDefault, { color: meta.color }]}
+          numberOfLines={1}
+        >
+          {countLabel}
         </ThemedText>
       ) : null}
     </View>
   );
 }
 
-const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
-  StyleSheet.create({
-    container: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 3,
-      borderWidth: 1,
-      borderRadius: 3,
-      backgroundColor: colors.pillBackground,
-    },
-    compactContainer: {
-      minHeight: 14,
-      paddingVertical: 1,
-      paddingHorizontal: 3,
-    },
-    defaultContainer: {
-      minHeight: 18,
-      paddingVertical: 1,
-      paddingHorizontal: 4,
-    },
-    label: {
-      fontSize: 11,
-      lineHeight: 12,
-      includeFontPadding: false,
-    },
-  });
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  count: {
+    includeFontPadding: false,
+  },
+  countCompact: {
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  countDefault: {
+    fontSize: 11,
+    lineHeight: 13,
+  },
+});

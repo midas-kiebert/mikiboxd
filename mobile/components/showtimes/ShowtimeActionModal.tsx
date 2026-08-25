@@ -70,8 +70,7 @@ import useTrackEvent from "shared/hooks/useTrackEvent";
 
 import CinemaPill from "@/components/badges/CinemaPill";
 import {
-  formatCheckedAt,
-  formatSeatCount,
+  formatCheckedAtShort,
   getSeatAvailabilityMeta,
 } from "@/components/showtimes/seat-availability-level";
 import {
@@ -195,6 +194,9 @@ type SeatInputConfig = {
 const CLOSE_BUTTON_SIZE = 30;
 const CLOSE_BUTTON_TOP = -10;
 const WATCH_MARKER_GAP = 8;
+// The bell that starts a returned-ticket watch is a bare 20px glyph in a dense
+// header row, so it borrows the surrounding padding to reach a tappable size.
+const SEAT_WATCH_BELL_HIT_SLOP = 10;
 
 /**
  * How long the tour waits before reading its first target's position: long
@@ -395,7 +397,6 @@ export default function ShowtimeActionModal({
   const { user } = useAuth();
   const canReport = isSignedIn && (user ? user.can_report : true);
   const [isVisibilityExpanded, setIsVisibilityExpanded] = useState(false);
-  const [isSeatInfoExpanded, setIsSeatInfoExpanded] = useState(false);
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<FriendWatchKind | null>(null);
   const [isDismissInviteDialogVisible, setIsDismissInviteDialogVisible] = useState(false);
@@ -425,14 +426,6 @@ export default function ShowtimeActionModal({
       visibilityCaretRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }),
     [visibilityCaretRotation]
   );
-  // ...and for the busyness detail toggle.
-  const seatInfoCaretRotation = useRef(new Animated.Value(0)).current;
-  const seatInfoCaretSpin = useMemo(
-    () =>
-      seatInfoCaretRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }),
-    [seatInfoCaretRotation]
-  );
-
   const selectedShowtimeId = showtime?.id ?? null;
   // Read by the present effect, which must run on `visible` alone: re-presenting
   // a sheet that is already open would snap it back to its first detent. Kept in
@@ -880,22 +873,16 @@ export default function ShowtimeActionModal({
     ? getSeatAvailabilityMeta(seatAvailability.level, colors)
     : null;
   const isCheckingSeatAvailability = Boolean(seatAvailability?.checking);
-  const seatCountLabel = seatAvailability ? formatSeatCount(seatAvailability) : null;
-  const seatCheckedLabel = seatAvailability
-    ? formatCheckedAt(seatAvailability.checked_at)
+  const seatCountLabel = seatAvailability
+    ? seatAvailability.seats_left === null || seatAvailability.seats_left === undefined
+      ? null
+      : seatAvailability.seats_capacity
+        ? `${seatAvailability.seats_left}/${seatAvailability.seats_capacity}`
+        : `${seatAvailability.seats_left}`
     : null;
-
-  const handleToggleSeatInfoExpanded = useCallback(() => {
-    triggerSelectionHaptic();
-    const next = !isSeatInfoExpanded;
-    Animated.timing(seatInfoCaretRotation, {
-      toValue: next ? 1 : 0,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
-    LayoutAnimation.configureNext(EXPAND_LAYOUT_ANIMATION);
-    setIsSeatInfoExpanded(next);
-  }, [isSeatInfoExpanded, seatInfoCaretRotation]);
+  const seatCheckedLabelShort = seatAvailability
+    ? formatCheckedAtShort(seatAvailability.checked_at)
+    : null;
 
   // ─── Waiting for a returned ticket ─────────────────────────────────────────
   // The account either has this or it doesn't; there is no tier to show, no
@@ -912,6 +899,11 @@ export default function ShowtimeActionModal({
   // A watch pointed elsewhere is not an obstacle — starting one here moves it —
   // but the user should be told that is what will happen.
   const isWatchingAnotherShowtime = soldOutWatch != null && !isWatchingThisShowtime;
+
+  // The bell only exists for an account that has the feature, on a showtime a
+  // platform will actually let us re-read. Everyone else gets the plain badge.
+  const canWatchThisShowtime =
+    isSignedIn && canWatchSoldOut && Boolean(seatAvailability?.watchable);
 
   const { mutate: startSoldOutWatch } = useMutation({
     mutationFn: (showtimeId: number) =>
@@ -1789,13 +1781,12 @@ export default function ShowtimeActionModal({
             {/* How busy this screening is. Nothing renders at all when we have
                 no usable reading — a row of dashes where a real answer
                 sometimes appears is worse than the answer simply not being
-                there. Tapping opens the numbers behind the icon: a level is
-                what you glance at, "31 of 312 left, checked 4 minutes ago" is
-                what you check before buying. */}
+                there. The seat count and colour ramp carry the meaning; there
+                is nothing hidden behind a tap. */}
             {isCheckingSeatAvailability ? (
               <View style={styles.seatInfoSection}>
                 <View style={styles.seatInfoHeader}>
-                  <ThemedText style={styles.seatInfoHeaderLabel}>Availability</ThemedText>
+                  <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
                   <View style={styles.seatInfoCheckingRow}>
                     <ActivityIndicator size="small" color={colors.textSecondary} />
                     <ThemedText style={styles.seatInfoCheckingText}>
@@ -1808,81 +1799,64 @@ export default function ShowtimeActionModal({
 
             {seatAvailability && seatMeta ? (
               <View style={styles.seatInfoSection}>
-                <TouchableOpacity
-                  style={styles.seatInfoHeader}
-                  onPress={handleToggleSeatInfoExpanded}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
+                <View
+                  style={[
+                    styles.seatInfoHeader,
+                    canWatchThisShowtime && styles.seatInfoHeaderWithBell,
+                  ]}
                 >
-                  <ThemedText style={styles.seatInfoHeaderLabel}>Availability</ThemedText>
+                  <View style={styles.seatInfoTextColumn}>
+                    <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
+                    {seatCheckedLabelShort ? (
+                      <ThemedText style={styles.seatInfoCheckedAt}>
+                        {seatCheckedLabelShort}
+                      </ThemedText>
+                    ) : null}
+                  </View>
                   <View style={[styles.seatInfoValue, { backgroundColor: seatMeta.color }]}>
                     <MaterialIcons
                       name={seatMeta.icon}
                       size={13}
                       color={colors.pillActiveText}
                     />
-                    <ThemedText style={styles.seatInfoValueText}>{seatMeta.label}</ThemedText>
-                  </View>
-                  <Animated.View style={{ transform: [{ rotate: seatInfoCaretSpin }] }}>
-                    <MaterialIcons name="expand-more" size={20} color={colors.textSecondary} />
-                  </Animated.View>
-                </TouchableOpacity>
-                {isSeatInfoExpanded ? (
-                  <View style={styles.seatInfoDetail}>
-                    <ThemedText style={styles.seatInfoDescription}>
-                      {seatMeta.description}
-                    </ThemedText>
                     {seatCountLabel ? (
-                      <ThemedText style={styles.seatInfoCount}>{seatCountLabel}</ThemedText>
-                    ) : null}
-                    {seatCheckedLabel ? (
-                      <ThemedText style={styles.seatInfoCheckedAt}>
-                        {seatCheckedLabel}
-                      </ThemedText>
-                    ) : null}
-                    {isSignedIn && canWatchSoldOut && seatAvailability.watchable ? (
-                      <>
-                        <TouchableOpacity
-                          style={[
-                            styles.seatWatchButton,
-                            isWatchingThisShowtime && styles.seatWatchButtonActive,
-                          ]}
-                          onPress={handleToggleSoldOutWatch}
-                          activeOpacity={0.8}
-                          accessibilityRole="button"
-                        >
-                          <MaterialIcons
-                            name={
-                              isWatchingThisShowtime
-                                ? "notifications-active"
-                                : "notifications-none"
-                            }
-                            size={16}
-                            color={
-                              isWatchingThisShowtime
-                                ? colors.green.secondary
-                                : colors.textSecondary
-                            }
-                          />
-                          <ThemedText
-                            style={[
-                              styles.seatWatchButtonText,
-                              isWatchingThisShowtime && styles.seatWatchButtonTextActive,
-                            ]}
-                          >
-                            {isWatchingThisShowtime
-                              ? "Watching for tickets"
-                              : "Tell me if a ticket frees up"}
-                          </ThemedText>
-                        </TouchableOpacity>
-                        {isWatchingAnotherShowtime ? (
-                          <ThemedText style={styles.seatWatchHint}>
-                            You&apos;re watching another showtime — this replaces it.
-                          </ThemedText>
-                        ) : null}
-                      </>
+                      <ThemedText style={styles.seatInfoValueText}>{seatCountLabel}</ThemedText>
                     ) : null}
                   </View>
+                  {canWatchThisShowtime ? (
+                    <TouchableOpacity
+                      style={styles.seatWatchBell}
+                      onPress={handleToggleSoldOutWatch}
+                      activeOpacity={0.7}
+                      hitSlop={SEAT_WATCH_BELL_HIT_SLOP}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isWatchingThisShowtime }}
+                      accessibilityLabel={
+                        isWatchingThisShowtime
+                          ? "Stop watching for a returned ticket"
+                          : "Tell me if a ticket frees up"
+                      }
+                    >
+                      <MaterialIcons
+                        name={
+                          isWatchingThisShowtime
+                            ? "notifications-active"
+                            : "notifications-none"
+                        }
+                        size={20}
+                        color={
+                          isWatchingThisShowtime
+                            ? colors.green.secondary
+                            : colors.textSecondary
+                        }
+                      />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                {canWatchThisShowtime && isWatchingAnotherShowtime ? (
+                  <ThemedText style={styles.seatWatchHint}>
+                    You&apos;re watching another showtime — the bell moves it here.
+                  </ThemedText>
                 ) : null}
               </View>
             ) : null}
@@ -2552,9 +2526,21 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       gap: 8,
       paddingVertical: 4,
       paddingHorizontal: 2,
+      // Matches the visibility pill's inset below, which sits 28px short of
+      // the row's right edge to make room for its expand caret — this row has
+      // no caret, so the badge is pulled in by the same amount to line up.
+      paddingRight: 30,
+    },
+    // With the bell present it occupies that reserved column instead, so the
+    // seat badge keeps the same x as the visibility pill either way.
+    seatInfoHeaderWithBell: {
+      paddingRight: 2,
+    },
+    seatInfoTextColumn: {
+      flex: 1,
+      gap: 1,
     },
     seatInfoHeaderLabel: {
-      flex: 1,
       fontSize: 13,
       fontWeight: "700",
       color: colors.text,
@@ -2581,57 +2567,21 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontWeight: "700",
       color: colors.pillActiveText,
     },
-    seatInfoDetail: {
-      gap: 4,
-      borderRadius: 11,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.cardBackground,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-    },
-    seatInfoDescription: {
-      fontSize: 13,
-      color: colors.text,
-    },
-    seatInfoCount: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: colors.text,
-    },
     seatInfoCheckedAt: {
-      fontSize: 12,
+      fontSize: 11,
+      lineHeight: 13,
       color: colors.textSecondary,
     },
-    seatWatchButton: {
-      flexDirection: "row",
+    seatWatchBell: {
       alignItems: "center",
       justifyContent: "center",
-      gap: 6,
-      marginTop: 6,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.surfaceMuted,
-      paddingVertical: 9,
-      paddingHorizontal: 12,
-    },
-    seatWatchButtonActive: {
-      borderColor: colors.green.border,
-      backgroundColor: colors.green.primary,
-    },
-    seatWatchButtonText: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: colors.textSecondary,
-    },
-    seatWatchButtonTextActive: {
-      color: colors.green.secondary,
+      width: 20,
+      height: 20,
     },
     seatWatchHint: {
       fontSize: 12,
       color: colors.textSecondary,
-      textAlign: "center",
+      paddingHorizontal: 2,
     },
     visibilityOption: {
       flexDirection: "row",

@@ -42,6 +42,7 @@ from app.crud import cinema_room_capacity as room_capacity_crud
 from app.crud import showtime as showtimes_crud
 from app.crud.cinema_room_capacity import RoomCapacityIndex
 from app.exceptions.showtime_exceptions import ShowtimeNotFoundError
+from app.models.cinema import Cinema
 from app.models.showtime import Showtime
 from app.schemas.seat_availability import ShowtimeSeatAvailabilityPublic
 from app.scraping.logger import logger
@@ -74,19 +75,24 @@ def _capacity_override(*, cinema_key: str | None, room: str | None) -> int | Non
         return None
     return _capacity_overrides().get(cinema_key, {}).get(room)
 
-# Only showtimes this far out are worth reading: further away nothing is close
-# to selling out, and the answer would be stale long before it mattered.
-POLL_HORIZON = timedelta(days=14)
-# A count nobody can act on is not worth a request.
-POLL_MINIMUM_NOTICE = timedelta(hours=1)
+# There is no far horizon. A screening months out with a seat left is more
+# worth a request than a half-empty one tomorrow, and its own due time — set
+# from how full it is, in `next_check_at` below — already decides how often it
+# comes up. What bounds the cost is the caps here, not a cutoff date.
 # Ceiling on one run, so a backlog cannot turn into a burst at a ticket shop.
 # The poller runs often enough that a backlog this leaves behind is picked up
-# minutes later rather than dropped.
-POLL_BATCH_LIMIT = 60
-# ...and a tighter ceiling per ticket shop, because "60 requests spread over
-# ten cinemas" and "60 requests at one cinema" are very different things to be
+# a minute later rather than dropped.
+#
+# These are per *run*, so together with the tick they are the real rate limit:
+# at a one-minute tick, 15 and 3 are 900/hour overall and 180/hour at any one
+# shop — the same ceiling the old 60 and 12 bought at a five-minute tick, but
+# arriving as a trickle instead of a burst every five minutes. Change the tick
+# and these have to move with it, or the rate moves too.
+POLL_BATCH_LIMIT = 15
+# ...and a tighter ceiling per ticket shop, because "15 requests spread over
+# ten cinemas" and "15 requests at one cinema" are very different things to be
 # on the receiving end of.
-POLL_HOST_BATCH_LIMIT = 12
+POLL_HOST_BATCH_LIMIT = 3
 # How many showtimes the query may return before the caps above trim it. Larger
 # than the batch limit so a host that has used up its share can be passed over
 # in favour of one that hasn't, instead of the whole run stalling behind it.
@@ -96,27 +102,34 @@ POLL_CANDIDATE_LIMIT = 400
 # pages, and the Z-ELITE shops sit behind a virtual waiting room.
 HOST_CONCURRENCY = 4
 
-# The fullest level is whichever fires first: a flat handful of seats, or a
+# `last_few` fires on whichever comes first: a flat handful of seats, or a
 # share of the screening's own capacity. The flat number carries small rooms
 # (6 left in a 40-seat room is a real warning, 10% of it is 4 and far too
 # late), and the fraction carries large ones (6 left in Eye's 312-seat Cinema 1
 # is far too late, 10% of it is 31).
-NEARLY_SOLD_OUT_ABSOLUTE_SEATS = 6
-NEARLY_SOLD_OUT_FREE_FRACTION = 0.10
-SOME_TAKEN_FREE_FRACTION = 0.55
-EMPTY_FREE_FRACTION = 0.80
+LAST_FEW_ABSOLUTE_SEATS = 6
+
+# The remaining cutoffs are the fraction of the room still free, and a reading
+# takes the emptiest bucket it still clears. Spread evenly across the middle
+# rather than clustered at the ends: most screenings people look at sit between
+# a third and two thirds full, and a scale that calls all of them "busy" tells
+# nobody anything.
+EMPTY_FREE_FRACTION = 0.90
+SOME_TAKEN_FREE_FRACTION = 0.60
+BUSY_FREE_FRACTION = 0.40
+VERY_BUSY_FREE_FRACTION = 0.10
 
 # Where waiting for a returned ticket is a sensible thing to want. Lives here
 # rather than with the watch itself so the client can be told, in the same
 # response that carries the level, whether the option applies.
 WATCHABLE_LEVELS = (
     SeatAvailabilityLevel.SOLD_OUT,
-    SeatAvailabilityLevel.NEARLY_SOLD_OUT,
+    SeatAvailabilityLevel.LAST_FEW,
 )
 
 # Reaching one of these is worth telling an interested user about, once.
 SEAT_ALERT_LEVELS = (
-    SeatAvailabilityLevel.NEARLY_SOLD_OUT,
+    SeatAvailabilityLevel.LAST_FEW,
     SeatAvailabilityLevel.SOLD_OUT,
 )
 
@@ -125,7 +138,7 @@ SEAT_ALERT_LEVELS = (
 # that genuinely reverses — the whole ticket-watch feature exists because it
 # does — and a screening you can buy a seat for must never still read
 # "Sold out". Raise this to SOLD_OUT to make the level strictly monotone.
-LEVEL_FLOOR_CEILING = SeatAvailabilityLevel.NEARLY_SOLD_OUT
+LEVEL_FLOOR_CEILING = SeatAvailabilityLevel.LAST_FEW
 
 
 def seat_availability_level(
@@ -133,7 +146,7 @@ def seat_availability_level(
 ) -> SeatAvailabilityLevel | None:
     """Which busyness bucket a reading falls in, or None if we cannot say.
 
-    None is not a sixth level and must not be rendered as one: it means the
+    None is not a seventh level and must not be rendered as one: it means the
     platform never gave a number, or gave one we have no capacity to compare it
     against. The cutoffs live here and nowhere else — the client picks an icon
     per level, it does not do arithmetic on the seat count.
@@ -143,18 +156,20 @@ def seat_availability_level(
     if seats_left <= 0:
         return SeatAvailabilityLevel.SOLD_OUT
     # True whatever the room's size, and knowable without a capacity at all.
-    if seats_left <= NEARLY_SOLD_OUT_ABSOLUTE_SEATS:
-        return SeatAvailabilityLevel.NEARLY_SOLD_OUT
+    if seats_left <= LAST_FEW_ABSOLUTE_SEATS:
+        return SeatAvailabilityLevel.LAST_FEW
     if not seats_capacity:
         return None
     free = seats_left / seats_capacity
-    if free < NEARLY_SOLD_OUT_FREE_FRACTION:
-        return SeatAvailabilityLevel.NEARLY_SOLD_OUT
-    if free > EMPTY_FREE_FRACTION:
+    if free >= EMPTY_FREE_FRACTION:
         return SeatAvailabilityLevel.EMPTY
     if free >= SOME_TAKEN_FREE_FRACTION:
         return SeatAvailabilityLevel.SOME_TAKEN
-    return SeatAvailabilityLevel.BUSY
+    if free >= BUSY_FREE_FRACTION:
+        return SeatAvailabilityLevel.BUSY
+    if free >= VERY_BUSY_FREE_FRACTION:
+        return SeatAvailabilityLevel.VERY_BUSY
+    return SeatAvailabilityLevel.LAST_FEW
 
 
 def effective_seat_level(showtime: Showtime) -> SeatAvailabilityLevel | None:
@@ -196,12 +211,12 @@ def _raised_floor(
 #
 # The shape of it: the emptier a screening is, the less often anything worth
 # knowing happens to it, and the further out it is, the less anyone can do with
-# the answer. Sold out gets the longest interval of all rather than the
-# shortest — minute to minute it just flickers between full and a returned
-# ticket or two, which no polling frequency we could justify would track
-# honestly. Someone who actually wants to catch a returned ticket subscribes to
-# it instead (see `app.services.sold_out_watch`), which is a much smaller,
-# capped set of showtimes and can afford to look properly often.
+# the answer.
+#
+# SOLD_OUT is deliberately absent — it is never re-read at all, see
+# `next_check_at`. Anything past the ordinary levels is the sold-out watch's
+# job (`app.services.sold_out_watch`): a much smaller, capped set of showtimes
+# that can afford to look properly often.
 _RECHECK_INTERVALS: dict[
     SeatAvailabilityLevel | None, tuple[timedelta, timedelta, timedelta]
 ] = {
@@ -221,15 +236,15 @@ _RECHECK_INTERVALS: dict[
         timedelta(hours=2),
         timedelta(minutes=30),
     ),
-    SeatAvailabilityLevel.NEARLY_SOLD_OUT: (
-        timedelta(minutes=15),
+    SeatAvailabilityLevel.VERY_BUSY: (
+        timedelta(minutes=30),
         timedelta(hours=2),
-        timedelta(minutes=15),
+        timedelta(minutes=20),
     ),
-    SeatAvailabilityLevel.SOLD_OUT: (
-        timedelta(hours=12),
+    SeatAvailabilityLevel.LAST_FEW: (
+        timedelta(minutes=15),
         timedelta(hours=2),
-        timedelta(hours=6),
+        timedelta(minutes=15),
     ),
     # The platform said nothing usable. Try again occasionally in case it starts
     # answering (a show id that isn't in the feed yet, a seat map that appears
@@ -262,10 +277,26 @@ def next_check_at(
     """When `showtime` should next be read, from how full and how soon it is.
 
     Reads the *effective* level, so the cadence always matches the level being
-    shown — a screening pinned at "almost sold out" by the ratchet keeps the
+    shown — a screening pinned at "last few seats" by the ratchet keeps the
     quarter-hourly attention that level deserves.
     """
     level = effective_seat_level(showtime)
+    if level is SeatAvailabilityLevel.SOLD_OUT:
+        # Never again. A sold-out screening reads sold out on the next hundred
+        # requests too, and the one case that matters — a ticket handed back —
+        # is what the sold-out watch exists for, at a frequency this poller
+        # could never justify across the catalogue. Parked at the screening's
+        # own start time rather than a null: null means "never read" here and
+        # would put it at the front of every run, while the start time can never
+        # come due — the candidate query only takes screenings that have not
+        # started, so "due" and "eligible" are mutually exclusive for it.
+        #
+        # The cost is deliberate and worth knowing: without a watch on it, a
+        # screening that sells out and then has tickets released keeps reading
+        # "Sold out" until someone looks. `LEVEL_FLOOR_CEILING` stops one rung
+        # short of SOLD_OUT precisely so that state *can* reverse, and this is
+        # the one thing standing between that mechanism and having no effect.
+        return showtime.datetime
     interval, close_threshold, close_interval = _RECHECK_INTERVALS[level]
     if showtime.datetime - now <= close_threshold:
         delay = close_interval
@@ -350,7 +381,13 @@ def check_now(*, session: Session, showtime_id: int) -> None:
             )
             return
         now = now_amsterdam_naive()
-        crossed = apply_reading(showtime=showtime, availability=availability, now=now)
+        cinema = session.get(Cinema, showtime.cinema_id)
+        crossed = apply_reading(
+            showtime=showtime,
+            availability=availability,
+            now=now,
+            cinema_key=cinema.key if cinema else None,
+        )
         session.add(showtime)
         session.commit()
         if crossed:
@@ -369,7 +406,14 @@ def to_public(showtime: Showtime) -> ShowtimeSeatAvailabilityPublic | None:
     )
     if level is None:
         checking = showtime.seats_checked_at is None and (
-            showtime.ticket_link is not None and supports(showtime.ticket_link)
+            showtime.ticket_link is not None
+            and supports(showtime.ticket_link)
+            # Absent means nobody has ever queued a read for this showtime —
+            # it has no active selection, or the immediate/poller read has not
+            # been requested yet — so nothing is actually coming any time
+            # soon. Only a showtime someone has shown interest in, which is
+            # what sets this, should read as "checking".
+            and showtime.seats_next_check_at is not None
         )
         if not checking:
             return None
@@ -605,10 +649,11 @@ def simulate_reading(
 def _select_batch(candidates: list[Showtime]) -> dict[str, list[Showtime]]:
     """Trim the due list to what one run may actually request, grouped by host.
 
-    Candidates arrive most-overdue first, and are taken in that order until
-    either the run's budget or the host's own share of it runs out. Whatever is
-    left over keeps its due time and is simply picked up by the next run, which
-    is what turns a burst of new interest into a queue instead of a stampede.
+    Candidates arrive in priority order — never read, then fewest seats left,
+    then most overdue — and are taken in that order until either the run's
+    budget or the host's own share of it runs out. Whatever is left over keeps
+    its due time and is simply picked up by the next run, which is what turns a
+    burst of new interest into a queue instead of a stampede.
     """
     by_host: dict[str, list[Showtime]] = defaultdict(list)
     taken = 0
@@ -639,8 +684,6 @@ def refresh_seat_availability(
     candidates = showtimes_crud.get_seat_availability_candidates(
         session=session,
         now=reference_time,
-        horizon=POLL_HORIZON,
-        minimum_notice=POLL_MINIMUM_NOTICE,
         limit=POLL_CANDIDATE_LIMIT,
     )
     if not candidates:

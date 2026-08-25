@@ -56,13 +56,12 @@ def _delay(showtime: Showtime, *, unchanged_streak: int = 0) -> timedelta:
         (95, 100, timedelta(hours=10), timedelta(hours=3)),
         (70, 100, timedelta(days=7), timedelta(hours=4)),
         (70, 100, timedelta(hours=6), timedelta(hours=2)),
-        (30, 100, timedelta(days=7), timedelta(hours=1)),
-        (30, 100, timedelta(hours=1, minutes=30), timedelta(minutes=30)),
+        (50, 100, timedelta(days=7), timedelta(hours=1)),
+        (50, 100, timedelta(hours=1, minutes=30), timedelta(minutes=30)),
+        (30, 100, timedelta(days=7), timedelta(minutes=30)),
+        (30, 100, timedelta(hours=1, minutes=30), timedelta(minutes=20)),
         # The one that can actually sell out under you.
         (5, 100, timedelta(days=7), timedelta(minutes=15)),
-        # Sold out gets the *longest* interval, not the shortest: minute to
-        # minute it only flickers, and catching that is the watch's job.
-        (0, 100, timedelta(days=7), timedelta(hours=12)),
         # Nothing readable — try again occasionally, never often.
         (None, None, timedelta(days=7), timedelta(hours=12)),
     ],
@@ -78,9 +77,38 @@ def test_interval_follows_level_and_proximity(
     )
 
 
+def test_sold_out_is_never_re_read() -> None:
+    """Not a long interval — none at all. A sold-out screening reads sold out on
+    the next hundred requests too, and the one case that matters is what the
+    sold-out watch exists for. Parked at the screening's own start time, which
+    the candidate query can never take — it only accepts screenings that have
+    not started yet."""
+    showtime = _showtime(
+        starts_in=timedelta(days=7), seats_left=0, seats_capacity=100
+    )
+    assert (
+        next_check_at(showtime=showtime, now=NOW, unchanged_streak=0)
+        == showtime.datetime
+    )
+
+
+def test_a_sold_out_screening_with_tickets_back_returns_to_a_real_cadence() -> None:
+    """The parking is a consequence of the level, not a state of its own."""
+    showtime = _showtime(
+        starts_in=timedelta(days=7), seats_left=0, seats_capacity=100
+    )
+    apply_reading(
+        showtime=showtime,
+        availability=SeatAvailability(4, False, "LAB 1", "z-elite"),
+        now=NOW,
+    )
+    assert showtime.seats_next_check_at is not None
+    assert showtime.seats_next_check_at < NOW + timedelta(minutes=20)
+
+
 def test_unchanged_readings_back_the_interval_off_up_to_a_cap() -> None:
     showtime = _showtime(
-        starts_in=timedelta(days=7), seats_left=30, seats_capacity=100
+        starts_in=timedelta(days=7), seats_left=50, seats_capacity=100
     )
     one_hour = timedelta(hours=1).total_seconds()
     jitter = _RECHECK_JITTER.total_seconds() / 2
@@ -96,7 +124,7 @@ def test_unchanged_readings_back_the_interval_off_up_to_a_cap() -> None:
 def test_backoff_never_applies_close_to_the_showtime() -> None:
     """Near the screening a quiet hour means nothing — freshness is the point."""
     showtime = _showtime(
-        starts_in=timedelta(hours=1), seats_left=30, seats_capacity=100
+        starts_in=timedelta(hours=1), seats_left=50, seats_capacity=100
     )
     assert _delay(showtime, unchanged_streak=50).total_seconds() == pytest.approx(
         timedelta(minutes=30).total_seconds(), abs=_RECHECK_JITTER.total_seconds() / 2

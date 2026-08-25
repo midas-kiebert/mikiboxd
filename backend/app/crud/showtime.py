@@ -3,7 +3,7 @@ from datetime import datetime, time, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, nulls_first
+from sqlalchemy import case, func, nulls_last
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_, select
@@ -477,12 +477,59 @@ def get_seat_alert_candidates(
     return list(session.exec(stmt).all())
 
 
+# --- Seat poller priority ---------------------------------------------------
+#
+# A due showtime's priority is how many of *its own* intervals it is overdue by,
+# not how overdue it is in minutes. That one ratio does the work of several
+# rules at once: a screening down to its last seats is on a quarter-hourly
+# cadence, so it passes 1.0 four times an hour, while a far-off screening that
+# nothing has happened to for days has backed off to a two-day interval and
+# crawls towards 1.0 — exactly the one that can afford to be skipped. And a
+# showtime passed over by the run caps keeps accumulating ratio until it wins,
+# so nothing can be starved indefinitely by busier neighbours.
+#
+# The interval is recovered from the row rather than stored: `apply_reading`
+# writes `seats_checked_at` and `seats_next_check_at` together, so the gap
+# between them *is* the interval that was chosen for it.
+_MIN_PRIORITY_INTERVAL_SECONDS = 60.0
+# ...and a ceiling on it, so a showtime whose reads keep failing — those leave
+# `seats_checked_at` untouched while pushing the due time out, inflating the
+# apparent interval — still climbs back up the queue eventually instead of
+# deprioritising itself forever.
+_MAX_PRIORITY_INTERVAL_SECONDS = 48 * 60 * 60.0
+# A count that moved on its last reading is worth more than one that did not.
+# Something is actually happening to this screening; do not let it be skipped.
+_ACTIVITY_PRIORITY_MULTIPLIER = 2.0
+
+
+def _seat_priority_score(now: datetime) -> ColumnElement[float]:
+    """How badly a due showtime wants reading, in units of its own interval."""
+    interval_seconds = func.least(
+        func.greatest(
+            func.extract(
+                "epoch",
+                col(Showtime.seats_next_check_at) - col(Showtime.seats_checked_at),
+            ),
+            _MIN_PRIORITY_INTERVAL_SECONDS,
+        ),
+        _MAX_PRIORITY_INTERVAL_SECONDS,
+    )
+    # Column on the left of the subtraction on purpose: it gives the bound
+    # parameter a type to infer from, which a bare `now - column` does not.
+    lateness_seconds = -func.extract(
+        "epoch", col(Showtime.seats_next_check_at) - now
+    )
+    activity = case(
+        (col(Showtime.seats_unchanged_streak) == 0, _ACTIVITY_PRIORITY_MULTIPLIER),
+        else_=1.0,
+    )
+    return lateness_seconds / interval_seconds * activity
+
+
 def get_seat_availability_candidates(
     *,
     session: Session,
     now: datetime,
-    horizon: timedelta,
-    minimum_notice: timedelta,
     limit: int,
 ) -> list[Showtime]:
     """
@@ -490,23 +537,35 @@ def get_seat_availability_candidates(
 
     Only showtimes at least one user has selected: every reading is a request
     at a real ticket shop, and the whole catalogue would be tens of thousands
-    of them. `minimum_notice` drops showtimes about to start, whose remaining
-    seats nobody can act on any more. How often a given showtime comes up is
-    decided when its last reading was written down, not here — see
-    `services/seat_availability.next_check_at`; a null due time is a showtime
+    of them.
+
+    The only bound on *when* is that the screening has not started. There is no
+    far horizon — a screening months away with one seat left is the most urgent
+    thing in the list, not the least — and no minimum notice either: somebody
+    ten minutes from the cinema can still act on a seat, and excluding the last
+    hour saved almost nothing. How often any of them comes up is already decided
+    per showtime when its last reading was written down — see
+    `services/seat_availability.next_check_at`. A null due time is a showtime
     that has never been read.
 
-    Most overdue first, then soonest, so a capped run drains the backlog in the
-    order it built up rather than starving whatever sat at the end of it.
-    """
-    earliest_showtime = now + minimum_notice
-    latest_showtime = now + horizon
+    The strict `>` is load-bearing: a sold-out screening is parked at its own
+    start time, so "due" and "has not started" can never both be true for it.
 
+    Priority, when a run cannot take everything that is due:
+
+    1. Never read at all. Someone selected it and we have nothing to show them.
+    2. Highest `_seat_priority_score` — how many of its own intervals it is
+       overdue by, doubled if its count moved on the last reading. See the
+       comment on that function for why one number covers urgency, activity and
+       starvation at once.
+    3. Fewest seats left, to break a tie between two screenings equally overdue
+       on the same cadence. Nulls last: a platform that reports status without
+       a number is not urgent, and would otherwise read as "no seats left".
+    """
     stmt = (
         select(Showtime)
         .where(
-            col(Showtime.datetime) >= earliest_showtime,
-            col(Showtime.datetime) <= latest_showtime,
+            col(Showtime.datetime) > now,
             col(Showtime.ticket_link).is_not(None),
             or_(
                 col(Showtime.seats_next_check_at).is_(None),
@@ -519,8 +578,9 @@ def get_seat_availability_candidates(
             ),
         )
         .order_by(
-            nulls_first(col(Showtime.seats_next_check_at).asc()),
-            col(Showtime.datetime).asc(),
+            col(Showtime.seats_checked_at).is_(None).desc(),
+            _seat_priority_score(now).desc(),
+            nulls_last(col(Showtime.seats_left).asc()),
         )
         .limit(limit)
     )

@@ -566,7 +566,8 @@ export type SeatAvailabilityLevel =
   | "empty"
   | "some_taken"
   | "busy"
-  | "nearly_sold_out"
+  | "very_busy"
+  | "last_few"
   | "sold_out"
 
 export type SentShowtimePingPublic = {
@@ -796,9 +797,12 @@ export type ShowtimeReportUpdate = {
  *
  * The same for everyone — this is a fact about the screening, not about who
  * asked — which is what lets it be cached per showtime and prefetched for a
- * whole list at once. A showtime with no usable reading is simply absent from
- * the response rather than present with a null level, so the client never has
- * to tell "empty" from "unknown".
+ * whole list at once. A showtime with no usable reading and no read pending
+ * is simply absent from the response rather than present with a null level,
+ * so the client never has to tell "empty" from "unknown". A showtime whose
+ * very first reading has not landed yet, but is expected soon, is the one
+ * exception: it is present with `level` absent and `checking` set, so the
+ * client can say so rather than showing nothing at all.
  */
 export type ShowtimeSeatAvailabilityPublic = {
   showtime_id: number

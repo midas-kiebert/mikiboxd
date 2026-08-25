@@ -31,17 +31,25 @@ def _zelite(seats_left: int | None, sold_out: bool | None, room: str | None = "L
     [
         # Sold out is its own state, never the fullest ordinary one.
         (0, 128, SeatAvailabilityLevel.SOLD_OUT),
-        # A handful of seats is nearly sold out whatever the room's size —
-        # and knowable even before any capacity has been learned.
-        (6, 312, SeatAvailabilityLevel.NEARLY_SOLD_OUT),
-        (6, None, SeatAvailabilityLevel.NEARLY_SOLD_OUT),
-        # Above the flat floor, the fraction decides. 10% of 312 is 31.
-        (30, 312, SeatAvailabilityLevel.NEARLY_SOLD_OUT),
-        (32, 312, SeatAvailabilityLevel.BUSY),
-        (171, 312, SeatAvailabilityLevel.BUSY),
-        (172, 312, SeatAvailabilityLevel.SOME_TAKEN),
-        (249, 312, SeatAvailabilityLevel.SOME_TAKEN),
-        (250, 312, SeatAvailabilityLevel.EMPTY),
+        # A handful of seats is the last few whatever the room's size — and
+        # knowable even before any capacity has been learned.
+        (6, 312, SeatAvailabilityLevel.LAST_FEW),
+        (6, None, SeatAvailabilityLevel.LAST_FEW),
+        # Above the flat floor, the fraction decides. Every boundary below is
+        # the pair straddling it, so a moved cutoff fails here first.
+        # 10% of 312 is 31.2.
+        (31, 312, SeatAvailabilityLevel.LAST_FEW),
+        (32, 312, SeatAvailabilityLevel.VERY_BUSY),
+        # 40% of 312 is 124.8.
+        (124, 312, SeatAvailabilityLevel.VERY_BUSY),
+        (125, 312, SeatAvailabilityLevel.BUSY),
+        # 60% of 312 is 187.2.
+        (187, 312, SeatAvailabilityLevel.BUSY),
+        (188, 312, SeatAvailabilityLevel.SOME_TAKEN),
+        # 90% of 312 is 280.8.
+        (280, 312, SeatAvailabilityLevel.SOME_TAKEN),
+        (281, 312, SeatAvailabilityLevel.EMPTY),
+        (312, 312, SeatAvailabilityLevel.EMPTY),
         # Above the flat floor with no capacity to compare against, there is
         # nothing honest to say — and "nothing" must not read as "empty".
         (40, None, None),
@@ -68,7 +76,7 @@ def test_capacity_is_the_running_max_of_every_reading() -> None:
         seat_availability_level(
             seats_left=showtime.seats_left, seats_capacity=showtime.seats_capacity
         )
-        is SeatAvailabilityLevel.NEARLY_SOLD_OUT
+        is SeatAvailabilityLevel.LAST_FEW
     )
 
 

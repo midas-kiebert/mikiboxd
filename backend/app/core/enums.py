@@ -138,7 +138,8 @@ class SeatAvailabilityLevel(str, Enum):
     EMPTY = "empty"
     SOME_TAKEN = "some_taken"
     BUSY = "busy"
-    NEARLY_SOLD_OUT = "nearly_sold_out"
+    VERY_BUSY = "very_busy"
+    LAST_FEW = "last_few"
     SOLD_OUT = "sold_out"
 
 

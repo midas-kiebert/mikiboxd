@@ -9,6 +9,7 @@ import type { ShowtimePublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import CinemaPill from "@/components/badges/CinemaPill";
+import SeatAvailabilityBadge from "@/components/badges/SeatAvailabilityBadge";
 import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
@@ -207,6 +208,9 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
               maxRows={responsiveBadgeRows}
             />
           </View>
+          <View style={styles.seatAvailabilityCorner}>
+            <SeatAvailabilityBadge showtimeId={showtime.id} variant="compact" />
+          </View>
           <View style={styles.subtitlesCorner}>
             <SubtitlesBadges subtitles={showtime.subtitles} variant="compact" />
           </View>
@@ -337,11 +341,16 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
       fontStyle: "italic",
     },
-    subtitlesCorner: {
+    seatAvailabilityCorner: {
       position: "absolute",
       // Absolutely positioned children are offset from the parent's border box in
       // RN, not its padding box — match `info`'s padding so this sits as far from
       // the corner as CinemaPill (a normal-flow child) sits from the top-right.
+      left: 10,
+      bottom: 8,
+    },
+    subtitlesCorner: {
+      position: "absolute",
       right: 10,
       bottom: 8,
       flexDirection: "row",

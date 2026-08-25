@@ -36,6 +36,10 @@ type ShowtimeRowProps = {
   subtitlesAfterCinema?: boolean;
   isSyntheticMovie?: boolean;
   showCinema?: boolean;
+  // Off inside a movie card: that row has no space to spare for a seat count.
+  showSeatAvailability?: boolean;
+  // Icon only, no count: still enough to glance at inside a movie card.
+  seatAvailabilityIconOnly?: boolean;
 };
 
 const formatShowtime = (
@@ -60,6 +64,8 @@ export default function ShowtimeRow({
   subtitlesAfterCinema = false,
   isSyntheticMovie = false,
   showCinema = true,
+  showSeatAvailability = true,
+  seatAvailabilityIconOnly = false,
 }: ShowtimeRowProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
@@ -74,12 +80,13 @@ export default function ShowtimeRow({
   ) : null;
   // Renders nothing unless this showtime's availability is already cached, so
   // rows that have no reading keep exactly the layout they had before.
-  const seatBadge = (
+  const seatBadge = showSeatAvailability ? (
     <SeatAvailabilityBadge
       showtimeId={showtime.id}
       variant={isCompact ? "compact" : "default"}
+      iconOnly={seatAvailabilityIconOnly}
     />
-  );
+  ) : null;
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -95,6 +102,7 @@ export default function ShowtimeRow({
         >
           {formatShowtime(showtime.datetime, showtime.end_datetime, showDate, isSyntheticMovie)}
         </ThemedText>
+        {seatBadge}
         {subtitlesAfterCinema ? (
           <>
             {cinemaPill}
@@ -106,7 +114,6 @@ export default function ShowtimeRow({
             {cinemaPill}
           </>
         )}
-        {seatBadge}
       </View>
       {showFriends ? (
         <FriendBadges

@@ -92,6 +92,13 @@ export const Colors = {
       secondary: '#b62b2f',
       border: '#dc6a6e',
     },
+    // Sold out, and nothing else: the one step past `red`, darkened along the
+    // same hue so the two read as one scale rather than two colours.
+    redDeep: {
+      primary: '#f3cdcf',
+      secondary: '#7a1417',
+      border: '#b8595c',
+    },
     gray: {
       primary: '#e2e9e6',
       secondary: '#4c675b',
@@ -179,6 +186,13 @@ export const Colors = {
       primary: '#5a1c1c',
       secondary: '#ffb8b8',
       border: '#ffb8b8',
+    },
+    // "Deeper" inverts on a dark ground: a darker red would sink into it, so
+    // the step past `red` is the more saturated one instead.
+    redDeep: {
+      primary: '#6d1a1a',
+      secondary: '#ff7378',
+      border: '#ff7378',
     },
     gray: {
       primary: '#3f4143',

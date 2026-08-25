@@ -19,10 +19,14 @@ export type SeatAvailabilityMeta = {
 /**
  * The icon, wording and colour for one busyness level.
  *
- * A ramp rather than five unrelated colours: green through yellow and orange to
- * red, so the level reads before the label does. The icons are seat-shaped for
- * the two calm levels and people-shaped for the two busy ones, which is the
- * distinction someone deciding whether to book actually cares about.
+ * The icons are a single progression, not six unrelated marks: an empty seat,
+ * then the room filling one silhouette at a time, then a flame, then a closed
+ * sign. Rank is in the shape as well as the colour, which is what makes the
+ * badge readable at the 12px it renders at in a list row.
+ *
+ * The colours ramp teal → green → yellow → orange → red → deep red, ending on
+ * two reds so the two states that actually cost you a ticket are the darkest
+ * marks on the screen.
  *
  * The cutoffs behind these live in the backend and are never recomputed here —
  * the client is handed a level and picks how to draw it.
@@ -37,40 +41,48 @@ export function getSeatAvailabilityMeta(
         level,
         label: "Nearly empty",
         description: "Pick any seat you like.",
-        icon: "airline-seat-recline-extra",
-        color: colors.green.secondary,
+        icon: "event-seat",
+        color: colors.teal.secondary,
       };
     case "some_taken":
       return {
         level,
         label: "Some seats taken",
-        description: "Filling up — the best seats may already be gone.",
-        icon: "event-seat",
-        color: colors.teal.secondary,
+        description: "Filling up, but most of the room is still free.",
+        icon: "person",
+        color: colors.green.secondary,
       };
     case "busy":
       return {
         level,
         label: "Busy",
-        description: "Plenty of seats left, but not the whole room.",
-        icon: "groups",
+        description: "About half the room is gone — the best seats may be too.",
+        icon: "people",
         color: colors.yellow.secondary,
       };
-    case "nearly_sold_out":
+    case "very_busy":
       return {
         level,
-        label: "Almost sold out",
-        description: "Very busy — this could sell out.",
-        icon: "local-fire-department",
+        label: "Very busy",
+        description: "Filling fast, and the seats left are the leftovers.",
+        icon: "groups",
         color: colors.orange.secondary,
+      };
+    case "last_few":
+      return {
+        level,
+        label: "Last few seats",
+        description: "Down to the final seats — this could sell out.",
+        icon: "whatshot",
+        color: colors.red.secondary,
       };
     case "sold_out":
       return {
         level,
         label: "Sold out",
         description: "No seats left the last time we looked.",
-        icon: "do-not-disturb-on",
-        color: colors.red.secondary,
+        icon: "block",
+        color: colors.redDeep.secondary,
       };
   }
 }
@@ -91,4 +103,16 @@ export function formatSeatCount(
 export function formatCheckedAt(checkedAt: string | null | undefined): string | null {
   if (!checkedAt) return null;
   return `Checked ${DateTime.fromISO(checkedAt).toRelative()}`;
+}
+
+/** "checked 5m ago" — a compact version for use next to the badge in a list row. */
+export function formatCheckedAtShort(checkedAt: string | null | undefined): string | null {
+  if (!checkedAt) return null;
+  const minutes = Math.max(0, Math.round(DateTime.now().diff(DateTime.fromISO(checkedAt), "minutes").minutes));
+  if (minutes < 1) return "checked just now";
+  if (minutes < 60) return `checked ${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `checked ${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `checked ${days}d ago`;
 }

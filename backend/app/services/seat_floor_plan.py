@@ -77,7 +77,11 @@ def get_seat_floor_plan(
     if plan is None:
         return None
 
-    live_status = _resolve_live_status(showtime.ticket_link)
+    live_status = (
+        _resolve_live_status(showtime.ticket_link)
+        if showtime.ticket_link is not None
+        else None
+    )
 
     viewer_seat: tuple[str, str] | None = None
     if viewer is not None:

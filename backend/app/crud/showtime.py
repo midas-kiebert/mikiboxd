@@ -3,7 +3,7 @@ from datetime import datetime, time, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, func, nulls_last
+from sqlalchemy import Float, case, func, nulls_last
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_, select
@@ -521,7 +521,7 @@ def _seat_priority_score(now: datetime) -> ColumnElement[float]:
         (col(Showtime.seats_unchanged_streak) == 0, _ACTIVITY_PRIORITY_MULTIPLIER),
         else_=1.0,
     )
-    return lateness_seconds / interval_seconds * activity
+    return cast(lateness_seconds / interval_seconds * activity, Float)
 
 
 def get_seat_availability_candidates(

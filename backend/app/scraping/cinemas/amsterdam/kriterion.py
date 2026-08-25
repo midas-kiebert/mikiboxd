@@ -188,7 +188,9 @@ class KriterionScraper(BaseCinemaScraper):
                     datetime=start_datetime,
                     cinema_id=self.cinema_id,
                     ticket_link=ticket_link,
-                    room=room_names.get(show.theatre_id),
+                    room=room_names.get(show.theatre_id)
+                    if show.theatre_id is not None
+                    else None,
                     subtitles=subtitles,
                 )
             )

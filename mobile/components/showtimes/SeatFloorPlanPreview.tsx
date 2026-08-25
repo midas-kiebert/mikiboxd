@@ -16,7 +16,7 @@ import type { SeatFloorPlanSeatPublic } from "shared";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { LegendItem, SeatRect } from "@/components/showtimes/SeatFloorPlan";
+import { LegendItem, ScreenIndicator, SeatRect } from "@/components/showtimes/SeatFloorPlan";
 import { layoutSeatFloorPlan } from "@/components/showtimes/seat-floor-plan-layout";
 
 const FULL_HEIGHT_SNAP_POINTS = ["100%"];
@@ -92,16 +92,19 @@ export default function SeatFloorPlanPreview({
           {isLoading ? (
             <ActivityIndicator color={colors.tint} />
           ) : hasSeats ? (
-            <View style={{ width: layout.width, height: layout.height }}>
-              {layout.seats.map((seat) => (
-                <SeatRect
-                  key={`${seat.row_name}-${seat.seat_name}-${seat.x}-${seat.y}`}
-                  seat={seat}
-                  colors={colors}
-                  isDraftSeat={seat.is_viewer_seat}
-                  interactive={false}
-                />
-              ))}
+            <View style={{ width: layout.width }}>
+              <ScreenIndicator width={layout.width} colors={colors} />
+              <View style={{ height: layout.height }}>
+                {layout.seats.map((seat) => (
+                  <SeatRect
+                    key={`${seat.row_name}-${seat.seat_name}-${seat.x}-${seat.y}`}
+                    seat={seat}
+                    colors={colors}
+                    isDraftSeat={seat.is_viewer_seat}
+                    interactive={false}
+                  />
+                ))}
+              </View>
             </View>
           ) : null}
         </View>

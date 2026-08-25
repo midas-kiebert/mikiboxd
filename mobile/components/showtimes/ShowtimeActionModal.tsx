@@ -86,8 +86,7 @@ import FriendListRow, {
 } from "@/components/friends/FriendListRow";
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
 import InviteBeforePrivateDialog from "@/components/showtimes/InviteBeforePrivateDialog";
-import SeatFloorPlan from "@/components/showtimes/SeatFloorPlan";
-import SeatFloorPlanPreview from "@/components/showtimes/SeatFloorPlanPreview";
+import SeatSheets, { type SeatSheetsHandle } from "@/components/showtimes/SeatSheets";
 import { getSeatFieldMaxLength, getSeatInputConfig, validateSeatFieldValue } from "@/components/showtimes/seat-input";
 import SheetBackdrop from "@/components/sheets/SheetBackdrop";
 import {
@@ -349,8 +348,10 @@ export default function ShowtimeActionModal({
   const [seatRowDraft, setSeatRowDraft] = useState("");
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
-  const [isSeatFloorPlanVisible, setIsSeatFloorPlanVisible] = useState(false);
-  const [isSeatFloorPlanPreviewVisible, setIsSeatFloorPlanPreviewVisible] = useState(false);
+  // The two seat-map sheets are opened through this handle rather than through
+  // state on this component — see `SeatSheets` for why that matters to how
+  // fast they open and close.
+  const seatSheetsRef = useRef<SeatSheetsHandle>(null);
   const [isReportDialogVisible, setIsReportDialogVisible] = useState(false);
   const { user } = useAuth();
   const canReport = isSignedIn && (user ? user.can_report : true);
@@ -550,6 +551,7 @@ export default function ShowtimeActionModal({
       setInviteListReady(false);
       setPingSearchQuery("");
       setIsSeatDialogVisible(false);
+      seatSheetsRef.current?.close();
       setIsReportDialogVisible(false);
       setWatchModalKind(null);
       setIsVisibilityExpanded(false);
@@ -1003,15 +1005,12 @@ export default function ShowtimeActionModal({
     setIsSeatDialogVisible(false);
   }, [isSeatDialogVisible, shouldShowSeatButton]);
 
+  // Whatever seat sheet is open stops being valid the moment its reason to
+  // exist does — the viewer is no longer going, or the floor plan went away.
   useEffect(() => {
-    if (shouldShowSeatButton || !isSeatFloorPlanVisible) return;
-    setIsSeatFloorPlanVisible(false);
-  }, [isSeatFloorPlanVisible, shouldShowSeatButton]);
-
-  useEffect(() => {
-    if (hasSeatFloorPlanPreview || !isSeatFloorPlanPreviewVisible) return;
-    setIsSeatFloorPlanPreviewVisible(false);
-  }, [hasSeatFloorPlanPreview, isSeatFloorPlanPreviewVisible]);
+    if (shouldShowSeatButton || hasSeatFloorPlanPreview) return;
+    seatSheetsRef.current?.close();
+  }, [shouldShowSeatButton, hasSeatFloorPlanPreview]);
 
   useEffect(() => {
     if (!isDismissInviteDialogVisible) return;
@@ -1087,33 +1086,21 @@ export default function ShowtimeActionModal({
   const handleOpenSeatDialog = () => {
     if (!showtime || isUpdatingStatus || showtime.viewer?.going !== "GOING" || isFreeSeating) return;
     triggerSelectionHaptic();
-    setSeatRowDraft(showtime.viewer?.seat_row ?? "");
-    setSeatNumberDraft(showtime.viewer?.seat_number ?? "");
+    // The floor-plan picker seeds its own fields from the saved seat, so this
+    // path deliberately touches no state on this component — that is what lets
+    // the sheet start rising on the next commit instead of behind a full
+    // re-render of everything below.
     if (seatFloorPlan) {
-      setIsSeatFloorPlanVisible(true);
+      seatSheetsRef.current?.openPicker();
       return;
     }
+    setSeatRowDraft(showtime.viewer?.seat_row ?? "");
+    setSeatNumberDraft(showtime.viewer?.seat_number ?? "");
     setIsSeatDialogVisible(true);
   };
 
-  // Tapping a seat on the floor plan only fills the row/seat fields — same as
-  // typing them — it does not save. Saving happens once, from either UI,
-  // through handleSaveSeat below via the Save button.
-  //
-  // Stable via useCallback: this is `SeatFloorPlan`'s `onSelectSeat` prop,
-  // which its own per-seat tap handler is built from — a new reference here
-  // on every keystroke (this component re-renders on every one, since the
-  // draft fields are state on it) would silently propagate down and defeat
-  // that grid's own memoization of ~150-300 seats, which is exactly what
-  // caused the row/seat inputs to visibly stall while typing.
-  const handleSelectFloorPlanSeat = useCallback((rowName: string, seatName: string) => {
-    setSeatRowDraft(rowName);
-    setSeatNumberDraft(seatName);
-  }, []);
-
   const handleCancelSeatDialog = () => {
     setIsSeatDialogVisible(false);
-    setIsSeatFloorPlanVisible(false);
   };
 
   // Anywhere this would otherwise open the read-only preview, a viewer who's
@@ -1128,12 +1115,17 @@ export default function ShowtimeActionModal({
       handleOpenSeatDialog();
       return;
     }
-    setIsSeatFloorPlanPreviewVisible(true);
+    seatSheetsRef.current?.openPreview();
   };
 
-  const handleCloseSeatFloorPlanPreview = () => {
-    setIsSeatFloorPlanPreviewVisible(false);
-  };
+  // The floor-plan picker validated the pair itself before enabling Save, and
+  // hands the finished values straight in.
+  const handleSaveFloorPlanSeat = useCallback(
+    (seat: { seatRow: string | null; seatNumber: string | null }) => {
+      onUpdateStatus("GOING", seat);
+    },
+    [onUpdateStatus]
+  );
 
   const handleSaveSeat = () => {
     if (!showtime || isUpdatingStatus || showtime.viewer?.going !== "GOING" || isFreeSeating) return;
@@ -1146,7 +1138,6 @@ export default function ShowtimeActionModal({
       seatNumber: normalizedSeatNumberDraft,
     });
     setIsSeatDialogVisible(false);
-    setIsSeatFloorPlanVisible(false);
   };
 
   const handlePingFriend = (friendId: string) => {
@@ -2229,42 +2220,24 @@ export default function ShowtimeActionModal({
         )}
       </BottomSheetScrollView>
 
-      {/* Visual floor plan (only the cinemas we've ingested one for) */}
-      <SeatFloorPlan
-        visible={isSeatFloorPlanVisible}
+      {/* The seat map, editable or read-only — opened through `seatSheetsRef`
+          rather than by a prop, so a tap doesn't wait on this sheet's own
+          re-render before the animation can start. */}
+      <SeatSheets
+        ref={seatSheetsRef}
         room={seatFloorPlan?.room ?? null}
         seats={seatFloorPlan?.seats ?? null}
-        isLoading={isSeatFloorPlanVisible && seatFloorPlanQuery.isLoading}
-        isError={seatFloorPlanQuery.isError}
+        isLoadingFloorPlan={seatFloorPlanQuery.isLoading}
+        isFloorPlanError={seatFloorPlanQuery.isError}
         cinemaName={showtime?.cinema.name ?? null}
         movieTitle={showtime?.movie.title ?? null}
         dateLabel={dateLabel}
         timeRangeLabel={timeRangeLabel}
-        seatRowDraft={seatRowDraft}
-        seatNumberDraft={seatNumberDraft}
-        onChangeSeatRowDraft={setSeatRowDraft}
-        onChangeSeatNumberDraft={setSeatNumberDraft}
+        savedSeatRow={normalizedCurrentSeatRow}
+        savedSeatNumber={normalizedCurrentSeatNumber}
         seatInputConfig={seatInputConfig}
-        seatValidationError={seatValidationError}
-        canSave={canSaveSeat}
         isSaving={isUpdatingStatus}
-        onSelectSeat={handleSelectFloorPlanSeat}
-        onSave={handleSaveSeat}
-        onCancel={handleCancelSeatDialog}
-      />
-
-      {/* Read-only preview, opened from the "available seats" pill above —
-          same underlying data, no editing surface. */}
-      <SeatFloorPlanPreview
-        visible={isSeatFloorPlanPreviewVisible}
-        room={seatFloorPlan?.room ?? null}
-        seats={seatFloorPlan?.seats ?? null}
-        isLoading={isSeatFloorPlanPreviewVisible && seatFloorPlanQuery.isLoading}
-        cinemaName={showtime?.cinema.name ?? null}
-        movieTitle={showtime?.movie.title ?? null}
-        dateLabel={dateLabel}
-        timeRangeLabel={timeRangeLabel}
-        onClose={handleCloseSeatFloorPlanPreview}
+        onSaveSeat={handleSaveFloorPlanSeat}
       />
 
       {/* Seat editor (assigned-seating cinemas only) */}

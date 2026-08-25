@@ -16,9 +16,17 @@
  * including one the live read says is taken — the common case is picking the
  * seat you already bought a ticket for elsewhere. Tapping a seat only fills
  * the row/seat fields below (or vice versa, typing them highlights the
- * matching seat); nothing saves until "Save" is pressed, so the parent's
- * existing draft state (`seatRowDraft`/`seatNumberDraft`) is the single
- * source of truth for both this screen and the plain-text fallback dialog.
+ * matching seat); nothing saves until "Save" is pressed, which hands the
+ * finished pair back through `onSave`.
+ *
+ * The draft — and everything derived from it: validation, whether Save is
+ * enabled — lives entirely in here, seeded from the seat already saved on the
+ * showtime each time the sheet opens. It deliberately does *not* stream back
+ * up to `ShowtimeActionModal` as you type: that sheet is a very large tree,
+ * and re-rendering it on every keystroke is what made typing here stall (an
+ * earlier fix debounced the sync to soften that; owning the draft outright
+ * removes the round trip instead of hiding it). The parent only hears about a
+ * seat when one is actually saved.
  *
  * The footer (row/seat fields + Save/Cancel) is a plain flex sibling of the
  * seat grid above it, pinned to the bottom the same way every other sheet in
@@ -32,15 +40,15 @@
  * the sheet's built-in handling: typing flickered and the footer overshot far
  * above the keyboard. Do not reintroduce a footer-positioning `Keyboard`
  * listener. The one `Keyboard` listener that *is* still here (see
- * `isKeyboardTransitioning`) doesn't position anything — it only freezes the
- * grid's own size measurement for the ~250ms the keyboard is animating, so
- * the grid doesn't rescale-and-relayout every seat on each intermediate
- * `onLayout` the sheet's resize fires along the way.
+ * `isKeyboardOpen`) doesn't position anything — it only freezes the grid's
+ * own size measurement for as long as the keyboard is up, so the grid
+ * doesn't rescale-and-relayout every seat on each intermediate `onLayout`
+ * the sheet's resize fires along the way. The room is left clipped rather
+ * than shrunk to fit; see `isKeyboardOpen`'s own comment.
  */
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  InteractionManager,
   Keyboard,
   Platform,
   StyleSheet,
@@ -54,11 +62,11 @@ import type { SeatFloorPlanSeatPublic } from "shared";
 
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { ThemedText } from "@/components/themed-text";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import {
   getSeatFieldMaxLength,
+  validateSeatFieldValue,
   type SeatInputConfig,
 } from "@/components/showtimes/seat-input";
 import { layoutSeatFloorPlan, type ScaledSeat } from "@/components/showtimes/seat-floor-plan-layout";
@@ -73,26 +81,21 @@ type SeatFloorPlanProps = {
   movieTitle: string | null;
   dateLabel: string | null;
   timeRangeLabel: string | null;
-  seatRowDraft: string;
-  seatNumberDraft: string;
-  onChangeSeatRowDraft: (value: string) => void;
-  onChangeSeatNumberDraft: (value: string) => void;
+  /** The seat already saved on the showtime; seeds the fields on each open. */
+  savedSeatRow: string | null;
+  savedSeatNumber: string | null;
   seatInputConfig: SeatInputConfig;
-  seatValidationError: string | null;
-  canSave: boolean;
   isSaving: boolean;
-  onSelectSeat: (rowName: string, seatName: string) => void;
-  onSave: () => void;
+  onSave: (seat: { seatRow: string | null; seatNumber: string | null }) => void;
   onCancel: () => void;
 };
 
 const FULL_HEIGHT_SNAP_POINTS = ["100%"];
 const LEGEND_HEIGHT = 34;
-// How long the row/seat fields wait for typing to pause before syncing the
-// parent sheet's copy of the draft — short enough that Save/validation still
-// feel responsive, long enough to collapse a normal typing burst into one
-// parent re-render instead of one per character.
-const SEAT_DRAFT_DEBOUNCE_MS = 150;
+// Long enough to clear `AppBottomSheet`'s 220ms open/close animation with a
+// margin, so the grid's native views are never created or destroyed while the
+// sheet is moving. Keep in step with that component's `animationConfigs`.
+const GRID_MOUNT_DELAY_MS = 280;
 
 // Memoized: with ~150-300 seats in a room, an inline `onPress` closure per
 // seat (recreated every render) defeated memoization entirely, so every seat
@@ -139,22 +142,27 @@ export const SeatRect = memo(function SeatRect({
         : colors.seatFree;
   const showFriendBadge = hasFriend && (seat.friend_count ?? 0) > 1 && seat.scaledWidth >= 16;
 
+  // The colour goes straight onto the seat's own view. It used to be painted
+  // by a separate absolutely-filled child, which doubled the native view count
+  // of the whole room for nothing — and view count is what this screen's
+  // open/close cost is made of (see `GRID_MOUNT_DELAY_MS`).
+  const badge = showFriendBadge ? (
+    <View style={[styles.friendBadge, { backgroundColor: colors.blue.secondary }]}>
+      <ThemedText style={styles.friendBadgeText}>{seat.friend_count}</ThemedText>
+    </View>
+  ) : null;
+
   if (!interactive) {
     return (
-      <View style={[styles.seat, position]} pointerEvents="none">
-        <View style={[StyleSheet.absoluteFill, styles.seatFill, { backgroundColor }]} />
-        {showFriendBadge ? (
-          <View style={[styles.friendBadge, { backgroundColor: colors.blue.secondary }]}>
-            <ThemedText style={styles.friendBadgeText}>{seat.friend_count}</ThemedText>
-          </View>
-        ) : null}
+      <View style={[styles.seat, styles.seatFill, position, { backgroundColor }]} pointerEvents="none">
+        {badge}
       </View>
     );
   }
 
   return (
     <TouchableOpacity
-      style={[styles.seat, position]}
+      style={[styles.seat, styles.seatFill, position, { backgroundColor }]}
       hitSlop={{
         top: seat.hitSlopY,
         bottom: seat.hitSlopY,
@@ -166,15 +174,40 @@ export const SeatRect = memo(function SeatRect({
       accessibilityRole="button"
       accessibilityLabel={`Seat ${seat.row_name}${seat.seat_name}`}
     >
-      <View style={[StyleSheet.absoluteFill, styles.seatFill, { backgroundColor }]} />
-      {showFriendBadge ? (
-        <View style={[styles.friendBadge, { backgroundColor: colors.blue.secondary }]}>
-          <ThemedText style={styles.friendBadgeText}>{seat.friend_count}</ThemedText>
-        </View>
-      ) : null}
+      {badge}
     </TouchableOpacity>
   );
 });
+
+// Purely an orientation cue — no cinema gives us actual screen geometry, so
+// this is a fixed-height bar sized to the room's own scaled width rather than
+// anything derived from the seat data. Shared with `SeatFloorPlanPreview` so
+// the two sheets read identically. Its height must stay in step with
+// `SCREEN_INDICATOR_HEIGHT` in `seat-floor-plan-layout.ts`, which reserves
+// the space for it above the seat grid.
+//
+// Hardcoded to the top rather than derived per room: checked the stored
+// geometry for all 36 currently-ingested rooms and row 1/A (the row closest
+// to the screen by convention) is the topmost (smallest position_top) row in
+// every one, with no exceptions — all 7 covered cinemas run the same "My
+// Cloud Cinema"/Eagerly booking platform, which apparently always encodes it
+// that way. Real cinema screens can be on any side, so if a floor plan from a
+// different geometry source is ever added, re-check this before assuming it
+// still holds.
+export function ScreenIndicator({
+  width,
+  colors,
+}: {
+  width: number;
+  colors: ReturnType<typeof useThemeColors>;
+}) {
+  return (
+    <View style={[styles.screenIndicator, { width }]}>
+      <View style={[styles.screenBar, { backgroundColor: colors.textSecondary }]} />
+      <ThemedText style={[styles.screenLabel, { color: colors.textSecondary }]}>SCREEN</ThemedText>
+    </View>
+  );
+}
 
 export default function SeatFloorPlan({
   visible,
@@ -186,15 +219,10 @@ export default function SeatFloorPlan({
   movieTitle,
   dateLabel,
   timeRangeLabel,
-  seatRowDraft,
-  seatNumberDraft,
-  onChangeSeatRowDraft,
-  onChangeSeatNumberDraft,
+  savedSeatRow,
+  savedSeatNumber,
   seatInputConfig,
-  seatValidationError,
-  canSave,
   isSaving,
-  onSelectSeat,
   onSave,
   onCancel,
 }: SeatFloorPlanProps) {
@@ -202,51 +230,76 @@ export default function SeatFloorPlan({
   const insets = useSafeAreaInsets();
 
   // The grid's own available space, measured from the actual rendered body —
-  // frozen while the keyboard is opening/closing so the ~250ms transition
-  // doesn't force a full rescale-and-relayout of every seat on each of the
-  // many `onLayout` events the sheet's own keyboard-avoidance fires along the
-  // way (that per-frame reflow, not the keyboard animation itself, was what
-  // read as janky/slow). This only gates the *measurement* — it doesn't
-  // position anything itself, so it doesn't reintroduce the footer-tracking
-  // system removed above; the grid simply keeps its pre-keyboard size and
-  // snaps to the real one once the transition settles.
+  // and deliberately *not* re-measured for as long as the keyboard is up.
+  //
+  // The room keeps the size it had before the keyboard appeared and is simply
+  // clipped by the body's `overflow: hidden` if it no longer fits. That is the
+  // intended behaviour: rescaling ~300 seats to fit the leftover space means a
+  // full relayout of the room on every `onLayout` the sheet's keyboard
+  // avoidance fires, which reads as the seat map slowly juddering smaller
+  // underneath you. A room you can only partly see while typing is much better
+  // than one that never stops moving; it snaps back to the full space once the
+  // keyboard is gone. This only gates the *measurement* — it doesn't position
+  // anything itself, so it doesn't reintroduce the footer-tracking system
+  // removed above.
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
-  const [isKeyboardTransitioning, setIsKeyboardTransitioning] = useState(false);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
-  // The seat grid itself — up to ~150-300 mounted `SeatRect` touchables plus
-  // the layout pass over them — is heavy enough on slower devices to visibly
-  // delay the sheet's own rise if it's built in the same tick that presents
-  // it. Rather than block the open on that, the sheet always rises instantly
-  // showing the loading spinner, and the grid is only built once the sheet's
-  // entry animation is out of the way — the data is usually already in hand
-  // (prefetched before the seat button was ever tapped), so this reads as the
-  // seats popping in a beat after the sheet, not as the sheet itself being slow.
+  // Mounting the grid is the expensive part of this screen, and the expense is
+  // not JavaScript: a room is 150-300 seats, each a native view, and native
+  // views are created and destroyed on the UI thread — the same thread the
+  // sheet's own animation runs on. Build them while the sheet is moving and
+  // they stall the very animation they are riding in on, which is why this
+  // sheet (alone among the app's sheets, none of which mount anything like
+  // this many views) felt slow to open *and* to close.
+  //
+  // So the grid is kept strictly outside both animation windows: it appears a
+  // beat after the sheet has settled, and — just as importantly — it is not
+  // unmounted when `visible` goes false, because that teardown would land on
+  // the UI thread exactly as the close animation starts. It stays up through
+  // the close and is reset once the sheet is already gone (by which point
+  // `dismissWhenClosed` has usually unmounted the content anyway, making the
+  // reset free).
+  //
+  // A plain timer rather than `InteractionManager.runAfterInteractions`: the
+  // sheet animates under Reanimated, which registers no interaction handle,
+  // so `runAfterInteractions` resolves immediately and defers nothing.
   const [isGridReady, setIsGridReady] = useState(false);
   useEffect(() => {
-    if (!visible) {
-      setIsGridReady(false);
-      return;
-    }
-    const task = InteractionManager.runAfterInteractions(() => setIsGridReady(true));
-    return () => task.cancel();
+    const timer = setTimeout(() => setIsGridReady(visible), GRID_MOUNT_DELAY_MS);
+    return () => clearTimeout(timer);
   }, [visible]);
 
+  // What the row/seat fields held just before the keyboard came up, so Cancel
+  // can put them back — see `handleCancelPress`. Read from a ref rather than
+  // captured in the listener below, which is bound once.
+  const draftsRef = useRef({ row: "", number: "" });
+  const preKeyboardDraftRef = useRef<{ row: string; number: string } | null>(null);
+
   useEffect(() => {
-    // iOS fires `keyboardWill*` before the animated resize starts and
-    // `keyboardDid*` once it's finished, so the freeze window brackets the
-    // transition exactly. Android has no `will*` event — its own show/hide
-    // is a single fast resize rather than the longer animated one iOS does,
-    // so there's no equivalent window worth freezing for.
-    if (Platform.OS !== "ios") return;
-    const beginTransition = () => setIsKeyboardTransitioning(true);
-    const endTransition = () => setIsKeyboardTransitioning(false);
-    const willShowSubscription = Keyboard.addListener("keyboardWillShow", beginTransition);
-    const willHideSubscription = Keyboard.addListener("keyboardWillHide", beginTransition);
-    const showSubscription = Keyboard.addListener("keyboardDidShow", endTransition);
-    const hideSubscription = Keyboard.addListener("keyboardDidHide", endTransition);
+    const onKeyboardShown = () => {
+      // Only the first show of a run is the "before" state — tapping from the
+      // row field straight into the seat field fires no new event anyway.
+      preKeyboardDraftRef.current ??= draftsRef.current;
+      setIsKeyboardOpen(true);
+    };
+    const onKeyboardHidden = () => {
+      // Dismissing the keyboard any other way (tapping the map, the return
+      // key) means the typed value stands, so the snapshot is spent.
+      preKeyboardDraftRef.current = null;
+      setIsKeyboardOpen(false);
+    };
+    // iOS announces the resize before it starts; Android only once it has
+    // happened. Take the earliest signal each platform offers so the freeze is
+    // in place before the body starts shrinking. Unfreezing waits for the
+    // settled `did` event on both, so the one re-measure that does happen
+    // reads the body at its final full height rather than mid-restore.
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      onKeyboardShown
+    );
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", onKeyboardHidden);
     return () => {
-      willShowSubscription.remove();
-      willHideSubscription.remove();
       showSubscription.remove();
       hideSubscription.remove();
     };
@@ -263,54 +316,99 @@ export default function SeatFloorPlan({
     [isGridReady, seats, bodySize.width, bodySize.height]
   );
 
-  // The row/seat fields' *own* draft, separate from the parent's copy of the
-  // same two strings. Typing into a `BottomSheetTextInput` bound directly to
-  // `seatRowDraft`/`seatNumberDraft` up on `ShowtimeActionModal` meant every
-  // keystroke re-rendered that entire (very large) sheet before the character
-  // could show up here — that round trip, not the seat grid, turned out to be
-  // the actual source of the flicker the memoized `SeatRect` change didn't
-  // fix. So typing updates only this local state immediately, and the parent
-  // is kept in sync via `useDebouncedValue` instead of on every keystroke —
-  // it only needs the settled value to compute `canSave`/validation, not a
-  // live one. Seeded once from the initial props: this whole screen is thrown
-  // away and remounted fresh on each open (`dismissWhenClosed`), so there's
-  // no case where the parent's value changes out from under this later.
-  const [localSeatRowDraft, setLocalSeatRowDraft] = useState(seatRowDraft);
-  const [localSeatNumberDraft, setLocalSeatNumberDraft] = useState(seatNumberDraft);
-  const debouncedSeatRowDraft = useDebouncedValue(localSeatRowDraft, SEAT_DRAFT_DEBOUNCE_MS);
-  const debouncedSeatNumberDraft = useDebouncedValue(localSeatNumberDraft, SEAT_DRAFT_DEBOUNCE_MS);
-
+  // The row/seat draft, owned outright here rather than mirrored up to
+  // `ShowtimeActionModal` — see this file's header comment for why. Re-seeded
+  // from the saved seat on each *open* rather than only at mount: this
+  // component stays mounted between opens (`dismissWhenClosed` unmounts the
+  // sheet's portal node, not the component that renders it), so without this
+  // a draft abandoned on one showtime would still be sitting in the fields
+  // the next time the picker came up on another.
+  const [localSeatRowDraft, setLocalSeatRowDraft] = useState(savedSeatRow ?? "");
+  const [localSeatNumberDraft, setLocalSeatNumberDraft] = useState(savedSeatNumber ?? "");
+  const wasVisibleRef = useRef(false);
   useEffect(() => {
-    onChangeSeatRowDraft(debouncedSeatRowDraft);
-  }, [debouncedSeatRowDraft, onChangeSeatRowDraft]);
+    if (visible && !wasVisibleRef.current) {
+      setLocalSeatRowDraft(savedSeatRow ?? "");
+      setLocalSeatNumberDraft(savedSeatNumber ?? "");
+    }
+    wasVisibleRef.current = visible;
+  }, [visible, savedSeatRow, savedSeatNumber]);
 
+  // Mirrored into a ref purely so the keyboard listener above (bound once, on
+  // mount) can read the live draft without needing to be rebound on every
+  // keystroke.
   useEffect(() => {
-    onChangeSeatNumberDraft(debouncedSeatNumberDraft);
-  }, [debouncedSeatNumberDraft, onChangeSeatNumberDraft]);
+    draftsRef.current = { row: localSeatRowDraft, number: localSeatNumberDraft };
+  }, [localSeatRowDraft, localSeatNumberDraft]);
 
   const draftRow = localSeatRowDraft.trim();
   const draftNumber = localSeatNumberDraft.trim();
 
   // Stable across renders (see `SeatRect`'s own comment on why that matters):
   // passed straight through as each seat's `onSelect` rather than rebound
-  // inline per seat. Tapping a seat updates the local draft directly (for the
-  // fields/highlight to reflect it instantly) and informs the parent
-  // immediately rather than through the debounce above — it's one discrete
-  // action, not a burst of keystrokes, so there's no re-render storm to guard
-  // against here.
-  const handleSelect = useCallback(
-    (seat: ScaledSeat) => {
-      if (!seat.selectable) return;
-      triggerSelectionHaptic();
-      setLocalSeatRowDraft(seat.row_name);
-      setLocalSeatNumberDraft(seat.seat_name);
-      onSelectSeat(seat.row_name, seat.seat_name);
-    },
-    [onSelectSeat]
-  );
+  // inline per seat.
+  const handleSelect = useCallback((seat: ScaledSeat) => {
+    if (!seat.selectable) return;
+    triggerSelectionHaptic();
+    setLocalSeatRowDraft(seat.row_name);
+    setLocalSeatNumberDraft(seat.seat_name);
+  }, []);
 
-  const showEmptyState = !isLoading && isGridReady && (isError || !seats || seats.length === 0);
-  const showGridSpinner = isLoading || !isGridReady;
+  // Same rules the plain-text seat dialog applies up on `ShowtimeActionModal`,
+  // evaluated here so nothing has to round-trip through that sheet to know
+  // whether Save should light up.
+  const normalizedRow = draftRow || null;
+  const normalizedNumber = draftNumber || null;
+  const seatValidationError =
+    validateSeatFieldValue(normalizedRow, seatInputConfig.rowKind, "Row") ??
+    validateSeatFieldValue(normalizedNumber, seatInputConfig.seatKind, "Seat");
+  // Row and seat must be set (or cleared) together — silently blocks Save
+  // rather than showing an error, since it's just an in-progress edit.
+  const isSeatPairIncomplete = (normalizedRow === null) !== (normalizedNumber === null);
+  const hasSeatChanges =
+    normalizedRow !== (savedSeatRow?.trim() || null) ||
+    normalizedNumber !== (savedSeatNumber?.trim() || null);
+  const canSave =
+    hasSeatChanges && !isSaving && seatValidationError === null && !isSeatPairIncomplete;
+
+  // Saving closes the sheet, and closing runs `handleDismiss` below, which
+  // saves when it can — so without this latch the close a save triggers can
+  // come back around and save a second time. Today the in-flight `isSaving`
+  // happens to make `canSave` false in that window, but that is timing, not a
+  // guarantee; this makes "one save per open" explicit. Cleared on open, not
+  // on close, so it still holds for the whole dismiss animation.
+  const hasSubmittedRef = useRef(false);
+  useEffect(() => {
+    if (visible) hasSubmittedRef.current = false;
+  }, [visible]);
+
+  const handleSave = useCallback(() => {
+    if (hasSubmittedRef.current) return;
+    hasSubmittedRef.current = true;
+    onSave({ seatRow: draftRow || null, seatNumber: draftNumber || null });
+  }, [onSave, draftRow, draftNumber]);
+
+  const showEmptyState = !isLoading && (isError || !seats || seats.length === 0);
+  // Only a room that actually has seats to mount is worth waiting for; with
+  // nothing heavy coming, the message says so straight away.
+  const showGridSpinner = isLoading || (!isGridReady && !showEmptyState);
+
+  // With the keyboard up, Cancel's job is to get out of text-editing, not to
+  // leave the sheet: it dismisses the keyboard and puts the fields back to
+  // whatever they held just before the keyboard opened, rather than closing
+  // over a half-typed value. Only once the keyboard is already down does
+  // Cancel fall back to its literal meaning and hand off to `onCancel`.
+  const handleCancelPress = () => {
+    const preKeyboardDraft = preKeyboardDraftRef.current;
+    if (preKeyboardDraft) {
+      Keyboard.dismiss();
+      setLocalSeatRowDraft(preKeyboardDraft.row);
+      setLocalSeatNumberDraft(preKeyboardDraft.number);
+      preKeyboardDraftRef.current = null;
+      return;
+    }
+    onCancel();
+  };
 
   // Swiping the sheet down (or the header's close button, or the Android
   // back button — anything that isn't the explicit Cancel button below)
@@ -319,8 +417,8 @@ export default function SeatFloorPlan({
   // when it isn't. The Cancel button itself stays a literal cancel — that's
   // the one affordance whose whole purpose is discarding the draft.
   const handleDismiss = () => {
-    if (canSave && !isSaving) {
-      onSave();
+    if (canSave && !isSaving && !hasSubmittedRef.current) {
+      handleSave();
       return;
     }
     onCancel();
@@ -357,7 +455,7 @@ export default function SeatFloorPlan({
             <View
               style={styles.body}
               onLayout={(event) => {
-                if (isKeyboardTransitioning) return;
+                if (isKeyboardOpen) return;
                 const { width, height } = event.nativeEvent.layout;
                 setBodySize({ width, height });
               }}
@@ -371,33 +469,43 @@ export default function SeatFloorPlan({
                     : "No seat map available for this screening — enter your seat below instead."}
                 </ThemedText>
               ) : (
-                <View style={{ width: layout.width, height: layout.height }}>
-                  {layout.seats.map((seat) => (
-                    <SeatRect
-                      key={`${seat.row_name}-${seat.seat_name}-${seat.x}-${seat.y}`}
-                      seat={seat}
-                      colors={colors}
-                      isDraftSeat={
-                        draftRow.length > 0 &&
-                        draftNumber.length > 0 &&
-                        seat.row_name === draftRow &&
-                        seat.seat_name === draftNumber
-                      }
-                      onSelect={handleSelect}
-                    />
-                  ))}
+                <View style={{ width: layout.width }}>
+                  <ScreenIndicator width={layout.width} colors={colors} />
+                  <View style={{ height: layout.height }}>
+                    {layout.seats.map((seat) => (
+                      <SeatRect
+                        key={`${seat.row_name}-${seat.seat_name}-${seat.x}-${seat.y}`}
+                        seat={seat}
+                        colors={colors}
+                        isDraftSeat={
+                          draftRow.length > 0 &&
+                          draftNumber.length > 0 &&
+                          seat.row_name === draftRow &&
+                          seat.seat_name === draftNumber
+                        }
+                        onSelect={handleSelect}
+                      />
+                    ))}
+                  </View>
                 </View>
               )}
             </View>
 
-            {!showEmptyState && !showGridSpinner ? (
-              <View style={styles.legend}>
-                <LegendItem label="Free" colors={colors} backgroundColor={colors.seatFree} />
-                <LegendItem label="Taken" colors={colors} backgroundColor={colors.seatTaken} />
-                <LegendItem label="Friend" colors={colors} backgroundColor={colors.seatFriend} />
-                <LegendItem label="You" colors={colors} backgroundColor={colors.seatYou} />
-              </View>
-            ) : null}
+            {/* The row always holds its height, even before the grid it
+                describes has been built. Letting it appear alongside the seats
+                would shrink the body underneath them the moment they arrived,
+                forcing a second measure-and-rescale of the whole room on every
+                open — the same reflow the validation line above avoids. */}
+            <View style={styles.legend}>
+              {!showEmptyState && !showGridSpinner ? (
+                <>
+                  <LegendItem label="Free" colors={colors} backgroundColor={colors.seatFree} />
+                  <LegendItem label="Taken" colors={colors} backgroundColor={colors.seatTaken} />
+                  <LegendItem label="Friend" colors={colors} backgroundColor={colors.seatFriend} />
+                  <LegendItem label="You" colors={colors} backgroundColor={colors.seatYou} />
+                </>
+              ) : null}
+            </View>
           </BottomSheetScrollView>
         </TouchableWithoutFeedback>
 
@@ -436,15 +544,24 @@ export default function SeatFloorPlan({
               />
             </View>
           </View>
-          {seatValidationError ? (
-            <ThemedText style={[styles.validationErrorText, { color: colors.red.secondary }]}>
-              {seatValidationError}
-            </ThemedText>
-          ) : null}
+          {/* Always occupies its line, even with nothing to say. Validation is
+              evaluated synchronously as you type, so a slot that appears and
+              disappears per keystroke would change the footer's height, which
+              resizes the `flex: 1` body above it, which re-fires that body's
+              `onLayout` and rescales every seat in the room — visible as the
+              grid juddering smaller while you type with the keyboard up. The
+              explicit lineHeight/height is what keeps it one fixed line (a
+              ThemedText left alone brings its own lineHeight: 24). */}
+          <ThemedText
+            style={[styles.validationErrorText, { color: colors.red.secondary }]}
+            numberOfLines={1}
+          >
+            {seatValidationError ?? ""}
+          </ThemedText>
           <View style={styles.actionRow}>
             <TouchableOpacity
               style={[styles.actionButton, styles.cancelButton, { borderColor: colors.cardBorder }]}
-              onPress={onCancel}
+              onPress={handleCancelPress}
               activeOpacity={0.8}
             >
               <ThemedText style={[styles.actionButtonText, { color: colors.text }]}>Cancel</ThemedText>
@@ -455,7 +572,7 @@ export default function SeatFloorPlan({
                 { backgroundColor: colors.tint },
                 !canSave && styles.actionButtonDisabled,
               ]}
-              onPress={onSave}
+              onPress={handleSave}
               activeOpacity={0.8}
               disabled={!canSave || isSaving}
             >
@@ -510,6 +627,11 @@ const styles = StyleSheet.create({
   legendSwatch: { width: 13, height: 13, borderRadius: 3 },
   legendLabel: { fontSize: 11 },
   body: { flex: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  // Height must stay in step with `SCREEN_INDICATOR_HEIGHT` in
+  // `seat-floor-plan-layout.ts`, which reserves this space above the grid.
+  screenIndicator: { alignItems: "center", marginBottom: 8 },
+  screenBar: { width: "70%", height: 4, borderRadius: 2, opacity: 0.5 },
+  screenLabel: { fontSize: 9, letterSpacing: 2, marginTop: 4 },
   seat: { position: "absolute" },
   seatFill: { borderRadius: 4 },
   friendBadge: {
@@ -547,7 +669,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: "center",
   },
-  validationErrorText: { fontSize: 11, marginTop: -2 },
+  // Fixed height, always rendered — see the comment at its usage.
+  validationErrorText: { fontSize: 11, lineHeight: 14, height: 14, marginTop: -2 },
   actionRow: { flexDirection: "row", gap: 10, marginTop: 4 },
   actionButton: {
     flex: 1,

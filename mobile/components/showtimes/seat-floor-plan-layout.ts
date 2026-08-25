@@ -30,6 +30,13 @@ export type SeatFloorPlanLayout = {
 // actually available.
 const FIT_PADDING_FACTOR = 0.97;
 
+// Vertical space reserved above the seat grid for the "SCREEN" bar rendered
+// by both `SeatFloorPlan` and `SeatFloorPlanPreview` (see `ScreenIndicator`
+// in `SeatFloorPlan.tsx`) — there's no screen geometry from the cinema's own
+// data, this is purely an orientation cue, so its height is fixed rather than
+// derived from the room. Must stay in step with that component's own styles.
+export const SCREEN_INDICATOR_HEIGHT = 28;
+
 // Shrink every seat toward its own center by this fraction, regardless of how
 // tightly the source cinema packed its own grid. Some rooms (Filmhallen) leave
 // a slot of daylight between seats in the raw pixel data; others (Louis
@@ -62,10 +69,13 @@ export function layoutSeatFloorPlan(
   const boundingHeight = Math.max(maxBottom - minTop, 1);
 
   // Uniform scale (not stretched per axis) so a wide, shallow room still
-  // reads as wide and shallow rather than being squashed to fit.
+  // reads as wide and shallow rather than being squashed to fit. The screen
+  // indicator sits above the grid within the same available height, so the
+  // seats must scale to fit what's left after it, not the full body.
+  const availableHeightForSeats = Math.max(availableHeight - SCREEN_INDICATOR_HEIGHT, 1);
   const scale = Math.min(
     (availableWidth * FIT_PADDING_FACTOR) / boundingWidth,
-    (availableHeight * FIT_PADDING_FACTOR) / boundingHeight
+    (availableHeightForSeats * FIT_PADDING_FACTOR) / boundingHeight
   );
 
   const scaledSeats = seats.map((seat) => {

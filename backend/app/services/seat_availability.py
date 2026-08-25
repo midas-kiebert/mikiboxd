@@ -114,7 +114,7 @@ LAST_FEW_ABSOLUTE_SEATS = 6
 # rather than clustered at the ends: most screenings people look at sit between
 # a third and two thirds full, and a scale that calls all of them "busy" tells
 # nobody anything.
-SOME_TAKEN_FREE_FRACTION = 0.60
+SOME_TAKEN_FREE_FRACTION = 0.75
 BUSY_FREE_FRACTION = 0.40
 VERY_BUSY_FREE_FRACTION = 0.10
 

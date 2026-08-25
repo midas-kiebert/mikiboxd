@@ -88,8 +88,10 @@ def update_showtime_selection(
         or "seat_number" in payload.model_fields_set
     )
     # Read before the service call queues the poller read: a never-checked
-    # showtime is worth an immediate, best-effort read so whoever just
-    # selected it is not left staring at "checking..." for up to five minutes.
+    # showtime is worth an immediate, best-effort read so whoever just selected
+    # it is not left staring at "checking..." until the poller's next tick. Only
+    # ever once per showtime — after that there is a number to show, and the
+    # queued read the service call makes is enough.
     never_checked = payload.going_status != GoingStatus.NOT_GOING and (
         seat_availability_service.should_check_immediately(
             session=session, showtime_id=showtime_id

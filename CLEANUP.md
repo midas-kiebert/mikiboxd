@@ -286,6 +286,7 @@ Legend:
 - [ ] Check coverage report — identify untested services and CRUDs
 - [ ] `tests/api/` — Route-level tests (are all endpoints covered?)
 - [ ] `tests/crud/` — CRUD tests (are complex queries tested?); `test_seat_availability_candidates.py` covers the seat poller's selection + priority ordering
+- [ ] `tests/services/test_seat_availability_interest.py` — the interest-triggered live read, its per-showtime cooldown, and the `checking` state the sheet shows
 - [ ] `tests/services/` — Service tests (most critical layer)
 - [ ] `tests/converters/` — Converter tests
 - [ ] `tests/scraping/` — Scraper tests

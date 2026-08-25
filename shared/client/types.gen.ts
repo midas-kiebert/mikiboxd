@@ -800,9 +800,10 @@ export type ShowtimeReportUpdate = {
  * whole list at once. A showtime with no usable reading and no read pending
  * is simply absent from the response rather than present with a null level,
  * so the client never has to tell "empty" from "unknown". A showtime whose
- * very first reading has not landed yet, but is expected soon, is the one
- * exception: it is present with `level` absent and `checking` set, so the
- * client can say so rather than showing nothing at all.
+ * reading has not landed yet, but is expected soon, is the one exception: it
+ * is present with `checking` set — with a level if it has ever had one, and
+ * without if this is its first — so the client can say a number is coming
+ * instead of showing nothing or a stale one with no explanation.
  */
 export type ShowtimeSeatAvailabilityPublic = {
   showtime_id: number

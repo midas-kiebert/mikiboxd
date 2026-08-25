@@ -336,14 +336,24 @@ def request_reading_on_interest(
 # to "within a few minutes", which is what happened before this existed.
 _IMMEDIATE_CHECK_CONCURRENCY = 6
 _immediate_check_semaphore = threading.Semaphore(_IMMEDIATE_CHECK_CONCURRENCY)
+# ...and never two at once at the same ticket shop, which the semaphore alone
+# does not prevent. The poller keeps one in-flight request per host for the same
+# reason — the Z-ELITE shops sit behind a virtual waiting room — and this path
+# must not be the one that breaks that rule.
+_immediate_check_hosts: set[str] = set()
+_immediate_check_hosts_lock = threading.Lock()
 
 
 def should_check_immediately(*, session: Session, showtime_id: int) -> bool:
     """Whether `showtime_id` has never had a seat reading at all.
 
     Read before `request_reading_on_interest` queues it, so the caller can
-    decide whether to also try an immediate, best-effort read — see
-    `check_now`. Only ever true once per showtime's life.
+    decide whether to also try an immediate, best-effort read — see `check_now`.
+    Only ever true once per showtime's life, and deliberately so: a showtime we
+    already have a number for loses nothing by waiting for the poller, which
+    marking interest brings forward anyway. The live request exists purely so
+    the first person to care about a screening is not shown a blank where a
+    seat count belongs.
     """
     showtime = session.get(Showtime, showtime_id)
     return (
@@ -355,16 +365,26 @@ def should_check_immediately(*, session: Session, showtime_id: int) -> bool:
 
 
 def check_now(*, session: Session, showtime_id: int) -> None:
-    """Best-effort immediate read for a showtime someone just showed interest
-    in for the first time, so they are not left staring at "checking..." for
-    however long is left on the poller's five-minute tick.
+    """Best-effort immediate read for a showtime someone just showed interest in
+    for the first time, so they are not left watching "checking..." for a whole
+    poller tick.
 
-    Skipped outright, rather than queued, when the process is already busy
-    doing this for other showtimes — the poller remains the only guaranteed
-    path, this is purely a latency shortcut for the common, quiet case.
+    Skipped outright, rather than queued, when the process is already busy doing
+    this for other showtimes, or when another one is already in flight at the
+    same ticket shop — the poller remains the only guaranteed path, and this is
+    purely a latency shortcut for the common, quiet case. Both guards exist for
+    one scenario: somebody working down a long list, marking a hundred showtimes
+    interested inside a minute. Every one of those is a first reading, so every
+    one of them wants a live request, and without a ceiling that is how a cinema
+    decides to block us.
+
+    The never-read test is repeated here under this session because the request
+    that dispatched it decided moments ago, and two people can tap the same
+    showtime at once.
     """
     if not _immediate_check_semaphore.acquire(blocking=False):
         return
+    host: str | None = None
     try:
         showtime = session.get(Showtime, showtime_id)
         if (
@@ -373,6 +393,12 @@ def check_now(*, session: Session, showtime_id: int) -> None:
             or showtime.ticket_link is None
         ):
             return
+        host = urlsplit(showtime.ticket_link).netloc
+        with _immediate_check_hosts_lock:
+            if host in _immediate_check_hosts:
+                host = None
+                return
+            _immediate_check_hosts.add(host)
         try:
             availability = fetch_seat_availability(ticket_link=showtime.ticket_link)
         except SeatAvailabilityFetchError as e:
@@ -380,12 +406,11 @@ def check_now(*, session: Session, showtime_id: int) -> None:
                 f"Immediate seat availability read failed for showtime {showtime_id}: {e}"
             )
             return
-        now = now_amsterdam_naive()
         cinema = session.get(Cinema, showtime.cinema_id)
         crossed = apply_reading(
             showtime=showtime,
             availability=availability,
-            now=now,
+            now=now_amsterdam_naive(),
             cinema_key=cinema.key if cinema else None,
         )
         session.add(showtime)
@@ -395,26 +420,34 @@ def check_now(*, session: Session, showtime_id: int) -> None:
                 session=session, showtime_ids=[showtime_id]
             )
     finally:
+        if host is not None:
+            with _immediate_check_hosts_lock:
+                _immediate_check_hosts.discard(host)
         _immediate_check_semaphore.release()
+
+
+def is_read_pending(showtime: Showtime, *, now: datetime | None = None) -> bool:
+    """Whether a fresh reading for this showtime is expected within moments.
+
+    Read off the due time rather than any in-flight bookkeeping: a showtime that
+    is already due is taken by the poller on its next tick, and anything that
+    lands a reading pushes the due time into the future, which is exactly when
+    this should stop being true. A due time that is absent means nobody has
+    queued a read at all — no active selection — so nothing is coming.
+    """
+    if showtime.ticket_link is None or not supports(showtime.ticket_link):
+        return False
+    if showtime.seats_next_check_at is None:
+        return False
+    return showtime.seats_next_check_at <= (now or now_amsterdam_naive())
 
 
 def to_public(showtime: Showtime) -> ShowtimeSeatAvailabilityPublic | None:
     """This showtime's availability as the client sees it, or None if unknown
     and no read is even pending."""
-    level = seat_availability_level(
-        seats_left=showtime.seats_left, seats_capacity=showtime.seats_capacity
-    )
+    level = effective_seat_level(showtime)
+    checking = is_read_pending(showtime)
     if level is None:
-        checking = showtime.seats_checked_at is None and (
-            showtime.ticket_link is not None
-            and supports(showtime.ticket_link)
-            # Absent means nobody has ever queued a read for this showtime —
-            # it has no active selection, or the immediate/poller read has not
-            # been requested yet — so nothing is actually coming any time
-            # soon. Only a showtime someone has shown interest in, which is
-            # what sets this, should read as "checking".
-            and showtime.seats_next_check_at is not None
-        )
         if not checking:
             return None
         return ShowtimeSeatAvailabilityPublic(
@@ -431,6 +464,7 @@ def to_public(showtime: Showtime) -> ShowtimeSeatAvailabilityPublic | None:
             and showtime.ticket_link is not None
             and supports(showtime.ticket_link)
         ),
+        checking=checking,
     )
 
 

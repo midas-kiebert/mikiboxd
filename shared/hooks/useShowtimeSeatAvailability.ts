@@ -179,13 +179,14 @@ export function useCachedShowtimeSeatAvailability(
 }
 
 // While the sheet is open, availability is live rather than a one-off read —
-// interest in a showtime can flip its own seat count within seconds (a
-// showtime's very first check fires as soon as someone marks it), and nobody
-// should have to close and reopen the app to see that. Polled faster while a
-// first read is still pending, since that is the state where a visible
-// "checking..." should resolve quickly rather than sit for a minute.
-const SEAT_AVAILABILITY_OPEN_POLL_MS = 45 * 1000;
-const SEAT_AVAILABILITY_CHECKING_POLL_MS = 5 * 1000;
+// marking interest sends the backend to look at the seat count, and the poller
+// re-reads a busy screening every quarter hour — and nobody should have to
+// reopen the app to see either. The open interval is the worst case for
+// noticing that a reading has landed; the checking one is what a visible
+// "checking..." resolves at, and applies whenever the server says a read is
+// due, whoever asked for it.
+const SEAT_AVAILABILITY_OPEN_POLL_MS = 15 * 1000;
+const SEAT_AVAILABILITY_CHECKING_POLL_MS = 3 * 1000;
 
 export function useShowtimeSeatAvailability({
   showtimeId,

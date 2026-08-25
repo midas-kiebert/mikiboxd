@@ -1783,7 +1783,7 @@ export default function ShowtimeActionModal({
                 sometimes appears is worse than the answer simply not being
                 there. The seat count and colour ramp carry the meaning; there
                 is nothing hidden behind a tap. */}
-            {isCheckingSeatAvailability ? (
+            {isCheckingSeatAvailability && !seatMeta ? (
               <View style={styles.seatInfoSection}>
                 <View style={styles.seatInfoHeader}>
                   <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
@@ -1807,7 +1807,18 @@ export default function ShowtimeActionModal({
                 >
                   <View style={styles.seatInfoTextColumn}>
                     <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
-                    {seatCheckedLabelShort ? (
+                    {/* A re-read in flight keeps the number that is already
+                        there — blanking a good answer while a fresher one is
+                        fetched is worse than showing it a few seconds stale —
+                        and says so where the timestamp normally sits. */}
+                    {isCheckingSeatAvailability ? (
+                      <View style={styles.seatInfoCheckingRow}>
+                        <ActivityIndicator size="small" color={colors.textSecondary} />
+                        <ThemedText style={styles.seatInfoCheckingText}>
+                          Checking now…
+                        </ThemedText>
+                      </View>
+                    ) : seatCheckedLabelShort ? (
                       <ThemedText style={styles.seatInfoCheckedAt}>
                         {seatCheckedLabelShort}
                       </ThemedText>
@@ -1853,11 +1864,6 @@ export default function ShowtimeActionModal({
                     </TouchableOpacity>
                   ) : null}
                 </View>
-                {canWatchThisShowtime && isWatchingAnotherShowtime ? (
-                  <ThemedText style={styles.seatWatchHint}>
-                    You&apos;re watching another showtime — the bell moves it here.
-                  </ThemedText>
-                ) : null}
               </View>
             ) : null}
 

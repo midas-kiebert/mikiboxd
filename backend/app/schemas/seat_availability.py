@@ -19,9 +19,10 @@ class ShowtimeSeatAvailabilityPublic(SQLModel):
     whole list at once. A showtime with no usable reading and no read pending
     is simply absent from the response rather than present with a null level,
     so the client never has to tell "empty" from "unknown". A showtime whose
-    very first reading has not landed yet, but is expected soon, is the one
-    exception: it is present with `level` absent and `checking` set, so the
-    client can say so rather than showing nothing at all.
+    reading has not landed yet, but is expected soon, is the one exception: it
+    is present with `checking` set — with a level if it has ever had one, and
+    without if this is its first — so the client can say a number is coming
+    instead of showing nothing or a stale one with no explanation.
     """
 
     showtime_id: int
@@ -35,10 +36,15 @@ class ShowtimeSeatAvailabilityPublic(SQLModel):
     # — a property of the screening (is it full, can its ticket shop be read),
     # not of the person asking, whose own eligibility comes from `UserMe`.
     watchable: bool = False
-    # This showtime has never had a reading, but one is expected soon — either
-    # an immediate best-effort read is in flight, or the poller will pick it up
-    # on its next tick. Never true once `checked_at` is set, even if that
-    # reading came back unusable.
+    # A reading is expected shortly: either an immediate best-effort read is in
+    # flight, or the showtime is already due and the poller takes it on its next
+    # tick, at most a minute away. Derived from the due time rather than stored,
+    # so it needs no in-flight bookkeeping — anything that lands a reading
+    # pushes the due time into the future, which is what turns this back off.
+    #
+    # It coexists with a level: a showtime being re-read still has its previous
+    # number, and the client shows both ("31/312 · checking…") rather than
+    # blanking a perfectly good answer while a fresher one is fetched.
     checking: bool = False
 
 

@@ -600,13 +600,19 @@ def mark_seat_availability_due(
     A reading newer than `stale_before` is left alone, as is a showtime already
     due — the point is to rescue a screening sitting on a twelve-hour cooldown
     from being shown a twelve-hour-old number, not to re-read a fresh one.
+
+    A showtime that has never been read is marked due even though its due time
+    is null, which is the case that makes the "checking..." state visible: null
+    means "nobody has asked for this yet" everywhere it is read, so without this
+    write a brand-new showtime would show nothing at all until its first reading
+    landed, rather than saying a number was on its way.
     """
     showtime = session.get(Showtime, showtime_id)
     if showtime is None or showtime.ticket_link is None:
         return
     if showtime.seats_checked_at is not None and showtime.seats_checked_at > stale_before:
         return
-    if showtime.seats_next_check_at is None or showtime.seats_next_check_at <= now:
+    if showtime.seats_next_check_at is not None and showtime.seats_next_check_at <= now:
         return
     showtime.seats_next_check_at = now
     session.add(showtime)

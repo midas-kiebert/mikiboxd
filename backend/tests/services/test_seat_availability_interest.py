@@ -11,6 +11,7 @@ from app.core.enums import SeatAvailabilityLevel
 from app.models.showtime import Showtime
 from app.services.seat_availability import (
     is_read_pending,
+    request_reading_on_interest,
     should_check_immediately,
     to_public,
 )
@@ -145,3 +146,28 @@ def test_a_showtime_already_read_never_earns_a_second_live_request(
         )
         is True
     )
+
+
+def test_selecting_a_showtime_with_a_stale_reading_does_not_pull_its_cadence_forward(
+    *, db_transaction, showtime_factory
+) -> None:
+    """`request_reading_on_interest` is what fires when a user sets GOING or
+    INTERESTED. For a showtime that already has a reading — no matter how
+    stale — that must be a pure no-op on `seats_next_check_at`: the poller's
+    own cadence owns that field from here on."""
+    far_future = NOW + timedelta(days=1)
+    showtime: Showtime = showtime_factory(
+        datetime=NOW + timedelta(days=2),
+        ticket_link="https://tickets.lab111.nl/order/3",
+        seats_left=12,
+        seats_capacity=100,
+        seats_checked_at=NOW - timedelta(hours=2),
+        seats_next_check_at=far_future,
+    )
+    db_transaction.flush()
+
+    request_reading_on_interest(
+        session=db_transaction, showtime_id=showtime.id, now=NOW
+    )
+
+    assert showtime.seats_next_check_at == far_future

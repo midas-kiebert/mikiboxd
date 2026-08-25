@@ -37,6 +37,7 @@ export default function SeatAvailabilityBadge({
   if (!availability?.level) return null;
 
   const meta = getSeatAvailabilityMeta(availability.level, colors);
+  if (!meta) return null;
   const isCompact = variant === "compact";
   const { seats_left: seatsLeft, seats_capacity: capacity } = availability;
   const countLabel =

@@ -19,10 +19,10 @@ export type SeatAvailabilityMeta = {
 /**
  * The icon, wording and colour for one busyness level.
  *
- * The icons are a single progression, not six unrelated marks: an empty seat,
- * then the room filling one silhouette at a time, then a flame, then a closed
- * sign. Rank is in the shape as well as the colour, which is what makes the
- * badge readable at the 12px it renders at in a list row.
+ * The icons are a single progression, not five unrelated marks: a lone
+ * silhouette, then the room filling one more at a time, then a flame, then a
+ * closed sign. Rank is in the shape as well as the colour, which is what
+ * makes the badge readable at the 12px it renders at in a list row.
  *
  * The colours ramp teal → green → yellow → orange → hot red → deep red, ending
  * on two reds so the two states that actually cost you a ticket are the loudest
@@ -34,23 +34,15 @@ export type SeatAvailabilityMeta = {
 export function getSeatAvailabilityMeta(
   level: SeatAvailabilityLevel,
   colors: ThemeColors,
-): SeatAvailabilityMeta {
+): SeatAvailabilityMeta | null {
   switch (level) {
-    case "empty":
+    case "some_taken":
       return {
         level,
         label: "Nearly empty",
         description: "Pick any seat you like.",
-        icon: "event-seat",
-        color: colors.teal.secondary,
-      };
-    case "some_taken":
-      return {
-        level,
-        label: "Some seats taken",
-        description: "Filling up, but most of the room is still free.",
         icon: "person",
-        color: colors.green.secondary,
+        color: colors.teal.secondary,
       };
     case "busy":
       return {
@@ -84,6 +76,11 @@ export function getSeatAvailabilityMeta(
         icon: "block",
         color: colors.redDeep.secondary,
       };
+    default:
+      // A level this build no longer knows (e.g. a stale cached value
+      // persisted from before a busyness-scale change like the retired
+      // `empty` bucket) has nothing to render rather than crashing on it.
+      return null;
   }
 }
 

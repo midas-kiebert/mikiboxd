@@ -84,7 +84,9 @@ export function resolveNotificationRoute(data: unknown): Href | null {
     case "showtime_match":
     case "showtime_status_removed":
     case "invite_response":
-    case "showtime_interest_reminder": {
+    case "showtime_interest_reminder":
+    case "seats_running_out":
+    case "seats_released": {
       const movieId = parsePositiveInteger(data.movieId);
       const showtimeId = parsePositiveInteger(data.showtimeId);
       if (movieId === null) {
@@ -128,6 +130,8 @@ export function getModalShowtimeIdFromNotification(data: unknown): number | null
     case "showtime_status_removed":
     case "invite_response":
     case "showtime_interest_reminder":
+    case "seats_running_out":
+    case "seats_released":
       return parsePositiveInteger(data.showtimeId);
     default:
       return null;

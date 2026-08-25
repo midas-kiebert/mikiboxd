@@ -46,12 +46,11 @@ def _zelite(seats_left: int | None, sold_out: bool | None, room: str | None = "L
         # 60% of 312 is 187.2.
         (187, 312, SeatAvailabilityLevel.BUSY),
         (188, 312, SeatAvailabilityLevel.SOME_TAKEN),
-        # 90% of 312 is 280.8.
-        (280, 312, SeatAvailabilityLevel.SOME_TAKEN),
-        (281, 312, SeatAvailabilityLevel.EMPTY),
-        (312, 312, SeatAvailabilityLevel.EMPTY),
+        # Above the top cutoff, still the same bucket — SOME_TAKEN is now the
+        # emptiest level there is, all the way to a full room.
+        (312, 312, SeatAvailabilityLevel.SOME_TAKEN),
         # Above the flat floor with no capacity to compare against, there is
-        # nothing honest to say — and "nothing" must not read as "empty".
+        # nothing honest to say — and "nothing" must not read as "some taken".
         (40, None, None),
         (40, 0, None),
         (None, 312, None),

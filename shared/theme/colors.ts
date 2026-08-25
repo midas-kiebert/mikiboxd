@@ -49,12 +49,21 @@ export const Colors = {
     // tracks, icon tiles, count bubbles, micro-badges and gradient stops.
     surfaceMuted: '#e6edea',
     // Two deliberately unremarkable, solid grays for the seat floor plan's
-    // free/taken fills — dark enough that neither reads as "almost white"
-    // against the app background, but distinct from each other so a room
-    // still reads clearly at a glance. Neither should look like the more
-    // important pick, since both are equally selectable.
-    seatFree: '#5c7a70',
-    seatTaken: '#3d5049',
+    // free/taken fills — plain neutral gray (no green undertone) rather than
+    // reusing the app's tinted neutrals, since a hint of the brand green read
+    // as muddy/dark once every seat in a room was filled with it. Distinct
+    // enough in lightness from each other, and from the light background, to
+    // read clearly at a glance. Neither should look like the more important
+    // pick, since both are equally selectable.
+    seatFree: '#cfcfcf',
+    seatTaken: '#8c8c8c',
+    // The seat floor plan's "friend"/"you" fills — the accent trios' own
+    // `primary`/`border` tones read as too pale/washed-out as a solid seat
+    // swatch (they're tuned for pill fills with a label on top, not a
+    // standalone block of color), so these are their own, more saturated
+    // shades instead.
+    seatFriend: '#3f68c9',
+    seatYou: tintColorLight,
     notificationBadge: '#c52b30',
     divider: '#e3eae7',
     posterPlaceholder: '#dae2de',
@@ -158,9 +167,12 @@ export const Colors = {
     pillActiveBackground: tintColorDark,
     pillActiveText: '#151718',
     surfaceMuted: '#2a2a2a',
-    // See the light theme's `seatFree`/`seatTaken` for what these are for.
+    // See the light theme's `seatFree`/`seatTaken`/`seatFriend`/`seatYou` for
+    // what these are for.
     seatFree: '#6a6e70',
     seatTaken: '#35373a',
+    seatFriend: '#5b82d9',
+    seatYou: tintColorDark,
     notificationBadge: '#d63a3a',
     divider: '#3a3a3a',
     posterPlaceholder: '#3a3a3a',

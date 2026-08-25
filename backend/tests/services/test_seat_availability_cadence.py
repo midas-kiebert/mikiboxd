@@ -50,11 +50,10 @@ def _delay(showtime: Showtime, *, unchanged_streak: int = 0) -> timedelta:
 @pytest.mark.parametrize(
     "seats_left, seats_capacity, starts_in, expected",
     [
-        # Nearly empty and a week out: nothing worth knowing happens twice a day.
-        (95, 100, timedelta(days=7), timedelta(hours=12)),
-        # ...but the day of, an empty screening can still start moving.
-        (95, 100, timedelta(hours=10), timedelta(hours=3)),
+        # Nearly empty and a week out: nothing worth knowing happens often.
         (70, 100, timedelta(days=7), timedelta(hours=4)),
+        # ...but close enough to the showtime, a quiet screening can still
+        # start moving.
         (70, 100, timedelta(hours=6), timedelta(hours=2)),
         (50, 100, timedelta(days=7), timedelta(hours=1)),
         (50, 100, timedelta(hours=1, minutes=30), timedelta(minutes=30)),

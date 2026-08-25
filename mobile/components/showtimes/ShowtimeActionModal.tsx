@@ -87,6 +87,7 @@ import FriendListRow, {
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
 import InviteBeforePrivateDialog from "@/components/showtimes/InviteBeforePrivateDialog";
 import SeatFloorPlan from "@/components/showtimes/SeatFloorPlan";
+import SeatFloorPlanPreview from "@/components/showtimes/SeatFloorPlanPreview";
 import { getSeatFieldMaxLength, getSeatInputConfig, validateSeatFieldValue } from "@/components/showtimes/seat-input";
 import SheetBackdrop from "@/components/sheets/SheetBackdrop";
 import {
@@ -349,6 +350,7 @@ export default function ShowtimeActionModal({
   const [seatNumberDraft, setSeatNumberDraft] = useState("");
   const [isSeatDialogVisible, setIsSeatDialogVisible] = useState(false);
   const [isSeatFloorPlanVisible, setIsSeatFloorPlanVisible] = useState(false);
+  const [isSeatFloorPlanPreviewVisible, setIsSeatFloorPlanPreviewVisible] = useState(false);
   const [isReportDialogVisible, setIsReportDialogVisible] = useState(false);
   const { user } = useAuth();
   const canReport = isSignedIn && (user ? user.can_report : true);
@@ -971,16 +973,19 @@ export default function ShowtimeActionModal({
   const shouldShowSeatButton = isGoingSelected && !isFreeSeating;
   const hasTicketLink = Boolean(showtime?.ticket_link);
 
-  // Prefetched as soon as the seat button becomes relevant, not on tap, so
-  // handleOpenSeatDialog already knows whether to open the visual floor plan
-  // or fall back to the plain text fields. A cinema with no floor plan (the
+  // Prefetched as soon as either the seat button or the "available seats"
+  // busyness pill becomes relevant, not on tap — the pill's own read-only
+  // preview isn't gated on going status (how full a room is is a public
+  // fact, same as `seatAvailability` above), so this query needs to be live
+  // even for a non-going viewer. A cinema with no floor plan (the
   // overwhelming majority) resolves to `null` quickly and just always falls
-  // through to the existing text-input dialog below, unchanged.
+  // through to the existing text-input dialog / hides the preview tap target.
   const seatFloorPlanQuery = useShowtimeSeatFloorPlan({
     showtimeId: showtime?.id ?? null,
-    enabled: shouldShowSeatButton,
+    enabled: shouldShowSeatButton || showSeatBusynessInfo,
   });
   const seatFloorPlan = seatFloorPlanQuery.data ?? null;
+  const hasSeatFloorPlanPreview = Boolean(seatFloorPlan && seatFloorPlan.seats.length > 0);
 
   // Top tint: green going / orange interested / blue while an invite is open.
   const tintPalette = isGoingSelected
@@ -1002,6 +1007,11 @@ export default function ShowtimeActionModal({
     if (shouldShowSeatButton || !isSeatFloorPlanVisible) return;
     setIsSeatFloorPlanVisible(false);
   }, [isSeatFloorPlanVisible, shouldShowSeatButton]);
+
+  useEffect(() => {
+    if (hasSeatFloorPlanPreview || !isSeatFloorPlanPreviewVisible) return;
+    setIsSeatFloorPlanPreviewVisible(false);
+  }, [hasSeatFloorPlanPreview, isSeatFloorPlanPreviewVisible]);
 
   useEffect(() => {
     if (!isDismissInviteDialogVisible) return;
@@ -1076,6 +1086,7 @@ export default function ShowtimeActionModal({
 
   const handleOpenSeatDialog = () => {
     if (!showtime || isUpdatingStatus || showtime.viewer?.going !== "GOING" || isFreeSeating) return;
+    triggerSelectionHaptic();
     setSeatRowDraft(showtime.viewer?.seat_row ?? "");
     setSeatNumberDraft(showtime.viewer?.seat_number ?? "");
     if (seatFloorPlan) {
@@ -1088,14 +1099,40 @@ export default function ShowtimeActionModal({
   // Tapping a seat on the floor plan only fills the row/seat fields — same as
   // typing them — it does not save. Saving happens once, from either UI,
   // through handleSaveSeat below via the Save button.
-  const handleSelectFloorPlanSeat = (rowName: string, seatName: string) => {
+  //
+  // Stable via useCallback: this is `SeatFloorPlan`'s `onSelectSeat` prop,
+  // which its own per-seat tap handler is built from — a new reference here
+  // on every keystroke (this component re-renders on every one, since the
+  // draft fields are state on it) would silently propagate down and defeat
+  // that grid's own memoization of ~150-300 seats, which is exactly what
+  // caused the row/seat inputs to visibly stall while typing.
+  const handleSelectFloorPlanSeat = useCallback((rowName: string, seatName: string) => {
     setSeatRowDraft(rowName);
     setSeatNumberDraft(seatName);
-  };
+  }, []);
 
   const handleCancelSeatDialog = () => {
     setIsSeatDialogVisible(false);
     setIsSeatFloorPlanVisible(false);
+  };
+
+  // Anywhere this would otherwise open the read-only preview, a viewer who's
+  // going opens the real picker instead — they're not just checking how busy
+  // it is, they have their own seat to set. `handleOpenSeatDialog` already
+  // knows to fall back to the plain text dialog if the floor plan itself
+  // isn't loaded yet, so it's safe to hand off to unconditionally here.
+  const handleOpenSeatFloorPlanPreview = () => {
+    if (!hasSeatFloorPlanPreview) return;
+    triggerSelectionHaptic();
+    if (isGoingSelected) {
+      handleOpenSeatDialog();
+      return;
+    }
+    setIsSeatFloorPlanPreviewVisible(true);
+  };
+
+  const handleCloseSeatFloorPlanPreview = () => {
+    setIsSeatFloorPlanPreviewVisible(false);
   };
 
   const handleSaveSeat = () => {
@@ -1782,7 +1819,16 @@ export default function ShowtimeActionModal({
                     </View>
                   </View>
                 ) : seatMeta ? (
-                  <View style={styles.seatInfoHeader}>
+                  <TouchableOpacity
+                    style={styles.seatInfoHeader}
+                    onPress={handleOpenSeatFloorPlanPreview}
+                    activeOpacity={hasSeatFloorPlanPreview ? 0.7 : 1}
+                    disabled={!hasSeatFloorPlanPreview}
+                    accessibilityRole={hasSeatFloorPlanPreview ? "button" : undefined}
+                    accessibilityLabel={
+                      hasSeatFloorPlanPreview ? "View seat map" : undefined
+                    }
+                  >
                     <View style={styles.seatInfoTextColumn}>
                       <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
                       {/* A re-read in flight keeps the number that is already
@@ -1841,7 +1887,7 @@ export default function ShowtimeActionModal({
                         />
                       </TouchableOpacity>
                     ) : null}
-                  </View>
+                  </TouchableOpacity>
                 ) : (
                   // Genuinely unknown: no reading has ever come back and none
                   // is pending, distinct from the "checking" state above,
@@ -2207,6 +2253,20 @@ export default function ShowtimeActionModal({
         onCancel={handleCancelSeatDialog}
       />
 
+      {/* Read-only preview, opened from the "available seats" pill above —
+          same underlying data, no editing surface. */}
+      <SeatFloorPlanPreview
+        visible={isSeatFloorPlanPreviewVisible}
+        room={seatFloorPlan?.room ?? null}
+        seats={seatFloorPlan?.seats ?? null}
+        isLoading={isSeatFloorPlanPreviewVisible && seatFloorPlanQuery.isLoading}
+        cinemaName={showtime?.cinema.name ?? null}
+        movieTitle={showtime?.movie.title ?? null}
+        dateLabel={dateLabel}
+        timeRangeLabel={timeRangeLabel}
+        onClose={handleCloseSeatFloorPlanPreview}
+      />
+
       {/* Seat editor (assigned-seating cinemas only) */}
       <Modal
         transparent
@@ -2467,7 +2527,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     // what was pushing the audience divider down. Setting lineHeight
     // explicitly is the fix, same reason dateText/timeText above set a
     // negative marginTop instead: two ways of clawing back the same gap.
-    moreInfoLinkText: { fontSize: 12, lineHeight: 14, fontWeight: "700", color: colors.tint },
+    moreInfoLinkText: { fontSize: 11, lineHeight: 13, fontWeight: "700", color: colors.tint },
     closeButton: {
       position: "absolute",
       top: -10,

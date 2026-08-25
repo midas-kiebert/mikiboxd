@@ -563,7 +563,6 @@ export type SearchField = "title" | "director" | "actor" | "cinema" | "friend"
  * ratchet upwards and never fall back.
  */
 export type SeatAvailabilityLevel =
-  | "empty"
   | "some_taken"
   | "busy"
   | "very_busy"

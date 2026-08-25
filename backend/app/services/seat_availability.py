@@ -114,7 +114,6 @@ LAST_FEW_ABSOLUTE_SEATS = 6
 # rather than clustered at the ends: most screenings people look at sit between
 # a third and two thirds full, and a scale that calls all of them "busy" tells
 # nobody anything.
-EMPTY_FREE_FRACTION = 0.90
 SOME_TAKEN_FREE_FRACTION = 0.60
 BUSY_FREE_FRACTION = 0.40
 VERY_BUSY_FREE_FRACTION = 0.10
@@ -146,7 +145,7 @@ def seat_availability_level(
 ) -> SeatAvailabilityLevel | None:
     """Which busyness bucket a reading falls in, or None if we cannot say.
 
-    None is not a seventh level and must not be rendered as one: it means the
+    None is not a sixth level and must not be rendered as one: it means the
     platform never gave a number, or gave one we have no capacity to compare it
     against. The cutoffs live here and nowhere else — the client picks an icon
     per level, it does not do arithmetic on the seat count.
@@ -161,8 +160,6 @@ def seat_availability_level(
     if not seats_capacity:
         return None
     free = seats_left / seats_capacity
-    if free >= EMPTY_FREE_FRACTION:
-        return SeatAvailabilityLevel.EMPTY
     if free >= SOME_TAKEN_FREE_FRACTION:
         return SeatAvailabilityLevel.SOME_TAKEN
     if free >= BUSY_FREE_FRACTION:
@@ -221,11 +218,6 @@ _RECHECK_INTERVALS: dict[
     SeatAvailabilityLevel | None, tuple[timedelta, timedelta, timedelta]
 ] = {
     # level: (normal interval, "close" threshold, interval once close)
-    SeatAvailabilityLevel.EMPTY: (
-        timedelta(hours=12),
-        timedelta(hours=24),
-        timedelta(hours=3),
-    ),
     SeatAvailabilityLevel.SOME_TAKEN: (
         timedelta(hours=4),
         timedelta(hours=8),
@@ -305,25 +297,21 @@ def next_check_at(
     return now + delay + _RECHECK_JITTER * random.random()
 
 
-# Somebody who has just said they care about a screening should not be shown a
-# reading from half a day ago. Older than this and their interest brings the
-# next reading forward; newer and the showtime's own cadence knows better.
-INTEREST_TRIGGER_FRESHNESS = timedelta(minutes=30)
-
-
 def request_reading_on_interest(
     *, session: Session, showtime_id: int, now: datetime | None = None
 ) -> None:
-    """Someone just selected this showtime — make sure its seat count is recent.
+    """Someone just selected this showtime — make sure a seat count is coming.
 
-    Queues, never requests: see `showtimes_crud.mark_seat_availability_due`.
+    Only ever brings the next reading forward for a showtime that has never
+    been read at all; one with an existing reading, however old, is left on
+    its own cadence. Queues, never requests: see
+    `showtimes_crud.mark_seat_availability_due`.
     """
     reference_time = now or now_amsterdam_naive()
     showtimes_crud.mark_seat_availability_due(
         session=session,
         showtime_id=showtime_id,
         now=reference_time,
-        stale_before=reference_time - INTEREST_TRIGGER_FRESHNESS,
     )
 
 

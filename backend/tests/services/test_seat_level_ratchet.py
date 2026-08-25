@@ -58,7 +58,7 @@ def test_level_rises_when_capacity_grows() -> None:
     _read(showtime, 40)
     # 40 seats and no capacity yet: as far as we know the room is 40 and empty.
     assert showtime.seats_capacity == 40
-    assert effective_seat_level(showtime) is SeatAvailabilityLevel.EMPTY
+    assert effective_seat_level(showtime) is SeatAvailabilityLevel.SOME_TAKEN
 
     # The room turns out to be far bigger than this screening had revealed, so
     # the same 40 seats are 10% of it, not all of it.
@@ -71,7 +71,7 @@ def test_level_rises_when_capacity_grows() -> None:
 def test_level_still_rises() -> None:
     showtime = _showtime(seats_capacity=100)
     _read(showtime, 90)
-    assert effective_seat_level(showtime) is SeatAvailabilityLevel.EMPTY
+    assert effective_seat_level(showtime) is SeatAvailabilityLevel.SOME_TAKEN
     _read(showtime, 60)
     assert effective_seat_level(showtime) is SeatAvailabilityLevel.SOME_TAKEN
     _read(showtime, 45)

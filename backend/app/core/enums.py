@@ -135,7 +135,6 @@ class SeatAvailabilityLevel(str, Enum):
     ratchet upwards and never fall back.
     """
 
-    EMPTY = "empty"
     SOME_TAKEN = "some_taken"
     BUSY = "busy"
     VERY_BUSY = "very_busy"

@@ -1,13 +1,16 @@
 /**
- * Full-screen visual seat picker for cinemas whose room we have a floor plan
- * for (currently Filmhallen, The Movies, Kino, Filmkoepel, Louis Hartlooper,
+ * Visual seat picker for cinemas whose room we have a floor plan for
+ * (currently Filmhallen, The Movies, Kino, Filmkoepel, Louis Hartlooper,
  * Slachtstraat and Springhaver — see `backend/scripts/ingest-seat-floor-plans.py`).
  *
  * Deliberately generic: it never receives a cinema identifier, only seat
  * geometry + status, so every room renders the same plain colored rectangles
- * regardless of which cinema it belongs to — a plain `Modal` (like the text
- * seat editor it replaces for these cinemas), not a bottom sheet, since a
- * pannable room needs more space than a partial-height sheet gives.
+ * regardless of which cinema it belongs to. A full-height `AppBottomSheet`
+ * (pull-down-to-close, like every other sheet in the app) rather than the
+ * plain text seat editor's `Modal` — this one has a room to look at and
+ * benefits from being dismissable the same way the rest of the app is; the
+ * "Select your seat" sheet title makes it unambiguous what tapping a seat
+ * below does.
  *
  * This is purely a *picker*, not a booking flow: any seat can be tapped,
  * including one the live read says is taken — the common case is picking the
@@ -17,43 +20,41 @@
  * existing draft state (`seatRowDraft`/`seatNumberDraft`) is the single
  * source of truth for both this screen and the plain-text fallback dialog.
  *
- * The footer (row/seat fields + Save/Cancel) is an absolutely-positioned
- * overlay, not a flex sibling of the seat grid above it — that's deliberate:
- * `KeyboardAvoidingView`/flex-based approaches here fought each other (Android
- * has `edgeToEdgeEnabled` on, which disables the window auto-resize those
- * normally lean on) and left the footer either behind the keyboard or, when
- * fixed, dragging the seat grid up into the header with it. The footer's own
- * `bottom` offset is instead an `Animated.Value` driven by the keyboard's
- * show/hide events (`keyboardWillShow`/`Hide` on iOS so the animation starts
- * in step with the real one — `keyboardDidShow`/`Hide` fire only once the
- * keyboard has already finished moving, which reads as a snap), decoupling
- * the footer completely from the grid: the grid's size is measured once (see
- * `bodySize`) and never changes for the keyboard, while the footer always
- * floats above it, in motion with it. While the keyboard is up, seats stop
- * being tappable and a tap anywhere in the grid area dismisses the keyboard
- * instead (via the wrapping `TouchableWithoutFeedback`) — the footer is
- * deliberately outside that wrapper so its own inputs/buttons behave normally.
+ * The footer (row/seat fields + Save/Cancel) is a plain flex sibling of the
+ * seat grid above it, pinned to the bottom the same way every other sheet in
+ * the app pins a footer below its `BottomSheetScrollView`. Keyboard avoidance
+ * — i.e. moving/resizing the sheet itself as the keyboard opens — is left
+ * entirely to the `BottomSheetModal` (`AppBottomSheet`) itself and to
+ * `BottomSheetTextInput` on the row/seat fields — an earlier version of this
+ * screen hand-rolled its own `Animated`-driven keyboard *positioning* (built
+ * back when this was a plain `Modal`, which has no keyboard awareness of its
+ * own), and once this became a real bottom sheet that custom tracking fought
+ * the sheet's built-in handling: typing flickered and the footer overshot far
+ * above the keyboard. Do not reintroduce a footer-positioning `Keyboard`
+ * listener. The one `Keyboard` listener that *is* still here (see
+ * `isKeyboardTransitioning`) doesn't position anything — it only freezes the
+ * grid's own size measurement for the ~250ms the keyboard is animating, so
+ * the grid doesn't rescale-and-relayout every seat on each intermediate
+ * `onLayout` the sheet's resize fires along the way.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
-  Easing,
+  InteractionManager,
   Keyboard,
-  type KeyboardEvent,
-  Modal,
   Platform,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SeatFloorPlanSeatPublic } from "shared";
 
+import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { ThemedText } from "@/components/themed-text";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import {
@@ -85,39 +86,35 @@ type SeatFloorPlanProps = {
   onCancel: () => void;
 };
 
-const HEADER_TOP_PADDING = 8;
+const FULL_HEIGHT_SNAP_POINTS = ["100%"];
 const LEGEND_HEIGHT = 34;
-const FOOTER_HEIGHT = 150;
-// Only used as a fallback when a keyboard event doesn't carry its own
-// duration (observed on some Android versions) — iOS always reports one.
-const DEFAULT_KEYBOARD_ANIMATION_MS = 250;
+// How long the row/seat fields wait for typing to pause before syncing the
+// parent sheet's copy of the draft — short enough that Save/validation still
+// feel responsive, long enough to collapse a normal typing burst into one
+// parent re-render instead of one per character.
+const SEAT_DRAFT_DEBOUNCE_MS = 150;
 
-// iOS's keyboard events report curve names, not literal easing functions;
-// this maps the ones RN actually sends to their closest `Easing` equivalent
-// so the footer's own animation tracks the keyboard's rather than fighting it.
-function mapKeyboardEasing(curve: KeyboardEvent["easing"] | undefined) {
-  switch (curve) {
-    case "easeIn":
-      return Easing.in(Easing.ease);
-    case "easeInEaseOut":
-      return Easing.inOut(Easing.ease);
-    case "linear":
-      return Easing.linear;
-    default:
-      return Easing.out(Easing.ease);
-  }
-}
-
-function SeatRect({
+// Memoized: with ~150-300 seats in a room, an inline `onPress` closure per
+// seat (recreated every render) defeated memoization entirely, so every seat
+// re-rendered on every keystroke in the row/seat fields below — that
+// synchronous re-render of the whole grid was heavy enough to visibly stall
+// the (otherwise perfectly responsive) `BottomSheetTextInput`, reading as the
+// typed character flickering in and out. Taking a stable `onSelect` instead
+// (bound once by the parent via `useCallback`) means only the one or two
+// seats whose `isDraftSeat` actually flips need to re-render per keystroke.
+export const SeatRect = memo(function SeatRect({
   seat,
   colors,
   isDraftSeat,
-  onPress,
+  onSelect,
+  interactive = true,
 }: {
   seat: ScaledSeat;
   colors: ReturnType<typeof useThemeColors>;
   isDraftSeat: boolean;
-  onPress: () => void;
+  onSelect?: (seat: ScaledSeat) => void;
+  /** False renders a plain, untappable swatch — used by the read-only preview. */
+  interactive?: boolean;
 }) {
   const position = { left: seat.x, top: seat.y, width: seat.scaledWidth, height: seat.scaledHeight };
 
@@ -134,13 +131,26 @@ function SeatRect({
   // eye-catching pair, since both are equally selectable and neither should
   // read as more important than the other.
   const backgroundColor = isDraftSeat
-    ? colors.green.secondary
+    ? colors.seatYou
     : hasFriend
-      ? colors.blue.primary
+      ? colors.seatFriend
       : seat.taken
         ? colors.seatTaken
         : colors.seatFree;
   const showFriendBadge = hasFriend && (seat.friend_count ?? 0) > 1 && seat.scaledWidth >= 16;
+
+  if (!interactive) {
+    return (
+      <View style={[styles.seat, position]} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFill, styles.seatFill, { backgroundColor }]} />
+        {showFriendBadge ? (
+          <View style={[styles.friendBadge, { backgroundColor: colors.blue.secondary }]}>
+            <ThemedText style={styles.friendBadgeText}>{seat.friend_count}</ThemedText>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <TouchableOpacity
@@ -152,7 +162,7 @@ function SeatRect({
         right: seat.hitSlopX,
       }}
       activeOpacity={0.7}
-      onPress={onPress}
+      onPress={() => onSelect?.(seat)}
       accessibilityRole="button"
       accessibilityLabel={`Seat ${seat.row_name}${seat.seat_name}`}
     >
@@ -164,7 +174,7 @@ function SeatRect({
       ) : null}
     </TouchableOpacity>
   );
-}
+});
 
 export default function SeatFloorPlan({
   visible,
@@ -192,126 +202,167 @@ export default function SeatFloorPlan({
   const insets = useSafeAreaInsets();
 
   // The grid's own available space, measured from the actual rendered body —
-  // not estimated from window dimensions minus guessed header/footer heights
-  // — and only updated while the keyboard is closed, so opening it can never
-  // resize the grid (see the file header comment for why).
+  // frozen while the keyboard is opening/closing so the ~250ms transition
+  // doesn't force a full rescale-and-relayout of every seat on each of the
+  // many `onLayout` events the sheet's own keyboard-avoidance fires along the
+  // way (that per-frame reflow, not the keyboard animation itself, was what
+  // read as janky/slow). This only gates the *measurement* — it doesn't
+  // position anything itself, so it doesn't reintroduce the footer-tracking
+  // system removed above; the grid simply keeps its pre-keyboard size and
+  // snaps to the real one once the transition settles.
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
-  // Starts at a reasonable guess so the footer doesn't flash unpadded before
-  // its first real onLayout measurement lands.
-  const [footerHeight, setFooterHeight] = useState(FOOTER_HEIGHT);
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  // Drives the footer's `bottom` offset directly so it can be animated in
-  // step with the keyboard instead of snapping to a new position once RN
-  // tells us the keyboard is (now) fully shown/hidden.
-  const footerBottom = useRef(new Animated.Value(insets.bottom)).current;
+  const [isKeyboardTransitioning, setIsKeyboardTransitioning] = useState(false);
+
+  // The seat grid itself — up to ~150-300 mounted `SeatRect` touchables plus
+  // the layout pass over them — is heavy enough on slower devices to visibly
+  // delay the sheet's own rise if it's built in the same tick that presents
+  // it. Rather than block the open on that, the sheet always rises instantly
+  // showing the loading spinner, and the grid is only built once the sheet's
+  // entry animation is out of the way — the data is usually already in hand
+  // (prefetched before the seat button was ever tapped), so this reads as the
+  // seats popping in a beat after the sheet, not as the sheet itself being slow.
+  const [isGridReady, setIsGridReady] = useState(false);
+  useEffect(() => {
+    if (!visible) {
+      setIsGridReady(false);
+      return;
+    }
+    const task = InteractionManager.runAfterInteractions(() => setIsGridReady(true));
+    return () => task.cancel();
+  }, [visible]);
 
   useEffect(() => {
-    const animateFooterTo = (toValue: number, event: KeyboardEvent) => {
-      Animated.timing(footerBottom, {
-        toValue,
-        duration: event.duration || DEFAULT_KEYBOARD_ANIMATION_MS,
-        easing: mapKeyboardEasing(event.easing),
-        useNativeDriver: false,
-      }).start();
-    };
-    const handleShow = (event: KeyboardEvent) => {
-      setIsKeyboardVisible(true);
-      animateFooterTo(event.endCoordinates.height, event);
-    };
-    const handleHide = (event: KeyboardEvent) => {
-      setIsKeyboardVisible(false);
-      animateFooterTo(insets.bottom, event);
-    };
-    // iOS fires `keyboardWill*` before the OS animation starts, carrying its
-    // real duration/easing — using `keyboardDid*` there (which fires once the
-    // animation is already done) is exactly what caused the footer to snap
-    // into place instead of moving with the keyboard. Android has no `will`
-    // variant, so it stays on `did*` there.
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSubscription = Keyboard.addListener(showEvent, handleShow);
-    const hideSubscription = Keyboard.addListener(hideEvent, handleHide);
+    // iOS fires `keyboardWill*` before the animated resize starts and
+    // `keyboardDid*` once it's finished, so the freeze window brackets the
+    // transition exactly. Android has no `will*` event — its own show/hide
+    // is a single fast resize rather than the longer animated one iOS does,
+    // so there's no equivalent window worth freezing for.
+    if (Platform.OS !== "ios") return;
+    const beginTransition = () => setIsKeyboardTransitioning(true);
+    const endTransition = () => setIsKeyboardTransitioning(false);
+    const willShowSubscription = Keyboard.addListener("keyboardWillShow", beginTransition);
+    const willHideSubscription = Keyboard.addListener("keyboardWillHide", beginTransition);
+    const showSubscription = Keyboard.addListener("keyboardDidShow", endTransition);
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", endTransition);
     return () => {
+      willShowSubscription.remove();
+      willHideSubscription.remove();
       showSubscription.remove();
       hideSubscription.remove();
     };
-  }, [footerBottom, insets.bottom]);
+  }, []);
 
+  // Skipped entirely until the grid is due to render — this is the actual
+  // expensive part (not just mounting the `SeatRect`s), so computing it
+  // eagerly on mount would undo the point of deferring below.
   const layout = useMemo(
-    () => layoutSeatFloorPlan(seats ?? [], { availableWidth: bodySize.width, availableHeight: bodySize.height }),
-    [seats, bodySize.width, bodySize.height]
+    () =>
+      isGridReady
+        ? layoutSeatFloorPlan(seats ?? [], { availableWidth: bodySize.width, availableHeight: bodySize.height })
+        : { width: 0, height: 0, seats: [] },
+    [isGridReady, seats, bodySize.width, bodySize.height]
   );
 
-  const draftRow = seatRowDraft.trim();
-  const draftNumber = seatNumberDraft.trim();
+  // The row/seat fields' *own* draft, separate from the parent's copy of the
+  // same two strings. Typing into a `BottomSheetTextInput` bound directly to
+  // `seatRowDraft`/`seatNumberDraft` up on `ShowtimeActionModal` meant every
+  // keystroke re-rendered that entire (very large) sheet before the character
+  // could show up here — that round trip, not the seat grid, turned out to be
+  // the actual source of the flicker the memoized `SeatRect` change didn't
+  // fix. So typing updates only this local state immediately, and the parent
+  // is kept in sync via `useDebouncedValue` instead of on every keystroke —
+  // it only needs the settled value to compute `canSave`/validation, not a
+  // live one. Seeded once from the initial props: this whole screen is thrown
+  // away and remounted fresh on each open (`dismissWhenClosed`), so there's
+  // no case where the parent's value changes out from under this later.
+  const [localSeatRowDraft, setLocalSeatRowDraft] = useState(seatRowDraft);
+  const [localSeatNumberDraft, setLocalSeatNumberDraft] = useState(seatNumberDraft);
+  const debouncedSeatRowDraft = useDebouncedValue(localSeatRowDraft, SEAT_DRAFT_DEBOUNCE_MS);
+  const debouncedSeatNumberDraft = useDebouncedValue(localSeatNumberDraft, SEAT_DRAFT_DEBOUNCE_MS);
 
-  const handleSelect = (seat: ScaledSeat) => {
-    if (!seat.selectable || isKeyboardVisible) return;
-    triggerSelectionHaptic();
-    onSelectSeat(seat.row_name, seat.seat_name);
+  useEffect(() => {
+    onChangeSeatRowDraft(debouncedSeatRowDraft);
+  }, [debouncedSeatRowDraft, onChangeSeatRowDraft]);
+
+  useEffect(() => {
+    onChangeSeatNumberDraft(debouncedSeatNumberDraft);
+  }, [debouncedSeatNumberDraft, onChangeSeatNumberDraft]);
+
+  const draftRow = localSeatRowDraft.trim();
+  const draftNumber = localSeatNumberDraft.trim();
+
+  // Stable across renders (see `SeatRect`'s own comment on why that matters):
+  // passed straight through as each seat's `onSelect` rather than rebound
+  // inline per seat. Tapping a seat updates the local draft directly (for the
+  // fields/highlight to reflect it instantly) and informs the parent
+  // immediately rather than through the debounce above — it's one discrete
+  // action, not a burst of keystrokes, so there's no re-render storm to guard
+  // against here.
+  const handleSelect = useCallback(
+    (seat: ScaledSeat) => {
+      if (!seat.selectable) return;
+      triggerSelectionHaptic();
+      setLocalSeatRowDraft(seat.row_name);
+      setLocalSeatNumberDraft(seat.seat_name);
+      onSelectSeat(seat.row_name, seat.seat_name);
+    },
+    [onSelectSeat]
+  );
+
+  const showEmptyState = !isLoading && isGridReady && (isError || !seats || seats.length === 0);
+  const showGridSpinner = isLoading || !isGridReady;
+
+  // Swiping the sheet down (or the header's close button, or the Android
+  // back button — anything that isn't the explicit Cancel button below)
+  // shouldn't silently discard a seat that's ready to save: it behaves as a
+  // Save when one is possible, and only falls back to a plain close/cancel
+  // when it isn't. The Cancel button itself stays a literal cancel — that's
+  // the one affordance whose whole purpose is discarding the draft.
+  const handleDismiss = () => {
+    if (canSave && !isSaving) {
+      onSave();
+      return;
+    }
+    onCancel();
   };
 
-  const showEmptyState = !isLoading && (isError || !seats || seats.length === 0);
-
   return (
-    <Modal
-      transparent={false}
-      statusBarTranslucent
+    <AppBottomSheet
       visible={visible}
-      animationType="slide"
-      onRequestClose={onCancel}
+      onClose={handleDismiss}
+      title="Select your seat"
+      snapPoints={FULL_HEIGHT_SNAP_POINTS}
+      // Can be opened from on top of the showtime sheet, so it must not stay
+      // mounted behind it after a first close — see AppBottomSheet's own doc
+      // comment on `dismissWhenClosed`.
+      dismissWhenClosed
     >
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.container}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={[styles.content, { paddingBottom: footerHeight + insets.bottom }]}>
-            <View
-              style={[
-                styles.header,
-                { paddingTop: insets.top + HEADER_TOP_PADDING, borderBottomColor: colors.cardBorder },
-              ]}
-            >
-              <View style={styles.headerText}>
-                <ThemedText style={[styles.headerSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {[cinemaName, room].filter(Boolean).join(" · ")}
-                </ThemedText>
-                <ThemedText style={styles.headerTitle} numberOfLines={1}>
-                  {movieTitle ?? "Pick your seat"}
-                </ThemedText>
-                {dateLabel || timeRangeLabel ? (
-                  <ThemedText style={[styles.headerSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {[dateLabel, timeRangeLabel].filter(Boolean).join(" · ")}
-                  </ThemedText>
-                ) : null}
-              </View>
-              <TouchableOpacity
-                onPress={onCancel}
-                hitSlop={10}
-                style={styles.closeButton}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-              >
-                <MaterialIcons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
+          <BottomSheetScrollView scrollEnabled={false} contentContainerStyle={styles.content}>
+            <ThemedText style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+              {[movieTitle, cinemaName, room].filter(Boolean).join(" · ")}
+            </ThemedText>
+            {dateLabel || timeRangeLabel ? (
+              <ThemedText style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                {[dateLabel, timeRangeLabel].filter(Boolean).join(" · ")}
+              </ThemedText>
+            ) : null}
 
             <ThemedText style={[styles.explanation, { color: colors.textSecondary }]}>
-              This shows your seat to friends going to this screening — it doesn't book
+              This shows your seat to friends going to this screening. This doesn't book
               anything, you'll still need to get your own ticket separately.
             </ThemedText>
 
             <View
               style={styles.body}
               onLayout={(event) => {
-                // Frozen while the keyboard is up so its own footer padding
-                // (which shrinks nothing here, but would still fire a resize
-                // event on some devices) can never feed back into the grid's
-                // size — see the file header comment.
-                if (isKeyboardVisible) return;
+                if (isKeyboardTransitioning) return;
                 const { width, height } = event.nativeEvent.layout;
                 setBodySize({ width, height });
               }}
             >
-              {isLoading ? (
+              {showGridSpinner ? (
                 <ActivityIndicator color={colors.tint} />
               ) : showEmptyState ? (
                 <ThemedText style={styles.emptyStateText}>
@@ -320,10 +371,7 @@ export default function SeatFloorPlan({
                     : "No seat map available for this screening — enter your seat below instead."}
                 </ThemedText>
               ) : (
-                <View
-                  style={{ width: layout.width, height: layout.height }}
-                  pointerEvents={isKeyboardVisible ? "none" : "auto"}
-                >
+                <View style={{ width: layout.width, height: layout.height }}>
                   {layout.seats.map((seat) => (
                     <SeatRect
                       key={`${seat.row_name}-${seat.seat_name}-${seat.x}-${seat.y}`}
@@ -335,96 +383,96 @@ export default function SeatFloorPlan({
                         seat.row_name === draftRow &&
                         seat.seat_name === draftNumber
                       }
-                      onPress={() => handleSelect(seat)}
+                      onSelect={handleSelect}
                     />
                   ))}
                 </View>
               )}
             </View>
 
-            {!showEmptyState && !isLoading ? (
+            {!showEmptyState && !showGridSpinner ? (
               <View style={styles.legend}>
                 <LegendItem label="Free" colors={colors} backgroundColor={colors.seatFree} />
                 <LegendItem label="Taken" colors={colors} backgroundColor={colors.seatTaken} />
-                <LegendItem label="Friend" colors={colors} backgroundColor={colors.blue.primary} />
-                <LegendItem label="You" colors={colors} backgroundColor={colors.green.secondary} />
+                <LegendItem label="Friend" colors={colors} backgroundColor={colors.seatFriend} />
+                <LegendItem label="You" colors={colors} backgroundColor={colors.seatYou} />
               </View>
             ) : null}
-          </View>
+          </BottomSheetScrollView>
         </TouchableWithoutFeedback>
 
-        <Animated.View style={[styles.footerOverlay, { bottom: footerBottom }]}>
-          <View
-            onLayout={(event) => setFooterHeight(event.nativeEvent.layout.height)}
-            style={[styles.footer, { borderTopColor: colors.cardBorder, backgroundColor: colors.background }]}
-          >
-            <View style={styles.seatEditorRow}>
-              <View style={styles.seatInputGroup}>
-                <ThemedText style={[styles.seatInputLabel, { color: colors.textSecondary }]}>Row</ThemedText>
-                <TextInput
-                  value={seatRowDraft}
-                  onChangeText={onChangeSeatRowDraft}
-                  placeholderTextColor={colors.textSecondary}
-                  style={[styles.seatInput, { borderColor: colors.cardBorder, color: colors.text, backgroundColor: colors.cardBackground }]}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  keyboardType={seatInputConfig.rowKind === "digits" ? "number-pad" : "default"}
-                  maxLength={getSeatFieldMaxLength(seatInputConfig.rowKind)}
-                />
-              </View>
-              <ThemedText style={[styles.seatInputSeparator, { color: colors.textSecondary }]}>—</ThemedText>
-              <View style={styles.seatInputGroup}>
-                <ThemedText style={[styles.seatInputLabel, { color: colors.textSecondary }]}>Seat</ThemedText>
-                <TextInput
-                  value={seatNumberDraft}
-                  onChangeText={onChangeSeatNumberDraft}
-                  placeholderTextColor={colors.textSecondary}
-                  style={[styles.seatInput, { borderColor: colors.cardBorder, color: colors.text, backgroundColor: colors.cardBackground }]}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  keyboardType={seatInputConfig.seatKind === "digits" ? "number-pad" : "default"}
-                  maxLength={getSeatFieldMaxLength(seatInputConfig.seatKind)}
-                />
-              </View>
+        <View
+          style={[
+            styles.footer,
+            { paddingBottom: 12 + insets.bottom, borderTopColor: colors.cardBorder, backgroundColor: colors.background },
+          ]}
+        >
+          <View style={styles.seatEditorRow}>
+            <View style={styles.seatInputGroup}>
+              <ThemedText style={[styles.seatInputLabel, { color: colors.textSecondary }]}>Row</ThemedText>
+              <BottomSheetTextInput
+                value={localSeatRowDraft}
+                onChangeText={setLocalSeatRowDraft}
+                placeholderTextColor={colors.textSecondary}
+                style={[styles.seatInput, { borderColor: colors.cardBorder, color: colors.text, backgroundColor: colors.cardBackground }]}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                keyboardType={seatInputConfig.rowKind === "digits" ? "number-pad" : "default"}
+                maxLength={getSeatFieldMaxLength(seatInputConfig.rowKind)}
+              />
             </View>
-            {seatValidationError ? (
-              <ThemedText style={[styles.validationErrorText, { color: colors.red.secondary }]}>
-                {seatValidationError}
-              </ThemedText>
-            ) : null}
-            <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.cancelButton, { borderColor: colors.cardBorder }]}
-                onPress={onCancel}
-                activeOpacity={0.8}
-              >
-                <ThemedText style={[styles.actionButtonText, { color: colors.text }]}>Cancel</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  { backgroundColor: colors.tint },
-                  !canSave && styles.actionButtonDisabled,
-                ]}
-                onPress={onSave}
-                activeOpacity={0.8}
-                disabled={!canSave || isSaving}
-              >
-                {isSaving ? (
-                  <ActivityIndicator color={colors.background} />
-                ) : (
-                  <ThemedText style={[styles.actionButtonText, { color: colors.background }]}>Save</ThemedText>
-                )}
-              </TouchableOpacity>
+            <ThemedText style={[styles.seatInputSeparator, { color: colors.textSecondary }]}>—</ThemedText>
+            <View style={styles.seatInputGroup}>
+              <ThemedText style={[styles.seatInputLabel, { color: colors.textSecondary }]}>Seat</ThemedText>
+              <BottomSheetTextInput
+                value={localSeatNumberDraft}
+                onChangeText={setLocalSeatNumberDraft}
+                placeholderTextColor={colors.textSecondary}
+                style={[styles.seatInput, { borderColor: colors.cardBorder, color: colors.text, backgroundColor: colors.cardBackground }]}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                keyboardType={seatInputConfig.seatKind === "digits" ? "number-pad" : "default"}
+                maxLength={getSeatFieldMaxLength(seatInputConfig.seatKind)}
+              />
             </View>
           </View>
-        </Animated.View>
+          {seatValidationError ? (
+            <ThemedText style={[styles.validationErrorText, { color: colors.red.secondary }]}>
+              {seatValidationError}
+            </ThemedText>
+          ) : null}
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.cancelButton, { borderColor: colors.cardBorder }]}
+              onPress={onCancel}
+              activeOpacity={0.8}
+            >
+              <ThemedText style={[styles.actionButtonText, { color: colors.text }]}>Cancel</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                { backgroundColor: colors.tint },
+                !canSave && styles.actionButtonDisabled,
+              ]}
+              onPress={onSave}
+              activeOpacity={0.8}
+              disabled={!canSave || isSaving}
+            >
+              {isSaving ? (
+                <ActivityIndicator color={colors.background} />
+              ) : (
+                <ThemedText style={[styles.actionButtonText, { color: colors.background }]}>Save</ThemedText>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
-    </Modal>
+    </AppBottomSheet>
   );
 }
 
-function LegendItem({
+export function LegendItem({
   label,
   backgroundColor,
   colors,
@@ -443,24 +491,11 @@ function LegendItem({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 8,
-  },
-  headerText: { flex: 1, gap: 2 },
-  headerTitle: { fontSize: 17, fontWeight: "700" },
-  headerSubtitle: { fontSize: 12 },
-  closeButton: { padding: 2 },
+  content: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 10 },
+  subtitle: { fontSize: 12, textAlign: "center" },
   explanation: {
     fontSize: 11,
     lineHeight: 15,
-    paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 4,
   },
@@ -490,15 +525,13 @@ const styles = StyleSheet.create({
   },
   friendBadgeText: { fontSize: 9, fontWeight: "700", color: "#fff" },
   emptyStateText: { fontSize: 14, textAlign: "center", paddingHorizontal: 32 },
-  // Positioned by its parent's `bottom` (insets.bottom, or the live keyboard
-  // height while it's up) rather than its own padding — see the file header
-  // comment for why the footer is a decoupled absolute overlay.
-  footerOverlay: { position: "absolute", left: 0, right: 0 },
+  // A plain flex sibling below the scroll view — its own `paddingBottom`
+  // (set inline, adding `insets.bottom`) is all it needs to clear the home
+  // indicator; the sheet's own keyboard handling takes care of the rest.
   footer: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 12,
     gap: 8,
   },
   seatEditorRow: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 12 },

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlmodel import SQLModel
 
 __all__ = ["SeatFloorPlanPublic", "SeatFloorPlanSeatPublic"]
@@ -7,9 +9,11 @@ class SeatFloorPlanSeatPublic(SQLModel):
     """One seat's position and status on a room's floor plan.
 
     Geometry (`position_left/top`, `width`, `height`) is the room's own,
-    stored once and never refreshed. `taken`/`is_viewer_seat`/`friend_count`
-    are computed fresh on every request — `taken` from a live read of the
-    cinema's own seat map, the other two from this showtime's selections.
+    stored once and never refreshed. `taken` comes from the availability
+    poller's last reading of this showtime, so it is exactly as fresh as the
+    seat count shown next to it and no ticket shop is read to answer this;
+    `is_viewer_seat`/`friend_count` are computed per request from this
+    showtime's selections.
     """
 
     row_name: str
@@ -20,9 +24,9 @@ class SeatFloorPlanSeatPublic(SQLModel):
     height: int
     # False for aisle gaps and other floor-plan filler that isn't a real seat.
     selectable: bool
-    # None only when the live read failed or the cinema's booking host isn't
-    # resolvable for this showtime — the seat's free/taken state is simply
-    # unknown this request, not evidence either way.
+    # None only when this showtime has never had a per-seat reading — it has
+    # not been polled yet, or its platform reports counts without a seat map.
+    # The seat's free/taken state is simply unknown, not evidence either way.
     taken: bool | None
     is_viewer_seat: bool
     # How many visible friends self-reported this seat — not who, just how
@@ -33,8 +37,12 @@ class SeatFloorPlanSeatPublic(SQLModel):
 
 
 class SeatFloorPlanPublic(SQLModel):
-    """A room's seat map for one showtime, merged with live + personal state."""
+    """A room's seat map for one showtime, merged with polled + personal state."""
 
     showtime_id: int
     room: str
     seats: list[SeatFloorPlanSeatPublic]
+    # When the `taken` flags were read, so the client can say how old they are
+    # rather than implying a seat map is live. None when no reading exists yet,
+    # which is the same condition that leaves every `taken` at None.
+    seats_checked_at: datetime | None = None

@@ -28,7 +28,9 @@ platforms, and each of them answers an unauthenticated GET:
   a cinema's whole programme — supplies the ``cinema_id`` the seat-plan call
   needs and the room name; a site not yet in the lookup table falls back to
   the feed's coarser ``ticket_status`` (available / sold-out / no-websale),
-  which never gives a count.
+  which never gives a count. The same seat map also says which individual
+  seats are taken, at no extra cost — that is what backs the stored floor
+  plan, so nothing has to re-read a ticket shop to draw a seat picker.
 
 The Z-ELITE checkout page and the Eagerly feed also name the room the showtime
 plays in, which not every cinema's scraper can see; it comes back on the same
@@ -68,6 +70,11 @@ REQUEST_HEADERS = {
 }
 
 
+# `(row_name, seat_name)` for one physical seat, the key a floor plan's stored
+# geometry is matched on.
+TakenSeat = tuple[str, str]
+
+
 class SeatAvailabilityFetchError(Exception):
     """Raised when a ticket shop could not be reached or returned nonsense."""
 
@@ -85,6 +92,12 @@ class SeatAvailability:
     # elsewhere doesn't mean "no seats" — the poller's running max
     # (`Showtime.seats_capacity`) is the fallback estimate for those.
     capacity: int | None = None
+    # Which individual seats were taken at the moment of this reading, for the
+    # platforms that hand back a per-seat map (only Eagerly). Follows the same
+    # rule as the counts: `None` means "this platform did not say", never
+    # "nothing is taken". Persisted alongside the count so the seat picker can
+    # be served from the database — see `services/seat_floor_plan.py`.
+    taken_seats: tuple[TakenSeat, ...] | None = None
 
     @property
     def is_known(self) -> bool:
@@ -263,6 +276,7 @@ def eagerly_shows(
 class _EagerlySeatCount(NamedTuple):
     free: int
     capacity: int
+    taken: tuple[TakenSeat, ...]
 
 
 def _is_bookable_eagerly_seat(seat: dict) -> bool:
@@ -306,10 +320,36 @@ def _fetch_eagerly_seatplan_raw(
     return seats if isinstance(seats, list) else None
 
 
+def _is_taken_eagerly_seat(seat: dict) -> bool:
+    """Whether a bookable seat is spoken for — sold, held, or otherwise blocked.
+
+    A held seat counts as taken: it is someone's ten-minute checkout hold, and
+    a seat map that offers it is offering something nobody can buy right now.
+    """
+    return (
+        seat.get("ticket_id") is not None
+        or seat.get("seat_lock_id") is not None
+        or seat.get("seat_status") != 0
+    )
+
+
+def _seat_key(seat: dict) -> TakenSeat:
+    return (
+        str(seat.get("row_name") or "").strip(),
+        str(seat.get("seat_name") or "").strip(),
+    )
+
+
 def _fetch_eagerly_seatplan(
     *, booking_host: str, cinema_id: str, show_time_id: str
 ) -> _EagerlySeatCount | None:
-    """Count free/total seats from the cinema's own seat map, if it has one."""
+    """Free/total seats *and* which individual ones are taken, in one read.
+
+    The count and the seat map come off the same response, so a reading that
+    pays for one gets the other for nothing — which is the whole reason the
+    floor plan can be served from the database instead of re-reading the
+    ticket shop every time somebody opens the seat picker.
+    """
     seats = _fetch_eagerly_seatplan_raw(
         booking_host=booking_host, cinema_id=cinema_id, show_time_id=show_time_id
     )
@@ -318,14 +358,12 @@ def _fetch_eagerly_seatplan(
     selectable = [seat for seat in seats if _is_bookable_eagerly_seat(seat)]
     if not selectable:
         return None
-    free = sum(
-        1
-        for seat in selectable
-        if seat.get("ticket_id") is None
-        and seat.get("seat_lock_id") is None
-        and seat.get("seat_status") == 0
+    taken = tuple(
+        _seat_key(seat) for seat in selectable if _is_taken_eagerly_seat(seat)
     )
-    return _EagerlySeatCount(free=free, capacity=len(selectable))
+    return _EagerlySeatCount(
+        free=len(selectable) - len(taken), capacity=len(selectable), taken=taken
+    )
 
 
 # Floor-plan geometry fields worth persisting; everything else in the raw
@@ -341,9 +379,24 @@ _FLOOR_PLAN_GEOMETRY_FIELDS = (
 )
 
 
+class EagerlySeatPlanGeometry(NamedTuple):
+    """One show's seat map plus the room the booking system says it's in.
+
+    `screen_name` is the booking backend's own name for the room, which is
+    what makes this geometry safe to file under a room: the agenda feed's
+    `location` and the ticketing system's screen can disagree for individual
+    shows (a screening moved between rooms in one system and not the other),
+    and storing a plan under the feed's label without checking has already
+    filed one room's layout under another's name in production.
+    """
+
+    screen_name: str | None
+    seats: list[dict]
+
+
 def fetch_eagerly_seatplan_geometry(
     *, booking_host: str, cinema_id: str, show_time_id: str
-) -> list[dict] | None:
+) -> EagerlySeatPlanGeometry | None:
     """One room's full seat geometry, for permanent storage.
 
     Used only by `scripts/ingest-seat-floor-plans.py` — a one-off ingest, not
@@ -356,58 +409,67 @@ def fetch_eagerly_seatplan_geometry(
     )
     if seats is None:
         return None
-    return [
-        {
-            **{field: seat.get(field) for field in _FLOOR_PLAN_GEOMETRY_FIELDS},
-            "selectable": _is_bookable_eagerly_seat(seat),
-        }
-        for seat in seats
-    ]
-
-
-# Live per-seat status is re-fetched on every request (nothing persists it),
-# so a short cache is the only thing standing between a popular showtime's
-# detail screen and hammering that cinema's booking host with duplicate reads.
-_LIVE_STATUS_CACHE_TTL_SECONDS = 25
-_live_status_cache: dict[tuple[str, str, str], tuple[float, dict]] = {}
-
-
-def fetch_eagerly_seatplan_live_status(
-    *, booking_host: str, cinema_id: str, show_time_id: str
-) -> dict[tuple[str, str], bool] | None:
-    """Which seats are currently taken, keyed by `(row_name, seat_name)`.
-
-    Returns None if the show id isn't recognised there. Filler/non-bookable
-    seats (including ROL) are left out of the map entirely — the caller's own
-    stored geometry already knows which seats are selectable.
-    """
-    cache_key = (booking_host, cinema_id, show_time_id)
-    cached = _live_status_cache.get(cache_key)
-    if (
-        cached is not None
-        and time.monotonic() - cached[0] < _LIVE_STATUS_CACHE_TTL_SECONDS
-    ):
-        return cached[1]
-
-    seats = _fetch_eagerly_seatplan_raw(
-        booking_host=booking_host, cinema_id=cinema_id, show_time_id=show_time_id
+    # Every seat in a plan carries the same screen; take it off the first one
+    # rather than trusting the caller's idea of which room this show is in.
+    screen_name = (
+        normalize_room(str(seats[0].get("screen_name") or "")) if seats else None
     )
-    if seats is None:
-        return None
-    status = {
-        (
-            str(seat.get("row_name") or "").strip(),
-            str(seat.get("seat_name") or "").strip(),
-        ): (
-            seat.get("ticket_id") is not None
-            or seat.get("seat_lock_id") is not None
-            or seat.get("seat_status") != 0
+    return EagerlySeatPlanGeometry(
+        screen_name=screen_name,
+        seats=[
+            {
+                **{field: seat.get(field) for field in _FLOOR_PLAN_GEOMETRY_FIELDS},
+                "selectable": _is_bookable_eagerly_seat(seat),
+            }
+            for seat in seats
+        ],
+    )
+
+
+# How many of a room's showtimes to try before giving up on it. A room only
+# needs one showtime the booking system agrees is in it, and the first one
+# almost always is; the retries exist for the rare show the agenda feed and
+# the ticketing system file under different rooms.
+MAX_ROOM_GEOMETRY_CANDIDATES = 5
+
+
+def fetch_eagerly_room_geometry(
+    *,
+    booking_host: str,
+    room: str,
+    candidates: list[tuple[str, str]],
+    request_delay_seconds: float = 0.0,
+) -> tuple[list[dict] | None, str]:
+    """One room's seat geometry, taken from a show that agrees it's in `room`.
+
+    `candidates` is `(show_time_id, cinema_id)` for the showtimes the agenda
+    feed puts in `room`, best-first. The room name comes from that feed and
+    the geometry from the booking system, and for an individual show the two
+    can disagree — a screening moved between rooms in one system and not the
+    other — so a candidate is only accepted once its seat plan's own
+    `screen_name` says `room` too. Taking the first candidate on trust is
+    what filed KINO 1's seat map under KINO 4 in production.
+
+    Returns `(None, reason)` when no candidate agreed, so the caller can leave
+    the room without a plan rather than store one belonging to another room.
+    """
+    rejected: list[str] = []
+    for show_time_id, cinema_id in candidates[:MAX_ROOM_GEOMETRY_CANDIDATES]:
+        geometry = fetch_eagerly_seatplan_geometry(
+            booking_host=booking_host,
+            cinema_id=cinema_id,
+            show_time_id=show_time_id,
         )
-        for seat in seats
-        if _is_bookable_eagerly_seat(seat)
-    }
-    _live_status_cache[cache_key] = (time.monotonic(), status)
-    return status
+        if request_delay_seconds:
+            time.sleep(request_delay_seconds)
+        if geometry is None or not geometry.seats:
+            rejected.append(f"{show_time_id}: empty seat plan")
+            continue
+        if geometry.screen_name != room:
+            rejected.append(f"{show_time_id}: booked in {geometry.screen_name!r}")
+            continue
+        return geometry.seats, ""
+    return None, "; ".join(rejected) or "no showtimes in the feed"
 
 
 def _fetch_eagerly(url: str, feed_cache: EagerlyFeedCache) -> SeatAvailability:
@@ -437,6 +499,7 @@ def _fetch_eagerly(url: str, feed_cache: EagerlyFeedCache) -> SeatAvailability:
                 show.location,
                 "eagerly",
                 capacity=seat_count.capacity,
+                taken_seats=seat_count.taken,
             )
 
     # No seat map wired up for this site yet (or its show id wasn't

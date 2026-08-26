@@ -252,7 +252,12 @@ def _eagerly_feed(statuses: dict[str, str], *, cinema_id: str | None = None) -> 
 
 
 def _eagerly_seat(
-    *, selectable: bool, sold: bool = False, held: bool = False, seat_name: str = "1"
+    *,
+    selectable: bool,
+    sold: bool = False,
+    held: bool = False,
+    seat_name: str = "1",
+    row_name: str = "A",
 ) -> dict:
     return {
         "seat_selectable": 1 if selectable else 0,
@@ -260,6 +265,7 @@ def _eagerly_seat(
         "ticket_id": 555 if sold else None,
         "seat_lock_id": 999 if held else None,
         "seat_name": seat_name,
+        "row_name": row_name,
     }
 
 
@@ -350,6 +356,63 @@ def test_eagerly_reads_exact_count_from_seat_plan(monkeypatch) -> None:
     # The aisle-gap row was excluded, but the sold and held seats count
     # towards the room's real total same as the free ones do.
     assert availability.capacity == 4
+
+
+def test_eagerly_reading_carries_the_seats_it_counted(monkeypatch) -> None:
+    """The count and the seat map come off one response, so the reading that
+    pays for the count carries the map too — that is what lets the floor plan
+    be served from the database instead of re-reading the ticket shop."""
+    seatplan_url = (
+        "https://book.filmhallen.nl/webservices/cinema_seatplans/getSeatPlanData"
+        "?cinema_id=2&mobile_device_id=00000000-0000-0000-0000-000000000000"
+        "&show_time_id=197282"
+    )
+    _stub_get(
+        monkeypatch,
+        {
+            "https://filmhallen.nl/fk-feed/agenda": _eagerly_feed(
+                {"197282": "tickets available"}, cinema_id="2"
+            ),
+            seatplan_url: json.dumps(
+                {
+                    "data": [
+                        # Filler carries no seat state either way.
+                        _eagerly_seat(selectable=False, row_name="A", seat_name=""),
+                        _eagerly_seat(selectable=True, row_name="A", seat_name="1"),
+                        _eagerly_seat(
+                            selectable=True, row_name="A", seat_name="2", sold=True
+                        ),
+                        # A held seat is somebody's checkout hold: not buyable,
+                        # so not free.
+                        _eagerly_seat(
+                            selectable=True, row_name="B", seat_name="1", held=True
+                        ),
+                    ]
+                }
+            ),
+        },
+    )
+    availability = fetch_seat_availability(ticket_link=FILMHALLEN_LINK)
+    assert availability.taken_seats == (("A", "2"), ("B", "1"))
+    # The two halves of one reading can never disagree: free is what is left.
+    assert availability.capacity == 3
+    assert availability.seats_left == 1
+
+
+def test_a_platform_without_a_seat_map_reports_no_seats(monkeypatch) -> None:
+    """`None`, never an empty map — "did not say" is not "nothing is taken"."""
+    _stub_get(
+        monkeypatch,
+        {
+            LAB111_LINK: _zelite_page(
+                header="vr 11 september 2026, 21:30 - LAB 1",
+                configured_maxima=[40],
+            )
+        },
+    )
+    availability = fetch_seat_availability(ticket_link=LAB111_LINK)
+    assert availability.seats_left == 40
+    assert availability.taken_seats is None
 
 
 def test_eagerly_wheelchair_space_does_not_count_as_a_seat(monkeypatch) -> None:

@@ -234,6 +234,7 @@ def run_due_watches(*, session: Session, now: datetime | None = None) -> int:
             availability=availability,
             now=reference_time,
             cinema_key=cinema_keys.get(showtime.cinema_id),
+            session=session,
         )
         session.add(showtime)
 

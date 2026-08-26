@@ -17,6 +17,9 @@ import yaml
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 CINEMAS_YAML = BACKEND_ROOT / "data" / "cinemas.yaml"
 SEED_SCRIPT = BACKEND_ROOT / "scripts" / "seed-cities-and-cinemas.py"
+SEAT_CAPACITY_OVERRIDES = (
+    BACKEND_ROOT / "app" / "configs" / "seat_capacity_overrides.yaml"
+)
 
 
 def _load_seed_script() -> ModuleType:
@@ -48,3 +51,24 @@ def test_assert_known_fields_rejects_a_misspelled_field():
 def test_cinemas_yaml_keys_are_unique():
     seed = _load_seed_script()
     seed.assert_unique_keys(_load_cinemas())
+
+
+def test_seat_capacity_overrides_name_real_cinema_keys():
+    """Every override is keyed by a `Cinema.key` that actually exists.
+
+    `app/configs/cinemas.yaml` — which only says which scrapers run — keys the
+    same cinemas by shorter names (`uitkijk`, `fchyena`), and reaching for one
+    of those here is a silent no-op: `_capacity_override` looks the key up
+    against `Cinema.key` and simply finds nothing, so the room quietly falls
+    back to the running-max estimate. That is how De Uitkijk's Grote Zaal spent
+    its life advertising a capacity of 57 in an 85-seat room.
+    """
+    overrides = (
+        yaml.safe_load(SEAT_CAPACITY_OVERRIDES.read_text(encoding="utf-8")) or {}
+    ).get("overrides") or {}
+    known_keys = {cinema["key"] for cinema in _load_cinemas()}
+    unknown = sorted(set(overrides) - known_keys)
+    assert not unknown, (
+        f"seat_capacity_overrides.yaml names cinemas that are not in "
+        f"data/cinemas.yaml: {unknown}"
+    )

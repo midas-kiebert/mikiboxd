@@ -1,65 +1,28 @@
-"""Merge a room's stored floor plan with live status and personal seats."""
-
-from urllib.parse import urlsplit
+"""Merge a room's stored floor plan with the last seat reading and personal seats."""
 
 from sqlmodel import Session
 
 from app.core.enums import GoingStatus
 from app.core.viewer import ViewerId
 from app.crud import showtime as showtime_crud
+from app.crud import showtime_seat_map as seat_map_crud
 from app.exceptions.showtime_exceptions import ShowtimeNotFoundError
 from app.models.cinema_room_floor_plan import CinemaRoomFloorPlan
 from app.schemas.seat_floor_plan import SeatFloorPlanPublic, SeatFloorPlanSeatPublic
-from app.scraping.logger import logger
-from app.scraping.seat_availability import (
-    EAGERLY_BOOKING_HOSTS,
-    EAGERLY_URL_PATTERN,
-    SeatAvailabilityFetchError,
-    fetch_eagerly_seatplan_live_status,
-)
-from app.scraping.seat_availability import eagerly_shows as fetch_eagerly_shows
-
-# One cache per process, shared across requests within its short TTL (see
-# `fetch_eagerly_seatplan_live_status`'s own cache) — a per-request cache here
-# would still hit the agenda feed on every call, which this also avoids.
-_feed_cache: dict[str, dict] = {}
-
-
-def _resolve_live_status(ticket_link: str) -> dict[tuple[str, str], bool] | None:
-    """Which seats are taken right now, or None if that can't be determined.
-
-    Reuses the exact resolution path `_fetch_eagerly` already uses for the
-    aggregate count — the ticket link's own netloc names the booking host,
-    and the site's agenda feed (cached) supplies the Eagerly-internal cinema
-    id a showtime's `provider_id` needs. Any failure here is not fatal to the
-    request: the floor plan still renders, just without live status.
-    """
-    match = EAGERLY_URL_PATTERN.match(ticket_link)
-    if match is None:
-        return None
-    provider_id = match.group(1)
-    netloc = urlsplit(ticket_link).netloc
-    booking_host = EAGERLY_BOOKING_HOSTS.get(netloc)
-    if booking_host is None:
-        return None
-    try:
-        show = fetch_eagerly_shows(f"https://{netloc}", _feed_cache).get(provider_id)
-        if show is None or show.cinema_id is None:
-            return None
-        return fetch_eagerly_seatplan_live_status(
-            booking_host=booking_host,
-            cinema_id=show.cinema_id,
-            show_time_id=provider_id,
-        )
-    except SeatAvailabilityFetchError:
-        logger.warning(f"Live seat status unavailable for {ticket_link}")
-        return None
 
 
 def get_seat_floor_plan(
     *, session: Session, showtime_id: int, viewer: ViewerId
 ) -> SeatFloorPlanPublic | None:
     """A room's seat map for one showtime, or None if this room has none.
+
+    Nothing here touches a ticket shop. Which seats are taken comes from the
+    last reading the availability poller took (`ShowtimeSeatMap`), the same one
+    the "31 of 111 seats left" badge is drawn from — so the two always agree,
+    and opening the seat picker costs a primary-key lookup rather than a live
+    request to a small cinema's booking system. Freshness is the poller's job
+    and its cadence, which is why `seats_checked_at` is handed to the client
+    alongside the seats.
 
     `None` covers every "not applicable here" case alike (room unknown, no
     floor plan ingested for it) — this is an expected, common condition for
@@ -77,11 +40,15 @@ def get_seat_floor_plan(
     if plan is None:
         return None
 
-    live_status = (
-        _resolve_live_status(showtime.ticket_link)
-        if showtime.ticket_link is not None
-        else None
-    )
+    # No reading yet (or a platform that never reports per-seat state) leaves
+    # every seat's status unknown rather than free — a seat map that invents
+    # free seats is worse than one that admits it doesn't know.
+    seat_map = seat_map_crud.get_seat_map(session=session, showtime_id=showtime_id)
+    taken_seats: set[tuple[str, str]] | None = None
+    if seat_map is not None:
+        taken_seats = {
+            (str(row).strip(), str(seat).strip()) for row, seat in seat_map.taken
+        }
 
     viewer_seat: tuple[str, str] | None = None
     if viewer is not None:
@@ -123,10 +90,15 @@ def get_seat_floor_plan(
                 width=seat["width"],
                 height=seat["height"],
                 selectable=seat["selectable"],
-                taken=live_status.get(key) if live_status is not None else None,
+                taken=key in taken_seats if taken_seats is not None else None,
                 is_viewer_seat=key == viewer_seat,
                 friend_count=friend_count_by_seat.get(key, 0),
             )
         )
 
-    return SeatFloorPlanPublic(showtime_id=showtime_id, room=showtime.room, seats=seats)
+    return SeatFloorPlanPublic(
+        showtime_id=showtime_id,
+        room=showtime.room,
+        seats=seats,
+        seats_checked_at=seat_map.checked_at if seat_map is not None else None,
+    )

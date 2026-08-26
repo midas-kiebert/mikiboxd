@@ -38,7 +38,14 @@ TICKET_URL_TEMPLATE = (
 
 # De Uitkijk has exactly one screen, so unlike every other multi-room cinema
 # this needs no per-showtime lookup.
-ROOM_NAME = "De Grote Zaal"
+#
+# Spelled the way the Z-ELITE checkout page spells it ("Grote Zaal", no
+# article) rather than the way uitkijk.nl does, because the seat-availability
+# reading parses the room off that page and overwrites `Showtime.room` with
+# it. Two spellings means one screen with two `Showtime.room` values, which
+# splits the room-capacity index and the manual capacity override that are
+# both keyed on it.
+ROOM_NAME = "Grote Zaal"
 
 
 def clean_title(title: str) -> str:

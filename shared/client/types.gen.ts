@@ -570,21 +570,24 @@ export type SeatAvailabilityLevel =
   | "sold_out"
 
 /**
- * A room's seat map for one showtime, merged with live + personal state.
+ * A room's seat map for one showtime, merged with polled + personal state.
  */
 export type SeatFloorPlanPublic = {
   showtime_id: number
   room: string
   seats: Array<SeatFloorPlanSeatPublic>
+  seats_checked_at?: string | null
 }
 
 /**
  * One seat's position and status on a room's floor plan.
  *
  * Geometry (`position_left/top`, `width`, `height`) is the room's own,
- * stored once and never refreshed. `taken`/`is_viewer_seat`/`friend_count`
- * are computed fresh on every request — `taken` from a live read of the
- * cinema's own seat map, the other two from this showtime's selections.
+ * stored once and never refreshed. `taken` comes from the availability
+ * poller's last reading of this showtime, so it is exactly as fresh as the
+ * seat count shown next to it and no ticket shop is read to answer this;
+ * `is_viewer_seat`/`friend_count` are computed per request from this
+ * showtime's selections.
  */
 export type SeatFloorPlanSeatPublic = {
   row_name: string

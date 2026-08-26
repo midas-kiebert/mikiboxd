@@ -190,6 +190,13 @@ def test_kriterion_show_without_a_theatre_id_is_skipped() -> None:
 
 
 def test_uitkijk_has_exactly_one_room() -> None:
+    """Spelled as the Z-ELITE checkout page spells it, not as uitkijk.nl does.
+
+    The seat reading overwrites `Showtime.room` with the name it parses off
+    that page, so a scraper that disagrees makes one screen alternate between
+    two room names — which splits both the room-capacity index and the manual
+    override keyed on it.
+    """
     from app.scraping.cinemas.amsterdam.uitkijk import ROOM_NAME
 
-    assert ROOM_NAME == "De Grote Zaal"
+    assert ROOM_NAME == "Grote Zaal"

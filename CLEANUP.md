@@ -75,6 +75,7 @@ Legend:
 - [x] `showtime_selection.py` — User's going/interested status on a showtime
 - [x] `sold_out_watch.py` — One user waiting on one full showtime for a returned ticket. Unique `user_id` (not a compound key with the showtime) is the "one watch at a time" rule; one-shot, deleted once it finds a seat
 - [x] `cinema_room_capacity.py` — Largest seat count ever seen in one room of one cinema, keyed `(cinema_id, room)`. Shared across every screening in the room, which is what lets the estimate converge at all — a single showtime is read a handful of times, a busy room hundreds
+- [x] `showtime_seat_map.py` — Which individual seats were taken at a showtime's last reading, keyed by showtime. The per-seat half of a seat availability reading, written by the same poller pass from the same response; kept off `Showtime` because every catalogue query selects that row in full and exactly one endpoint ever wants this. Absent means "unknown", never "nothing taken"
 - [x] `showtime_ping.py` — Notification sent to a friend about a showtime
 - [ ] `showtime_ping_link.py` — Short opaque code (not a self-contained token) mapping a shared `/ping/{showtime_id}/{token}` invite link back to who minted it and for which showtime
 - [x] `notification.py` — Notification-centre entry (match / invite-response / request-accepted)
@@ -154,6 +155,7 @@ Legend:
 - [ ] `analytics_event.py` — Event creation and dashboard aggregation queries
 - [ ] `showtime_report.py` — Report creation, listing (joined), status updates
 - [x] `user_block.py` — Block create/delete, symmetric `is_blocked_either_way`, `get_hidden_user_ids` (both directions folded into one set — the one every list-filtering caller wants)
+- [x] `showtime_seat_map.py` — One showtime's taken-seat map. `record_seat_map` always replaces, never merges: a reading is a complete snapshot of the room, so merging would pin a freed seat as taken for ever
 - [x] `user_report.py` — Report creation, duplicate-open-report check, listing (joined, scalar-subquery count so status filtering doesn't shrink it)
 
 ---
@@ -227,7 +229,7 @@ Legend:
 - [ ] `get_movies.py` — Fetches movies from the DB for enrichment
 - [ ] `get_showtimes.py` — Fetches showtimes from the DB for enrichment
 - [ ] `logger.py` — Scraping-specific log configuration
-- [x] `seat_availability.py` — Turns a showtime's ticket link into a seat count, room, and (Eagerly, Tricket) exact room capacity. Four platforms behind the cinemas we scrape ourselves: Z-ELITE (exact count in `data-configured-max`, max across badge types since some are per-order capped, no capacity), Tricket (the screening resource carries a full seat map + `numberOfAvailableSeats`, so capacity is `len(seats)` — no room name anywhere in the API, only a `hallId` UUID, Studio/K's two halls are 91 and 153 seats), Eagerly (exact count *and* exact capacity for all 7 sites via each site's own unauthenticated `getSeatPlanData` seat-map endpoint — "ROL"/wheelchair-space entries excluded from both, falling back to the feed's sold-out-only status for any site not in the `_EAGERLY_BOOKING_HOSTS` table). A failed fetch raises rather than returning zero
+- [x] `seat_availability.py` — Turns a showtime's ticket link into a seat count, room, and (Eagerly, Tricket) exact room capacity. Four platforms behind the cinemas we scrape ourselves: Z-ELITE (exact count in `data-configured-max`, max across badge types since some are per-order capped, no capacity), Tricket (the screening resource carries a full seat map + `numberOfAvailableSeats`, so capacity is `len(seats)` — no room name anywhere in the API, only a `hallId` UUID, Studio/K's two halls are 91 and 153 seats), Eagerly (exact count *and* exact capacity for all 7 sites via each site's own unauthenticated `getSeatPlanData` seat-map endpoint — "ROL"/wheelchair-space entries excluded from both, falling back to the feed's sold-out-only status for any site not in the `_EAGERLY_BOOKING_HOSTS` table). A failed fetch raises rather than returning zero. `fetch_eagerly_room_geometry` is the floor-plan ingest's entry point: it only accepts a show's seat map for a room once the plan's own `screen_name` agrees, because the feed's room label and the booking system's screen disagree often enough to file one room's layout under another's name
 - [x] `subtitles.py` — Parses cinema subtitle metadata (Dutch free text) into ISO-639-1 codes for `Showtime.subtitles`
 - [ ] `title_hints.py` — Subtitle/year hints recoverable from a raw scraped title/slug
 - [ ] `tmdb.py` — TMDB API client ⚠️ Large (1411 LOC)
@@ -290,6 +292,8 @@ Legend:
 - [ ] `tests/services/` — Service tests (most critical layer)
 - [ ] `tests/converters/` — Converter tests
 - [ ] `tests/scraping/` — Scraper tests
+- [x] `tests/services/test_seat_map_persistence.py` — The seat map is polled, stored and served: a reading stores the seats it already read, a later one replaces rather than merges, a platform that reports no seat map leaves the stored one alone, an unpolled showtime reads as unknown rather than free, and drawing the floor plan never touches a ticket shop
+- [x] `tests/scraping/test_seat_floor_plan_room_match.py` — A stored floor plan must belong to the room it's filed under: the agenda feed names the room, the booking system supplies the geometry, and when a show's `screen_name` says a different room the ingest walks on to the next showtime rather than storing another room's seats
 - [ ] `tests/fixtures/` — Test factories and shared fixtures
 - [ ] Add tests for `services/me.py`
 - [ ] Add tests for `services/showtimes.py` (visibility logic)

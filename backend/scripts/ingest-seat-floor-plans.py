@@ -7,6 +7,13 @@ room's layout essentially never changes, so this reads it once per known room
 and stores it in `cinemaroomfloorplan` rather than being scraped on a
 schedule.
 
+Which room a plan belongs to is the one thing here that can silently go wrong:
+the room name comes from the site's agenda feed and the geometry from its
+booking system, and for an individual show those two can disagree (a screening
+moved between rooms in one system and not the other). A plan is therefore only
+stored once its own `screen_name` agrees with the feed's room, walking further
+into that room's showtimes when it doesn't.
+
 Run unconditionally from `scripts/prestart.sh` on every deploy, same as
 `seed-cities-and-cinemas.py` — but unlike that script this one does real
 outbound requests to 7 external booking sites, so it skips entirely (a single
@@ -20,7 +27,6 @@ prod) does the real ingest, and every deploy after that is a no-op. Pass
 """
 
 import argparse
-import time
 
 from sqlmodel import Session, func, select
 
@@ -30,7 +36,7 @@ from app.models.cinema_room_floor_plan import CinemaRoomFloorPlan
 from app.scraping.seat_availability import (
     EAGERLY_BOOKING_HOSTS,
     EagerlyFeedCache,
-    fetch_eagerly_seatplan_geometry,
+    fetch_eagerly_room_geometry,
 )
 from app.scraping.seat_availability import eagerly_shows as fetch_eagerly_shows
 
@@ -84,24 +90,27 @@ def ingest_floor_plans(*, force: bool = False) -> None:
             cinema_id = cinema_crud.get_cinema_id_by_key(session=session, key=cinema_key)
 
         shows = fetch_eagerly_shows(f"https://{netloc}", feed_cache)
-        rooms: dict[str, tuple[str, str]] = {}  # room -> (provider_id, eagerly_cinema_id)
+        # Every showtime the feed puts in a room, not just the first: the
+        # first one is only a candidate until its seat plan agrees it really
+        # is in that room.
+        rooms: dict[str, list[tuple[str, str]]] = {}
         for provider_id, show in shows.items():
-            if show.location and show.cinema_id and show.location not in rooms:
-                rooms[show.location] = (provider_id, show.cinema_id)
+            if show.location and show.cinema_id:
+                rooms.setdefault(show.location, []).append((provider_id, show.cinema_id))
 
         if not rooms:
             skipped.append(f"{cinema_key} (no rooms found in agenda feed)")
             continue
 
-        for room, (provider_id, eagerly_cinema_id) in rooms.items():
-            seats = fetch_eagerly_seatplan_geometry(
+        for room, candidates in rooms.items():
+            seats, reason = fetch_eagerly_room_geometry(
                 booking_host=booking_host,
-                cinema_id=eagerly_cinema_id,
-                show_time_id=provider_id,
+                room=room,
+                candidates=candidates,
+                request_delay_seconds=REQUEST_DELAY_SECONDS,
             )
-            time.sleep(REQUEST_DELAY_SECONDS)
-            if not seats:
-                skipped.append(f"{cinema_key}/{room} (empty seat plan)")
+            if seats is None:
+                skipped.append(f"{cinema_key}/{room} ({reason})")
                 continue
 
             with get_db_context() as session:

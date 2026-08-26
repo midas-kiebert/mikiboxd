@@ -7,11 +7,15 @@
 # landed. An entry here is used immediately instead, as soon as any reading
 # comes in for that cinema/room — see `app/services/seat_availability.py`.
 #
-# Keyed by cinema `key` (Cinema.key / cinemas.yaml — the stable identifier,
-# not the display name), then by room name exactly as that cinema's scraper
-# writes it to `Showtime.room` (check a live showtime or the scraper itself
-# if unsure; a mismatched name here just means the override is silently
-# never used, not an error).
+# Keyed by cinema `key` — `Cinema.key`, from `backend/data/cinemas.yaml`, the
+# stable identifier and not the display name. Note that this is *not* the same
+# namespace as the short keys in `app/configs/cinemas.yaml`, which only say
+# which scrapers run (`de-uitkijk` here vs `uitkijk` there); `tests/test_cinemas_yaml.py`
+# guards the difference, because a mismatch is silently never used, not an
+# error. Then keyed by room name exactly as it ends up on `Showtime.room` —
+# which is what the seat *reading* parses off the ticket page where there is
+# one, not what the scraper writes (see `_apply_reading`). Check a live
+# showtime if unsure.
 #
 # Example:
 # overrides:
@@ -33,12 +37,12 @@ overrides:
     "Cinema 2": 127
     "Cinema 3": 130
     "Cinema 4": 67
-  uitkijk:
+  de-uitkijk:
     "Grote Zaal": 85
   kriterion:
     "K 1": 198
     "K 2": 85
     "K 3": 67
-  fchyena:
+  fc-hyena:
     "Zaal 1": 60
     "Zaal 2": 104

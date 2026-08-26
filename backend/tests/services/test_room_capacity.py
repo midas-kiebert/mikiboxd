@@ -2,11 +2,19 @@
 
 from datetime import datetime, timedelta
 
+from sqlmodel import Session
+
+from app.models.cinema_room_capacity import CinemaRoomCapacity
 from app.models.showtime import Showtime
 from app.scraping.seat_availability import SeatAvailability
+from app.services import seat_availability as seat_availability_service
 from app.services.seat_availability import apply_reading
 
 NOW = datetime(2026, 8, 24, 12, 0)
+
+UITKIJK_TICKET_LINK = (
+    "https://tickets.uitkijk.nl/uitkijk/nl/flow_configs/webshop/steps/start/show/1284208"
+)
 
 
 def _showtime(showtime_id: int, room: str | None = "LAB 1", **kwargs) -> Showtime:
@@ -78,3 +86,65 @@ def test_rooms_are_scoped_to_their_cinema() -> None:
     assert room_capacities[(7, "Grote Zaal")] == 300
     assert room_capacities[(9, "Grote Zaal")] == 60
     assert second.seats_capacity == 60
+
+
+def test_the_interest_path_lends_the_room_to_a_first_reading(
+    db_transaction: Session, showtime_factory, monkeypatch
+) -> None:
+    """A showtime read for the very first time because somebody selected it.
+
+    This is the worst case for a per-showtime running max — one sample, and it
+    is however many seats happened to be free — so it is exactly where the
+    room's known size has to be folded in. Showtime 1876475 shipped as "57/57"
+    in De Uitkijk's 85-seat Grote Zaal because this path skipped the index.
+    """
+    showtime = showtime_factory(
+        room="Grote Zaal",
+        ticket_link=UITKIJK_TICKET_LINK,
+        seats_checked_at=None,
+    )
+    db_transaction.add(
+        CinemaRoomCapacity(
+            cinema_id=showtime.cinema_id, room="Grote Zaal", seats_capacity=85
+        )
+    )
+    db_transaction.commit()
+
+    monkeypatch.setattr(
+        seat_availability_service,
+        "fetch_seat_availability",
+        lambda *, ticket_link: SeatAvailability(57, False, "Grote Zaal", "z-elite"),
+    )
+    seat_availability_service.check_now(
+        session=db_transaction, showtime_id=showtime.id
+    )
+
+    db_transaction.refresh(showtime)
+    assert showtime.seats_left == 57
+    assert showtime.seats_capacity == 85
+
+
+def test_the_interest_path_teaches_the_room_what_it_read(
+    db_transaction: Session, showtime_factory, monkeypatch
+) -> None:
+    """...and the traffic goes both ways: a first reading big enough to raise
+    the room's number is written back, so the next screening starts from it."""
+    showtime = showtime_factory(
+        room="Grote Zaal",
+        ticket_link=UITKIJK_TICKET_LINK,
+        seats_checked_at=None,
+    )
+    db_transaction.commit()
+
+    monkeypatch.setattr(
+        seat_availability_service,
+        "fetch_seat_availability",
+        lambda *, ticket_link: SeatAvailability(85, False, "Grote Zaal", "z-elite"),
+    )
+    seat_availability_service.check_now(
+        session=db_transaction, showtime_id=showtime.id
+    )
+
+    learned = db_transaction.get(CinemaRoomCapacity, (showtime.cinema_id, "Grote Zaal"))
+    assert learned is not None
+    assert learned.seats_capacity == 85

@@ -412,12 +412,28 @@ def check_now(*, session: Session, showtime_id: int) -> None:
             session.commit()
             return
         cinema = session.get(Cinema, showtime.cinema_id)
+        # This is a showtime's *first* reading, so its own running max is a
+        # single sample and will read far too small in a room that is already
+        # half sold — exactly the case where what the room taught the poller
+        # matters most. Threading the index in is what stops that first number
+        # from claiming an 85-seat room holds the 57 seats that happened to be
+        # free (see `apply_reading`).
+        room_capacities = room_capacity_crud.get_room_capacities(
+            session=session, cinema_ids=[showtime.cinema_id]
+        )
+        known_room_capacities = dict(room_capacities)
         crossed = apply_reading(
             showtime=showtime,
             availability=availability,
             now=now_amsterdam_naive(),
             cinema_key=cinema.key if cinema else None,
+            room_capacities=room_capacities,
             session=session,
+        )
+        _persist_raised_room_capacities(
+            session=session,
+            room_capacities=room_capacities,
+            before=known_room_capacities,
         )
         session.add(showtime)
         session.commit()
@@ -720,6 +736,26 @@ def _select_batch(candidates: list[Showtime]) -> dict[str, list[Showtime]]:
     return by_host
 
 
+def _persist_raised_room_capacities(
+    *,
+    session: Session,
+    room_capacities: RoomCapacityIndex,
+    before: RoomCapacityIndex,
+) -> None:
+    """Write back the room capacities this run's readings raised.
+
+    `apply_reading` updates the index in place, so the only rows worth a write
+    are the ones that actually moved; everything else is what was loaded a
+    moment ago.
+    """
+    for (cinema_id, room), capacity in room_capacities.items():
+        if before.get((cinema_id, room)) == capacity:
+            continue
+        room_capacity_crud.record_room_capacity(
+            session=session, cinema_id=cinema_id, room=room, seats_capacity=capacity
+        )
+
+
 def refresh_seat_availability(
     *,
     session: Session,
@@ -803,12 +839,11 @@ def refresh_seat_availability(
                 read_count += 1
         session.add(showtime)
 
-    for (cinema_id, room), capacity in room_capacities.items():
-        if known_room_capacities.get((cinema_id, room)) == capacity:
-            continue
-        room_capacity_crud.record_room_capacity(
-            session=session, cinema_id=cinema_id, room=room, seats_capacity=capacity
-        )
+    _persist_raised_room_capacities(
+        session=session,
+        room_capacities=room_capacities,
+        before=known_room_capacities,
+    )
     session.commit()
 
     if alerted_showtime_ids:

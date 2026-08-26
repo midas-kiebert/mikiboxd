@@ -33,9 +33,7 @@ def record_seat_map(
     existing = session.get(ShowtimeSeatMap, showtime_id)
     if existing is None:
         session.add(
-            ShowtimeSeatMap(
-                showtime_id=showtime_id, taken=taken, checked_at=checked_at
-            )
+            ShowtimeSeatMap(showtime_id=showtime_id, taken=taken, checked_at=checked_at)
         )
         return
     existing.taken = taken

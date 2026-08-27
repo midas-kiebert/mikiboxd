@@ -824,7 +824,7 @@ export default function SettingsScreen() {
                 <View style={styles.notificationToggleTextContainer}>
                   <ThemedText style={styles.notificationToggleTitle}>Notify on new films</ThemedText>
                   <ThemedText style={styles.notificationToggleDescription}>
-                    Email me when a film on my watchlist becomes available at my cinemas.
+                    Email me when a film from my Letterboxd watchlist, or a list I pick, becomes available.
                   </ThemedText>
                 </View>
                 <AppSwitch

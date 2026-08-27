@@ -18,14 +18,18 @@ Two-phase pipeline, both run daily by the scheduler:
      marked notified without ever appearing in an email.
 
      What's left is sent depending on frequency:
-       - DAILY: sent immediately, every day there's something pending.
-       - WEEKLY_OR_URGENT: held back until either one of the pending movies
-         has a showtime within 3 days, or it's been more than a week since
-         the last digest — whichever comes first.
+       - DAILY: sent every day there is something pending, with no horizon —
+         a film whose only showtime is five months out is mailed today, which
+         is the point: it is the setting for booking early.
+       - WEEKLY: sent on Thursday mornings only, and restricted to films with
+         a showtime in the next seven days. A pending film that is further out
+         is *not* dropped and *not* marked notified — it simply waits in the
+         queue until one of its showtimes falls inside the window, which may be
+         months later.
 
-     Every showtime in a sent email is the movie's current next future
-     showtime; once sent, the movie is marked notified for that user and is
-     never reconsidered, even if the showtime later changes.
+     Every showtime in a sent email is the movie's next future showtime that
+     the frequency's horizon allows; once sent, the movie is marked notified
+     for that user and is never reconsidered, even if a showtime later changes.
 """
 
 from datetime import datetime, timedelta
@@ -50,8 +54,12 @@ from app.utils import now_amsterdam_naive
 
 logger = getLogger(__name__)
 
-_URGENT_WITHIN = timedelta(days=3)
-_WEEKLY_MAX_WAIT = timedelta(days=7)
+# How far ahead a WEEKLY digest looks. Films outside it stay queued rather than
+# being sent early, so a weekly reader only ever sees what is actually coming up.
+_WEEKLY_HORIZON = timedelta(days=7)
+# Thursday, as `datetime.weekday()` numbers it: the day Dutch cinemas normally
+# publish the new week's programme, so it is the day with the most to report.
+_WEEKLY_SEND_WEEKDAY = 3
 
 
 def refresh_digest_queue(*, session: Session, now: datetime | None = None) -> int:
@@ -198,12 +206,20 @@ def _resolve_digest_cinema_ids(*, session: Session, user: User) -> list[int]:
 
 
 def _resolve_movie_entries(
-    *, session: Session, movie_ids: set[int], cinema_ids: list[int], now: datetime
+    *,
+    session: Session,
+    movie_ids: set[int],
+    cinema_ids: list[int],
+    now: datetime,
+    horizon: timedelta | None,
 ) -> list[tuple[Movie, Showtime]]:
     """Pair each movie with its current next future showtime, dropping any movie
 
     that no longer has one. When ``cinema_ids`` is non-empty, only showtimes at
     those cinemas are considered — a movie showing solely elsewhere is dropped.
+    When ``horizon`` is set, showtimes beyond it are ignored too, which drops
+    the movie from this send without marking it notified: the caller leaves it
+    queued for a later week.
     """
     if not movie_ids:
         return []
@@ -214,6 +230,8 @@ def _resolve_movie_entries(
             col(Showtime.movie_id) == movie.id,
             col(Showtime.datetime) > now,
         )
+        if horizon is not None:
+            stmt = stmt.where(col(Showtime.datetime) <= now + horizon)
         if cinema_ids:
             stmt = stmt.where(col(Showtime.cinema_id).in_(cinema_ids))
         next_showtime = session.exec(
@@ -235,20 +253,28 @@ def _mark_notified(
         )
 
 
-def _should_send_now(
-    *,
-    user: User,
-    movie_entries: list[tuple[Movie, Showtime]],
-    now: datetime,
-) -> bool:
+def _should_send_now(*, user: User, now: datetime) -> bool:
+    """Whether this user's digest is due today, on frequency alone.
+
+    Deliberately independent of what is pending: WEEKLY is a fixed Thursday
+    slot, not "a week since the last one". There is no early send for a
+    showtime that is nearly here — a weekly reader has said they want one email
+    a week, and a film that sells out between two Thursdays is the cost of
+    that. The date check guards against a second send if the job is re-run.
+    """
     if user.notify_watchlist_digest_frequency == DigestFrequency.DAILY:
         return True
-    has_urgent_showtime = any(
-        showtime.datetime - now < _URGENT_WITHIN for _, showtime in movie_entries
-    )
+    if now.weekday() != _WEEKLY_SEND_WEEKDAY:
+        return False
     last_sent_at = user.notify_watchlist_digest_last_sent_at
-    week_elapsed = last_sent_at is None or (now - last_sent_at) > _WEEKLY_MAX_WAIT
-    return has_urgent_showtime or week_elapsed
+    return last_sent_at is None or last_sent_at.date() != now.date()
+
+
+def _digest_horizon(user: User) -> timedelta | None:
+    """How far ahead this user's digest looks. None means no limit."""
+    if user.notify_watchlist_digest_frequency == DigestFrequency.DAILY:
+        return None
+    return _WEEKLY_HORIZON
 
 
 def _is_eligible(user: User) -> bool:
@@ -275,6 +301,8 @@ def build_and_send_digest(
         return False
 
     reference_time = now or now_amsterdam_naive()
+    if not _should_send_now(user=user, now=reference_time):
+        return False
 
     pending_movie_ids = _pending_movie_ids_for_user(
         session=session, user_id=user.id, source_subquery=source_subquery
@@ -304,11 +332,9 @@ def build_and_send_digest(
         movie_ids=candidate_ids,
         cinema_ids=cinema_ids,
         now=reference_time,
+        horizon=_digest_horizon(user),
     )
     if not movie_entries:
-        return False
-
-    if not _should_send_now(user=user, movie_entries=movie_entries, now=reference_time):
         return False
 
     movie_entries.sort(key=lambda pair: pair[0].title.lower())
@@ -316,12 +342,14 @@ def build_and_send_digest(
     email_data = generate_watchlist_digest_email(
         email_to=user.email,
         movie_entries=movie_entries,
+        frequency=user.notify_watchlist_digest_frequency,
     )
     try:
         send_email(
             email_to=user.email,
             subject=email_data.subject,
             html_content=email_data.html_content,
+            text_content=email_data.text_content,
         )
     except (AssertionError, EmailDeliveryError, Exception):
         logger.exception("Failed sending watchlist digest email to %s", user.email)

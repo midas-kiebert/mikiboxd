@@ -148,7 +148,7 @@ export default function SettingsScreen() {
   const [digestAdvancedOpen, setDigestAdvancedOpen] = useState(false);
   const [isUpdatingDigest, setIsUpdatingDigest] = useState(false);
   const [isDigestFrequencyInfoVisible, setIsDigestFrequencyInfoVisible] = useState(false);
-  // Explanation copy for the Eager/Lazy frequency modes, kept on the backend so
+  // Explanation copy for the Eager/Weekly frequency modes, kept on the backend so
   // it can be updated whenever the digest algorithm itself changes.
   const { data: digestFrequencyInfo } = useQuery({
     queryKey: ['watchlist-digest-frequency-info'],
@@ -822,9 +822,9 @@ export default function SettingsScreen() {
             <View style={styles.notificationToggleRow}>
               <View style={styles.notificationToggleHeader}>
                 <View style={styles.notificationToggleTextContainer}>
-                  <ThemedText style={styles.notificationToggleTitle}>Notify on new showtimes</ThemedText>
+                  <ThemedText style={styles.notificationToggleTitle}>Notify on new films</ThemedText>
                   <ThemedText style={styles.notificationToggleDescription}>
-                    Email me when a watchlisted movie gets a showtime it didn&apos;t have before.
+                    Email me when a film on my watchlist becomes available at my cinemas.
                   </ThemedText>
                 </View>
                 <AppSwitch
@@ -840,7 +840,7 @@ export default function SettingsScreen() {
                     onPress={() => setIsDigestFrequencyInfoVisible(true)}
                     hitSlop={8}
                     accessibilityRole="button"
-                    accessibilityLabel="What do Eager and Lazy mean?"
+                    accessibilityLabel="What do Eager and Weekly mean?"
                   >
                     <MaterialIcons name="info-outline" size={15} color={colors.textSecondary} />
                   </TouchableOpacity>
@@ -883,7 +883,7 @@ export default function SettingsScreen() {
                           styles.notificationChannelOptionTextActive,
                       ]}
                     >
-                      Lazy
+                      Weekly
                     </ThemedText>
                   </TouchableOpacity>
                 </View>
@@ -1215,7 +1215,7 @@ export default function SettingsScreen() {
       <ConfirmDialog
         visible={isDigestFrequencyInfoVisible}
         icon="info-outline"
-        title="Eager vs Lazy"
+        title="Eager vs Weekly"
         message={
           digestFrequencyInfo
             ? `${digestFrequencyInfo.daily.label}: ${digestFrequencyInfo.daily.description}\n\n${digestFrequencyInfo.weekly_or_urgent.label}: ${digestFrequencyInfo.weekly_or_urgent.description}`

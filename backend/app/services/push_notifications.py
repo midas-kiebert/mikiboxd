@@ -57,6 +57,7 @@ def _send_email_notification(*, email_to: str, subject: str, body: str) -> bool:
             email_to=email_to,
             subject=subject,
             html_content=html_content,
+            text_content=body,
         )
         return True
     except (AssertionError, EmailDeliveryError, Exception):

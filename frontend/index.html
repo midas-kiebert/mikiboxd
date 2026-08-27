@@ -4,7 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MiKiNO</title>
-    <link rel="icon" type="image/png" href="/assets/images/favicon.png" />
+    <!-- /favicon.ico and /apple-touch-icon.png are served from the site root on
+         purpose. Services that build a sender or site avatar - Proton Mail's
+         inbox sender images among them - request those conventional paths
+         directly instead of parsing this HTML, and nginx's SPA fallback used to
+         answer them with index.html under a 200, which reads as "served
+         something that isn't an image". Keep the files in frontend/public/. -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/png" href="/assets/images/favicon.png" sizes="256x256" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta
       name="description"
       content="MiKiNO helps you discover what's playing at cinemas in your city, keep track of what you want to see, and coordinate showtimes with friends."

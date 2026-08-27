@@ -66,14 +66,15 @@ async def get_watchlist_digest_frequency_info() -> DigestFrequencyInfoResponse:
         daily=DigestFrequencyInfo(
             label="Eager",
             description=(
-                "Sends an email the same day a watchlisted movie gets a new showtime."
+                "Emails you the day a watchlisted movie becomes available, however "
+                "far ahead it screens — so you can book the ones that sell out."
             ),
         ),
         weekly_or_urgent=DigestFrequencyInfo(
-            label="Lazy",
+            label="Weekly",
             description=(
-                "Holds new showtimes back and sends one email a week, unless one of "
-                "them is happening within 3 days — then it sends right away."
+                "One email on Thursday morning with the watchlisted movies screening "
+                "in the next seven days. Anything further out waits its turn."
             ),
         ),
     )

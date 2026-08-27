@@ -206,6 +206,7 @@ def recover_password(email: str, session: SessionDep) -> Message:
             email_to=user.email,
             subject=email_data.subject,
             html_content=email_data.html_content,
+            text_content=email_data.text_content,
         )
     except EmailDeliveryError as e:
         logger.exception("Password recovery email delivery failed for %s", user.email)

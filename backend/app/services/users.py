@@ -474,6 +474,7 @@ def send_email_verification(*, user: User) -> bool:
             email_to=user.email,
             subject=email_data.subject,
             html_content=email_data.html_content,
+            text_content=email_data.text_content,
         )
     except Exception:
         logger.exception("Verification email delivery failed for %s", user.email)

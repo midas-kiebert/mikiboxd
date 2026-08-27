@@ -38,7 +38,7 @@ Legend:
 - [x] `initial_data.py` — Calls `init_db` to seed first superuser
 - [x] `scheduler.py` — APScheduler setup, registers scraping jobs
 - [x] `utils.py` — Generic helpers (`now_amsterdam_naive`, `to_amsterdam_time`, `clean_title`)
-- [x] `mailer.py` — Email sending and template rendering (split out of `utils.py`; not named `email.py` because it would shadow stdlib `email`). Templates live in `email-templates/src/*.mjml` (source) and `email-templates/build/*.html` (rendered); `verify_email` is the "confirm your email" message sent at registration, whose link points straight at the API (`GET /users/verify-email`) rather than through the frontend, like the digest's unsubscribe link
+- [x] `mailer.py` — Email sending and template rendering (split out of `utils.py`; not named `email.py` because it would shadow stdlib `email`). Templates live in `email-templates/src/*.mjml` (source) and `email-templates/build/*.html` (rendered); `verify_email` is the "confirm your email" message sent at registration, whose link points straight at the API (`GET /users/verify-email`) rather than through the frontend, like the digest's unsubscribe link. Note `mjml` is not a project dependency and there is no build script, so `build/*.html` is edited by hand and `src/*.mjml` kept in sync manually — `watchlist_digest.html` is now plain hand-written table HTML rather than MJML output. All mail is multipart/alternative; `_html_to_plain_text` derives the text part for generators that don't hand-write one
 - ~~`logging_/logger.py`~~ — deleted (loguru removed, stdlib logging used throughout)
 
 ---
@@ -292,6 +292,8 @@ Legend:
 - [ ] `tests/services/` — Service tests (most critical layer)
 - [ ] `tests/converters/` — Converter tests
 - [ ] `tests/scraping/` — Scraper tests
+- [x] `frontend/public/favicon.ico` + `frontend/public/apple-touch-icon.png` — Root-path site icons, generated from `assets/images/favicon.png` with ImageMagick (ico at 16/32/48, touch icon 180x180 flattened on white since iOS composites transparency onto black). They exist because avatar fetchers (Proton Mail's sender images) request the conventional root paths rather than parsing index.html, and nginx's SPA fallback answered those with index.html under a 200
+- [x] `tests/test_mailer.py` — Email shaping the digest depends on to reach the primary inbox: per-frequency subjects (Eager claims no timeframe because it has no horizon, Weekly says "this week"), never a brand prefix, and a text/plain part that keeps link URLs, drops MJML's <head>/<style>/Outlook comments, and collapses blank-line runs
 - [x] `tests/services/test_seat_map_persistence.py` — The seat map is polled, stored and served: a reading stores the seats it already read, a later one replaces rather than merges, a platform that reports no seat map leaves the stored one alone, an unpolled showtime reads as unknown rather than free, and drawing the floor plan never touches a ticket shop
 - [x] `tests/scraping/test_seat_floor_plan_room_match.py` — A stored floor plan must belong to the room it's filed under: the agenda feed names the room, the booking system supplies the geometry, and when a show's `screen_name` says a different room the ingest walks on to the next showtime rather than storing another room's seats
 - [ ] `tests/fixtures/` — Test factories and shared fixtures

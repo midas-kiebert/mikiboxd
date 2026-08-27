@@ -113,3 +113,24 @@ export function formatCheckedAtShort(checkedAt: string | null | undefined): stri
   const days = Math.round(hours / 24);
   return `checked ${days}d ago`;
 }
+
+/**
+ * The calmest rung of the scale — a room that is still almost entirely free.
+ *
+ * Kept as a set rather than a comparison so a future scale change reads as one
+ * edit here, and so an unknown/retired level never accidentally counts as calm.
+ */
+const CALM_LEVELS: SeatAvailabilityLevel[] = ["some_taken"];
+
+/**
+ * Whether a level is worth drawing where the badge is a bare icon.
+ *
+ * The icon exists to say "hurry if you want a ticket". "Nearly empty" is the
+ * absence of that, so on a dense row it costs the reader a glance and tells
+ * them nothing — the calmest level renders nothing at all there. Where the
+ * badge carries its seat count (a showtime list, the sheet) every level still
+ * shows, because the number itself is the information.
+ */
+export function isUrgentSeatAvailabilityLevel(level: SeatAvailabilityLevel): boolean {
+  return !CALM_LEVELS.includes(level);
+}

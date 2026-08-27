@@ -111,9 +111,21 @@ class NotificationChannel(str, Enum):
 class DigestFrequency(str, Enum):
     """How often a user wants to receive the watchlist new-showtime email digest.
 
-    DAILY sends every newly-available movie every day. WEEKLY_OR_URGENT holds
-    new movies back for up to a week, but sends early if one of the pending
-    showtimes is happening soon — see app/services/watchlist_digest.py.
+    DAILY mails you the day a watchlisted film becomes available, however far
+    out its first showtime is — it exists so you can book months ahead for the
+    screenings that sell out. Shown as "Eager".
+
+    WEEKLY_OR_URGENT mails you once, on Thursday morning, and only about films
+    screening within the next seven days. A film whose showtimes are all
+    further out is not dropped: it stays queued until one of them comes within
+    the week. Shown as "Weekly".
+
+    The WEEKLY_OR_URGENT name is a leftover: the "or urgent" half — an early
+    send when a pending showtime was within three days — was removed, but the
+    stored/wire value is deliberately left alone so installed app builds keep
+    round-tripping it. Rename it only alongside a client version floor.
+
+    See app/services/watchlist_digest.py.
     """
 
     DAILY = "daily"

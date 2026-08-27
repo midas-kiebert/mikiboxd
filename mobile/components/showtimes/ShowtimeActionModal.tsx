@@ -188,6 +188,13 @@ type ShowtimeActionModalProps = {
 const CLOSE_BUTTON_SIZE = 30;
 const CLOSE_BUTTON_TOP = -10;
 const WATCH_MARKER_GAP = 8;
+// Poster geometry, shared with the Report link that is pinned relative to it.
+const POSTER_HEIGHT = 105;
+const POSTER_COLUMN_GAP = 4;
+// The Report link's own footprint (its text's lineHeight plus its padding) and
+// the breathing room it keeps from the watch markers stacked above it.
+const REPORT_LINK_HEIGHT = 15;
+const REPORT_LINK_GAP = 6;
 // The bell that starts a returned-ticket watch is a bare 20px glyph in a dense
 // header row, so it borrows the surrounding padding to reach a tappable size.
 const SEAT_WATCH_BELL_HIT_SLOP = 10;
@@ -1651,7 +1658,12 @@ export default function ShowtimeActionModal({
                   button: high up where there is room to spare, above where the
                   report link sits lower down (see reportLink). */}
               {watchMarkers.length > 0 ? (
-                <View style={styles.watchMarkersColumn}>
+                <View
+                  style={[
+                    styles.watchMarkersColumn,
+                    canReport && disableMovieNavigation && styles.watchMarkersColumnReportReserve,
+                  ]}
+                >
                   {watchMarkers.map((marker) => (
                     <TouchableOpacity
                       key={marker.kind}
@@ -1688,13 +1700,20 @@ export default function ShowtimeActionModal({
               >
                 <MaterialIcons name="close" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
-              {/* Pinned to summaryRow's own top edge (see reportLink's `top`)
-                  rather than floating off audienceBox below, so it lines up
-                  with "More info" regardless of how tall the title/audience
-                  box end up being. */}
+              {/* Pinned to summaryRow's own edges rather than floating off
+                  audienceBox below: to the top edge so it lines up with "More
+                  info" regardless of how tall the title/audience box end up
+                  being, or — with no "More info" to line up with — to the
+                  bottom edge, which is as low as it can go without crossing the
+                  audience divider. */}
               {canReport && (
                 <TouchableOpacity
-                  style={styles.reportLink}
+                  style={[
+                    styles.reportLink,
+                    disableMovieNavigation
+                      ? styles.reportLinkAtRowBottom
+                      : styles.reportLinkAlignedWithMoreInfo,
+                  ]}
                   onPress={() => setIsReportDialogVisible(true)}
                   hitSlop={8}
                   activeOpacity={0.6}
@@ -2458,14 +2477,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     // posterColumn below.
     poster: {
       width: 70,
-      height: 105,
+      height: POSTER_HEIGHT,
       borderRadius: 8,
       backgroundColor: colors.posterPlaceholder,
     },
     // Poster + "More info" stacked as one unit: the link sits right under the
     // thing it's more info about, instead of competing with the title/badges
     // for space in the text column beside it.
-    posterColumn: { gap: 4 },
+    posterColumn: { gap: POSTER_COLUMN_GAP },
     // `minWidth: 0` so a long unbroken title or director credit shrinks and
     // ellipsises instead of pushing the watch-marker column out of the row.
     summaryInfo: { flex: 1, minWidth: 0, gap: 1 },
@@ -2527,12 +2546,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
       textAlign: "center",
     },
-    // Pinned to summaryRow's top edge (poster height + posterColumn's gap) so
-    // it lands at the same height as "More info" under the poster, without
-    // claiming space of its own in the row's flow.
+    // Never in the row's flow: it would either steal width from the title or
+    // push the row taller for one 10pt line. Where it hangs depends on whether
+    // "More info" is there to line up with (see reportLinkAlignedWithMoreInfo /
+    // reportLinkAtRowBottom).
     reportLink: {
       position: "absolute",
-      top: 109,
       right: 0,
       flexDirection: "row",
       alignItems: "center",
@@ -2540,6 +2559,17 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingVertical: 1,
       paddingHorizontal: 4,
     },
+    // Pinned to summaryRow's top edge (poster height + posterColumn's gap) so
+    // it lands at the same height as "More info" under the poster, without
+    // claiming space of its own in the row's flow.
+    reportLinkAlignedWithMoreInfo: { top: POSTER_HEIGHT + POSTER_COLUMN_GAP },
+    // No "More info" (the sheet was opened from the movie page): there is
+    // nothing to line up with, and the old fixed `top` then dangled the link
+    // past the row and over the audience divider below it. Sitting on the row's
+    // own bottom edge keeps it inside the row whatever the row's height is; the
+    // watch markers reserve the space it lands in (see watchMarkersColumn), so
+    // it can't ride up into them either.
+    reportLinkAtRowBottom: { bottom: 0 },
     reportLinkText: {
       fontSize: 10.5,
       lineHeight: 13,
@@ -2560,6 +2590,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       // whole point of the column, and half a pill is worse than a truncated
       // director credit.
       flexShrink: 0,
+    },
+    // Holds the row open under the markers so the Report link, pinned to the
+    // row's bottom edge, has somewhere to land that isn't on top of them. Only
+    // needed when the link is bottom-pinned; when it lines up with "More info"
+    // the poster column already makes the row tall enough.
+    watchMarkersColumnReportReserve: {
+      paddingBottom: REPORT_LINK_HEIGHT + REPORT_LINK_GAP,
     },
     // Neutral pill; only the icon carries the watchlisted/watched colour, so the
     // markers read as a quiet aside next to the title rather than a call to act.

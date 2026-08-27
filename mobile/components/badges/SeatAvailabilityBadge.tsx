@@ -6,7 +6,8 @@
  * time/cinema/subtitles in a row without reading as another pill, and there
  * is nothing behind a tap here (that detail lives in the showtime sheet).
  * `iconOnly` drops the count entirely for spots too tight for it (a showtime
- * row inside a movie card).
+ * row inside a movie card), and `urgentOnly` keeps that bare icon silent for
+ * the calmest level, where it would say nothing worth the reader's glance.
  *
  * Reads from the prefetch cache and never fetches: a screenful of rows must not
  * become a screenful of requests. A row whose availability was never prefetched,
@@ -17,24 +18,30 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useCachedShowtimeSeatAvailability } from "shared/hooks/useShowtimeSeatAvailability";
 
 import { ThemedText } from "@/components/themed-text";
-import { getSeatAvailabilityMeta } from "@/components/showtimes/seat-availability-level";
+import {
+  getSeatAvailabilityMeta,
+  isUrgentSeatAvailabilityLevel,
+} from "@/components/showtimes/seat-availability-level";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 type SeatAvailabilityBadgeProps = {
   showtimeId: number | null | undefined;
   variant?: "compact" | "default";
   iconOnly?: boolean;
+  urgentOnly?: boolean;
 };
 
 export default function SeatAvailabilityBadge({
   showtimeId,
   variant = "default",
   iconOnly = false,
+  urgentOnly = false,
 }: SeatAvailabilityBadgeProps) {
   const colors = useThemeColors();
   const availability = useCachedShowtimeSeatAvailability(showtimeId ?? null);
 
   if (!availability?.level) return null;
+  if (urgentOnly && !isUrgentSeatAvailabilityLevel(availability.level)) return null;
 
   const meta = getSeatAvailabilityMeta(availability.level, colors);
   if (!meta) return null;

@@ -40,6 +40,8 @@ type ShowtimeRowProps = {
   showSeatAvailability?: boolean;
   // Icon only, no count: still enough to glance at inside a movie card.
   seatAvailabilityIconOnly?: boolean;
+  // Only the levels worth hurrying for: a calm room is not news on a dense row.
+  seatAvailabilityUrgentOnly?: boolean;
 };
 
 const formatShowtime = (
@@ -66,6 +68,7 @@ export default function ShowtimeRow({
   showCinema = true,
   showSeatAvailability = true,
   seatAvailabilityIconOnly = false,
+  seatAvailabilityUrgentOnly = false,
 }: ShowtimeRowProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
@@ -85,6 +88,7 @@ export default function ShowtimeRow({
       showtimeId={showtime.id}
       variant={isCompact ? "compact" : "default"}
       iconOnly={seatAvailabilityIconOnly}
+      urgentOnly={seatAvailabilityUrgentOnly}
     />
   ) : null;
 
@@ -102,15 +106,16 @@ export default function ShowtimeRow({
         >
           {formatShowtime(showtime.datetime, showtime.end_datetime, showDate, isSyntheticMovie)}
         </ThemedText>
-        {seatBadge}
         {subtitlesAfterCinema ? (
           <>
             {cinemaPill}
             {subtitlesBadges}
+            {seatBadge}
           </>
         ) : (
           <>
             {subtitlesBadges}
+            {seatBadge}
             {cinemaPill}
           </>
         )}

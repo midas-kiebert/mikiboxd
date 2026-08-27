@@ -186,13 +186,14 @@ def _refresh_watchlist_digest_queue() -> None:
 
 
 def _send_watchlist_digests() -> None:
-    """Email users movies on their watchlist (or list override) that just got a showtime.
+    """Email users movies on their watchlist (or list override) that became available.
 
-    Runs daily, after the queue refresh. Daily-frequency users are sent every
-    pending movie every run; weekly-or-urgent users are held back until either
-    a pending showtime is within 3 days or it's been over a week since their
-    last digest. Outside production this only reaches superusers. Errors are
-    caught so a single failure does not stop the scheduler.
+    Runs daily, after the queue refresh, but not every user is due every day:
+    DAILY users are sent every pending movie with no horizon, while WEEKLY users
+    are only due on Thursdays and only for showtimes inside the next seven days
+    — anything further out stays queued. Outside production this only reaches
+    superusers. Errors are caught so a single failure does not stop the
+    scheduler.
     """
     from app.api.deps import get_db_context
     from app.services import watchlist_digest

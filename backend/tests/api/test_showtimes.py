@@ -2258,3 +2258,75 @@ def test_share_preview_returns_404_for_nonexistent_showtime(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Showtime not found"
+
+
+def test_cinema_search_reaches_cinemas_outside_the_saved_selection(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    """Searching for a cinema by name must look past "wherever I usually go".
+
+    The client says "no cinema restriction" by sending no cinema ids at all,
+    which for every other request means the account's saved cinemas — so a
+    cinema search used to be silently answered from the saved ones only, and a
+    cinema the user had not saved could never be found.
+    """
+    saved = showtime_factory(cinema__name="Plaza")
+    unsaved = showtime_factory(cinema__name="The Grand Picture House")
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=_normal_user_id(db_transaction),
+        cinema_ids=[saved.cinema_id],
+    )
+    db_transaction.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/",
+        params={"query": "grand", "search_field": "cinema"},
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    returned_ids = {item["id"] for item in response.json()}
+    assert unsaved.id in returned_ids
+    assert saved.id not in returned_ids
+
+
+def test_saved_cinemas_still_apply_without_a_cinema_search(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    """The fallback above is lifted only for a cinema-name search.
+
+    A title search — and an empty cinema query — must still be answered from
+    the account's saved cinemas.
+    """
+    saved = showtime_factory(cinema__name="Plaza", movie__title="Shared Title")
+    unsaved = showtime_factory(
+        cinema__name="The Grand Picture House", movie__title="Shared Title"
+    )
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=_normal_user_id(db_transaction),
+        cinema_ids=[saved.cinema_id],
+    )
+    db_transaction.commit()
+
+    for params in (
+        {"query": "Shared Title", "search_field": "title"},
+        {"search_field": "cinema"},
+    ):
+        response = client.get(
+            f"{settings.API_V1_STR}/showtimes/",
+            params=params,
+            headers=normal_user_token_headers,
+        )
+
+        assert response.status_code == 200
+        returned_ids = {item["id"] for item in response.json()}
+        assert saved.id in returned_ids, params
+        assert unsaved.id not in returned_ids, params

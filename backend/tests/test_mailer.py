@@ -11,9 +11,12 @@ import pytest
 
 from app.core.enums import DigestFrequency
 from app.mailer import (
+    DigestSource,
     _html_to_plain_text,
+    _watchlist_digest_explainer,
     _watchlist_digest_intro,
     _watchlist_digest_subject,
+    _watchlist_digest_text,
 )
 
 
@@ -110,6 +113,89 @@ def test_subject_describes_the_screening_not_the_database_change(
 def test_intro_matches_the_frequency_horizon():
     assert "coming week" in _watchlist_digest_intro(DigestFrequency.WEEKLY_OR_URGENT)
     assert "coming week" not in _watchlist_digest_intro(DigestFrequency.DAILY)
+
+
+@pytest.mark.parametrize(
+    "frequency", [DigestFrequency.DAILY, DigestFrequency.WEEKLY_OR_URGENT]
+)
+def test_intro_never_claims_the_films_came_from_a_watchlist(
+    frequency: DigestFrequency,
+):
+    """The source can be any Letterboxd list, so only the footer names it."""
+    assert "watchlist" not in _watchlist_digest_intro(frequency)
+
+
+# ---------------------------------------------------------------------------
+# Footer: which mode, which list
+# ---------------------------------------------------------------------------
+
+_WATCHLIST = DigestSource(
+    label="your Letterboxd watchlist", url="https://letterboxd.com/midas/watchlist/"
+)
+_LIST = DigestSource(
+    label="the Letterboxd list \u201cBest of 2026\u201d",
+    url="https://letterboxd.com/midas/list/best-of-2026/",
+)
+_MOVIES = [
+    {
+        "title": "Aftersun",
+        "cinema_name": "Kriterion",
+        "datetime_label": "Fri, Aug 28 at 20:15",
+        "mikino_link": "https://mikino.nl/movie/1",
+        "letterboxd_link": None,
+        "poster_link": None,
+    }
+]
+
+
+def _text(frequency: DigestFrequency, source: DigestSource) -> str:
+    return _watchlist_digest_text(
+        intro=_watchlist_digest_intro(frequency),
+        movies=_MOVIES,
+        frequency=frequency,
+        source=source,
+        unsubscribe_link="https://api.mikino.nl/unsub?token=x",
+    )
+
+
+def test_footer_names_the_mode_the_reader_chose():
+    assert "Eager digest" in _text(DigestFrequency.DAILY, _WATCHLIST)
+    assert "Weekly digest" in _text(DigestFrequency.WEEKLY_OR_URGENT, _WATCHLIST)
+
+
+def test_footer_names_and_links_the_watchlist_source():
+    text = _text(DigestFrequency.DAILY, _WATCHLIST)
+
+    assert "following your Letterboxd watchlist" in text
+    assert "https://letterboxd.com/midas/watchlist/" in text
+
+
+def test_footer_names_and_links_a_chosen_list_instead():
+    text = _text(DigestFrequency.WEEKLY_OR_URGENT, _LIST)
+
+    assert "Best of 2026" in text
+    assert "https://letterboxd.com/midas/list/best-of-2026/" in text
+    assert "your Letterboxd watchlist" not in text
+
+
+def test_footer_survives_a_source_that_cannot_be_linked():
+    """A chosen list whose row was deleted is still named, just not linked."""
+    text = _text(
+        DigestFrequency.DAILY,
+        DigestSource(label="the Letterboxd list you chose", url=None),
+    )
+
+    assert "the Letterboxd list you chose." in text
+    assert "http" in text  # the unsubscribe link is still there
+
+
+def test_footer_explains_what_the_mode_does():
+    assert _watchlist_digest_explainer(DigestFrequency.DAILY) in _text(
+        DigestFrequency.DAILY, _WATCHLIST
+    )
+    assert "each Thursday" in _watchlist_digest_explainer(
+        DigestFrequency.WEEKLY_OR_URGENT
+    )
 
 
 # ---------------------------------------------------------------------------

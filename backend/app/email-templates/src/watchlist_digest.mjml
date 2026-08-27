@@ -29,7 +29,7 @@
     <mj-raw>{% endfor %}</mj-raw>
     <mj-section background-color="#ffffff" padding="28px 20px 24px">
       <mj-column>
-        <mj-text font-size="12px" line-height="18px" color="#8a8a8a">You get this because you watchlisted these films on {{ brand_name }}. <a href="{{ unsubscribe_link }}" style="color:#8a8a8a;text-decoration:underline;">Stop these emails</a>.</mj-text>
+        <mj-text font-size="12px" line-height="18px" color="#8a8a8a">{{ frequency_label }} digest, following {% if source_url %}<a href="{{ source_url }}" style="color:#8a8a8a;text-decoration:underline;">{{ source_label }}</a>{% else %}{{ source_label }}{% endif %}. {{ frequency_explainer }} <a href="{{ unsubscribe_link }}" style="color:#8a8a8a;text-decoration:underline;">Stop these emails</a>.</mj-text>
       </mj-column>
     </mj-section>
   </mj-body>

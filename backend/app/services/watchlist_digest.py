@@ -42,8 +42,14 @@ from app.core.config import settings
 from app.core.enums import DigestFrequency, Environment, GoingStatus
 from app.crud import cinema_preset as cinema_preset_crud
 from app.crud import movie_set_filters
-from app.mailer import EmailDeliveryError, generate_watchlist_digest_email, send_email
+from app.mailer import (
+    DigestSource,
+    EmailDeliveryError,
+    generate_watchlist_digest_email,
+    send_email,
+)
 from app.models.cinema_preset import DEFAULT_CINEMA_PRESET_ID
+from app.models.letterboxd_list import LetterboxdList
 from app.models.movie import Movie
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
@@ -138,6 +144,34 @@ def _resolve_source_movie_ids_subquery(user: User) -> Any | None:
     if user.letterboxd_username is not None:
         return movie_set_filters.watchlist_movie_ids_subquery(user.letterboxd_username)
     return None
+
+
+def _resolve_digest_source(*, session: Session, user: User) -> DigestSource:
+    """Name the list this user's digest follows, for the email footer.
+
+    Mirrors the branching in `_resolve_source_movie_ids_subquery` — a chosen
+    list wins over the watchlist — so the footer can never credit a source the
+    films did not come from. A chosen list whose row has since been deleted
+    still filters nothing, so it is named without a link rather than silently
+    relabelled as the watchlist.
+    """
+    list_id = user.notify_watchlist_digest_list_id
+    if list_id is not None:
+        source_list = session.get(LetterboxdList, list_id)
+        if source_list is None:
+            return DigestSource(label="the Letterboxd list you chose", url=None)
+        name = source_list.title or source_list.list_slug
+        return DigestSource(
+            label=f"the Letterboxd list \u201c{name}\u201d",
+            url=(
+                f"https://letterboxd.com/{source_list.owner}"
+                f"/list/{source_list.list_slug}/"
+            ),
+        )
+    return DigestSource(
+        label="your Letterboxd watchlist",
+        url=f"https://letterboxd.com/{user.letterboxd_username}/watchlist/",
+    )
 
 
 def _pending_movie_ids_for_user(
@@ -343,6 +377,7 @@ def build_and_send_digest(
         email_to=user.email,
         movie_entries=movie_entries,
         frequency=user.notify_watchlist_digest_frequency,
+        source=_resolve_digest_source(session=session, user=user),
     )
     try:
         send_email(

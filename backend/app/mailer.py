@@ -18,7 +18,7 @@ import emails  # type: ignore
 from jinja2 import Template
 
 from app.core.config import settings
-from app.core.enums import DigestFrequency
+from app.core.enums import DIGEST_FREQUENCY_LABELS, DigestFrequency
 from app.core.security import generate_watchlist_digest_unsubscribe_token
 
 if TYPE_CHECKING:
@@ -29,6 +29,20 @@ logger = logging.getLogger(__name__)
 
 BRAND_NAME = "MiKiNO"
 REPORT_NOTIFICATION_EMAIL = "info@mikino.nl"
+
+
+@dataclass
+class DigestSource:
+    """Where a user's digest films come from, named for the email's footer.
+
+    ``label`` is a complete noun phrase ("your Letterboxd watchlist", "the
+    Letterboxd list “Best of 2026”") because the two cases don't share a
+    sentence shape. ``url`` is None when the source can't be linked — a chosen
+    list whose row has since been deleted.
+    """
+
+    label: str
+    url: str | None
 
 
 @dataclass
@@ -49,7 +63,9 @@ def _render_email_template(*, template_name: str, context: dict[str, Any]) -> st
     template_str = (
         Path(__file__).parent / "email-templates" / "build" / template_name
     ).read_text()
-    template: Template = Template(template_str)
+    # autoescape: film titles come from TMDB and list titles from Letterboxd,
+    # so every value interpolated here is third-party text.
+    template: Template = Template(template_str, autoescape=True)
     return template.render(context)
 
 
@@ -233,14 +249,38 @@ def _watchlist_digest_subject(
 
 
 def _watchlist_digest_intro(frequency: DigestFrequency) -> str:
-    """The email's opening line, matched to the frequency's horizon."""
+    """The email's opening line, matched to the frequency's horizon.
+
+    Says nothing about where the films came from — the source is named in the
+    footer, and it isn't always a watchlist.
+    """
     if frequency == DigestFrequency.WEEKLY_OR_URGENT:
-        return "These films on your watchlist are showing in the coming week:"
-    return "These films on your watchlist are coming up:"
+        return "These films are showing in the coming week:"
+    return "These films are coming to your cinemas:"
+
+
+def _watchlist_digest_explainer(frequency: DigestFrequency) -> str:
+    """One sentence telling the reader what their chosen mode actually does.
+
+    Kept in the email rather than left to Settings so the footer answers "why am
+    I getting this now?" on its own. Deliberately shorter than the settings
+    descriptions in api/routes/utils.py, but must not contradict them.
+    """
+    if frequency == DigestFrequency.WEEKLY_OR_URGENT:
+        return "You get one email each Thursday, covering the next seven days."
+    return (
+        "You get an email the day a film on it becomes available, "
+        "however far ahead it screens."
+    )
 
 
 def _watchlist_digest_text(
-    *, intro: str, movies: list[dict[str, Any]], unsubscribe_link: str
+    *,
+    intro: str,
+    movies: list[dict[str, Any]],
+    frequency: DigestFrequency,
+    source: DigestSource,
+    unsubscribe_link: str,
 ) -> str:
     """Render the text/plain half of the digest.
 
@@ -253,8 +293,10 @@ def _watchlist_digest_text(
         lines.append(f"{movie['cinema_name']} - {movie['datetime_label']}")
         lines.append(str(movie["mikino_link"]))
         lines.append("")
-    lines.append(f"You get this because you watchlisted these films on {BRAND_NAME}.")
-    lines.append(f"To stop them: {unsubscribe_link}")
+    following = source.label + (f" ({source.url})" if source.url else "")
+    lines.append(f"{DIGEST_FREQUENCY_LABELS[frequency]} digest, following {following}.")
+    lines.append(_watchlist_digest_explainer(frequency))
+    lines.append(f"To stop these emails: {unsubscribe_link}")
     return "\n".join(lines)
 
 
@@ -263,6 +305,7 @@ def generate_watchlist_digest_email(
     email_to: str,
     movie_entries: list[tuple["Movie", "Showtime"]],
     frequency: DigestFrequency,
+    source: DigestSource,
 ) -> EmailData:
     """Generate the watchlist digest email for movies that just became available."""
     movies: list[dict[str, Any]] = [
@@ -292,6 +335,10 @@ def generate_watchlist_digest_email(
             "brand_name": BRAND_NAME,
             "intro": intro,
             "movies": movies,
+            "frequency_label": DIGEST_FREQUENCY_LABELS[frequency],
+            "frequency_explainer": _watchlist_digest_explainer(frequency),
+            "source_label": source.label,
+            "source_url": source.url,
             "unsubscribe_link": unsubscribe_link,
         },
     )
@@ -299,7 +346,11 @@ def generate_watchlist_digest_email(
         html_content=html_content,
         subject=_watchlist_digest_subject(movie_entries, frequency=frequency),
         text_content=_watchlist_digest_text(
-            intro=intro, movies=movies, unsubscribe_link=unsubscribe_link
+            intro=intro,
+            movies=movies,
+            frequency=frequency,
+            source=source,
+            unsubscribe_link=unsubscribe_link,
         ),
     )
 

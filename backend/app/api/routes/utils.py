@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Field, SQLModel
 
 from app.api.deps import SessionDep, get_current_active_superuser
+from app.core.enums import DIGEST_FREQUENCY_LABELS, DigestFrequency
 from app.scraping.tmdb_runtime import (
     correct_tmdb_lookup_cache_entry,
     search_tmdb_lookup_cache_entries,
@@ -64,17 +65,17 @@ async def health_check() -> bool:
 async def get_watchlist_digest_frequency_info() -> DigestFrequencyInfoResponse:
     return DigestFrequencyInfoResponse(
         daily=DigestFrequencyInfo(
-            label="Eager",
+            label=DIGEST_FREQUENCY_LABELS[DigestFrequency.DAILY],
             description=(
-                "Emails you the day a watchlisted movie becomes available, however "
+                "Emails you the day a film from your list becomes available, however "
                 "far ahead it screens — so you can book the ones that sell out."
             ),
         ),
         weekly_or_urgent=DigestFrequencyInfo(
-            label="Weekly",
+            label=DIGEST_FREQUENCY_LABELS[DigestFrequency.WEEKLY_OR_URGENT],
             description=(
-                "One email on Thursday morning with the watchlisted movies screening "
-                "in the next seven days. Anything further out waits its turn."
+                "One email on Thursday morning with the films from your list "
+                "screening in the next seven days. Anything further out waits its turn."
             ),
         ),
     )

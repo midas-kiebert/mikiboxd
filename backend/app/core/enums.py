@@ -132,6 +132,15 @@ class DigestFrequency(str, Enum):
     WEEKLY_OR_URGENT = "weekly_or_urgent"
 
 
+# What each mode is called wherever a user can see it — the settings picker, the
+# explainer dialog and the digest email's own footer. One mapping so the email
+# can never name a mode differently from the screen the reader set it on.
+DIGEST_FREQUENCY_LABELS: dict[DigestFrequency, str] = {
+    DigestFrequency.DAILY: "Eager",
+    DigestFrequency.WEEKLY_OR_URGENT: "Weekly",
+}
+
+
 @unique
 class SeatAvailabilityLevel(str, Enum):
     """How full a screening is, as a handful of buckets rather than a number.

@@ -9,7 +9,7 @@
  * a dimmed phone is the usual reason a scanner refuses to read a screen.
  */
 import { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Brightness from 'expo-brightness';
@@ -44,6 +44,14 @@ export default function CinevilleCardModal({
   const { bottom: bottomInset } = useSafeAreaInsets();
   // The brightness the phone was on before we turned it up, so closing puts it
   // back. Kept in a ref because restoring it must not re-render anything.
+  //
+  // Only iOS needs it: there `setBrightnessAsync` moves the real system
+  // brightness, so the old value is the only way back. On Android the call sets
+  // a window-level override instead, and the value read back beforehand is on a
+  // different scale entirely — the system setting's gamma-encoded slider
+  // position, or, under adaptive brightness, the auto-brightness *offset* — so
+  // writing it back as an override lands on a visibly different brightness and
+  // leaves adaptive brightness pinned off. Android drops the override instead.
   const previousBrightness = useRef<number | null>(null);
 
   useEffect(() => {
@@ -52,9 +60,11 @@ export default function CinevilleCardModal({
     let isCancelled = false;
     const raiseBrightness = async () => {
       try {
-        const current = await Brightness.getBrightnessAsync();
-        if (isCancelled) return;
-        previousBrightness.current = current;
+        if (Platform.OS === 'ios') {
+          const current = await Brightness.getBrightnessAsync();
+          if (isCancelled) return;
+          previousBrightness.current = current;
+        }
         await Brightness.setBrightnessAsync(FULL_BRIGHTNESS);
       } catch {
         // Brightness control is a nicety; a device that refuses it still shows
@@ -67,6 +77,10 @@ export default function CinevilleCardModal({
       isCancelled = true;
       const restore = previousBrightness.current;
       previousBrightness.current = null;
+      if (Platform.OS !== 'ios') {
+        void Brightness.restoreSystemBrightnessAsync().catch(() => {});
+        return;
+      }
       if (restore === null) return;
       void Brightness.setBrightnessAsync(restore).catch(() => {});
     };

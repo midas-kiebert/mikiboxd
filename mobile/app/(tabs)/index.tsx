@@ -18,7 +18,9 @@ import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
-import FiltersRow from '@/components/filters/FiltersRow';
+import PresetsRow from '@/components/filters/PresetsRow';
+import FiltersButton from '@/components/filters/FiltersButton';
+import SearchFieldFallback from '@/components/inputs/SearchFieldFallback';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import FeatureTipsHost from '@/components/tips/FeatureTipsHost';
@@ -287,12 +289,6 @@ export default function MainShowtimesScreen() {
   const handleOpenFiltersModal = () =>
     openFiltersModal({ showGroupByMovie: true, showPresets: true });
 
-  const filtersRowProps = {
-    onOpenModal: handleOpenFiltersModal,
-    onApplyPreset: handleApplyPreset,
-    filtersButtonRef,
-  };
-
   // The last intro step waits for this screen to actually have something on it:
   // highlighting a filter button above an empty list would explain nothing. It
   // also waits for a clear screen — `isFocused` covers a pushed page, and the
@@ -357,6 +353,16 @@ export default function MainShowtimesScreen() {
     },
   };
 
+  // Same notice under either feed's empty state: the search field is shared by
+  // both, and so is the reason an unexpected empty result turns up.
+  const searchFieldFallback = (
+    <SearchFieldFallback
+      searchField={searchField}
+      query={effectiveSearchQuery}
+      onSearchByTitle={() => setSearchField('title')}
+    />
+  );
+
   const renderMoviesEmpty = () => {
     if (moviesLoading || moviesFetching || refreshing) {
       return <SkeletonRows height={150} />;
@@ -364,6 +370,7 @@ export default function MainShowtimesScreen() {
     return (
       <ThemedView style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>No movies found</ThemedText>
+        {searchFieldFallback}
       </ThemedView>
     );
   };
@@ -381,8 +388,11 @@ export default function MainShowtimesScreen() {
         searchField={searchField}
         onChangeSearchField={setSearchField}
         clearOnAndroidBack
+        leftSlot={
+          <FiltersButton onPress={handleOpenFiltersModal} buttonRef={filtersButtonRef} />
+        }
       />
-      <FiltersRow {...filtersRowProps} />
+      <PresetsRow onApplyPreset={handleApplyPreset} />
       <ActiveFilterChips {...activeChipsProps} />
       {groupByMovie ? (
         <FlatList
@@ -417,6 +427,7 @@ export default function MainShowtimesScreen() {
           refreshing={refreshing}
           onRefresh={handleRefresh}
           emptyText="No showtimes found"
+          emptyExtra={searchFieldFallback}
           openModalOptions={{ inheritFilters: true }}
           inheritFiltersOnMovieNav
         />

@@ -6,7 +6,7 @@
  * it. The footer holds the actions that end the visit — applying the filters,
  * and saving/managing presets — so they are reachable from any scroll
  * position. Saved presets themselves are applied from the top bar
- * (SavedPresetChips in FiltersRow), not from in here.
+ * (SavedPresetChips in PresetsRow), not from in here.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -42,10 +42,12 @@ import ManagePresetsModal from "@/components/filters/ManagePresetsModal";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import TimeRangeSliderInline from "@/components/filters/TimeRangeSliderInline";
 import RuntimeRangeSliderInline from "@/components/filters/RuntimeRangeSliderInline";
+import { formatTimePillLabel } from "@/components/filters/time-range-utils";
+import { formatRuntimePillLabel } from "@/components/filters/runtime-range-utils";
 import DaysFilterSection from "@/components/filters/DaysFilterSection";
 import SpecificDatesModal from "@/components/filters/SpecificDatesModal";
 import FilterMoviesSection from "@/components/filters/FilterMoviesSection";
-import FilterSection, { FilterInlineRow, FilterSubLabel } from "@/components/filters/FilterSection";
+import FilterSection, { FilterInlineRow, FilterNavRow, FilterSubLabel } from "@/components/filters/FilterSection";
 import SegmentedControl, { type SegmentedOption } from "@/components/ui/SegmentedControl";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
@@ -206,8 +208,7 @@ export default function FiltersModal({
   // not. A guest's selection is the session value itself, persisted to the
   // device by `useCinemaSelection`.
   const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
-  const { cinemaIds: sessionCinemaIds, setCinemaIds: setSessionCinemaIds } =
-    useCinemaSelection();
+  const { cinemaIds: sessionCinemaIds, setCinemaIds } = useCinemaSelection();
   const { data: cinemaPresets = [] } = useQuery({
     queryKey: ["cinema-presets"],
     queryFn: () => MeService.getCinemaPresets(),
@@ -221,6 +222,36 @@ export default function FiltersModal({
 
 
   const dayLabel = formatDayPillLabel(selectedDays);
+  const timeLabel = formatTimePillLabel(selectedTimeRanges);
+
+  // Short summary of the "Movie Filters" section shown in its header while
+  // collapsed, mirroring the Days/Time sections. Only counts dimensions that
+  // section actually renders (list filtering only shows up with showLists).
+  const movieFiltersSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (watchlistOnly) parts.push("Watchlist");
+    if (watchlistExclude) parts.push("Hide watchlist");
+    if (watchedOnly) parts.push("Watched only");
+    if (hideWatched) parts.push("Hide watched");
+    if (showLists) {
+      const listCount = selectedListIds.length + excludeListIds.length;
+      if (listCount > 0) parts.push(`${listCount} list${listCount === 1 ? "" : "s"}`);
+    }
+    if (showRuntime && selectedRuntimeRanges.length > 0) {
+      parts.push(formatRuntimePillLabel(selectedRuntimeRanges));
+    }
+    return parts.length > 0 ? parts.join(", ") : "All movies";
+  }, [
+    watchlistOnly,
+    watchlistExclude,
+    watchedOnly,
+    hideWatched,
+    showLists,
+    selectedListIds,
+    excludeListIds,
+    showRuntime,
+    selectedRuntimeRanges,
+  ]);
 
   // ─── Presets (apply + save) ──────────────────────────────────────────────────
   const [savePresetVisible, setSavePresetVisible] = useState(false);
@@ -289,6 +320,29 @@ export default function FiltersModal({
     [currentFilters, cinemaActive]
   );
 
+  // What there is to save is exactly what there is to clear, cinemas included.
+  const hasSomethingToClear = hasSomethingToSave;
+
+  // Mirrors the feeds' own "clear all" (the × beside the active filter chips)
+  // down to the cinemas: they go back to the account's saved picks rather than
+  // to every cinema, since "no selection" is not what the user chose once.
+  const handleClearFilters = () => {
+    triggerSelectionHaptic();
+    setSelectedShowtimeFilter("all");
+    setWatchlistOnly(false);
+    setWatchlistExclude(false);
+    setHideWatched(false);
+    setWatchedOnly(false);
+    setGroupByMovie(false);
+    setSelectedDays([]);
+    setSelectedTimeRanges([]);
+    setSelectedRuntimeRanges([]);
+    setSelectedListIds([]);
+    setExcludeListIds([]);
+    setSelectedLanguages([]);
+    if (preferredCinemaIds) setCinemaIds(preferredCinemaIds);
+  };
+
   // Pill toggles below paint optimistically and defer the real (potentially
   // expensive) state update by one frame — see useOptimisticValue.
   const { value: displayGroupByMovie, change: changeGroupByMovie } = useOptimisticValue(
@@ -326,75 +380,29 @@ export default function FiltersModal({
 
   return (
     <>
-      <AppBottomSheet visible={visible} onClose={handleClose} title="Filters">
-        {/* @gorhom/portal (used by the bottom sheet) does not forward React
-            context, so re-provide the QueryClient for hooks rendered inside. */}
-        <QueryClientProvider client={queryClient}>
-        <BottomSheetScrollView
-          ref={scrollViewRef}
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-{!contentMounted ? (
-            <View style={{ alignItems: "center", paddingVertical: 60 }}>
-              <ActivityIndicator size="large" color={colors.tint} />
-            </View>
-          ) : (<>
+        <AppBottomSheet visible={visible} onClose={handleClose} title="Filters">
+          {/* @gorhom/portal (used by the bottom sheet) does not forward React
+              context, so re-provide the QueryClient for hooks rendered inside. */}
+          <QueryClientProvider client={queryClient}>
+          <BottomSheetScrollView
+            ref={scrollViewRef}
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+  {!contentMounted ? (
+              <View style={{ alignItems: "center", paddingVertical: 60 }}>
+                <ActivityIndicator size="large" color={colors.tint} />
+              </View>
+            ) : (<>
 
-            {/* Cinemas */}
-            {showCinemas && (
-              <>
-                <FilterSection label="Cinemas">
-                  {cinemaPresets.length > 0 && (
-                    <View style={styles.cinemaPresetGrid}>
-                      {cinemaPresets.map((preset) => {
-                        const presetSig = JSON.stringify(Array.from(new Set(preset.cinema_ids)).sort((a, b) => a - b));
-                        const isActive = presetSig === JSON.stringify(sortedEffectiveIds);
-                        const n = new Set(preset.cinema_ids).size;
-                        return (
-                          <TouchableOpacity
-                            key={preset.id}
-                            style={[styles.cinemaPresetCard, isActive && styles.cinemaPresetCardActive]}
-                            onPress={() => { triggerSelectionHaptic(); setSessionCinemaIds(Array.from(preset.cinema_ids)); }}
-                            activeOpacity={0.75}
-                          >
-                            <View style={styles.cinemaPresetCardRow}>
-                              <ThemedText
-                                style={[styles.cinemaPresetName, isActive && styles.cinemaPresetNameActive]}
-                                numberOfLines={2}
-                              >
-                                {preset.name}
-                              </ThemedText>
-                              {preset.is_favorite && (
-                                <MaterialIcons
-                                  name="star"
-                                  size={13}
-                                  color={isActive ? colors.pillActiveText : colors.yellow.secondary}
-                                />
-                              )}
-                            </View>
-                            <ThemedText style={[styles.cinemaPresetDesc, isActive && styles.cinemaPresetDescActive]}>
-                              {n} cinema{n === 1 ? "" : "s"}
-                            </ThemedText>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-                  <TouchableOpacity style={styles.cinemaOpenRow} onPress={() => { triggerSelectionHaptic(); openCinemaModal(); }} activeOpacity={0.8}>
-                    <View style={styles.cinemaOpenIcon}>
-                      <MaterialIcons name="movie" size={17} color={colors.tint} />
-                    </View>
-                    <View style={styles.cinemaOpenTextBlock}>
-                      <ThemedText style={styles.cinemaOpenTitle}>Select cinemas</ThemedText>
-                      <ThemedText style={styles.cinemaOpenSubtitle} numberOfLines={1}>{cinemaLabel}</ThemedText>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={18} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                </FilterSection>
-                <Divider colors={colors} />
+              {/* Cinemas: presets already live in the main page's cinema dropdown,
+                  so this row only ever opens the cinema selection modal. */}
+              {showCinemas && (
+                <>
+                  <FilterNavRow label="Cinemas" summary={cinemaLabel} onPress={openCinemaModal} />
+                  <Divider colors={colors} />
               </>
             )}
 
@@ -440,7 +448,7 @@ export default function FiltersModal({
                 Letterboxd sets it belongs to, and how long it is. */}
             {(showRuntime || showLists || canUseWatchlistFilter) && (
               <>
-                <FilterSection label="Movie Filters">
+                <FilterSection label="Movie Filters" summary={movieFiltersSummary}>
                   {showLists ? (
                     <FilterMoviesSection
                       colors={colors}
@@ -501,7 +509,7 @@ export default function FiltersModal({
             <Divider colors={colors} />
 
             {/* Time */}
-            <FilterSection label="Time of day">
+            <FilterSection label="Time of day" summary={timeLabel}>
               <TimeRangeSliderInline
                 selectedTimeRanges={selectedTimeRanges}
                 onChange={setSelectedTimeRanges}
@@ -515,49 +523,74 @@ export default function FiltersModal({
             since the filters above are long enough that scrolling back down to
             apply them was a chore. */}
         <View style={[styles.footer, { paddingBottom: bottomInset + 12 }]}>
-          {showPresets && (
-            <View style={styles.presetActionsRow}>
-              <TouchableOpacity
-                style={[styles.presetButton, hasSomethingToSave && styles.presetButtonHighlighted]}
-                onPress={() => {
-                  triggerSelectionHaptic();
-                  setSavePresetVisible(true);
-                }}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-              >
-                <MaterialIcons
-                  name="bookmark-add"
-                  size={17}
-                  color={hasSomethingToSave ? colors.green.secondary : colors.textSecondary}
-                />
-                <ThemedText
-                  style={[
-                    styles.presetButtonText,
-                    hasSomethingToSave && styles.presetButtonTextHighlighted,
-                  ]}
-                  numberOfLines={1}
+          <View style={styles.presetActionsRow}>
+            {showPresets && (
+              <>
+                <TouchableOpacity
+                  style={[styles.presetButton, hasSomethingToSave && styles.presetButtonHighlighted]}
+                  onPress={() => {
+                    triggerSelectionHaptic();
+                    setSavePresetVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
                 >
-                  Save current filters
-                </ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.presetButton, styles.managePresetsButton]}
-                onPress={() => {
-                  triggerSelectionHaptic();
-                  setManagePresetsVisible(true);
-                }}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel="Manage presets"
-              >
-                <MaterialIcons name="tune" size={17} color={colors.textSecondary} />
-                <ThemedText style={styles.presetButtonText} numberOfLines={1}>
-                  Presets
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-          )}
+                  <MaterialIcons
+                    name="bookmark-add"
+                    size={17}
+                    color={hasSomethingToSave ? colors.green.secondary : colors.textSecondary}
+                  />
+                  <ThemedText
+                    style={[
+                      styles.presetButtonText,
+                      hasSomethingToSave && styles.presetButtonTextHighlighted,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    Save current filters
+                  </ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.presetButton, styles.managePresetsButton]}
+                  onPress={() => {
+                    triggerSelectionHaptic();
+                    setManagePresetsVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Manage presets"
+                >
+                  <MaterialIcons name="tune" size={17} color={colors.textSecondary} />
+                  <ThemedText style={styles.presetButtonText} numberOfLines={1}>
+                    Presets
+                  </ThemedText>
+                </TouchableOpacity>
+              </>
+            )}
+            {/* Quiet until there is something to undo: a clear button with
+                nothing to clear is a dead control, not a shortcut. */}
+            <TouchableOpacity
+              style={[
+                styles.presetButton,
+                styles.clearFiltersButton,
+                !hasSomethingToClear && styles.clearFiltersButtonIdle,
+              ]}
+              onPress={handleClearFilters}
+              disabled={!hasSomethingToClear}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Clear filters"
+            >
+              <MaterialIcons
+                name="filter-alt-off"
+                size={17}
+                color={hasSomethingToClear ? colors.textSecondary : colors.icon}
+              />
+              <ThemedText style={styles.presetButtonText} numberOfLines={1}>
+                Clear
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
             style={styles.viewResultsButton}
             onPress={handleClose}
@@ -682,56 +715,10 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderColor: colors.green.primary,
     },
     managePresetsButton: { flex: 0 },
+    clearFiltersButton: { flex: 0 },
+    clearFiltersButtonIdle: { opacity: 0.45 },
     presetButtonText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
     presetButtonTextHighlighted: { color: colors.green.secondary },
-    cinemaPresetGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      marginBottom: 10,
-    },
-    cinemaPresetCard: {
-      flexBasis: "47%",
-      flexGrow: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      borderRadius: 12,
-      borderWidth: 1.5,
-      borderColor: colors.divider,
-      backgroundColor: colors.cardBackground,
-      gap: 4,
-    },
-    cinemaPresetCardActive: {
-      borderColor: colors.tint,
-      backgroundColor: colors.pillActiveBackground,
-    },
-    cinemaPresetCardRow: { flexDirection: "row", alignItems: "flex-start", gap: 4 },
-    cinemaPresetName: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.text },
-    cinemaPresetNameActive: { color: colors.pillActiveText },
-    cinemaPresetDesc: { fontSize: 11, color: colors.textSecondary },
-    cinemaPresetDescActive: { color: colors.pillActiveText, opacity: 0.8 },
-    cinemaOpenRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.divider,
-      backgroundColor: colors.cardBackground,
-    },
-    cinemaOpenIcon: {
-      width: 34,
-      height: 34,
-      borderRadius: 10,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.surfaceMuted,
-    },
-    cinemaOpenTextBlock: { flex: 1 },
-    cinemaOpenTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
-    cinemaOpenSubtitle: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
     viewResultsButton: {
       backgroundColor: colors.tint,
       paddingHorizontal: 20,

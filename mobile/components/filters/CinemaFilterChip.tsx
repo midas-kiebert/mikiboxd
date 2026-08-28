@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Animated, Dimensions, LayoutChangeEvent, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Animated, Dimensions, Easing, LayoutChangeEvent, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+// Aliased: this file already animates its caret with RN's own `Animated`.
+import Reanimated, { FadeIn } from "react-native-reanimated";
 import { useQuery } from "@tanstack/react-query";
 import { MeService } from "shared";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
@@ -11,6 +13,13 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { useCinemaSelection } from "@/hooks/useCinemaSelection";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
+import MorphingChipLabel from "@/components/filters/MorphingChipLabel";
+import {
+  CHIP_EXIT_MS,
+  CHIP_LAYOUT_AFTER_EXIT,
+  CHIP_LAYOUT_MS,
+  CHIP_LAYOUT_TRANSITION,
+} from "@/components/filters/filter-change-animation";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type CinemaFilterChipProps = {
@@ -30,18 +39,41 @@ type CinemaFilterChipProps = {
    * it's exactly what it was before the moment this goes false again.
    */
   disabled?: boolean;
+  /**
+   * True while other chips in the row are leaving. This pill resizes rather
+   * than moves, and a pill growing into the space of a chip that has not moved
+   * yet overlaps it, so it waits for the same moment they do.
+   */
+  waitForExits?: boolean;
 };
 
 const DROPDOWN_WIDTH = 252;
+
+/**
+ * The dropdown fades itself in, and the `Modal` is told not to
+ * (`animationType="none"`): the platform's own fade holds the modal's touch
+ * handling for the whole of it, so a tap on a preset that came while the
+ * dropdown was still appearing landed on nothing at all.
+ *
+ * Short, because it only has to stop the dropdown arriving out of nowhere —
+ * and it gates nothing: opacity is a style, and the rows underneath it are
+ * hittable from the first frame.
+ */
+const DROPDOWN_FADE_MS = 110;
 
 export default function CinemaFilterChip({
   onOpenFilters,
   onOpenCinemaModal,
   disabled = false,
+  waitForExits = false,
 }: CinemaFilterChipProps) {
   const colors = useThemeColors();
   const { openCinemaModal } = useFiltersModal();
   const styles = createStyles(colors);
+
+  // One transition for the pill and everything inside it that has to travel
+  // with its edges.
+  const chipLayout = waitForExits ? CHIP_LAYOUT_AFTER_EXIT : CHIP_LAYOUT_TRANSITION;
 
   const chipRef = useRef<View>(null);
   // Height captured from onLayout — always reliable, used as fallback when measure() returns 0.
@@ -56,10 +88,27 @@ export default function CinemaFilterChip({
     outputRange: ["0deg", "180deg"],
   });
 
+  /**
+   * Read when the dropdown opens or closes rather than tracked as a
+   * dependency: it flips back partway through the very close it applies to,
+   * and re-running the timing then would restart the spin from where it had
+   * got to.
+   */
+  const waitForExitsRef = useRef(waitForExits);
+  waitForExitsRef.current = waitForExits;
+
   useEffect(() => {
+    // Picking a cinema preset closes the dropdown and rewrites the label in
+    // the same commit, so the caret is turning back at the moment the pill is
+    // resizing under it. Same clock as `chipLayout` on both counts — the
+    // layout transition's duration, its linear curve, and its wait for
+    // departing chips — so the two read as one movement instead of the spin
+    // finishing early and the pill carrying on alone.
     Animated.timing(caretRotation, {
       toValue: dropdownVisible ? 1 : 0,
-      duration: 200,
+      duration: CHIP_LAYOUT_MS,
+      delay: waitForExitsRef.current ? CHIP_EXIT_MS : 0,
+      easing: Easing.linear,
       useNativeDriver: true,
     }).start();
   }, [dropdownVisible, caretRotation]);
@@ -156,28 +205,48 @@ export default function CinemaFilterChip({
 
   return (
     <>
+      {/* The measured view stays unanimated: it anchors the dropdown, and a
+          scaled frame would anchor it a few points off. */}
       <View ref={chipRef} collapsable={false} onLayout={handleChipLayout}>
         <TouchableOpacity
-          style={[styles.chip, disabled && styles.chipDisabled]}
           onPress={handleChipPress}
           activeOpacity={disabled ? 1 : 0.75}
           disabled={disabled}
         >
-          <ThemedText
-            style={[styles.chipLabel, disabled && styles.chipLabelDisabled]}
-            numberOfLines={1}
+          {/* Its label is a count one moment and a preset's name the next, so
+              its width changes constantly: the layout transition tweens that
+              width, and the chips after it slide by exactly as much over
+              exactly as long, which is what keeps them off each other. */}
+          <Reanimated.View
+            style={[styles.chip, disabled && styles.chipDisabled]}
+            layout={chipLayout}
           >
-            {label}
-          </ThemedText>
-          {disabled ? null : isSignedIn ? (
-            <Animated.View style={{ transform: [{ rotate: caretSpin }] }}>
-              <MaterialIcons name="expand-more" size={13} color={colors.pillText} />
-            </Animated.View>
-          ) : (
-            // Nothing expands, so the caret would be a lie; the pill reads as
-            // the button to the picker that it is.
-            <MaterialIcons name="tune" size={13} color={colors.pillText} />
-          )}
+            <MorphingChipLabel
+              label={label}
+              style={[styles.chipLabel, disabled && styles.chipLabelDisabled]}
+              delayMs={waitForExits ? CHIP_EXIT_MS : 0}
+            />
+            {disabled ? null : (
+              /*
+               * On the same transition as the pill around it. The label's new
+               * width lands in one commit while the pill's edges take 240ms to
+               * follow, so a caret laid out against that new width — and left
+               * to snap straight to it — jumps ahead of the border it is meant
+               * to sit inside.
+               */
+              <Reanimated.View layout={chipLayout}>
+                {isSignedIn ? (
+                  <Animated.View style={{ transform: [{ rotate: caretSpin }] }}>
+                    <MaterialIcons name="expand-more" size={13} color={colors.pillText} />
+                  </Animated.View>
+                ) : (
+                  // Nothing expands, so the caret would be a lie; the pill
+                  // reads as the button to the picker that it is.
+                  <MaterialIcons name="tune" size={13} color={colors.pillText} />
+                )}
+              </Reanimated.View>
+            )}
+          </Reanimated.View>
         </TouchableOpacity>
       </View>
 
@@ -186,7 +255,7 @@ export default function CinemaFilterChip({
           transparent
           visible
           statusBarTranslucent
-          animationType="fade"
+          animationType="none"
           onRequestClose={closeDropdown}
         >
           <TouchableOpacity
@@ -194,7 +263,10 @@ export default function CinemaFilterChip({
             activeOpacity={1}
             onPress={closeDropdown}
           />
-          <View style={[styles.dropdown, { top: dropdownPos.top, left: dropdownPos.left }]}>
+          <Reanimated.View
+            style={[styles.dropdown, { top: dropdownPos.top, left: dropdownPos.left }]}
+            entering={FadeIn.duration(DROPDOWN_FADE_MS)}
+          >
             {cinemaPresets.length === 0 ? (
               <View style={styles.emptyRow}>
                 <ThemedText style={styles.emptyText}>No cinema presets yet</ThemedText>
@@ -248,7 +320,7 @@ export default function CinemaFilterChip({
               </ThemedText>
               <MaterialIcons name="chevron-right" size={14} color={colors.tint} />
             </TouchableOpacity>
-          </View>
+          </Reanimated.View>
         </Modal>
       )}
     </>
@@ -260,14 +332,20 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
     chip: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 10,
+      // Matched to `ActiveFilterChip`, which is tighter than it used to be so
+      // that more of the row fits on screen at once.
+      gap: 3,
+      paddingHorizontal: 8,
       paddingVertical: 5,
       borderRadius: 14,
       backgroundColor: colors.pillBackground,
       borderWidth: 1,
       borderColor: colors.pillBorder,
       alignSelf: "center",
+      // Clipped while its width tweens: the label swaps in one frame but the
+      // box takes a moment to catch up, and unclipped text spills past the
+      // border on the way.
+      overflow: "hidden",
     },
     chipDisabled: {
       opacity: 0.5,

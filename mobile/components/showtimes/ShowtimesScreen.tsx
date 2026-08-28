@@ -36,6 +36,8 @@ type ShowtimesListContentProps = {
   refreshing: boolean;
   onRefresh: () => void | Promise<void>;
   emptyText?: string;
+  /** Rendered under `emptyText` when the list is empty (e.g. a search-field notice). */
+  emptyExtra?: React.ReactNode;
   openModalOptions?: OpenOptions;
   /** Carry the showtimes-tab filters over when long-pressing into the movie page. */
   inheritFiltersOnMovieNav?: boolean;
@@ -53,6 +55,7 @@ export function ShowtimesListContent({
   refreshing,
   onRefresh,
   emptyText = "No showtimes found",
+  emptyExtra,
   openModalOptions,
   inheritFiltersOnMovieNav = false,
   listHeader,
@@ -101,6 +104,7 @@ export function ShowtimesListContent({
     return (
       <View style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>{emptyText}</ThemedText>
+        {emptyExtra}
       </View>
     );
   };

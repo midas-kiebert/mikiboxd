@@ -149,6 +149,14 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     onClose();
   }, [onClose, setSessionCinemaIds]);
 
+  // "Apply": the same commit `handleClose` already does implicitly on swipe-down
+  // or backdrop tap, spelled out as a button next to "Set as preferred cinemas"
+  // for anyone who wants a one-off selection without changing their default.
+  const handleApplySelection = useCallback(() => {
+    triggerSelectionHaptic();
+    handleClose();
+  }, [handleClose]);
+
   // Header back button: step back from the presets page, else return to the
   // parent sheet (when opened nested), else nothing (root selection page).
   const headerBack =
@@ -695,40 +703,11 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                   account, and an empty bordered strip reads as broken. */}
               {isSignedIn ? (
               <View style={[styles.footer, { paddingBottom: bottomInset + 12 }]}>
-                {/* The one action nearly every user wants, and the only one
-                    that needs no name: it writes the selection applied on
-                    startup, creating it the first time. */}
-                <TouchableOpacity
-                  style={[
-                    styles.footerButton,
-                    canSaveMyCinemas
-                      ? styles.footerButtonHighlighted
-                      : styles.footerButtonDisabled,
-                  ]}
-                  onPress={handleSaveMyCinemas}
-                  activeOpacity={0.8}
-                  disabled={!canSaveMyCinemas}
-                  accessibilityRole="button"
-                >
-                  <MaterialIcons
-                    name={isCurrentSelectionMyCinemas ? "check" : "star-border"}
-                    size={17}
-                    color={canSaveMyCinemas ? colors.green.secondary : colors.textSecondary}
-                  />
-                  <ThemedText
-                    style={[
-                      styles.footerButtonText,
-                      canSaveMyCinemas && styles.footerButtonTextHighlighted,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {isCurrentSelectionMyCinemas ? "These are your preferred cinemas" : "Set as preferred cinemas"}
-                  </ThemedText>
-                </TouchableOpacity>
                 {/* Demoted to a text row: presets are a power feature, and
                     giving them equal weight is what made the naming step read
-                    as a required step rather than an optional one. Always
-                    present all the same, or a first preset is never made. */}
+                    as a required step rather than an optional one. Placed
+                    above the primary row so the row you actually act on last
+                    (preferred cinemas / apply) sits closest to the thumb. */}
                 <View style={styles.footerLinks}>
                   <TouchableOpacity
                     style={[
@@ -766,6 +745,50 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                     <MaterialIcons name="tune" size={14} color={colors.tint} />
                     <ThemedText style={styles.footerLink} numberOfLines={1}>
                       Manage presets
+                    </ThemedText>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.footerPrimaryRow}>
+                  {/* The one action nearly every user wants, and the only one
+                      that needs no name: it writes the selection applied on
+                      startup, creating it the first time. */}
+                  <TouchableOpacity
+                    style={[
+                      styles.footerButton,
+                      canSaveMyCinemas
+                        ? styles.footerButtonHighlighted
+                        : styles.footerButtonDisabled,
+                    ]}
+                    onPress={handleSaveMyCinemas}
+                    activeOpacity={0.8}
+                    disabled={!canSaveMyCinemas}
+                    accessibilityRole="button"
+                  >
+                    <MaterialIcons
+                      name={isCurrentSelectionMyCinemas ? "check" : "star-border"}
+                      size={17}
+                      color={canSaveMyCinemas ? colors.green.secondary : colors.textSecondary}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.footerButtonText,
+                        canSaveMyCinemas && styles.footerButtonTextHighlighted,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {isCurrentSelectionMyCinemas ? "These are your preferred cinemas" : "Set as preferred cinemas"}
+                    </ThemedText>
+                  </TouchableOpacity>
+                  {/* Applies the picker's current selection to this session
+                      without touching the preferred-cinemas row above. */}
+                  <TouchableOpacity
+                    style={styles.applyButton}
+                    onPress={handleApplySelection}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                  >
+                    <ThemedText style={styles.applyButtonText} numberOfLines={1}>
+                      Apply
                     </ThemedText>
                   </TouchableOpacity>
                 </View>
@@ -1009,10 +1032,16 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     footer: {
       paddingHorizontal: 20,
       paddingTop: 12,
+      gap: 10,
       borderTopWidth: 1,
       borderTopColor: colors.divider,
       backgroundColor: colors.nestedModalBackground,
     },
+    // Preferred-cinemas button shares its row with the smaller Apply button,
+    // so it takes the leftover width instead of the full row. `center`, not
+    // `stretch`: Apply sets its own (shorter) vertical padding, and stretch
+    // would pull it up to the taller preferred button's height regardless.
+    footerPrimaryRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     footerButton: {
       flexDirection: "row",
       alignItems: "center",
@@ -1024,10 +1053,22 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderWidth: 1.5,
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
-      // Full width: it is the only button on its row, and the preset actions
-      // below it are deliberately not competing for the same weight.
-      alignSelf: "stretch",
+      flex: 1,
     },
+    // Applies the current selection to this session only — no account write,
+    // so it stays the tint-filled "go" action next to the quieter preferred
+    // button, but narrow since it names a much smaller commitment.
+    applyButton: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 28,
+      paddingVertical: 9,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: colors.tint,
+      backgroundColor: colors.tint,
+    },
+    applyButtonText: { fontSize: 13, fontWeight: "700", color: colors.pillActiveText },
     // Saving is only worth a tap once the selection is actually new, so the
     // button stays quiet until then — a soft tinted fill rather than an outline,
     // at the same border width so nothing shifts when the state flips.
@@ -1038,17 +1079,15 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     footerButtonDisabled: { opacity: 0.5 },
     footerButtonText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
     footerButtonTextHighlighted: { color: colors.green.secondary },
-    // The preset row under the primary button. Recessed chips rather than the
+    // The preset row above the primary button. Recessed chips rather than the
     // primary's raised fill: they read as an aside, not as a second thing to
     // decide about, while still being obviously tappable — bare text at the two
-    // outer edges looked stranded. Centred, so the pair sits under the button
-    // as one group.
+    // outer edges looked stranded. Centred, so the pair reads as one group.
     footerLinks: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
       gap: 8,
-      paddingTop: 10,
     },
     footerLinkButton: {
       flexDirection: "row",

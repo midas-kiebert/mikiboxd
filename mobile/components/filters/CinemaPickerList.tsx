@@ -17,6 +17,7 @@ import type { CinemaPublic } from "shared";
 import { groupCinemas } from "@/components/filters/cinema-grouping";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { getCinemaColorPalette } from "@/utils/cinema-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
@@ -27,7 +28,9 @@ type CinemaChipProps = {
   showCity: boolean;
   isSelected: boolean;
   styles: Styles;
-  accentColor: string;
+  accentPrimary: string;
+  accentSecondary: string;
+  accentBorder: string;
   checkColor: string;
   onToggle: (cinemaId: number) => void;
 };
@@ -37,13 +40,22 @@ const CinemaChip = memo(function CinemaChip({
   showCity,
   isSelected,
   styles,
-  accentColor,
+  accentPrimary,
+  accentSecondary,
+  accentBorder,
   checkColor,
   onToggle,
 }: CinemaChipProps) {
   return (
     <TouchableOpacity
-      style={[styles.chip, isSelected && styles.chipSelected]}
+      style={[
+        styles.chip,
+        // Selected uses the cinema's own accent trio (same colors as its
+        // checkbox/badge elsewhere) rather than a flat neutral fill: against
+        // the sheet's off-white background a neutral highlight was reading as
+        // the same color as "unselected".
+        isSelected && { backgroundColor: accentPrimary, borderColor: accentBorder },
+      ]}
       onPress={() => {
         triggerSelectionHaptic();
         onToggle(cinema.id);
@@ -66,7 +78,7 @@ const CinemaChip = memo(function CinemaChip({
       <View
         style={[
           styles.checkbox,
-          isSelected && { borderColor: accentColor, backgroundColor: accentColor },
+          isSelected && { borderColor: accentSecondary, backgroundColor: accentSecondary },
         ]}
       >
         {isSelected ? <MaterialIcons name="check" size={11} color={checkColor} /> : null}
@@ -122,16 +134,9 @@ export default function CinemaPickerList({
     [groupedCities, ungrouped]
   );
 
-  const accentColorByCinemaId = useMemo(
+  const paletteByCinemaId = useMemo(
     () =>
-      new Map(
-        cinemas.map((cinema) => {
-          const palette = (colors as Record<string, { primary: string; secondary: string }>)[
-            cinema.badge_bg_color
-          ];
-          return [cinema.id, palette?.secondary ?? colors.textSecondary] as const;
-        })
-      ),
+      new Map(cinemas.map((cinema) => [cinema.id, getCinemaColorPalette(cinema, colors)] as const)),
     [cinemas, colors]
   );
 
@@ -165,18 +170,23 @@ export default function CinemaPickerList({
               ) : null}
             </View>
             <View style={styles.chipRow}>
-              {section.cinemas.map((cinema) => (
-                <CinemaChip
-                  key={cinema.id}
-                  cinema={cinema}
-                  showCity={section.showCity}
-                  isSelected={selectedIds.has(cinema.id)}
-                  styles={styles}
-                  accentColor={accentColorByCinemaId.get(cinema.id) ?? colors.textSecondary}
-                  checkColor={colors.pillActiveText}
-                  onToggle={onToggleCinema}
-                />
-              ))}
+              {section.cinemas.map((cinema) => {
+                const palette = paletteByCinemaId.get(cinema.id);
+                return (
+                  <CinemaChip
+                    key={cinema.id}
+                    cinema={cinema}
+                    showCity={section.showCity}
+                    isSelected={selectedIds.has(cinema.id)}
+                    styles={styles}
+                    accentPrimary={palette?.primary ?? colors.surfaceMuted}
+                    accentSecondary={palette?.secondary ?? colors.textSecondary}
+                    accentBorder={palette?.border ?? colors.pillBorder}
+                    checkColor={colors.pillActiveText}
+                    onToggle={onToggleCinema}
+                  />
+                );
+              })}
             </View>
           </View>
         );
@@ -193,10 +203,12 @@ const createStyles = (colors: ThemeColors) =>
     section: {
       gap: 6,
     },
+    // No `justifyContent: space-between` here on purpose: the action sits
+    // right next to the city name it acts on, not pinned to the far edge
+    // where it reads as belonging to the row rather than to the title.
     sectionHeader: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
       gap: 8,
     },
     sectionAction: {
@@ -226,13 +238,12 @@ const createStyles = (colors: ThemeColors) =>
       paddingVertical: 6,
       borderRadius: 10,
       borderWidth: 1,
-      borderColor: colors.divider,
-      // Unselected chips are outlines, so the list looks the same whichever
-      // surface it sits on (a tip's dialog, or the nested cinema sheet).
-      backgroundColor: "transparent",
-    },
-    chipSelected: {
-      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.pillBorder,
+      // Same white+pillBorder recipe as every other pill: in light mode a
+      // "transparent" fill just matches the surface behind it (the tip's
+      // dialog, or the nested cinema sheet's off-white background), which is
+      // what made the chip outline disappear.
+      backgroundColor: colors.pillBackground,
     },
     chipText: {
       flexShrink: 1,
@@ -251,8 +262,8 @@ const createStyles = (colors: ThemeColors) =>
       height: 13,
       borderRadius: 6.5,
       borderWidth: 1.2,
-      borderColor: colors.divider,
-      backgroundColor: "transparent",
+      borderColor: colors.pillBorder,
+      backgroundColor: colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",
     },

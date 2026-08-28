@@ -17,6 +17,7 @@ import { storage } from "shared/storage";
 
 import {
   normalizeFiltersForSave,
+  serializeFilters,
   type PageFilterPresetState,
 } from "@/components/filters/filter-preset-utils";
 import {
@@ -199,6 +200,126 @@ export const applyDisplayPreset = (
       ])
     );
   }
+};
+
+/** Everything needed to say what an apply would leave behind. */
+export type PresetApplyContext = {
+  currentFilters: PageFilterPresetState;
+  /** The cinemas the feed is on, resolved the way the pill resolves them. */
+  currentCinemaIds: readonly number[];
+  hasLetterboxdUsername: boolean;
+};
+
+/**
+ * What the filters would be after applying `preset` — the same branching as
+ * `applyDisplayPreset`, returning the result instead of writing it.
+ *
+ * Kept immediately below the apply on purpose: the two must agree, and the
+ * only way to see that they do is to read them together.
+ */
+const resultOfApplying = (
+  preset: DisplayPreset,
+  context: PresetApplyContext
+): PageFilterPresetState => {
+  const untouched = new Set(preset.untouchedFields);
+  const controls = (dimension: PresetDimension) => !untouched.has(dimension);
+  const { filters } = preset;
+  const { currentFilters: current, hasLetterboxdUsername } = context;
+  const next: PageFilterPresetState = { ...current };
+
+  if (controls("selected_showtime_filter")) {
+    next.selected_showtime_filter = toSharedTabShowtimeFilter(
+      filters.selected_showtime_filter
+    );
+  }
+  if (controls("watchlist_only")) {
+    next.watchlist_only = hasLetterboxdUsername && Boolean(filters.watchlist_only);
+    next.watchlist_exclude = hasLetterboxdUsername && Boolean(filters.watchlist_exclude);
+  }
+  if (controls("hide_watched")) {
+    next.hide_watched = hasLetterboxdUsername && Boolean(filters.hide_watched);
+    next.watched_only = hasLetterboxdUsername && Boolean(filters.watched_only);
+  }
+  if (controls("days")) next.days = filters.days ?? [];
+  if (controls("time_ranges")) next.time_ranges = filters.time_ranges ?? [];
+  if (controls("runtime_ranges")) next.runtime_ranges = filters.runtime_ranges ?? [];
+  if (controls("group_by_movie")) next.group_by_movie = Boolean(filters.group_by_movie);
+  if (controls("selected_languages")) {
+    next.selected_languages = filters.selected_languages ?? [];
+  }
+
+  if (hasLetterboxdUsername) {
+    const keepListId = (id: string) => untouched.has(listDimension(id));
+    const applyStored = (ids: readonly string[]) =>
+      ids.filter((id) => controls(listDimension(id)));
+    next.selected_list_ids = dedupe([
+      ...(current.selected_list_ids ?? []).filter(keepListId),
+      ...applyStored(filters.selected_list_ids ?? []),
+    ]);
+    next.exclude_list_ids = dedupe([
+      ...(current.exclude_list_ids ?? []).filter(keepListId),
+      ...applyStored(filters.exclude_list_ids ?? []),
+    ]);
+  }
+
+  return next;
+};
+
+const sortedIds = (ids: readonly number[]): string =>
+  Array.from(new Set(ids))
+    .sort((left, right) => left - right)
+    .join(",");
+
+/**
+ * Whether applying this preset would leave everything exactly as it is.
+ *
+ * Compared through `serializeFilters` rather than field by field, so that a
+ * different order of the same days — or any other difference the filters
+ * themselves treat as none — counts as no change here too.
+ */
+export const presetChangesNothing = (
+  preset: DisplayPreset,
+  context: PresetApplyContext
+): boolean => {
+  if (preset.cinemaIds && sortedIds(preset.cinemaIds) !== sortedIds(context.currentCinemaIds)) {
+    return false;
+  }
+  return (
+    serializeFilters(resultOfApplying(preset, context)) ===
+    serializeFilters(context.currentFilters)
+  );
+};
+
+/**
+ * The dimensions an apply of this preset writes to — whether or not the value
+ * it writes differs from what is already there.
+ *
+ * A partial preset is only legible if the row can tell "this preset does not
+ * carry days" from "this preset carries the days you already had". The first
+ * has to leave the day chip alone; the second has to show the chip being set,
+ * or the preset looks like it half-worked. Only the apply knows the
+ * difference, so it says so (see `preset-apply-signal`).
+ *
+ * List dimensions are reported for the ids the preset actually stores. A list
+ * it merely switches off says so by the chip going, which needs no help.
+ */
+export const controlledPresetDimensions = (preset: DisplayPreset): PresetDimension[] => {
+  const untouched = new Set(preset.untouchedFields);
+  const controlled: PresetDimension[] = CONTROLLABLE_FILTER_DIMENSIONS.filter(
+    (dimension) => !untouched.has(dimension)
+  );
+
+  const storedListIds = dedupe([
+    ...(preset.filters.selected_list_ids ?? []),
+    ...(preset.filters.exclude_list_ids ?? []),
+  ]);
+  for (const id of storedListIds) {
+    const dimension = listDimension(id);
+    if (!untouched.has(dimension)) controlled.push(dimension);
+  }
+
+  if (preset.cinemaIds) controlled.push("cinemas");
+  return controlled;
 };
 
 export const deleteDisplayPreset = (preset: DisplayPreset): Promise<unknown> =>

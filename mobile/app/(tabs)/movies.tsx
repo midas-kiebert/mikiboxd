@@ -21,7 +21,9 @@ import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
-import FiltersRow from '@/components/filters/FiltersRow';
+import PresetsRow from '@/components/filters/PresetsRow';
+import FiltersButton from '@/components/filters/FiltersButton';
+import SearchFieldFallback from '@/components/inputs/SearchFieldFallback';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
@@ -201,6 +203,11 @@ export default function MovieScreen() {
     return (
       <ThemedView style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>No movies found</ThemedText>
+        <SearchFieldFallback
+          searchField={searchField}
+          query={effectiveSearchQuery}
+          onSearchByTitle={() => setSearchField('title')}
+        />
       </ThemedView>
     );
   };
@@ -240,11 +247,11 @@ export default function MovieScreen() {
         searchField={searchField}
         onChangeSearchField={setSearchField}
         clearOnAndroidBack
+        leftSlot={
+          <FiltersButton onPress={() => openFiltersModal({ showGroupByMovie: false })} />
+        }
       />
-      <FiltersRow
-        onOpenModal={() => openFiltersModal({ showGroupByMovie: false })}
-        onApplyPreset={handleApplyPreset}
-      />
+      <PresetsRow onApplyPreset={handleApplyPreset} />
       <ActiveFilterChips
         groupByMovie={groupByMovie}
         setGroupByMovie={setGroupByMovie}

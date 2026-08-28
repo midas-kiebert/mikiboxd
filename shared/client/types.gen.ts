@@ -109,6 +109,7 @@ export type CinemaPresetPublic = {
   name: string
   is_default: boolean
   cinema_ids: Array<number>
+  cinema_scope?: CinemaScope | null
   is_favorite: boolean
   created_at: string
   updated_at: string
@@ -135,6 +136,19 @@ export type CinemaPublic = {
   seating?: CinemaSeatingPreset
   id: number
   city: CityPublic
+}
+
+/**
+ * A cinema selection as a rule rather than a frozen list of ids.
+ *
+ * The three parts are a union: the selection is every cinema (``all_cinemas``),
+ * or everything in ``city_ids`` together with everything in ``cinema_ids``.
+ * ``all_cinemas`` subsumes the other two, which are left empty when it is set.
+ */
+export type CinemaScope = {
+  all_cinemas?: boolean
+  city_ids?: Array<number>
+  cinema_ids?: Array<number>
 }
 
 /**
@@ -491,6 +505,7 @@ export type SavedPresetPublic = {
   untouched_fields: Array<string>
   filters: SavedPresetFilters
   cinema_ids: Array<number> | null
+  cinema_scope?: CinemaScope | null
   created_at: string
   updated_at: string
 }

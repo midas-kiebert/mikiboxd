@@ -8,6 +8,7 @@ import { DateTime } from 'luxon';
 import { useQuery } from '@tanstack/react-query';
 import { UsersService, type GoingStatus, type UserWithFriendStatus } from 'shared';
 import { useFetchUserShowtimes } from 'shared/hooks/useFetchUserShowtimes';
+import type { SearchField } from 'shared/client';
 import { usePrefetchShowtimeVisibility } from 'shared/hooks/useShowtimeVisibility';
 import { usePrefetchShowtimeSeatAvailability } from 'shared/hooks/useShowtimeSeatAvailability';
 import useAuth from 'shared/hooks/useAuth';
@@ -19,14 +20,14 @@ import ShowtimesScreen, {
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import TopBar from '@/components/layout/TopBar';
 import { useDeferredMount } from '@/utils/use-deferred-mount';
-import FiltersButtonRow from '@/components/filters/FiltersButtonRow';
+import FiltersButton from '@/components/filters/FiltersButton';
 import FiltersModal from '@/components/filters/FiltersModal';
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
+import SearchFieldFallback from '@/components/inputs/SearchFieldFallback';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import FriendAgendaOptions from '@/components/friends/FriendAgendaOptions';
 import NonFriendProfile from '@/components/friends/NonFriendProfile';
-import AgendaTogglePill from '@/components/showtimes/AgendaTogglePill';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { getAvatarColors, getAvatarInitial } from '@/utils/avatar-color';
@@ -37,6 +38,10 @@ import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/util
 // One request per pause in typing, not one per keystroke — see
 // useDebouncedValue and (tabs)/index.tsx's identical guard.
 const SEARCH_DEBOUNCE_MS = 280;
+
+// Every showtime here is one this friend marked, so "search by friend" would
+// only ever ask again what the screen is already answering.
+const HIDDEN_SEARCH_FIELDS: readonly SearchField[] = ['friend'];
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
@@ -53,18 +58,23 @@ const getFriendTitle = (displayName: string | null | undefined) => {
 
 /**
  * A friend's agenda is nothing but showtimes, so everything above the list —
- * the top bar, the search field, the Filters button and the Interested toggle —
+ * the top bar, the search field, the Filters button and the interested switch —
  * is the screen's frame rather than something the data decides. It is owned
  * here, above the deferred-mount split, so it paints and answers taps on the
  * first frame; whatever the user types or opens while the content below is
  * still mounting carries straight over, because it was never the content's
  * state to begin with.
+ *
+ * The row is the main feed's: Filters inside the search row, and the same
+ * search-field selector on the field itself (minus Friends, see
+ * {@link HIDDEN_SEARCH_FIELDS}).
  */
 export default function FriendShowtimesScreen() {
   const { id, name } = useLocalSearchParams<{ id?: string | string[]; name?: string | string[] }>();
   const ready = useDeferredMount(`friend:${Array.isArray(id) ? id[0] : id}`);
   const routeFriendName = getFriendTitle(getRouteParam(name));
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchField, setSearchField] = useState<SearchField>('title');
   // Independent toggle: not inherited from shared state (own thing per user visit).
   const [includeInterested, setIncludeInterested] = useState(true);
   const [filtersModalVisible, setFiltersModalVisible] = useState(false);
@@ -75,24 +85,7 @@ export default function FriendShowtimesScreen() {
   const topBarAccentColor = { background: routeAvatarColors.primary, text: routeAvatarColors.secondary };
   const topBarAvatarInitial = getAvatarInitial(routeFriendName);
 
-  // Same pill and wording as the Interested toggle on your own Agenda tab —
-  // a friend's agenda is read the same way as your own — but here it rides in
-  // the Filters row's right slot, next to the Filters button.
-  const filtersButtonRow = (
-    <FiltersButtonRow
-      onPress={() => setFiltersModalVisible(true)}
-      rightSlot={
-        <AgendaTogglePill
-          label="Interested"
-          iconOn="bookmark"
-          iconOff="bookmark-border"
-          active={includeInterested}
-          accent={colors.orange}
-          onToggle={() => setIncludeInterested((previous) => !previous)}
-        />
-      }
-    />
-  );
+  const filtersButton = <FiltersButton onPress={() => setFiltersModalVisible(true)} />;
 
   if (!ready) {
     return (
@@ -103,12 +96,11 @@ export default function FriendShowtimesScreen() {
         topBarShowBackButton
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        filterRow={
-          <>
-            {filtersButtonRow}
-            <ActiveFilterChipsPlaceholder />
-          </>
-        }
+        searchField={searchField}
+        onChangeSearchField={setSearchField}
+        hiddenSearchFields={HIDDEN_SEARCH_FIELDS}
+        searchLeftSlot={filtersButton}
+        filterRow={<ActiveFilterChipsPlaceholder />}
       />
     );
   }
@@ -118,8 +110,11 @@ export default function FriendShowtimesScreen() {
       routeFriendName={routeFriendName}
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
+      searchField={searchField}
+      onChangeSearchField={setSearchField}
       includeInterested={includeInterested}
-      filtersButtonRow={filtersButtonRow}
+      setIncludeInterested={setIncludeInterested}
+      filtersButton={filtersButton}
       filtersModalVisible={filtersModalVisible}
       setFiltersModalVisible={setFiltersModalVisible}
     />
@@ -131,8 +126,11 @@ function FriendShowtimesContent({
   routeFriendName,
   searchQuery,
   onSearchChange,
+  searchField,
+  onChangeSearchField,
   includeInterested,
-  filtersButtonRow,
+  setIncludeInterested,
+  filtersButton,
   filtersModalVisible,
   setFiltersModalVisible,
 }: {
@@ -140,8 +138,11 @@ function FriendShowtimesContent({
   routeFriendName: string;
   searchQuery: string;
   onSearchChange: (value: string) => void;
+  searchField: SearchField;
+  onChangeSearchField: (searchField: SearchField) => void;
   includeInterested: boolean;
-  filtersButtonRow: ReactElement;
+  setIncludeInterested: (value: boolean) => void;
+  filtersButton: ReactElement;
   filtersModalVisible: boolean;
   setFiltersModalVisible: (visible: boolean) => void;
 }) {
@@ -241,6 +242,7 @@ function FriendShowtimesContent({
 
   const showtimesFilters = useMemo(() => ({
     query: effectiveSearchQuery || undefined,
+    searchField,
     days: resolvedApiDays,
     selectedCinemaIds: effectiveCinemaIds ?? undefined,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
@@ -264,6 +266,7 @@ function FriendShowtimesContent({
     includeInterested,
     resolvedApiDays,
     effectiveSearchQuery,
+    searchField,
     selectedTimeRanges,
   ]);
 
@@ -305,6 +308,8 @@ function FriendShowtimesContent({
   };
 
   const handleClearAll = () => {
+    // Included is this filter's unfiltered state, so clearing puts it back on.
+    setIncludeInterested(true);
     setWatchlistOnly(false);
     setWatchlistExclude(false);
     setHideWatched(false);
@@ -316,6 +321,15 @@ function FriendShowtimesContent({
     setSelectedLanguages([]);
     if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
   };
+
+  // Shown under an empty result that a non-title search may well explain.
+  const searchFieldFallback = (
+    <SearchFieldFallback
+      searchField={searchField}
+      query={effectiveSearchQuery}
+      onSearchByTitle={() => onChangeSearchField('title')}
+    />
+  );
 
   // Whether the viewer can even see this — resolved once the friend-status
   // fetch lands. Until then, a bare loading state rather than a guess: this
@@ -370,41 +384,45 @@ function FriendShowtimesContent({
         onRefresh={handleRefresh}
         searchQuery={searchQuery}
         onSearchChange={onSearchChange}
+        searchField={searchField}
+        onChangeSearchField={onChangeSearchField}
+        hiddenSearchFields={HIDDEN_SEARCH_FIELDS}
+        searchLeftSlot={filtersButton}
         filterRow={
-          <>
-            {filtersButtonRow}
-            <ActiveFilterChips
-              onOpenFilters={() => setFiltersModalVisible(true)}
-              onOpenCinemaModal={() => setCinemaModalVisible(true)}
-              groupByMovie={false}
-              setGroupByMovie={NOOP_GROUP_BY_MOVIE}
-              watchlistOnly={effectiveWatchlistOnly}
-              setWatchlistOnly={setWatchlistOnly}
-              watchlistExclude={effectiveWatchlistExclude}
-              setWatchlistExclude={setWatchlistExclude}
-              hideWatched={effectiveHideWatched}
-              setHideWatched={setHideWatched}
-              watchedOnly={effectiveWatchedOnly}
-              setWatchedOnly={setWatchedOnly}
-              canUseWatchlistFilter={hasLetterboxdUsername}
-              selectedShowtimeFilter="all"
-              setSelectedShowtimeFilter={() => {}}
-              showStatusFilter={false}
-              selectedDays={selectedDays}
-              setSelectedDays={setSelectedDays}
-              selectedTimeRanges={selectedTimeRanges}
-              setSelectedTimeRanges={setSelectedTimeRanges}
-              selectedRuntimeRanges={[]}
-              setSelectedRuntimeRanges={() => {}}
-              selectedListIds={selectedListIds}
-              setSelectedListIds={setSelectedListIds}
-              excludeListIds={excludeListIds}
-              setExcludeListIds={setExcludeListIds}
-              selectedLanguages={selectedLanguages}
-              setSelectedLanguages={setSelectedLanguages}
-              onClearAll={handleClearAll}
-            />
-          </>
+          <ActiveFilterChips
+            onOpenFilters={() => setFiltersModalVisible(true)}
+            onOpenCinemaModal={() => setCinemaModalVisible(true)}
+            groupByMovie={false}
+            setGroupByMovie={NOOP_GROUP_BY_MOVIE}
+            watchlistOnly={effectiveWatchlistOnly}
+            setWatchlistOnly={setWatchlistOnly}
+            watchlistExclude={effectiveWatchlistExclude}
+            setWatchlistExclude={setWatchlistExclude}
+            hideWatched={effectiveHideWatched}
+            setHideWatched={setHideWatched}
+            watchedOnly={effectiveWatchedOnly}
+            setWatchedOnly={setWatchedOnly}
+            canUseWatchlistFilter={hasLetterboxdUsername}
+            selectedShowtimeFilter="all"
+            setSelectedShowtimeFilter={() => {}}
+            showStatusFilter={false}
+            includeInterested={includeInterested}
+            setIncludeInterested={setIncludeInterested}
+            showInterestedFilter
+            selectedDays={selectedDays}
+            setSelectedDays={setSelectedDays}
+            selectedTimeRanges={selectedTimeRanges}
+            setSelectedTimeRanges={setSelectedTimeRanges}
+            selectedRuntimeRanges={[]}
+            setSelectedRuntimeRanges={() => {}}
+            selectedListIds={selectedListIds}
+            setSelectedListIds={setSelectedListIds}
+            excludeListIds={excludeListIds}
+            setExcludeListIds={setExcludeListIds}
+            selectedLanguages={selectedLanguages}
+            setSelectedLanguages={setSelectedLanguages}
+            onClearAll={handleClearAll}
+          />
         }
         listHeader={
           <FriendAgendaOptions
@@ -414,6 +432,7 @@ function FriendShowtimesContent({
           />
         }
         emptyText="No showtimes in this agenda"
+        emptyExtra={searchFieldFallback}
         openModalOptions={{ openedFrom: { userId: userId ?? undefined } }}
       />
       <FiltersModal
@@ -433,6 +452,9 @@ function FriendShowtimesContent({
         selectedShowtimeFilter="all"
         setSelectedShowtimeFilter={() => {}}
         showStatusFilter={false}
+        includeInterested={includeInterested}
+        setIncludeInterested={setIncludeInterested}
+        showInterestedFilter
         showCinemas
         onOpenCinemaModal={() => setCinemaModalVisible(true)}
         showRuntime={false}

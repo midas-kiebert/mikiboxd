@@ -98,8 +98,15 @@ const ENTER_SCALE_FROM = 0.94;
  * Shorter than the entrance on purpose: an arriving chip is something to look
  * at, a leaving one is already answered by the tap that removed it, and every
  * other chip in the row is waiting on this before it may move.
+ *
+ * And short enough that the arrivals it holds back still land inside the
+ * preset button's own flash (`PresetButton`, 130ms green then 130ms fading):
+ * nothing may move into a leaving chip's place before it is gone, so this
+ * window is the whole distance between tapping a preset and seeing the row
+ * answer. At 170 the row started moving as the button finished, which read as
+ * two separate events rather than one.
  */
-export const CHIP_EXIT_MS = 170;
+export const CHIP_EXIT_MS = 100;
 const EXIT_MS = CHIP_EXIT_MS;
 
 /**

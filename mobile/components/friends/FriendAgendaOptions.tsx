@@ -164,9 +164,9 @@ export default function FriendAgendaOptions({
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
     card: {
-      // Matches the plain screen background used by the sibling filter rows
-      // (FiltersButtonRow, ActiveFilterChips) below it, rather than standing
-      // out as its own white card.
+      // Matches the plain screen background used by the sibling search and
+      // filter-chip rows above it, rather than standing out as its own white
+      // card.
       backgroundColor: colors.background,
       borderBottomWidth: 1,
       borderBottomColor: colors.divider,

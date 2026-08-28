@@ -23,6 +23,7 @@ from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as users_crud
+from app.crud.cinema_scope import infer_cinema_scope, parse_cinema_scope
 from app.exceptions.base import AppError
 from app.exceptions.cinema_preset_exceptions import (
     CinemaPresetNameRequired,
@@ -344,7 +345,9 @@ def delete_push_token_for_user(
     return True
 
 
-def _to_saved_preset_public(preset: SavedPreset) -> SavedPresetPublic:
+def _to_saved_preset_public(
+    *, session: Session, preset: SavedPreset
+) -> SavedPresetPublic:
     return SavedPresetPublic.model_validate(
         {
             "id": preset.id,
@@ -352,7 +355,10 @@ def _to_saved_preset_public(preset: SavedPreset) -> SavedPresetPublic:
             "is_favorite": preset.is_favorite,
             "untouched_fields": preset.untouched_fields,
             "filters": preset.filters,
-            "cinema_ids": preset.cinema_ids,
+            "cinema_ids": saved_presets_crud.resolve_preset_cinema_ids(
+                session=session, preset=preset
+            ),
+            "cinema_scope": parse_cinema_scope(preset.cinema_scope),
             "created_at": preset.created_at,
             "updated_at": preset.updated_at,
         }
@@ -368,7 +374,9 @@ def list_saved_presets(
         session=session,
         user_id=user_id,
     )
-    return [_to_saved_preset_public(preset) for preset in presets]
+    return [
+        _to_saved_preset_public(session=session, preset=preset) for preset in presets
+    ]
 
 
 def save_saved_preset(
@@ -381,6 +389,7 @@ def save_saved_preset(
     preset_name = payload.name.strip()
     filters = payload.filters.model_dump(mode="json")
     cinema_ids = list(payload.cinema_ids) if payload.cinema_ids is not None else None
+    cinema_scope = _scope_for_selection(session=session, cinema_ids=cinema_ids)
     should_set_favorite = payload.is_favorite is True
     existing = saved_presets_crud.get_user_preset_by_name(
         session=session,
@@ -402,6 +411,7 @@ def save_saved_preset(
             untouched_fields=payload.untouched_fields,
             filters=filters,
             cinema_ids=cinema_ids,
+            cinema_scope=cinema_scope,
             is_favorite=should_set_favorite,
             now=now,
         )
@@ -412,12 +422,13 @@ def save_saved_preset(
             untouched_fields=payload.untouched_fields,
             filters=filters,
             cinema_ids=cinema_ids,
+            cinema_scope=cinema_scope,
             is_favorite=payload.is_favorite,
             now=now,
         )
 
     session.commit()
-    return _to_saved_preset_public(preset)
+    return _to_saved_preset_public(session=session, preset=preset)
 
 
 def delete_saved_preset(
@@ -447,7 +458,7 @@ def get_favorite_saved_preset(
     )
     if preset is None:
         return None
-    return _to_saved_preset_public(preset)
+    return _to_saved_preset_public(session=session, preset=preset)
 
 
 def set_favorite_saved_preset(
@@ -476,7 +487,7 @@ def set_favorite_saved_preset(
         now=now,
     )
     session.commit()
-    return _to_saved_preset_public(favorite)
+    return _to_saved_preset_public(session=session, preset=favorite)
 
 
 def clear_favorite_saved_preset(
@@ -491,13 +502,18 @@ def clear_favorite_saved_preset(
     session.commit()
 
 
-def _to_cinema_preset_public(preset: CinemaPreset) -> CinemaPresetPublic:
+def _to_cinema_preset_public(
+    *, session: Session, preset: CinemaPreset
+) -> CinemaPresetPublic:
     return CinemaPresetPublic.model_validate(
         {
             "id": preset.id,
             "name": preset.name,
             "is_default": False,
-            "cinema_ids": preset.cinema_ids,
+            "cinema_ids": cinema_presets_crud.resolve_preset_cinema_ids(
+                session=session, preset=preset
+            ),
+            "cinema_scope": parse_cinema_scope(preset.cinema_scope),
             "is_favorite": preset.is_favorite,
             "created_at": preset.created_at,
             "updated_at": preset.updated_at,
@@ -507,6 +523,22 @@ def _to_cinema_preset_public(preset: CinemaPreset) -> CinemaPresetPublic:
 
 def _normalize_cinema_ids(cinema_ids: list[int]) -> list[int]:
     return sorted(set(cinema_ids))
+
+
+def _scope_for_selection(
+    *,
+    session: Session,
+    cinema_ids: list[int] | None,
+) -> dict[str, Any] | None:
+    """The rule to store alongside a selection the client just sent.
+
+    Clients send ticked ids and nothing else, so the rule is read off the
+    selection here — once, on the way in — and every read expands it again.
+    """
+    if cinema_ids is None:
+        return None
+    scope = infer_cinema_scope(session=session, cinema_ids=cinema_ids)
+    return scope.model_dump(mode="json")
 
 
 def _get_all_cinema_ids(*, session: Session) -> list[int]:
@@ -564,7 +596,9 @@ def list_cinema_presets(
         session=session,
         user_id=user_id,
     )
-    public_presets = [_to_cinema_preset_public(preset) for preset in presets]
+    public_presets = [
+        _to_cinema_preset_public(session=session, preset=preset) for preset in presets
+    ]
     has_default = any(
         preset.id == DEFAULT_CINEMA_PRESET_ID for preset in public_presets
     )
@@ -590,6 +624,7 @@ def save_cinema_preset(
     now = now_amsterdam_naive()
     preset_name = payload.name.strip()
     cinema_ids = _normalize_cinema_ids(payload.cinema_ids)
+    cinema_scope = _scope_for_selection(session=session, cinema_ids=cinema_ids)
     should_set_favorite = payload.is_favorite is True
     existing = cinema_presets_crud.get_user_preset_by_name(
         session=session,
@@ -611,6 +646,7 @@ def save_cinema_preset(
             user_id=user_id,
             name=preset_name,
             cinema_ids=cinema_ids,
+            cinema_scope=cinema_scope,
             is_favorite=should_set_favorite,
             now=now,
         )
@@ -619,12 +655,13 @@ def save_cinema_preset(
             session=session,
             preset=existing,
             cinema_ids=cinema_ids,
+            cinema_scope=cinema_scope,
             is_favorite=payload.is_favorite,
             now=now,
         )
 
     session.commit()
-    return _to_cinema_preset_public(preset)
+    return _to_cinema_preset_public(session=session, preset=preset)
 
 
 def rename_cinema_preset(
@@ -668,7 +705,7 @@ def rename_cinema_preset(
         now=now,
     )
     session.commit()
-    return _to_cinema_preset_public(renamed)
+    return _to_cinema_preset_public(session=session, preset=renamed)
 
 
 def delete_cinema_preset(
@@ -701,7 +738,7 @@ def get_favorite_cinema_preset(
     )
     if favorite is None:
         return None
-    return _to_cinema_preset_public(favorite)
+    return _to_cinema_preset_public(session=session, preset=favorite)
 
 
 def apply_cinema_preset_as_favorite(
@@ -726,10 +763,15 @@ def apply_cinema_preset_as_favorite(
     if preset is None:
         return None
 
+    # Resolved, not the frozen snapshot: copying "everything in Amsterdam"
+    # across has to copy the rule, and the rule is re-derived from the ids.
     set_favorite_cinema_ids(
         session=session,
         user_id=user_id,
-        cinema_ids=list(preset.cinema_ids),
+        cinema_ids=cinema_presets_crud.resolve_preset_cinema_ids(
+            session=session, preset=preset
+        )
+        or [],
     )
     return get_favorite_cinema_preset(session=session, user_id=user_id)
 
@@ -756,7 +798,12 @@ def get_favorite_cinema_ids(
         user_id=user_id,
     )
     if favorite is not None:
-        return list(favorite.cinema_ids)
+        return (
+            cinema_presets_crud.resolve_preset_cinema_ids(
+                session=session, preset=favorite
+            )
+            or []
+        )
 
     # Compatibility fallback for existing web users until they save a cinema preset.
     legacy_cinema_ids = users_crud.get_selected_cinemas_ids(
@@ -774,6 +821,7 @@ def set_favorite_cinema_ids(
 ) -> None:
     now = now_amsterdam_naive()
     normalized_ids = _normalize_cinema_ids(cinema_ids)
+    cinema_scope = _scope_for_selection(session=session, cinema_ids=normalized_ids)
     favorite = cinema_presets_crud.get_user_favorite_preset(
         session=session,
         user_id=user_id,
@@ -788,6 +836,7 @@ def set_favorite_cinema_ids(
                 base_name=FAVORITE_CINEMA_PRESET_NAME,
             ),
             cinema_ids=normalized_ids,
+            cinema_scope=cinema_scope,
             is_favorite=True,
             now=now,
         )
@@ -796,6 +845,7 @@ def set_favorite_cinema_ids(
             session=session,
             preset=favorite,
             cinema_ids=normalized_ids,
+            cinema_scope=cinema_scope,
             is_favorite=True,
             now=now,
         )

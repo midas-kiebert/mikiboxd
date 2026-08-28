@@ -1529,3 +1529,145 @@ def test_legacy_preferred_cinemas_still_work_on_me_cinemas(
     )
     assert favorite_get.status_code == 200
     assert favorite_get.json() == [first_cinema_id]
+
+
+def test_saved_preset_covering_a_whole_city_picks_up_a_new_cinema_there(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    cinema_factory,
+    city_factory,
+) -> None:
+    """The whole point of storing the rule instead of the ids.
+
+    A preset saved as "everything in Amsterdam" has to still mean that once
+    another Amsterdam cinema opens — which happens every few months — without
+    the user re-saving it.
+    """
+    amsterdam = city_factory()
+    utrecht = city_factory()
+    amsterdam_cinemas = [cinema_factory(city=amsterdam), cinema_factory(city=amsterdam)]
+    # A second city, so selecting Amsterdam is not also selecting everything.
+    cinema_factory(city=utrecht)
+    cinema_factory(city=utrecht)
+    db_transaction.flush()
+
+    create = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={
+            "name": "All of Amsterdam",
+            "filters": {"selected_showtime_filter": "all"},
+            "cinema_ids": [cinema.id for cinema in amsterdam_cinemas],
+        },
+    )
+    assert create.status_code == 200
+    assert create.json()["cinema_scope"]["city_ids"] == [amsterdam.id]
+
+    newcomer = cinema_factory(city=amsterdam)
+    db_transaction.flush()
+
+    presets = client.get(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+    )
+    assert presets.status_code == 200
+    stored = presets.json()[0]
+    assert stored["cinema_ids"] == sorted(
+        [cinema.id for cinema in amsterdam_cinemas] + [newcomer.id]
+    )
+
+
+def test_saved_preset_with_a_partial_city_does_not_pick_up_a_new_cinema(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    cinema_factory,
+    city_factory,
+) -> None:
+    """The counterpart: a deliberately narrow selection stays narrow."""
+    amsterdam = city_factory()
+    picked = cinema_factory(city=amsterdam)
+    cinema_factory(city=amsterdam)
+    cinema_factory(city=amsterdam)
+    db_transaction.flush()
+
+    create = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Just the one",
+            "filters": {"selected_showtime_filter": "all"},
+            "cinema_ids": [picked.id],
+        },
+    )
+    assert create.status_code == 200
+    assert create.json()["cinema_scope"]["city_ids"] == []
+
+    cinema_factory(city=amsterdam)
+    db_transaction.flush()
+
+    presets = client.get(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+    )
+    assert presets.json()[0]["cinema_ids"] == [picked.id]
+
+
+def test_saved_preset_without_cinemas_still_leaves_them_alone(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    cinema_factory,
+) -> None:
+    """No selection must not become one, however the rule is inferred."""
+    cinema_factory()
+    cinema_factory()
+
+    create = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Filters only",
+            "filters": {"selected_showtime_filter": "going"},
+        },
+    )
+    assert create.status_code == 200
+    body = create.json()
+    assert body["cinema_ids"] is None
+    assert body["cinema_scope"] is None
+
+
+def test_cinema_preset_covering_every_cinema_picks_up_a_new_one(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    cinema_factory,
+    city_factory,
+) -> None:
+    """"My cinemas" is applied on startup, so it is the one that matters most."""
+    existing = [cinema_factory(), cinema_factory()]
+    db_transaction.flush()
+
+    create = client.post(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Everything",
+            "cinema_ids": [cinema.id for cinema in existing],
+            "is_favorite": True,
+        },
+    )
+    assert create.status_code == 200
+    assert create.json()["cinema_scope"]["all_cinemas"] is True
+
+    newcomer = cinema_factory(city=city_factory())
+    db_transaction.flush()
+
+    favorite = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert favorite.status_code == 200
+    assert favorite.json()["cinema_ids"] == sorted(
+        [cinema.id for cinema in existing] + [newcomer.id]
+    )

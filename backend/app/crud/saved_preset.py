@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
+from app.crud.cinema_scope import parse_cinema_scope, resolve_cinema_scope
 from app.models.saved_preset import SavedPreset
 
 
@@ -71,6 +72,7 @@ def create_preset(
     untouched_fields: list[str],
     filters: dict[str, Any],
     cinema_ids: list[int] | None,
+    cinema_scope: dict[str, Any] | None,
     is_favorite: bool,
     now: datetime,
 ) -> SavedPreset:
@@ -81,6 +83,7 @@ def create_preset(
         untouched_fields=untouched_fields,
         filters=filters,
         cinema_ids=cinema_ids,
+        cinema_scope=cinema_scope,
         created_at=now,
         updated_at=now,
     )
@@ -96,18 +99,39 @@ def update_preset(
     untouched_fields: list[str],
     filters: dict[str, Any],
     cinema_ids: list[int] | None,
+    cinema_scope: dict[str, Any] | None,
     is_favorite: bool | None,
     now: datetime,
 ) -> SavedPreset:
     preset.untouched_fields = untouched_fields
     preset.filters = filters
     preset.cinema_ids = cinema_ids
+    preset.cinema_scope = cinema_scope
     if is_favorite is not None:
         preset.is_favorite = is_favorite
     preset.updated_at = now
     session.add(preset)
     session.flush()
     return preset
+
+
+def resolve_preset_cinema_ids(
+    *,
+    session: Session,
+    preset: SavedPreset,
+) -> list[int] | None:
+    """The preset's cinemas expanded against today's cinema list.
+
+    ``None`` stays ``None``: a preset with no cinema selection leaves the
+    user's cinemas alone, and must not be turned into one that selects some.
+    """
+    if preset.cinema_ids is None:
+        return None
+    return resolve_cinema_scope(
+        session=session,
+        scope=parse_cinema_scope(preset.cinema_scope),
+        stored_cinema_ids=list(preset.cinema_ids),
+    )
 
 
 def clear_user_favorite_preset(

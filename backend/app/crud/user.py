@@ -13,11 +13,12 @@ from app.core.enums import (
     GoingStatus,
     LoginEmailSource,
     NotificationChannel,
+    SearchField,
     SocialProvider,
 )
 from app.core.security import get_password_hash, verify_password
 from app.crud import showtime_visibility as showtime_visibility_crud
-from app.crud.movie import apply_language_filter
+from app.crud.movie import apply_language_filter, apply_search_filter
 from app.inputs.movie import Filters
 from app.models.cinema_selection import CinemaSelection
 from app.models.friendship import FriendRequest, Friendship
@@ -662,6 +663,7 @@ def get_friends(*, session: Session, user_id: UUID) -> list[User]:
 
 def _build_selected_showtimes_query(
     *,
+    session: Session,
     user_id: UUID,
     viewer_id: UUID | None,
     filters: Filters,
@@ -725,7 +727,7 @@ def _build_selected_showtimes_query(
     )
 
     if (
-        filters.query
+        (filters.query and filters.search_field != SearchField.FRIEND)
         or filters.watchlist_only
         or filters.runtime_min is not None
         or filters.runtime_max is not None
@@ -733,11 +735,13 @@ def _build_selected_showtimes_query(
     ):
         stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
 
-    if filters.query:
-        pattern = f"%{filters.query}%"
-        stmt = stmt.where(
-            col(Movie.title).ilike(pattern) | col(Movie.original_title).ilike(pattern)
-        )
+    # The same helper the main feed searches through, rather than a title-only
+    # LIKE of its own: an agenda carries the same search-field selector as the
+    # feed, and a director query that quietly matched titles instead would come
+    # back empty with nothing to say why.
+    stmt = apply_search_filter(
+        stmt, filters=filters, session=session, current_user_id=viewer_id
+    )
 
     if filters.runtime_min is not None:
         stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
@@ -779,6 +783,7 @@ def get_selected_showtimes(
         list[Showtime]: A list of Showtime objects that the user has selected.
     """
     stmt, force_empty = _build_selected_showtimes_query(
+        session=session,
         user_id=user_id,
         viewer_id=viewer_id,
         filters=filters,
@@ -801,6 +806,7 @@ def count_selected_showtimes(
     letterboxd_username: str | None = None,
 ) -> int:
     stmt, force_empty = _build_selected_showtimes_query(
+        session=session,
         user_id=user_id,
         viewer_id=viewer_id,
         filters=filters,

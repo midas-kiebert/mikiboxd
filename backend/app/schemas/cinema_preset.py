@@ -4,6 +4,8 @@ from uuid import UUID
 from pydantic import field_validator
 from sqlmodel import Field, SQLModel
 
+from app.schemas.cinema_scope import CinemaScope
+
 __all__ = [
     "CinemaPresetCreate",
     "CinemaPresetPublic",
@@ -40,7 +42,13 @@ class CinemaPresetPublic(SQLModel):
     id: UUID
     name: str
     is_default: bool
+    # The selection as it stands today: the preset's rule expanded against the
+    # current cinema list, so a client that knows nothing about scopes still
+    # gets the cinema that opened last month.
     cinema_ids: list[int]
+    # The rule behind it, for clients that want to say "All Amsterdam cinemas"
+    # rather than "5 cinemas". Additive: older builds ignore it.
+    cinema_scope: CinemaScope | None = None
     is_favorite: bool
     created_at: datetime
     updated_at: datetime

@@ -35,6 +35,7 @@ import {
   buildSavedPresetCreate,
   displayPresetsQueryKey,
 } from "@/components/filters/saved-presets";
+import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
 import {
   hasAnyActiveFilter,
   presetRequiresLetterboxd,
@@ -46,6 +47,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { useCurrentFilterPresetState } from "@/hooks/useSharedTabFilters";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import { useDismissTip } from "@/utils/feature-tips";
+import { useIsSignedIn } from "@/utils/auth-session";
 
 /** Identifies the "save what I have right now" row, which has no fixed name. */
 const CURRENT_FILTERS_ROW_ID = "current-filters";
@@ -59,6 +61,13 @@ type PresetRow = {
   build: (() => SavedPresetCreate) | null;
   /** True when applying this preset needs a Letterboxd username the user hasn't set. */
   needsLetterboxdUsername: boolean;
+  /**
+   * The row is already among the user's saved presets — from a previous visit
+   * to this tip, or saved by hand under the same name. Only the ready-made
+   * rows can know this: they save under a fixed name, while "your current
+   * filters" is named by the user and has no identity to match on.
+   */
+  isAlreadySaved: boolean;
 };
 
 type FilterPresetTipProps = {
@@ -85,6 +94,15 @@ export default function FilterPresetTip({ isPreview = false, onClose }: FilterPr
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const { data: letterboxdLists } = useFetchLetterboxdLists(hasLetterboxdUsername);
   const currentFilters = useCurrentFilterPresetState();
+  // What the user has already saved, so a row taken on an earlier visit still
+  // reads "Added" when the tip is opened again. Same query as the presets row,
+  // and the save below invalidates it.
+  const isSignedIn = useIsSignedIn();
+  const { presets: savedPresets } = useDisplayPresets({ enabled: isSignedIn });
+  const savedPresetNames = useMemo(
+    () => new Set(savedPresets.map((preset) => preset.name.trim().toLowerCase())),
+    [savedPresets]
+  );
 
   const [savedRowIds, setSavedRowIds] = useState<ReadonlySet<string>>(() => new Set());
   const [pendingRowId, setPendingRowId] = useState<string | null>(null);
@@ -166,6 +184,7 @@ export default function FilterPresetTip({ isPreview = false, onClose }: FilterPr
       // without a Letterboxd username in the first place, so only the
       // premade suggestions need this check.
       needsLetterboxdUsername: presetRequiresLetterboxd(preset.filters) && !hasLetterboxdUsername,
+      isAlreadySaved: savedPresetNames.has(preset.name.trim().toLowerCase()),
     }));
 
     if (!hasAnyActiveFilter(currentFilters)) return premadeRows;
@@ -178,10 +197,11 @@ export default function FilterPresetTip({ isPreview = false, onClose }: FilterPr
         icon: "bookmark-add" as const,
         build: null,
         needsLetterboxdUsername: false,
+        isAlreadySaved: false,
       },
       ...premadeRows,
     ];
-  }, [allCinemaIds, currentFilters, hasLetterboxdUsername, listIds]);
+  }, [allCinemaIds, currentFilters, hasLetterboxdUsername, listIds, savedPresetNames]);
 
   const handleAddRow = useCallback(
     (row: PresetRow) => {
@@ -261,7 +281,9 @@ export default function FilterPresetTip({ isPreview = false, onClose }: FilterPr
         nestedScrollEnabled
       >
         {rows.map((row, index) => {
-          const isSaved = savedRowIds.has(row.id);
+          // Local state first: the button has to flip the instant the save
+          // lands, ahead of the presets query refetching underneath it.
+          const isSaved = savedRowIds.has(row.id) || row.isAlreadySaved;
           const isPending = pendingRowId === row.id;
           // Another row is mid-save: still pressable-looking would be a lie.
           const isBlocked = saveMutation.isPending && !isPending && !isSaved;

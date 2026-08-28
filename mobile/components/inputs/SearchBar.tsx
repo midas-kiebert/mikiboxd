@@ -38,6 +38,12 @@ type SearchBarProps = {
   searchField?: SearchField;
   onChangeSearchField?: (searchField: SearchField) => void;
   /**
+   * Search fields to leave out of the dropdown, for screens where one of them
+   * has no meaning — the cinema page is already a single cinema, so searching
+   * by cinema there could only ever return the same list or nothing.
+   */
+  hiddenSearchFields?: readonly SearchField[];
+  /**
    * Overrides the full-bleed chrome this carries by default (a screen's search
    * bar sits edge to edge under a header, and owns that inset itself). Pass a
    * transparent, unpadded style when the parent already has its own gutter, so
@@ -122,6 +128,8 @@ const OPTION_HEIGHT = 46;
 const OPTION_ICON_SIZE = 18;
 /** Searching by friend needs friends, which needs an account. */
 const ACCOUNT_ONLY_SEARCH_FIELDS: ReadonlySet<SearchField> = new Set(["friend"]);
+/** Stable default for `hiddenSearchFields`, so the options memo isn't rebuilt every render. */
+const NO_HIDDEN_SEARCH_FIELDS: readonly SearchField[] = [];
 const OPEN_DURATION_MS = 220;
 const CLOSE_DURATION_MS = 170;
 /**
@@ -148,6 +156,7 @@ export default function SearchBar({
   placeholder = "Search",
   searchField,
   onChangeSearchField,
+  hiddenSearchFields = NO_HIDDEN_SEARCH_FIELDS,
   containerStyle,
   clearOnAndroidBack = false,
   leftSlot,
@@ -175,10 +184,12 @@ export default function SearchBar({
   const isSignedIn = useIsSignedIn();
   const searchFieldOptions = useMemo(
     () =>
-      isSignedIn
-        ? SEARCH_FIELD_OPTIONS
-        : SEARCH_FIELD_OPTIONS.filter((option) => !ACCOUNT_ONLY_SEARCH_FIELDS.has(option.id)),
-    [isSignedIn]
+      SEARCH_FIELD_OPTIONS.filter(
+        (option) =>
+          !hiddenSearchFields.includes(option.id) &&
+          (isSignedIn || !ACCOUNT_ONLY_SEARCH_FIELDS.has(option.id))
+      ),
+    [hiddenSearchFields, isSignedIn]
   );
   const dropdownContentHeight = OPTION_HEIGHT * searchFieldOptions.length;
 
@@ -231,6 +242,9 @@ export default function SearchBar({
   };
 
   const handleToggleDropdown = () => {
+    // Fired before the measure() round trip below, so the tap is felt the
+    // instant it lands rather than one frame later with the dropdown.
+    triggerSelectionHaptic();
     if (isOpen) {
       setIsOpen(false);
       return;
@@ -246,6 +260,8 @@ export default function SearchBar({
   };
 
   const handleSelectSearchField = (optionId: SearchField) => {
+    // Ahead of the mode change, which refetches the search on the screen below.
+    triggerSelectionHaptic();
     onChangeSearchField?.(optionId);
     setIsOpen(false);
   };

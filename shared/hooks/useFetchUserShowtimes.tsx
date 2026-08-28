@@ -3,12 +3,15 @@ import {
     ApiError,
     type GoingStatus,
     type Language,
+    type SearchField,
     UsersService,
     UsersGetUserSelectedShowtimesResponse,
 } from "../client";
 
 type ShowtimesFilters = {
     query?: string;
+    /** Which attribute `query` is matched against; the API defaults to the title. */
+    searchField?: SearchField;
     days?: string[];
     selectedCinemaIds?: number[];
     timeRanges?: string[];

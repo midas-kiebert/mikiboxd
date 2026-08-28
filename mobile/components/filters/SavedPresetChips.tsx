@@ -16,12 +16,11 @@
  * done, which is why it goes as soon as a filter changes under it.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import useAuth from "shared/hooks/useAuth";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import {
   controlledPresetDimensions,
@@ -45,6 +44,7 @@ import {
   PRESET_BUTTON_RADIUS,
   PRESETS_ROW_INSET,
 } from "@/components/filters/filter-control-metrics";
+import { triggerImpactHaptic, triggerLongPressHaptic } from "@/utils/long-press";
 import { useIsSignedIn } from "@/utils/auth-session";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
@@ -64,17 +64,13 @@ const APPLY_SETTLE_MS = 350;
 
 type SavedPresetChipsProps = {
   onApply: (preset: DisplayPreset) => void;
-  /** Opens the preset feature tip — owned by the row, whose caption carries
-   * the info icon that also opens it. */
-  onOpenTip: () => void;
 };
 
-export default function SavedPresetChips({ onApply, onOpenTip }: SavedPresetChipsProps) {
+export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   // Presets are saved to an account, so a guest has none and no way to make
-  // one. The row renders nothing at all for them rather than the "save your
-  // first preset" hint, which would only lead somewhere they cannot go.
+  // one — `PresetsRow` above renders nothing at all for them.
   const isSignedIn = useIsSignedIn();
   const { presets, isLoading, remove } = useDisplayPresets({ enabled: isSignedIn });
   const { trackEvent } = useTrackEvent();
@@ -175,12 +171,22 @@ export default function SavedPresetChips({ onApply, onOpenTip }: SavedPresetChip
   };
 
   const confirmDelete = (preset: DisplayPreset) => {
+    // The hold is the only thing that says the gesture registered before the
+    // dialog appears — the chip itself gives no long-press feedback.
+    triggerLongPressHaptic();
     Alert.alert(
       "Delete preset?",
       `Remove "${preset.name}"?`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => remove(preset) },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            triggerImpactHaptic();
+            remove(preset);
+          },
+        },
       ],
       { cancelable: true }
     );
@@ -197,7 +203,6 @@ export default function SavedPresetChips({ onApply, onOpenTip }: SavedPresetChip
       lastApplied={lastApplied}
       onApply={handleApply}
       onLongPress={confirmDelete}
-      onOpenTip={onOpenTip}
       styles={styles}
       colors={colors}
     />
@@ -212,7 +217,6 @@ function ChipsScroll({
   lastApplied,
   onApply,
   onLongPress,
-  onOpenTip,
   styles,
   colors,
 }: {
@@ -223,7 +227,6 @@ function ChipsScroll({
   lastApplied: { id: string; signature: string | null } | null;
   onApply: (preset: DisplayPreset) => void;
   onLongPress: (preset: DisplayPreset) => void;
-  onOpenTip: () => void;
   styles: ReturnType<typeof createStyles>;
   colors: ReturnType<typeof useThemeColors>;
 }) {
@@ -276,20 +279,6 @@ function ChipsScroll({
             onLongPress={onLongPress}
           />
         ))}
-        {!isLoading && presets.length === 0 && (
-          <TouchableOpacity
-            style={styles.hintRow}
-            onPress={onOpenTip}
-            hitSlop={8}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="What are saved presets?"
-          >
-            {/* The caption above names these and carries the info icon, so
-                the hint only has to say that there are none yet. */}
-            <ThemedText style={styles.hintText}>Nothing saved yet</ThemedText>
-          </TouchableOpacity>
-        )}
       </GHScrollView>
       {hasMoreRight && (
         <View style={styles.scrollFadeRight} pointerEvents="none">
@@ -336,6 +325,4 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderRadius: PRESET_BUTTON_RADIUS,
       backgroundColor: colors.posterPlaceholder,
     },
-    hintRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-    hintText: { fontSize: 12, color: colors.textSecondary },
   });

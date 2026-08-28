@@ -1,8 +1,10 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlmodel import Session, col, select
 
+from app.crud.cinema_scope import parse_cinema_scope, resolve_cinema_scope
 from app.models.cinema_preset import CinemaPreset
 
 
@@ -62,13 +64,30 @@ def get_favorite_cinema_ids(
     session: Session,
     user_id: UUID,
 ) -> list[int]:
+    """The favorite preset's cinemas, expanded against today's cinema list.
+
+    Resolved rather than read straight off the row so that a favorite saved as
+    "everything in Amsterdam" keeps meaning that as cinemas open there.
+    """
     favorite = get_user_favorite_preset(
         session=session,
         user_id=user_id,
     )
     if favorite is None:
         return []
-    return list(favorite.cinema_ids)
+    return resolve_preset_cinema_ids(session=session, preset=favorite) or []
+
+
+def resolve_preset_cinema_ids(
+    *,
+    session: Session,
+    preset: CinemaPreset,
+) -> list[int] | None:
+    return resolve_cinema_scope(
+        session=session,
+        scope=parse_cinema_scope(preset.cinema_scope),
+        stored_cinema_ids=list(preset.cinema_ids),
+    )
 
 
 def create_preset(
@@ -77,6 +96,7 @@ def create_preset(
     user_id: UUID,
     name: str,
     cinema_ids: list[int],
+    cinema_scope: dict[str, Any] | None,
     is_favorite: bool,
     now: datetime,
 ) -> CinemaPreset:
@@ -84,6 +104,7 @@ def create_preset(
         owner_user_id=user_id,
         name=name,
         cinema_ids=cinema_ids,
+        cinema_scope=cinema_scope,
         is_favorite=is_favorite,
         created_at=now,
         updated_at=now,
@@ -98,10 +119,12 @@ def update_preset(
     session: Session,
     preset: CinemaPreset,
     cinema_ids: list[int],
+    cinema_scope: dict[str, Any] | None,
     is_favorite: bool | None,
     now: datetime,
 ) -> CinemaPreset:
     preset.cinema_ids = cinema_ids
+    preset.cinema_scope = cinema_scope
     if is_favorite is not None:
         preset.is_favorite = is_favorite
     preset.updated_at = now

@@ -6,6 +6,7 @@ import { FlatList, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { type ShowtimePublic } from "shared";
+import type { SearchField } from "shared/client";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 import { usePrefetchShowtimeSeatAvailability } from "shared/hooks/useShowtimeSeatAvailability";
 
@@ -171,6 +172,17 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   onRefresh: () => void;
   searchQuery: string;
   onSearchChange: (value: string) => void;
+  /**
+   * Passing both of these turns the plain search field into the main feed's
+   * field-selector one (Title / Director / Actor / …); leaving them off keeps
+   * the plain field. `hiddenSearchFields` drops options that make no sense on
+   * the screen in question.
+   */
+  searchField?: SearchField;
+  onChangeSearchField?: (searchField: SearchField) => void;
+  hiddenSearchFields?: readonly SearchField[];
+  /** Sits inside the search row, left of the field — the Filters button, where a screen has one. */
+  searchLeftSlot?: React.ReactNode;
   // Legacy pill-based filters — omit when using filterRow slot instead
   filters?: readonly FilterOption<TFilterId>[];
   activeFilterIds?: readonly TFilterId[];
@@ -184,6 +196,8 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   // New slot: replaces ShowtimesListContent when provided (e.g. for group-by-movies)
   listContent?: React.ReactNode;
   emptyText?: string;
+  /** Rendered under `emptyText` when the list is empty (e.g. a search-field notice). */
+  emptyExtra?: React.ReactNode;
   openModalOptions?: OpenOptions;
   inheritFiltersOnMovieNav?: boolean;
   /** Scrolls away with the list, unlike filterRow which stays pinned above it. */
@@ -208,6 +222,10 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   onRefresh,
   searchQuery,
   onSearchChange,
+  searchField,
+  onChangeSearchField,
+  hiddenSearchFields,
+  searchLeftSlot,
   filters,
   activeFilterIds,
   onToggleFilter,
@@ -215,6 +233,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   filterRow,
   listContent,
   emptyText = "No showtimes found",
+  emptyExtra,
   openModalOptions,
   inheritFiltersOnMovieNav,
   listHeader,
@@ -237,6 +256,10 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         value={searchQuery}
         onChangeText={onSearchChange}
         placeholder="Search showtimes"
+        searchField={searchField}
+        onChangeSearchField={onChangeSearchField}
+        hiddenSearchFields={hiddenSearchFields}
+        leftSlot={searchLeftSlot}
         clearOnAndroidBack
       />
       {filterRow ?? (
@@ -259,6 +282,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
           refreshing={refreshing}
           onRefresh={onRefresh}
           emptyText={emptyText}
+          emptyExtra={emptyExtra}
           openModalOptions={openModalOptions}
           inheritFiltersOnMovieNav={inheritFiltersOnMovieNav}
           listHeader={listHeader}
@@ -291,6 +315,10 @@ export function ShowtimesScreenSkeleton({
   searchQuery,
   onSearchChange,
   searchPlaceholder = "Search showtimes",
+  searchField,
+  onChangeSearchField,
+  hiddenSearchFields,
+  searchLeftSlot,
   filterRow,
 }: {
   topBarTitle?: string;
@@ -303,6 +331,11 @@ export function ShowtimesScreenSkeleton({
   searchQuery?: string;
   onSearchChange?: (value: string) => void;
   searchPlaceholder?: string;
+  searchField?: SearchField;
+  onChangeSearchField?: (searchField: SearchField) => void;
+  hiddenSearchFields?: readonly SearchField[];
+  searchLeftSlot?: React.ReactNode;
+  /** `false` (rather than omitted) for a screen with no filter row at all: it skips the placeholder pills. */
   filterRow?: React.ReactNode;
 }) {
   const colors = useThemeColors();
@@ -323,6 +356,10 @@ export function ShowtimesScreenSkeleton({
           value={searchQuery ?? ""}
           onChangeText={onSearchChange}
           placeholder={searchPlaceholder}
+          searchField={searchField}
+          onChangeSearchField={onChangeSearchField}
+          hiddenSearchFields={hiddenSearchFields}
+          leftSlot={searchLeftSlot}
           clearOnAndroidBack
         />
       ) : (

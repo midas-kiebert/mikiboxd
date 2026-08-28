@@ -10,14 +10,16 @@ import { useIsFocused } from "@react-navigation/native";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchMovies } from "shared/hooks/useFetchMovies";
+import type { SearchField } from "shared/client";
 import useAuth from "shared/hooks/useAuth";
 
 import ShowtimesScreen, { ShowtimesScreenSkeleton } from "@/components/showtimes/ShowtimesScreen";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
-import FiltersButtonRow from "@/components/filters/FiltersButtonRow";
+import FiltersButton from "@/components/filters/FiltersButton";
 import FiltersModal from "@/components/filters/FiltersModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
+import SearchFieldFallback from "@/components/inputs/SearchFieldFallback";
 import MovieCard from "@/components/movies/MovieCard";
 import { SkeletonRows } from "@/components/ui/SkeletonRows";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
@@ -37,6 +39,10 @@ import { getCinemaColorPalette } from "@/utils/cinema-color";
 // One request per pause in typing, not one per keystroke — see
 // useDebouncedValue and (tabs)/index.tsx's identical guard.
 const SEARCH_DEBOUNCE_MS = 280;
+
+// Searching by cinema inside a single cinema's page could only ever return
+// that same cinema's showtimes or nothing at all, so the option is dropped.
+const HIDDEN_SEARCH_FIELDS: readonly SearchField[] = ["cinema"];
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
@@ -86,6 +92,11 @@ const buildCinemaHeaderProps = ({
  * part of what it loads, so they live above the deferred-mount split and are
  * live on the first frame. Their state is owned here too, so a query typed (or
  * a filter sheet opened) before the content mounts is still there afterwards.
+ *
+ * The row itself is the main feed's: the Filters button sits inside the search
+ * row rather than on a row of its own, and the field carries the same
+ * Title/Director/Actor/Friends selector — minus Cinema, see
+ * {@link HIDDEN_SEARCH_FIELDS}.
  */
 export default function CinemaShowtimesScreen() {
   const { name, city, badgeBgColor, url } = useLocalSearchParams<{
@@ -97,10 +108,11 @@ export default function CinemaShowtimesScreen() {
   const cinemaKey = `cinema:${Array.isArray(name) ? name[0] : name}:${Array.isArray(city) ? city[0] : city}`;
   const ready = useDeferredMount(cinemaKey);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchField, setSearchField] = useState<SearchField>("title");
   const [filtersModalVisible, setFiltersModalVisible] = useState(false);
   const colors = useThemeColors();
 
-  const filtersButtonRow = <FiltersButtonRow onPress={() => setFiltersModalVisible(true)} />;
+  const filtersButton = <FiltersButton onPress={() => setFiltersModalVisible(true)} />;
 
   if (!ready) {
     const routeCinemaName = getRouteParam(name)?.trim() ?? "";
@@ -124,10 +136,16 @@ export default function CinemaShowtimesScreen() {
         topBarLinkUrl={topBarLinkUrl}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        searchField={searchField}
+        onChangeSearchField={setSearchField}
+        hiddenSearchFields={HIDDEN_SEARCH_FIELDS}
+        searchLeftSlot={filtersButton}
         // No chips placeholder here: this screen's ActiveFilterChips renders
         // nothing at all when no filter is set, so reserving a row for it would
-        // more often than not leave an empty band that vanishes on mount.
-        filterRow={filtersButtonRow}
+        // more often than not leave an empty band that vanishes on mount. The
+        // Filters button lives in the search row above, so `false` (not
+        // omitted) — omitting it would bring back the placeholder pills.
+        filterRow={false}
       />
     );
   }
@@ -135,7 +153,9 @@ export default function CinemaShowtimesScreen() {
     <CinemaShowtimesContent
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
-      filtersButtonRow={filtersButtonRow}
+      searchField={searchField}
+      onChangeSearchField={setSearchField}
+      filtersButton={filtersButton}
       filtersModalVisible={filtersModalVisible}
       setFiltersModalVisible={setFiltersModalVisible}
     />
@@ -145,13 +165,17 @@ export default function CinemaShowtimesScreen() {
 function CinemaShowtimesContent({
   searchQuery,
   onSearchChange,
-  filtersButtonRow,
+  searchField,
+  onChangeSearchField,
+  filtersButton,
   filtersModalVisible,
   setFiltersModalVisible,
 }: {
   searchQuery: string;
   onSearchChange: (value: string) => void;
-  filtersButtonRow: ReactElement;
+  searchField: SearchField;
+  onChangeSearchField: (searchField: SearchField) => void;
+  filtersButton: ReactElement;
   filtersModalVisible: boolean;
   setFiltersModalVisible: (visible: boolean) => void;
 }) {
@@ -276,6 +300,7 @@ function CinemaShowtimesContent({
   // ─── Showtimes query ─────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({
     query: effectiveSearchQuery || undefined,
+    searchField,
     selectedCinemaIds: [cinemaId],
     days: resolvedApiDays,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
@@ -292,6 +317,7 @@ function CinemaShowtimesContent({
   }), [
     cinemaId,
     effectiveSearchQuery,
+    searchField,
     resolvedApiDays,
     appliedShowtimeFilter,
     selectedTimeRanges,
@@ -325,6 +351,7 @@ function CinemaShowtimesContent({
   // ─── Movies query (Group by Movie mode) ──────────────────────────────────────
   const moviesFilters = useMemo(() => ({
     query: effectiveSearchQuery || undefined,
+    searchField,
     selectedCinemaIds: [cinemaId],
     days: resolvedApiDays,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
@@ -341,6 +368,7 @@ function CinemaShowtimesContent({
   }), [
     cinemaId,
     effectiveSearchQuery,
+    searchField,
     resolvedApiDays,
     appliedShowtimeFilter,
     selectedTimeRanges,
@@ -404,6 +432,16 @@ function CinemaShowtimesContent({
     setSelectedLanguages([]);
   };
 
+  // Same notice under either feed's empty state: the search field is shared by
+  // both, and so is the reason an unexpected empty result turns up.
+  const searchFieldFallback = (
+    <SearchFieldFallback
+      searchField={searchField}
+      query={effectiveSearchQuery}
+      onSearchByTitle={() => onChangeSearchField("title")}
+    />
+  );
+
   // ─── Render ───────────────────────────────────────────────────────────────────
   const isLoading = groupByMovie ? moviesLoading : showtimesLoading;
   const isFetching = groupByMovie ? moviesFetching : showtimesFetching;
@@ -433,6 +471,7 @@ function CinemaShowtimesContent({
         ) : (
           <View style={styles.centerContainer}>
             <ThemedText style={styles.emptyText}>No movies found</ThemedText>
+            {searchFieldFallback}
           </View>
         )
       }
@@ -464,42 +503,44 @@ function CinemaShowtimesContent({
         onRefresh={handleRefresh}
         searchQuery={searchQuery}
         onSearchChange={onSearchChange}
+        searchField={searchField}
+        onChangeSearchField={onChangeSearchField}
+        hiddenSearchFields={HIDDEN_SEARCH_FIELDS}
+        searchLeftSlot={filtersButton}
         filterRow={
-          <>
-            {filtersButtonRow}
-            <ActiveFilterChips
-              groupByMovie={groupByMovie}
-              setGroupByMovie={setGroupByMovie}
-              watchlistOnly={effectiveWatchlistOnly}
-              setWatchlistOnly={setWatchlistOnly}
-              watchlistExclude={effectiveWatchlistExclude}
-              setWatchlistExclude={setWatchlistExclude}
-              hideWatched={effectiveHideWatched}
-              setHideWatched={setHideWatched}
-              watchedOnly={effectiveWatchedOnly}
-              setWatchedOnly={setWatchedOnly}
-              canUseWatchlistFilter={hasLetterboxdUsername}
-              selectedShowtimeFilter={selectedShowtimeFilter}
-              setSelectedShowtimeFilter={setSelectedShowtimeFilter}
-              showStatusFilter={isSignedIn}
-              selectedDays={selectedDays}
-              setSelectedDays={setSelectedDays}
-              selectedTimeRanges={selectedTimeRanges}
-              setSelectedTimeRanges={setSelectedTimeRanges}
-              selectedRuntimeRanges={selectedRuntimeRanges}
-              setSelectedRuntimeRanges={setSelectedRuntimeRanges}
-              selectedListIds={selectedListIds}
-              setSelectedListIds={setSelectedListIds}
-              excludeListIds={excludeListIds}
-              setExcludeListIds={setExcludeListIds}
-              selectedLanguages={selectedLanguages}
-              setSelectedLanguages={setSelectedLanguages}
-              onClearAll={handleClearAll}
-            />
-          </>
+          <ActiveFilterChips
+            groupByMovie={groupByMovie}
+            setGroupByMovie={setGroupByMovie}
+            watchlistOnly={effectiveWatchlistOnly}
+            setWatchlistOnly={setWatchlistOnly}
+            watchlistExclude={effectiveWatchlistExclude}
+            setWatchlistExclude={setWatchlistExclude}
+            hideWatched={effectiveHideWatched}
+            setHideWatched={setHideWatched}
+            watchedOnly={effectiveWatchedOnly}
+            setWatchedOnly={setWatchedOnly}
+            canUseWatchlistFilter={hasLetterboxdUsername}
+            selectedShowtimeFilter={selectedShowtimeFilter}
+            setSelectedShowtimeFilter={setSelectedShowtimeFilter}
+            showStatusFilter={isSignedIn}
+            selectedDays={selectedDays}
+            setSelectedDays={setSelectedDays}
+            selectedTimeRanges={selectedTimeRanges}
+            setSelectedTimeRanges={setSelectedTimeRanges}
+            selectedRuntimeRanges={selectedRuntimeRanges}
+            setSelectedRuntimeRanges={setSelectedRuntimeRanges}
+            selectedListIds={selectedListIds}
+            setSelectedListIds={setSelectedListIds}
+            excludeListIds={excludeListIds}
+            setExcludeListIds={setExcludeListIds}
+            selectedLanguages={selectedLanguages}
+            setSelectedLanguages={setSelectedLanguages}
+            onClearAll={handleClearAll}
+          />
         }
         listContent={moviesContent}
         emptyText="No showtimes for this cinema"
+        emptyExtra={searchFieldFallback}
         openModalOptions={{ openedFrom: { cinemaId } }}
       />
       <FiltersModal

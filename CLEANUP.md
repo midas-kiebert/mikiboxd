@@ -116,6 +116,7 @@ Legend:
 - [x] `showtime_visibility.py` — Per-showtime visibility mode response shape
 - [x] `seat_availability.py` — `ShowtimeSeatAvailabilityPublic` (busyness level + counts + when it was read + whether a ticket watch applies here) and `SoldOutWatchPublic`. Viewer-independent on purpose, which is what lets it be prefetched and cached per showtime; a showtime with no usable reading is omitted from a batch rather than returned with nulls
 - [ ] `cinema_preset.py` — Cinema preset response shapes: `CinemaPresetCreate` (with `overwrite`, the explicit opt-in to replacing a same-named preset), `CinemaPresetRename`, `CinemaPresetPublic`
+- [x] `cinema_scope.py` — `CinemaScope`: a preset's cinema selection as the *rule* behind it (every cinema / whole cities / individual ones) rather than a frozen id list, so cinemas that open later land inside a selection the user meant to be open-ended
 - [ ] `filter_preset.py` — Filter preset response shape
 - [x] `friendship.py` — Friend status-sharing toggle request shape
 - [ ] `push_token.py` — Push token registration shape
@@ -147,7 +148,8 @@ Legend:
 - [ ] `friendship.py` — Friend request and friendship queries (+ status-sharing)
 - ~~`friend_group.py`~~ — deleted (friend groups retired)
 - [ ] `cinema.py` — Cinema queries. Resolve by `get_cinema_id_by_key`; `get_cinema_id_by_name_or_alias` is only for names arriving from outside (Cineville venues). `upsert_cinema` matches on key so a rename in cinemas.yaml edits the row in place
-- [ ] `cinema_preset.py` — Cinema preset CRUD
+- [ ] `cinema_preset.py` — Cinema preset CRUD; `resolve_preset_cinema_ids` is the only way ids come off a preset (it expands `cinema_scope`)
+- [x] `cinema_scope.py` — Inferring a `CinemaScope` from ticked ids and expanding it again. Inference runs on the backend so installed builds get the follow-the-city behaviour without knowing rules exist; the two directions live together because they are inverses
 - [ ] `filter_preset.py` — Filter preset CRUD
 - [ ] `watchlist.py` — Watchlist selection CRUD
 - [ ] `push_token.py` — Push token registration and lookup
@@ -643,7 +645,7 @@ Only components created or reworked during the cleanup are listed here; the rest
 - [ ] Frontend tests: set up Vitest + React Testing Library
 - [ ] API rate limiting: evaluate adding slowapi
 - [ ] Duplicate code in scrapers: strengthen base_cinema_scraper.py
-- [x] `filters/FiltersButton.tsx` — The button that opens the Filters sheet, wherever it is mounted: to the left of the search field on the main feeds, inside `FiltersButtonRow` on the sub-pages. It used to be pinned to the left of the preset row, which left that row's caption heading only half a row and forced the two halves to be height-matched; beside the search field it stretches to the field's height and the presets get a row of their own
+- [x] `filters/FiltersButton.tsx` — The button that opens the Filters sheet, in one place on every screen that has one: to the left of the search field, in `SearchBar`'s `leftSlot`. It used to sit on a row of its own on the sub-pages (in a `FiltersButtonRow` since deleted), which cost a whole band of vertical space to hold one button and made the same screen chrome read differently on the feeds and the sub-pages. It used to be pinned to the left of the preset row, which left that row's caption heading only half a row and forced the two halves to be height-matched; beside the search field it stretches to the field's height and the presets get a row of their own
 - [x] `filters/PresetsRow.tsx` — (was `FiltersRow.tsx`) The saved-preset buttons under an uppercase "Presets" caption. The caption is the only thing that can say what these are: a preset's label is a name the user chose, so it carries no signal of its own — squared corners then separate them from the fully-rounded pills and chips that hold state. Absent entirely for a guest rather than empty
 - [x] `filters/filter-control-metrics.ts` — The numbers behind the filter UI's *action* controls (Filters button, saved-preset buttons), in one place so the same family of control cannot drift into looking like two unrelated things now that they no longer share a row. Holds the squared radius that separates "does something" from the fully-rounded pills and chips that hold state, and the explicit line height every label in these controls needs (ThemedText's default 24pt survives a fontSize override and silently made both buttons 40pt tall). The Filters button takes the larger type of the two: it is the entry to the whole sheet and stands next to a 16pt search field, not in a row of small chips
 - [x] `inputs/SearchFieldFallback.tsx` — Sits under an empty result on either feed when the search ran against something other than the title: names the field that was searched and offers the same query back against titles. The field is set once from a dropdown and then only visible in the placeholder, so a later search for a film by name comes back empty with nothing on screen explaining why. Renders nothing for a title search or an empty query; reached through `ShowtimesScreen`'s new `emptyExtra` slot on the showtimes feed, and inline in both movie-grid empty states

@@ -43,6 +43,14 @@ type ActiveFilterChipsProps = {
   selectedShowtimeFilter: SharedTabShowtimeFilter;
   setSelectedShowtimeFilter: (v: SharedTabShowtimeFilter) => void;
   showStatusFilter?: boolean;
+  /**
+   * An agenda's "interested as well as going" switch. Included is the default,
+   * so the chip stands for the narrowed state — see the chip's ⊘ below — and
+   * removing it puts the interested showtimes back.
+   */
+  includeInterested?: boolean;
+  setIncludeInterested?: (v: boolean) => void;
+  showInterestedFilter?: boolean;
   selectedDays: string[];
   setSelectedDays: (v: string[]) => void;
   selectedTimeRanges: string[];
@@ -99,6 +107,13 @@ const CHIP_KEYS_BY_DIMENSION: Partial<Record<PresetDimension, readonly string[]>
   group_by_movie: ["group-by-movie"],
   selected_languages: ["languages"],
 };
+
+/**
+ * Stands for the cinema pill in `addedKeys`. Not a chip key — the pill is not
+ * one of `chips` — but the tint is the row's to decide and this is where the
+ * row keeps that decision, along with the timer that takes it back.
+ */
+const CINEMA_PILL_KEY = "cinema-pill";
 
 /** Both list chips answer to any of the per-list dimensions. */
 const LIST_CHIP_KEYS = ["lists-include", "lists-exclude"] as const;
@@ -188,6 +203,9 @@ export default function ActiveFilterChips({
   selectedShowtimeFilter,
   setSelectedShowtimeFilter,
   showStatusFilter = false,
+  includeInterested = true,
+  setIncludeInterested = () => {},
+  showInterestedFilter = false,
   selectedDays,
   setSelectedDays,
   selectedTimeRanges,
@@ -215,6 +233,15 @@ export default function ActiveFilterChips({
   const scrollX = useRef(0);
   /** Every chip's last laid-out width, kept so a removed one can be replaced. */
   const chipWidths = useRef(new Map<string, number>());
+  /**
+   * Set when chips arrive, cleared by the scroll that shows them.
+   *
+   * A new chip goes on the end of the row (see `orderedChips`), which on a row
+   * that already overflows is off the right-hand edge — so a preset applied
+   * from a full row changed nothing the user could see. The scroll is what
+   * connects the tap to its result.
+   */
+  const revealPendingRef = useRef(false);
   const { data: letterboxdLists = [] } = useFetchLetterboxdLists(
     selectedListIds.length > 0 || excludeListIds.length > 0
   );
@@ -247,6 +274,19 @@ export default function ActiveFilterChips({
           onRemove: () => setSelectedShowtimeFilter("all"),
         });
       }
+    }
+
+    // Same shape as the other excluding filters: the word for what is being
+    // left out, with the ⊘ in front. "Going only" would be a second way of
+    // saying it, in a row where every other chip names the thing it drops.
+    if (showInterestedFilter && !includeInterested) {
+      result.push({
+        key: "interested-exclude",
+        label: "Interested",
+        icon: EXCLUDE_ICON,
+        accessibilityLabel: "Hide interested",
+        onRemove: () => setIncludeInterested(true),
+      });
     }
 
     if (canUseWatchlistFilter && watchlistOnly) {
@@ -364,6 +404,8 @@ export default function ActiveFilterChips({
     canUseWatchlistFilter,
     selectedShowtimeFilter,
     showStatusFilter,
+    includeInterested,
+    showInterestedFilter,
     selectedListIds,
     excludeListIds,
     listTitleById,
@@ -377,6 +419,7 @@ export default function ActiveFilterChips({
     setHideWatched,
     setWatchedOnly,
     setSelectedShowtimeFilter,
+    setIncludeInterested,
     setSelectedListIds,
     setExcludeListIds,
     setSelectedDays,
@@ -446,6 +489,11 @@ export default function ActiveFilterChips({
       currentKeys.length === renderedKeys.length &&
       currentKeys.every((key, index) => key === renderedKeys[index]);
     if (unchanged) return;
+    // Arrivals only. A removal moves the row the other way, and that scroll is
+    // the reserved space's to make.
+    if (currentKeys.some((key) => !renderedKeys.includes(key))) {
+      revealPendingRef.current = true;
+    }
     setRenderedKeys(currentKeys);
   }, [labelByKey, renderedKeys]);
 
@@ -517,6 +565,12 @@ export default function ActiveFilterChips({
   );
   /** Replayed keys, held for the watch window so their tint is not cut short. */
   const replayedKeysRef = useRef<ReadonlySet<string>>(new Set());
+  /**
+   * Whether the last apply wrote the cinemas. Held the same way and for the
+   * same reason: the pill is tinted for writing it, not for changing it, which
+   * is exactly what every other chip is tinted for.
+   */
+  const cinemaWrittenRef = useRef(false);
   // The pre-apply snapshot, held for as long as the row is watching for the
   // rest of the change to land.
   const baselineRef = useRef<Map<string, string> | null>(null);
@@ -540,8 +594,10 @@ export default function ActiveFilterChips({
       watchTimerRef.current = setTimeout(() => {
         baselineRef.current = null;
         replayedKeysRef.current = new Set();
+        cinemaWrittenRef.current = false;
         watchTimerRef.current = null;
       }, APPLY_WATCH_MS);
+      cinemaWrittenRef.current = presetApply.dimensions.includes("cinemas");
 
       // Decided here and only here. A chip the preset wrote that is already on
       // screen is on screen in this very commit — unlike an arrival, there is
@@ -581,6 +637,10 @@ export default function ActiveFilterChips({
     // A replayed chip is tinted like an arrival: both are the preset saying
     // "I set this", and the entrance they play is the same one.
     const marked = new Set([...arrived, ...replayedKeysRef.current]);
+    // The pill never arrives and never replays — it is always there, and
+    // answers a preset by resizing and morphing its label. The tint is the one
+    // part of the language it does share.
+    if (cinemaWrittenRef.current) marked.add(CINEMA_PILL_KEY);
 
     // Same reference back when nothing about the set changed, so a quiet pass
     // inside the watch window costs no render.
@@ -628,6 +688,20 @@ export default function ActiveFilterChips({
           onContentSizeChange={(w) => {
             contentW.current = w;
             setHasMoreRight(w - reservedRef.current > containerW.current + 2);
+            // Here rather than in an effect: this is the first moment the row
+            // knows how wide the chip that just arrived made it.
+            if (revealPendingRef.current) {
+              revealPendingRef.current = false;
+              // Short of any space a simultaneous removal is still holding —
+              // the newest chip is at the end of what is really there, not at
+              // the end of the spacer behind it.
+              const end = Math.max(0, w - reservedRef.current - containerW.current);
+              // Never drags the row left: an arrival can only ever need to
+              // show something further right than what is on screen.
+              if (end > scrollX.current) {
+                scrollRef.current?.scrollTo({ x: end, animated: true });
+              }
+            }
           }}
           onScroll={(e) => {
             const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
@@ -644,6 +718,7 @@ export default function ActiveFilterChips({
               onOpenCinemaModal={onOpenCinemaModal}
               disabled={cinemaFilterDisabled}
               waitForExits={hasLeavingChip}
+              isNew={addedKeys.has(CINEMA_PILL_KEY)}
             />
           )}
           {orderedChips.map((chip) => (

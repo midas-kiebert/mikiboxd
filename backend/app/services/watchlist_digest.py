@@ -235,7 +235,12 @@ def _resolve_digest_cinema_ids(*, session: Session, user: User) -> list[int]:
             session=session, user_id=user.id, preset_id=preset_id
         )
         if preset is not None:
-            return list(preset.cinema_ids)
+            return (
+                cinema_preset_crud.resolve_preset_cinema_ids(
+                    session=session, preset=preset
+                )
+                or []
+            )
     return cinema_preset_crud.get_favorite_cinema_ids(session=session, user_id=user.id)
 
 

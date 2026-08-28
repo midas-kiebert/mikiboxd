@@ -19,6 +19,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import SavedPresetChips from "@/components/filters/SavedPresetChips";
+import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
 import { type DisplayPreset } from "@/components/filters/saved-presets";
 import {
   PRESET_BUTTON_POP_HEADROOM,
@@ -35,6 +36,14 @@ import { triggerSelectionHaptic } from "@/utils/long-press";
 const ROW_PADDING_TOP = 4;
 const ROW_PADDING_BOTTOM = 10;
 
+/**
+ * The collapsed "no presets yet" line. Bigger than the caption it replaces,
+ * and capped at the height of the info icon it sits beside so the row keeps
+ * the caption row's height.
+ */
+const EMPTY_HINT_FONT_SIZE = 11;
+const EMPTY_HINT_LINE_HEIGHT = 13;
+
 export type PresetsRowProps = {
   onApplyPreset: (preset: DisplayPreset) => void;
 };
@@ -46,6 +55,10 @@ export default function PresetsRow({ onApplyPreset }: PresetsRowProps) {
   // the row is absent rather than empty — a caption over a hint they cannot act
   // on is worse than the space it would take.
   const isSignedIn = useIsSignedIn();
+  // Read here as well as in the row below — one react-query cache entry, so
+  // this is the same fetch — because with nothing saved there is no row to
+  // caption, and the whole thing collapses to a single line.
+  const { presets, isLoading } = useDisplayPresets({ enabled: isSignedIn });
   const [isTipVisible, setIsTipVisible] = useState(false);
 
   const openTip = () => {
@@ -55,23 +68,51 @@ export default function PresetsRow({ onApplyPreset }: PresetsRowProps) {
 
   if (!isSignedIn) return null;
 
+  // Held back while the first fetch is out: the buttons' skeletons say the row
+  // is loading, and collapsing to the hint only to expand again a moment later
+  // would be a jump for anyone who does have presets.
+  const isEmpty = !isLoading && presets.length === 0;
+
+  // One container with fixed child slots rather than two returns: the tip below
+  // has to keep its place in the tree. Saving the first preset flips `isEmpty`,
+  // and a tip that changed position would be torn down and remounted mid-use —
+  // losing what the user had just added.
   return (
-    <View style={styles.container}>
-      <View style={styles.captionRow}>
-        <ThemedText style={styles.caption}>Presets</ThemedText>
-        {/* What a preset is takes a paragraph to explain, and the caption has
-            room for a word — so the explanation stays one tap away. */}
+    <View style={[styles.container, isEmpty && styles.containerEmpty]}>
+      {isEmpty ? (
+        // Nothing saved: one caption-height line inviting the user to make a
+        // preset, tappable across its whole width, in place of a caption over
+        // an empty row.
         <TouchableOpacity
+          style={styles.captionRow}
           onPress={openTip}
           hitSlop={10}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel="What are saved presets?"
         >
+          <ThemedText style={[styles.caption, styles.captionSentence]}>
+            You can add Filter Presets here
+          </ThemedText>
           <MaterialIcons name="info-outline" size={13} color={colors.textSecondary} />
         </TouchableOpacity>
-      </View>
-      <SavedPresetChips onApply={onApplyPreset} onOpenTip={openTip} />
+      ) : (
+        <View style={[styles.captionRow, styles.captionRowSpaced]}>
+          <ThemedText style={styles.caption}>Presets</ThemedText>
+          {/* What a preset is takes a paragraph to explain, and the caption has
+              room for a word — so the explanation stays one tap away. */}
+          <TouchableOpacity
+            onPress={openTip}
+            hitSlop={10}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="What are saved presets?"
+          >
+            <MaterialIcons name="info-outline" size={13} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      )}
+      {isEmpty ? null : <SavedPresetChips onApply={onApplyPreset} />}
       {isTipVisible ? (
         <FilterPresetTip isPreview onClose={() => setIsTipVisible(false)} />
       ) : null}
@@ -91,11 +132,24 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       paddingTop: ROW_PADDING_TOP - PRESET_BUTTON_POP_HEADROOM,
       paddingBottom: ROW_PADDING_BOTTOM - PRESET_BUTTON_POP_HEADROOM,
     },
+    // Without the scroller under it there is no pop headroom to trim against,
+    // so the row carries its padding whole.
+    containerEmpty: {
+      paddingTop: ROW_PADDING_TOP,
+      paddingBottom: ROW_PADDING_BOTTOM,
+    },
     captionRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
       marginLeft: PRESETS_ROW_INSET,
+      // Room to the right of the text, so the tap target of the collapsed row
+      // stops before the screen edge instead of running under it.
+      marginRight: PRESETS_ROW_INSET,
+    },
+    // Only when something follows it — the collapsed row is the last thing in
+    // its container and the padding below is already its own.
+    captionRowSpaced: {
       marginBottom: PRESETS_CAPTION_GAP - PRESET_BUTTON_POP_HEADROOM,
     },
     caption: {
@@ -107,5 +161,16 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       letterSpacing: 0.8,
       textTransform: "uppercase",
       color: colors.textSecondary,
+    },
+    // A sentence, not a heading: the caps and the tracking that opens them up
+    // both belong to the one-word caption, not to this. A couple of points
+    // bigger with it, since it has to read as a line rather than as a label —
+    // the line height stays under the info icon beside it, so the row is no
+    // taller than the caption row it stands in for.
+    captionSentence: {
+      fontSize: EMPTY_HINT_FONT_SIZE,
+      lineHeight: EMPTY_HINT_LINE_HEIGHT,
+      textTransform: "none",
+      letterSpacing: 0,
     },
   });

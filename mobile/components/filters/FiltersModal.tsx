@@ -79,6 +79,12 @@ const ENGLISH_FILTER_LABEL = "English subtitled (or spoken)";
 const ENGLISH: Language = "en";
 
 /**
+ * Checked is the default an agenda opens at: it holds both what its owner is
+ * going to and what they are interested in. Unchecking it narrows to Going.
+ */
+const INTERESTED_FILTER_LABEL = "Include interested";
+
+/**
  * Slack below the last section ("Time of day") so its slider has somewhere to
  * appear when the section is expanded from the bottom of the scroll: without it
  * the content mounts just past the viewport and you have to scroll down again to
@@ -102,6 +108,14 @@ export type FiltersModalProps = {
   selectedShowtimeFilter: SharedTabShowtimeFilter;
   setSelectedShowtimeFilter: (v: SharedTabShowtimeFilter) => void;
   showStatusFilter?: boolean;
+  /**
+   * An agenda's "interested as well as going" switch — the friend agenda's, so
+   * off by default. Included is the unfiltered state; switching it off is what
+   * puts the ⊘ Interested chip in the row above.
+   */
+  includeInterested?: boolean;
+  setIncludeInterested?: (v: boolean) => void;
+  showInterestedFilter?: boolean;
   showCinemas?: boolean;
   /** Override the cinema modal opener (for pages rendered outside FiltersModalProvider). */
   onOpenCinemaModal?: () => void;
@@ -141,6 +155,9 @@ export default function FiltersModal({
   selectedShowtimeFilter,
   setSelectedShowtimeFilter,
   showStatusFilter = false,
+  includeInterested = true,
+  setIncludeInterested = () => {},
+  showInterestedFilter = false,
   showCinemas = true,
   onOpenCinemaModal,
   showRuntime = true,
@@ -311,7 +328,7 @@ export default function FiltersModal({
     ]
   );
 
-  // Drives the "Save current filters" highlight: there is only something worth
+  // Drives the "Save as preset" highlight: there is only something worth
   // saving once the user has actually narrowed something down (a cinema
   // selection counts here, even though hasAnyActiveFilter ignores it — saving a
   // preset does store the cinemas).
@@ -320,8 +337,11 @@ export default function FiltersModal({
     [currentFilters, cinemaActive]
   );
 
-  // What there is to save is exactly what there is to clear, cinemas included.
-  const hasSomethingToClear = hasSomethingToSave;
+  // What there is to save is exactly what there is to clear, cinemas included —
+  // plus the interested switch, which no preset carries (it belongs to one
+  // agenda, not to the shared filter set) but "Clear filters" still resets.
+  const hasSomethingToClear =
+    hasSomethingToSave || (showInterestedFilter && !includeInterested);
 
   // Mirrors the feeds' own "clear all" (the × beside the active filter chips)
   // down to the cinemas: they go back to the account's saved picks rather than
@@ -329,6 +349,8 @@ export default function FiltersModal({
   const handleClearFilters = () => {
     triggerSelectionHaptic();
     setSelectedShowtimeFilter("all");
+    // Included is this filter's unfiltered state, so clearing puts it back on.
+    setIncludeInterested(true);
     setWatchlistOnly(false);
     setWatchlistExclude(false);
     setHideWatched(false);
@@ -373,6 +395,8 @@ export default function FiltersModal({
       })),
     [colors]
   );
+  const { value: displayIncludeInterested, change: changeIncludeInterested } =
+    useOptimisticValue(includeInterested, setIncludeInterested);
   const { value: displayWatchlistOnlySimple, change: changeWatchlistOnlySimple } =
     useOptimisticValue(watchlistOnly, setWatchlistOnly);
   const { value: displayHideWatchedSimple, change: changeHideWatchedSimple } =
@@ -427,6 +451,19 @@ export default function FiltersModal({
                     value={displayShowtimeFilter}
                     onChange={changeShowtimeFilter}
                     accessibilityLabelPrefix="Marked by friends"
+                  />
+                </FilterInlineRow>
+              )}
+
+              {showInterestedFilter && (
+                <FilterInlineRow label="Interested">
+                  <Pill
+                    label={INTERESTED_FILTER_LABEL}
+                    icon={displayIncludeInterested ? "check-box" : "check-box-outline-blank"}
+                    active={displayIncludeInterested}
+                    onPress={() => changeIncludeInterested(!displayIncludeInterested)}
+                    colors={colors}
+                    style={styles.inlineControlPill}
                   />
                 </FilterInlineRow>
               )}
@@ -516,6 +553,40 @@ export default function FiltersModal({
               />
             </FilterSection>
 
+            <Divider colors={colors} />
+
+            {/* Below the last filter rather than in the footer: it undoes what
+                is above it, and the space under the sections was empty anyway.
+                Text, not a button — a bordered control down here would read as
+                a fourth thing to decide about, and clearing is a way back, not
+                an action the sheet is asking for. */}
+            <TouchableOpacity
+              style={styles.clearFiltersLink}
+              onPress={handleClearFilters}
+              // Quiet until there is something to undo: a clear control with
+              // nothing to clear is a dead control, not a shortcut.
+              disabled={!hasSomethingToClear}
+              activeOpacity={0.6}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Clear filters"
+            >
+              <MaterialIcons
+                name="filter-alt-off"
+                size={17}
+                color={hasSomethingToClear ? colors.tint : colors.textSecondary}
+                style={!hasSomethingToClear ? styles.clearFiltersIdle : undefined}
+              />
+              <ThemedText
+                style={[
+                  styles.clearFiltersText,
+                  !hasSomethingToClear && styles.clearFiltersTextIdle,
+                ]}
+              >
+                Clear filters
+              </ThemedText>
+            </TouchableOpacity>
+
           </>)}
         </BottomSheetScrollView>
 
@@ -523,74 +594,49 @@ export default function FiltersModal({
             since the filters above are long enough that scrolling back down to
             apply them was a chore. */}
         <View style={[styles.footer, { paddingBottom: bottomInset + 12 }]}>
-          <View style={styles.presetActionsRow}>
-            {showPresets && (
-              <>
-                <TouchableOpacity
-                  style={[styles.presetButton, hasSomethingToSave && styles.presetButtonHighlighted]}
-                  onPress={() => {
-                    triggerSelectionHaptic();
-                    setSavePresetVisible(true);
-                  }}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
+          {showPresets && (
+            <View style={styles.presetActionsRow}>
+              <TouchableOpacity
+                style={[styles.presetButton, hasSomethingToSave && styles.presetButtonHighlighted]}
+                onPress={() => {
+                  triggerSelectionHaptic();
+                  setSavePresetVisible(true);
+                }}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+              >
+                <MaterialIcons
+                  name="bookmark-add"
+                  size={17}
+                  color={hasSomethingToSave ? colors.green.secondary : colors.textSecondary}
+                />
+                <ThemedText
+                  style={[
+                    styles.presetButtonText,
+                    hasSomethingToSave && styles.presetButtonTextHighlighted,
+                  ]}
+                  numberOfLines={1}
                 >
-                  <MaterialIcons
-                    name="bookmark-add"
-                    size={17}
-                    color={hasSomethingToSave ? colors.green.secondary : colors.textSecondary}
-                  />
-                  <ThemedText
-                    style={[
-                      styles.presetButtonText,
-                      hasSomethingToSave && styles.presetButtonTextHighlighted,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    Save current filters
-                  </ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.presetButton, styles.managePresetsButton]}
-                  onPress={() => {
-                    triggerSelectionHaptic();
-                    setManagePresetsVisible(true);
-                  }}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Manage presets"
-                >
-                  <MaterialIcons name="tune" size={17} color={colors.textSecondary} />
-                  <ThemedText style={styles.presetButtonText} numberOfLines={1}>
-                    Presets
-                  </ThemedText>
-                </TouchableOpacity>
-              </>
-            )}
-            {/* Quiet until there is something to undo: a clear button with
-                nothing to clear is a dead control, not a shortcut. */}
-            <TouchableOpacity
-              style={[
-                styles.presetButton,
-                styles.clearFiltersButton,
-                !hasSomethingToClear && styles.clearFiltersButtonIdle,
-              ]}
-              onPress={handleClearFilters}
-              disabled={!hasSomethingToClear}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Clear filters"
-            >
-              <MaterialIcons
-                name="filter-alt-off"
-                size={17}
-                color={hasSomethingToClear ? colors.textSecondary : colors.icon}
-              />
-              <ThemedText style={styles.presetButtonText} numberOfLines={1}>
-                Clear
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
+                  Save as preset
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.presetButton, styles.managePresetsButton]}
+                onPress={() => {
+                  triggerSelectionHaptic();
+                  setManagePresetsVisible(true);
+                }}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Manage presets"
+              >
+                <MaterialIcons name="tune" size={17} color={colors.textSecondary} />
+                <ThemedText style={styles.presetButtonText} numberOfLines={1}>
+                  Presets
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+          )}
           <TouchableOpacity
             style={styles.viewResultsButton}
             onPress={handleClose}
@@ -700,23 +746,43 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderWidth: 1.5,
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
-      // "Save current filters" is the primary of the two, so it takes the
+      // "Save as preset" is the primary of the two, so it takes the
       // leftover width while "Manage" stays at its label's size.
       flex: 1,
     },
     // Saving is only worth a tap once something is actually filtered, so the
-    // button stays quiet until then. Highlighted as a soft tinted fill rather
-    // than a tint-coloured outline: a ring competes with the solid tint button
-    // right below it, while the muted fill reads as "available" without
-    // claiming to be the sheet's primary action. The border stays at the same
-    // width (just tinted to match) so nothing shifts when the state flips.
+    // button stays quiet until then. Highlighted as a soft tinted fill, outlined
+    // in the accent's own border tone: the fill alone has almost no edge against
+    // the footer, which left it reading as a patch of colour rather than a
+    // control. Not the tint the "View results" button below uses — this stays
+    // the quieter of the two. Same border width in both states, so nothing
+    // shifts when it flips.
     presetButtonHighlighted: {
       backgroundColor: colors.green.primary,
-      borderColor: colors.green.primary,
+      borderColor: colors.green.border,
     },
     managePresetsButton: { flex: 0 },
-    clearFiltersButton: { flex: 0 },
-    clearFiltersButtonIdle: { opacity: 0.45 },
+    // Sits in the run-out space under the last section, centred so it does not
+    // read as another labelled row in the list above it. Still text rather than
+    // a control — the icon and the weight are what carry it, not a box.
+    clearFiltersLink: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "center",
+      gap: 7,
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+    },
+    clearFiltersText: {
+      fontSize: 15,
+      // ThemedText's default type carries a 24pt line height that survives the
+      // size override, which would sit the label off-centre against the icon.
+      lineHeight: 20,
+      fontWeight: "700",
+      color: colors.tint,
+    },
+    clearFiltersIdle: { opacity: 0.5 },
+    clearFiltersTextIdle: { color: colors.textSecondary, opacity: 0.5 },
     presetButtonText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
     presetButtonTextHighlighted: { color: colors.green.secondary },
     viewResultsButton: {
@@ -726,6 +792,13 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderRadius: 14,
       alignItems: "center",
     },
-    viewResultsButtonText: { color: "#000", fontWeight: "700", fontSize: 15, lineHeight: 20 },
+    // The shared on-tint text colour rather than a hardcoded black: the light
+    // theme's tint is a deep green, and black on it was barely readable.
+    viewResultsButtonText: {
+      color: colors.pillActiveText,
+      fontWeight: "700",
+      fontSize: 15,
+      lineHeight: 20,
+    },
 
   });

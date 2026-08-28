@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Animated, Dimensions, Easing, LayoutChangeEvent, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 // Aliased: this file already animates its caret with RN's own `Animated`.
@@ -17,8 +17,8 @@ import MorphingChipLabel from "@/components/filters/MorphingChipLabel";
 import {
   CHIP_EXIT_MS,
   CHIP_LAYOUT_AFTER_EXIT,
-  CHIP_LAYOUT_MS,
   CHIP_LAYOUT_TRANSITION,
+  useAddedChipTint,
 } from "@/components/filters/filter-change-animation";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
@@ -45,6 +45,11 @@ type CinemaFilterChipProps = {
    * yet overlaps it, so it waits for the same moment they do.
    */
   waitForExits?: boolean;
+  /**
+   * True when a preset apply wrote the cinemas. Tints the pill exactly as the
+   * chips beside it are tinted, so one apply reads as one thing.
+   */
+  isNew?: boolean;
 };
 
 const DROPDOWN_WIDTH = 252;
@@ -61,11 +66,22 @@ const DROPDOWN_WIDTH = 252;
  */
 const DROPDOWN_FADE_MS = 110;
 
+/**
+ * The caret belongs to the dropdown, not to the pill: it says whether the list
+ * is up, and the pill's own 240ms resize is already carried by the layout
+ * transition that slides the caret along with the border it sits inside. Given
+ * the pill's clock instead, closing by picking a preset took over twice as
+ * long as opening had, which reads as the caret lagging rather than as one
+ * movement.
+ */
+const CARET_SPIN_MS = DROPDOWN_FADE_MS;
+
 export default function CinemaFilterChip({
   onOpenFilters,
   onOpenCinemaModal,
   disabled = false,
   waitForExits = false,
+  isNew = false,
 }: CinemaFilterChipProps) {
   const colors = useThemeColors();
   const { openCinemaModal } = useFiltersModal();
@@ -74,6 +90,7 @@ export default function CinemaFilterChip({
   // One transition for the pill and everything inside it that has to travel
   // with its edges.
   const chipLayout = waitForExits ? CHIP_LAYOUT_AFTER_EXIT : CHIP_LAYOUT_TRANSITION;
+  const tintStyle = useAddedChipTint(isNew);
 
   const chipRef = useRef<View>(null);
   // Height captured from onLayout — always reliable, used as fallback when measure() returns 0.
@@ -89,29 +106,30 @@ export default function CinemaFilterChip({
   });
 
   /**
-   * Read when the dropdown opens or closes rather than tracked as a
-   * dependency: it flips back partway through the very close it applies to,
-   * and re-running the timing then would restart the spin from where it had
-   * got to.
+   * Read when the dropdown closes rather than tracked as a dependency: it
+   * flips back partway through the very close it applies to, and re-running
+   * the timing then would restart the spin from where it had got to.
    */
   const waitForExitsRef = useRef(waitForExits);
   waitForExitsRef.current = waitForExits;
 
-  useEffect(() => {
-    // Picking a cinema preset closes the dropdown and rewrites the label in
-    // the same commit, so the caret is turning back at the moment the pill is
-    // resizing under it. Same clock as `chipLayout` on both counts — the
-    // layout transition's duration, its linear curve, and its wait for
-    // departing chips — so the two read as one movement instead of the spin
-    // finishing early and the pill carrying on alone.
+  /**
+   * Started by whatever the caret is travelling with, at that thing's own
+   * clock — never from an effect on `dropdownVisible`. The commit that flips
+   * that flag is the one that mounts the dropdown and everything in it, and an
+   * effect runs after it: the caret sat still through all of that work and
+   * only began to turn once the list was already on screen.
+   */
+  const spinCaret = (open: boolean, delay = 0) => {
+    caretRotation.stopAnimation();
     Animated.timing(caretRotation, {
-      toValue: dropdownVisible ? 1 : 0,
-      duration: CHIP_LAYOUT_MS,
-      delay: waitForExitsRef.current ? CHIP_EXIT_MS : 0,
+      toValue: open ? 1 : 0,
+      duration: CARET_SPIN_MS,
+      delay,
       easing: Easing.linear,
       useNativeDriver: true,
     }).start();
-  }, [dropdownVisible, caretRotation]);
+  };
 
   const { data: allCinemas = [] } = useFetchCinemas();
   // See FiltersModal: the cinema list is public, the saved picks and named
@@ -162,6 +180,9 @@ export default function CinemaFilterChip({
   };
 
   const openDropdown = () => {
+    // First, ahead of the measure round-trip and the dropdown's own render:
+    // the caret turns with the list arriving, on the list's clock.
+    spinCaret(true);
     triggerSelectionHaptic();
     // measure() gives pageX/pageY (absolute screen coords) + dimensions.
     // More reliable than measureInWindow inside a ScrollView on Android.
@@ -176,12 +197,20 @@ export default function CinemaFilterChip({
     );
   };
 
-  const closeDropdown = () => setDropdownVisible(false);
+  const closeDropdown = () => {
+    spinCaret(false);
+    setDropdownVisible(false);
+  };
 
   const applyPreset = (ids: readonly number[]) => {
     triggerSelectionHaptic();
     setSessionCinemaIds(Array.from(ids));
-    closeDropdown();
+    // Not `closeDropdown`: this close rewrites the pill's label in the same
+    // commit, and when chips are leaving the pill holds that change back until
+    // they have gone. The caret waits with it, so the two still start together
+    // — only the spin itself keeps its own length.
+    spinCaret(false, waitForExitsRef.current ? CHIP_EXIT_MS : 0);
+    setDropdownVisible(false);
   };
 
   const handleOpenFilters = () => {
@@ -218,7 +247,7 @@ export default function CinemaFilterChip({
               width, and the chips after it slide by exactly as much over
               exactly as long, which is what keeps them off each other. */}
           <Reanimated.View
-            style={[styles.chip, disabled && styles.chipDisabled]}
+            style={[styles.chip, disabled && styles.chipDisabled, tintStyle]}
             layout={chipLayout}
           >
             <MorphingChipLabel

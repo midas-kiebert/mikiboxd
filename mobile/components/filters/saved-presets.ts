@@ -8,6 +8,7 @@
  */
 import {
   MeService,
+  type CinemaScope,
   type Language,
   type SavedPresetCreate,
   type SavedPresetFilters,
@@ -24,6 +25,7 @@ import {
   toSharedTabShowtimeFilter,
   type SharedTabShowtimeFilter,
 } from "@/components/filters/shared-tab-filters";
+import { formatCinemaScopeLabel } from "@/components/filters/cinema-grouping";
 import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
 import { formatTimePillLabel } from "@/components/filters/time-range-utils";
 import { formatRuntimePillLabel } from "@/components/filters/runtime-range-utils";
@@ -83,7 +85,15 @@ export type DisplayPreset = {
   /** Dimensions the preset leaves as-is on apply; everything else is controlled. */
   untouchedFields: PresetDimension[];
   filters: SavedPresetFilters;
+  /** Resolved against the current cinema list by the backend. */
   cinemaIds: number[] | null;
+  /**
+   * The rule the ids were resolved from — "every cinema", "every cinema in
+   * these cities", or a plain list. Only for describing the preset; applying
+   * one still goes through `cinemaIds`, which the backend has already
+   * expanded. `null` on presets saved before rules existed.
+   */
+  cinemaScope: CinemaScope | null;
 };
 
 const savedToDisplay = (preset: SavedPresetPublic): DisplayPreset => ({
@@ -93,6 +103,7 @@ const savedToDisplay = (preset: SavedPresetPublic): DisplayPreset => ({
   untouchedFields: preset.untouched_fields.filter(isUntouchedToken),
   filters: preset.filters,
   cinemaIds: preset.cinema_ids ?? null,
+  cinemaScope: preset.cinema_scope ?? null,
 });
 
 export const displayPresetsQueryKey = ["display-presets"] as const;
@@ -544,10 +555,13 @@ export const summarizeCurrentSelections = (args: {
 
 /**
  * Build a compact human-readable summary of what a preset will apply, e.g.
- * "Interested · Today · Evening · < 90 min · 3 cinemas"
+ * "Interested · Today · Evening · < 90 min · All Amsterdam cinemas"
  * Used in the manage-presets list and any other places that need a one-liner.
  */
-export const describeDisplayPreset = (preset: DisplayPreset): string => {
+export const describeDisplayPreset = (
+  preset: DisplayPreset,
+  cityNamesById: ReadonlyMap<number, string>
+): string => {
   const untouched = new Set(preset.untouchedFields);
   const controls = (dimension: PresetDimension) => !untouched.has(dimension);
   const f = preset.filters;
@@ -588,8 +602,9 @@ export const describeDisplayPreset = (preset: DisplayPreset): string => {
     parts.push(formatLanguagesLabel(f.selected_languages ?? []));
   }
   if (preset.cinemaIds != null) {
-    const n = preset.cinemaIds.length;
-    parts.push(`${n} cinema${n === 1 ? "" : "s"}`);
+    parts.push(
+      formatCinemaScopeLabel(preset.cinemaScope, preset.cinemaIds, cityNamesById)
+    );
   }
 
   return parts.length > 0 ? parts.join(" · ") : "No restrictions";

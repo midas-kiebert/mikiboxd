@@ -1,9 +1,10 @@
 /**
  * Mobile filter UI component: the Filters button.
  *
- * One component wherever the button appears — beside the search field on the
- * main feeds, alone in `FiltersButtonRow` on the sub-pages — so the same
- * control is never two different sizes across screens.
+ * One component wherever the button appears, and one place too: beside the
+ * search field, in `SearchBar`'s `leftSlot`. Every feed and sub-page mounts it
+ * the same way, so the same control is never two different sizes — or two
+ * different rows — across screens.
  *
  * It stretches to its parent's height when the parent gives it one (the search
  * row lines it up with the search field that way), and stands at its own

@@ -7,6 +7,7 @@ from pydantic import field_validator
 from sqlmodel import Field, SQLModel
 
 from app.core.enums import Language
+from app.schemas.cinema_scope import CinemaScope
 
 __all__ = [
     "UNTOUCHABLE_FIELDS",
@@ -146,6 +147,8 @@ class SavedPresetPublic(SQLModel):
     is_favorite: bool
     untouched_fields: list[str]
     filters: SavedPresetFilters
+    # Expanded against the current cinema list; see ``CinemaPresetPublic``.
     cinema_ids: list[int] | None
+    cinema_scope: CinemaScope | None = None
     created_at: datetime
     updated_at: datetime

@@ -62,7 +62,7 @@ import { useCinemaSelection } from "@/hooks/useCinemaSelection";
 import { useIsSignedIn } from "@/utils/auth-session";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { retireCinemaPresetTip } from "@/utils/feature-tips";
-import { triggerSelectionHaptic } from "@/utils/long-press";
+import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 
 type CinemaFilterModalProps = {
   visible: boolean;
@@ -382,6 +382,7 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
 
   const handleConfirmDelete = useCallback(() => {
     if (!presetPendingDeletion) return;
+    triggerImpactHaptic();
     deletePresetMutation.mutate(presetPendingDeletion.id);
   }, [deletePresetMutation, presetPendingDeletion]);
 
@@ -703,47 +704,56 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                   account, and an empty bordered strip reads as broken. */}
               {isSignedIn ? (
               <View style={[styles.footer, { paddingBottom: bottomInset + 12 }]}>
-                {/* Demoted to a text row: presets are a power feature, and
-                    giving them equal weight is what made the naming step read
-                    as a required step rather than an optional one. Placed
-                    above the primary row so the row you actually act on last
-                    (preferred cinemas / apply) sits closest to the thumb. */}
-                <View style={styles.footerLinks}>
+                {/* The same button as the preferred-cinemas one below, in the
+                    same two states: quiet until there is something worth
+                    saving, then a soft accent fill. Saving a named selection
+                    and setting the preferred one are the two ways to keep a
+                    selection, and one of them being a text link made it read
+                    as a lesser kind of thing rather than a different one.
+                    Still placed above the primary row, so the row you act on
+                    last sits closest to the thumb. */}
+                <View style={styles.footerPresetRow}>
                   <TouchableOpacity
                     style={[
-                      styles.footerLinkButton,
-                      !canSaveAsPreset && styles.footerLinkButtonDisabled,
+                      styles.footerButton,
+                      canSaveAsPreset
+                        ? styles.footerButtonHighlighted
+                        : styles.footerButtonDisabled,
                     ]}
                     onPress={handleOpenSavePresetDialog}
-                    activeOpacity={0.7}
+                    activeOpacity={0.8}
                     disabled={!canSaveAsPreset}
-                    hitSlop={6}
                     accessibilityRole="button"
                   >
                     <MaterialIcons
                       name={selectionMatchesNamedPreset ? "bookmark" : "bookmark-add"}
-                      size={14}
-                      color={canSaveAsPreset ? colors.tint : colors.textSecondary}
+                      size={17}
+                      color={canSaveAsPreset ? colors.green.secondary : colors.textSecondary}
                     />
                     <ThemedText
-                      style={[styles.footerLink, !canSaveAsPreset && styles.footerLinkDisabled]}
+                      style={[
+                        styles.footerButtonText,
+                        canSaveAsPreset && styles.footerButtonTextHighlighted,
+                      ]}
                       numberOfLines={1}
                     >
                       {selectionMatchesNamedPreset ? "Already a preset" : "Save as preset"}
                     </ThemedText>
                   </TouchableOpacity>
+                  {/* Never highlighted: it opens a page rather than writing
+                      anything, so it is the quiet one of the pair whatever the
+                      selection is. */}
                   <TouchableOpacity
-                    style={styles.footerLinkButton}
+                    style={[styles.footerButton, styles.footerButtonNarrow]}
                     onPress={() => {
                       triggerSelectionHaptic();
                       setPage("presets");
                     }}
-                    activeOpacity={0.7}
-                    hitSlop={6}
+                    activeOpacity={0.8}
                     accessibilityRole="button"
                   >
-                    <MaterialIcons name="tune" size={14} color={colors.tint} />
-                    <ThemedText style={styles.footerLink} numberOfLines={1}>
+                    <MaterialIcons name="tune" size={17} color={colors.textSecondary} />
+                    <ThemedText style={styles.footerButtonText} numberOfLines={1}>
                       Manage presets
                     </ThemedText>
                   </TouchableOpacity>
@@ -1070,39 +1080,22 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     applyButtonText: { fontSize: 13, fontWeight: "700", color: colors.pillActiveText },
     // Saving is only worth a tap once the selection is actually new, so the
-    // button stays quiet until then — a soft tinted fill rather than an outline,
-    // at the same border width so nothing shifts when the state flips.
+    // button stays quiet until then — a soft tinted fill at the same border
+    // width, so nothing shifts when the state flips. The outline is the accent's
+    // own border tone rather than the fill: a soft tint on the footer's
+    // background has almost no edge of its own, which left the one primary
+    // action in the modal reading as a flat patch of colour.
     footerButtonHighlighted: {
       backgroundColor: colors.green.primary,
-      borderColor: colors.green.primary,
+      borderColor: colors.green.border,
     },
     footerButtonDisabled: { opacity: 0.5 },
+    // Mirrors `footerPrimaryRow` below it: one button takes the leftover
+    // width, the other stays at its label's size.
+    footerPresetRow: { flexDirection: "row", alignItems: "stretch", gap: 8 },
+    footerButtonNarrow: { flex: 0 },
     footerButtonText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
     footerButtonTextHighlighted: { color: colors.green.secondary },
-    // The preset row above the primary button. Recessed chips rather than the
-    // primary's raised fill: they read as an aside, not as a second thing to
-    // decide about, while still being obviously tappable — bare text at the two
-    // outer edges looked stranded. Centred, so the pair reads as one group.
-    footerLinks: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-    },
-    footerLinkButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 10,
-      backgroundColor: colors.surfaceMuted,
-    },
-    footerLinkButtonDisabled: { opacity: 0.6 },
-    // Explicit lineHeight: ThemedText's default type carries 24, which survives
-    // the fontSize override and would make these chips button-height.
-    footerLink: { fontSize: 12, lineHeight: 16, fontWeight: "700", color: colors.tint },
-    footerLinkDisabled: { color: colors.textSecondary },
     // Manage presets page
     emptyContainer: { paddingVertical: 24, alignItems: "center", justifyContent: "center" },
     emptyText: { fontSize: 13, color: colors.textSecondary, textAlign: "center" },

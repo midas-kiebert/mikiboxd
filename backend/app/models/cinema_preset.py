@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import JSON, UniqueConstraint
 from sqlmodel import Column, Field, SQLModel
@@ -39,9 +40,19 @@ class CinemaPreset(SQLModel, table=True):
         index=True,
     )
     name: str = Field(max_length=80)
+    # The selection as it was ticked when the preset was saved. Kept as the
+    # fallback for rows saved before scopes existed; everything else reads the
+    # resolved selection, which comes from ``cinema_scope``.
     cinema_ids: list[int] = Field(
         default_factory=list,
         sa_column=Column(JSON, nullable=False),
+    )
+    # The rule behind that selection (``app.schemas.cinema_scope.CinemaScope``),
+    # so cinemas that open after the preset was saved land inside it. ``None``
+    # on rows that predate scopes.
+    cinema_scope: dict[str, Any] | None = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True),
     )
     is_favorite: bool = Field(default=False, nullable=False, index=True)
     created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)

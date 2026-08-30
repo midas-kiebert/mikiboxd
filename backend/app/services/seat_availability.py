@@ -36,7 +36,7 @@ from urllib.parse import urlsplit
 import yaml
 from sqlmodel import Session
 
-from app.core.enums import SeatAvailabilityLevel, is_fuller_than
+from app.core.enums import ScreenSide, SeatAvailabilityLevel, is_fuller_than
 from app.crud import cinema as cinema_crud
 from app.crud import cinema_room_capacity as room_capacity_crud
 from app.crud import showtime as showtimes_crud
@@ -60,6 +60,9 @@ from app.utils import now_amsterdam_naive
 _CAPACITY_OVERRIDES_CONFIG = (
     Path(__file__).resolve().parents[1] / "configs" / "seat_capacity_overrides.yaml"
 )
+_SCREEN_SIDE_OVERRIDES_CONFIG = (
+    Path(__file__).resolve().parents[1] / "configs" / "seat_screen_side_overrides.yaml"
+)
 
 
 @lru_cache(maxsize=1)
@@ -75,6 +78,32 @@ def _capacity_override(*, cinema_key: str | None, room: str | None) -> int | Non
     if cinema_key is None or room is None:
         return None
     return _capacity_overrides().get(cinema_key, {}).get(room)
+
+
+@lru_cache(maxsize=1)
+def _screen_side_overrides() -> dict[str, dict[str, str]]:
+    with _SCREEN_SIDE_OVERRIDES_CONFIG.open() as f:
+        config = yaml.safe_load(f) or {}
+    return config.get("overrides") or {}
+
+
+def screen_side_override(
+    *, cinema_key: str | None, room: str | None
+) -> ScreenSide | None:
+    """Which end this room's screen is at, if somebody has said so by hand.
+
+    For the platforms that never state it — everything but Tricket. A value
+    that isn't a side we know is treated as absent, the same tolerance the
+    capacity overrides have: a typo leaves the room rendering the way it did
+    rather than failing an ingest.
+    """
+    if cinema_key is None or room is None:
+        return None
+    raw = _screen_side_overrides().get(cinema_key, {}).get(room)
+    try:
+        return ScreenSide(str(raw).strip().lower())
+    except ValueError:
+        return None
 
 
 # There is no far horizon. A screening months out with a seat left is more

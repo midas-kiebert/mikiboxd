@@ -11,7 +11,7 @@ import { useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { SeatFloorPlanSeatPublic } from "shared";
+import type { ScreenSide, SeatFloorPlanSeatPublic } from "shared";
 
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { ThemedText } from "@/components/themed-text";
@@ -26,6 +26,8 @@ type SeatFloorPlanPreviewProps = {
   visible: boolean;
   room: string | null;
   seats: SeatFloorPlanSeatPublic[] | null;
+  /** Which end of `seats` the screen is at — a fact about the room, stored. */
+  screenSide: ScreenSide;
   isLoading: boolean;
   cinemaName: string | null;
   movieTitle: string | null;
@@ -38,6 +40,7 @@ export default function SeatFloorPlanPreview({
   visible,
   room,
   seats,
+  screenSide,
   isLoading,
   cinemaName,
   movieTitle,
@@ -93,7 +96,9 @@ export default function SeatFloorPlanPreview({
             <ActivityIndicator color={colors.tint} />
           ) : hasSeats ? (
             <View style={{ width: layout.width }}>
-              <ScreenIndicator width={layout.width} colors={colors} />
+              {screenSide === "top" ? (
+                <ScreenIndicator width={layout.width} side="top" colors={colors} />
+              ) : null}
               <View style={{ height: layout.height }}>
                 {layout.seats.map((seat) => (
                   <SeatRect
@@ -105,6 +110,9 @@ export default function SeatFloorPlanPreview({
                   />
                 ))}
               </View>
+              {screenSide === "bottom" ? (
+                <ScreenIndicator width={layout.width} side="bottom" colors={colors} />
+              ) : null}
             </View>
           ) : null}
         </View>

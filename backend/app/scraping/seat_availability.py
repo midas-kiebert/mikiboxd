@@ -65,6 +65,7 @@ scrape as "this showtime is gone".
 
 import json
 import re
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -73,6 +74,7 @@ from urllib.parse import urlsplit
 
 import requests
 
+from app.core.enums import ScreenSide
 from app.scraping.logger import logger
 
 REQUEST_TIMEOUT_SECONDS = 20
@@ -229,8 +231,278 @@ def _fetch_tricket(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
             f"Tricket screening {screening_id} response was missing seat data"
         )
     return SeatAvailability(
-        seats_left, seats_left == 0, None, "tricket", capacity=len(seats)
+        seats_left,
+        seats_left == 0,
+        TRICKET_ROOM_NAMES.get(str(data.get("hallId") or "")),
+        "tricket",
+        capacity=len(seats),
+        taken_seats=(
+            _fetch_tricket_taken_seats(
+                host=host, screening_id=screening_id, seats=seats
+            )
+            if host in TRICKET_SEAT_MAP_HOSTS
+            else None
+        ),
     )
+
+
+# --- Tricket seat maps ------------------------------------------------------
+#
+# Only for shops whose seat map means anything. Tricket hands one back for
+# every screening, including rooms that are sold unreserved — Studio/K seats
+# nobody where its map says, which is why `cinemas.yaml` has it as
+# `seating: free`. A decorative map is worse than none: it would draw a picker
+# showing seats to pick, mark "taken" ones nobody is sitting in, and let a
+# viewer record a seat number that means nothing to the friend looking for
+# them. The count and the room's size are still real for those shops and are
+# read as before — this gates the seat *identities*, not the number.
+TRICKET_SEAT_MAP_HOSTS = ("kassa.cinecenter.nl",)
+
+# Tricket names a room only by `hallId`, a UUID that appears nowhere else in
+# its API — but the cinema's own website embeds its programme with a
+# `hallName` and the very same screening ids the checkout links use, so the
+# two can be joined once by hand and written down. A stored floor plan is
+# keyed by room name, so without this Cinecenter's geometry would have nothing
+# to be filed under.
+#
+# Derived from cinecenter.nl on 2026-08-30 and checked against each hall's own
+# seat list, which matched the site's stated capacity exactly. Hall ids are
+# stable; a room that is renamed or rebuilt needs this re-derived, and an
+# unknown hall simply reads as an unnamed room rather than failing.
+TRICKET_ROOM_NAMES: dict[str, str] = {
+    "b398f818-35a9-48be-b178-6e18c6c71d86": "Zaal 1",  # Cinecenter, 75 seats
+    "60e22a40-8cd9-44fe-afe4-e8075c8b8526": "Zaal 2",  # Cinecenter, 76 seats
+    "b94f5fae-52bd-4b7d-a2d5-b3c518b89d21": "Zaal 3",  # Cinecenter, 72 seats
+    "f769b38a-9270-4ac9-9121-bfcb1c2215ac": "Zaal 4",  # Cinecenter, 31 seats
+}
+
+# Which seats are taken lives behind `?basketId=`, and a basket has to be a
+# real one — a made-up or nil id 404s. Creating one is a bare `POST /api/basket`
+# that returns an empty basket and holds nothing: seats are locked by a
+# separate `/screening-seats/.../lock` call that nothing here ever makes, the
+# same line the Eagerly seat map is read on.
+#
+# One basket per host is enough and is reused for every screening on it, so
+# this leaves a single basket record on each shop rather than one per reading.
+# It survives being idle, and a shop that has forgotten it answers 404, which
+# is the signal to make another.
+_tricket_baskets: dict[str, str] = {}
+_tricket_basket_lock = threading.Lock()
+
+
+def _tricket_basket_id(host: str, *, refresh: bool = False) -> str | None:
+    with _tricket_basket_lock:
+        if not refresh:
+            existing = _tricket_baskets.get(host)
+            if existing is not None:
+                return existing
+        try:
+            response = requests.post(
+                f"https://{host}/api/basket",
+                headers=REQUEST_HEADERS,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            basket_id = response.json().get("id")
+        except (requests.RequestException, ValueError) as e:
+            # Not fatal: the count came from the screening resource and does
+            # not need a basket. Only the seat map is lost.
+            logger.warning(f"Could not open a Tricket basket at {host}: {e}")
+            return None
+        if not isinstance(basket_id, str) or not basket_id:
+            return None
+        _tricket_baskets[host] = basket_id
+        return basket_id
+
+
+def _fetch_tricket_taken_seats(
+    *, host: str, screening_id: str, seats: dict
+) -> tuple[TakenSeat, ...] | None:
+    """Which of this screening's seats are spoken for, by row and seat name.
+
+    None rather than an empty tuple when the shop would not say — "nothing is
+    taken" and "we could not ask" have to stay distinguishable, or a failed
+    read would wipe a stored seat map and show a full room as empty.
+    """
+    booked = _fetch_tricket_booked_seat_ids(host=host, screening_id=screening_id)
+    if booked is None:
+        return None
+    taken = []
+    for seat_id in booked:
+        seat = seats.get(seat_id)
+        if not isinstance(seat, dict):
+            continue
+        name = _tricket_seat_name(seat)
+        if name is not None:
+            taken.append(name)
+    return tuple(taken)
+
+
+def _fetch_tricket_booked_seat_ids(
+    *, host: str, screening_id: str
+) -> list[str] | None:
+    """The `bookedSeats` id list, opening or renewing a basket as needed."""
+    for refresh in (False, True):
+        basket_id = _tricket_basket_id(host, refresh=refresh)
+        if basket_id is None:
+            return None
+        url = (
+            f"https://{host}/api/screenings/{screening_id}/seats"
+            f"?basketId={basket_id}"
+        )
+        try:
+            response = requests.get(
+                url, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT_SECONDS
+            )
+        except requests.RequestException as e:
+            logger.warning(f"Tricket seat map for {screening_id} failed: {e}")
+            return None
+        if response.status_code == 404 and not refresh:
+            # Either the basket has been forgotten or the screening is gone.
+            # One retry with a fresh basket tells the two apart without
+            # opening a basket on every reading.
+            continue
+        if not response.ok:
+            return None
+        try:
+            body = response.json()
+        except ValueError:
+            return None
+        booked = body.get("bookedSeats") if isinstance(body, dict) else None
+        return booked if isinstance(booked, list) else None
+    return None
+
+
+# Every seat in the map is `<g id="{seatId}" class="seat"><svg x=".." y="..">`,
+# and the screen is drawn by the map itself rather than left to the client —
+# which is what makes Tricket the one platform that states which end it is at.
+_TRICKET_SVG_SEAT = re.compile(
+    r'<g\s+id="(?P<id>[0-9a-f-]{36})"\s+class="seat"\s*>\s*'
+    r'<svg\s+x="(?P<x>-?\d+(?:\.\d+)?)"\s+y="(?P<y>-?\d+(?:\.\d+)?)"'
+)
+_TRICKET_SVG_SCREEN = re.compile(
+    r'<svg\s+x="-?\d+(?:\.\d+)?"\s+y="(?P<y>-?\d+(?:\.\d+)?)"\s*>'
+    r'(?:(?!</svg>).)*?id="screen-title"',
+    re.S,
+)
+# The seat glyph the map re-uses for every seat: `<svg id="seat-rect"
+# width="10" height="10">`. Read rather than assumed, since it is what the
+# stored geometry's width/height mean.
+_TRICKET_SVG_SEAT_SIZE = re.compile(
+    r'<svg\s+id="seat-rect"\s+width="(?P<w>\d+)"\s+height="(?P<h>\d+)"'
+)
+
+
+class TricketSeatPlanGeometry(NamedTuple):
+    """One room's layout, as the floor-plan store wants it."""
+
+    hall_id: str | None
+    room: str | None
+    screen_side: str
+    seats: list[dict]
+
+
+def parse_tricket_seating_map(
+    seating_map: str, seats: dict
+) -> tuple[str, list[dict]] | None:
+    """Turn a Tricket `seatingMap` SVG into stored geometry and a screen side.
+
+    `seats` is the screening resource's own id -> {row, seat} table; the SVG
+    carries positions and ids but no names, so the two have to be read
+    together. A seat drawn in the map that the resource does not name is
+    dropped: the floor plan matches on the row/seat pair, and an unnamed seat
+    could never be matched to a reading.
+    """
+    size = _TRICKET_SVG_SEAT_SIZE.search(seating_map)
+    seat_width = int(size.group("w")) if size else 10
+    seat_height = int(size.group("h")) if size else 10
+
+    geometry: list[dict] = []
+    for match in _TRICKET_SVG_SEAT.finditer(seating_map):
+        named = seats.get(match.group("id"))
+        if not isinstance(named, dict):
+            continue
+        name = _tricket_seat_name(named)
+        if name is None:
+            continue
+        row_name, seat_name = name
+        geometry.append(
+            {
+                "row_name": row_name,
+                "seat_name": seat_name,
+                "position_left": float(match.group("x")),
+                "position_top": float(match.group("y")),
+                "width": seat_width,
+                "height": seat_height,
+                # Tricket's map draws only real, sellable seats — there are no
+                # aisle or filler entries to exclude, unlike Eagerly's.
+                "selectable": True,
+            }
+        )
+    if not geometry:
+        return None
+
+    screen = _TRICKET_SVG_SCREEN.search(seating_map)
+    if screen is None:
+        # Every map seen so far draws one; without it the ordinary default is
+        # the honest answer rather than a guess from the row numbering, which
+        # is exactly the inference that gets Filmhuis Alkmaar backwards.
+        return ScreenSide.TOP.value, geometry
+    screen_y = float(screen.group("y"))
+    top_seat = min(seat["position_top"] for seat in geometry)
+    side = ScreenSide.TOP if screen_y < top_seat else ScreenSide.BOTTOM
+    return side.value, geometry
+
+
+def fetch_tricket_room_geometry(
+    *, host: str, screening_id: str
+) -> TricketSeatPlanGeometry | None:
+    """One screening's room layout, for the floor-plan ingest.
+
+    Two reads, both of which the checkout page makes anyway: the screening
+    resource for the seat names and the hall, and the seat map for the
+    positions. Returns None for anything that does not come back whole, so the
+    ingest moves on to another showtime in the same room rather than storing
+    half a plan.
+    """
+    try:
+        screening = _get(f"https://{host}/api/screenings/{screening_id}").json()
+    except (SeatAvailabilityFetchError, ValueError):
+        return None
+    seats = screening.get("seats")
+    if not isinstance(seats, dict) or not seats:
+        return None
+
+    basket_id = _tricket_basket_id(host)
+    if basket_id is None:
+        return None
+    try:
+        body = _get(
+            f"https://{host}/api/screenings/{screening_id}/seats?basketId={basket_id}"
+        ).json()
+    except (SeatAvailabilityFetchError, ValueError):
+        return None
+    seating_map = body.get("seatingMap") if isinstance(body, dict) else None
+    if not isinstance(seating_map, str):
+        return None
+
+    parsed = parse_tricket_seating_map(seating_map, seats)
+    if parsed is None:
+        return None
+    screen_side, geometry = parsed
+    hall_id = str(screening.get("hallId") or "") or None
+    return TricketSeatPlanGeometry(
+        hall_id=hall_id,
+        room=TRICKET_ROOM_NAMES.get(hall_id or ""),
+        screen_side=screen_side,
+        seats=geometry,
+    )
+
+
+def _tricket_seat_name(seat: dict) -> TakenSeat | None:
+    row = str(seat.get("row") or "").strip()
+    name = str(seat.get("seat") or "").strip()
+    return (row, name) if row and name else None
 
 
 # --- Eagerly ----------------------------------------------------------------

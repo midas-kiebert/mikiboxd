@@ -100,5 +100,6 @@ def get_seat_floor_plan(
         showtime_id=showtime_id,
         room=showtime.room,
         seats=seats,
+        screen_side=plan.screen_side,
         seats_checked_at=seat_map.checked_at if seat_map is not None else None,
     )

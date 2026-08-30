@@ -58,7 +58,7 @@ import {
 } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { SeatFloorPlanSeatPublic } from "shared";
+import type { ScreenSide, SeatFloorPlanSeatPublic } from "shared";
 
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { ThemedText } from "@/components/themed-text";
@@ -75,6 +75,8 @@ type SeatFloorPlanProps = {
   visible: boolean;
   room: string | null;
   seats: SeatFloorPlanSeatPublic[] | null;
+  /** Which end of `seats` the screen is at — a fact about the room, stored. */
+  screenSide: ScreenSide;
   isLoading: boolean;
   isError: boolean;
   cinemaName: string | null;
@@ -179,30 +181,37 @@ export const SeatRect = memo(function SeatRect({
   );
 });
 
-// Purely an orientation cue — no cinema gives us actual screen geometry, so
-// this is a fixed-height bar sized to the room's own scaled width rather than
-// anything derived from the seat data. Shared with `SeatFloorPlanPreview` so
-// the two sheets read identically. Its height must stay in step with
-// `SCREEN_INDICATOR_HEIGHT` in `seat-floor-plan-layout.ts`, which reserves
-// the space for it above the seat grid.
+// Purely an orientation cue — no cinema gives us screen *geometry*, so this is
+// a fixed-height bar sized to the room's own scaled width rather than anything
+// derived from the seat data. Shared with `SeatFloorPlanPreview` so the two
+// sheets read identically. Its height must stay in step with
+// `SCREEN_INDICATOR_HEIGHT` in `seat-floor-plan-layout.ts`, which reserves the
+// space for it beside the seat grid.
 //
-// Hardcoded to the top rather than derived per room: checked the stored
-// geometry for all 36 currently-ingested rooms and row 1/A (the row closest
-// to the screen by convention) is the topmost (smallest position_top) row in
-// every one, with no exceptions — all 7 covered cinemas run the same "My
-// Cloud Cinema"/Eagerly booking platform, which apparently always encodes it
-// that way. Real cinema screens can be on any side, so if a floor plan from a
-// different geometry source is ever added, re-check this before assuming it
-// still holds.
+// Which end it goes at comes from the room, via `screen_side` on the stored
+// floor plan, and is deliberately not inferred here. The tempting rule — put
+// it at whichever end row 1 is, since row 1 is the row nearest the screen —
+// gets Filmhuis Alkmaar exactly backwards: it numbers its rows from the back.
+// Only Tricket states the side outright (its seat map draws the screen line
+// itself); everywhere else the backend defaults to top and takes a correction
+// from `seat_screen_side_overrides.yaml`.
 export function ScreenIndicator({
   width,
+  side,
   colors,
 }: {
   width: number;
+  side: ScreenSide;
   colors: ReturnType<typeof useThemeColors>;
 }) {
   return (
-    <View style={[styles.screenIndicator, { width }]}>
+    <View
+      style={[
+        styles.screenIndicator,
+        side === "bottom" ? styles.screenIndicatorBottom : styles.screenIndicatorTop,
+        { width },
+      ]}
+    >
       <View style={[styles.screenBar, { backgroundColor: colors.textSecondary }]} />
       <ThemedText style={[styles.screenLabel, { color: colors.textSecondary }]}>SCREEN</ThemedText>
     </View>
@@ -213,6 +222,7 @@ export default function SeatFloorPlan({
   visible,
   room,
   seats,
+  screenSide,
   isLoading,
   isError,
   cinemaName,
@@ -470,7 +480,9 @@ export default function SeatFloorPlan({
                 </ThemedText>
               ) : (
                 <View style={{ width: layout.width }}>
-                  <ScreenIndicator width={layout.width} colors={colors} />
+                  {screenSide === "top" ? (
+                    <ScreenIndicator width={layout.width} side="top" colors={colors} />
+                  ) : null}
                   <View style={{ height: layout.height }}>
                     {layout.seats.map((seat) => (
                       <SeatRect
@@ -487,6 +499,13 @@ export default function SeatFloorPlan({
                       />
                     ))}
                   </View>
+                  {screenSide === "bottom" ? (
+                    <ScreenIndicator
+                      width={layout.width}
+                      side="bottom"
+                      colors={colors}
+                    />
+                  ) : null}
                 </View>
               )}
             </View>
@@ -629,7 +648,11 @@ const styles = StyleSheet.create({
   body: { flex: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   // Height must stay in step with `SCREEN_INDICATOR_HEIGHT` in
   // `seat-floor-plan-layout.ts`, which reserves this space above the grid.
-  screenIndicator: { alignItems: "center", marginBottom: 8 },
+  screenIndicator: { alignItems: "center" },
+  screenIndicatorTop: { marginBottom: 8 },
+  // Mirrored, and the label leads the bar so the pair still reads outward
+  // from the seats rather than upside down.
+  screenIndicatorBottom: { marginTop: 8, flexDirection: "column-reverse" },
   screenBar: { width: "70%", height: 4, borderRadius: 2, opacity: 0.5 },
   screenLabel: { fontSize: 9, letterSpacing: 2, marginTop: 4 },
   seat: { position: "absolute" },

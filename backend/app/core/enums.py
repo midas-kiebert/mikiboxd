@@ -296,3 +296,19 @@ class LoginEmailSource(str, Enum):
     PRIMARY = "primary"
     GOOGLE = "google"
     APPLE = "apple"
+
+
+@unique
+class ScreenSide(str, Enum):
+    """Which end of a room's stored seat geometry the screen sits at.
+
+    Not derivable from the seats: the row nearest the screen is usually row 1,
+    but not always — Filmhuis Alkmaar numbers its rows from the back, so its
+    row 1 sits at the bottom of a plan whose screen is at the top. Only
+    Tricket states it outright (its seat map draws the screen line as part of
+    the layout); every other platform hands back seats and nothing else, so
+    the value is stored per room and corrected by hand where it is wrong.
+    """
+
+    TOP = "top"
+    BOTTOM = "bottom"

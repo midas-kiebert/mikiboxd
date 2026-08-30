@@ -2306,6 +2306,7 @@ export default function ShowtimeActionModal({
         ref={seatSheetsRef}
         room={seatFloorPlan?.room ?? null}
         seats={seatFloorPlan?.seats ?? null}
+        screenSide={seatFloorPlan?.screen_side ?? "top"}
         isLoadingFloorPlan={seatFloorPlanQuery.isLoading}
         isFloorPlanError={seatFloorPlanQuery.isError}
         cinemaName={showtime?.cinema.name ?? null}

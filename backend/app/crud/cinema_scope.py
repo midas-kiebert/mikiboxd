@@ -93,9 +93,7 @@ def resolve_cinema_scope(
 
     wanted_cities = set(scope.city_ids)
     resolved = set(scope.cinema_ids)
-    resolved |= {
-        cinema.id for cinema in all_cinemas if cinema.city_id in wanted_cities
-    }
+    resolved |= {cinema.id for cinema in all_cinemas if cinema.city_id in wanted_cities}
     return sorted(resolved)
 
 

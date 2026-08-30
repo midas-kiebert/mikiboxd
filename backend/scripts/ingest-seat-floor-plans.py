@@ -27,6 +27,7 @@ prod) does the real ingest, and every deploy after that is a no-op. Pass
 """
 
 import argparse
+from typing import NamedTuple
 
 from sqlmodel import Session, func, select
 
@@ -35,6 +36,7 @@ from app.crud import cinema as cinema_crud
 from app.models.cinema_room_floor_plan import CinemaRoomFloorPlan
 from app.scraping.seat_availability import (
     EAGERLY_BOOKING_HOSTS,
+    EAGERLY_BOOKING_HOSTS_BY_CINEMA,
     EagerlyFeedCache,
     fetch_eagerly_room_geometry,
 )
@@ -42,16 +44,52 @@ from app.scraping.seat_availability import eagerly_shows as fetch_eagerly_shows
 
 REQUEST_DELAY_SECONDS = 0.2
 
-# Eagerly's agenda-feed netloc (EAGERLY_BOOKING_HOSTS' key) -> cinemas.yaml key.
+# Eagerly site host (EAGERLY_BOOKING_HOSTS' key, so no `www.`) -> cinemas.yaml key.
 _NETLOC_TO_CINEMA_KEY = {
     "filmhallen.nl": "filmhallen",
     "themovies.nl": "the-movies",
-    "www.kinorotterdam.nl": "kino",
-    "www.filmkoepel.nl": "filmkoepel",
-    "www.hartlooper.nl": "louis-hartlooper-complex",
-    "www.slachtstraat.nl": "slachtstraat",
-    "www.springhaver.nl": "springhaver",
+    "kinorotterdam.nl": "kino",
+    "filmkoepel.nl": "filmkoepel",
+    "hartlooper.nl": "louis-hartlooper-complex",
+    "slachtstraat.nl": "slachtstraat",
+    "springhaver.nl": "springhaver",
 }
+
+# ...and the same for the one site that serves several cinemas, where the
+# agenda feed's own `cinema_id` is the only thing separating them. Keyed the
+# way EAGERLY_BOOKING_HOSTS_BY_CINEMA is.
+_SITE_CINEMA_TO_CINEMA_KEY = {
+    ("bioscopenleiden.nl", "4"): "trianon",
+    ("bioscopenleiden.nl", "5"): "kijkhuis",
+    ("bioscopenleiden.nl", "6"): "lido",
+}
+
+
+class _Target(NamedTuple):
+    """One cinema's floor plans: where to read the programme, where to read the
+    seat plans, and which of the feed's cinemas is ours."""
+
+    site: str
+    booking_host: str
+    cinema_key: str
+    # None for a site whose whole feed is the one cinema, which is all of them
+    # except Bioscopen Leiden.
+    cinema_id: str | None
+
+
+def _targets() -> list[_Target]:
+    targets = [
+        _Target(site, booking_host, _NETLOC_TO_CINEMA_KEY[site], None)
+        for site, booking_host in EAGERLY_BOOKING_HOSTS.items()
+        if site in _NETLOC_TO_CINEMA_KEY
+    ]
+    targets += [
+        _Target(site, booking_host, _SITE_CINEMA_TO_CINEMA_KEY[key], cinema_id)
+        for key, booking_host in EAGERLY_BOOKING_HOSTS_BY_CINEMA.items()
+        if key in _SITE_CINEMA_TO_CINEMA_KEY
+        for site, cinema_id in (key,)
+    ]
+    return targets
 
 
 def _upsert_floor_plan(
@@ -80,23 +118,24 @@ def ingest_floor_plans(*, force: bool = False) -> None:
     ingested = 0
     skipped: list[str] = []
 
-    for netloc, booking_host in EAGERLY_BOOKING_HOSTS.items():
-        cinema_key = _NETLOC_TO_CINEMA_KEY.get(netloc)
-        if cinema_key is None:
-            skipped.append(f"{netloc} (no cinemas.yaml key mapped)")
-            continue
-
+    for target in _targets():
+        cinema_key = target.cinema_key
         with get_db_context() as session:
             cinema_id = cinema_crud.get_cinema_id_by_key(session=session, key=cinema_key)
 
-        shows = fetch_eagerly_shows(f"https://{netloc}", feed_cache)
+        shows = fetch_eagerly_shows(f"https://{target.site}", feed_cache)
         # Every showtime the feed puts in a room, not just the first: the
         # first one is only a candidate until its seat plan agrees it really
-        # is in that room.
+        # is in that room. On a shared site the feed carries all three
+        # cinemas, so anything from another one is skipped here rather than
+        # filed under this cinema's rooms.
         rooms: dict[str, list[tuple[str, str]]] = {}
         for provider_id, show in shows.items():
-            if show.location and show.cinema_id:
-                rooms.setdefault(show.location, []).append((provider_id, show.cinema_id))
+            if not show.location or not show.cinema_id:
+                continue
+            if target.cinema_id is not None and show.cinema_id != target.cinema_id:
+                continue
+            rooms.setdefault(show.location, []).append((provider_id, show.cinema_id))
 
         if not rooms:
             skipped.append(f"{cinema_key} (no rooms found in agenda feed)")
@@ -104,7 +143,7 @@ def ingest_floor_plans(*, force: bool = False) -> None:
 
         for room, candidates in rooms.items():
             seats, reason = fetch_eagerly_room_geometry(
-                booking_host=booking_host,
+                booking_host=target.booking_host,
                 room=room,
                 candidates=candidates,
                 request_delay_seconds=REQUEST_DELAY_SECONDS,

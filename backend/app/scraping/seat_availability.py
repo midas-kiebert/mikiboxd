@@ -1,7 +1,7 @@
 """How many seats are left for one showtime, read from its ticket link.
 
-Every cinema we run our own scraper for sells through one of four ticketing
-platforms, and each of them answers an unauthenticated GET:
+Four ticketing platforms, between them covering every cinema we run our own
+scraper for and a good many we don't. Each answers an unauthenticated GET:
 
 * **Z-ELITE / ZL8** (LAB111, De Uitkijk, Kriterion, FC Hyena, Eye) — the
   checkout page carries the remaining seat count in ``data-configured-max`` on
@@ -14,13 +14,19 @@ platforms, and each of them answers an unauthenticated GET:
   seat map (``seats``, one entry per physical seat) alongside
   ``numberOfAvailableSeats``, so ``capacity`` is exact too (``len(seats)``).
   The room has no name anywhere in Tricket's API — only a ``hallId`` UUID,
-  and Studio/K's two halls (91 and 153 seats, confirmed live) are
-  distinguished here only by that exact capacity, never a display name.
+  so a room is distinguished here only by that exact capacity, never a display
+  name (Studio/K sells three: 74, 91 and 153 seats; Cinecenter four: 31, 72,
+  75 and 76). Which individual seats are taken is *not* readable: the
+  screening resource lists every seat in the room but carries no per-seat
+  status, and ``/api/screenings/{id}/seats``, which does, requires a
+  ``basketId`` — a write to their system that nothing here is willing to make
+  several hundred times a day.
 * **Eagerly** (Filmhallen, The Movies, Kino, Filmkoepel, Louis Hartlooper,
-  Slachtstraat, Springhaver) — each of these runs its own seat inventory on a
-  "My Cloud Cinema" booking app, at its own subdomain (``book.`` for some,
-  ``shop.`` for others — not derivable from the site's own domain, hence the
-  lookup table below). Its ``getSeatPlanData`` endpoint answers with every
+  Slachtstraat, Springhaver, and Bioscopen Leiden's Lido / Trianon / Kijkhuis)
+  — each of these runs its own seat inventory on a "My Cloud Cinema" booking
+  app, at its own subdomain (``book.`` for some, ``shop.`` for others, and
+  Bioscopen Leiden one per cinema rather than one per site — none of it
+  derivable from the site's own domain, hence the lookup tables below). Its ``getSeatPlanData`` endpoint answers with every
   physical seat's status, unauthenticated, and never needs a seat to be
   clicked (clicking one is what starts its 10-minute hold; reading the seat
   map never does). ``seats_left`` is how many are free. The site's own
@@ -36,8 +42,20 @@ The Z-ELITE checkout page and the Eagerly feed also name the room the showtime
 plays in, which not every cinema's scraper can see; it comes back on the same
 reading rather than costing a second request.
 
-ActiveTickets (Rialto) exposes neither, and Cineville's API has no availability
-field at all, so showtimes that only exist via Cineville cannot be covered.
+* **ActiveTickets** (Rialto De Pijp, De Balie, Cinebergen, Slieker, Filmhuis
+  Alkmaar, Filmhuis Den Haag, Filmtheater Hilversum, LUX, Lumen) — every show
+  page inlines the shop's whole Knockout view-model as ``var jsonCart``, and
+  what it contains depends on how the room is sold. A numbered room ships its
+  entire seat plan (``EditData.Seats``: availability, blocked flag, x/y and the
+  row/seat names), so the count, the room's real total and the taken map all
+  come out of the page we already have to fetch — no second request. A
+  free-seating room ships no seats at all and only says whether the screening
+  is sold out. Both name the room.
+
+Cineville's API has no availability field at all, but that is not the same as a
+Cineville-only cinema being uncoverable: the ``ticketingUrl`` it hands out is
+the cinema's own shop, so any cinema selling on one of the platforms above is
+read whether or not we scrape it ourselves.
 
 Nothing here touches the database. A transport failure raises
 ``SeatAvailabilityFetchError`` rather than returning zero: reporting a fetch
@@ -217,23 +235,89 @@ def _fetch_tricket(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
 
 # --- Eagerly ----------------------------------------------------------------
 
-EAGERLY_URL_PATTERN = re.compile(r"^https://[^/]+/tickets/(\d+)/?$")
+# The sites known to run Eagerly, written the way `eagerly_site` normalises a
+# ticket link's netloc: no leading `www.`.
+#
+# The URL pattern below is gated on this list rather than accepting
+# `/tickets/<number>` on any host at all. That path shape is far too ordinary
+# to identify a platform — AnnexCinema and De Sien both sell at it and neither
+# runs Eagerly — and a link wrongly claimed here is worse than one not
+# recognised: it reads as "seat counts work at this cinema" everywhere the
+# client looks, offers the viewer a check, and then 404s on the agenda feed
+# every single time, for ever.
+EAGERLY_SITE_HOSTS = (
+    "bioscopenleiden.nl",
+    "filmhallen.nl",
+    "filmkoepel.nl",
+    "hartlooper.nl",
+    "kinorotterdam.nl",
+    "slachtstraat.nl",
+    "springhaver.nl",
+    "themovies.nl",
+)
+
+EAGERLY_URL_PATTERN = re.compile(
+    r"^https://(?:www\.)?(?:"
+    + "|".join(re.escape(host) for host in EAGERLY_SITE_HOSTS)
+    + r")/tickets/(\d+)/?$"
+)
 EAGERLY_SOLD_OUT_STATUS = "sold-out"
 
 # Each Eagerly site's seat map lives on its own "My Cloud Cinema" booking app,
 # at a subdomain that isn't derivable from the site's own domain (some use
-# `book.`, some `shop.`), keyed by the netloc `ticket_link` actually uses.
+# `book.`, some `shop.`).
+#
+# Keyed like EAGERLY_SITE_HOSTS, and normalised on lookup, because the same
+# cinema reaches us under both forms: our own scrapers build ticket links with
+# the `www.` and Cineville hands out the bare domain. Keying on the raw netloc
+# meant whichever form the table didn't list silently lost its seat counts and
+# fell back to sold-out-or-not — which is what would have happened to five
+# cinemas the moment one of their scrapers broke and the Cineville row won the
+# dedupe instead.
+#
 # A site missing from this table just means nobody's found its booking
-# subdomain yet — `_fetch_eagerly` falls back to the feed's status enum.
+# subdomain yet — `_fetch_eagerly` falls back to the feed's status enum. That
+# is where bioscopenleiden.nl sits today.
 EAGERLY_BOOKING_HOSTS: dict[str, str] = {
     "filmhallen.nl": "book.filmhallen.nl",
     "themovies.nl": "book.themovies.nl",
-    "www.kinorotterdam.nl": "book.kinorotterdam.nl",
-    "www.filmkoepel.nl": "book.filmkoepel.nl",
-    "www.hartlooper.nl": "shop.hartlooper.nl",
-    "www.slachtstraat.nl": "shop.slachtstraat.nl",
-    "www.springhaver.nl": "shop.springhaver.nl",
+    "kinorotterdam.nl": "book.kinorotterdam.nl",
+    "filmkoepel.nl": "book.filmkoepel.nl",
+    "hartlooper.nl": "shop.hartlooper.nl",
+    "slachtstraat.nl": "shop.slachtstraat.nl",
+    "springhaver.nl": "shop.springhaver.nl",
 }
+
+
+# Bioscopen Leiden is the one site that runs more than one cinema, and each has
+# its own booking app — so unlike everywhere else the ticket link's host does
+# not say which one to ask; all three sell from `bioscopenleiden.nl/tickets/…`.
+# The agenda feed's `cinema_id` is what separates them, and it is already on
+# the show entry a reading looks up, so this costs no extra request.
+EAGERLY_BOOKING_HOSTS_BY_CINEMA: dict[tuple[str, str], str] = {
+    ("bioscopenleiden.nl", "4"): "book.trianon.bioscopenleiden.nl",
+    ("bioscopenleiden.nl", "5"): "book.kijkhuis.bioscopenleiden.nl",
+    ("bioscopenleiden.nl", "6"): "book.lido.bioscopenleiden.nl",
+}
+
+
+def eagerly_site(netloc: str) -> str:
+    """A ticket link's netloc as the two tables above key it."""
+    return netloc.removeprefix("www.")
+
+
+def eagerly_booking_host(site: str, cinema_id: str | None) -> str | None:
+    """Which booking app holds this screening's seat map, if any.
+
+    Per-cinema first, since a site that needs that split has no single answer;
+    the one-app-per-site table is the normal case.
+    """
+    if cinema_id is not None:
+        split_site = EAGERLY_BOOKING_HOSTS_BY_CINEMA.get((site, cinema_id))
+        if split_site is not None:
+            return split_site
+    return EAGERLY_BOOKING_HOSTS.get(site)
+
 
 # The seat-plan endpoint keys a per-visitor seat hold to this id; any value
 # works since nothing here ever selects a seat, so a fixed one avoids handing
@@ -273,7 +357,9 @@ def eagerly_shows(
     return shows
 
 
-class _EagerlySeatCount(NamedTuple):
+class _SeatCount(NamedTuple):
+    """One platform's seat plan, reduced to what a reading needs."""
+
     free: int
     capacity: int
     taken: tuple[TakenSeat, ...]
@@ -342,7 +428,7 @@ def _seat_key(seat: dict) -> TakenSeat:
 
 def _fetch_eagerly_seatplan(
     *, booking_host: str, cinema_id: str, show_time_id: str
-) -> _EagerlySeatCount | None:
+) -> _SeatCount | None:
     """Free/total seats *and* which individual ones are taken, in one read.
 
     The count and the seat map come off the same response, so a reading that
@@ -361,7 +447,7 @@ def _fetch_eagerly_seatplan(
     taken = tuple(
         _seat_key(seat) for seat in selectable if _is_taken_eagerly_seat(seat)
     )
-    return _EagerlySeatCount(
+    return _SeatCount(
         free=len(selectable) - len(taken), capacity=len(selectable), taken=taken
     )
 
@@ -478,14 +564,17 @@ def _fetch_eagerly(url: str, feed_cache: EagerlyFeedCache) -> SeatAvailability:
         return _UNKNOWN
     provider_id = match.group(1)
     parts = urlsplit(url)
-    show = eagerly_shows(f"{parts.scheme}://{parts.netloc}", feed_cache).get(
-        provider_id
-    )
+    # Requested at the normalised host, not the link's own, so the two forms of
+    # one site share a single cached programme within a run instead of costing
+    # a feed fetch each. Every site in EAGERLY_SITE_HOSTS serves the feed on
+    # both forms (checked).
+    site = eagerly_site(parts.netloc)
+    show = eagerly_shows(f"{parts.scheme}://{site}", feed_cache).get(provider_id)
     if show is None:
         # Dropped from the programme since the last scrape.
         return SeatAvailability(None, None, None, "eagerly")
 
-    booking_host = EAGERLY_BOOKING_HOSTS.get(parts.netloc)
+    booking_host = eagerly_booking_host(site, show.cinema_id)
     if booking_host is not None and show.cinema_id is not None:
         seat_count = _fetch_eagerly_seatplan(
             booking_host=booking_host,
@@ -510,11 +599,163 @@ def _fetch_eagerly(url: str, feed_cache: EagerlyFeedCache) -> SeatAvailability:
     )
 
 
+# --- ActiveTickets ----------------------------------------------------------
+
+# The nine tenants seen in the catalogue. Gated on a host list for the same
+# reason the Eagerly pattern is: `/Show/Details/<id>` is a shape, not a
+# platform, and claiming a link we cannot actually read is worse than not
+# recognising it — the client shows the cinema as one that reports seat counts
+# and then never gets one.
+ACTIVETICKETS_HOSTS = (
+    "activetickets.filmhuisdenhaag.nl",
+    "tickets-depijp.rialtofilm.nl",
+    "tickets.cinebergen.nl",
+    "tickets.debalie.nl",
+    "tickets.filmhuis-lumen.nl",
+    "tickets.filmhuisalkmaar.nl",
+    "tickets.filmtheaterhilversum.nl",
+    "tickets.sliekerfilm.nl",
+    "webshop.lux-nijmegen.nl",
+)
+
+# The id is the trailing number, after a slug that is itself full of numbers
+# ("...-The-Invite-30-Aug-11926930"); the greedy prefix is what makes the last
+# one win. Some tenants drop the slug entirely (De Balie links straight to
+# `/Show/Details/11839294`) and the locale segment is optional, because
+# Cineville hands out links without it and the shop's own pages carry it.
+ACTIVETICKETS_URL_PATTERN = re.compile(
+    r"^https://(?:"
+    + "|".join(re.escape(host) for host in ACTIVETICKETS_HOSTS)
+    + r")/(?:[a-z]{2}-[A-Z]{2}/)?Show/Details/(?:[^/]*-)?(\d+)/?$"
+)
+
+_ACTIVETICKETS_CART_VAR = "var jsonCart"
+
+# "Rij:  1, Stoel:  11", or "Row: 1, Seat: 11" when the link carries an English
+# locale. Nothing else is accepted: a seat whose name we cannot read is left
+# out of the map rather than guessed at, since the stored floor plan matches on
+# exactly this pair and a wrong guess files one seat's state under another's.
+_ACTIVETICKETS_SEAT_NAME = re.compile(
+    r"^(?:Rij|Row)\s*:\s*(?P<row>[^,]+?)\s*,\s*(?:Stoel|Seat)\s*:\s*(?P<seat>.+?)$"
+)
+
+
+def _activetickets_cart(page: str) -> dict:
+    """The Knockout view-model every ActiveTickets show page inlines.
+
+    Decoded from the opening brace with a real JSON parser rather than matched
+    with a regex: the object is several kilobytes of nested shop state, and its
+    strings contain both braces and semicolons.
+    """
+    marker = page.find(_ACTIVETICKETS_CART_VAR)
+    start = page.find("{", marker) if marker != -1 else -1
+    if start == -1:
+        raise SeatAvailabilityFetchError(
+            "ActiveTickets page carried no jsonCart view-model"
+        )
+    try:
+        cart, _ = json.JSONDecoder().raw_decode(page, start)
+    except json.JSONDecodeError as e:
+        raise SeatAvailabilityFetchError(
+            f"ActiveTickets jsonCart was not JSON: {e}"
+        ) from e
+    if not isinstance(cart, dict):
+        raise SeatAvailabilityFetchError("ActiveTickets jsonCart was not an object")
+    return cart
+
+
+def _activetickets_show(cart: dict, show_id: str) -> dict | None:
+    """The screening the link asked for.
+
+    An anonymous fetch has an empty basket, so `Shows` holds exactly the one —
+    but it is a *cart*, so matching the id is the only thing that stays correct
+    if that ever stops being true.
+    """
+    shows = [show for show in (cart.get("Shows") or []) if isinstance(show, dict)]
+    for show in shows:
+        if str(show.get("ShowId")) == show_id:
+            return show
+    return None
+
+
+def _activetickets_seat_name(seat: dict) -> TakenSeat | None:
+    match = _ACTIVETICKETS_SEAT_NAME.match(str(seat.get("Description") or "").strip())
+    if match is None:
+        return None
+    return (match.group("row").strip(), match.group("seat").strip())
+
+
+def _activetickets_seat_count(seats: list[dict]) -> _SeatCount:
+    """Reduce an inlined seat plan to free / total / taken.
+
+    `S` is whether the seat can still be bought and `B` whether it is blocked
+    for this screening — held back, broken, or sold as part of a reduced
+    layout. Neither is buyable, so both are "taken" as far as a reading goes,
+    but both stay in the capacity: `B` is a decision about one screening, and
+    the room is the same size next week. That is the same direction the running
+    max already leans, and the safe one — a screening sold at reduced capacity
+    reads emptier than it is rather than the room reading fuller.
+    """
+    taken: list[TakenSeat] = []
+    free = 0
+    for seat in seats:
+        if seat.get("S") and not seat.get("B"):
+            free += 1
+            continue
+        name = _activetickets_seat_name(seat)
+        if name is not None:
+            taken.append(name)
+    return _SeatCount(free=free, capacity=len(seats), taken=tuple(taken))
+
+
+def _fetch_activetickets(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
+    match = ACTIVETICKETS_URL_PATTERN.match(url)
+    if match is None:
+        return _UNKNOWN
+    show_id = match.group(1)
+    show = _activetickets_show(_activetickets_cart(_get(url).text), show_id)
+    if show is None:
+        # The shop no longer lists this screening — moved, cancelled, or a
+        # stale id in the link. Unknown, which is not the same as sold out.
+        return SeatAvailability(None, None, None, "activetickets")
+
+    edit_data = show.get("EditData") or {}
+    room = normalize_room(show.get("Location"))
+    seats = [seat for seat in (edit_data.get("Seats") or []) if isinstance(seat, dict)]
+    if not seats:
+        # Free seating: the room is not sold seat by seat, so there is no count
+        # to be had here at any price, only the flag. (A numbered room whose
+        # seats load per section lands here too — see the note below.) Reported
+        # as a plain bool so `_apply_reading` can clear a previous zero when a
+        # sold-out screening has tickets handed back.
+        return SeatAvailability(
+            None, bool(edit_data.get("SoldOut")), room, "activetickets"
+        )
+
+    # Newer tenants (LUX) also carry `TicketsAvailable`/`TicketsCapacity`
+    # alongside the seat list, and on the one screening that had both,
+    # TicketsAvailable agreed with the seat count exactly. They are not read:
+    # most tenants don't send them at all, the ones that do send 0/0 for a
+    # screening whose sales have not opened — indistinguishable from a real
+    # sold-out — and `TicketsCapacity` is the sellable allocation rather than
+    # the room, which is the wrong denominator for a busyness level.
+    count = _activetickets_seat_count(seats)
+    return SeatAvailability(
+        count.free,
+        count.free == 0,
+        room,
+        "activetickets",
+        capacity=count.capacity,
+        taken_seats=count.taken,
+    )
+
+
 _Handler = Callable[[str, EagerlyFeedCache], SeatAvailability]
 _HANDLERS: list[tuple[re.Pattern[str], _Handler]] = [
     (ZELITE_URL_PATTERN, _fetch_zelite),
     (TRICKET_URL_PATTERN, _fetch_tricket),
     (EAGERLY_URL_PATTERN, _fetch_eagerly),
+    (ACTIVETICKETS_URL_PATTERN, _fetch_activetickets),
 ]
 
 

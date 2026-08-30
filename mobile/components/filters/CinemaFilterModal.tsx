@@ -61,6 +61,8 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { useCinemaSelection } from "@/hooks/useCinemaSelection";
 import { useIsSignedIn } from "@/utils/auth-session";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
+import { useSheetContentReady } from "@/components/sheets/use-sheet-content-ready";
+import LoadingLogo from "@/components/layout/LoadingLogo";
 import { retireCinemaPresetTip } from "@/utils/feature-tips";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 
@@ -72,6 +74,9 @@ type CinemaFilterModalProps = {
 };
 
 type CinemaModalPage = "selection" | "presets";
+
+/** Smaller than the theme curtain's: this sits in a sheet, not a whole screen. */
+const LOADING_LOGO_SIZE = 96;
 
 const formatCinemaCount = (count: number) => `${count} cinema${count === 1 ? "" : "s"}`;
 
@@ -478,6 +483,13 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     cinemas === undefined ||
     (sessionCinemaIds === undefined && favoriteCinemaIds === undefined && isFavoritesLoading);
 
+  // ~80 cinema chips are several hundred native views, and gorhom builds its
+  // children before the sheet starts to rise — so mounting them on open made
+  // the sheet answer the tap a beat late. Nothing is mounted here until the
+  // sheet is up; the panel below stands in until then.
+  const isSheetContentReady = useSheetContentReady(visible);
+  const isWaitingForContent = isLoadingSelection || !isSheetContentReady;
+
   return (
     <>
       <AppBottomSheet
@@ -494,11 +506,17 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
       >
         {/* @gorhom/portal does not forward React context; re-provide QueryClient for hooks inside. */}
         <QueryClientProvider client={queryClient}>
-          {isLoadingSelection ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.tint} />
-              <ThemedText style={styles.loadingText}>Loading cinemas...</ThemedText>
-            </View>
+          {isWaitingForContent ? (
+            <LoadingLogo
+              style={styles.loadingContainer}
+              label="Loading cinemas…"
+              tintColor={colors.tint}
+              labelColor={colors.textSecondary}
+              logoSize={LOADING_LOGO_SIZE}
+              // Most opens are over before the fade finishes, so a fast one
+              // shows next to nothing rather than a blink of logo.
+              fadeIn
+            />
           ) : page === "presets" ? (
             /* ── Manage presets page ── */
             <BottomSheetScrollView
@@ -1026,7 +1044,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     scroll: { flex: 1 },
     scrollContent: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 20 },
     loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 40 },
-    loadingText: { fontSize: 14, color: colors.textSecondary },
     // Cinema selection
     pickerHeader: {
       flexDirection: "row",

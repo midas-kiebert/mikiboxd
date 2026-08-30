@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
-import { BackHandler, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 import {
   type BottomSheetBackdropProps,
   BottomSheetModal,
@@ -24,10 +24,18 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useAndroidBackHandler } from "@/utils/android-back";
 import BottomSheetHeader from "@/components/sheets/BottomSheetHeader";
 import SheetBackdrop from "@/components/sheets/SheetBackdrop";
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
+
+/**
+ * How long every sheet takes to rise. Exported because content that is held
+ * back until the sheet has arrived (see `use-sheet-content-ready`) has to know
+ * how long "arrived" is.
+ */
+export const SHEET_OPEN_DURATION_MS = 220;
 
 type AppBottomSheetProps = {
   visible: boolean;
@@ -66,6 +74,8 @@ type AppBottomSheetProps = {
   keyboardBehavior?: BottomSheetModalProps["keyboardBehavior"];
   children: ReactNode;
 };
+
+const SHEET_ANIMATION_CONFIG = { duration: SHEET_OPEN_DURATION_MS } as const;
 
 export default function AppBottomSheet({
   visible,
@@ -119,15 +129,14 @@ export default function AppBottomSheet({
     }
   }, [visible, dismissWhenClosed]);
 
-  useEffect(() => {
-    if (!visible) return;
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (handleAndroidBack) return handleAndroidBack();
-      (onBack ?? onClose)();
-      return true;
-    });
-    return () => sub.remove();
-  }, [visible, onBack, onClose, handleAndroidBack]);
+  // Through the shared stack, not `BackHandler` directly: a sheet opened on top
+  // of another one has to win the press, and RN's own ordering hands it to
+  // whichever sheet re-subscribed last — see `utils/android-back.ts`.
+  useAndroidBackHandler(visible, () => {
+    if (handleAndroidBack) return handleAndroidBack();
+    (onBack ?? onClose)();
+    return true;
+  });
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -148,7 +157,7 @@ export default function AppBottomSheet({
       enableDynamicSizing={false}
       stackBehavior="push"
       keyboardBehavior={keyboardBehavior}
-      animationConfigs={{ duration: 220 }}
+      animationConfigs={SHEET_ANIMATION_CONFIG}
       backdropComponent={renderBackdrop}
       backgroundStyle={[styles.sheetBackground, backgroundColor ? { backgroundColor } : null]}
       handleIndicatorStyle={styles.handleIndicator}

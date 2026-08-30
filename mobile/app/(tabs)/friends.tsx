@@ -54,6 +54,9 @@ import { buildFriendInviteUrl } from '@/constants/friend-invite';
 import { useIsSignedIn } from '@/utils/auth-session';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 import { triggerSelectionHaptic } from '@/utils/long-press';
+import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
+import { tabContentHoldMs } from '@/components/tab-bar';
+import { useDeferredMount } from '@/utils/use-deferred-mount';
 
 /** What signing in would put on this tab, in the order it would appear. */
 const FRIENDS_HIGHLIGHTS = [
@@ -95,7 +98,7 @@ type FriendsSection = {
  *  type is still inferred from `FriendsSection` rather than from `never[]`. */
 const EMPTY_SECTIONS: FriendsSection[] = [];
 
-export default function FriendsScreen() {
+function FriendsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -587,3 +590,23 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       textAlign: 'center',
     },
   });
+
+/**
+ * The shell in front of the screen above.
+ *
+ * A tab is built the first time it is opened, and until it is, the tab you
+ * pressed away from stays on screen — which reads as the press being ignored.
+ * The gate is a component of its own so that every hook the screen owns lives
+ * *behind* it: an early return inside one component would only defer the
+ * render, not the queries and subscriptions that set it up.
+ *
+ * The wait is whatever {@link tabContentHoldMs} still owes the tab bar's press
+ * flash, so the mount takes the UI thread only once that movement is over
+ * rather than stalling it half-way. Once a tab has been built it is never
+ * gated again.
+ */
+export default function FriendsScreenTab() {
+  const ready = useDeferredMount('tab:friends', tabContentHoldMs);
+  if (!ready) return <TabScreenSkeleton title="Friends" icon="person.2.fill" rowHeight={64} />;
+  return <FriendsScreen />;
+}

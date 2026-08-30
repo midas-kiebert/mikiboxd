@@ -5,25 +5,23 @@
  * the moment the scanner beeps — the pass is opened and dismissed while holding
  * something else, which is the same reason the agenda's shortcut floats at the
  * bottom of the screen. The barcode sits on a white card whatever the app theme
- * is, and the screen is turned up to full brightness while the sheet is open —
+ * is, and the screen is eased up to full brightness while the sheet is open —
  * a dimmed phone is the usual reason a scanner refuses to read a screen.
  */
-import { useEffect, useRef } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Brightness from 'expo-brightness';
 
 import CinevilleBarcode from '@/components/cineville/CinevilleBarcode';
 import AppBottomSheet from '@/components/sheets/AppBottomSheet';
 import { ThemedText } from '@/components/themed-text';
+import { useFullBrightness } from '@/hooks/useFullBrightness';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { buildCinevilleBarcodeValue } from '@/utils/cineville-card';
 
 const BARCODE_HEIGHT = 180;
 const CARD_BACKGROUND = '#ffffff';
 const CARD_TEXT_COLOR = '#000000';
-const FULL_BRIGHTNESS = 1;
 const FULL_HEIGHT_SNAP_POINTS = ['100%'];
 
 type CinevilleCardModalProps = {
@@ -42,49 +40,9 @@ export default function CinevilleCardModal({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const { bottom: bottomInset } = useSafeAreaInsets();
-  // The brightness the phone was on before we turned it up, so closing puts it
-  // back. Kept in a ref because restoring it must not re-render anything.
-  //
-  // Only iOS needs it: there `setBrightnessAsync` moves the real system
-  // brightness, so the old value is the only way back. On Android the call sets
-  // a window-level override instead, and the value read back beforehand is on a
-  // different scale entirely — the system setting's gamma-encoded slider
-  // position, or, under adaptive brightness, the auto-brightness *offset* — so
-  // writing it back as an override lands on a visibly different brightness and
-  // leaves adaptive brightness pinned off. Android drops the override instead.
-  const previousBrightness = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!visible) return;
-
-    let isCancelled = false;
-    const raiseBrightness = async () => {
-      try {
-        if (Platform.OS === 'ios') {
-          const current = await Brightness.getBrightnessAsync();
-          if (isCancelled) return;
-          previousBrightness.current = current;
-        }
-        await Brightness.setBrightnessAsync(FULL_BRIGHTNESS);
-      } catch {
-        // Brightness control is a nicety; a device that refuses it still shows
-        // a perfectly readable barcode.
-      }
-    };
-    void raiseBrightness();
-
-    return () => {
-      isCancelled = true;
-      const restore = previousBrightness.current;
-      previousBrightness.current = null;
-      if (Platform.OS !== 'ios') {
-        void Brightness.restoreSystemBrightnessAsync().catch(() => {});
-        return;
-      }
-      if (restore === null) return;
-      void Brightness.setBrightnessAsync(restore).catch(() => {});
-    };
-  }, [visible]);
+  // Ramped rather than switched, both ways: this sheet is opened in a dark
+  // cinema foyer as often as anywhere else.
+  useFullBrightness(visible);
 
   const barcodeValue = buildCinevilleBarcodeValue(digits);
 

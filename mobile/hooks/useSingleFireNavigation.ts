@@ -24,6 +24,13 @@ export function useSingleFireNavigation<Args extends unknown[]>(
 ) {
     const hasFiredRef = useRef(false)
     const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    // Held rather than closed over, so the guarded callback keeps one identity
+    // for the life of the component. Callers pass an inline arrow, so a
+    // `[navigate]` dependency made this a new function on every render — and
+    // these are handed to memoised list rows, where a new function identity
+    // re-renders every visible card.
+    const latestNavigate = useRef(navigate)
+    latestNavigate.current = navigate
 
     useFocusEffect(
         useCallback(() => {
@@ -45,8 +52,8 @@ export function useSingleFireNavigation<Args extends unknown[]>(
             resetTimeoutRef.current = setTimeout(() => {
                 hasFiredRef.current = false
             }, RESET_DELAY_MS)
-            navigate(...args)
+            latestNavigate.current(...args)
         },
-        [navigate]
+        []
     )
 }

@@ -15,8 +15,7 @@ import useAuth from 'shared/hooks/useAuth';
 import { storage } from 'shared/storage';
 import { DateTime } from 'luxon';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { HapticTab, TabIcon, TabLabel } from '@/components/tab-bar';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import {
@@ -29,6 +28,7 @@ import { useIsIntroOwed } from '@/utils/intro';
 const NOTIFICATION_PERMISSION_PROMPTED_KEY = 'mobile.notifications.permission_prompted_v3';
 const NOTIFICATION_PREFS_INITIALIZED_KEY = 'mobile.notifications.preferences_initialized_v1';
 const NOTIFICATION_PROMPT_DELAY_MS = 700;
+
 
 // A Letterboxd sync that is throttled (429, still inside its cooldown) or that
 // Letterboxd itself refused (503) is an expected outcome of foregrounding the
@@ -266,7 +266,16 @@ export default function TabLayout() {
         // the selected tab barely stood out from the other four.
         tabBarInactiveTintColor: palette.tabIconDefault,
         headerShown: false,
-        tabBarButton: HapticTab,
+        // The screens do not animate, and that is a decision rather than a
+        // default. A slide was tried and dropped: the navigator's scenes are
+        // absolutely stacked, clipped and re-ordered by focus, and every
+        // variation on moving them produced an artifact — a cross-fade let the
+        // container background show through both, no cross-fade let every
+        // parked screen show through the gap, and a full-width slide left one
+        // Android frame of bare background at the end, where the native driver
+        // hands the transform back. What answers the tap is the bar itself
+        // (see `tab-bar`), which moves in the frame it is pressed and owes
+        // nothing to the screen underneath.
         sceneStyle: { backgroundColor: palette.background },
         tabBarStyle: {
           backgroundColor: palette.background,
@@ -277,7 +286,9 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
+          tabBarButton: (props) => <HapticTab {...props} tabKey="settings" />,
+          tabBarIcon: () => <TabIcon tabKey="settings" name="gearshape.fill" />,
+          tabBarLabel: () => <TabLabel tabKey="settings">Settings</TabLabel>,
         }}
       />
       <Tabs.Screen
@@ -290,16 +301,19 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Showtimes',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet.rectangle" color={color} />,
+          tabBarButton: (props) => <HapticTab {...props} tabKey="index" />,
+          tabBarIcon: () => <TabIcon tabKey="index" name="list.bullet.rectangle" />,
+          tabBarLabel: () => <TabLabel tabKey="index">Showtimes</TabLabel>,
         }}
       />
       <Tabs.Screen
         name="agenda"
         options={{
           title: 'Agenda',
-          tabBarIcon: ({ color }) => (
-            <View style={styles.iconContainer}>
-              <IconSymbol size={28} name="calendar" color={color} />
+          tabBarButton: (props) => <HapticTab {...props} tabKey="agenda" />,
+          tabBarLabel: () => <TabLabel tabKey="agenda">Agenda</TabLabel>,
+          tabBarIcon: () => (
+            <TabIcon tabKey="agenda" name="calendar">
               {showPingBadge ? (
                 <View style={[styles.badge, { backgroundColor: palette.notificationBadge }]}>
                   <Text style={styles.badgeText} maxFontSizeMultiplier={1.2}>
@@ -307,7 +321,7 @@ export default function TabLayout() {
                   </Text>
                 </View>
               ) : null}
-            </View>
+            </TabIcon>
           ),
         }}
       />
@@ -315,9 +329,10 @@ export default function TabLayout() {
         name="friends"
         options={{
           title: 'Friends',
-          tabBarIcon: ({ color }) => (
-            <View style={styles.iconContainer}>
-              <IconSymbol size={28} name="person.2.fill" color={color} />
+          tabBarButton: (props) => <HapticTab {...props} tabKey="friends" />,
+          tabBarLabel: () => <TabLabel tabKey="friends">Friends</TabLabel>,
+          tabBarIcon: () => (
+            <TabIcon tabKey="friends" name="person.2.fill">
               {/* Small notification badge on top of the tab icon. */}
               {showFriendRequestsBadge ? (
                 <View style={[styles.badge, { backgroundColor: palette.notificationBadge }]}>
@@ -328,7 +343,7 @@ export default function TabLayout() {
                   </Text>
                 </View>
               ) : null}
-            </View>
+            </TabIcon>
           ),
         }}
       />
@@ -338,11 +353,6 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  iconContainer: {
-    position: 'relative',
-    width: 28,
-    height: 28,
-  },
   badge: {
     position: 'absolute',
     top: -5,

@@ -104,6 +104,7 @@ export default function FriendShowtimesScreen() {
       />
     );
   }
+
   return (
     <FriendShowtimesContent
       id={id}
@@ -151,6 +152,12 @@ function FriendShowtimesContent({
   const { user } = useAuth();
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const userId = useMemo(() => getRouteParam(id), [id]);
+  // Stable across renders: it reaches every card through the list's
+  // `renderItem`, and a new object there re-renders all of them.
+  const showtimeModalOptions = useMemo(
+    () => ({ openedFrom: { userId: userId ?? undefined } }),
+    [userId]
+  );
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
@@ -433,7 +440,7 @@ function FriendShowtimesContent({
         }
         emptyText="No showtimes in this agenda"
         emptyExtra={searchFieldFallback}
-        openModalOptions={{ openedFrom: { userId: userId ?? undefined } }}
+        openModalOptions={showtimeModalOptions}
       />
       <FiltersModal
         visible={filtersModalVisible}

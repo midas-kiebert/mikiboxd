@@ -65,10 +65,14 @@ import SignedOutPanel from '@/components/auth/SignedOutPanel';
 import CinevilleCardModal from '@/components/cineville/CinevilleCardModal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import AppSwitch from '@/components/ui/AppSwitch';
+import SegmentedControl, { type SegmentedOption } from '@/components/ui/SegmentedControl';
 import EmailVerificationRequiredDialog from '@/components/ui/EmailVerificationRequiredDialog';
 import { useEmailVerificationPolling } from '@/hooks/useCurrentUser';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 import { PRIVACY_POLICY_URL, SUPPORT_PAGE_URL } from '@/constants/legal-links';
+import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
+import { tabContentHoldMs } from '@/components/tab-bar';
+import { useDeferredMount } from '@/utils/use-deferred-mount';
 
 // Placeholder for the danger zone card's height until it has been measured
 // once. Sized from the card's own styles (18pt padding top and bottom, roughly
@@ -80,6 +84,18 @@ const SECTION_GAP = 12;
 // Bottom room the content always keeps, so the last card is never clipped under
 // the tab bar / home indicator.
 const CONTENT_PADDING_BOTTOM = 72;
+
+const THEME_OPTIONS: readonly SegmentedOption<ThemePreference>[] = [
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'system', label: 'System' },
+];
+
+// The backend's two digest cadences, under the names the info sheet explains.
+const DIGEST_FREQUENCY_OPTIONS: readonly SegmentedOption<DigestFrequency>[] = [
+  { value: 'daily', label: 'Eager' },
+  { value: 'weekly_or_urgent', label: 'Weekly' },
+];
 
 type ProfileState = {
   display_name: string;
@@ -93,7 +109,7 @@ type PasswordState = {
   confirm_password: string;
 };
 
-export default function SettingsScreen() {
+function SettingsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -701,30 +717,14 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Appearance</ThemedText>
           <View style={styles.card}>
-            <View style={styles.appearanceRow}>
-              {(['light', 'dark', 'system'] as ThemePreference[]).map((option, index, arr) => (
-                <TouchableOpacity
-                  key={option}
-                  style={[
-                    styles.appearanceOption,
-                    index === 0 && styles.appearanceOptionLeft,
-                    index === arr.length - 1 && styles.appearanceOptionRight,
-                    themePreference === option && styles.appearanceOptionActive,
-                  ]}
-                  onPress={() => setThemePreference(option)}
-                  activeOpacity={0.8}
-                >
-                  <ThemedText
-                    style={[
-                      styles.appearanceOptionText,
-                      themePreference === option && styles.appearanceOptionTextActive,
-                    ]}
-                  >
-                    {option === 'light' ? 'Light' : option === 'dark' ? 'Dark' : 'System'}
-                  </ThemedText>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <SegmentedControl
+              options={THEME_OPTIONS}
+              value={themePreference}
+              onChange={setThemePreference}
+              accessibilityLabelPrefix="Appearance"
+              stretch
+              size="large"
+            />
           </View>
         </View>
 
@@ -845,48 +845,13 @@ export default function SettingsScreen() {
                     <MaterialIcons name="info-outline" size={15} color={colors.textSecondary} />
                   </TouchableOpacity>
                 </View>
-                <View style={styles.notificationChannelPill}>
-                  <TouchableOpacity
-                    style={[
-                      styles.notificationChannelOption,
-                      styles.notificationChannelOptionLeft,
-                      digestFrequency === 'daily' && styles.notificationChannelOptionActive,
-                    ]}
-                    onPress={() => handleDigestFrequencyChange('daily')}
-                    disabled={!user || isUpdatingDigest}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText
-                      style={[
-                        styles.notificationChannelOptionText,
-                        digestFrequency === 'daily' && styles.notificationChannelOptionTextActive,
-                      ]}
-                    >
-                      Eager
-                    </ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.notificationChannelOption,
-                      styles.notificationChannelOptionRight,
-                      digestFrequency === 'weekly_or_urgent' &&
-                        styles.notificationChannelOptionActive,
-                    ]}
-                    onPress={() => handleDigestFrequencyChange('weekly_or_urgent')}
-                    disabled={!user || isUpdatingDigest}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText
-                      style={[
-                        styles.notificationChannelOptionText,
-                        digestFrequency === 'weekly_or_urgent' &&
-                          styles.notificationChannelOptionTextActive,
-                      ]}
-                    >
-                      Weekly
-                    </ThemedText>
-                  </TouchableOpacity>
-                </View>
+                <SegmentedControl
+                  options={DIGEST_FREQUENCY_OPTIONS}
+                  value={digestFrequency}
+                  onChange={handleDigestFrequencyChange}
+                  accessibilityLabelPrefix="Frequency"
+                  disabled={!user || isUpdatingDigest}
+                />
               </View>
               <TouchableOpacity
                 onPress={() => setDigestAdvancedOpen((previous) => !previous)}
@@ -1445,40 +1410,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       alignItems: 'center',
       gap: 4,
     },
-    notificationChannelPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      borderRadius: 999,
-      backgroundColor: colors.surfaceMuted,
-      padding: 2,
-    },
-    notificationChannelOption: {
-      minWidth: 72,
-      paddingVertical: 6,
-      paddingHorizontal: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 999,
-    },
-    notificationChannelOptionLeft: {
-      marginRight: 2,
-    },
-    notificationChannelOptionRight: {
-      marginLeft: 2,
-    },
-    notificationChannelOptionActive: {
-      backgroundColor: colors.tint,
-    },
-    notificationChannelOptionText: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: colors.textSecondary,
-    },
-    notificationChannelOptionTextActive: {
-      color: colors.pillActiveText,
-    },
     digestAdvancedToggle: {
       fontSize: 12,
       fontWeight: '600',
@@ -1551,32 +1482,24 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       borderTopLeftRadius: 0,
       borderBottomLeftRadius: 0,
     },
-    appearanceRow: {
-      flexDirection: 'row' as const,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      borderRadius: 999,
-      backgroundColor: colors.surfaceMuted,
-      padding: 2,
-    },
-    appearanceOption: {
-      flex: 1,
-      paddingVertical: 8,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      borderRadius: 999,
-    },
-    appearanceOptionLeft: {},
-    appearanceOptionRight: {},
-    appearanceOptionActive: {
-      backgroundColor: colors.tint,
-    },
-    appearanceOptionText: {
-      fontSize: 13,
-      fontWeight: '700' as const,
-      color: colors.textSecondary,
-    },
-    appearanceOptionTextActive: {
-      color: colors.pillActiveText,
-    },
   });
+
+/**
+ * The shell in front of the screen above.
+ *
+ * A tab is built the first time it is opened, and until it is, the tab you
+ * pressed away from stays on screen — which reads as the press being ignored.
+ * The gate is a component of its own so that every hook the screen owns lives
+ * *behind* it: an early return inside one component would only defer the
+ * render, not the queries and subscriptions that set it up.
+ *
+ * The wait is whatever {@link tabContentHoldMs} still owes the tab bar's press
+ * flash, so the mount takes the UI thread only once that movement is over
+ * rather than stalling it half-way. Once a tab has been built it is never
+ * gated again.
+ */
+export default function SettingsScreenTab() {
+  const ready = useDeferredMount('tab:settings', tabContentHoldMs);
+  if (!ready) return <TabScreenSkeleton title="Settings" icon="gearshape.fill" rowHeight={88} />;
+  return <SettingsScreen />;
+}

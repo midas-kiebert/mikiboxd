@@ -2330,3 +2330,106 @@ def test_saved_cinemas_still_apply_without_a_cinema_search(
         returned_ids = {item["id"] for item in response.json()}
         assert saved.id in returned_ids, params
         assert unsaved.id not in returned_ids, params
+
+
+# LAB111's Z-ELITE shop, one of the platforms `scraping.seat_availability` reads.
+_READABLE_TICKET_LINK = (
+    "https://tickets.lab111.nl/labcinema/nl/flow_configs/webshop"
+    "/steps/start/show/1293554"
+)
+
+
+def test_requesting_a_first_seat_reading_queues_one_and_says_so(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+    mocker,
+) -> None:
+    """The "Check" button in the showtime sheet.
+
+    Its whole job is to leave the screening saying a reading is on its way —
+    that is what the sheet swaps the button for — and to dispatch the one live
+    read the showtime is ever entitled to.
+    """
+    check_now = mocker.patch("app.api.routes.showtimes._check_seat_availability_now")
+    showtime = showtime_factory(
+        datetime=now_amsterdam_naive() + timedelta(days=2),
+        ticket_link=_READABLE_TICKET_LINK,
+        seats_checked_at=None,
+        seats_next_check_at=None,
+    )
+    showtime_id = showtime.id
+    db_transaction.commit()
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/seat-availability/check",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["checking"] is True
+    assert body["trackable"] is True
+    # Gone the moment it is used: one hand-requested read per screening, ever.
+    assert body["can_request_check"] is False
+    check_now.assert_called_once_with(showtime_id)
+
+
+def test_requesting_a_seat_reading_that_already_happened_costs_nothing(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+    mocker,
+) -> None:
+    """Two people tapping at once, or a stale client: the answer the caller
+    wanted is already there, so it comes back rather than costing a second
+    request at the ticket shop."""
+    check_now = mocker.patch("app.api.routes.showtimes._check_seat_availability_now")
+    showtime = showtime_factory(
+        datetime=now_amsterdam_naive() + timedelta(days=2),
+        ticket_link=_READABLE_TICKET_LINK,
+        seats_left=40,
+        seats_capacity=100,
+        seats_checked_at=now_amsterdam_naive() - timedelta(minutes=5),
+        seats_next_check_at=now_amsterdam_naive() + timedelta(minutes=30),
+    )
+    showtime_id = showtime.id
+    db_transaction.commit()
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/seat-availability/check",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["seats_left"] == 40
+    assert body["can_request_check"] is False
+    check_now.assert_not_called()
+
+
+def test_requesting_a_seat_reading_needs_an_account(
+    client: TestClient,
+    db_transaction: Session,
+    showtime_factory,
+    mocker,
+) -> None:
+    """Reading how full a screening is is public; *causing* a request at a small
+    cinema's ticket shop is not."""
+    check_now = mocker.patch("app.api.routes.showtimes._check_seat_availability_now")
+    showtime = showtime_factory(
+        datetime=now_amsterdam_naive() + timedelta(days=2),
+        ticket_link=_READABLE_TICKET_LINK,
+        seats_checked_at=None,
+    )
+    showtime_id = showtime.id
+    db_transaction.commit()
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/seat-availability/check",
+    )
+
+    assert response.status_code == 401
+    check_now.assert_not_called()

@@ -16,6 +16,7 @@ import type { CinemaPublic } from "shared";
 
 import { groupCinemas } from "@/components/filters/cinema-grouping";
 import { ThemedText } from "@/components/themed-text";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { getCinemaColorPalette } from "@/utils/cinema-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
@@ -53,7 +54,9 @@ const CinemaChip = memo(function CinemaChip({
         // Selected uses the cinema's own accent trio (same colors as its
         // checkbox/badge elsewhere) rather than a flat neutral fill: against
         // the sheet's off-white background a neutral highlight was reading as
-        // the same color as "unselected".
+        // the same color as "unselected". The border is the accent's own
+        // outline in light mode and the fill itself in dark — see
+        // `selectedBorderColor` below.
         isSelected && { backgroundColor: accentPrimary, borderColor: accentBorder },
       ]}
       onPress={() => {
@@ -105,6 +108,12 @@ export default function CinemaPickerList({
   onDeselectCinemas,
 }: CinemaPickerListProps) {
   const colors = useThemeColors();
+  // Dark mode mirrors each accent's `border` onto its bright `secondary` tone,
+  // which put a near-white hairline around every selected chip — a wall of them
+  // once a city is selected. A dark accent fill already separates itself from
+  // the neutral chip without help, so there the border is the fill; light mode
+  // still needs the outline to hold its pale fill against the white pill.
+  const isDark = useColorScheme() === "dark";
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { groupedCities, ungrouped } = useMemo(() => groupCinemas(cinemas), [cinemas]);
 
@@ -181,7 +190,11 @@ export default function CinemaPickerList({
                     styles={styles}
                     accentPrimary={palette?.primary ?? colors.surfaceMuted}
                     accentSecondary={palette?.secondary ?? colors.textSecondary}
-                    accentBorder={palette?.border ?? colors.pillBorder}
+                    accentBorder={
+                      isDark
+                        ? (palette?.primary ?? colors.surfaceMuted)
+                        : (palette?.border ?? colors.pillBorder)
+                    }
                     checkColor={colors.pillActiveText}
                     onToggle={onToggleCinema}
                   />
@@ -262,8 +275,10 @@ const createStyles = (colors: ThemeColors) =>
       height: 13,
       borderRadius: 6.5,
       borderWidth: 1.2,
-      borderColor: colors.pillBorder,
-      backgroundColor: colors.surfaceMuted,
+      // Not `pillBorder`/`surfaceMuted`: in dark mode both are the chip's own
+      // fill, so an unticked box was invisible on it.
+      borderColor: colors.checkboxBorder,
+      backgroundColor: colors.checkboxBackground,
       alignItems: "center",
       justifyContent: "center",
     },

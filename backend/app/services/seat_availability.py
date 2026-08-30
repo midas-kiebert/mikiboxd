@@ -332,6 +332,25 @@ _immediate_check_semaphore = threading.Semaphore(_IMMEDIATE_CHECK_CONCURRENCY)
 # must not be the one that breaks that rule.
 _immediate_check_hosts: set[str] = set()
 _immediate_check_hosts_lock = threading.Lock()
+# How far to push a skipped immediate read's due time. It has to move at all:
+# the due time is in the past (that is what asked for this read), and every
+# reader takes a past due time to mean "a reading is on its way" — so a read
+# that never happened would otherwise leave the showtime claiming to be
+# checking for ever. The poller only ever comes back to showtimes somebody has
+# selected, so for the rest nothing else would ever correct it.
+#
+# Short, because the only thing standing in the way was a momentary crowd at
+# the same ticket shop: a selected showtime is picked up by the very next
+# poller run after this, and an unselected one simply stops promising a number
+# and offers the check again.
+_SKIPPED_CHECK_RETRY_AFTER = timedelta(minutes=1)
+
+
+def _defer_skipped_check(*, session: Session, showtime: Showtime) -> None:
+    """Move a showtime off "a read is coming" after declining to read it."""
+    showtime.seats_next_check_at = now_amsterdam_naive() + _SKIPPED_CHECK_RETRY_AFTER
+    session.add(showtime)
+    session.commit()
 
 
 def should_check_immediately(*, session: Session, showtime_id: int) -> bool:
@@ -366,27 +385,31 @@ def check_now(*, session: Session, showtime_id: int) -> None:
     one scenario: somebody working down a long list, marking a hundred showtimes
     interested inside a minute. Every one of those is a first reading, so every
     one of them wants a live request, and without a ceiling that is how a cinema
-    decides to block us.
+    decides to block us. A skip still moves the due time (see
+    `_defer_skipped_check`) — declining to read is not a reason to keep telling
+    the client one is on its way.
 
     The never-read test is repeated here under this session because the request
     that dispatched it decided moments ago, and two people can tap the same
     showtime at once.
     """
+    showtime = session.get(Showtime, showtime_id)
+    if (
+        showtime is None
+        or showtime.seats_checked_at is not None
+        or showtime.ticket_link is None
+    ):
+        return
     if not _immediate_check_semaphore.acquire(blocking=False):
+        _defer_skipped_check(session=session, showtime=showtime)
         return
     host: str | None = None
     try:
-        showtime = session.get(Showtime, showtime_id)
-        if (
-            showtime is None
-            or showtime.seats_checked_at is not None
-            or showtime.ticket_link is None
-        ):
-            return
         host = urlsplit(showtime.ticket_link).netloc
         with _immediate_check_hosts_lock:
             if host in _immediate_check_hosts:
                 host = None
+                _defer_skipped_check(session=session, showtime=showtime)
                 return
             _immediate_check_hosts.add(host)
         try:
@@ -464,27 +487,46 @@ def is_read_pending(showtime: Showtime, *, now: datetime | None = None) -> bool:
     return showtime.seats_next_check_at <= (now or now_amsterdam_naive())
 
 
+def is_trackable(showtime: Showtime) -> bool:
+    """Whether a seat count can be read for this showtime at all.
+
+    A property of its ticket shop, not of anything we have or haven't done yet:
+    the overwhelming majority of cinemas run on platforms nothing here can read,
+    and for those the client hides the availability block entirely rather than
+    showing an "unknown" that will never resolve.
+    """
+    return showtime.ticket_link is not None and supports(showtime.ticket_link)
+
+
 def to_public(showtime: Showtime) -> ShowtimeSeatAvailabilityPublic | None:
-    """This showtime's availability as the client sees it, or None if unknown
-    and no read is even pending."""
+    """This showtime's availability as the client sees it, or None if there is
+    nothing to say about it and never will be — see the schema's docstring."""
     level = effective_seat_level(showtime)
     checking = is_read_pending(showtime)
+    trackable = is_trackable(showtime)
     if level is None:
-        if not checking:
+        if not checking and not trackable:
             return None
-        return ShowtimeSeatAvailabilityPublic(showtime_id=showtime.id, checking=True)
+        return ShowtimeSeatAvailabilityPublic(
+            showtime_id=showtime.id,
+            checking=checking,
+            trackable=trackable,
+            # The same one-shot rule as `should_check_immediately`, and off
+            # while a read is already on its way — asking twice for the reading
+            # that is currently being fetched buys nothing.
+            can_request_check=(
+                trackable and showtime.seats_checked_at is None and not checking
+            ),
+        )
     return ShowtimeSeatAvailabilityPublic(
         showtime_id=showtime.id,
         level=level,
         seats_left=showtime.seats_left,
         seats_capacity=showtime.seats_capacity,
         checked_at=showtime.seats_checked_at,
-        watchable=(
-            level in WATCHABLE_LEVELS
-            and showtime.ticket_link is not None
-            and supports(showtime.ticket_link)
-        ),
+        watchable=(level in WATCHABLE_LEVELS and trackable),
         checking=checking,
+        trackable=trackable,
     )
 
 
@@ -500,11 +542,15 @@ def get_seat_availability(
 def get_seat_availability_batch(
     *, session: Session, showtime_ids: list[int]
 ) -> list[ShowtimeSeatAvailabilityPublic]:
-    """Availability for many showtimes at once, skipping the unknown ones.
+    """Availability for many showtimes at once, skipping the ones there will
+    never be anything to say about.
 
-    Showtimes with no usable reading are simply left out: the client caches
-    per showtime and treats a missing entry as "nothing to show", so returning
-    a row that says nothing would only cost bytes.
+    Showtimes on a ticket platform nothing here can read are simply left out:
+    the client caches per showtime and treats a missing entry as "no seat
+    counts at this cinema", which is the one thing it wants to know about them.
+    Everything else comes back, including a screening whose count has not been
+    read yet — the client offers to ask for that one, so "not read" and "not
+    readable" have to be told apart.
     """
     if not showtime_ids:
         return []

@@ -1,15 +1,19 @@
 /**
  * Expo Router screen/module for (tabs) / index. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, type View } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { DateTime } from 'luxon';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
+import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
+import { tabContentHoldMs } from '@/components/tab-bar';
+import { useDeferredMount } from '@/utils/use-deferred-mount';
 import { useRouter } from 'expo-router';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import type { SearchField } from 'shared/client';
+import type { MovieSummaryPublic } from 'shared';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
@@ -19,6 +23,7 @@ import { ThemedText } from '@/components/themed-text';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import PresetsRow from '@/components/filters/PresetsRow';
+import { FILTER_ROW_SETTLE_MS } from '@/components/filters/filter-change-animation';
 import FiltersButton from '@/components/filters/FiltersButton';
 import SearchFieldFallback from '@/components/inputs/SearchFieldFallback';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
@@ -30,6 +35,13 @@ import { ShowtimesListContent } from '@/components/showtimes/ShowtimesScreen';
 import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
 import { SkeletonRows } from '@/components/ui/SkeletonRows';
 import MovieCard from '@/components/movies/MovieCard';
+import {
+  byIdKeyExtractor,
+  FEED_RENDER_WINDOW,
+  MOVIES_FIRST_PAGE_LIMIT,
+  SHOWTIMES_FIRST_PAGE_LIMIT,
+  useScrollTriggeredLoadMore,
+} from '@/components/feeds/feed-paging';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 import { applyDisplayPreset, type DisplayPreset } from '@/components/filters/saved-presets';
@@ -50,9 +62,34 @@ import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/util
 // "alkmaar" racing each other otherwise, and whichever lands last (not
 // necessarily the one for the finished word) is what the list is left
 // showing. See useDebouncedValue.
+/**
+ * When the other tabs are built, and how far apart.
+ *
+ * A tab is mounted the first time you press it, in the same commit that starts
+ * the slide — so the first press of each tab spends the whole animation
+ * building a screen, and no animation outruns that: the mount is UI-thread
+ * work, which is the one thing a native-driven tween cannot ignore.
+ *
+ * So they are built here instead, one at a time, once this screen has had a
+ * while to settle. It costs the same work; it just spends it in dead time
+ * rather than in front of the user. Pressing a tab before its turn comes round
+ * simply mounts it the old way.
+ */
+const TAB_PRELOAD_START_MS = 2500;
+const TAB_PRELOAD_GAP_MS = 600;
+/** Every tab in the bar except this one. `movies` has no button. */
+const PRELOADED_TABS = ['agenda', 'friends', 'settings'] as const;
+
+/**
+ * Hoisted so the feed is handed the same object every render: it reaches
+ * `ShowtimeCard` through the list's `renderItem`, and a new object there
+ * re-renders every visible card. See `ShowtimeCard`'s memo.
+ */
+const SHOWTIME_MODAL_OPTIONS = { inheritFilters: true } as const;
+
 const SEARCH_DEBOUNCE_MS = 280;
 
-export default function MainShowtimesScreen() {
+function MainShowtimesScreen() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
@@ -69,10 +106,37 @@ export default function MainShowtimesScreen() {
   // debounce to remove what the user just deleted would feel broken.
   const effectiveSearchQuery = searchQuery.trim().length > 0 ? debouncedSearchQuery : '';
   const [isFilterTransitionLoading, setIsFilterTransitionLoading] = useState(false);
+  /**
+   * The earliest the feed may fill itself back in. Only a preset apply sets it:
+   * that is the one filter change with a whole choreography playing above the
+   * feed, and rebuilding the list underneath is enough UI-thread work to stall
+   * it half-way through. Everything else clears on the next frame as before.
+   *
+   * State rather than a ref so that a second preset tapped during the first
+   * one's hold re-arms the wait instead of inheriting the first one's deadline.
+   */
+  const [feedHoldUntil, setFeedHoldUntil] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const { openFiltersModal } = useFiltersModal();
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
   const isFocused = useIsFocused();
+  // Typed by hand: `preload` belongs to the tab navigator this screen sits in,
+  // and the generic `useNavigation()` result cannot know which navigator that
+  // is without the app declaring its whole route map.
+  const tabNavigation = useNavigation<{ preload: (name: string) => void }>();
+
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    PRELOADED_TABS.forEach((name, index) => {
+      timers.push(
+        setTimeout(
+          () => tabNavigation.preload(name),
+          TAB_PRELOAD_START_MS + index * TAB_PRELOAD_GAP_MS
+        )
+      );
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [tabNavigation]);
   // The intro's last step highlights this screen's Filters button in place.
   const filtersButtonRef = useRef<View>(null);
   const introPhase = useIntroPhase();
@@ -89,6 +153,7 @@ export default function MainShowtimesScreen() {
     appliedHideWatched,
     setHideWatched,
     groupByMovie,
+    appliedGroupByMovie,
     setGroupByMovie,
     sessionCinemaIds,
     setSessionCinemaIds,
@@ -181,9 +246,10 @@ export default function MainShowtimesScreen() {
 
   const activeShowtimesQuery = useFetchMainPageShowtimes({
     limit: 20,
+    firstPageLimit: SHOWTIMES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters: showtimesFilters,
-    enabled: isFocused && !groupByMovie,
+    enabled: isFocused && !appliedGroupByMovie,
   });
 
   // ─── Movies query (Group by Movie mode) ─────────────────────────────────────
@@ -213,9 +279,10 @@ export default function MainShowtimesScreen() {
   );
   const moviesQuery = useFetchMovies({
     limit: 20,
+    firstPageLimit: MOVIES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters: movieFilters,
-    enabled: isFocused && groupByMovie,
+    enabled: isFocused && appliedGroupByMovie,
   });
 
   // ─── Active query ────────────────────────────────────────────────────────────
@@ -237,10 +304,26 @@ export default function MainShowtimesScreen() {
     fetchNextPage: moviesFetchNextPage,
   } = moviesQuery;
 
+  // One identity for the life of the list: a new `renderItem` re-renders every
+  // cell, which would undo `MovieCard`'s memo.
+  const openMovie = useCallback(
+    (movie: { id: number }) => goToMovieFromCard(movie.id),
+    [goToMovieFromCard]
+  );
+  const renderMovie = useCallback(
+    ({ item }: { item: MovieSummaryPublic }) => <MovieCard movie={item} onPress={openMovie} />,
+    [openMovie]
+  );
+
+  const loadMoreMovies = useScrollTriggeredLoadMore(() => {
+    if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
+  });
+
   const isAppliedFilterTransitionPending =
     selectedShowtimeFilter !== appliedShowtimeFilter ||
     effectiveWatchlistOnly !== effectiveAppliedWatchlistOnly ||
-    effectiveHideWatched !== effectiveAppliedHideWatched;
+    effectiveHideWatched !== effectiveAppliedHideWatched ||
+    groupByMovie !== appliedGroupByMovie;
 
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
   const movies = useMemo(() => moviesData?.pages.flat() ?? [], [moviesData]);
@@ -249,9 +332,18 @@ export default function MainShowtimesScreen() {
   useEffect(() => {
     if (!isFilterTransitionLoading) return;
     if (isAppliedFilterTransitionPending) return;
+    // A timer rather than a frame when the filter row is still playing. Being
+    // late here is harmless — the feed stays empty a moment longer — which is
+    // the only kind of thing a JS timer may be trusted with while an apply has
+    // the thread busy.
+    const wait = feedHoldUntil - Date.now();
+    if (wait > 0) {
+      const timer = setTimeout(() => setIsFilterTransitionLoading(false), wait);
+      return () => clearTimeout(timer);
+    }
     const frame = requestAnimationFrame(() => setIsFilterTransitionLoading(false));
     return () => cancelAnimationFrame(frame);
-  }, [isAppliedFilterTransitionPending, isFilterTransitionLoading]);
+  }, [feedHoldUntil, isAppliedFilterTransitionPending, isFilterTransitionLoading]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -265,6 +357,7 @@ export default function MainShowtimesScreen() {
   };
 
   const handleApplyPreset = (preset: DisplayPreset) => {
+    setFeedHoldUntil(Date.now() + FILTER_ROW_SETTLE_MS);
     setIsFilterTransitionLoading(true);
     applyDisplayPreset(preset, {
       hasLetterboxdUsername,
@@ -294,7 +387,7 @@ export default function MainShowtimesScreen() {
   // also waits for a clear screen — `isFocused` covers a pushed page, and the
   // overlay register covers the sheets that open over this one, which are
   // windows rather than routes.
-  const hasLoadedFeed = groupByMovie
+  const hasLoadedFeed = appliedGroupByMovie
     ? !moviesLoading && movies.length > 0
     : !showtimesLoading && !isFilterTransitionLoading && showtimes.length > 0;
   const isShowingIntroFiltersSpotlight =
@@ -305,7 +398,7 @@ export default function MainShowtimesScreen() {
 
   const activeChipsProps = {
     groupByMovie,
-    setGroupByMovie,
+    setGroupByMovie: (v: boolean) => { setIsFilterTransitionLoading(true); setGroupByMovie(v); },
     watchlistOnly: effectiveWatchlistOnly,
     setWatchlistOnly: (v: boolean) => { setIsFilterTransitionLoading(true); setWatchlistOnly(v); },
     watchlistExclude: effectiveWatchlistExclude,
@@ -364,7 +457,7 @@ export default function MainShowtimesScreen() {
   );
 
   const renderMoviesEmpty = () => {
-    if (moviesLoading || moviesFetching || refreshing) {
+    if (moviesLoading || moviesFetching || refreshing || isFilterTransitionLoading) {
       return <SkeletonRows height={150} />;
     }
     return (
@@ -376,8 +469,11 @@ export default function MainShowtimesScreen() {
   };
 
   // Clear the list while refreshing so the pull-to-refresh visibly reloads,
-  // even when the refetched data is unchanged.
-  const visibleMovies = refreshing ? [] : movies;
+  // even when the refetched data is unchanged — and while a filter change is
+  // still landing, exactly as the showtimes feed does. Switching mode mounts a
+  // whole feed from nothing, and mounting it full of cards is the one piece of
+  // work heavy enough to stall the filter row's animation on its way past.
+  const visibleMovies = refreshing || isFilterTransitionLoading ? [] : movies;
 
   return (
     <TopSafeAreaView style={styles.container}>
@@ -394,24 +490,19 @@ export default function MainShowtimesScreen() {
       />
       <PresetsRow onApplyPreset={handleApplyPreset} />
       <ActiveFilterChips {...activeChipsProps} />
-      {groupByMovie ? (
+      {appliedGroupByMovie ? (
         <FlatList
           data={visibleMovies}
-          renderItem={({ item }) => (
-            <MovieCard
-              movie={item}
-              onPress={(movie) => goToMovieFromCard(movie.id)}
-            />
-          )}
-          keyExtractor={(item) => item.id.toString()}
+          renderItem={renderMovie}
+          keyExtractor={byIdKeyExtractor}
           contentContainerStyle={styles.movieFeed}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={renderMoviesEmpty}
           ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} />}
-          onEndReached={() => {
-            if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
-          }}
+          onScrollBeginDrag={loadMoreMovies.onScrollBeginDrag}
+          onEndReached={loadMoreMovies.onEndReached}
           onEndReachedThreshold={2}
+          {...FEED_RENDER_WINDOW}
           refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         />
       ) : (
@@ -428,7 +519,7 @@ export default function MainShowtimesScreen() {
           onRefresh={handleRefresh}
           emptyText="No showtimes found"
           emptyExtra={searchFieldFallback}
-          openModalOptions={{ inheritFilters: true }}
+          openModalOptions={SHOWTIME_MODAL_OPTIONS}
           inheritFiltersOnMovieNav
         />
       )}
@@ -453,3 +544,23 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });
+
+/**
+ * The shell in front of the screen above.
+ *
+ * A tab is built the first time it is opened, and until it is, the tab you
+ * pressed away from stays on screen — which reads as the press being ignored.
+ * The gate is a component of its own so that every hook the screen owns lives
+ * *behind* it: an early return inside one component would only defer the
+ * render, not the queries and subscriptions that set it up.
+ *
+ * The wait is whatever {@link tabContentHoldMs} still owes the tab bar's press
+ * flash, so the mount takes the UI thread only once that movement is over
+ * rather than stalling it half-way. Once a tab has been built it is never
+ * gated again.
+ */
+export default function MainShowtimesScreenTab() {
+  const ready = useDeferredMount('tab:index', tabContentHoldMs);
+  if (!ready) return <TabScreenSkeleton rowHeight={112} />;
+  return <MainShowtimesScreen />;
+}

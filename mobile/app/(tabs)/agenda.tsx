@@ -6,6 +6,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet } from "react-native";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
+import TabScreenSkeleton from "@/components/layout/TabScreenSkeleton";
+import { tabContentHoldMs } from "@/components/tab-bar";
+import { useDeferredMount } from "@/utils/use-deferred-mount";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useIsFocused } from "@react-navigation/native";
 import { MeService } from "shared";
@@ -30,7 +33,7 @@ const AGENDA_HIGHLIGHTS = [
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
 
-export default function AgendaScreen() {
+function AgendaScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -167,3 +170,23 @@ const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
   });
+
+/**
+ * The shell in front of the screen above.
+ *
+ * A tab is built the first time it is opened, and until it is, the tab you
+ * pressed away from stays on screen — which reads as the press being ignored.
+ * The gate is a component of its own so that every hook the screen owns lives
+ * *behind* it: an early return inside one component would only defer the
+ * render, not the queries and subscriptions that set it up.
+ *
+ * The wait is whatever {@link tabContentHoldMs} still owes the tab bar's press
+ * flash, so the mount takes the UI thread only once that movement is over
+ * rather than stalling it half-way. Once a tab has been built it is never
+ * gated again.
+ */
+export default function AgendaScreenTab() {
+  const ready = useDeferredMount("tab:agenda", tabContentHoldMs);
+  if (!ready) return <TabScreenSkeleton title="Agenda" icon="calendar" rowHeight={112} />;
+  return <AgendaScreen />;
+}

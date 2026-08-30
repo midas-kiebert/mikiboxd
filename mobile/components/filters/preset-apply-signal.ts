@@ -22,11 +22,26 @@ export type PresetApply = {
   count: number;
   /** Every dimension the apply wrote, changed or not. */
   dimensions: readonly PresetDimension[];
+  /**
+   * Whether the cinemas actually moved, which is not the same question as
+   * whether they were written.
+   *
+   * Every other dimension has a chip, and the row can see for itself what a
+   * write did to one. The cinema pill has no chip: it answers by resizing, and
+   * a preset that writes the cinemas it is already on resizes nothing. The row
+   * needs that told apart to know whether it has anything to wait for.
+   */
+  cinemasChanged: boolean;
   /** Which preset it was, for the button that has to stay lit afterwards. */
   presetId: string | null;
 };
 
-const NONE: PresetApply = { count: 0, dimensions: [], presetId: null };
+const NONE: PresetApply = {
+  count: 0,
+  dimensions: [],
+  cinemasChanged: false,
+  presetId: null,
+};
 
 // Replaced, never mutated: `useSyncExternalStore` compares snapshots by
 // identity and must see the same object until the next apply.
@@ -35,9 +50,10 @@ const listeners = new Set<() => void>();
 
 export function announcePresetApplied(
   dimensions: readonly PresetDimension[],
-  presetId: string
+  presetId: string,
+  cinemasChanged: boolean
 ) {
-  latest = { count: latest.count + 1, dimensions, presetId };
+  latest = { count: latest.count + 1, dimensions, cinemasChanged, presetId };
   for (const listener of listeners) listener();
 }
 

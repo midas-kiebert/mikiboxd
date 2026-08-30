@@ -20,7 +20,8 @@ export type AccountFeature =
   | "notifications"
   | "presets"
   | "profile"
-  | "report";
+  | "report"
+  | "seats";
 
 type AccountFeatureCopy = {
   icon: keyof typeof MaterialIcons.glyphMap;
@@ -83,5 +84,11 @@ export const ACCOUNT_FEATURE_COPY: Record<AccountFeature, AccountFeatureCopy> = 
     title: "Report a problem",
     message:
       "Tell us when a screening's details are wrong so we can get it fixed.",
+  },
+  seats: {
+    icon: "event-seat",
+    title: "Check the seat count",
+    message:
+      "Ask us to look up how many seats a screening has left, so you know whether it is still worth heading over.",
   },
 };

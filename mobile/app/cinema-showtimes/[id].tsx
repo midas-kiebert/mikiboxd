@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for cinema-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { FlatList, Linking, StyleSheet, View } from "react-native";
 import { ThemedRefreshControl } from "@/components/themed-refresh-control";
 import { DateTime } from "luxon";
@@ -13,7 +13,9 @@ import { useFetchMovies } from "shared/hooks/useFetchMovies";
 import type { SearchField } from "shared/client";
 import useAuth from "shared/hooks/useAuth";
 
-import ShowtimesScreen, { ShowtimesScreenSkeleton } from "@/components/showtimes/ShowtimesScreen";
+import ShowtimesScreen, {
+  ShowtimesScreenSkeleton,
+} from "@/components/showtimes/ShowtimesScreen";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
 import FiltersButton from "@/components/filters/FiltersButton";
@@ -21,6 +23,14 @@ import FiltersModal from "@/components/filters/FiltersModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
 import SearchFieldFallback from "@/components/inputs/SearchFieldFallback";
 import MovieCard from "@/components/movies/MovieCard";
+import type { MovieSummaryPublic } from "shared";
+import {
+  byIdKeyExtractor,
+  FEED_RENDER_WINDOW,
+  MOVIES_FIRST_PAGE_LIMIT,
+  SHOWTIMES_FIRST_PAGE_LIMIT,
+  useScrollTriggeredLoadMore,
+} from "@/components/feeds/feed-paging";
 import { SkeletonRows } from "@/components/ui/SkeletonRows";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { ThemedText } from "@/components/themed-text";
@@ -222,6 +232,7 @@ function CinemaShowtimesContent({
     watchedOnly,
     setWatchedOnly,
     groupByMovie,
+    appliedGroupByMovie,
     setGroupByMovie,
     selectedDays: sharedSelectedDays,
     setSelectedDays,
@@ -341,9 +352,10 @@ function CinemaShowtimesContent({
     fetchNextPage: showtimesFetchNextPage,
   } = useFetchMainPageShowtimes({
     limit: 20,
+    firstPageLimit: SHOWTIMES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters: showtimesFilters,
-    enabled: isFocused && !groupByMovie,
+    enabled: isFocused && !appliedGroupByMovie,
   });
 
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
@@ -392,12 +404,34 @@ function CinemaShowtimesContent({
     fetchNextPage: moviesFetchNextPage,
   } = useFetchMovies({
     limit: 20,
+    firstPageLimit: MOVIES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters: moviesFilters,
-    enabled: isFocused && groupByMovie,
+    enabled: isFocused && appliedGroupByMovie,
   });
 
   const movies = useMemo(() => moviesData?.pages.flat() ?? [], [moviesData]);
+
+  // Stable across renders: it reaches every card through the list's
+  // `renderItem`, and a new object there re-renders all of them.
+  const showtimeModalOptions = useMemo(() => ({ openedFrom: { cinemaId } }), [cinemaId]);
+
+  // One identity for the life of the list: a new `renderItem` re-renders every
+  // cell, which would undo `MovieCard`'s memo.
+  const openMovie = useCallback(
+    (movie: { id: number }) => goToMovieFromCard(movie.id),
+    [goToMovieFromCard]
+  );
+  const renderMovie = useCallback(
+    ({ item }: { item: MovieSummaryPublic }) => (
+      <MovieCard movie={item} onPress={openMovie} showCinema={false} />
+    ),
+    [openMovie]
+  );
+
+  const loadMoreMovies = useScrollTriggeredLoadMore(() => {
+    if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
+  });
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
   const handleRefresh = async () => {
@@ -443,26 +477,24 @@ function CinemaShowtimesContent({
   );
 
   // ─── Render ───────────────────────────────────────────────────────────────────
-  const isLoading = groupByMovie ? moviesLoading : showtimesLoading;
-  const isFetching = groupByMovie ? moviesFetching : showtimesFetching;
-  const resultCount = groupByMovie ? movies.length : showtimes.length;
+  // The applied value, not the chip's: it is what decides which feed is
+  // mounted, and it lands a frame after the tap so that swapping the feed
+  // never happens in the frame the chip's own animation starts. See
+  // `useSharedTabFilters`.
+  const isLoading = appliedGroupByMovie ? moviesLoading : showtimesLoading;
+  const isFetching = appliedGroupByMovie ? moviesFetching : showtimesFetching;
+  const resultCount = appliedGroupByMovie ? movies.length : showtimes.length;
 
   // Clear the list while refreshing so pull-to-refresh visibly reloads, even
   // when the refetched data is unchanged.
   const visibleMovies = refreshing ? [] : movies;
 
-  const moviesContent = groupByMovie ? (
+  const moviesContent = appliedGroupByMovie ? (
     <FlatList
       style={styles.flex}
       data={visibleMovies}
-      renderItem={({ item }) => (
-        <MovieCard
-          movie={item}
-          onPress={(movie) => goToMovieFromCard(movie.id)}
-          showCinema={false}
-        />
-      )}
-      keyExtractor={(item) => item.id.toString()}
+      renderItem={renderMovie}
+      keyExtractor={byIdKeyExtractor}
       contentContainerStyle={styles.movieFeed}
       showsVerticalScrollIndicator={false}
       ListEmptyComponent={
@@ -476,10 +508,10 @@ function CinemaShowtimesContent({
         )
       }
       ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} size="small" />}
-      onEndReached={() => {
-        if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
-      }}
+      onScrollBeginDrag={loadMoreMovies.onScrollBeginDrag}
+      onEndReached={loadMoreMovies.onEndReached}
       onEndReachedThreshold={2}
+      {...FEED_RENDER_WINDOW}
       refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
     />
   ) : undefined;
@@ -541,7 +573,7 @@ function CinemaShowtimesContent({
         listContent={moviesContent}
         emptyText="No showtimes for this cinema"
         emptyExtra={searchFieldFallback}
-        openModalOptions={{ openedFrom: { cinemaId } }}
+        openModalOptions={showtimeModalOptions}
       />
       <FiltersModal
         visible={filtersModalVisible}

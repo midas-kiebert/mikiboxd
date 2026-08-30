@@ -6,6 +6,21 @@
  *
  * Chips keep the order they arrived in — see `orderedChips` — so applying a
  * preset never reshuffles the ones that were already there.
+ *
+ * The row is also the conductor for its own motion. It is the only thing that
+ * can see both halves of a change — what a preset dropped and what it added —
+ * so it decides when each of the two beats begins. What it never does is
+ * *drive* an animation, or even own one: every decision here is made in the
+ * commit the change lands in and handed to a chip as two booleans it reads at
+ * mount, because the JS thread is busy re-rendering the feed and anything the
+ * row still had to say afterwards would arrive too late to be part of the
+ * movement. See `filter-change-animation` for the beats themselves. (The
+ * preset button is not part of this: it answers its own tap in the frame it is
+ * tapped.)
+ *
+ * The same principle runs the other way for a removal: the row takes a tapped
+ * chip out of its own list first and writes the filter a frame later, so the
+ * exit starts in a commit that rebuilds nothing. See `dismiss`.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
@@ -20,10 +35,7 @@ import { formatTimeRangeChipLabel, formatRuntimeRangeChipLabel } from "@/compone
 import { type SharedTabShowtimeFilter } from "@/components/filters/shared-tab-filters";
 import CinemaFilterChip from "@/components/filters/CinemaFilterChip";
 import ActiveFilterChip from "@/components/filters/ActiveFilterChip";
-import {
-  CHANGE_HIGHLIGHT_MS,
-  CHIP_EXIT_MS,
-} from "@/components/filters/filter-change-animation";
+import { PHASE_ONE_MS } from "@/components/filters/filter-change-animation";
 import { usePresetApply } from "@/components/filters/preset-apply-signal";
 import { isListDimension, type PresetDimension } from "@/components/filters/saved-presets";
 import { triggerImpactHaptic } from "@/utils/long-press";
@@ -108,13 +120,6 @@ const CHIP_KEYS_BY_DIMENSION: Partial<Record<PresetDimension, readonly string[]>
   selected_languages: ["languages"],
 };
 
-/**
- * Stands for the cinema pill in `addedKeys`. Not a chip key — the pill is not
- * one of `chips` — but the tint is the row's to decide and this is where the
- * row keeps that decision, along with the timer that takes it back.
- */
-const CINEMA_PILL_KEY = "cinema-pill";
-
 /** Both list chips answer to any of the per-list dimensions. */
 const LIST_CHIP_KEYS = ["lists-include", "lists-exclude"] as const;
 
@@ -154,12 +159,28 @@ const STATUS_LABEL: Record<SharedTabShowtimeFilter, string | null> = {
 
 
 /**
- * How long after an apply the row keeps diffing against the state the preset
- * replaced. Every setter a preset calls is synchronous, so the whole change
- * normally arrives in one commit — but a filter that reaches this row a commit
- * or two later still gets animated instead of silently appearing.
+ * How long after an apply a chip arriving in the row still counts as the
+ * preset's doing, and so arrives wearing the flash.
+ *
+ * Most of a preset lands in one commit, but four of the setters defer their
+ * write by a frame (see `useSharedTabFilters`) and a slow phone can spread the
+ * rest over a few more. A window rather than a diff against the pre-apply
+ * state: what a chip needs to know is only whether a preset is what put it
+ * there, and it needs to know it in the commit it mounts in.
  */
 const APPLY_WATCH_MS = 400;
+
+/**
+ * How long the row will hold a chip out of the list on its own authority.
+ *
+ * A tap takes the chip out before the filter it stands for is written, so the
+ * exit starts in a cheap commit rather than behind the feed rebuild the write
+ * causes. Normally the write lands a frame later and the chip is gone for
+ * real long before this. If it somehow does not, the chip comes back — a
+ * filter that is still on with nothing in the row to say so is worse than a
+ * removal that visibly did not take.
+ */
+const DISMISS_FALLBACK_MS = 600;
 
 /**
  * The row's own gap, needed in JS to work out what a removed chip took up.
@@ -428,6 +449,126 @@ export default function ActiveFilterChips({
     setSelectedLanguages,
   ]);
 
+  // ─── The two beats ───────────────────────────────────────────────────────
+  // The row answers a change in two, never at once (see
+  // `filter-change-animation`):
+  //
+  //   1. Everything that goes, goes, and the cinema pill changes with it. The
+  //      row closes over the gap on the same clock.
+  //   2. Only then: everything that arrives, arrives, with the flash.
+  //
+  // Every one of which is set up in a single commit, at the moment of the
+  // change, and then plays out on the UI thread. Nothing is scheduled onto the
+  // JS thread: applying a preset also empties and re-renders the feed below,
+  // which can hold JS for hundreds of milliseconds, and a boundary that waits
+  // on a `setTimeout` waits on that too — while the pill it is supposed to be
+  // following keeps perfect time on the UI thread.
+  //
+  // So an arriving chip is mounted at once, laid out at the end of the row
+  // where it moves nothing, and simply held at zero opacity until beat one is
+  // over (`chipEnteringAfterBeatOne`). A chip that is invisible cannot be seen
+  // to be in the wrong place, and by the time it is visible the row it is in
+  // has stopped moving.
+  //
+  // Only a preset apply is animated as an event: the user removing a chip by
+  // hand already knows which one they tapped, and flashing it would flag their
+  // own edit back at them.
+  const presetApply = usePresetApply();
+
+  // ─── What a preset re-asserts ────────────────────────────────────────────
+  // A preset writing a dimension is making a claim about it, and the row shows
+  // the claim rather than the difference: the chip goes in beat one and comes
+  // back in beat two, whether or not its value moved. A preset that sets a
+  // filter to what it already was is otherwise indistinguishable from one that
+  // skipped the filter entirely, and telling those two apart is the whole
+  // point of a partial preset.
+  const orderRef = useRef<string[]>([]);
+  /** Bumped when the order is rewritten under a memo that cannot see it. */
+  const [orderGeneration, setOrderGeneration] = useState(0);
+  /** Keys this apply re-asserted, so the flash below can mark them. */
+  const reassertedRef = useRef<ReadonlySet<string>>(new Set());
+  /**
+   * Bumped per key on every re-assert, and part of the chip's React key. One
+   * commit then unmounts the old copy — which Reanimated takes out of the
+   * layout and plays out where it stood — and mounts a new one on the end of
+   * the row, waiting for beat one. Going and coming back is one commit, not
+   * two, which is what keeps it off the JS thread's schedule.
+   */
+  const [replayNonces, setReplayNonces] = useState<ReadonlyMap<string, number>>(
+    () => new Map()
+  );
+  const applySeenRef = useRef(presetApply.count);
+  /**
+   * The pill's flash, which runs on a clock of its own and starts at once — so
+   * all it needs from here is to be told, and a counter is how you tell
+   * something twice. Bumped for the cinemas being *written*: unlike the beat
+   * below, a preset pinning the cinemas you are already on is still the preset
+   * saying "these ones", and that is what the flash is for.
+   */
+  const [cinemaFlashNonce, setCinemaFlashNonce] = useState(0);
+  if (presetApply.count !== applySeenRef.current) {
+    applySeenRef.current = presetApply.count;
+    if (presetApply.dimensions.includes("cinemas")) {
+      setCinemaFlashNonce((nonce) => nonce + 1);
+    }
+    const written = chipKeysForDimensions(presetApply.dimensions);
+    const reasserted = orderRef.current.filter((key) => written.has(key));
+    reassertedRef.current = new Set(reasserted);
+    if (reasserted.length > 0) {
+      // Out of the order, so `orderedChips` puts them back on the *end*. Beat
+      // two may only ever append: a chip coming back in the middle would shove
+      // everything after it sideways while it was fading in, which is the one
+      // thing the two beats exist to prevent. It also happens to be true — a
+      // filter the preset just set is one of the newest things in the row.
+      orderRef.current = orderRef.current.filter((key) => !written.has(key));
+      setOrderGeneration((generation) => generation + 1);
+      setReplayNonces((current) => {
+        const next = new Map(current);
+        for (const key of reasserted) next.set(key, (next.get(key) ?? 0) + 1);
+        return next;
+      });
+    }
+  }
+
+  // ─── Taking a chip out before its filter is ─────────────────────────────
+  // Removing a filter re-renders the feed, and for most dimensions it does so
+  // in the tap's own commit — the session cache is written synchronously, the
+  // query key changes, and the list rebuilds. The chip's exit cannot start
+  // until that commit is done, which on a phone is long enough to read as the
+  // row ignoring the tap. (Status and watchlist looked instant only because
+  // their setters already defer the query-facing write by a frame.)
+  //
+  // So the row stops drawing the chip on its own authority, and writes the
+  // filter on the next frame. The exit plays out of a commit that touches
+  // nothing but these chips, and the feed rebuilds underneath it while it is
+  // already running on the UI thread.
+  const [dismissedKeys, setDismissedKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const visibleChips = useMemo(
+    () =>
+      dismissedKeys.size === 0
+        ? chips
+        : chips.filter((chip) => !dismissedKeys.has(chip.key)),
+    [chips, dismissedKeys]
+  );
+
+  const dismiss = (chip: Chip) => {
+    setDismissedKeys((current) => new Set(current).add(chip.key));
+    requestAnimationFrame(chip.onRemove);
+  };
+
+  useEffect(() => {
+    if (dismissedKeys.size === 0) return;
+    const present = new Set(chips.map((chip) => chip.key));
+    const pending = [...dismissedKeys].filter((key) => present.has(key));
+    if (pending.length !== dismissedKeys.size) {
+      // At least one write has landed; the row no longer has to pretend.
+      setDismissedKeys(new Set(pending));
+      return;
+    }
+    const timer = setTimeout(() => setDismissedKeys(new Set()), DISMISS_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [chips, dismissedKeys]);
+
   // ─── The order the chips are actually drawn in ───────────────────────────
   // The list above is built in a fixed order, which is only a convenient way
   // to enumerate the filters — it is not an order the row owes anyone. Drawing
@@ -436,66 +577,106 @@ export default function ActiveFilterChips({
   // sideways; apply two presets in a row and the whole row shuffles.
   //
   // So the row keeps the order it has and puts arrivals on the end. Nothing a
-  // chip does moves any chip that was already there, and the newest chips are
-  // always the ones nearest the tint that says they are new.
-  const orderRef = useRef<string[]>([]);
+  // chip does moves any chip that was already there.
   const orderedChips = useMemo<Chip[]>(() => {
-    const byKey = new Map(chips.map((chip) => [chip.key, chip]));
+    const byKey = new Map(visibleChips.map((chip) => [chip.key, chip]));
     // Written during the render that uses it, so the order is right on the
     // first pass rather than one pass late. Safe to run twice: a second call
     // with the same chips finds every key already placed and appends nothing.
     const kept = orderRef.current.filter((key) => byKey.has(key));
     const placed = new Set(kept);
-    const arrived = chips.filter((chip) => !placed.has(chip.key)).map((chip) => chip.key);
+    const arrived = visibleChips
+      .filter((chip) => !placed.has(chip.key))
+      .map((chip) => chip.key);
     orderRef.current = [...kept, ...arrived];
     return orderRef.current.map((key) => byKey.get(key)!);
-  }, [chips]);
+    // `orderGeneration` is the dependency, not a value: a preset can re-assert
+    // a filter without changing any of them, which leaves `chips` identical
+    // and this memo holding the order the re-assert just rewrote.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleChips, orderGeneration]);
 
-  // ─── What the last preset apply changed ──────────────────────────────────
-  // Only a preset apply is animated: the user removing a chip by hand already
-  // knows which one they tapped, and animating that would flag their own edit
-  // back at them.
-  const presetApply = usePresetApply();
   const labelByKey = useMemo(
     () => new Map(orderedChips.map((chip) => [chip.key, chip.label])),
     [orderedChips]
   );
 
-  // Whether this pass is one where chips are leaving, which decides if the
-  // rest of the row may move yet. Kept in state rather than a ref so it can be
-  // read during the render that starts the animations, not a pass later.
-  const [renderedKeys, setRenderedKeys] = useState<string[]>(() => [...labelByKey.keys()]);
-  const removedKeys = useMemo(
-    () => renderedKeys.filter((key) => !labelByKey.has(key)),
-    [renderedKeys, labelByKey]
+  // ─── What changed since the last pass ────────────────────────────────────
+  // Chips whose filter is gone. A re-asserted chip is not one of them: its old
+  // copy unmounts in the same commit its new copy mounts, so the row's width
+  // is unchanged and there is nothing for the scroll to be held still for.
+  const previousKeysRef = useRef<string[]>([...labelByKey.keys()]);
+  const goneKeys = previousKeysRef.current.filter((key) => !labelByKey.has(key));
+  const arrivedKeys = [...labelByKey.keys()].filter(
+    (key) => !previousKeysRef.current.includes(key)
   );
-  const isRemovingChip = removedKeys.length > 0;
-  // Latched for the length of the exit rather than read off a single pass:
-  // a chip's own resize can arrive a commit or two after the removal that
-  // caused it, and it must still wait for the chips leaving to be gone.
-  const [isExitRunning, setIsExitRunning] = useState(false);
-  const [isReplayRunning, setIsReplayRunning] = useState(false);
-  useEffect(() => {
-    if (!isRemovingChip) return;
-    setIsExitRunning(true);
-    const timer = setTimeout(() => setIsExitRunning(false), CHIP_EXIT_MS);
-    return () => clearTimeout(timer);
-  }, [isRemovingChip]);
-  // A chip being replayed is a chip leaving too — see `replayNonces` below.
-  const hasLeavingChip = isRemovingChip || isExitRunning || isReplayRunning;
-  useEffect(() => {
-    const currentKeys = [...labelByKey.keys()];
-    const unchanged =
-      currentKeys.length === renderedKeys.length &&
-      currentKeys.every((key, index) => key === renderedKeys[index]);
-    if (unchanged) return;
+  previousKeysRef.current = [...labelByKey.keys()];
+
+  /**
+   * When beat one ends. A timestamp rather than a flag because it is read, not
+   * waited on: the entering chips and the flash both take a *delay* from it and
+   * then run on the UI thread, where nothing the JS thread is doing can hold
+   * them up.
+   *
+   * Never brought forward. A second change landing while the first beat is
+   * still running joins it rather than restarting the row underneath itself.
+   */
+  const phaseOneEndsAt = useRef(0);
+  const startBeatOne = () => {
+    phaseOneEndsAt.current = Math.max(phaseOneEndsAt.current, Date.now() + PHASE_ONE_MS);
+  };
+
+  // Anything leaving is a beat one, preset or not: a chip removed by hand
+  // still needs the row to close over its gap before anything may arrive. A
+  // re-assert counts too — its old copy plays the same exit, and the row
+  // closes over that gap on the way to putting the chip back on the end.
+  const leavingSig = [...goneKeys, ...reassertedRef.current].join("|");
+  const beatFor = useRef("");
+  if (!leavingSig) {
+    beatFor.current = "";
+  } else if (leavingSig !== beatFor.current) {
+    beatFor.current = leavingSig;
+    startBeatOne();
+  }
+
+  // The pill is the one thing left that can need a beat of its own, since it
+  // is not one of these chips and answers by resizing. `cinemasChanged` rather
+  // than "wrote the cinemas": a preset that pins the cinemas you are already
+  // on resizes nothing, and a beat spent waiting for a pill that is not going
+  // to move is a beat of the row sitting still for no reason.
+  //
+  // So a preset that takes nothing away schedules no beat at all: its chips
+  // arrive at once and the flash goes with them.
+  //
+  // Decided during this render rather than from an effect, because this is
+  // where the beat is decided.
+  //
+  // The window, not a set of keys: a chip carries its own flash in its
+  // entrance (see `useChipEntering`), so all the row has to answer is whether
+  // a chip mounting *now* is one a preset put there. Marking them individually
+  // meant a `setState` and therefore a second commit, and the chip had already
+  // finished growing by the time that commit told it to start colouring.
+  const applyWindowEndsAt = useRef(0);
+  const flashStartedFor = useRef(presetApply.count);
+  if (presetApply.count !== flashStartedFor.current) {
+    flashStartedFor.current = presetApply.count;
+    if (presetApply.cinemasChanged) startBeatOne();
+    applyWindowEndsAt.current = Date.now() + APPLY_WATCH_MS;
+  }
+  const withinApplyWindow = applyWindowEndsAt.current > Date.now();
+
+  // Whether a chip mounting right now has to wait. Read only at mount, and
+  // true for the whole of the beat rather than only on the pass that started
+  // it: four of the filter setters defer their write by a frame (see
+  // `useSharedTabFilters`), so some of a preset's chips mount a commit later
+  // than the rest and have exactly the same beat to wait out.
+  const beatOneRunning = phaseOneEndsAt.current > Date.now();
+
+  if (arrivedKeys.length > 0) {
     // Arrivals only. A removal moves the row the other way, and that scroll is
     // the reserved space's to make.
-    if (currentKeys.some((key) => !renderedKeys.includes(key))) {
-      revealPendingRef.current = true;
-    }
-    setRenderedKeys(currentKeys);
-  }, [labelByKey, renderedKeys]);
+    revealPendingRef.current = true;
+  }
 
   // ─── Holding the scroll still while a chip leaves ────────────────────────
   // The chips sit in a horizontal scroller. Removing one makes the content
@@ -509,17 +690,16 @@ export default function ActiveFilterChips({
   // new resting place under its own animation. The spacer is handed back once
   // it has arrived, by which point there is nothing left for it to hold.
   const [reservedWidth, setReservedWidth] = useState(0);
-  // What the current reservation is for, so a removal is only paid for once
-  // while its keys are still missing from `renderedKeys`.
+  // What the current reservation is for, so a removal is only paid for once.
   const reservedFor = useRef("");
-  const removalSig = removedKeys.join("|");
-  if (!removalSig) {
+  const goneSig = goneKeys.join("|");
+  if (!goneSig) {
     reservedFor.current = "";
-  } else if (removalSig !== reservedFor.current) {
+  } else if (goneSig !== reservedFor.current) {
     // Set during render, so the spacer is in place in the same commit that
     // takes the chip out — a pass later and the scroller has already clamped.
-    reservedFor.current = removalSig;
-    const freed = removedKeys.reduce(
+    reservedFor.current = goneSig;
+    const freed = goneKeys.reduce(
       (total, key) => total + (chipWidths.current.get(key) ?? 0) + CHIP_GAP,
       0
     );
@@ -545,128 +725,6 @@ export default function ActiveFilterChips({
     const timer = setTimeout(() => setReservedWidth(0), SCROLL_SETTLE_MS);
     return () => clearTimeout(timer);
   }, [reservedWidth]);
-
-  const [addedKeys, setAddedKeys] = useState<ReadonlySet<string>>(() => new Set());
-  // What the row looked like on the previous pass, kept so that an apply can be
-  // compared against the state it replaced.
-  const previousRef = useRef(labelByKey);
-  const lastApplyCountRef = useRef(presetApply.count);
-  /**
-   * Bumped for a chip the preset wrote but did not move. The number goes into
-   * the chip's React key, so the old one unmounts and plays its exit and a new
-   * one mounts and plays its entrance — it closes and comes back.
-   *
-   * A preset that leaves a dimension alone and a preset that sets it to what
-   * it already was are the same picture otherwise, and the difference is the
-   * whole point of a partial preset.
-   */
-  const [replayNonces, setReplayNonces] = useState<ReadonlyMap<string, number>>(
-    () => new Map()
-  );
-  /** Replayed keys, held for the watch window so their tint is not cut short. */
-  const replayedKeysRef = useRef<ReadonlySet<string>>(new Set());
-  /**
-   * Whether the last apply wrote the cinemas. Held the same way and for the
-   * same reason: the pill is tinted for writing it, not for changing it, which
-   * is exactly what every other chip is tinted for.
-   */
-  const cinemaWrittenRef = useRef(false);
-  // The pre-apply snapshot, held for as long as the row is watching for the
-  // rest of the change to land.
-  const baselineRef = useRef<Map<string, string> | null>(null);
-  const watchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (watchTimerRef.current) clearTimeout(watchTimerRef.current);
-    },
-    []
-  );
-
-  useEffect(() => {
-    const previous = previousRef.current;
-    previousRef.current = labelByKey;
-
-    if (presetApply.count !== lastApplyCountRef.current) {
-      lastApplyCountRef.current = presetApply.count;
-      baselineRef.current = previous;
-      if (watchTimerRef.current) clearTimeout(watchTimerRef.current);
-      watchTimerRef.current = setTimeout(() => {
-        baselineRef.current = null;
-        replayedKeysRef.current = new Set();
-        cinemaWrittenRef.current = false;
-        watchTimerRef.current = null;
-      }, APPLY_WATCH_MS);
-      cinemaWrittenRef.current = presetApply.dimensions.includes("cinemas");
-
-      // Decided here and only here. A chip the preset wrote that is already on
-      // screen is on screen in this very commit — unlike an arrival, there is
-      // nothing still to land, so a later pass must not replay it again.
-      const written = chipKeysForDimensions(presetApply.dimensions);
-      const replayed = new Set(
-        [...labelByKey.keys()].filter((key) => written.has(key) && previous.has(key))
-      );
-      replayedKeysRef.current = replayed;
-      if (replayed.size > 0) {
-        setReplayNonces((current) => {
-          const next = new Map(current);
-          for (const key of replayed) next.set(key, (next.get(key) ?? 0) + 1);
-          return next;
-        });
-        // Batched with the bump, so the chip that remounts sees the row
-        // already holding movement back. Set a pass later and it would pick
-        // the undelayed entrance and come back while it was still leaving.
-        setIsReplayRunning(true);
-      }
-    }
-
-    const baseline = baselineRef.current;
-    if (!baseline) return;
-
-    // Arrivals: chips that were not in the row before this apply. The cinema
-    // pill is never one of them — it is always present, and answers a preset
-    // by resizing and morphing its label instead.
-    const arrived = new Set<string>();
-    for (const key of labelByKey.keys()) {
-      if (!baseline.has(key)) arrived.add(key);
-    }
-
-    // A chip the preset dropped needs no entry here: it simply stops being
-    // rendered, and its own exit animation carries it off screen.
-
-    // A replayed chip is tinted like an arrival: both are the preset saying
-    // "I set this", and the entrance they play is the same one.
-    const marked = new Set([...arrived, ...replayedKeysRef.current]);
-    // The pill never arrives and never replays — it is always there, and
-    // answers a preset by resizing and morphing its label. The tint is the one
-    // part of the language it does share.
-    if (cinemaWrittenRef.current) marked.add(CINEMA_PILL_KEY);
-
-    // Same reference back when nothing about the set changed, so a quiet pass
-    // inside the watch window costs no render.
-    setAddedKeys((current) => {
-      const same =
-        marked.size === current.size && [...marked].every((key) => current.has(key));
-      return same ? current : marked;
-    });
-  }, [presetApply, labelByKey]);
-
-  // The replay's own leaving-chip latch, so the rest of the row waits for it
-  // exactly as it waits for a real removal — and so the chip coming back waits
-  // for the copy of itself that is on its way out.
-  useEffect(() => {
-    if (replayNonces.size === 0) return;
-    const timer = setTimeout(() => setIsReplayRunning(false), CHIP_EXIT_MS);
-    return () => clearTimeout(timer);
-  }, [replayNonces]);
-
-  // Highlights and ghosts clear themselves; neither is state the row can be
-  // left holding if the user navigates away mid-animation.
-  useEffect(() => {
-    if (addedKeys.size === 0) return;
-    const timer = setTimeout(() => setAddedKeys(new Set()), CHANGE_HIGHLIGHT_MS);
-    return () => clearTimeout(timer);
-  }, [addedKeys]);
 
   // Don't render if there's nothing to show (no cinema chip and no filter chips)
   if (!onOpenFilters && orderedChips.length === 0) return null;
@@ -717,21 +775,21 @@ export default function ActiveFilterChips({
               onOpenFilters={onOpenFilters}
               onOpenCinemaModal={onOpenCinemaModal}
               disabled={cinemaFilterDisabled}
-              waitForExits={hasLeavingChip}
-              isNew={addedKeys.has(CINEMA_PILL_KEY)}
+              flashNonce={cinemaFlashNonce}
             />
           )}
           {orderedChips.map((chip) => (
             <ActiveFilterChip
-              // The nonce is what makes a replay happen at all: same chip,
-              // new identity, so React unmounts one and mounts the other.
+              // The nonce is what makes a re-assert happen at all: same chip,
+              // new identity, so one commit unmounts the old copy and mounts
+              // the new one further along the row.
               key={`${chip.key}#${replayNonces.get(chip.key) ?? 0}`}
               label={chip.label}
               icon={chip.icon}
               accessibilityLabel={chip.accessibilityLabel}
-              onRemove={chip.onRemove}
-              isNew={addedKeys.has(chip.key)}
-              waitForExits={hasLeavingChip}
+              onRemove={() => dismiss(chip)}
+              flashOnEnter={withinApplyWindow}
+              waitForBeatOne={beatOneRunning}
               onMeasureWidth={(width) => chipWidths.current.set(chip.key, width)}
             />
           ))}

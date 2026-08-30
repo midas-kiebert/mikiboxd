@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for (tabs) / movies. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   StyleSheet,
   FlatList,
@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import type { SearchField } from 'shared/client';
+import type { MovieSummaryPublic } from 'shared';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
 import { DateTime } from 'luxon';
@@ -39,6 +40,12 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import MovieCard from '@/components/movies/MovieCard';
+import {
+  byIdKeyExtractor,
+  FEED_RENDER_WINDOW,
+  MOVIES_FIRST_PAGE_LIMIT,
+  useScrollTriggeredLoadMore,
+} from '@/components/feeds/feed-paging';
 import { useIsSignedIn } from '@/utils/auth-session';
 import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
 
@@ -175,7 +182,13 @@ export default function MovieScreen() {
   );
 
   const { data: moviesData, isLoading, isFetchingNextPage, isFetching, hasNextPage, fetchNextPage } =
-    useFetchMovies({ limit: 15, snapshotTime, filters: movieFilters, enabled: isFocused });
+    useFetchMovies({
+      limit: 15,
+      firstPageLimit: MOVIES_FIRST_PAGE_LIMIT,
+      snapshotTime,
+      filters: movieFilters,
+      enabled: isFocused,
+    });
 
   const movies = moviesData?.pages.flat() || [];
 
@@ -188,9 +201,17 @@ export default function MovieScreen() {
     }
   };
 
-  const handleLoadMore = () => {
+  // One identity for the life of the list: a new `renderItem` re-renders every
+  // cell, which would undo `MovieCard`'s memo.
+  const openMovie = useCallback((movie: { id: number }) => goToMovie(movie.id), [goToMovie]);
+  const renderMovie = useCallback(
+    ({ item }: { item: MovieSummaryPublic }) => <MovieCard movie={item} onPress={openMovie} />,
+    [openMovie]
+  );
+
+  const loadMore = useScrollTriggeredLoadMore(() => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
-  };
+  });
 
   // Always mounted: the footer collapses instead of vanishing, so a loaded
   // page glides into place rather than snapping up a whole row.
@@ -299,16 +320,16 @@ export default function MovieScreen() {
 
       <FlatList
         data={visibleMovies}
-        renderItem={({ item }) => (
-          <MovieCard movie={item} onPress={(movie) => goToMovie(movie.id)} />
-        )}
-        keyExtractor={(item) => item.id.toString()}
+        renderItem={renderMovie}
+        keyExtractor={byIdKeyExtractor}
         contentContainerStyle={styles.movieFeed}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
-        onEndReached={handleLoadMore}
+        onScrollBeginDrag={loadMore.onScrollBeginDrag}
+        onEndReached={loadMore.onEndReached}
         onEndReachedThreshold={2}
+        {...FEED_RENDER_WINDOW}
         refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       />
     </TopSafeAreaView>

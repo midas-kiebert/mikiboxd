@@ -21,7 +21,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  BackHandler,
   Image,
   Keyboard,
   LayoutAnimation,
@@ -53,6 +52,7 @@ import {
   type MeGetCurrentUserResponse,
   type SentShowtimePingPublic,
   type ShowtimePublic,
+  type ShowtimeSeatAvailabilityPublic,
   type UserPublic,
   type VisibilityMode,
 } from "shared";
@@ -110,6 +110,7 @@ import { useSignInGate } from "@/components/auth/SignInGateProvider";
 import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
 import { EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
+import { useAndroidBackHandler } from "@/utils/android-back";
 import { Skeleton } from "@/components/ui/Skeleton";
 import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
 import { formatLanguageCode } from "@/utils/language";
@@ -324,7 +325,7 @@ export default function ShowtimeActionModal({
   // ShowtimeModalProvider's gate), and the screening itself — film, cinema,
   // time, ticket link — is public and unchanged.
   const isSignedIn = useIsSignedIn();
-  const { promptForAccount } = useSignInGate();
+  const { promptForAccount, requireAccount } = useSignInGate();
 
   // A guest sees the header, the status buttons and the ticket row — roughly
   // half of what a signed-in sheet holds — so it opens at half the height
@@ -502,14 +503,12 @@ export default function ShowtimeActionModal({
     presentTimeoutRef.current = setTimeout(presentSheet, PRESENT_CONTENT_TIMEOUT_MS);
   }, [visible, presentSheet]);
 
-  useEffect(() => {
-    if (!visible) return;
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      onClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [visible, onClose]);
+  // Shared stack, so a sheet opened from this one takes the press first — see
+  // `utils/android-back.ts`.
+  useAndroidBackHandler(visible, () => {
+    onClose();
+    return true;
+  });
 
   // Held in a ref so re-measuring depends on which target the tour is on, not
   // on the identity of the callback that receives it.
@@ -856,18 +855,60 @@ export default function ShowtimeActionModal({
   const seatCheckedLabelShort = seatAvailability
     ? formatCheckedAtShort(seatAvailability.checked_at)
     : null;
-  // A genuinely unknown reading — no level ever recorded, and none pending —
-  // as opposed to `seatAvailability` simply not having loaded yet. Only this
-  // settled "nothing to say" state gets the question-mark treatment; a query
-  // still in flight renders nothing until it resolves one way or the other.
-  const isSeatAvailabilityUnknown =
-    !seatMeta && !isCheckingSeatAvailability && seatAvailability !== undefined;
-  // Whether the card has a busyness reading (real, pending, or settled-unknown)
-  // to show at all. False only while the query is still loading, in which case
-  // a ticket link alone can still justify the card, but not a premature "we
-  // don't know" claim above it.
+  // Whether a seat count is readable here at all — a fact about the cinema's
+  // ticket shop, and false for most of them. It is what separates "we don't
+  // know yet" from "nobody will ever know": the latter gets no availability
+  // row, because a permanent shrug next to a real ticket link is worse than
+  // the card simply being the ticket (and seat) actions it can act on.
+  const isSeatTrackable = Boolean(seatAvailability?.trackable);
+  // ...and whether a first reading can still be asked for by hand. The server
+  // owns the rule (never read, nothing already on its way); the button just
+  // stops rendering when it goes false, including the moment the tap lands.
+  const canRequestSeatCheck = Boolean(seatAvailability?.can_request_check);
+  // Whether the card has a busyness reading (real, pending, or askable) to
+  // show at all. False while the query is still loading too, in which case a
+  // ticket link alone can still justify the card, but not a premature claim
+  // above it.
   const showSeatBusynessInfo =
-    isCheckingSeatAvailability || Boolean(seatMeta) || isSeatAvailabilityUnknown;
+    isCheckingSeatAvailability || Boolean(seatMeta) || isSeatTrackable;
+
+  const { mutate: requestSeatCheck } = useMutation({
+    mutationFn: (showtimeId: number) =>
+      ShowtimesService.requestSeatAvailabilityCheck({ showtimeId }),
+    onSuccess: (availability, showtimeId) => {
+      queryClient.setQueryData(
+        showtimeSeatAvailabilityQueryKey(showtimeId),
+        availability ?? null
+      );
+    },
+    onError: (_error, showtimeId) => {
+      // Nothing to roll back by hand: the optimistic "checking" below is only
+      // ever a guess at what the server is about to say, so re-asking it is
+      // both the undo and the retry.
+      queryClient.invalidateQueries({
+        queryKey: showtimeSeatAvailabilityQueryKey(showtimeId),
+      });
+    },
+  });
+
+  const handleRequestSeatCheck = useCallback(() => {
+    if (selectedShowtimeId === null) return;
+    if (!requireAccount("seats")) return;
+    triggerSelectionHaptic();
+    // Painted before the request, not after it: the reading itself takes a few
+    // seconds at the ticket shop, and a button that looks untouched for that
+    // long reads as broken. The server says the same thing back a moment later
+    // (the due time it writes is what `checking` is derived from), so this is
+    // the real answer arriving early rather than a placeholder for it.
+    queryClient.setQueryData<ShowtimeSeatAvailabilityPublic | null>(
+      showtimeSeatAvailabilityQueryKey(selectedShowtimeId),
+      (previous) =>
+        previous
+          ? { ...previous, checking: true, can_request_check: false }
+          : previous
+    );
+    requestSeatCheck(selectedShowtimeId);
+  }, [selectedShowtimeId, requireAccount, queryClient, requestSeatCheck]);
 
   // ─── Waiting for a returned ticket ─────────────────────────────────────────
   // The account either has this or it doesn't; there is no tier to show, no
@@ -1899,19 +1940,38 @@ export default function ShowtimeActionModal({
                     ) : null}
                   </TouchableOpacity>
                 ) : (
-                  // Genuinely unknown: no reading has ever come back and none
-                  // is pending, distinct from the "checking" state above,
-                  // which knows an answer is on its way. Only shown at all
-                  // because a ticket link still gives the card something to
-                  // do — otherwise this case renders nothing, same as before.
+                  // Readable here, just not read: no reading has come back and
+                  // none is pending. Distinct from the "checking" state above,
+                  // which knows an answer is on its way, and from a cinema we
+                  // cannot read at all, which never reaches this card. "Yet"
+                  // is the whole point of the wording — the count is one tap
+                  // away, and the tap is right next to it.
                   <View style={styles.seatInfoHeader}>
                     <View style={styles.seatInfoTextColumn}>
                       <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
-                      <ThemedText style={styles.seatInfoCheckedAt}>Not tracked</ThemedText>
+                      <ThemedText style={styles.seatInfoCheckedAt}>
+                        {canRequestSeatCheck ? "Not tracked yet" : "No count available"}
+                      </ThemedText>
                     </View>
-                    <View style={[styles.seatInfoValue, styles.seatInfoValueUnknown]}>
-                      <MaterialIcons name="help-outline" size={13} color={colors.textSecondary} />
-                    </View>
+                    {canRequestSeatCheck ? (
+                      <TouchableOpacity
+                        style={[styles.seatInfoValue, styles.seatInfoCheckButton]}
+                        onPress={handleRequestSeatCheck}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel="Check how many seats are left"
+                      >
+                        <MaterialIcons name="search" size={13} color={colors.tint} />
+                        <ThemedText style={styles.seatInfoCheckButtonText}>Check</ThemedText>
+                      </TouchableOpacity>
+                    ) : (
+                      // Read once, and the ticket shop had nothing usable to
+                      // say. Nothing to offer here — asking again is what the
+                      // poller is for.
+                      <View style={[styles.seatInfoValue, styles.seatInfoValueUnknown]}>
+                        <MaterialIcons name="help-outline" size={13} color={colors.textSecondary} />
+                      </View>
+                    )}
                   </View>
                 )}
                 {/* Get ticket first — it's an outside link, styled and
@@ -2728,6 +2788,20 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     // mistaken for a real (if pale) reading.
     seatInfoValueUnknown: {
       backgroundColor: colors.surfaceMuted,
+    },
+    // The one thing in this card that is an action rather than a reading, so
+    // it borrows the busyness pill's geometry (it sits in that column) but not
+    // its filled look: tint on the recessed surface, the same "tap me" the
+    // ticket row uses, with nothing that could pass for a level.
+    seatInfoCheckButton: {
+      backgroundColor: colors.checkboxBackground,
+      borderWidth: 1,
+      borderColor: colors.checkboxBorder,
+    },
+    seatInfoCheckButtonText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.tint,
     },
     seatInfoCheckingRow: {
       flexDirection: "row",

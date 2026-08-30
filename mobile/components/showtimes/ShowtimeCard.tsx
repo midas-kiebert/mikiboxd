@@ -2,7 +2,7 @@
  * Mobile showtimes feature component: Showtime Card.
  */
 import { Image, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
-import { useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { DateTime } from "luxon";
 import { useRouter } from "expo-router";
 import type { ShowtimePublic } from "shared";
@@ -29,6 +29,14 @@ type ShowtimeCardProps = {
 };
 
 const POSTER_HEIGHT = 112;
+const CARD_GAP = 16;
+/**
+ * What one row of the showtimes feed occupies, top to top. Fixed, because the
+ * card is: the poster sets its height and nothing inside can push it taller.
+ * Exported so a list can work out how many rows a screen holds without
+ * measuring one first — see `SHOWTIMES_FIRST_PAGE_LIMIT`.
+ */
+export const SHOWTIME_ROW_HEIGHT = POSTER_HEIGHT + CARD_GAP;
 const COMPACT_BADGE_ROW_HEIGHT = 14;
 const COMPACT_BADGE_ROW_GAP = 2;
 const COMPACT_BADGE_TOP_PADDING = 2;
@@ -48,7 +56,7 @@ const getCompactBadgeRowsForHeight = (height: number) => {
   return Math.max(1, Math.min(MAX_COMPACT_BADGE_ROWS, rows));
 };
 
-export default function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
+function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
   const goToMovie = useSingleFireNavigation((movieId: number) => router.push(`/movie/${movieId}`));
@@ -56,7 +64,11 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const [friendBadgeAreaHeight, setFriendBadgeAreaHeight] = useState(0);
   // Read the active theme color tokens used by this screen/component.
   const colors = useThemeColors();
-  const styles = createStyles(colors);
+  // Memoised, unlike most of the app's components: this one is rendered once
+  // per row of a feed, and `createStyles` builds some thirty style objects
+  // through `StyleSheet.create`. Thirty times twenty, on every render of the
+  // screen, is most of what made switching to a loaded tab take a moment.
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const date = DateTime.fromISO(showtime.datetime);
   const originalTitle =
     showtime.movie.original_title &&
@@ -224,7 +236,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
   const glowStyles = createShowtimeStatusGlowStyles(colors);
   return StyleSheet.create({
     cardGlow: {
-      marginBottom: 16,
+      marginBottom: CARD_GAP,
       borderRadius: 12,
       backgroundColor: colors.cardBackground,
     },
@@ -372,3 +384,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
   });
 };
+
+/**
+ * Memoised on purpose. A feed re-renders whenever its screen does — and a tab
+ * switch alone does that, twice, because `useIsFocused` changes on the screen
+ * being left and the one being arrived at. Without this, every visible card
+ * rebuilt itself for a change that concerned none of them.
+ *
+ * The props have to hold still for it to be worth anything: see the list, which
+ * keeps one `renderItem` and one set of handlers for its lifetime.
+ */
+export default memo(ShowtimeCard);

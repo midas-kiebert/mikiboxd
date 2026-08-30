@@ -169,6 +169,8 @@ import type {
   ShowtimesGetSeatAvailabilityBatchResponse,
   ShowtimesGetSeatAvailabilityData,
   ShowtimesGetSeatAvailabilityResponse,
+  ShowtimesRequestSeatAvailabilityCheckData,
+  ShowtimesRequestSeatAvailabilityCheckResponse,
   ShowtimesGetSoldOutWatchResponse,
   ShowtimesStopSoldOutWatchResponse,
   ShowtimesStartSoldOutWatchData,
@@ -2403,6 +2405,43 @@ export class ShowtimesService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/api/v1/showtimes/{showtime_id}/seat-availability",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Request Seat Availability Check
+   * Ask for this screening's first seat reading.
+   *
+   * From here on it is exactly the path selecting a showtime already takes: the
+   * read is queued for the poller, with every cap it has, and attempted straight
+   * away in the background under the same concurrency and per-host guards. What
+   * bounds it is `should_check_immediately` — true only for a showtime that has
+   * never been read at all — so a screening can cost at most one hand-requested
+   * request in its life, however many people tap the button.
+   *
+   * Signed in only. Reading the answer is public (see `get_seat_availability`);
+   * *causing* a request at a small cinema's ticket shop is not, and an account
+   * is what stops the button being an anonymous way to walk the catalogue.
+   *
+   * Already-read showtimes are not an error — the caller wanted a number and
+   * there is one, so it comes back as-is.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static requestSeatAvailabilityCheck(
+    data: ShowtimesRequestSeatAvailabilityCheckData,
+  ): CancelablePromise<ShowtimesRequestSeatAvailabilityCheckResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/showtimes/{showtime_id}/seat-availability/check",
       path: {
         showtime_id: data.showtimeId,
       },

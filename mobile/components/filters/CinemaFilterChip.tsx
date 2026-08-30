@@ -15,10 +15,8 @@ import { useIsSignedIn } from "@/utils/auth-session";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
 import MorphingChipLabel from "@/components/filters/MorphingChipLabel";
 import {
-  CHIP_EXIT_MS,
-  CHIP_LAYOUT_AFTER_EXIT,
   CHIP_LAYOUT_TRANSITION,
-  useAddedChipTint,
+  useImmediateFlashTint,
 } from "@/components/filters/filter-change-animation";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
@@ -40,16 +38,12 @@ type CinemaFilterChipProps = {
    */
   disabled?: boolean;
   /**
-   * True while other chips in the row are leaving. This pill resizes rather
-   * than moves, and a pill growing into the space of a chip that has not moved
-   * yet overlaps it, so it waits for the same moment they do.
+   * Bumped by the row every time a preset apply writes the cinemas — whether
+   * or not they moved. The pill flashes the same colour as the chips do, but
+   * on its own clock, starting at once: it is already on screen, so it has no
+   * arrival to wait for. See `useImmediateFlashTint`.
    */
-  waitForExits?: boolean;
-  /**
-   * True when a preset apply wrote the cinemas. Tints the pill exactly as the
-   * chips beside it are tinted, so one apply reads as one thing.
-   */
-  isNew?: boolean;
+  flashNonce?: number;
 };
 
 const DROPDOWN_WIDTH = 252;
@@ -80,17 +74,18 @@ export default function CinemaFilterChip({
   onOpenFilters,
   onOpenCinemaModal,
   disabled = false,
-  waitForExits = false,
-  isNew = false,
+  flashNonce = 0,
 }: CinemaFilterChipProps) {
   const colors = useThemeColors();
   const { openCinemaModal } = useFiltersModal();
   const styles = createStyles(colors);
 
   // One transition for the pill and everything inside it that has to travel
-  // with its edges.
-  const chipLayout = waitForExits ? CHIP_LAYOUT_AFTER_EXIT : CHIP_LAYOUT_TRANSITION;
-  const tintStyle = useAddedChipTint(isNew);
+  // with its edges, and no delay on it: the pill resizes in beat one, the beat
+  // that gives things up (see `filter-change-animation`), so it moves the
+  // moment the row does.
+  const chipLayout = CHIP_LAYOUT_TRANSITION;
+  const flashStyle = useImmediateFlashTint(flashNonce);
 
   const chipRef = useRef<View>(null);
   // Height captured from onLayout — always reliable, used as fallback when measure() returns 0.
@@ -106,26 +101,17 @@ export default function CinemaFilterChip({
   });
 
   /**
-   * Read when the dropdown closes rather than tracked as a dependency: it
-   * flips back partway through the very close it applies to, and re-running
-   * the timing then would restart the spin from where it had got to.
-   */
-  const waitForExitsRef = useRef(waitForExits);
-  waitForExitsRef.current = waitForExits;
-
-  /**
    * Started by whatever the caret is travelling with, at that thing's own
    * clock — never from an effect on `dropdownVisible`. The commit that flips
    * that flag is the one that mounts the dropdown and everything in it, and an
    * effect runs after it: the caret sat still through all of that work and
    * only began to turn once the list was already on screen.
    */
-  const spinCaret = (open: boolean, delay = 0) => {
+  const spinCaret = (open: boolean) => {
     caretRotation.stopAnimation();
     Animated.timing(caretRotation, {
       toValue: open ? 1 : 0,
       duration: CARET_SPIN_MS,
-      delay,
       easing: Easing.linear,
       useNativeDriver: true,
     }).start();
@@ -205,12 +191,7 @@ export default function CinemaFilterChip({
   const applyPreset = (ids: readonly number[]) => {
     triggerSelectionHaptic();
     setSessionCinemaIds(Array.from(ids));
-    // Not `closeDropdown`: this close rewrites the pill's label in the same
-    // commit, and when chips are leaving the pill holds that change back until
-    // they have gone. The caret waits with it, so the two still start together
-    // — only the spin itself keeps its own length.
-    spinCaret(false, waitForExitsRef.current ? CHIP_EXIT_MS : 0);
-    setDropdownVisible(false);
+    closeDropdown();
   };
 
   const handleOpenFilters = () => {
@@ -247,13 +228,12 @@ export default function CinemaFilterChip({
               width, and the chips after it slide by exactly as much over
               exactly as long, which is what keeps them off each other. */}
           <Reanimated.View
-            style={[styles.chip, disabled && styles.chipDisabled, tintStyle]}
+            style={[styles.chip, disabled && styles.chipDisabled, flashStyle]}
             layout={chipLayout}
           >
             <MorphingChipLabel
               label={label}
               style={[styles.chipLabel, disabled && styles.chipLabelDisabled]}
-              delayMs={waitForExits ? CHIP_EXIT_MS : 0}
             />
             {disabled ? null : (
               /*

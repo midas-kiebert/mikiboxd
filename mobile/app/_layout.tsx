@@ -47,6 +47,7 @@ import SignInNoticeHost from '@/components/auth/SignInNoticeHost';
 import { savePendingDeepLink, takePendingDeepLink } from '@/utils/pending-deep-link';
 import { getInstallReferrerPath } from '@/utils/install-referrer';
 import AppSplash, { SPLASH_FADE_DURATION_MS } from '@/components/layout/AppSplash';
+import ThemeSwitchOverlay from '@/components/layout/ThemeSwitchOverlay';
 import {
   displayPresetOrderQueryKey,
   displayPresetsQueryKey,
@@ -874,6 +875,10 @@ function RootLayourContent() {
           }}
         />
       )}
+      {/* Last child, so the curtain over a theme change covers everything the
+          re-render is visibly working through. Renders nothing until there is
+          a switch to cover. */}
+      <ThemeSwitchOverlay />
     </View>
   )
 }

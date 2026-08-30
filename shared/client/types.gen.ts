@@ -856,13 +856,18 @@ export type ShowtimeReportUpdate = {
  *
  * The same for everyone — this is a fact about the screening, not about who
  * asked — which is what lets it be cached per showtime and prefetched for a
- * whole list at once. A showtime with no usable reading and no read pending
- * is simply absent from the response rather than present with a null level,
- * so the client never has to tell "empty" from "unknown". A showtime whose
- * reading has not landed yet, but is expected soon, is the one exception: it
- * is present with `checking` set — with a level if it has ever had one, and
- * without if this is its first — so the client can say a number is coming
- * instead of showing nothing or a stale one with no explanation.
+ * whole list at once.
+ *
+ * A showtime is absent from the response only when there is nothing to say
+ * about it *and never will be*: no reading, none pending, and a ticket shop
+ * nothing here can read. That absence is what the client hides the whole
+ * "Available seats" block on, so it has to mean "not a thing here", not
+ * "not known yet" — the two get very different treatment, and a row of
+ * dashes where an answer never appears is worse than no row at all.
+ * Everything else comes back present: with a level once one has been read,
+ * with `checking` while one is on its way, and with neither (but
+ * `trackable` set) for a screening whose count could be read and has not
+ * been.
  */
 export type ShowtimeSeatAvailabilityPublic = {
   showtime_id: number
@@ -872,6 +877,8 @@ export type ShowtimeSeatAvailabilityPublic = {
   checked_at?: string | null
   watchable?: boolean
   checking?: boolean
+  trackable?: boolean
+  can_request_check?: boolean
 }
 
 export type ShowtimeSelectionUpdate = {
@@ -1968,6 +1975,13 @@ export type ShowtimesGetSeatAvailabilityData = {
 }
 
 export type ShowtimesGetSeatAvailabilityResponse =
+  ShowtimeSeatAvailabilityPublic | null
+
+export type ShowtimesRequestSeatAvailabilityCheckData = {
+  showtimeId: number
+}
+
+export type ShowtimesRequestSeatAvailabilityCheckResponse =
   ShowtimeSeatAvailabilityPublic | null
 
 export type ShowtimesGetSoldOutWatchResponse = SoldOutWatchPublic | null

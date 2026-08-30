@@ -15,6 +15,7 @@ from app.api.deps import (
     CurrentUser,
     CurrentViewer,
     SessionDep,
+    get_current_user,
     get_db_context,
 )
 from app.core.config import settings
@@ -425,6 +426,52 @@ def get_seat_availability(
 ) -> ShowtimeSeatAvailabilityPublic | None:
     # Unauthenticated — see get_seat_availability_batch above. Null means there
     # is no usable reading, which is a real answer and not an error.
+    return seat_availability_service.get_seat_availability(
+        session=session, showtime_id=showtime_id
+    )
+
+
+# Signed in only, but the handler has no use for *which* account it is — the
+# reading it asks for is the same public fact for everyone. Declared as a route
+# dependency rather than an unused parameter, same as the superuser-only routes.
+@router.post(
+    "/{showtime_id}/seat-availability/check",
+    response_model=ShowtimeSeatAvailabilityPublic | None,
+    dependencies=[Depends(get_current_user)],
+)
+def request_seat_availability_check(
+    *,
+    session: SessionDep,
+    background_tasks: BackgroundTasks,
+    showtime_id: int,
+) -> ShowtimeSeatAvailabilityPublic | None:
+    """Ask for this screening's first seat reading.
+
+    From here on it is exactly the path selecting a showtime already takes: the
+    read is queued for the poller, with every cap it has, and attempted straight
+    away in the background under the same concurrency and per-host guards. What
+    bounds it is `should_check_immediately` — true only for a showtime that has
+    never been read at all — so a screening can cost at most one hand-requested
+    request in its life, however many people tap the button.
+
+    Signed in only. Reading the answer is public (see `get_seat_availability`);
+    *causing* a request at a small cinema's ticket shop is not, and an account
+    is what stops the button being an anonymous way to walk the catalogue.
+
+    Already-read showtimes are not an error — the caller wanted a number and
+    there is one, so it comes back as-is.
+    """
+    if seat_availability_service.should_check_immediately(
+        session=session, showtime_id=showtime_id
+    ):
+        seat_availability_service.request_reading_on_interest(
+            session=session, showtime_id=showtime_id
+        )
+        # Committed before the response is built, so the availability returned
+        # below already reads as "checking" and the client can say so without
+        # waiting for its next poll.
+        session.commit()
+        background_tasks.add_task(_check_seat_availability_now, showtime_id)
     return seat_availability_service.get_seat_availability(
         session=session, showtime_id=showtime_id
     )

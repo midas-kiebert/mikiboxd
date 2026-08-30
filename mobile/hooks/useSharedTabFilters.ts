@@ -58,6 +58,7 @@ export function useSharedTabFilters() {
   const applyShowtimeFilterFrameRef = useRef<number | null>(null);
   const applyWatchlistOnlyFrameRef = useRef<number | null>(null);
   const applyHideWatchedFrameRef = useRef<number | null>(null);
+  const applyGroupByMovieFrameRef = useRef<number | null>(null);
 
   const { cinemaIds: sessionCinemaIds, setCinemaIds: setSessionCinemaIds } =
     useCinemaSelection();
@@ -75,7 +76,7 @@ export function useSharedTabFilters() {
     useSessionWatchlistOnly();
   const { selection: sessionHideWatched, setSelection: setSessionHideWatched } =
     useSessionHideWatched();
-  const { selection: groupByMovie, setSelection: setGroupByMovie } =
+  const { selection: sessionGroupByMovie, setSelection: setSessionGroupByMovie } =
     useSessionGroupByMovie();
   const { selections: sessionListIds, setSelections: setSessionListIds } =
     useSessionSelectedListIds();
@@ -98,6 +99,7 @@ export function useSharedTabFilters() {
   const initialShowtimeFilter = toSharedTabShowtimeFilter(sessionShowtimeFilter);
   const initialWatchlistOnly = Boolean(sessionWatchlistOnly);
   const initialHideWatched = Boolean(sessionHideWatched);
+  const initialGroupByMovie = Boolean(sessionGroupByMovie);
   const [selectedShowtimeFilter, setSelectedShowtimeFilterState] =
     useState<SharedTabShowtimeFilter>(initialShowtimeFilter);
   const [appliedShowtimeFilter, setAppliedShowtimeFilterState] =
@@ -106,6 +108,9 @@ export function useSharedTabFilters() {
   const [appliedWatchlistOnly, setAppliedWatchlistOnlyState] = useState<boolean>(initialWatchlistOnly);
   const [hideWatched, setHideWatchedState] = useState<boolean>(initialHideWatched);
   const [appliedHideWatched, setAppliedHideWatchedState] = useState<boolean>(initialHideWatched);
+  const [groupByMovie, setGroupByMovieState] = useState<boolean>(initialGroupByMovie);
+  const [appliedGroupByMovie, setAppliedGroupByMovieState] =
+    useState<boolean>(initialGroupByMovie);
   const selectedDays = sessionDays ?? EMPTY_DAYS;
   const selectedTimeRanges = normalizeSingleTimeRangeSelection(sessionTimeRanges ?? EMPTY_TIME_RANGES);
   const selectedRuntimeRanges = normalizeSingleRuntimeRangeSelection(
@@ -163,6 +168,27 @@ export function useSharedTabFilters() {
     [setSessionHideWatched]
   );
 
+  const setGroupByMovie = useCallback(
+    (next: boolean) => {
+      // Update chip visuals immediately, defer cache+query-facing state by one
+      // frame. This one buys more than the others do: the applied value picks
+      // which feed is mounted at all, so writing it in the tap's own commit
+      // tears one list down and builds the other in the frame the tap's
+      // animations are supposed to start in — which is exactly what a preset
+      // carrying "Group by movie" felt like.
+      setGroupByMovieState(next);
+      if (applyGroupByMovieFrameRef.current !== null) {
+        cancelAnimationFrame(applyGroupByMovieFrameRef.current);
+      }
+      applyGroupByMovieFrameRef.current = requestAnimationFrame(() => {
+        applyGroupByMovieFrameRef.current = null;
+        setAppliedGroupByMovieState(next);
+        setSessionGroupByMovie(next);
+      });
+    },
+    [setSessionGroupByMovie]
+  );
+
   const setSelectedTimeRanges = useCallback(
     (next: string[]) => {
       setSessionTimeRanges(normalizeSingleTimeRangeSelection(next));
@@ -195,6 +221,12 @@ export function useSharedTabFilters() {
     setAppliedHideWatchedState(normalized);
   }, [sessionHideWatched]);
 
+  useEffect(() => {
+    const normalized = Boolean(sessionGroupByMovie);
+    setGroupByMovieState(normalized);
+    setAppliedGroupByMovieState(normalized);
+  }, [sessionGroupByMovie]);
+
   useEffect(
     () => () => {
       if (applyShowtimeFilterFrameRef.current !== null) {
@@ -205,6 +237,9 @@ export function useSharedTabFilters() {
       }
       if (applyHideWatchedFrameRef.current !== null) {
         cancelAnimationFrame(applyHideWatchedFrameRef.current);
+      }
+      if (applyGroupByMovieFrameRef.current !== null) {
+        cancelAnimationFrame(applyGroupByMovieFrameRef.current);
       }
     },
     []
@@ -394,59 +429,74 @@ export function useSharedTabFilters() {
     watchedOnly,
     setWatchedOnly,
     groupByMovie,
+    appliedGroupByMovie,
     setGroupByMovie,
   };
 }
 
 /**
- * The current filter selection in the shape presets are built from, so callers
- * that only want to read it (save it, or ask whether anything is set) do not
- * each rebuild the mapping.
+ * The current filter selection in the shape presets are built from, for callers
+ * that only want to read it — the preset buttons asking whether they still have
+ * anything to do, and the tip that asks whether anything is set at all.
+ *
+ * Reads the session values directly rather than going through
+ * `useSharedTabFilters`, for two reasons. It is a commit faster: that hook
+ * mirrors each session value into local state so the *owner* of a setter can
+ * paint before the write lands, and an instance that owns no setters gets
+ * nothing from the mirror but the extra render it takes to catch up — which is
+ * the delay before a preset button lights back up when you remove a filter.
+ * And it is a great deal cheaper: `useSharedTabFilters` carries the favourite-
+ * preset query and the one-shot seeding effect, none of which a reader needs.
  */
 export function useCurrentFilterPresetState(): PageFilterPresetState {
-  const {
-    selectedShowtimeFilter,
-    watchlistOnly,
-    watchlistExclude,
-    hideWatched,
-    watchedOnly,
-    selectedListIds,
-    excludeListIds,
-    selectedDays,
-    selectedTimeRanges,
-    selectedRuntimeRanges,
-    groupByMovie,
-    selectedLanguages,
-  } = useSharedTabFilters();
+  const { selection: sessionShowtimeFilter } = useSessionShowtimeFilter();
+  const { selection: sessionWatchlistOnly } = useSessionWatchlistOnly();
+  const { selection: sessionWatchlistExclude } = useSessionWatchlistExclude();
+  const { selection: sessionHideWatched } = useSessionHideWatched();
+  const { selection: sessionWatchedOnly } = useSessionWatchedOnly();
+  const { selection: sessionGroupByMovie } = useSessionGroupByMovie();
+  const { selections: sessionListIds } = useSessionSelectedListIds();
+  const { selections: sessionExcludeListIds } = useSessionExcludeListIds();
+  const { selections: sessionDays } = useSessionDaySelections();
+  const { selections: sessionTimeRanges } = useSessionTimeRangeSelections();
+  const { selections: sessionRuntimeRanges } = useSessionRuntimeRangeSelections();
+  const { selections: sessionLanguages } = useSessionLanguageSelections();
 
   return useMemo(
     () => ({
-      selected_showtime_filter: selectedShowtimeFilter,
-      watchlist_only: watchlistOnly,
-      watchlist_exclude: watchlistExclude,
-      hide_watched: hideWatched,
-      watched_only: watchedOnly,
-      selected_list_ids: [...selectedListIds],
-      exclude_list_ids: [...excludeListIds],
-      days: [...selectedDays],
-      time_ranges: [...selectedTimeRanges],
-      runtime_ranges: [...selectedRuntimeRanges],
-      group_by_movie: groupByMovie,
-      selected_languages: [...selectedLanguages],
+      selected_showtime_filter: toSharedTabShowtimeFilter(sessionShowtimeFilter),
+      watchlist_only: Boolean(sessionWatchlistOnly),
+      watchlist_exclude: Boolean(sessionWatchlistExclude),
+      hide_watched: Boolean(sessionHideWatched),
+      watched_only: Boolean(sessionWatchedOnly),
+      selected_list_ids: [...(sessionListIds ?? EMPTY_LIST_IDS)],
+      exclude_list_ids: [...(sessionExcludeListIds ?? EMPTY_LIST_IDS)],
+      days: [...(sessionDays ?? EMPTY_DAYS)],
+      // Normalised exactly as `useSharedTabFilters` normalises them, or the
+      // same selection would serialise two ways and a preset would read as
+      // changing something it does not.
+      time_ranges: normalizeSingleTimeRangeSelection(
+        sessionTimeRanges ?? EMPTY_TIME_RANGES
+      ),
+      runtime_ranges: normalizeSingleRuntimeRangeSelection(
+        sessionRuntimeRanges ?? EMPTY_RUNTIME_RANGES
+      ),
+      group_by_movie: Boolean(sessionGroupByMovie),
+      selected_languages: [...(sessionLanguages ?? EMPTY_LANGUAGES)],
     }),
     [
-      selectedShowtimeFilter,
-      watchlistOnly,
-      watchlistExclude,
-      hideWatched,
-      watchedOnly,
-      selectedListIds,
-      excludeListIds,
-      selectedDays,
-      selectedTimeRanges,
-      selectedRuntimeRanges,
-      groupByMovie,
-      selectedLanguages,
+      sessionShowtimeFilter,
+      sessionWatchlistOnly,
+      sessionWatchlistExclude,
+      sessionHideWatched,
+      sessionWatchedOnly,
+      sessionGroupByMovie,
+      sessionListIds,
+      sessionExcludeListIds,
+      sessionDays,
+      sessionTimeRanges,
+      sessionRuntimeRanges,
+      sessionLanguages,
     ]
   );
 }

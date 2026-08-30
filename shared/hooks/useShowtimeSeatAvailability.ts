@@ -9,10 +9,12 @@
  *
  * Two things differ from the visibility hook. The answer is the same for
  * everyone, so it survives signing in and out and does not need refetching on
- * either. And a showtime with no usable reading is *absent* from the response
- * rather than present-with-nulls, so an id that came back empty is cached as
- * `null` explicitly — otherwise every row we know nothing about would be
- * re-requested for ever.
+ * either. And a showtime at a cinema whose seat counts cannot be read at all
+ * is *absent* from the response rather than present-with-nulls, so an id that
+ * came back empty is cached as `null` explicitly — otherwise every row we will
+ * never know anything about would be re-requested for ever. A showtime that
+ * simply has not been read yet is not that case: it comes back present, with
+ * `trackable` set, because the sheet offers to go and read it.
  */
 import { useEffect } from "react";
 import {

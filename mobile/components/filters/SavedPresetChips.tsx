@@ -6,14 +6,17 @@
  * selection pills they sit next to:
  *   - they are squared (`PRESET_BUTTON_RADIUS`) where every stateful pill/chip
  *     in the filter rows is fully rounded, and
- *   - a tap tints and pops the button and then settles back (see
- *     `PresetButton`), because an action that leaves no trace where it was
- *     tapped is indistinguishable from a toggle that failed.
- * The one exception, and it is a deliberate one: a preset with nothing left
- * to do holds the same green its own tap animation flashes, and stops
- * responding to a press. It is not selection state — nothing is toggled on and
- * there is nothing to toggle off — it is the button saying the work is already
- * done, which is why it goes as soon as a filter changes under it.
+ *   - a tap pops the button and then settles back (see `PresetButton`),
+ *     because an action that leaves no trace where it was tapped is
+ *     indistinguishable from a toggle that failed.
+ * A preset with nothing left to do fades back instead, and stops responding to
+ * a press. That is not selection state — nothing is toggled on and there is
+ * nothing to toggle off — it is the button saying the work is already done,
+ * which is why it comes back as soon as a filter changes under it.
+ *
+ * The button answers its own tap, in the frame it is tapped. The flash on the
+ * chips it changed is a separate, later thing, owned by the active-filter row
+ * — nothing here has to know about it.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
@@ -24,6 +27,7 @@ import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import {
   controlledPresetDimensions,
+  presetChangesCinemas,
   presetChangesNothing,
   type DisplayPreset,
   type PresetApplyContext,
@@ -35,7 +39,6 @@ import {
   announcePresetApplied,
   usePresetApply,
 } from "@/components/filters/preset-apply-signal";
-import { serializeFilters } from "@/components/filters/filter-preset-utils";
 import PresetButton from "@/components/filters/PresetButton";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
@@ -52,13 +55,18 @@ import useTrackEvent from "shared/hooks/useTrackEvent";
 const SKELETON_CHIP_WIDTHS = [78, 96, 64];
 
 /**
- * How long after an apply the row waits before reading the filters back.
+ * How long a tapped preset goes on showing the result of its own tap before
+ * the row starts asking whether it still has anything to do.
  *
- * Not every setter lands in the apply's own commit — the status, watchlist and
- * hide-watched ones defer their write by a frame on purpose (see
- * `useSharedTabFilters`), so the state read straight afterwards is the state
- * before the apply for those three. The button stays lit until this is up
- * regardless, and only then is what it was applied over recorded.
+ * Not every setter lands in the apply's own commit — status, watchlist,
+ * hide-watched and group-by-movie all defer their write by a frame on purpose
+ * (see `useSharedTabFilters`), and on a slow device the rest can spread over a
+ * few more. Asked during that, the honest answer is "some of it", which would
+ * flicker the button back on and off again.
+ *
+ * Generous rather than measured, and deliberately not extended by anything
+ * that happens during it: what it buys is a moment of quiet, and everything
+ * after it is answered live.
  */
 const APPLY_SETTLE_MS = 350;
 
@@ -89,46 +97,41 @@ export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
    * anything has moved since a preset was applied, and a cinema change is a
    * change.
    */
-  const filterSignature = useMemo(
-    () =>
-      `${serializeFilters(currentFilters)}|${Array.from(
-        new Set(sessionCinemaIds ?? preferredCinemaIds ?? [])
-      )
-        .sort((left, right) => left - right)
-        .join(",")}`,
-    [currentFilters, sessionCinemaIds, preferredCinemaIds]
-  );
-  const signatureRef = useRef(filterSignature);
-  signatureRef.current = filterSignature;
-
   /**
-   * The preset the row is currently showing the result of, and the filters it
-   * left behind. `signature: null` means the apply is still settling, and the
-   * button stays lit through it.
+   * The preset whose apply is still landing, if any.
    *
-   * This is the half of "nothing left to do" that does not have to predict
-   * anything: whatever a preset did, it did it, and until something moves it
-   * would do exactly the same again.
+   * A hold, and nothing more: while it is set, that one button stays showing
+   * the result of its own tap rather than being asked whether it has anything
+   * left to do. Not every setter lands in the apply's own commit, so for a
+   * moment afterwards the honest answer is "some of it".
+   *
+   * It used to also record the filters the apply left behind, and go on
+   * claiming the preset was satisfied for as long as they were unchanged. That
+   * cannot be made safe: the snapshot is taken after the apply has settled, so
+   * anything the user did in between — clearing the filters, say — was
+   * recorded as the preset's own result, and the button stayed disabled until
+   * something else moved. Once the hold is up, `presetChangesNothing` answers
+   * for the button, which is a live question and cannot get stuck.
    */
-  const [lastApplied, setLastApplied] = useState<{
-    id: string;
-    signature: string | null;
-  } | null>(null);
+  const [settlingPresetId, setSettlingPresetId] = useState<string | null>(null);
   const presetApply = usePresetApply();
   const seenApplyCountRef = useRef(presetApply.count);
+
   useEffect(() => {
     if (presetApply.count === seenApplyCountRef.current) return;
     seenApplyCountRef.current = presetApply.count;
     const { presetId } = presetApply;
     if (!presetId) return;
-    setLastApplied({ id: presetId, signature: null });
+    setSettlingPresetId(presetId);
+    // From the tap, and not restarted by anything: the hold only has to
+    // outlast the apply's own writes, and a hold that a later edit could
+    // extend is a button that a later edit could freeze.
     const timer = setTimeout(() => {
-      setLastApplied({ id: presetId, signature: signatureRef.current });
+      setSettlingPresetId((current) => (current === presetId ? null : current));
       if (__DEV__) {
         // A preset that was just applied must, by definition, have nothing
         // left to do. If the prediction disagrees, it is the prediction that
-        // is wrong, and this says which fields it got wrong — the button is
-        // lit either way, by the branch above.
+        // is wrong, and this says which fields it got wrong.
         const applied = presetsRef.current.find((preset) => preset.id === presetId);
         if (applied && !presetChangesNothing(applied, applyContextRef.current)) {
           console.warn(
@@ -165,7 +168,13 @@ export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
   // land in one commit, which is what lets them diff against what was there.
   const handleApply = (preset: DisplayPreset) => {
     // What the preset writes, not what changes: the chips work out the rest.
-    announcePresetApplied(controlledPresetDimensions(preset), preset.id);
+    // The cinemas are the exception, and have to be answered here — see the
+    // signal's `cinemasChanged`.
+    announcePresetApplied(
+      controlledPresetDimensions(preset),
+      preset.id,
+      presetChangesCinemas(preset, applyContext)
+    );
     onApply(preset);
     trackEvent("preset_used");
   };
@@ -199,8 +208,7 @@ export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
       presets={presets}
       isLoading={isLoading}
       applyContext={applyContext}
-      filterSignature={filterSignature}
-      lastApplied={lastApplied}
+      settlingPresetId={settlingPresetId}
       onApply={handleApply}
       onLongPress={confirmDelete}
       styles={styles}
@@ -213,8 +221,7 @@ function ChipsScroll({
   presets,
   isLoading,
   applyContext,
-  filterSignature,
-  lastApplied,
+  settlingPresetId,
   onApply,
   onLongPress,
   styles,
@@ -223,8 +230,7 @@ function ChipsScroll({
   presets: DisplayPreset[];
   isLoading: boolean;
   applyContext: PresetApplyContext;
-  filterSignature: string;
-  lastApplied: { id: string; signature: string | null } | null;
+  settlingPresetId: string | null;
   onApply: (preset: DisplayPreset) => void;
   onLongPress: (preset: DisplayPreset) => void;
   styles: ReturnType<typeof createStyles>;
@@ -266,14 +272,13 @@ function ChipsScroll({
             preset={preset}
             // Two ways to have nothing to do, and either will do. The first
             // holds for a preset the user never touched — they narrowed the
-            // filters by hand until one of them matched. The second needs no
-            // prediction at all: this is the preset the row is showing, and
-            // nothing has moved since.
+            // filters by hand until one of them matched. The second is the
+            // apply still landing: for that moment the button shows the result
+            // of its own tap rather than being asked a question the filters
+            // cannot answer yet.
             isSatisfied={
               presetChangesNothing(preset, applyContext) ||
-              (lastApplied?.id === preset.id &&
-                (lastApplied.signature === null ||
-                  lastApplied.signature === filterSignature))
+              settlingPresetId === preset.id
             }
             onApply={onApply}
             onLongPress={onLongPress}

@@ -10,7 +10,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Animated,
-  BackHandler,
   Easing,
   LayoutChangeEvent,
   Modal,
@@ -28,6 +27,7 @@ import { useIsFocused } from "@react-navigation/native";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useAndroidBackHandler } from "@/utils/android-back";
 import { useIsSignedIn } from "@/utils/auth-session";
 import type { SearchField } from "shared/client";
 
@@ -79,16 +79,14 @@ type SearchBarProps = {
 function AndroidBackClear({ onClear }: { onClear: () => void }) {
   const isFocused = useIsFocused();
 
-  useEffect(() => {
-    if (!isFocused) return;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      onClear();
-      // Handled: the press is spent on the field, and the next one — with
-      // nothing left to clear — navigates as usual.
-      return true;
-    });
-    return () => subscription.remove();
-  }, [isFocused, onClear]);
+  // Shared stack, so a sheet opened over the screen still wins the press even
+  // though this subscribed first — see `utils/android-back.ts`.
+  useAndroidBackHandler(isFocused, () => {
+    onClear();
+    // Handled: the press is spent on the field, and the next one — with
+    // nothing left to clear — navigates as usual.
+    return true;
+  });
 
   return null;
 }

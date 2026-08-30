@@ -282,6 +282,22 @@ const sortedIds = (ids: readonly number[]): string =>
     .join(",");
 
 /**
+ * Whether applying this preset would move the cinema selection.
+ *
+ * Its own predicate because the cinema pill is the one dimension with no chip:
+ * the filter row can watch every other change land as a chip arriving or
+ * leaving, but a preset that writes the cinemas it is already on looks from
+ * there exactly like one that skipped them — and the row has to tell those
+ * apart, because only one of them has anything to animate.
+ */
+export const presetChangesCinemas = (
+  preset: DisplayPreset,
+  context: PresetApplyContext
+): boolean =>
+  preset.cinemaIds != null &&
+  sortedIds(preset.cinemaIds) !== sortedIds(context.currentCinemaIds);
+
+/**
  * Whether applying this preset would leave everything exactly as it is.
  *
  * Compared through `serializeFilters` rather than field by field, so that a
@@ -292,7 +308,7 @@ export const presetChangesNothing = (
   preset: DisplayPreset,
   context: PresetApplyContext
 ): boolean => {
-  if (preset.cinemaIds && sortedIds(preset.cinemaIds) !== sortedIds(context.currentCinemaIds)) {
+  if (presetChangesCinemas(preset, context)) {
     return false;
   }
   return (

@@ -23,6 +23,11 @@ import FilterPills, {
   type FilterPillLongPressPosition,
 } from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
+import {
+  byIdKeyExtractor,
+  FEED_RENDER_WINDOW,
+  useScrollTriggeredLoadMore,
+} from "@/components/feeds/feed-paging";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { tabletCappedContentStyle } from "@/constants/tablet-layout";
@@ -90,6 +95,21 @@ export function ShowtimesListContent({
   // reaching the bottom never changes the layout under the user's scroll.
   const renderFooter = () => <LoadMoreFooter loading={isFetchingNextPage} />;
 
+  // One identity each, for the life of the list. A `FlatList` re-renders every
+  // cell when `renderItem` changes, which undoes `ShowtimeCard`'s memo — and
+  // the whole point of the memo is that a tab switch, which re-renders this
+  // screen for no reason the cards care about, costs nothing.
+  const openModal = React.useCallback(
+    (showtime: ShowtimePublic) => openShowtimeModal(showtime, openModalOptions),
+    [openShowtimeModal, openModalOptions]
+  );
+  const renderItem = React.useCallback(
+    ({ item }: { item: ShowtimePublic }) => (
+      <ShowtimeCard showtime={item} onPress={openModal} onLongPress={goToMovieFromLongPress} />
+    ),
+    [openModal, goToMovieFromLongPress]
+  );
+
   const renderEmpty = () => {
     if (isLoading || isFetching || refreshing) {
       // Skeleton cards (rather than a lone spinner) so the list keeps its shape
@@ -115,18 +135,16 @@ export function ShowtimesListContent({
   // happened. The fresh data renders the moment `refreshing` flips back to false.
   const data = refreshing ? [] : showtimes;
 
+  const loadMore = useScrollTriggeredLoadMore(() => {
+    if (hasNextPage && !isFetchingNextPage) onLoadMore();
+  });
+
   return (
     <View style={styles.container}>
       <FlatList
         data={data}
-        renderItem={({ item }) => (
-          <ShowtimeCard
-            showtime={item}
-            onPress={(showtime) => openShowtimeModal(showtime, openModalOptions)}
-            onLongPress={goToMovieFromLongPress}
-          />
-        )}
-        keyExtractor={(item) => item.id.toString()}
+        renderItem={renderItem}
+        keyExtractor={byIdKeyExtractor}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
@@ -134,10 +152,10 @@ export function ShowtimesListContent({
         }
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
-        onEndReached={() => {
-          if (hasNextPage && !isFetchingNextPage) onLoadMore();
-        }}
+        onScrollBeginDrag={loadMore.onScrollBeginDrag}
+        onEndReached={loadMore.onEndReached}
         onEndReachedThreshold={2}
+        {...FEED_RENDER_WINDOW}
         refreshing={isLoading}
         refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />

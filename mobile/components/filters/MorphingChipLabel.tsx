@@ -24,7 +24,6 @@
 import { useMemo, useRef, useState } from "react";
 import { StyleSheet, View, type StyleProp, type TextStyle } from "react-native";
 import Animated, {
-  withDelay,
   withTiming,
   type EntryExitAnimationFunction,
 } from "react-native-reanimated";
@@ -42,7 +41,7 @@ import {
  * makes this flash-free.
  */
 const makeIncoming =
-  (delayMs: number, direction: number): EntryExitAnimationFunction =>
+  (direction: number): EntryExitAnimationFunction =>
   () => {
     "worklet";
     return {
@@ -51,16 +50,13 @@ const makeIncoming =
         transform: [{ translateX: LABEL_MORPH_SHIFT * direction }],
       },
       animations: {
-        opacity: withDelay(
-          delayMs,
-          withTiming(1, { duration: LABEL_MORPH_MS, easing: LABEL_MORPH_EASING })
-        ),
+        opacity: withTiming(1, { duration: LABEL_MORPH_MS, easing: LABEL_MORPH_EASING }),
         transform: [
           {
-            translateX: withDelay(
-              delayMs,
-              withTiming(0, { duration: LABEL_MORPH_MS, easing: LABEL_MORPH_EASING })
-            ),
+            translateX: withTiming(0, {
+              duration: LABEL_MORPH_MS,
+              easing: LABEL_MORPH_EASING,
+            }),
           },
         ],
       },
@@ -73,25 +69,19 @@ const makeIncoming =
  * style it will hold afterwards, which is why that style is `opacity: 0`.
  */
 const makeOutgoing =
-  (delayMs: number, direction: number): EntryExitAnimationFunction =>
+  (direction: number): EntryExitAnimationFunction =>
   () => {
     "worklet";
     return {
       initialValues: { opacity: 1, transform: [{ translateX: 0 }] },
       animations: {
-        opacity: withDelay(
-          delayMs,
-          withTiming(0, { duration: LABEL_MORPH_MS, easing: LABEL_MORPH_EASING })
-        ),
+        opacity: withTiming(0, { duration: LABEL_MORPH_MS, easing: LABEL_MORPH_EASING }),
         transform: [
           {
-            translateX: withDelay(
-              delayMs,
-              withTiming(-LABEL_MORPH_SHIFT * direction, {
-                duration: LABEL_MORPH_MS,
-                easing: LABEL_MORPH_EASING,
-              })
-            ),
+            translateX: withTiming(-LABEL_MORPH_SHIFT * direction, {
+              duration: LABEL_MORPH_MS,
+              easing: LABEL_MORPH_EASING,
+            }),
           },
         ],
       },
@@ -101,12 +91,6 @@ const makeOutgoing =
 type MorphingChipLabelProps = {
   label: string;
   style?: StyleProp<TextStyle>;
-  /**
-   * Held back by exactly what holds the chip's own resize back, so the text and
-   * the box it lives in start and finish together. Anything else reads as the
-   * pill lagging behind its label.
-   */
-  delayMs?: number;
 };
 
 type LabelSwap = {
@@ -126,11 +110,7 @@ type LabelSwap = {
   count: number;
 };
 
-export default function MorphingChipLabel({
-  label,
-  style,
-  delayMs = 0,
-}: MorphingChipLabelProps) {
+export default function MorphingChipLabel({ label, style }: MorphingChipLabelProps) {
   const [swap, setSwap] = useState<LabelSwap>(() => ({
     displayed: label,
     outgoing: null,
@@ -144,9 +124,8 @@ export default function MorphingChipLabel({
 
   // Taken during render rather than in an effect, so the new text — and the
   // width the chip wants for it — reaches the same commit as whatever changed
-  // it. Deferring by a frame put the chip's resize in a commit of its own,
-  // after the row had stopped holding movement back for chips that were still
-  // animating away, and the two collided.
+  // it. Deferring by a frame put the chip's resize in a commit of its own, a
+  // frame after everything else in beat one had started moving.
   if (swap.displayed !== label) {
     setSwap((previous) => ({
       displayed: label,
@@ -164,8 +143,8 @@ export default function MorphingChipLabel({
 
   // Stable across renders that change nothing about the swap, so a re-render
   // for some other reason never looks like a new animation to Reanimated.
-  const incoming = useMemo(() => makeIncoming(delayMs, direction), [delayMs, direction]);
-  const leaving = useMemo(() => makeOutgoing(delayMs, direction), [delayMs, direction]);
+  const incoming = useMemo(() => makeIncoming(direction), [direction]);
+  const leaving = useMemo(() => makeOutgoing(direction), [direction]);
 
   return (
     <View style={styles.slot}>

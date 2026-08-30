@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from sqlalchemy import Column
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -39,7 +40,21 @@ class CinemaRoomFloorPlan(SQLModel, table=True):
     )
     room: str = Field(primary_key=True, max_length=255)
     seats: list[dict] = Field(sa_column=Column(JSONB, nullable=False))
+    # Stores the lowercase enum *value* ("top"), not the Python name ("TOP"),
+    # the same way `Cinema.seating` does — SQLAlchemy's default Enum mapping
+    # uses the name, and the column is a plain VARCHAR the migration fills
+    # with 'top'.
     screen_side: ScreenSide = Field(
-        default=ScreenSide.TOP, max_length=10, nullable=False
+        sa_column=Column(
+            SAEnum(
+                ScreenSide,
+                native_enum=False,
+                length=10,
+                values_callable=lambda enum: [m.value for m in enum],
+            ),
+            nullable=False,
+            server_default=ScreenSide.TOP.value,
+        ),
+        default=ScreenSide.TOP,
     )
     fetched_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)

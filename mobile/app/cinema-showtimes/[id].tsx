@@ -26,12 +26,14 @@ import MovieCard from "@/components/movies/MovieCard";
 import type { MovieSummaryPublic } from "shared";
 import {
   byIdKeyExtractor,
-  FEED_RENDER_WINDOW,
   MOVIES_FIRST_PAGE_LIMIT,
   SHOWTIMES_FIRST_PAGE_LIMIT,
   useScrollTriggeredLoadMore,
 } from "@/components/feeds/feed-paging";
-import { SkeletonRows } from "@/components/ui/SkeletonRows";
+import ListLoadingLogo from "@/components/layout/ListLoadingLogo";
+import { useDelayedTrue } from "@/hooks/useDelayedTrue";
+import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from "@/constants/loading-logo";
+import { FeedItemEntrance } from "@/components/ui/FeedItemEntrance";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { ThemedText } from "@/components/themed-text";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
@@ -423,8 +425,10 @@ function CinemaShowtimesContent({
     [goToMovieFromCard]
   );
   const renderMovie = useCallback(
-    ({ item }: { item: MovieSummaryPublic }) => (
-      <MovieCard movie={item} onPress={openMovie} showCinema={false} />
+    ({ item, index }: { item: MovieSummaryPublic; index: number }) => (
+      <FeedItemEntrance index={index}>
+        <MovieCard movie={item} onPress={openMovie} showCinema={false} />
+      </FeedItemEntrance>
     ),
     [openMovie]
   );
@@ -485,35 +489,68 @@ function CinemaShowtimesContent({
   const isFetching = appliedGroupByMovie ? moviesFetching : showtimesFetching;
   const resultCount = appliedGroupByMovie ? movies.length : showtimes.length;
 
-  // Clear the list while refreshing so pull-to-refresh visibly reloads, even
-  // when the refetched data is unchanged.
-  const visibleMovies = refreshing ? [] : movies;
+  // Pull-to-refresh no longer clears the list: RefreshControl's own spinner
+  // at the top already says a reload is happening, so the old cards just
+  // stay up and get swapped for the fresh ones once they land — no separate
+  // "reload" state needed, and nothing for the loading panel to do here.
+  const visibleMovies = movies;
+
+  // `moviesLoading` means there's no cached data at all for this query —
+  // nothing to lose by showing the panel immediately, and a delay here is
+  // exactly the "blank screen for too long" a genuine first load (or a
+  // filter combo that's never been fetched before) doesn't need.
+  // `moviesFetching`-only (data already empty, but a background refetch is
+  // running) is the case that can resolve from cache almost instantly, so
+  // that one keeps the anti-flash delay and cooldown. `!refreshing` on both:
+  // RefreshControl's own spinner already covers a pull-to-refresh, so the
+  // panel has nothing to do for one even on an already-empty list.
+  const isMoviesFirstLoadEmpty = moviesLoading && !refreshing && movies.length === 0;
+  const isMoviesBackgroundFetchEmpty =
+    moviesFetching && !moviesLoading && !refreshing && movies.length === 0;
+  const showMoviesBackgroundFetchLoadingLogo = useDelayedTrue(
+    isMoviesBackgroundFetchEmpty,
+    LOADING_LOGO_DELAY_MS,
+    LOADING_LOGO_COOLDOWN_MS
+  );
+  const showMoviesLoadingLogo = isMoviesFirstLoadEmpty || showMoviesBackgroundFetchLoadingLogo;
+  const isMoviesEmptyLoading = isMoviesFirstLoadEmpty || isMoviesBackgroundFetchEmpty;
 
   const moviesContent = appliedGroupByMovie ? (
-    <FlatList
-      style={styles.flex}
-      data={visibleMovies}
-      renderItem={renderMovie}
-      keyExtractor={byIdKeyExtractor}
-      contentContainerStyle={styles.movieFeed}
-      showsVerticalScrollIndicator={false}
-      ListEmptyComponent={
-        moviesLoading || moviesFetching || refreshing ? (
-          <SkeletonRows height={150} />
-        ) : (
-          <View style={styles.centerContainer}>
-            <ThemedText style={styles.emptyText}>No movies found</ThemedText>
-            {searchFieldFallback}
-          </View>
-        )
-      }
-      ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} size="small" />}
-      onScrollBeginDrag={loadMoreMovies.onScrollBeginDrag}
-      onEndReached={loadMoreMovies.onEndReached}
-      onEndReachedThreshold={2}
-      {...FEED_RENDER_WINDOW}
-      refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-    />
+    <View style={styles.flex}>
+      <FlatList
+        style={styles.flex}
+        data={visibleMovies}
+        renderItem={renderMovie}
+        keyExtractor={byIdKeyExtractor}
+        contentContainerStyle={styles.movieFeed}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          // The loading panel is a fixed overlay (below), not part of the
+          // list's own content, so there's nothing to render here while it's up.
+          isMoviesEmptyLoading ? null : (
+            <View style={styles.centerContainer}>
+              <ThemedText style={styles.emptyText}>No movies found</ThemedText>
+              {searchFieldFallback}
+            </View>
+          )
+        }
+        ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} size="small" />}
+        onScrollBeginDrag={loadMoreMovies.onScrollBeginDrag}
+        onEndReached={loadMoreMovies.onEndReached}
+        onEndReachedThreshold={2}
+        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      />
+      {/* An overlay, not the list's ListEmptyComponent: that content scrolls
+          and shifts with RefreshControl's pull, which read as the logo
+          drifting down the screen. Sitting outside the FlatList keeps it
+          fixed in place and (via pointerEvents="none") never intercepts the
+          pull-to-refresh gesture underneath it. */}
+      {showMoviesLoadingLogo ? (
+        <View style={styles.loadingOverlay} pointerEvents="none">
+          <ListLoadingLogo />
+        </View>
+      ) : null}
+    </View>
   ) : undefined;
 
   return (
@@ -617,6 +654,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
   StyleSheet.create({
     flex: { flex: 1 },
     movieFeed: { padding: 16 },
+    loadingOverlay: { ...StyleSheet.absoluteFillObject },
     centerContainer: { paddingVertical: 40, alignItems: "center" },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });

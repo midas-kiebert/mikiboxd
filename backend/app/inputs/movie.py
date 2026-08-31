@@ -35,6 +35,9 @@ class Filters(BaseModel):
     runtime_min: int | None = None
     runtime_max: int | None = None
     selected_statuses: list[GoingStatus] | None = None
+    # Narrows `selected_statuses` to friends' selections only, dropping the
+    # viewer's own — for a feed about what *other people* are doing.
+    friends_only: bool = False
     selected_languages: list[Language] | None = None
 
 
@@ -94,6 +97,13 @@ def get_filters(
             description="Filter by selection statuses (GOING/INTERESTED)",
         ),
     ] = None,
+    friends_only: Annotated[
+        bool,
+        Query(
+            alias="friends_only",
+            description="With selected_statuses, match only friends' selections, not the viewer's own",
+        ),
+    ] = False,
     selected_list_ids: Annotated[
         list[UUID] | None,
         Query(
@@ -170,6 +180,7 @@ def get_filters(
         runtime_min=runtime_min,
         runtime_max=runtime_max,
         selected_statuses=selected_statuses,
+        friends_only=friends_only,
         list_ids=selected_list_ids,
         exclude_list_ids=exclude_list_ids,
         selected_languages=selected_languages,

@@ -8,7 +8,7 @@ from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_, select
 
-from app.core.enums import GoingStatus, SearchField
+from app.core.enums import GoingStatus, SearchField, SeatAlertKind
 from app.core.viewer import ViewerId
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud.movie import apply_language_filter, apply_search_filter
@@ -431,21 +431,40 @@ def get_interested_reminder_candidates(
     return list(session.exec(stmt).all())
 
 
-def clear_seat_alerts(*, session: Session, showtime_id: int) -> None:
-    """Forget that anyone was told this showtime was nearly sold out.
+# Each seat notice keeps its own "already told them" stamp on the selection.
+# Named here once so the candidate query and the simulation's reset can never
+# disagree about which column guards which notice.
+SEAT_ALERT_SENT_AT_FIELDS: dict[SeatAlertKind, str] = {
+    SeatAlertKind.NEARLY_SOLD_OUT: "seat_alert_sent_at",
+    SeatAlertKind.SOLD_OUT: "sold_out_alert_sent_at",
+}
 
-    Only ever called by the superuser simulation hook, which is refused in
-    production — the whole point of `seat_alert_sent_at` is that nothing in the
-    normal flow can clear it.
+
+def clear_seat_alerts(*, session: Session, showtime_id: int) -> None:
+    """Forget that anyone was told anything about this showtime's seat count.
+
+    Both notices at once: the simulation hook this exists for replays a whole
+    run up the scale, and half-cleared stamps would let it fire one notice and
+    silently swallow the other.
+
+    Only ever called by that superuser hook, which is refused in production —
+    the whole point of the stamps is that nothing in the normal flow clears them.
     """
+    fields = list(SEAT_ALERT_SENT_AT_FIELDS.values())
     selections = session.exec(
         select(ShowtimeSelection).where(
             ShowtimeSelection.showtime_id == showtime_id,
-            col(ShowtimeSelection.seat_alert_sent_at).is_not(None),
+            or_(
+                *(
+                    col(getattr(ShowtimeSelection, field)).is_not(None)
+                    for field in fields
+                )
+            ),
         )
     ).all()
     for selection in selections:
-        selection.seat_alert_sent_at = None
+        for field in fields:
+            setattr(selection, field, None)
         session.add(selection)
 
 
@@ -454,24 +473,26 @@ def get_seat_alert_candidates(
     session: Session,
     showtime_ids: Sequence[int],
     statuses: Sequence[GoingStatus],
+    kind: SeatAlertKind,
 ) -> list[tuple[ShowtimeSelection, Showtime]]:
     """
-    Selections that should be told these showtimes have nearly sold out.
+    Selections that should be told these showtimes have crossed `kind`.
 
-    Only ones never told before — `seat_alert_sent_at` is the once-per-showtime
+    Only ones never told before — the kind's stamp is the once-per-showtime
     guarantee, and it is checked here rather than left to the caller so no
     delivery path can skip it.
     """
     if len(showtime_ids) == 0:
         return []
 
+    sent_at = getattr(ShowtimeSelection, SEAT_ALERT_SENT_AT_FIELDS[kind])
     stmt = (
         select(ShowtimeSelection, Showtime)
         .join(Showtime, col(ShowtimeSelection.showtime_id) == col(Showtime.id))
         .where(
             col(ShowtimeSelection.showtime_id).in_(showtime_ids),
             col(ShowtimeSelection.going_status).in_(statuses),
-            col(ShowtimeSelection.seat_alert_sent_at).is_(None),
+            col(sent_at).is_(None),
         )
     )
     return list(session.exec(stmt).all())
@@ -695,26 +716,29 @@ def _build_main_page_showtimes_query(
         and len(filters.selected_statuses) > 0
     ):
         visible_row = aliased(ShowtimeVisibilityEffective)
-        stmt = (
-            stmt.join(
-                ShowtimeSelection,
-                col(Showtime.id) == col(ShowtimeSelection.showtime_id),
-            )
-            .outerjoin(
-                visible_row,
-                (col(visible_row.owner_id) == col(ShowtimeSelection.user_id))
-                & (col(visible_row.showtime_id) == col(Showtime.id))
-                & (col(visible_row.viewer_id) == user_id),
-            )
-            .where(
-                or_(
-                    col(ShowtimeSelection.user_id) == user_id,
-                    col(visible_row.viewer_id).is_not(None),
-                ),
-                col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
-            )
-            .distinct()
+        stmt = stmt.join(
+            ShowtimeSelection,
+            col(Showtime.id) == col(ShowtimeSelection.showtime_id),
+        ).outerjoin(
+            visible_row,
+            (col(visible_row.owner_id) == col(ShowtimeSelection.user_id))
+            & (col(visible_row.showtime_id) == col(Showtime.id))
+            & (col(visible_row.viewer_id) == user_id),
         )
+        # friends_only drops the viewer's own selections from the OR below,
+        # leaving only rows made visible by someone else's selection.
+        owner_clause = (
+            col(visible_row.viewer_id).is_not(None)
+            if filters.friends_only
+            else or_(
+                col(ShowtimeSelection.user_id) == user_id,
+                col(visible_row.viewer_id).is_not(None),
+            )
+        )
+        stmt = stmt.where(
+            owner_clause,
+            col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
+        ).distinct()
 
     return stmt, False
 

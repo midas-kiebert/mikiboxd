@@ -1032,6 +1032,10 @@ export default function ShowtimeActionModal({
   // through to the existing text-input dialog / hides the preview tap target.
   const seatFloorPlanQuery = useShowtimeSeatFloorPlan({
     showtimeId: showtime?.id ?? null,
+    // Keyed on the reading, so pressing "Check" pulls the map in behind the
+    // count it just produced instead of leaving the header untappable until
+    // the sheet is closed and opened again.
+    readingAt: seatAvailability?.checked_at ?? null,
     enabled: shouldShowSeatButton || showSeatBusynessInfo,
   });
   const seatFloorPlan = seatFloorPlanQuery.data ?? null;

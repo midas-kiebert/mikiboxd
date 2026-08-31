@@ -33,8 +33,8 @@ export const saveCinevilleCardDigits = async (digits: string): Promise<void> => 
 };
 
 export const loadCinevilleCardDigits = async (): Promise<string | null> => {
-  // Several screens can ask at once (the agenda shortcut and settings both do on
-  // mount); one read is enough, so concurrent callers share it.
+  // Several screens can ask at once (the showtimes shortcut and settings both
+  // do on mount); one read is enough, so concurrent callers share it.
   pendingLoad ??= SecureStore.getItemAsync(STORAGE_KEY)
     .then((digits) => {
       publish(digits);

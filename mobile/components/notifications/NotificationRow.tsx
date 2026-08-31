@@ -104,6 +104,13 @@ const buildPresentation = (item: NotificationFeedItem, colors: ThemeColors): Pre
         title: movie ? `${movie} is nearly sold out` : "Nearly sold out",
         subtitle: formatShowtimeSubtitle(item),
       };
+    case "sold_out":
+      return {
+        icon: "event-busy",
+        accent: colors.redDeep,
+        title: movie ? `${movie} is sold out` : "Sold out",
+        subtitle: formatShowtimeSubtitle(item),
+      };
     case "seats_released":
       return {
         icon: "confirmation-number",

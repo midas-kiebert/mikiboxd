@@ -428,6 +428,7 @@ export type NotificationFeedItem = {
     | "friend_request_accepted"
     | "seats_released"
     | "seats_running_out"
+    | "sold_out"
   created_at: string
   seen_at: string | null
   actor: UserPublic | null
@@ -444,6 +445,7 @@ export type type =
   | "friend_request_accepted"
   | "seats_released"
   | "seats_running_out"
+  | "sold_out"
 
 export type NotificationOptInBreakdown = {
   setting: string
@@ -1044,12 +1046,14 @@ export type UserMe = {
   notify_on_invite_response: boolean
   notify_on_interest_reminder: boolean
   notify_on_seat_alert: boolean
+  notify_on_sold_out: boolean
   notify_channel_friend_showtime_match: NotificationChannel
   notify_channel_friend_requests: NotificationChannel
   notify_channel_showtime_ping: NotificationChannel
   notify_channel_invite_response: NotificationChannel
   notify_channel_interest_reminder: NotificationChannel
   notify_channel_seat_alert: NotificationChannel
+  notify_channel_sold_out: NotificationChannel
   letterboxd_username: string | null
   watchlist_count: number
   watched_count: number
@@ -1149,12 +1153,14 @@ export type UserUpdate = {
   notify_on_invite_response?: boolean | null
   notify_on_interest_reminder?: boolean | null
   notify_on_seat_alert?: boolean | null
+  notify_on_sold_out?: boolean | null
   notify_channel_friend_showtime_match?: NotificationChannel | null
   notify_channel_friend_requests?: NotificationChannel | null
   notify_channel_showtime_ping?: NotificationChannel | null
   notify_channel_invite_response?: NotificationChannel | null
   notify_channel_interest_reminder?: NotificationChannel | null
   notify_channel_seat_alert?: NotificationChannel | null
+  notify_channel_sold_out?: NotificationChannel | null
   notify_watchlist_digest_enabled?: boolean | null
   notify_watchlist_digest_frequency?: DigestFrequency | null
   notify_watchlist_digest_list_id?: string | null
@@ -1463,6 +1469,10 @@ export type MeCountMyShowtimesData = {
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   query?: string | null
   /**
@@ -1515,6 +1525,10 @@ export type MeGetMyShowtimesData = {
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   limit?: number
   offset?: number
@@ -1681,6 +1695,10 @@ export type MoviesCountMoviesData = {
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   query?: string | null
   /**
@@ -1733,6 +1751,10 @@ export type MoviesReadMoviesData = {
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   limit?: number
   offset?: number
@@ -1788,6 +1810,10 @@ export type MoviesReadMovieShowtimesData = {
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   id: number
   limit?: number
@@ -1843,6 +1869,10 @@ export type MoviesReadMovieData = {
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   id: number
   query?: string | null
@@ -2040,6 +2070,10 @@ export type ShowtimesCountMainPageShowtimesData = {
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   query?: string | null
   /**
@@ -2092,6 +2126,10 @@ export type ShowtimesGetMainPageShowtimesData = {
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   limit?: number
   offset?: number
@@ -2209,6 +2247,10 @@ export type UsersGetUserSelectedShowtimesData = {
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   limit?: number
   offset?: number

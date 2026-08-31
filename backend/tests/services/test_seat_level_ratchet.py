@@ -7,11 +7,13 @@ from app.models.showtime import Showtime
 from app.scraping.seat_availability import SeatAvailability
 from app.services.seat_availability import (
     LEVEL_FLOOR_CEILING,
+    SeatCrossings,
     apply_reading,
     effective_seat_level,
 )
 
 NOW = datetime(2026, 8, 24, 12, 0)
+NO_CROSSING = SeatCrossings()
 
 
 def _showtime(**kwargs) -> Showtime:
@@ -25,12 +27,10 @@ def _showtime(**kwargs) -> Showtime:
     )
 
 
-def _read(showtime: Showtime, seats_left: int | None, **kwargs) -> bool:
+def _read(showtime: Showtime, seats_left: int | None, **kwargs) -> SeatCrossings:
     return apply_reading(
         showtime=showtime,
-        availability=SeatAvailability(
-            seats_left, seats_left == 0, "LAB 1", "z-elite"
-        ),
+        availability=SeatAvailability(seats_left, seats_left == 0, "LAB 1", "z-elite"),
         now=NOW,
         **kwargs,
     )
@@ -92,31 +92,44 @@ def test_sold_out_is_not_pinned_by_the_floor() -> None:
     assert effective_seat_level(showtime) is SeatAvailabilityLevel.LAST_FEW
 
 
-def test_alert_crossing_fires_exactly_once() -> None:
+def test_nearly_sold_out_crossing_fires_exactly_once() -> None:
     showtime = _showtime(seats_capacity=100)
-    assert _read(showtime, 40) is False
-    assert _read(showtime, 5) is True
+    assert _read(showtime, 40) == NO_CROSSING
+    assert _read(showtime, 5) == SeatCrossings(nearly_sold_out=True)
     # Back above the threshold and down again: the floor already carries it.
-    assert _read(showtime, 20) is False
-    assert _read(showtime, 4) is False
-    assert _read(showtime, 0) is False
+    assert _read(showtime, 20) == NO_CROSSING
+    assert _read(showtime, 4) == NO_CROSSING
+
+
+def test_sold_out_crossing_fires_separately_and_can_repeat() -> None:
+    """The floor pins "nearly sold out" for good, but "sold out" is tracked on
+    the live level and fires again each time a resold-out screening actually
+    empties out — a returned ticket bought back does not use up its warning."""
+    showtime = _showtime(seats_capacity=100)
+    assert _read(showtime, 5) == SeatCrossings(nearly_sold_out=True)
+    assert _read(showtime, 0) == SeatCrossings(sold_out=True)
+    # A ticket comes back: on sale again, no second "nearly sold out".
+    assert _read(showtime, 1) == NO_CROSSING
+    assert _read(showtime, 0) == SeatCrossings(sold_out=True)
 
 
 def test_alert_crossing_fires_on_a_jump_straight_to_sold_out() -> None:
+    """A reading that would otherwise cross both lines at once reports only
+    the sold-out one — there is no seat left for the nudge to be about."""
     showtime = _showtime(seats_capacity=100)
-    assert _read(showtime, 40) is False
-    assert _read(showtime, 0) is True
+    assert _read(showtime, 40) == NO_CROSSING
+    assert _read(showtime, 0) == SeatCrossings(sold_out=True)
 
 
 def test_an_unreadable_reading_neither_lowers_the_floor_nor_re_alerts() -> None:
     showtime = _showtime(seats_capacity=100)
-    assert _read(showtime, 5) is True
+    assert _read(showtime, 5) == SeatCrossings(nearly_sold_out=True)
     # Eagerly-style "on sale, count unknown" clears seats_left entirely.
-    crossed = apply_reading(
+    crossings = apply_reading(
         showtime=showtime,
         availability=SeatAvailability(None, False, None, "eagerly"),
         now=NOW,
     )
-    assert crossed is False
+    assert crossings == NO_CROSSING
     assert showtime.seats_left is None
     assert effective_seat_level(showtime) is SeatAvailabilityLevel.LAST_FEW

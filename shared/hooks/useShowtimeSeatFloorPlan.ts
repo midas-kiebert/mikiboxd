@@ -12,13 +12,19 @@
  * are. This used to read the booking system on every sheet open, which put
  * the seat picker outside the very cadence that keeps that traffic bounded.
  */
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import { ShowtimesService, type SeatFloorPlanPublic } from "../client";
 
 const SEAT_FLOOR_PLAN_QUERY_KEY_PREFIX = ["showtimes", "seatFloorPlan"] as const;
 
-export const showtimeSeatFloorPlanQueryKey = (showtimeId: number | null) =>
-  [...SEAT_FLOOR_PLAN_QUERY_KEY_PREFIX, showtimeId] as const;
+export const showtimeSeatFloorPlanQueryKey = (
+  showtimeId: number | null,
+  readingAt: string | null = null
+) => [...SEAT_FLOOR_PLAN_QUERY_KEY_PREFIX, showtimeId, readingAt] as const;
 
 // The seats only change when the poller reads this showtime again, so there
 // is nothing a shorter window could catch. `refetchOnMount: "always"` still
@@ -29,18 +35,38 @@ const SEAT_FLOOR_PLAN_GC_TIME_MS = 30 * 60 * 1000;
 
 export function useShowtimeSeatFloorPlan({
   showtimeId,
+  readingAt = null,
   enabled = true,
 }: {
   showtimeId: number | null;
+  /**
+   * The availability reading this plan should agree with — pass the
+   * `checked_at` of `useShowtimeSeatAvailability` for the same showtime.
+   *
+   * It is part of the key rather than a mere hint because a reading is what
+   * *produces* this endpoint's answer, both halves of it. The obvious half is
+   * the taken seats, which come from that very reading. The half that bites is
+   * the plan itself: a room is matched by name, and for some platforms — every
+   * Tricket cinema, so all of Cinecenter — the name is only learned by reading
+   * the ticket shop. Before the first reading lands there is no room, hence no
+   * plan, and a sheet that asked once on open would sit on that `null` for as
+   * long as it stayed open — including right after the viewer pressed "Check"
+   * and watched the count appear, which is exactly when they go looking for
+   * the seat map.
+   */
+  readingAt?: string | null;
   enabled?: boolean;
 }): UseQueryResult<SeatFloorPlanPublic | null, Error> {
   return useQuery<SeatFloorPlanPublic | null, Error>({
-    queryKey: showtimeSeatFloorPlanQueryKey(showtimeId),
+    queryKey: showtimeSeatFloorPlanQueryKey(showtimeId, readingAt),
     enabled: enabled && showtimeId !== null,
     queryFn: () =>
       ShowtimesService.getShowtimeSeatmap({ showtimeId: showtimeId as number }),
     staleTime: SEAT_FLOOR_PLAN_STALE_TIME_MS,
     gcTime: SEAT_FLOOR_PLAN_GC_TIME_MS,
     refetchOnMount: "always",
+    // A fresh reading changes the key, and an open seat map must not blink
+    // back to "no plan" while the new one is on the way.
+    placeholderData: keepPreviousData,
   });
 }

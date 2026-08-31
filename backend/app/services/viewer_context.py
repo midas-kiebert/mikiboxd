@@ -33,6 +33,17 @@ def _is_cinema_name_search(filters: Filters) -> bool:
     )
 
 
+def _skips_cinema_default(filters: Filters) -> bool:
+    """Does this request already mean "every cinema", one way or another?
+
+    A cinema-name search names its own cinemas (see above). `friends_only`
+    is the other case: it asks "where are my friends going", and narrowing
+    that to the viewer's own usual cinemas would silently hide a friend at a
+    cinema the viewer never picked — the opposite of what the feed is for.
+    """
+    return _is_cinema_name_search(filters) or filters.friends_only
+
+
 def _keep_curated(
     list_ids: list[UUID] | None, curated_ids: set[UUID]
 ) -> list[UUID] | None:
@@ -71,7 +82,7 @@ def apply_viewer_defaults(
         filters.exclude_list_ids = _keep_curated(filters.exclude_list_ids, curated_ids)
         return
 
-    if filters.selected_cinema_ids is None and not _is_cinema_name_search(filters):
+    if filters.selected_cinema_ids is None and not _skips_cinema_default(filters):
         favorite_preset = cinema_presets_crud.get_user_favorite_preset(
             session=session,
             user_id=viewer_id,

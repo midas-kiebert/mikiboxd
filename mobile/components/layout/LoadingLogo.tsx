@@ -43,6 +43,12 @@ type LoadingLogoProps = {
   /** Smaller for a panel inside a sheet than for a full-screen curtain. */
   logoSize?: number;
   /**
+   * Drops the `ActivityIndicator`, for a caller that already has its own
+   * spinner on screen — pull-to-refresh's `RefreshControl`, say — so the two
+   * don't spin side by side.
+   */
+  hideSpinner?: boolean;
+  /**
    * Fade in instead of appearing outright, for callers that put this up on
    * every open: most opens are fast enough that the panel is gone before the
    * fade finishes, so the quick ones show nothing rather than a blink.
@@ -57,6 +63,7 @@ export default function LoadingLogo({
   tintColor,
   labelColor,
   logoSize = 140,
+  hideSpinner = false,
   fadeIn = false,
   style,
 }: LoadingLogoProps) {
@@ -84,7 +91,7 @@ export default function LoadingLogo({
         style={{ width: logoSize, height: logoSize }}
         resizeMode="contain"
       />
-      <ActivityIndicator size="small" color={tintColor} />
+      {hideSpinner ? null : <ActivityIndicator size="small" color={tintColor} />}
       {label ? <Text style={[styles.label, { color: labelColor }]}>{label}</Text> : null}
     </Animated.View>
   );

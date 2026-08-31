@@ -25,6 +25,7 @@ NotificationFeedType = Literal[
     "friend_request_accepted",
     "seats_released",
     "seats_running_out",
+    "sold_out",
 ]
 
 

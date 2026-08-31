@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   StyleSheet,
   FlatList,
+  View,
 } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
@@ -18,7 +19,8 @@ import useAuth from 'shared/hooks/useAuth';
 import { DateTime } from 'luxon';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
-import { SkeletonRows } from '@/components/ui/SkeletonRows';
+import ListLoadingLogo from '@/components/layout/ListLoadingLogo';
+import { FeedItemEntrance } from '@/components/ui/FeedItemEntrance';
 import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
@@ -37,12 +39,13 @@ import {
 import { tabletCappedContentStyle } from '@/constants/tablet-layout';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useDelayedTrue } from '@/hooks/useDelayedTrue';
+import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from '@/constants/loading-logo';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import MovieCard from '@/components/movies/MovieCard';
 import {
   byIdKeyExtractor,
-  FEED_RENDER_WINDOW,
   MOVIES_FIRST_PAGE_LIMIT,
   useScrollTriggeredLoadMore,
 } from '@/components/feeds/feed-paging';
@@ -205,7 +208,11 @@ export default function MovieScreen() {
   // cell, which would undo `MovieCard`'s memo.
   const openMovie = useCallback((movie: { id: number }) => goToMovie(movie.id), [goToMovie]);
   const renderMovie = useCallback(
-    ({ item }: { item: MovieSummaryPublic }) => <MovieCard movie={item} onPress={openMovie} />,
+    ({ item, index }: { item: MovieSummaryPublic; index: number }) => (
+      <FeedItemEntrance index={index}>
+        <MovieCard movie={item} onPress={openMovie} />
+      </FeedItemEntrance>
+    ),
     [openMovie]
   );
 
@@ -217,10 +224,36 @@ export default function MovieScreen() {
   // page glides into place rather than snapping up a whole row.
   const renderFooter = () => <LoadMoreFooter loading={isFetchingNextPage} />;
 
+  // Pull-to-refresh no longer clears the list: RefreshControl's own spinner
+  // at the top already says a reload is happening, so the old cards just
+  // stay up and get swapped for the fresh ones once they land — no separate
+  // "reload" state needed, and nothing for the loading panel to do here.
+  const visibleMovies = movies;
+
+  // `isLoading` means there's no cached data at all for this query — nothing
+  // to lose by showing the panel immediately, and a delay here is exactly the
+  // "blank screen for too long" a genuine first load (or a filter combo
+  // that's never been fetched before) doesn't need. `isFetching`-only (data
+  // already empty, but a background refetch is running) is the case that can
+  // resolve from cache almost instantly, so that one keeps the anti-flash
+  // delay and cooldown. `!refreshing` on both: RefreshControl's own spinner
+  // already covers a pull-to-refresh, so the panel has nothing to do for one
+  // even on an already-empty list.
+  const isFirstLoadEmpty = isLoading && !refreshing && visibleMovies.length === 0;
+  const isBackgroundFetchEmpty =
+    isFetching && !isLoading && !refreshing && visibleMovies.length === 0;
+  const showBackgroundFetchLoadingLogo = useDelayedTrue(
+    isBackgroundFetchEmpty,
+    LOADING_LOGO_DELAY_MS,
+    LOADING_LOGO_COOLDOWN_MS
+  );
+  const showLoadingLogo = isFirstLoadEmpty || showBackgroundFetchLoadingLogo;
+  const isEmptyLoading = isFirstLoadEmpty || isBackgroundFetchEmpty;
+
   const renderEmpty = () => {
-    if (isLoading || isFetching || refreshing) {
-      return <SkeletonRows height={150} />;
-    }
+    // The loading panel is a fixed overlay (below), not part of the list's
+    // own content, so there's nothing to render here while it's up.
+    if (isEmptyLoading) return null;
     return (
       <ThemedView style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>No movies found</ThemedText>
@@ -232,10 +265,6 @@ export default function MovieScreen() {
       </ThemedView>
     );
   };
-
-  // Clear the list while refreshing so pull-to-refresh visibly reloads, even
-  // when the refetched data is unchanged.
-  const visibleMovies = refreshing ? [] : movies;
 
   const handleApplyPreset = (preset: DisplayPreset) => {
     applyDisplayPreset(preset, {
@@ -318,20 +347,31 @@ export default function MovieScreen() {
         }}
       />
 
-      <FlatList
-        data={visibleMovies}
-        renderItem={renderMovie}
-        keyExtractor={byIdKeyExtractor}
-        contentContainerStyle={styles.movieFeed}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={renderEmpty}
-        ListFooterComponent={renderFooter}
-        onScrollBeginDrag={loadMore.onScrollBeginDrag}
-        onEndReached={loadMore.onEndReached}
-        onEndReachedThreshold={2}
-        {...FEED_RENDER_WINDOW}
-        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-      />
+      <View style={styles.listWrapper}>
+        <FlatList
+          data={visibleMovies}
+          renderItem={renderMovie}
+          keyExtractor={byIdKeyExtractor}
+          contentContainerStyle={styles.movieFeed}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={renderEmpty}
+          ListFooterComponent={renderFooter}
+          onScrollBeginDrag={loadMore.onScrollBeginDrag}
+          onEndReached={loadMore.onEndReached}
+          onEndReachedThreshold={2}
+          refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        />
+        {/* An overlay, not the list's ListEmptyComponent: that content scrolls
+            and shifts with RefreshControl's pull, which read as the logo
+            drifting down the screen. Sitting outside the FlatList keeps it
+            fixed in place and (via pointerEvents="none") never intercepts the
+            pull-to-refresh gesture underneath it. */}
+        {showLoadingLogo ? (
+          <View style={styles.loadingOverlay} pointerEvents="none">
+            <ListLoadingLogo />
+          </View>
+        ) : null}
+      </View>
     </TopSafeAreaView>
   );
 }
@@ -339,6 +379,8 @@ export default function MovieScreen() {
 const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
+    listWrapper: { flex: 1 },
+    loadingOverlay: { ...StyleSheet.absoluteFillObject },
     movieFeed: { ...tabletCappedContentStyle, padding: 16 },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },

@@ -435,7 +435,7 @@
   name: LAB-1
   city: Eindhoven
   cineville: true
-  badge_bg_color: "red"
+  badge_bg_color: "blue"
   url: "https://www.lab-1.nl"
 
 - key: lantarenvenster

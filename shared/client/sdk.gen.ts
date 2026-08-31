@@ -1275,6 +1275,7 @@ export class MeService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1302,6 +1303,7 @@ export class MeService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -1331,6 +1333,7 @@ export class MeService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1360,6 +1363,7 @@ export class MeService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -1834,6 +1838,7 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1861,6 +1866,7 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -1891,6 +1897,7 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1921,6 +1928,7 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -1951,6 +1959,7 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1983,6 +1992,7 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2012,6 +2022,7 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2043,6 +2054,7 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2613,6 +2625,7 @@ export class ShowtimesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2640,6 +2653,7 @@ export class ShowtimesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2669,6 +2683,7 @@ export class ShowtimesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2698,6 +2713,7 @@ export class ShowtimesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2983,6 +2999,7 @@ export class UsersService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -3015,6 +3032,7 @@ export class UsersService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,

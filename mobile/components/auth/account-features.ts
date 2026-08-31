@@ -12,7 +12,7 @@
 import type MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 export type AccountFeature =
-  | "agenda"
+  | "activity"
   | "friends"
   | "going"
   | "invite"
@@ -32,11 +32,11 @@ type AccountFeatureCopy = {
 };
 
 export const ACCOUNT_FEATURE_COPY: Record<AccountFeature, AccountFeatureCopy> = {
-  agenda: {
-    icon: "event-available",
-    title: "Your agenda",
+  activity: {
+    icon: "bolt",
+    title: "Activity",
     message:
-      "Keep every screening you're going to in one place, and see who else is coming along.",
+      "See every screening your friends are going to or interested in, plus your own agenda — invites included.",
   },
   friends: {
     icon: "people",

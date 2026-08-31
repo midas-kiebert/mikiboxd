@@ -204,6 +204,24 @@ class NotificationType(str, Enum):
     SEATS_RELEASED = "seats_released"
     # A showtime you marked interested in has nearly sold out.
     SEATS_RUNNING_OUT = "seats_running_out"
+    # A showtime you marked interested in has now actually sold out.
+    SOLD_OUT = "sold_out"
+
+
+@unique
+class SeatAlertKind(str, Enum):
+    """Which of the two seat-count notices an interested user is being sent.
+
+    They are two notices, not one repeated: "nearly sold out" is a nudge to
+    decide, sent once ever on the way up, while "sold out" is the answer to
+    that nudge and only means anything after the fact. Each carries its own
+    "already told them" stamp on the selection and its own delivery preference
+    on the user, and this is what picks between the two sets — see
+    ``app.services.push_notifications.send_seat_alerts``.
+    """
+
+    NEARLY_SOLD_OUT = "nearly_sold_out"
+    SOLD_OUT = "sold_out"
 
 
 @unique

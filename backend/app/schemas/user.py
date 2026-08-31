@@ -45,12 +45,14 @@ class UserMe(UserPublic):
     notify_on_invite_response: bool
     notify_on_interest_reminder: bool
     notify_on_seat_alert: bool
+    notify_on_sold_out: bool
     notify_channel_friend_showtime_match: NotificationChannel
     notify_channel_friend_requests: NotificationChannel
     notify_channel_showtime_ping: NotificationChannel
     notify_channel_invite_response: NotificationChannel
     notify_channel_interest_reminder: NotificationChannel
     notify_channel_seat_alert: NotificationChannel
+    notify_channel_sold_out: NotificationChannel
     letterboxd_username: str | None
     watchlist_count: int
     watched_count: int

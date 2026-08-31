@@ -231,7 +231,8 @@ export default function TabLayout() {
           user.notify_on_friend_requests ||
           user.notify_on_showtime_ping ||
           user.notify_on_interest_reminder ||
-          user.notify_on_seat_alert;
+          user.notify_on_seat_alert ||
+          user.notify_on_sold_out;
 
         if (!hasAnyNotificationPreferenceEnabled) {
           await MeService.updateUserMe({
@@ -241,6 +242,7 @@ export default function TabLayout() {
               notify_on_showtime_ping: true,
               notify_on_interest_reminder: true,
               notify_on_seat_alert: true,
+              notify_on_sold_out: true,
             },
           });
           queryClient.invalidateQueries({ queryKey: ['currentUser'] });
@@ -307,13 +309,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="agenda"
+        name="activity"
         options={{
-          title: 'Agenda',
-          tabBarButton: (props) => <HapticTab {...props} tabKey="agenda" />,
-          tabBarLabel: () => <TabLabel tabKey="agenda">Agenda</TabLabel>,
+          title: 'Activity',
+          tabBarButton: (props) => <HapticTab {...props} tabKey="activity" />,
+          tabBarLabel: () => <TabLabel tabKey="activity">Activity</TabLabel>,
           tabBarIcon: () => (
-            <TabIcon tabKey="agenda" name="calendar">
+            <TabIcon tabKey="activity" name="bolt.fill">
+              {/* An unseen invite is only visible in this tab's "You" mode
+                  now that Agenda is gone, but it's still worth surfacing here. */}
               {showPingBadge ? (
                 <View style={[styles.badge, { backgroundColor: palette.notificationBadge }]}>
                   <Text style={styles.badgeText} maxFontSizeMultiplier={1.2}>

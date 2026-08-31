@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import { ThemedText } from "@/components/themed-text";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useDelayedTrue } from "@/hooks/useDelayedTrue";
 import { useShowtimeModal, type OpenOptions } from "@/components/showtimes/ShowtimeModalProvider";
 import { useIsSignedIn } from "@/utils/auth-session";
 import TopBar from "@/components/layout/TopBar";
@@ -25,12 +26,14 @@ import FilterPills, {
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
 import {
   byIdKeyExtractor,
-  FEED_RENDER_WINDOW,
   useScrollTriggeredLoadMore,
 } from "@/components/feeds/feed-paging";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { FeedItemEntrance } from "@/components/ui/FeedItemEntrance";
+import ListLoadingLogo from "@/components/layout/ListLoadingLogo";
 import { tabletCappedContentStyle } from "@/constants/tablet-layout";
+import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from "@/constants/loading-logo";
 
 type ShowtimesListContentProps = {
   showtimes: ShowtimePublic[];
@@ -104,24 +107,43 @@ export function ShowtimesListContent({
     [openShowtimeModal, openModalOptions]
   );
   const renderItem = React.useCallback(
-    ({ item }: { item: ShowtimePublic }) => (
-      <ShowtimeCard showtime={item} onPress={openModal} onLongPress={goToMovieFromLongPress} />
+    ({ item, index }: { item: ShowtimePublic; index: number }) => (
+      <FeedItemEntrance index={index}>
+        <ShowtimeCard showtime={item} onPress={openModal} onLongPress={goToMovieFromLongPress} />
+      </FeedItemEntrance>
     ),
     [openModal, goToMovieFromLongPress]
   );
 
+  // Pull-to-refresh no longer clears the list: RefreshControl's own spinner
+  // at the top already says a reload is happening, so the old cards just
+  // stay up and get swapped for the fresh ones once they land — no separate
+  // "reload" state needed, and nothing for the loading panel to do here.
+  const data = showtimes;
+
+  // `isLoading` means there's no cached data at all for this query — nothing
+  // to lose by showing the panel immediately, and a delay here is exactly the
+  // "blank screen for too long" a genuine first load (or a filter combo
+  // that's never been fetched before) doesn't need. `isFetching`-only (data
+  // already empty, but a background refetch is running) is the case that can
+  // resolve from cache almost instantly, so that one keeps the anti-flash
+  // delay and cooldown. `!refreshing` on both: RefreshControl's own spinner
+  // already covers a pull-to-refresh, so the panel has nothing to do for one
+  // even on an already-empty list.
+  const isFirstLoadEmpty = isLoading && !refreshing && data.length === 0;
+  const isBackgroundFetchEmpty = isFetching && !isLoading && !refreshing && data.length === 0;
+  const showBackgroundFetchLoadingLogo = useDelayedTrue(
+    isBackgroundFetchEmpty,
+    LOADING_LOGO_DELAY_MS,
+    LOADING_LOGO_COOLDOWN_MS
+  );
+  const showLoadingLogo = isFirstLoadEmpty || showBackgroundFetchLoadingLogo;
+  const isEmptyLoading = isFirstLoadEmpty || isBackgroundFetchEmpty;
+
   const renderEmpty = () => {
-    if (isLoading || isFetching || refreshing) {
-      // Skeleton cards (rather than a lone spinner) so the list keeps its shape
-      // while data loads instead of popping in.
-      return (
-        <View>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} style={styles.skeletonCard} />
-          ))}
-        </View>
-      );
-    }
+    // The loading panel is a fixed overlay (below), not part of the list's
+    // own content, so there's nothing to render here while it's up.
+    if (isEmptyLoading) return null;
     return (
       <View style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>{emptyText}</ThemedText>
@@ -129,11 +151,6 @@ export function ShowtimesListContent({
       </View>
     );
   };
-
-  // While pull-to-refresh is running, clear the list so it visibly reloads into
-  // skeletons and back — otherwise an unchanged result looks like nothing
-  // happened. The fresh data renders the moment `refreshing` flips back to false.
-  const data = refreshing ? [] : showtimes;
 
   const loadMore = useScrollTriggeredLoadMore(() => {
     if (hasNextPage && !isFetchingNextPage) onLoadMore();
@@ -155,10 +172,19 @@ export function ShowtimesListContent({
         onScrollBeginDrag={loadMore.onScrollBeginDrag}
         onEndReached={loadMore.onEndReached}
         onEndReachedThreshold={2}
-        {...FEED_RENDER_WINDOW}
         refreshing={isLoading}
         refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />
+      {/* An overlay, not the list's ListEmptyComponent: that content scrolls
+          and shifts with RefreshControl's pull, which read as the logo
+          drifting down the screen. Sitting outside the FlatList keeps it
+          fixed in place and (via pointerEvents="none") never intercepts the
+          pull-to-refresh gesture underneath it. */}
+      {showLoadingLogo ? (
+        <View style={styles.loadingOverlay} pointerEvents="none">
+          <ListLoadingLogo />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -391,10 +417,8 @@ export function ShowtimesScreenSkeleton({
           <Skeleton style={{ height: 40, width: 72, borderRadius: 18 }} />
         </View>
       )}
-      <View style={styles.listContent}>
-        {[0, 1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} style={styles.skeletonCard} />
-        ))}
+      <View style={[styles.listContent, styles.listContentFill]}>
+        <ListLoadingLogo />
       </View>
     </TopSafeAreaView>
   );
@@ -428,6 +452,18 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       // Matches the movie feeds' padding: a list short enough not to render the
       // end-of-list spacer would otherwise butt straight against the tab bar.
       paddingBottom: 16,
+    },
+    // Grows the content container to fill the list's viewport so the loading
+    // panel can center within it instead of sizing to its own small height —
+    // that's also what stops a short screen from having anything to scroll.
+    listContentFill: {
+      flexGrow: 1,
+    },
+    // Absolutely positioned over the list (not part of its scrollable
+    // content) so it stays fixed instead of moving with RefreshControl's pull
+    // or the content's own scroll offset.
+    loadingOverlay: {
+      ...StyleSheet.absoluteFillObject,
     },
     // listHeader supplies its own horizontal padding/divider (it's a full-width
     // section like the card list rows above it), so cancel out listContent's
@@ -470,11 +506,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       height: 36,
       width: 120,
       borderRadius: 14,
-    },
-    skeletonCard: {
-      height: 112,
-      borderRadius: 12,
-      marginBottom: 16,
     },
     centerContainer: {
       paddingVertical: 40,

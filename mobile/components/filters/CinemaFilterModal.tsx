@@ -732,14 +732,9 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                     last sits closest to the thumb. */}
                 <View style={styles.footerPresetRow}>
                   <TouchableOpacity
-                    style={[
-                      styles.footerButton,
-                      canSaveAsPreset
-                        ? styles.footerButtonHighlighted
-                        : styles.footerButtonDisabled,
-                    ]}
+                    style={styles.footerTextButton}
                     onPress={handleOpenSavePresetDialog}
-                    activeOpacity={0.8}
+                    activeOpacity={0.6}
                     disabled={!canSaveAsPreset}
                     accessibilityRole="button"
                   >
@@ -762,12 +757,12 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                       anything, so it is the quiet one of the pair whatever the
                       selection is. */}
                   <TouchableOpacity
-                    style={[styles.footerButton, styles.footerButtonNarrow]}
+                    style={[styles.footerTextButton, styles.footerButtonNarrow]}
                     onPress={() => {
                       triggerSelectionHaptic();
                       setPage("presets");
                     }}
-                    activeOpacity={0.8}
+                    activeOpacity={0.6}
                     accessibilityRole="button"
                   >
                     <MaterialIcons name="tune" size={17} color={colors.textSecondary} />
@@ -1111,6 +1106,16 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     // width, the other stays at its label's size.
     footerPresetRow: { flexDirection: "row", alignItems: "stretch", gap: 8 },
     footerButtonNarrow: { flex: 0 },
+    // Save/manage preset actions read as secondary to the preferred-cinemas
+    // row below, so they stay plain text with no outline or fill.
+    footerTextButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 7,
+      paddingVertical: 8,
+      flex: 1,
+    },
     footerButtonText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
     footerButtonTextHighlighted: { color: colors.green.secondary },
     // Manage presets page

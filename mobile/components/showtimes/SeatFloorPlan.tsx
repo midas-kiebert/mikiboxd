@@ -479,33 +479,38 @@ export default function SeatFloorPlan({
                     : "No seat map available for this screening — enter your seat below instead."}
                 </ThemedText>
               ) : (
-                <View style={{ width: layout.width }}>
-                  {screenSide === "top" ? (
-                    <ScreenIndicator width={layout.width} side="top" colors={colors} />
-                  ) : null}
-                  <View style={{ height: layout.height }}>
-                    {layout.seats.map((seat) => (
-                      <SeatRect
-                        key={`${seat.row_name}-${seat.seat_name}-${seat.x}-${seat.y}`}
-                        seat={seat}
-                        colors={colors}
-                        isDraftSeat={
-                          draftRow.length > 0 &&
-                          draftNumber.length > 0 &&
-                          seat.row_name === draftRow &&
-                          seat.seat_name === draftNumber
-                        }
-                        onSelect={handleSelect}
-                      />
-                    ))}
+                // Out of flow, so the grid can never grow the very box it was
+                // measured against — `body` is `flex: 1` inside a scroll
+                // view's `flexGrow: 1` content container, which is a *soft*
+                // height: a tall room left in flow pushes the content taller,
+                // that re-fires `onLayout`, and the room rescales to the size
+                // it just caused. Absolutely filling the body instead makes
+                // the measurement depend only on the flex layout above it.
+                <View style={styles.gridLayer} pointerEvents="box-none">
+                  <View style={{ width: layout.width }}>
+                    {screenSide === "top" ? (
+                      <ScreenIndicator width={layout.width} side="top" colors={colors} />
+                    ) : null}
+                    <View style={{ height: layout.height }}>
+                      {layout.seats.map((seat) => (
+                        <SeatRect
+                          key={`${seat.row_name}-${seat.seat_name}-${seat.x}-${seat.y}`}
+                          seat={seat}
+                          colors={colors}
+                          isDraftSeat={
+                            draftRow.length > 0 &&
+                            draftNumber.length > 0 &&
+                            seat.row_name === draftRow &&
+                            seat.seat_name === draftNumber
+                          }
+                          onSelect={handleSelect}
+                        />
+                      ))}
+                    </View>
+                    {screenSide === "bottom" ? (
+                      <ScreenIndicator width={layout.width} side="bottom" colors={colors} />
+                    ) : null}
                   </View>
-                  {screenSide === "bottom" ? (
-                    <ScreenIndicator
-                      width={layout.width}
-                      side="bottom"
-                      colors={colors}
-                    />
-                  ) : null}
                 </View>
               )}
             </View>
@@ -646,6 +651,12 @@ const styles = StyleSheet.create({
   legendSwatch: { width: 13, height: 13, borderRadius: 3 },
   legendLabel: { fontSize: 11 },
   body: { flex: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  // Centers the room within whatever `body` was measured at; see its usage.
+  gridLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   // Height must stay in step with `SCREEN_INDICATOR_HEIGHT` in
   // `seat-floor-plan-layout.ts`, which reserves this space above the grid.
   screenIndicator: { alignItems: "center" },
@@ -654,7 +665,13 @@ const styles = StyleSheet.create({
   // from the seats rather than upside down.
   screenIndicatorBottom: { marginTop: 8, flexDirection: "column-reverse" },
   screenBar: { width: "70%", height: 4, borderRadius: 2, opacity: 0.5 },
-  screenLabel: { fontSize: 9, letterSpacing: 2, marginTop: 4 },
+  // Explicit lineHeight, and not a decorative choice: ThemedText's default
+  // type ships lineHeight 24, which a fontSize override doesn't touch, so
+  // this label was 24pt tall and the whole indicator 40 against the 28
+  // `SCREEN_INDICATOR_HEIGHT` reserves for it. The grid was scaled to fit a
+  // space 12pt larger than it actually had, and a bottom-screen room paid for
+  // it by having its own SCREEN bar clipped off. 4 + 4 + 12 + 8 = 28.
+  screenLabel: { fontSize: 9, lineHeight: 12, letterSpacing: 2, marginTop: 4 },
   seat: { position: "absolute" },
   seatFill: { borderRadius: 4 },
   friendBadge: {

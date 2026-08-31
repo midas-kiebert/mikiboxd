@@ -40,11 +40,13 @@ from app.models.showtime import Showtime
 from app.scraping.seat_availability import (
     EAGERLY_BOOKING_HOSTS,
     EAGERLY_BOOKING_HOSTS_BY_CINEMA,
+    TICKETLAB_HOSTS,
     TRICKET_ROOM_NAMES,
     TRICKET_SEAT_MAP_HOSTS,
     TRICKET_URL_PATTERN,
     EagerlyFeedCache,
     fetch_eagerly_room_geometry,
+    fetch_ticketlab_room_geometry,
     fetch_tricket_room_geometry,
 )
 from app.scraping.seat_availability import eagerly_shows as fetch_eagerly_shows
@@ -210,6 +212,7 @@ def ingest_floor_plans(*, force: bool = False) -> None:
             ingested += 1
 
     ingested += _ingest_tricket_floor_plans(skipped=skipped)
+    ingested += _ingest_ticketlab_floor_plans(skipped=skipped)
 
     print(f"Done. Ingested {ingested} rooms, skipped {len(skipped)}: {skipped}")
 
@@ -271,6 +274,100 @@ def _ingest_tricket_floor_plans(*, skipped: list[str]) -> int:
         if missing:
             skipped.append(f"{cinema_key} (no upcoming screening in {sorted(missing)})")
     return ingested
+
+
+# Ticketlab host (TICKETLAB_HOSTS' entries) -> cinemas.yaml key. Hand-mapped
+# once, the same way the Eagerly table above is: the ticket subdomain isn't
+# derivable from the cinema's own key or website domain in every case (Luxor
+# Zutphen's shop is at luxorzutphen.nl, its cinemas.yaml entry at
+# luxortheater.nl).
+_TICKETLAB_HOST_TO_CINEMA_KEY = {
+    "tickets.artishocksoest.nl": "artishock",
+    "tickets.cacaofabriek.nl": "de-cacaofabriek",
+    "tickets.cinemamiddelburg.nl": "cinema-middelburg",
+    "tickets.cinemaoostereiland.nl": "cinema-oostereiland",
+    "tickets.drom.nl": "de-drom",
+    "tickets.filmhuisbussum.nl": "filmhuis-bussum",
+    "tickets.filmhuiszevenaar.nl": "filmhuis-zevenaar",
+    "tickets.filmtheaterfraterhuis.nl": "fraterhuis",
+    "tickets.filmtheatervoorschoten.nl": "filmtheater-voorschoten",
+    "tickets.fizi.nl": "fizi",
+    "tickets.florafilmtheater.nl": "flora",
+    "tickets.focusarnhem.nl": "focus-filmtheater",
+    "tickets.luxorzutphen.nl": "luxor-theater",
+    "tickets.wennekercinema.nl": "wenneker-cinema",
+}
+
+# How many of a cinema's upcoming showtimes to try before giving up on finding
+# every room. Ticketlab names the room on every page, so a room is done the
+# first time it's seen — this only needs to be large enough to cycle through
+# a small arthouse cinema's handful of rooms, not every showtime it has.
+MAX_TICKETLAB_CANDIDATES_PER_CINEMA = 30
+
+
+def _ingest_ticketlab_floor_plans(*, skipped: list[str]) -> int:
+    """Ticketlab rooms, whose geometry, name and screen side all come off the
+    same checkout page the poller already reads for the seat count.
+
+    Like Tricket there is no programme feed to walk, so the showtimes already
+    in the database supply the candidate links; unlike Tricket a room's name
+    is right there on the page, so no hand-built id -> name table is needed to
+    tell rooms apart.
+    """
+    ingested = 0
+    for host in TICKETLAB_HOSTS:
+        cinema_key = _TICKETLAB_HOST_TO_CINEMA_KEY.get(host)
+        if cinema_key is None:
+            skipped.append(f"{host} (no cinemas.yaml key mapped)")
+            continue
+        with get_db_context() as session:
+            cinema_id = cinema_crud.get_cinema_id_by_key(session=session, key=cinema_key)
+            links = _ticketlab_ticket_links(session=session, host=host)
+
+        done: set[str] = set()
+        for link in links[:MAX_TICKETLAB_CANDIDATES_PER_CINEMA]:
+            geometry = fetch_ticketlab_room_geometry(link)
+            time.sleep(REQUEST_DELAY_SECONDS)
+            if geometry is None or geometry.room is None or geometry.room in done:
+                continue
+            done.add(geometry.room)
+            with get_db_context() as session:
+                _upsert_floor_plan(
+                    session=session,
+                    cinema_id=cinema_id,
+                    room=geometry.room,
+                    seats=geometry.seats,
+                    screen_side=_screen_side(
+                        cinema_key=cinema_key,
+                        room=geometry.room,
+                        reported=ScreenSide(geometry.screen_side),
+                    ),
+                )
+                session.commit()
+            print(
+                f"{cinema_key}/{geometry.room}: {len(geometry.seats)} seats, "
+                f"screen at {geometry.screen_side}"
+            )
+            ingested += 1
+
+        if not done:
+            skipped.append(f"{cinema_key} (no seated showtime yielded a plan)")
+    return ingested
+
+
+def _ticketlab_ticket_links(*, session: Session, host: str) -> list[str]:
+    """Upcoming ticket links for this shop, from the showtimes already stored."""
+    return list(
+        session.exec(
+            select(Showtime.ticket_link)
+            .where(
+                col(Showtime.ticket_link).is_not(None),
+                col(Showtime.ticket_link).contains(host),
+                col(Showtime.datetime) > now_amsterdam_naive(),
+            )
+            .order_by(col(Showtime.datetime))
+        ).all()
+    )
 
 
 def _tricket_screening_ids(*, session: Session, host: str) -> list[str]:

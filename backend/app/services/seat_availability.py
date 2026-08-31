@@ -31,12 +31,18 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
+from typing import NamedTuple
 from urllib.parse import urlsplit
 
 import yaml
 from sqlmodel import Session
 
-from app.core.enums import ScreenSide, SeatAvailabilityLevel, is_fuller_than
+from app.core.enums import (
+    ScreenSide,
+    SeatAlertKind,
+    SeatAvailabilityLevel,
+    is_fuller_than,
+)
 from app.crud import cinema as cinema_crud
 from app.crud import cinema_room_capacity as room_capacity_crud
 from app.crud import showtime as showtimes_crud
@@ -92,7 +98,8 @@ def screen_side_override(
 ) -> ScreenSide | None:
     """Which end this room's screen is at, if somebody has said so by hand.
 
-    For the platforms that never state it — everything but Tricket. A value
+    For the platforms that never state it — everything but Tricket and
+    Ticketlab. A value
     that isn't a side we know is treated as absent, the same tolerance the
     capacity overrides have: a typo leaves the room rendering the way it did
     rather than failing an ingest.
@@ -162,6 +169,21 @@ SEAT_ALERT_LEVELS = (
     SeatAvailabilityLevel.LAST_FEW,
     SeatAvailabilityLevel.SOLD_OUT,
 )
+
+
+class SeatCrossings(NamedTuple):
+    """Which of the two seat notices a single reading just earned.
+
+    Never both. A screening that jumps straight from half-empty to sold out has
+    technically crossed both lines at once, but "nearly sold out" is a nudge to
+    go and buy a seat, and there is no seat — so the crossing is reported as the
+    sold-out one alone. The floor still records it, which is what stops the
+    nudge arriving later if tickets come back.
+    """
+
+    nearly_sold_out: bool = False
+    sold_out: bool = False
+
 
 # The ratchet stops here rather than at SOLD_OUT. Everything below it only ever
 # gets busier in practice, so pinning it is honest; sold out is the one state
@@ -474,7 +496,7 @@ def check_now(*, session: Session, showtime_id: int) -> None:
             session=session, cinema_ids=[showtime.cinema_id]
         )
         known_room_capacities = dict(room_capacities)
-        crossed = apply_reading(
+        crossings = apply_reading(
             showtime=showtime,
             availability=availability,
             now=now_amsterdam_naive(),
@@ -489,10 +511,9 @@ def check_now(*, session: Session, showtime_id: int) -> None:
         )
         session.add(showtime)
         session.commit()
-        if crossed:
-            push_notifications.send_seat_alerts(
-                session=session, showtime_ids=[showtime_id]
-            )
+        _send_crossing_alerts(
+            session=session, crossings_by_showtime={showtime_id: crossings}
+        )
     finally:
         if host is not None:
             with _immediate_check_hosts_lock:
@@ -628,9 +649,9 @@ def apply_reading(
     cinema_key: str | None = None,
     room_capacities: RoomCapacityIndex | None = None,
     session: Session | None = None,
-) -> bool:
-    """Write one reading onto `showtime`, schedule its next one, and say whether
-    it just became worth warning people about.
+) -> SeatCrossings:
+    """Write one reading onto `showtime`, schedule its next one, and say which
+    notice — if any — it just became worth sending.
 
     Every caller that reads a ticket shop goes through this, including the
     sold-out watch — a reading it paid for is exactly as good as the poller's,
@@ -647,12 +668,17 @@ def apply_reading(
     should not have to learn it again. Persisting the changed entries is the
     caller's job (see `refresh_seat_availability`).
 
-    Returns True only on the transition into `SEAT_ALERT_LEVELS`, and because
+    `nearly_sold_out` is the transition into `SEAT_ALERT_LEVELS`, and because
     that transition is tracked on the monotone floor rather than the live level,
-    it can only ever be True once in a showtime's life.
+    it can only ever be True once in a showtime's life. `sold_out` is tracked on
+    the live level instead, because that is the one state the floor deliberately
+    does not pin (see `LEVEL_FLOOR_CEILING`) — a screening can sell out, have a
+    ticket handed back, and sell out again, so this one can repeat, and what
+    makes it once-per-person is the stamp on the selection.
     """
     previous_seats_left = showtime.seats_left
     previous_floor = showtime.seats_level_floor
+    previous_level = effective_seat_level(showtime)
     _apply_reading(showtime=showtime, availability=availability, cinema_key=cinema_key)
 
     # A room's capacity is the same fact for every screening in it, so the two
@@ -693,10 +719,55 @@ def apply_reading(
         unchanged_streak=showtime.seats_unchanged_streak,
     )
 
-    return (
-        showtime.seats_level_floor in SEAT_ALERT_LEVELS
-        and previous_floor not in SEAT_ALERT_LEVELS
+    sold_out = (
+        effective_seat_level(showtime) is SeatAvailabilityLevel.SOLD_OUT
+        and previous_level is not SeatAvailabilityLevel.SOLD_OUT
     )
+    return SeatCrossings(
+        nearly_sold_out=(
+            not sold_out
+            and showtime.seats_level_floor in SEAT_ALERT_LEVELS
+            and previous_floor not in SEAT_ALERT_LEVELS
+        ),
+        sold_out=sold_out,
+    )
+
+
+def _send_crossing_alerts(
+    *,
+    session: Session,
+    crossings_by_showtime: dict[int, SeatCrossings],
+) -> None:
+    """Send whichever notices this batch of readings earned.
+
+    One call per kind for the whole batch rather than one per showtime, so a
+    run that fills up twenty screenings is still two queries. Every path that
+    lands readings — the poller, the on-demand check, the simulation — goes
+    through here, which is what keeps "a crossing always notifies" from being
+    something each caller has to remember.
+    """
+    for kind, crossed_ids in (
+        (
+            SeatAlertKind.NEARLY_SOLD_OUT,
+            [
+                id
+                for id, crossings in crossings_by_showtime.items()
+                if crossings.nearly_sold_out
+            ],
+        ),
+        (
+            SeatAlertKind.SOLD_OUT,
+            [
+                id
+                for id, crossings in crossings_by_showtime.items()
+                if crossings.sold_out
+            ],
+        ),
+    ):
+        if crossed_ids:
+            push_notifications.send_seat_alerts(
+                session=session, showtime_ids=crossed_ids, kind=kind
+            )
 
 
 def _apply_reading(
@@ -708,8 +779,9 @@ def _apply_reading(
     if availability.room is not None:
         showtime.room = availability.room
 
-    # A platform that hands back every seat (currently only Eagerly's seat
-    # map) tells us the room's real total outright; a manual entry in
+    # A platform that hands back every seat (Eagerly, Tricket, Ticketlab) or
+    # a full seat count for a numbered room (ActiveTickets) tells us the
+    # room's real total outright; a manual entry in
     # `seat_capacity_overrides.yaml` is the same kind of fact, just typed in
     # by hand for a room no platform ever reveals it for. Either beats the
     # running-max estimate immediately, rather than only once it's converged,
@@ -773,7 +845,7 @@ def simulate_reading(
     if seats_capacity is not None:
         showtime.seats_capacity = seats_capacity
 
-    crossed = apply_reading(
+    crossings = apply_reading(
         showtime=showtime,
         availability=SeatAvailability(
             seats_left, seats_left == 0, showtime.room, "simulated"
@@ -783,8 +855,9 @@ def simulate_reading(
     session.add(showtime)
     session.commit()
 
-    if crossed:
-        push_notifications.send_seat_alerts(session=session, showtime_ids=[showtime_id])
+    _send_crossing_alerts(
+        session=session, crossings_by_showtime={showtime_id: crossings}
+    )
     session.refresh(showtime)
     return to_public(showtime)
 
@@ -888,7 +961,7 @@ def refresh_seat_availability(
             readings.update(host_readings)
 
     read_count = 0
-    alerted_showtime_ids: list[int] = []
+    crossings_by_showtime: dict[int, SeatCrossings] = {}
     for showtime in batch_showtimes:
         availability = readings.get(showtime.id)
         if availability is None:
@@ -900,7 +973,7 @@ def refresh_seat_availability(
                 unchanged_streak=showtime.seats_unchanged_streak,
             )
         else:
-            crossed = apply_reading(
+            crossings_by_showtime[showtime.id] = apply_reading(
                 showtime=showtime,
                 availability=availability,
                 now=reference_time,
@@ -908,8 +981,6 @@ def refresh_seat_availability(
                 room_capacities=room_capacities,
                 session=session,
             )
-            if crossed:
-                alerted_showtime_ids.append(showtime.id)
             if availability.is_known:
                 read_count += 1
         session.add(showtime)
@@ -921,10 +992,7 @@ def refresh_seat_availability(
     )
     session.commit()
 
-    if alerted_showtime_ids:
-        # Deliberately after the commit: the floor is what makes this fire once
-        # ever, so it has to be durable before anyone is told.
-        push_notifications.send_seat_alerts(
-            session=session, showtime_ids=alerted_showtime_ids
-        )
+    # Deliberately after the commit: the floor and the seat count are what make
+    # these fire once each, so they have to be durable before anyone is told.
+    _send_crossing_alerts(session=session, crossings_by_showtime=crossings_by_showtime)
     return read_count

@@ -30,3 +30,8 @@ class ShowtimeSelection(SQLModel, table=True):
     # never cleared: the alert fires on the way up and only the first time, so
     # a screening hovering around the threshold cannot notify twice.
     seat_alert_sent_at: datetime | None = Field(default=None, nullable=True)
+    # When this user was told this screening had actually sold out. A separate
+    # stamp from the one above because it is a separate notice with its own
+    # preference: someone can want to hear that a screening is gone without
+    # wanting to be hurried while it still has seats, or the other way round.
+    sold_out_alert_sent_at: datetime | None = Field(default=None, nullable=True)

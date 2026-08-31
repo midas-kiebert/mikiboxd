@@ -201,7 +201,6 @@ function SettingsScreen() {
   const [isCinevilleCardVisible, setIsCinevilleCardVisible] = useState(false);
   // Which feeds the floating pass shortcut is allowed to appear on.
   const isShortcutOnShowtimes = useCinevilleShortcutEnabled('showtimes');
-  const isShortcutOnAgenda = useCinevilleShortcutEnabled('agenda');
   // Confirmations for the two irreversible actions on this screen. Themed
   // dialogs rather than Alert.alert, which is app-wide reserved for pure error
   // toasts — a native alert is the one surface in the app that ignores the
@@ -695,12 +694,16 @@ function SettingsScreen() {
               </ThemedText>
             )}
             <TouchableOpacity
-              style={[styles.primaryButton, isProfileSaving && styles.buttonDisabled]}
+              style={[
+                styles.primaryButton,
+                (isProfileSaving || (hasPassword && !profile.current_password)) &&
+                  styles.buttonDisabled,
+              ]}
               onPress={handleProfileSave}
-              disabled={isProfileSaving}
+              disabled={isProfileSaving || (hasPassword && !profile.current_password)}
             >
               <ThemedText style={styles.primaryButtonText}>
-                {isProfileSaving ? 'Saving...' : 'Save profile'}
+                {isProfileSaving ? 'Updating...' : 'Update profile'}
               </ThemedText>
             </TouchableOpacity>
           </View>
@@ -797,13 +800,6 @@ function SettingsScreen() {
                   <AppSwitch
                     value={isShortcutOnShowtimes}
                     onValueChange={(value) => setCinevilleShortcutEnabled('showtimes', value)}
-                  />
-                </View>
-                <View style={styles.cinevilleShortcutRow}>
-                  <ThemedText style={styles.cinevilleShortcutLabel}>On the agenda tab</ThemedText>
-                  <AppSwitch
-                    value={isShortcutOnAgenda}
-                    onValueChange={(value) => setCinevilleShortcutEnabled('agenda', value)}
                   />
                 </View>
               </>

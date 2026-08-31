@@ -2,9 +2,9 @@
  * How the two infinite feeds — showtimes and movies — ask for and render rows.
  *
  * One place because the two lists are the same list with a different card, and
- * the three numbers below are a policy rather than a detail: get one of them
- * wrong on one feed and it is wrong in a way that is invisible until you are
- * on a mid-range phone wondering why a filter change stutters.
+ * the first-page size below is a policy rather than a detail: get it wrong on
+ * one feed and it is wrong in a way that is invisible until you are on a
+ * mid-range phone wondering why a filter change stutters.
  */
 import { Dimensions } from "react-native";
 import { useCallback, useRef } from "react";
@@ -54,26 +54,11 @@ export const SHOWTIMES_FIRST_PAGE_LIMIT = firstPageLimitForRow(SHOWTIME_ROW_HEIG
 export const MOVIES_FIRST_PAGE_LIMIT = firstPageLimitForRow(MOVIE_ROW_HEIGHT);
 
 /**
- * Both feeds key their rows by id, and hoisting it matters for the same reason
- * the render window does: a new `keyExtractor` on every render is another
- * reason for a list to rebuild cells that have not changed.
+ * Both feeds key their rows by id, and hoisting it matters: a new
+ * `keyExtractor` on every render is another reason for a list to rebuild cells
+ * that have not changed.
  */
 export const byIdKeyExtractor = (item: { id: number }) => item.id.toString();
-
-/**
- * How much of the list stays built.
- *
- * `FlatList`'s defaults are 10 initial rows and a 21-viewport window, which for
- * a 128pt row is far more than a page: a twenty-row page ends up mounted in
- * full, every card a set of native views built on the UI thread while whatever
- * caused the fetch is still animating. These cut it to roughly what is on
- * screen plus a screen either side, which is what windowing is for.
- */
-export const FEED_RENDER_WINDOW = {
-  initialNumToRender: 6,
-  maxToRenderPerBatch: 6,
-  windowSize: 5,
-} as const;
 
 /**
  * `onEndReached`, but only once the user has actually scrolled.

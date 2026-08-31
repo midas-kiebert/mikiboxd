@@ -37,6 +37,11 @@ class _UserBase(SQLModel):
     # only ever sent once per showtime, and only for one someone already said
     # they cared about.
     notify_on_seat_alert: bool = Field(default=True)
+    # "A showtime you're interested in has sold out." Its own preference rather
+    # than a second use of the one above: the two say different things and are
+    # wanted by different people — one hurries you along while you can still
+    # act, the other tells you not to bother.
+    notify_on_sold_out: bool = Field(default=True)
     notify_channel_friend_showtime_match: NotificationChannel = Field(
         default=NotificationChannel.PUSH
     )
@@ -53,6 +58,9 @@ class _UserBase(SQLModel):
         default=NotificationChannel.PUSH
     )
     notify_channel_seat_alert: NotificationChannel = Field(
+        default=NotificationChannel.PUSH
+    )
+    notify_channel_sold_out: NotificationChannel = Field(
         default=NotificationChannel.PUSH
     )
     display_name: str | None = Field(default=None, max_length=255)
@@ -112,6 +120,7 @@ class UserUpdate(SQLModel):
     notify_on_invite_response: bool | None = Field(default=None)
     notify_on_interest_reminder: bool | None = Field(default=None)
     notify_on_seat_alert: bool | None = Field(default=None)
+    notify_on_sold_out: bool | None = Field(default=None)
     notify_channel_friend_showtime_match: NotificationChannel | None = Field(
         default=None
     )
@@ -120,6 +129,7 @@ class UserUpdate(SQLModel):
     notify_channel_invite_response: NotificationChannel | None = Field(default=None)
     notify_channel_interest_reminder: NotificationChannel | None = Field(default=None)
     notify_channel_seat_alert: NotificationChannel | None = Field(default=None)
+    notify_channel_sold_out: NotificationChannel | None = Field(default=None)
     notify_watchlist_digest_enabled: bool | None = Field(default=None)
     notify_watchlist_digest_frequency: DigestFrequency | None = Field(default=None)
     notify_watchlist_digest_list_id: uuid.UUID | None = Field(default=None)

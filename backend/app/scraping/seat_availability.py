@@ -1,6 +1,6 @@
 """How many seats are left for one showtime, read from its ticket link.
 
-Four ticketing platforms, between them covering every cinema we run our own
+Five ticketing platforms, between them covering every cinema we run our own
 scraper for and a good many we don't. Each answers an unauthenticated GET:
 
 * **Z-ELITE / ZL8** (LAB111, De Uitkijk, Kriterion, FC Hyena, Eye) — the
@@ -51,6 +51,20 @@ reading rather than costing a second request.
   come out of the page we already have to fetch — no second request. A
   free-seating room ships no seats at all and only says whether the screening
   is sold out. Both name the room.
+
+* **Ticketlab** (Artishock Soest, Cacaofabriek, Cinema Middelburg, Cinema
+  Oostereiland, Drom, Filmhuis Bussum, Filmhuis Zevenaar, Filmtheater
+  Fraterhuis, Filmtheater Voorschoten, Fizi, Flora, Focus Arnhem, Luxor
+  Zutphen, Wennekercinema) — a white-label shop at each cinema's own
+  ``tickets.`` subdomain. A seated show's page inlines a Knockout-style
+  ``util.seating.seats`` array — the full seat map, with an id, row/seat name,
+  x/y position and a ``state`` code (available / in-cart / sold / blocked) per
+  seat — so the count, the room's real total and the taken map all come off
+  the checkout page itself, no second request. A free-seating show carries no
+  seat map, only a running count in the ``availabletickets`` hidden input.
+  Both name the room directly, next to the numeric id that keys it across
+  shows — unlike Tricket's anonymous ``hallId`` this needs no hand-built
+  lookup table.
 
 Cineville's API has no availability field at all, but that is not the same as a
 Cineville-only cinema being uncoverable: the ``ticketingUrl`` it hands out is
@@ -1022,12 +1036,340 @@ def _fetch_activetickets(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailab
     )
 
 
+# --- Ticketlab ---------------------------------------------------------------
+
+# A white-label ticket shop used by a long tail of small arthouse cinemas, each
+# at its own `tickets.<cinema-domain>` subdomain running the same
+# `/shop/tickets-new.php` checkout (its own privacy policy points at
+# ticketlab.nl). Gated on a host list for the same reason as everywhere else:
+# the path shape alone says nothing about the platform.
+#
+# A seated show inlines two Knockout-style state objects, `state` and `util`,
+# the same way ActiveTickets inlines `jsonCart`. `util.seating.seats` is the
+# room's full seat map — id, row/seat name, x/y position, and a `state` code
+# (from `tickets-new.js`'s `SEAT_STATE_*` constants: 1 unavailable, 2
+# available, 3 in someone's cart, 4 sold — anything but 2 is not buyable right
+# now). A free-seating show (`state.seated` false) carries no seat map at all,
+# only the `availabletickets` hidden input's running count. Both cases name
+# the room directly in the page, next to a numeric `locationid` that keys it
+# across shows — no hand-built lookup table needed, unlike Tricket's `hallId`.
+TICKETLAB_HOSTS = (
+    "tickets.artishocksoest.nl",
+    "tickets.cacaofabriek.nl",
+    "tickets.cinemamiddelburg.nl",
+    "tickets.cinemaoostereiland.nl",
+    "tickets.drom.nl",
+    "tickets.filmhuisbussum.nl",
+    "tickets.filmhuiszevenaar.nl",
+    "tickets.filmtheaterfraterhuis.nl",
+    "tickets.filmtheatervoorschoten.nl",
+    "tickets.fizi.nl",
+    "tickets.florafilmtheater.nl",
+    "tickets.focusarnhem.nl",
+    "tickets.luxorzutphen.nl",
+    "tickets.wennekercinema.nl",
+)
+
+TICKETLAB_URL_PATTERN = re.compile(
+    r"^https://(?:"
+    + "|".join(re.escape(host) for host in TICKETLAB_HOSTS)
+    + r")/shop/tickets-new\.php\?showid=(\d+)$"
+)
+
+# A showid that no longer resolves (sold as a different show, or a stale link)
+# renders this alert instead of the order form — "Show not found." or, in the
+# Dutch locale `_get`'s Accept-Language header asks for, "Voorstelling niet
+# gevonden." Matched on the wrapper alone since the two share no text; not
+# evidence of a full house either way.
+_TICKETLAB_NOT_FOUND = re.compile(r'class="alert alert-danger" role="alert">')
+_TICKETLAB_AVAILABLE_TICKETS = re.compile(r'id="availabletickets"[^>]*value="(\d+)"')
+# "<h4 ...><small>Location</small></h4></div><div ...><h4 ...>Club Zaal</h4>",
+# or "Zaal" for "Location" in the Dutch locale.
+_TICKETLAB_ROOM = re.compile(
+    r"<small>(?:Location|Zaal)</small></h4></div><div class=\"col-md-9\">"
+    r'<h4 class="event-label">([^<]*)</h4>'
+)
+_TICKETLAB_SEAT_STATE_AVAILABLE = 2
+
+
+def _ticketlab_room(page: str) -> str | None:
+    match = _TICKETLAB_ROOM.search(page)
+    return normalize_room(match.group(1) if match else None)
+
+
+def _ticketlab_js_object(page: str, var_name: str) -> dict:
+    """One `name = {...};` assignment inlined in a Ticketlab checkout page.
+
+    Decoded with a real JSON parser, like ActiveTickets' `jsonCart`: these
+    objects run to a couple of KB and their strings (film titles, seat
+    descriptions) can contain both braces and semicolons.
+    """
+    marker = re.search(rf"(?<![A-Za-z0-9_]){re.escape(var_name)}\s*=\s*{{", page)
+    if marker is None:
+        raise SeatAvailabilityFetchError(f"Ticketlab page carried no {var_name!r}")
+    start = marker.end() - 1
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(page, start)
+    except json.JSONDecodeError as e:
+        raise SeatAvailabilityFetchError(
+            f"Ticketlab {var_name!r} was not JSON: {e}"
+        ) from e
+    if not isinstance(obj, dict):
+        raise SeatAvailabilityFetchError(f"Ticketlab {var_name!r} was not an object")
+    return obj
+
+
+def _ticketlab_seat_name(seat: dict) -> TakenSeat | None:
+    row = str(seat.get("row") or "").strip()
+    name = str(seat.get("seat") or "").strip()
+    return (row, name) if row and name else None
+
+
+def _fetch_ticketlab(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
+    match = TICKETLAB_URL_PATTERN.match(url)
+    if match is None:
+        return _UNKNOWN
+    page = _get(url).text
+    if _TICKETLAB_NOT_FOUND.search(page):
+        return SeatAvailability(None, None, None, "ticketlab")
+
+    room = _ticketlab_room(page)
+    state = _ticketlab_js_object(page, "state")
+    if not state.get("seated"):
+        # Free seating: the room is not sold seat by seat, so only the running
+        # count is on offer, the same shape as ActiveTickets' unnumbered rooms.
+        available = _TICKETLAB_AVAILABLE_TICKETS.search(page)
+        seats_left = int(available.group(1)) if available else None
+        return SeatAvailability(
+            seats_left,
+            seats_left == 0 if seats_left is not None else None,
+            room,
+            "ticketlab",
+        )
+
+    util = _ticketlab_js_object(page, "util")
+    seats = (util.get("seating") or {}).get("seats")
+    if not isinstance(seats, list) or not seats:
+        return SeatAvailability(None, None, room, "ticketlab")
+
+    taken: list[TakenSeat] = []
+    free = 0
+    for seat in seats:
+        if not isinstance(seat, dict):
+            continue
+        if seat.get("state") == _TICKETLAB_SEAT_STATE_AVAILABLE:
+            free += 1
+            continue
+        name = _ticketlab_seat_name(seat)
+        if name is not None:
+            taken.append(name)
+
+    return SeatAvailability(
+        free,
+        free == 0,
+        room,
+        "ticketlab",
+        capacity=len(seats),
+        taken_seats=tuple(taken),
+    )
+
+
+class TicketlabSeatPlanGeometry(NamedTuple):
+    """One room's layout, as the floor-plan store wants it."""
+
+    room: str | None
+    screen_side: str
+    seats: list[dict]
+
+
+def fetch_ticketlab_room_geometry(url: str) -> TicketlabSeatPlanGeometry | None:
+    """One showtime's room layout, for the floor-plan ingest.
+
+    The same checkout page the poller already reads carries the full seat map,
+    so this is a plain re-fetch of it rather than a second endpoint. Returns
+    None for a free-seating show, an unresolved showid, or anything that does
+    not come back whole, so the ingest moves on to another showtime in the
+    same room rather than storing half a plan.
+    """
+    match = TICKETLAB_URL_PATTERN.match(url)
+    if match is None:
+        return None
+    try:
+        page = _get(url).text
+    except SeatAvailabilityFetchError:
+        return None
+    if _TICKETLAB_NOT_FOUND.search(page):
+        return None
+
+    try:
+        state = _ticketlab_js_object(page, "state")
+        if not state.get("seated"):
+            return None
+        util = _ticketlab_js_object(page, "util")
+    except SeatAvailabilityFetchError:
+        return None
+    seats = (util.get("seating") or {}).get("seats")
+    if not isinstance(seats, list) or not seats:
+        return None
+
+    try:
+        settings = _ticketlab_js_object(page, "settings")
+    except SeatAvailabilityFetchError:
+        settings = {}
+    seat_width = settings.get("seat_width")
+    seat_height = settings.get("seat_height")
+    # `settings.seating_upside_down` is the platform's own flag for which end
+    # a room's screen is at — the same role Tricket's drawn screen line plays
+    # — read here rather than guessed from row numbering, which is exactly
+    # the inference that gets Filmhuis Alkmaar backwards elsewhere. Unverified
+    # against a real upside-down room, since none turned up while wiring this
+    # up; the per-room override in `screen_side_override` is the escape hatch
+    # if a room comes out flipped.
+    screen_side = (
+        ScreenSide.BOTTOM if settings.get("seating_upside_down") else ScreenSide.TOP
+    )
+
+    geometry: list[dict] = []
+    for seat in seats:
+        if not isinstance(seat, dict):
+            continue
+        name = _ticketlab_seat_name(seat)
+        if name is None:
+            continue
+        row_name, seat_name = name
+        try:
+            x = float(seat.get("x"))
+            y = float(seat.get("y"))
+        except (TypeError, ValueError):
+            continue
+        geometry.append(
+            {
+                "row_name": row_name,
+                "seat_name": seat_name,
+                "position_left": x,
+                "position_top": y,
+                "width": seat_width or 32,
+                "height": seat_height or 32,
+                "selectable": True,
+            }
+        )
+    if not geometry:
+        return None
+
+    return TicketlabSeatPlanGeometry(
+        room=_ticketlab_room(page), screen_side=screen_side.value, seats=geometry
+    )
+
+
+# --- Ticketmatic ("Ticketworks") ---------------------------------------------
+
+# Seven cinemas on the same `<host>/mtTicket/performance/<id>` shape, but the
+# platform behaves very differently depending on how the venue sells a room.
+# A numbered room inlines an SVG seat plan — one `<rect>` per seat, each
+# carrying `data-status` (AVAILABLE / NOTAVAILABLE), `data-row`/`data-seat`
+# and an x/y position — so the count, the room's real total, the taken map
+# and the geometry all come off the one GET, same as Ticketlab. A
+# general-admission room has no seat plan at all, only a ticket-quantity
+# picker capped at a fixed ceiling (`absMaxOrderable`, always 10 wherever
+# sampled) — except the page prints a *smaller* number there the moment the
+# room has fewer than that left to sell, the same way older Z-ELITE
+# deployments do. Confirmed live: a Concordia performance read "Maximaal 2
+# tickets beschikbaar" against the generic "Maximaal 10 tickets" (no
+# "beschikbaar") everywhere else, and `data-max` on the hidden ticket-type
+# input dropped to match. At or above the ceiling the true number could be
+# anything, so it stays unknown; below it, it's the room's own word for how
+# many are left. A performance not yet in its online sales window (or an id
+# that no longer resolves) redirects to a plain listing page with neither an
+# SVG nor an `absMaxOrderable` — reads as unknown either way.
+TICKETMATIC_HOSTS = (
+    "kaartverkoop.lievevrouw.nl",
+    "ticketing.lumiere.nl",
+    "tickets.concordia.nl",
+    "tickets.forum.nl",
+    "tickets.gigant.nl",
+    "tickets.mimik.nl",
+    "tickets.schuur.nl",
+)
+
+TICKETMATIC_URL_PATTERN = re.compile(
+    r"^https://(?:"
+    + "|".join(re.escape(host) for host in TICKETMATIC_HOSTS)
+    + r")/mtTicket/performance/(\d+)(?:\?.*)?$"
+)
+
+# "<div class='mtPerformance' ...><h1>Title</h1><span class='date'>...</span>
+# <span class='location'><i .../>Filmzaal 2</span></div>" — present on every
+# performance page, seated or not, which is a better room name than the seat
+# plan's own `data-section` (bare "1" at one of the seated venues).
+_TICKETMATIC_ROOM = re.compile(
+    r"<div class='mtPerformance'.*?<span class='location'>.*?</i>([^<]*)</span>", re.S
+)
+_TICKETMATIC_SEAT_RECT = re.compile(r'<rect id="\d+" class="seat[^"]*".*?></rect>', re.S)
+_TICKETMATIC_ATTR = re.compile(r'([\w-]+)="([^"]*)"')
+_TICKETMATIC_SEAT_AVAILABLE = "AVAILABLE"
+
+_TICKETMATIC_ORDER_CEILING = 10
+_TICKETMATIC_ORDERABLE = re.compile(r"absMaxOrderable = new Number\((\d+)\)")
+
+
+def _ticketmatic_room(page: str) -> str | None:
+    match = _TICKETMATIC_ROOM.search(page)
+    return normalize_room(match.group(1) if match else None)
+
+
+def _ticketmatic_seat_name(attrs: dict[str, str]) -> TakenSeat | None:
+    row = attrs.get("data-row", "").strip()
+    seat = attrs.get("data-seat", "").strip()
+    return (row, seat) if row and seat else None
+
+
+def _fetch_ticketmatic(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
+    match = TICKETMATIC_URL_PATTERN.match(url)
+    if match is None:
+        return _UNKNOWN
+    page = _get(url).text
+    room = _ticketmatic_room(page)
+
+    seat_blocks = _TICKETMATIC_SEAT_RECT.findall(page)
+    if seat_blocks:
+        taken: list[TakenSeat] = []
+        free = 0
+        for block in seat_blocks:
+            attrs = dict(_TICKETMATIC_ATTR.findall(block))
+            if attrs.get("data-status") == _TICKETMATIC_SEAT_AVAILABLE:
+                free += 1
+                continue
+            name = _ticketmatic_seat_name(attrs)
+            if name is not None:
+                taken.append(name)
+        return SeatAvailability(
+            free,
+            free == 0,
+            room,
+            "ticketmatic",
+            capacity=len(seat_blocks),
+            taken_seats=tuple(taken),
+        )
+
+    orderable = _TICKETMATIC_ORDERABLE.search(page)
+    if orderable is None:
+        return SeatAvailability(None, None, room, "ticketmatic")
+    seats_left = int(orderable.group(1))
+    if seats_left >= _TICKETMATIC_ORDER_CEILING:
+        # Still at (or above) the generic per-order cap — could be exactly
+        # ten free or four hundred, the page doesn't say.
+        return SeatAvailability(None, None, room, "ticketmatic")
+    return SeatAvailability(seats_left, seats_left == 0, room, "ticketmatic")
+
+
 _Handler = Callable[[str, EagerlyFeedCache], SeatAvailability]
 _HANDLERS: list[tuple[re.Pattern[str], _Handler]] = [
     (ZELITE_URL_PATTERN, _fetch_zelite),
     (TRICKET_URL_PATTERN, _fetch_tricket),
     (EAGERLY_URL_PATTERN, _fetch_eagerly),
     (ACTIVETICKETS_URL_PATTERN, _fetch_activetickets),
+    (TICKETLAB_URL_PATTERN, _fetch_ticketlab),
+    (TICKETMATIC_URL_PATTERN, _fetch_ticketmatic),
 ]
 
 

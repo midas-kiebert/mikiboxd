@@ -80,12 +80,13 @@ export function resolveNotificationRoute(data: unknown): Href | null {
 
   switch (data.type) {
     case "showtime_ping":
-      return "/(tabs)/agenda";
+      return { pathname: "/(tabs)/activity", params: { mode: "you" } };
     case "showtime_match":
     case "showtime_status_removed":
     case "invite_response":
     case "showtime_interest_reminder":
     case "seats_running_out":
+    case "sold_out":
     case "seats_released": {
       const movieId = parsePositiveInteger(data.movieId);
       const showtimeId = parsePositiveInteger(data.showtimeId);
@@ -131,6 +132,7 @@ export function getModalShowtimeIdFromNotification(data: unknown): number | null
     case "invite_response":
     case "showtime_interest_reminder":
     case "seats_running_out":
+    case "sold_out":
     case "seats_released":
       return parsePositiveInteger(data.showtimeId);
     default:

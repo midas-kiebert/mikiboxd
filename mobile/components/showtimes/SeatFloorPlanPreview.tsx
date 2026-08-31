@@ -95,36 +95,53 @@ export default function SeatFloorPlanPreview({
           {isLoading ? (
             <ActivityIndicator color={colors.tint} />
           ) : hasSeats ? (
-            <View style={{ width: layout.width }}>
-              {screenSide === "top" ? (
-                <ScreenIndicator width={layout.width} side="top" colors={colors} />
-              ) : null}
-              <View style={{ height: layout.height }}>
-                {layout.seats.map((seat) => (
-                  <SeatRect
-                    key={`${seat.row_name}-${seat.seat_name}-${seat.x}-${seat.y}`}
-                    seat={seat}
-                    colors={colors}
-                    isDraftSeat={seat.is_viewer_seat}
-                    interactive={false}
-                  />
-                ))}
+            // Absolutely filling `body` rather than sitting inside it: the
+            // room is scaled to the height `body` reports, and `body` is
+            // `flex: 1` inside a scroll view's `flexGrow: 1` content
+            // container — a soft height that a tall room left in flow would
+            // push out, re-firing `onLayout` and rescaling the room to a size
+            // it caused itself. Out of flow, the measurement depends only on
+            // the flex layout around it.
+            <View style={styles.gridLayer} pointerEvents="none">
+              <View style={{ width: layout.width }}>
+                {screenSide === "top" ? (
+                  <ScreenIndicator width={layout.width} side="top" colors={colors} />
+                ) : null}
+                <View style={{ height: layout.height }}>
+                  {layout.seats.map((seat) => (
+                    <SeatRect
+                      key={`${seat.row_name}-${seat.seat_name}-${seat.x}-${seat.y}`}
+                      seat={seat}
+                      colors={colors}
+                      isDraftSeat={seat.is_viewer_seat}
+                      interactive={false}
+                    />
+                  ))}
+                </View>
+                {screenSide === "bottom" ? (
+                  <ScreenIndicator width={layout.width} side="bottom" colors={colors} />
+                ) : null}
               </View>
-              {screenSide === "bottom" ? (
-                <ScreenIndicator width={layout.width} side="bottom" colors={colors} />
-              ) : null}
             </View>
           ) : null}
         </View>
 
-        {hasSeats && !isLoading ? (
-          <View style={styles.legend}>
-            <LegendItem label="Free" colors={colors} backgroundColor={colors.seatFree} />
-            <LegendItem label="Taken" colors={colors} backgroundColor={colors.seatTaken} />
-            <LegendItem label="Friend" colors={colors} backgroundColor={colors.seatFriend} />
-            <LegendItem label="You" colors={colors} backgroundColor={colors.seatYou} />
-          </View>
-        ) : null}
+        {/* Always rendered, at a fixed height, even while the seats are still
+            loading — exactly as the editable picker does it. Letting the
+            legend appear with the seats took 34pt off the body underneath
+            them the moment they arrived, and a room whose scale is set by
+            the height (a tall, narrow one — Cinecenter's Zaal 2 and 3) would
+            visibly shrink a beat after opening. */}
+        <View style={styles.legend}>
+          {hasSeats && !isLoading ? (
+            <>
+              <LegendItem label="Free" colors={colors} backgroundColor={colors.seatFree} />
+              <LegendItem label="Taken" colors={colors} backgroundColor={colors.seatTaken} />
+              <LegendItem label="Friend" colors={colors} backgroundColor={colors.seatFriend} />
+              <LegendItem label="You" colors={colors} backgroundColor={colors.seatYou} />
+            </>
+          ) : null}
+        </View>
       </BottomSheetScrollView>
     </AppBottomSheet>
   );
@@ -141,7 +158,19 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   subtitle: { fontSize: 12 },
-  body: { flex: 1, width: "100%", alignItems: "center", justifyContent: "center" },
+  body: {
+    flex: 1,
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  // Centers the room within whatever `body` was measured at; see its usage.
+  gridLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   legend: {
     height: LEGEND_HEIGHT,
     flexDirection: "row",

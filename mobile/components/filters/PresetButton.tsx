@@ -1,18 +1,13 @@
 /**
  * Mobile filter UI component: one saved-preset button.
  *
- * A preset is an action, so the button confirms the tap itself — a small
- * scale pop and a brief lift in its fill — because the change it makes lands
- * in the active-filter row underneath, where the eye is not.
- *
- * All of it is painted in the frame the button is tapped, and none of it waits
- * on anything. The row below answers on its own schedule — it has things to
- * take away before it has things to show — but a control that does not answer
- * a touch immediately reads as a control that missed it, whatever happens
- * afterwards. So this is the button's own animation, on its own clock, and it
- * is kept quiet enough that the row's answer is still the thing you look at:
- * the pop barely leaves the button's own outline, and the lift is one step of
- * the same neutral the chips flash rather than a colour of its own.
+ * A preset is an action, so the button confirms the tap itself: a band of
+ * light flashing out of its middle to both edges, the same movement the
+ * bottom tab bar answers a press with (`components/tab-bar.tsx`). The change
+ * a preset makes lands in the active-filter row underneath, where the eye is
+ * not, so the button has to answer on its own — but it says so with light
+ * alone, not with a size change, since the row below is the thing meant to
+ * move.
  *
  * Reanimated, and specifically *not* React Native's own `Animated`, for one
  * reason that decides the whole file. `Animated.sequence` and `Animated.delay`
@@ -24,7 +19,7 @@
  * Android phone that came out as pop, shrink, *stall*, pop again, *stall*,
  * flash, snap to disabled — a different shape on every press. Reanimated's
  * `withTiming`/`withSequence`/`withDelay` run start to finish on the UI thread
- * with no JS involvement at all, so a press is the same 250ms whatever else is
+ * with no JS involvement at all, so a press is the same length whatever else is
  * happening. Nothing in here may go back to a JS-scheduled stage.
  *
  * A press is one closed animation of a fixed length, and nothing interrupts
@@ -38,8 +33,8 @@
  * Where it settles back to depends on whether there is anything left to do. A
  * preset that would change nothing stops taking presses — a button that
  * answers a tap by doing nothing is worse than one that says so first — and
- * shows that by fading out rather than by staying lit. The lift belongs to the
- * tap; what it fades into is a greyed-out button.
+ * shows that by fading out rather than by staying lit. The flash still belongs
+ * to the tap; what it fades into is a greyed-out button.
  *
  * Resting lit would have said the wrong thing: that reads as "this is the one
  * you are on", and a preset can be satisfied while filters it says nothing
@@ -64,9 +59,9 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
-  withSequence,
   withTiming,
 } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -78,48 +73,89 @@ import {
 } from "@/components/filters/filter-control-metrics";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
+/** How long the flash takes to grow from the middle to full solid coverage. */
+const FLASH_GROW_MS = 110;
+/** How long it sits as one solid colour, edge to edge, before it starts to clear. */
+const FLASH_HOLD_MS = 60;
 /**
- * The lift: up in one frame, held just long enough to register as deliberate,
- * then gone. Much shorter than the row's own flash (`filter-change-animation`)
- * and deliberately so — that one has to be *found*, somewhere else on the
- * screen, while this one is under the thumb that caused it and only has to be
- * seen on the way past.
+ * How long the flash takes to clear once it starts — which is also how long
+ * the button takes to dim to its settled look, since that is what clearing
+ * the flash reveals. The two finish in the same frame by construction.
  */
-const LIFT_HOLD_MS = 90;
-const LIFT_FADE_MS = 160;
+const FLASH_FADE_MS = 150;
+/** Tap to settled, end to end. */
+const PRESS_MS = FLASH_GROW_MS + FLASH_HOLD_MS + FLASH_FADE_MS;
+/** How wide the flash starts, as a fraction of the button. */
+const FLASH_WIDTH_FROM = 0.16;
+/**
+ * How far the flash's gradient pane overhangs the button on each side, as a
+ * fraction of the button's own width. A straight-edged rectangle read as a
+ * mechanical wipe; the edge has to soften into the background instead of
+ * cutting against it, like light falling off rather than a shape sliding in.
+ * The soft, near-transparent ends of the gradient below land out here, past
+ * the clipped edge, so what is left inside the button is the gradient's
+ * bright, only-gently-tapered middle — full-looking at rest, without a hard
+ * line anywhere.
+ */
+const FLASH_OVERHANG_FRACTION = 0.18;
+const FLASH_OVERHANG = `${FLASH_OVERHANG_FRACTION * 100}%`;
+/**
+ * The button's own edges, expressed as fractions along the (overhung)
+ * gradient pane — the maths behind `FLASH_OVERHANG`: a pane overhanging by
+ * that fraction on each side puts the button's visible left/right edges at
+ * `overhang / (1 + 2 * overhang)` and its mirror.
+ */
+const BUTTON_EDGE_LOW = FLASH_OVERHANG_FRACTION / (1 + 2 * FLASH_OVERHANG_FRACTION);
+const BUTTON_EDGE_HIGH = 1 - BUTTON_EDGE_LOW;
+/**
+ * The gradient's own shape, as fractions along its (overhung) width. Reaches
+ * solid *just* inside the button's real edges (`BUTTON_EDGE_LOW/HIGH` above),
+ * so almost the entire button reads as one flat colour and only a thin sliver
+ * right at the border is still visibly soft — the transparent tails stay out
+ * in the overhang, never inside the button at all.
+ */
+const FLASH_GRADIENT_LOCATIONS = [
+  0,
+  BUTTON_EDGE_LOW - 0.07,
+  BUTTON_EDGE_LOW + 0.03,
+  BUTTON_EDGE_HIGH - 0.03,
+  BUTTON_EDGE_HIGH + 0.07,
+  1,
+] as const;
+/** Alpha bytes to match, on `colors.pillFlashBackground`. */
+const FLASH_GRADIENT_ALPHAS = ["00", "80", "ff", "ff", "80", "00"] as const;
+/** Where in the flash's own 0-1 timeline it has finished growing. */
+const FLASH_GROW_END = FLASH_GROW_MS / PRESS_MS;
+/**
+ * Where it has gone from invisible to fully opaque — a sliver of the
+ * timeline, not a fraction shared with the grow: growing is meant to be
+ * seen, appearing from nothing is not.
+ */
+const FLASH_APPEAR_END = 0.04;
+/** Where in that timeline it starts clearing again. */
+const FLASH_FADE_START = (FLASH_GROW_MS + FLASH_HOLD_MS) / PRESS_MS;
+const FLASH_TIMING = { duration: PRESS_MS, easing: Easing.linear } as const;
 
 /**
- * Tap to settled, end to end. The lift arrives in one frame, so the way back
- * has to be quick too — a long fade off an instant rise reads as the button
- * being slow rather than as one movement.
- *
- * Every part of the press is cut to land on this exactly, so the whole thing
- * is one length and not three that happen to overlap.
+ * The dim is not a separate move: it starts exactly when the flash starts
+ * clearing and finishes exactly when the flash is gone, so what the flash
+ * reveals as it clears already is the settled look underneath.
  */
-const PRESS_MS = LIFT_HOLD_MS + LIFT_FADE_MS;
-/** Where in that the lift starts giving way. */
-const SETTLE_HANDOVER = LIFT_HOLD_MS / PRESS_MS;
+const DIM_DELAY_MS = FLASH_GROW_MS + FLASH_HOLD_MS;
+const DIM_MS = FLASH_FADE_MS;
 
 /**
  * What a satisfied button fades back to. In the same range as every other
- * disabled control in the filter UI (0.4–0.5), so it is recognisably the same
+ * disabled control in the filter UI (0.4-0.5), so it is recognisably the same
  * "not available" and not a look of its own.
  */
 const SATISFIED_OPACITY = 0.45;
 
-const POP_UP_MS = 90;
-const POP_DOWN_MS = PRESS_MS - POP_UP_MS;
 /**
- * How far the button swells at the top of the pop. Small: at 1.05 the swell
- * was the loudest thing in a row whose point is the chips underneath it, and
- * a control only has to move enough to say it was touched.
- *
- * It goes up and comes back on plain curves rather than on a spring. A spring
- * settles when it settles, which is a length the button cannot state, and its
- * overshoot below rest is the first thing to read as a glitch when a frame is
- * dropped.
+ * How long the settled look takes to let go, on the rare correction where a
+ * press claimed satisfied but the row disagreed once it caught up.
  */
-const POP_SCALE = 1.025;
+const UNSETTLE_FADE_MS = 160;
 
 const LONG_PRESS_DELAY_MS = 300;
 
@@ -139,10 +175,8 @@ export default function PresetButton({
 }: PresetButtonProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  /** The pop, 0 → 1 → 0 across one press. */
-  const pop = useSharedValue(0);
-  /** The lift pane's opacity. */
-  const lift = useSharedValue(0);
+  /** The flash, 0 -> 1 across one press. */
+  const flash = useSharedValue(0);
   /** 0 while the button is live, 1 once it has nothing left to apply. */
   const settled = useSharedValue(isSatisfied ? 1 : 0);
   /**
@@ -158,13 +192,21 @@ export default function PresetButton({
   /** Settles the button on the resting look for `satisfied`. */
   const settleOn = useCallback(
     (satisfied: boolean) => {
-      settled.value = withTiming(satisfied ? 1 : 0, {
-        // One run across the whole press, linear, because the two things it
-        // drives take turns rather than move together — see `fillStyle` and
-        // `labelStyle`. Easing it would only bend a handover the eye reads as
-        // one continuous thing.
-        duration: satisfied ? PRESS_MS : LIFT_FADE_MS,
-        easing: satisfied ? Easing.linear : Easing.out(Easing.quad),
+      if (satisfied) {
+        // Held off until the flash has already opened out and started
+        // clearing — see `DIM_DELAY_MS` — so the dim never reads as the thing
+        // that cut the flash short.
+        settled.value = withDelay(
+          DIM_DELAY_MS,
+          withTiming(1, { duration: DIM_MS, easing: Easing.out(Easing.quad) })
+        );
+        return;
+      }
+      // A correction, not part of the choreography above: whatever is
+      // playing just needs to let go of the satisfied look, right away.
+      settled.value = withTiming(0, {
+        duration: UNSETTLE_FADE_MS,
+        easing: Easing.out(Easing.quad),
       });
     },
     [settled]
@@ -198,50 +240,46 @@ export default function PresetButton({
     // disabled — a preset that has just been applied has by definition nothing
     // left to apply — so the button says so on its own rather than waiting to
     // be told, which is what keeps every press identical to every other one.
-    pop.value = withSequence(
-      withTiming(1, { duration: POP_UP_MS, easing: Easing.out(Easing.quad) }),
-      withTiming(0, { duration: POP_DOWN_MS, easing: Easing.out(Easing.quad) })
-    );
-    lift.value = withSequence(
-      // A frame's ramp rather than a zero-length one, which is a division by
-      // the duration away from never finishing. At 1ms it is the same picture.
-      withTiming(1, { duration: 1 }),
-      withDelay(
-        LIFT_HOLD_MS,
-        withTiming(0, { duration: LIFT_FADE_MS, easing: Easing.out(Easing.quad) })
-      )
-    );
+    flash.value = 0;
+    flash.value = withTiming(1, FLASH_TIMING);
     settleOn(true);
 
     // Next frame, not this one. The apply re-renders both filter rows and the
-    // feed; the animations above are already running by then, but the press's
+    // feed; the animation above is already running by then, but the press's
     // first frame should not have to share with that work either.
     requestAnimationFrame(() => onApply(preset));
   };
 
-  const popStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 + (POP_SCALE - 1) * pop.value }],
+  // Narrow in the middle of the button at the start, growing out to the
+  // edges. The pane itself overhangs the button (see `FLASH_OVERHANG`), so
+  // this only ever scales its already-soft ends further out of view — the
+  // edges the button actually shows are the gradient's midsection, not its
+  // hard-clipped boundary.
+  const flashStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        scaleX: interpolate(
+          flash.value,
+          [0, FLASH_GROW_END, FLASH_FADE_START, 1],
+          [FLASH_WIDTH_FROM, 1, 1, 1]
+        ),
+      },
+    ],
+    // 0 at rest, not just at the end: `flash` sits at 0 between presses, and
+    // without this the idle sliver at `FLASH_WIDTH_FROM` would sit there
+    // fully opaque before anyone has tapped anything.
+    opacity: interpolate(flash.value, [0, FLASH_APPEAR_END, FLASH_FADE_START, 1], [0, 1, 1, 0]),
   }));
-  const liftStyle = useAnimatedStyle(() => ({ opacity: lift.value }));
-  // The fill goes first, hidden under the lift, so the lift has somewhere
-  // finished to fall into. The label waits for the lift to start leaving:
-  // dimming it during the hold is a slow fade with nothing else moving, which
-  // is what made the whole thing feel drawn out.
+  // Fill and label dim together, on the one delayed clock above — nothing to
+  // stagger here now that the dim only ever starts once the flash is done.
   const fillStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      settled.value,
-      [0, SETTLE_HANDOVER, 1],
-      [1, SATISFIED_OPACITY, SATISFIED_OPACITY]
-    ),
+    opacity: interpolate(settled.value, [0, 1], [1, SATISFIED_OPACITY]),
   }));
   const labelStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(settled.value, [0, SETTLE_HANDOVER, 1], [1, 1, SATISFIED_OPACITY]),
+    opacity: interpolate(settled.value, [0, 1], [1, SATISFIED_OPACITY]),
   }));
 
   return (
-    // The touchable wraps the animated view rather than the other way around,
-    // so the press dims the whole button and not just its label.
-    //
     // Long-press survives being satisfied: that gesture deletes the preset,
     // which is exactly as available whether or not it has anything to apply.
     <TouchableOpacity
@@ -253,31 +291,40 @@ export default function PresetButton({
       accessibilityState={{ disabled: isSatisfied }}
       accessibilityHint={isSatisfied ? "Already applied" : undefined}
     >
-      {/* The scale on a wrapper of its own, so what it holds can be flat
-          layers stacked back to front. */}
-      <Animated.View style={popStyle}>
-        <View style={styles.button}>
-          {/* The button itself, as a layer rather than as the box's own
-              background: it has to be able to fade behind the lift without
-              taking the lift with it. */}
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.pane, styles.fillPane, fillStyle]}
-          />
-          {/* Over the fill and under the label, so the label stays readable
-              while the lift is up. The same neutral the chips flash, so one
-              tap reads as one thing even though the two land a beat apart. */}
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.pane, styles.liftPane, liftStyle]}
-          />
-          <Animated.View style={labelStyle}>
-            <ThemedText style={styles.label} numberOfLines={1}>
-              {preset.name}
-            </ThemedText>
+      <View style={styles.button}>
+        {/* The button itself, as a layer rather than as the box's own
+            background: it has to be able to fade behind the flash without
+            taking the flash with it. */}
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.pane, styles.fillPane, fillStyle]}
+        />
+        {/* Over the fill and under the label, so the label stays readable
+            as the flash grows under it. `flashClip` is the button's own
+            static shape and never itself animates; `flashPane` inside it is
+            wider than the button and is what scales, so the clip acts as a
+            fixed window onto it rather than shrinking along with it. */}
+        <View pointerEvents="none" style={[styles.pane, styles.flashClip]}>
+          <Animated.View style={[styles.flashPane, flashStyle]}>
+            <LinearGradient
+              colors={
+                FLASH_GRADIENT_ALPHAS.map(
+                  (alpha) => `${colors.pillFlashBackground}${alpha}`
+                ) as [string, string, ...string[]]
+              }
+              locations={FLASH_GRADIENT_LOCATIONS as unknown as [number, number, ...number[]]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFill}
+            />
           </Animated.View>
         </View>
-      </Animated.View>
+        <Animated.View style={labelStyle}>
+          <ThemedText style={styles.label} numberOfLines={1}>
+            {preset.name}
+          </ThemedText>
+        </Animated.View>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -310,9 +357,16 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       backgroundColor: colors.pillBackground,
       borderColor: colors.pillBorder,
     },
-    liftPane: {
-      backgroundColor: colors.pillFlashBackground,
-      borderColor: colors.pillFlashBorder,
+    flashClip: {
+      borderColor: "transparent",
+      overflow: "hidden",
+    },
+    flashPane: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      left: `-${FLASH_OVERHANG}`,
+      right: `-${FLASH_OVERHANG}`,
     },
     label: {
       fontSize: 13,

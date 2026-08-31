@@ -1,15 +1,21 @@
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 from html import escape
 from logging import getLogger
+from typing import NamedTuple
 from uuid import UUID
 
 import httpx
 from sqlmodel import Session
 
 from app.core.config import settings
-from app.core.enums import GoingStatus, NotificationChannel, NotificationType
+from app.core.enums import (
+    GoingStatus,
+    NotificationChannel,
+    NotificationType,
+    SeatAlertKind,
+)
 from app.crud import notification as notification_crud
 from app.crud import push_token as push_token_crud
 from app.crud import showtime as showtime_crud
@@ -29,10 +35,47 @@ REMINDER_HORIZON = timedelta(hours=24)
 REMINDER_MINIMUM_NOTICE = timedelta(hours=2)
 REMINDER_MINIMUM_DELAY_AFTER_SELECTION = timedelta(hours=2)
 ACTIVE_SHOWTIME_STATUSES = (GoingStatus.GOING, GoingStatus.INTERESTED)
-# Who hears that a showtime is nearly sold out. INTERESTED only: "going" is a
-# decision already made, and this notice exists to hurry along the people who
-# haven't made it yet.
+# Who hears about a showtime's seat count. INTERESTED only: "going" is a
+# decision already made, and both notices are addressed to the people who have
+# not made it yet — one hurrying them along, the other telling them they left
+# it too late.
 SEAT_ALERT_STATUSES = (GoingStatus.INTERESTED,)
+
+
+class _SeatAlertCopy(NamedTuple):
+    """Everything that differs between the two seat notices.
+
+    They share one delivery path — same audience, same once-only stamp, same
+    push/email split — and differ only in what they say and which preference
+    they answer to, so the difference lives in a table rather than in a second
+    copy of the sending code.
+    """
+
+    notification_type: NotificationType
+    # The `data.type` the app routes on, and the feed type it renders.
+    push_type: str
+    enabled_field: str
+    channel_field: str
+    # Given the movie's title, the notification's headline.
+    headline: Callable[[str], str]
+
+
+_SEAT_ALERT_COPY: dict[SeatAlertKind, _SeatAlertCopy] = {
+    SeatAlertKind.NEARLY_SOLD_OUT: _SeatAlertCopy(
+        notification_type=NotificationType.SEATS_RUNNING_OUT,
+        push_type="seats_running_out",
+        enabled_field="notify_on_seat_alert",
+        channel_field="notify_channel_seat_alert",
+        headline=lambda title: f"{title} is nearly sold out",
+    ),
+    SeatAlertKind.SOLD_OUT: _SeatAlertCopy(
+        notification_type=NotificationType.SOLD_OUT,
+        push_type="sold_out",
+        enabled_field="notify_on_sold_out",
+        channel_field="notify_channel_sold_out",
+        headline=lambda title: f"{title} is sold out",
+    ),
+}
 
 logger = getLogger(__name__)
 
@@ -594,24 +637,30 @@ def send_seat_alerts(
     *,
     session: Session,
     showtime_ids: list[int],
+    kind: SeatAlertKind,
     now: datetime | None = None,
 ) -> int:
-    """Tell interested users that these showtimes have nearly sold out.
+    """Tell interested users that these showtimes have crossed `kind`.
 
-    Called with the showtimes that *just* crossed the threshold, and guarded a
-    second time by `seat_alert_sent_at` on each selection, so a screening that
-    hovers around the cutoff — or a run that half-fails and is retried — cannot
-    produce a second notice.
+    Called with the showtimes that *just* crossed, and guarded a second time by
+    the kind's stamp on each selection, so a screening that hovers around the
+    cutoff — or a run that half-fails and is retried — cannot produce a second
+    notice of the same kind. The two kinds are independent: a screening that
+    fills up and then sells out sends one of each, in that order, and nobody is
+    told the same thing twice.
 
     Only `SEAT_ALERT_STATUSES`, currently INTERESTED alone: someone who has
     already decided they're going is not the person this is trying to reach.
     Widening it to GOING is a change to that tuple and nothing else.
     """
     reference_time = now or now_amsterdam_naive()
+    copy = _SEAT_ALERT_COPY[kind]
+    sent_at_field = showtime_crud.SEAT_ALERT_SENT_AT_FIELDS[kind]
     candidates = showtime_crud.get_seat_alert_candidates(
         session=session,
         showtime_ids=showtime_ids,
         statuses=SEAT_ALERT_STATUSES,
+        kind=kind,
     )
     if not candidates:
         return 0
@@ -628,8 +677,8 @@ def send_seat_alerts(
         selection.user_id
         for selection, _ in candidates
         if (recipient := recipients_by_id.get(selection.user_id)) is not None
-        and recipient.notify_on_seat_alert
-        and recipient.notify_channel_seat_alert != NotificationChannel.EMAIL
+        and getattr(recipient, copy.enabled_field)
+        and getattr(recipient, copy.channel_field) != NotificationChannel.EMAIL
     ]
     token_by_user: dict[UUID, list[str]] = defaultdict(list)
     if push_user_ids:
@@ -644,10 +693,10 @@ def send_seat_alerts(
 
     for selection, showtime in candidates:
         recipient = recipients_by_id.get(selection.user_id)
-        if recipient is None or not recipient.notify_on_seat_alert:
+        if recipient is None or not getattr(recipient, copy.enabled_field):
             continue
 
-        title = f"{showtime.movie.title} is nearly sold out"
+        title = copy.headline(showtime.movie.title)
         body = (
             f"{showtime.datetime.strftime('%a, %b %d at %H:%M')} · "
             f"{showtime.cinema.name}"
@@ -656,13 +705,13 @@ def send_seat_alerts(
         notification_crud.upsert_notification(
             session=session,
             user_id=recipient.id,
-            type=NotificationType.SEATS_RUNNING_OUT,
+            type=copy.notification_type,
             actor_id=None,
             showtime_id=showtime.id,
             created_at=reference_time,
         )
 
-        if recipient.notify_channel_seat_alert == NotificationChannel.EMAIL:
+        if getattr(recipient, copy.channel_field) == NotificationChannel.EMAIL:
             _send_email_notification(email_to=recipient.email, subject=title, body=body)
             # Stamped whether or not the mail went out: a failed send is not a
             # reason to try the same person again on the next crossing, and
@@ -677,7 +726,7 @@ def send_seat_alerts(
                     "title": title,
                     "body": body,
                     "data": {
-                        "type": "seats_running_out",
+                        "type": copy.push_type,
                         "showtimeId": showtime.id,
                         "movieId": showtime.movie_id,
                     },
@@ -690,7 +739,7 @@ def send_seat_alerts(
         alerted_selections.append(selection)
 
     for selection in alerted_selections:
-        selection.seat_alert_sent_at = reference_time
+        setattr(selection, sent_at_field, reference_time)
         session.add(selection)
     session.commit()
 
@@ -698,7 +747,7 @@ def send_seat_alerts(
         try:
             results = _send_expo_messages(push_messages)
         except Exception:
-            logger.exception("Failed sending seat alerts")
+            logger.exception("Failed sending %s seat alerts", kind.value)
         else:
             _handle_expo_results(
                 session=session,

@@ -16,6 +16,7 @@ type ShowtimesFilters = {
     hideWatched?: boolean;
     watchedOnly?: boolean;
     selectedStatuses?: GoingStatus[];
+    friendsOnly?: boolean;
     selectedListIds?: string[];
     excludeListIds?: string[];
     selectedLanguages?: Language[];

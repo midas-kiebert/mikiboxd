@@ -26,14 +26,16 @@ export type NotificationPreferenceKey =
   | "notify_on_friend_requests"
   | "notify_on_showtime_ping"
   | "notify_on_interest_reminder"
-  | "notify_on_seat_alert";
+  | "notify_on_seat_alert"
+  | "notify_on_sold_out";
 
 export type NotificationChannelPreferenceKey =
   | "notify_channel_friend_showtime_match"
   | "notify_channel_friend_requests"
   | "notify_channel_showtime_ping"
   | "notify_channel_interest_reminder"
-  | "notify_channel_seat_alert";
+  | "notify_channel_seat_alert"
+  | "notify_channel_sold_out";
 
 type NotificationPreferencesState = Record<NotificationPreferenceKey, boolean>;
 type NotificationChannelsState = Record<NotificationChannelPreferenceKey, NotificationChannel>;
@@ -56,7 +58,7 @@ export type NotificationDelivery = "off" | NotificationChannel;
 export type NotificationToggleDescriptor = {
   key: NotificationPreferenceKey;
   label: string;
-  icon: "groups" | "mail" | "alarm" | "person-add" | "local-fire-department";
+  icon: "groups" | "mail" | "alarm" | "person-add" | "local-fire-department" | "event-busy";
   delivery: NotificationDelivery;
 };
 
@@ -68,6 +70,7 @@ const preferenceToChannelKey: Record<NotificationPreferenceKey, NotificationChan
   notify_on_showtime_ping: "notify_channel_showtime_ping",
   notify_on_interest_reminder: "notify_channel_interest_reminder",
   notify_on_seat_alert: "notify_channel_seat_alert",
+  notify_on_sold_out: "notify_channel_sold_out",
 };
 
 // Labels carry the whole explanation now that the rows are one line each, so
@@ -80,6 +83,7 @@ const TOGGLE_COPY: Record<
   notify_on_showtime_ping: { label: "Invites", icon: "mail" },
   notify_on_interest_reminder: { label: "Interest reminders", icon: "alarm" },
   notify_on_seat_alert: { label: "Almost sold out", icon: "local-fire-department" },
+  notify_on_sold_out: { label: "Sold out", icon: "event-busy" },
   notify_on_friend_requests: { label: "Friend requests", icon: "person-add" },
 };
 
@@ -89,6 +93,7 @@ const TOGGLE_ORDER: readonly NotificationPreferenceKey[] = [
   "notify_on_showtime_ping",
   "notify_on_interest_reminder",
   "notify_on_seat_alert",
+  "notify_on_sold_out",
   "notify_on_friend_requests",
 ];
 
@@ -103,6 +108,7 @@ export const buildNotificationPreferencesState = (
   notify_on_showtime_ping: !!source?.notify_on_showtime_ping,
   notify_on_interest_reminder: !!source?.notify_on_interest_reminder,
   notify_on_seat_alert: !!source?.notify_on_seat_alert,
+  notify_on_sold_out: !!source?.notify_on_sold_out,
 });
 
 export const buildNotificationChannelsState = (
@@ -115,6 +121,7 @@ export const buildNotificationChannelsState = (
   notify_channel_showtime_ping: normalizeChannel(source?.notify_channel_showtime_ping),
   notify_channel_interest_reminder: normalizeChannel(source?.notify_channel_interest_reminder),
   notify_channel_seat_alert: normalizeChannel(source?.notify_channel_seat_alert),
+  notify_channel_sold_out: normalizeChannel(source?.notify_channel_sold_out),
 });
 
 /**

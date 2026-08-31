@@ -2,7 +2,7 @@
  * Expo Router screen/module for (tabs) / index. It controls navigation and screen-level state for this route.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, type View } from 'react-native';
+import { FlatList, StyleSheet, View } from 'react-native';
 import { ThemedRefreshControl } from '@/components/themed-refresh-control';
 import { DateTime } from 'luxon';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
@@ -33,11 +33,13 @@ import CinevilleCardButton from '@/components/cineville/CinevilleCardButton';
 import IntroFiltersSpotlight from '@/components/intro/IntroFiltersSpotlight';
 import { ShowtimesListContent } from '@/components/showtimes/ShowtimesScreen';
 import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
-import { SkeletonRows } from '@/components/ui/SkeletonRows';
+import ListLoadingLogo from '@/components/layout/ListLoadingLogo';
+import { useDelayedTrue } from '@/hooks/useDelayedTrue';
+import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from '@/constants/loading-logo';
+import { FeedItemEntrance } from '@/components/ui/FeedItemEntrance';
 import MovieCard from '@/components/movies/MovieCard';
 import {
   byIdKeyExtractor,
-  FEED_RENDER_WINDOW,
   MOVIES_FIRST_PAGE_LIMIT,
   SHOWTIMES_FIRST_PAGE_LIMIT,
   useScrollTriggeredLoadMore,
@@ -78,7 +80,7 @@ import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/util
 const TAB_PRELOAD_START_MS = 2500;
 const TAB_PRELOAD_GAP_MS = 600;
 /** Every tab in the bar except this one. `movies` has no button. */
-const PRELOADED_TABS = ['agenda', 'friends', 'settings'] as const;
+const PRELOADED_TABS = ['activity', 'friends', 'settings'] as const;
 
 /**
  * Hoisted so the feed is handed the same object every render: it reaches
@@ -311,7 +313,11 @@ function MainShowtimesScreen() {
     [goToMovieFromCard]
   );
   const renderMovie = useCallback(
-    ({ item }: { item: MovieSummaryPublic }) => <MovieCard movie={item} onPress={openMovie} />,
+    ({ item, index }: { item: MovieSummaryPublic; index: number }) => (
+      <FeedItemEntrance index={index}>
+        <MovieCard movie={item} onPress={openMovie} />
+      </FeedItemEntrance>
+    ),
     [openMovie]
   );
 
@@ -456,10 +462,43 @@ function MainShowtimesScreen() {
     />
   );
 
+  // Pull-to-refresh no longer clears the list: RefreshControl's own spinner
+  // at the top already says a reload is happening, so the old cards just
+  // stay up and get swapped for the fresh ones once they land. A filter
+  // change still clears it: switching mode mounts a whole feed from nothing,
+  // and mounting it full of cards is the one piece of work heavy enough to
+  // stall the filter row's animation on its way past.
+  const visibleMovies = isFilterTransitionLoading ? [] : movies;
+
+  // `moviesLoading`/`isFilterTransitionLoading` mean there's nothing cached
+  // yet (no data, or a whole feed being mounted from nothing) — nothing to
+  // lose by showing the panel immediately, and a delay here is exactly the
+  // "blank screen for too long" a genuine wait like that doesn't need.
+  // `moviesFetching`-only (data already empty, but a background refetch is
+  // running) is the case that can resolve from cache almost instantly, so
+  // that one keeps the anti-flash delay and cooldown. `!refreshing` on both:
+  // RefreshControl's own spinner already covers a pull-to-refresh, so the
+  // panel has nothing to do for one even on an already-empty list.
+  const isMoviesFirstLoadEmpty =
+    (moviesLoading || isFilterTransitionLoading) && !refreshing && movies.length === 0;
+  const isMoviesBackgroundFetchEmpty =
+    moviesFetching &&
+    !moviesLoading &&
+    !isFilterTransitionLoading &&
+    !refreshing &&
+    movies.length === 0;
+  const showMoviesBackgroundFetchLoadingLogo = useDelayedTrue(
+    isMoviesBackgroundFetchEmpty,
+    LOADING_LOGO_DELAY_MS,
+    LOADING_LOGO_COOLDOWN_MS
+  );
+  const showMoviesLoadingLogo = isMoviesFirstLoadEmpty || showMoviesBackgroundFetchLoadingLogo;
+  const isMoviesEmptyLoading = isMoviesFirstLoadEmpty || isMoviesBackgroundFetchEmpty;
+
   const renderMoviesEmpty = () => {
-    if (moviesLoading || moviesFetching || refreshing || isFilterTransitionLoading) {
-      return <SkeletonRows height={150} />;
-    }
+    // The loading panel is a fixed overlay (below), not part of the list's
+    // own content, so there's nothing to render here while it's up.
+    if (isMoviesEmptyLoading) return null;
     return (
       <ThemedView style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>No movies found</ThemedText>
@@ -467,13 +506,6 @@ function MainShowtimesScreen() {
       </ThemedView>
     );
   };
-
-  // Clear the list while refreshing so the pull-to-refresh visibly reloads,
-  // even when the refetched data is unchanged — and while a filter change is
-  // still landing, exactly as the showtimes feed does. Switching mode mounts a
-  // whole feed from nothing, and mounting it full of cards is the one piece of
-  // work heavy enough to stall the filter row's animation on its way past.
-  const visibleMovies = refreshing || isFilterTransitionLoading ? [] : movies;
 
   return (
     <TopSafeAreaView style={styles.container}>
@@ -491,20 +523,31 @@ function MainShowtimesScreen() {
       <PresetsRow onApplyPreset={handleApplyPreset} />
       <ActiveFilterChips {...activeChipsProps} />
       {appliedGroupByMovie ? (
-        <FlatList
-          data={visibleMovies}
-          renderItem={renderMovie}
-          keyExtractor={byIdKeyExtractor}
-          contentContainerStyle={styles.movieFeed}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={renderMoviesEmpty}
-          ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} />}
-          onScrollBeginDrag={loadMoreMovies.onScrollBeginDrag}
-          onEndReached={loadMoreMovies.onEndReached}
-          onEndReachedThreshold={2}
-          {...FEED_RENDER_WINDOW}
-          refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-        />
+        <View style={styles.listWrapper}>
+          <FlatList
+            data={visibleMovies}
+            renderItem={renderMovie}
+            keyExtractor={byIdKeyExtractor}
+            contentContainerStyle={styles.movieFeed}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={renderMoviesEmpty}
+            ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} />}
+            onScrollBeginDrag={loadMoreMovies.onScrollBeginDrag}
+            onEndReached={loadMoreMovies.onEndReached}
+            onEndReachedThreshold={2}
+            refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          />
+          {/* An overlay, not the list's ListEmptyComponent: that content
+              scrolls and shifts with RefreshControl's pull, which read as the
+              logo drifting down the screen. Sitting outside the FlatList
+              keeps it fixed in place and (via pointerEvents="none") never
+              intercepts the pull-to-refresh gesture underneath it. */}
+          {showMoviesLoadingLogo ? (
+            <View style={styles.loadingOverlay} pointerEvents="none">
+              <ListLoadingLogo />
+            </View>
+          ) : null}
+        </View>
       ) : (
         <ShowtimesListContent
           showtimes={visibleShowtimes}
@@ -540,6 +583,8 @@ function MainShowtimesScreen() {
 const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
+    listWrapper: { flex: 1 },
+    loadingOverlay: { ...StyleSheet.absoluteFillObject },
     movieFeed: { ...tabletCappedContentStyle, padding: 16 },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },

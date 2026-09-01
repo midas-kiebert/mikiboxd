@@ -82,25 +82,30 @@ jobs:
         # staging's own scraper already has them, and the database is never
         # dropped/recreated, so that data is never cleared by a deploy.
         #
-        # Each listed table is truncated in staging and reloaded from production
-        # as individual INSERT statements, run without --single-transaction and
-        # without ON_ERROR_STOP, so a row whose showtime_id/movie_id/cinema_id
-        # doesn't exist in staging's independently-scraped content just fails
-        # that one INSERT and the rest of the sync continues. pushtoken is
-        # truncated only, never copied: production device tokens must never
-        # reach staging.
+        # Each listed table is truncated in staging and reloaded from
+        # production one row at a time, inside a per-row exception handler —
+        # see `copy_table_common_columns` below — so a row whose
+        # showtime_id/movie_id/cinema_id doesn't exist in staging's
+        # independently-scraped content just fails that one row and the rest
+        # of the table's sync continues. pushtoken is truncated only, never
+        # copied: production device tokens must never reach staging.
         #
-        # --column-inserts (not plain --inserts): dev migrates ahead of prod
-        # by design, so a table's column order/count on staging and prod can
-        # differ at deploy time. Plain --inserts writes positional VALUES
-        # lists with no column names, which silently scrambles data — or
-        # worse, hard-fails every row with a type mismatch — the moment the
-        # two schemas diverge (this broke the `user` copy entirely once,
-        # 2026-09-01). --column-inserts names each column explicitly, so a
-        # copy only ever fails on genuinely incompatible columns, never on
-        # column order.
+        # Not a plain pg_dump: dev migrates ahead of prod by design, so a
+        # table's columns can differ between the two databases at deploy
+        # time — prod may be missing a column staging has just added, or
+        # still have one staging just dropped. pg_dump has no way to copy
+        # only the columns two databases actually have in common (even
+        # --column-inserts still names every column of the *source* table,
+        # so a column dropped on staging still crashes the whole copy — this
+        # took down the entire `user` table, and everything that referenced
+        # it, on 2026-09-01). `copy_table_common_columns` computes the
+        # column intersection per table and copies only those, so a
+        # migration adding or dropping a column here never breaks a deploy —
+        # the new/dropped column is just absent from this sync until prod
+        # catches up (a merge to master), same as it always implicitly was
+        # for columns pg_dump could still handle.
         run: |
-          set -o pipefail
+          set -euo pipefail
           USER_DATA_TABLES=(
             user user_login_email userblock userreport
             friendship friendrequest
@@ -114,10 +119,8 @@ jobs:
             watchlistdigestqueueentry watchlistdigestnotifiedmovie
             analyticsevent
           )
-          TABLE_ARGS=()
           QUOTED_TABLES=()
           for t in "${USER_DATA_TABLES[@]}"; do
-            TABLE_ARGS+=(--table="$t")
             QUOTED_TABLES+=("\"$t\"")
           done
           QUOTED_TABLES+=("pushtoken")
@@ -126,10 +129,54 @@ jobs:
             -v ON_ERROR_STOP=1 \
             -c "TRUNCATE TABLE $(IFS=,; echo "${QUOTED_TABLES[*]}") CASCADE;"
 
-          docker exec mikiboxd-db-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-            --no-owner --no-privileges --data-only --column-inserts \
-            "${TABLE_ARGS[@]}" \
-            | docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+          copy_table_common_columns() {
+            local table="$1"
+            local cols
+            cols=$(comm -12 \
+              <(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c \
+                  "SELECT column_name FROM information_schema.columns WHERE table_name='$table' ORDER BY column_name;" | sort) \
+              <(docker exec mikiboxd-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c \
+                  "SELECT column_name FROM information_schema.columns WHERE table_name='$table' ORDER BY column_name;" | sort) \
+              | paste -sd, -)
+
+            if [ -z "$cols" ]; then
+              echo "::warning::$table has no columns in common between production and staging; skipping"
+              return
+            fi
+
+            local tsv="/tmp/reseed_${table}.tsv"
+            docker exec mikiboxd-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+              -c "\\copy (SELECT $cols FROM \"$table\") TO STDOUT" > "$tsv"
+            docker cp "$tsv" "mikiboxd-staging-db-1:$tsv"
+            rm -f "$tsv"
+
+            # A plain \copy into the real table is all-or-nothing per call —
+            # one bad row would lose the whole table — so the data lands in
+            # an unconstrained scratch table first, and only the row-by-row
+            # loop below (inside its own BEGIN/EXCEPTION block) touches the
+            # real table. `r` must be typed `tmp_copy%ROWTYPE`, not the
+            # generic `RECORD`: PL/pgSQL can't dereference a bare RECORD's
+            # fields, since temp tables (and their row types) are created and
+            # torn down within this one session. Chained -c flags (not a
+            # heredoc) so every statement — including the temp table and the
+            # DO block — runs in that one session/connection: a heredoc's
+            # closing marker can't be indented to match this YAML block
+            # without breaking either the heredoc or the block scalar.
+            docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
+              -c "CREATE TEMP TABLE tmp_copy AS SELECT $cols FROM \"$table\" WITH NO DATA;" \
+              -c "\\copy tmp_copy FROM '$tsv'" \
+              -c "DO \$do\$ DECLARE r tmp_copy%ROWTYPE; copied int := 0; skipped int := 0; BEGIN FOR r IN SELECT * FROM tmp_copy LOOP BEGIN INSERT INTO \"$table\" ($cols) SELECT (r).*; copied := copied + 1; EXCEPTION WHEN OTHERS THEN skipped := skipped + 1; END; END LOOP; RAISE NOTICE '$table: copied %, skipped %', copied, skipped; END \$do\$;" \
+              -c "DROP TABLE tmp_copy;"
+
+            docker exec mikiboxd-staging-db-1 rm -f "$tsv"
+          }
+
+          for t in "${USER_DATA_TABLES[@]}"; do
+            # A failure copying one table (docker hiccup, a table that
+            # genuinely doesn't exist on one side) must not stop every table
+            # after it from being attempted too.
+            copy_table_common_columns "$t" || echo "::warning::Failed to copy $t from production, continuing"
+          done
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach
       - name: Wait for staging backend to be healthy
         run: |

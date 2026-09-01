@@ -191,6 +191,16 @@ function SettingsScreen() {
   // The ScrollView is scrolled to the end once the danger zone expands, so the
   // newly revealed card is never left cut off below the fold.
   const scrollViewRef = useRef<ScrollView>(null);
+  // Where the Letterboxd card sits in the scroll content, captured on layout
+  // so the "no watchlist connected" digest warning can jump straight to it
+  // instead of leaving someone to hunt for it themselves.
+  const letterboxdSectionY = useRef(0);
+  const handleLetterboxdSectionLayout = useCallback((event: LayoutChangeEvent) => {
+    letterboxdSectionY.current = event.nativeEvent.layout.y;
+  }, []);
+  const handleJumpToLetterboxdSection = useCallback(() => {
+    scrollViewRef.current?.scrollTo({ y: letterboxdSectionY.current, animated: true });
+  }, []);
   // While collapsed, the exact height the expanded card will take is held open
   // as blank space below the header, so expanding leaves the total content
   // height unchanged: someone already scrolled to the bottom sees the card
@@ -612,7 +622,7 @@ function SettingsScreen() {
         ) : null}
 
         {isSignedIn ? (
-        <View style={styles.section}>
+        <View style={styles.section} onLayout={handleLetterboxdSectionLayout}>
           <ThemedText style={styles.sectionTitle}>Letterboxd</ThemedText>
           <LetterboxdSection />
         </View>
@@ -737,6 +747,27 @@ function SettingsScreen() {
                   disabled={!user || isUpdatingDigest}
                 />
               </View>
+              {digestEnabled && !user?.letterboxd_username ? (
+                <View style={styles.digestWarningCard}>
+                  <ThemedText style={styles.digestWarningText}>
+                    No Letterboxd username set, so there&apos;s no watchlist to follow yet.
+                  </ThemedText>
+                  <View style={styles.digestWarningActions}>
+                    <TouchableOpacity onPress={handleJumpToLetterboxdSection} activeOpacity={0.8}>
+                      <ThemedText style={styles.digestWarningLink}>Set a username</ThemedText>
+                    </TouchableOpacity>
+                    <ThemedText style={styles.digestWarningText}> or </ThemedText>
+                    <TouchableOpacity
+                      onPress={() => setDigestAdvancedOpen(true)}
+                      activeOpacity={0.8}
+                    >
+                      <ThemedText style={styles.digestWarningLink}>
+                        use a list in advanced settings
+                      </ThemedText>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
               {digestEnabled ? (
                 <>
                   <TouchableOpacity
@@ -744,7 +775,7 @@ function SettingsScreen() {
                     activeOpacity={0.8}
                   >
                     <ThemedText style={styles.digestAdvancedToggle}>
-                      {digestAdvancedOpen ? 'Hide advanced' : 'Advanced: sources'}
+                      {digestAdvancedOpen ? 'Hide advanced settings' : 'Advanced settings'}
                     </ThemedText>
                   </TouchableOpacity>
                   {digestAdvancedOpen ? (
@@ -1211,6 +1242,30 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     digestAdvancedToggle: {
       fontSize: 12,
       fontWeight: '600',
+      color: colors.tint,
+    },
+    digestWarningCard: {
+      gap: 4,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      backgroundColor: colors.surfaceMuted,
+    },
+    digestWarningText: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      lineHeight: 15,
+    },
+    digestWarningActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+    },
+    digestWarningLink: {
+      fontSize: 11,
+      fontWeight: '700',
       color: colors.tint,
     },
     cinevilleShortcutRow: {

@@ -198,6 +198,19 @@ jobs:
           # bumped to match; tables with a UUID PK (user, friendship, ...)
           # have no sequence and are skipped automatically by the NULL check.
           for t in "${USER_DATA_TABLES[@]}"; do
+            # letterboxd's PK is letterboxd_username (text), not id — asking
+            # pg_get_serial_sequence for a column a table doesn't have raises
+            # ("column \"id\" of relation \"letterboxd\" does not exist"),
+            # which under set -e took down this whole step (and, because the
+            # step after it is what starts the app back up, left the app
+            # stopped) on 2026-09-01. Checking information_schema first skips
+            # every table that has no "id" column at all instead of asking
+            # Postgres to error on it.
+            has_id_column=$(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c \
+              "SELECT 1 FROM information_schema.columns WHERE table_name='$t' AND column_name='id';")
+            if [ "$has_id_column" != "1" ]; then
+              continue
+            fi
             seq=$(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c \
               "SELECT pg_get_serial_sequence('$t', 'id');")
             if [ -n "$seq" ]; then
@@ -205,8 +218,17 @@ jobs:
                 "SELECT setval('$seq', COALESCE((SELECT MAX(id) FROM \"$t\"), 1));"
             fi
           done
-      - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach
+      - name: Restart the staging app
+        # Runs even if the data copy above failed partway: that step's job is
+        # to sync data into an already-stopped app, not to gate whether the
+        # app comes back — a bug in it must never leave staging down the way
+        # a bad `pg_get_serial_sequence` call did on 2026-09-01 (the copy
+        # step errored, `set -e` stopped the job right there, and because
+        # this restart was the *next* step it silently never ran).
+        if: always()
+        run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach
       - name: Wait for staging backend to be healthy
+        if: always()
         run: |
           for i in $(seq 1 30); do
             if [ "$(docker inspect -f '{{.State.Health.Status}}' mikiboxd-staging-backend-1)" = "healthy" ]; then

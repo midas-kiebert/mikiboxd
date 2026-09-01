@@ -10,7 +10,12 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
 from app.core import apple_auth
-from app.core.enums import NotificationChannel, NotificationType, ShowtimePingSort
+from app.core.enums import (
+    DigestFrequency,
+    NotificationChannel,
+    NotificationType,
+    ShowtimePingSort,
+)
 from app.core.security import verify_password
 from app.core.username_filter import assert_display_name_allowed
 from app.crud import cinema as cinemas_crud
@@ -23,6 +28,7 @@ from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as users_crud
+from app.crud import watchlist_digest_source as watchlist_digest_source_crud
 from app.crud.cinema_scope import infer_cinema_scope, parse_cinema_scope
 from app.exceptions.base import AppError
 from app.exceptions.cinema_preset_exceptions import (
@@ -102,6 +108,71 @@ def _wants_email_delivery(user_data: dict[str, Any]) -> bool:
     )
 
 
+# Legacy compat only — see `UserUpdate.notify_watchlist_digest_frequency` in
+# models/user.py. Ordered because the mapped kwarg each drives on
+# WatchlistDigestSource matters below.
+_LEGACY_DIGEST_FIELDS: tuple[str, ...] = (
+    "notify_watchlist_digest_frequency",
+    "notify_watchlist_digest_list_id",
+    "notify_watchlist_digest_cinema_preset_id",
+)
+
+
+def _apply_legacy_digest_fields(
+    *, session: Session, current_user: User, user_data: dict[str, Any]
+) -> None:
+    """Redirect a pre-rework client's direct writes onto a real digest source.
+
+    Popped out of `user_data` before it ever reaches `UserUpdate.model_validate`
+    / `users_crud.update_user`, since `User` no longer has these columns at
+    all — left in, they'd be handed to `db_user.sqlmodel_update(...)` for
+    attributes the table model doesn't declare. Targets the account's oldest
+    source (creating one if it has none): an app old enough to still write
+    these fields predates the multi-source UI, so it can never have created
+    any of the newer ones itself.
+    """
+    legacy_data = {
+        field: user_data.pop(field)
+        for field in _LEGACY_DIGEST_FIELDS
+        if field in user_data
+    }
+    if not legacy_data:
+        return
+
+    existing_sources = watchlist_digest_source_crud.list_user_sources(
+        session=session, user_id=current_user.id
+    )
+    if existing_sources:
+        target = existing_sources[0]
+        if "notify_watchlist_digest_frequency" in legacy_data:
+            target.frequency = legacy_data["notify_watchlist_digest_frequency"]
+        if "notify_watchlist_digest_list_id" in legacy_data:
+            target.list_id = legacy_data["notify_watchlist_digest_list_id"]
+        if "notify_watchlist_digest_cinema_preset_id" in legacy_data:
+            cinema_preset_id = legacy_data["notify_watchlist_digest_cinema_preset_id"]
+            target.cinema_preset_id = cinema_preset_id
+            # At most one of {preset, custom} may be set on a source — a
+            # legacy write only ever knows about the preset side, so setting
+            # it must clear a custom selection the new UI may have made.
+            if cinema_preset_id is not None:
+                target.custom_cinema_ids = None
+        session.add(target)
+    else:
+        watchlist_digest_source_crud.create_source(
+            session=session,
+            user_id=current_user.id,
+            frequency=legacy_data.get(
+                "notify_watchlist_digest_frequency", DigestFrequency.WEEKLY_OR_URGENT
+            ),
+            list_id=legacy_data.get("notify_watchlist_digest_list_id"),
+            cinema_preset_id=legacy_data.get(
+                "notify_watchlist_digest_cinema_preset_id"
+            ),
+            custom_cinema_ids=None,
+            now=now_amsterdam_naive(),
+        )
+
+
 def update_me(
     *,
     session: Session,
@@ -109,6 +180,9 @@ def update_me(
     current_user: User,
 ) -> UserMe:
     user_data = user_in.model_dump(exclude_unset=True)
+    _apply_legacy_digest_fields(
+        session=session, current_user=current_user, user_data=user_data
+    )
     incognito_mode_changed = False
     if "incognito_mode" in user_data and user_data["incognito_mode"] is not None:
         incognito_mode_changed = (

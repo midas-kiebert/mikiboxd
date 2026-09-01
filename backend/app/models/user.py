@@ -6,7 +6,7 @@ from pydantic import EmailStr
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Column, Field, Relationship, SQLModel
 
-from app.core.enums import NotificationChannel
+from app.core.enums import DigestFrequency, NotificationChannel
 from app.utils import now_amsterdam_naive
 
 if TYPE_CHECKING:
@@ -129,6 +129,17 @@ class UserUpdate(SQLModel):
     notify_channel_sold_out: NotificationChannel | None = Field(default=None)
     notify_channel_showtime_reminder: NotificationChannel | None = Field(default=None)
     notify_watchlist_digest_enabled: bool | None = Field(default=None)
+    # Legacy compat only: these three lived on User itself before the digest
+    # rework moved them onto `WatchlistDigestSource` (see
+    # b4d6f8a0c2e4_add_watchlist_digest_sources). A client built against that
+    # older shape still PATCHes them directly; `me_service.update_me`
+    # intercepts and redirects them onto the account's oldest digest source
+    # (creating one if it has none) rather than storing them on User, which
+    # no longer has these columns at all. Never read back — `UserMe` doesn't
+    # expose them, so such a client's read of them is already just `None`.
+    notify_watchlist_digest_frequency: DigestFrequency | None = Field(default=None)
+    notify_watchlist_digest_list_id: uuid.UUID | None = Field(default=None)
+    notify_watchlist_digest_cinema_preset_id: uuid.UUID | None = Field(default=None)
     password: str | None = Field(default=None, min_length=1, max_length=255)
     # Required to confirm a username or email change (see me_service.update_me);
     # ignored otherwise. Never reaches the database — popped from the update

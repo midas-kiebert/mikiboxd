@@ -186,6 +186,25 @@ jobs:
             # after it from being attempted too.
             copy_table_common_columns "$t" || echo "::warning::Failed to copy $t from production, continuing"
           done
+
+          # Rows land with production's own serial ids, but the sequence
+          # backing an id column isn't touched by INSERT — it stays wherever
+          # staging's own history had left it. Once that counter is behind
+          # the ids just copied in, the first INSERT after this reseed on
+          # such a table collides with an already-copied row ("duplicate key
+          # value violates unique constraint ..._pkey"), exactly the crash
+          # that broke every login through analyticsevent on 2026-09-02.
+          # Every serial-PK'd table in USER_DATA_TABLES needs its sequence
+          # bumped to match; tables with a UUID PK (user, friendship, ...)
+          # have no sequence and are skipped automatically by the NULL check.
+          for t in "${USER_DATA_TABLES[@]}"; do
+            seq=$(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c \
+              "SELECT pg_get_serial_sequence('$t', 'id');")
+            if [ -n "$seq" ]; then
+              docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c \
+                "SELECT setval('$seq', COALESCE((SELECT MAX(id) FROM \"$t\"), 1));"
+            fi
+          done
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach
       - name: Wait for staging backend to be healthy
         run: |

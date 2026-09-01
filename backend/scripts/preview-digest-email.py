@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from app.core.enums import DIGEST_FREQUENCY_LABELS, DigestFrequency
+from app.core.enums import DigestFrequency
 from app.mailer import DigestSource, EmailData, generate_watchlist_digest_email
 
 DEFAULT_OUT = Path("/tmp/mikino-digest-preview.html")
@@ -97,36 +97,55 @@ CATALOGUE: list[tuple[Any, Any]] = [
 WATCHLIST = DigestSource(
     label="your Letterboxd watchlist",
     url="https://letterboxd.com/midas/watchlist/",
+    frequency=DigestFrequency.WEEKLY_OR_URGENT,
+)
+WATCHLIST_DAILY = DigestSource(
+    label="your Letterboxd watchlist",
+    url="https://letterboxd.com/midas/watchlist/",
+    frequency=DigestFrequency.DAILY,
 )
 CHOSEN_LIST = DigestSource(
     label="the Letterboxd list “Slow Cinema, Fast Food”",
     url="https://letterboxd.com/midas/list/slow-cinema-fast-food/",
+    frequency=DigestFrequency.WEEKLY_OR_URGENT,
+)
+CHOSEN_LIST_DAILY = DigestSource(
+    label="the Letterboxd list “Slow Cinema, Fast Food”",
+    url="https://letterboxd.com/midas/list/slow-cinema-fast-food/",
+    frequency=DigestFrequency.DAILY,
 )
 # A list the user picked whose row has since been deleted: still named, no link.
-DELETED_LIST = DigestSource(label="the Letterboxd list you chose", url=None)
+DELETED_LIST = DigestSource(
+    label="the Letterboxd list you chose", url=None, frequency=DigestFrequency.WEEKLY_OR_URGENT
+)
 
-CASES: list[tuple[DigestFrequency, DigestSource, int, str]] = [
+CASES: list[tuple[str, list[DigestSource], int, str]] = [
     (
-        DigestFrequency.WEEKLY_OR_URGENT, WATCHLIST, 3,
+        "Weekly", [WATCHLIST], 3,
         "The default: films from your Letterboxd watchlist.",
     ),
     (
-        DigestFrequency.WEEKLY_OR_URGENT, CHOSEN_LIST, 5,
+        "Weekly", [CHOSEN_LIST], 5,
         "Same mode following a chosen list — the footer links the list, not the "
         "watchlist. “Petite Maman” has no poster.",
     ),
     (
-        DigestFrequency.DAILY, WATCHLIST, 1,
+        "Eager", [WATCHLIST_DAILY], 1,
         "Eager, one film. The subject claims no timeframe and the explainer "
         "line changes with the mode.",
     ),
     (
-        DigestFrequency.DAILY, CHOSEN_LIST, 3,
+        "Eager", [CHOSEN_LIST_DAILY], 3,
         "Eager following a list. “Perfect Days” has no Letterboxd slug.",
     ),
     (
-        DigestFrequency.WEEKLY_OR_URGENT, DELETED_LIST, 2,
+        "Weekly", [DELETED_LIST], 2,
         "Edge case: the chosen list row was deleted, so it is named but not linked.",
+    ),
+    (
+        "Combined", [WATCHLIST_DAILY, CHOSEN_LIST], 5,
+        "Two sources due the same day, combined into a single email: one footer "
+        "line per source, each with its own cadence and explainer.",
     ),
 ]
 
@@ -189,19 +208,19 @@ def _render_case(
 def build_page() -> str:
     cases: list[str] = []
     plain_sample = ""
-    for frequency, source, film_count, note in CASES:
+    for label, sources, film_count, note in CASES:
         email = generate_watchlist_digest_email(
             email_to="preview@mikino.nl",
             movie_entries=CATALOGUE[:film_count],
-            frequency=frequency,
-            source=source,
+            sources=sources,
+            now=datetime.now(),
         )
         if not plain_sample:
             plain_sample = email.text_content
         cases.append(
             _render_case(
                 email=email,
-                label=DIGEST_FREQUENCY_LABELS[frequency],
+                label=label,
                 note=note,
                 film_count=film_count,
             )

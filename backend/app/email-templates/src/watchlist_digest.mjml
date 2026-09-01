@@ -27,9 +27,16 @@
       </mj-group>
     </mj-section>
     <mj-raw>{% endfor %}</mj-raw>
-    <mj-section background-color="#ffffff" padding="28px 20px 24px">
+    <mj-section background-color="#ffffff" padding="28px 20px 0">
       <mj-column>
-        <mj-text font-size="12px" line-height="18px" color="#8a8a8a">{{ frequency_label }} digest, following {% if source_url %}<a href="{{ source_url }}" style="color:#8a8a8a;text-decoration:underline;">{{ source_label }}</a>{% else %}{{ source_label }}{% endif %}. {{ frequency_explainer }} <a href="{{ unsubscribe_link }}" style="color:#8a8a8a;text-decoration:underline;">Stop these emails</a>.</mj-text>
+        <mj-raw>{% for source in sources %}</mj-raw>
+        <mj-text font-size="12px" line-height="18px" color="#8a8a8a" padding-top="{% if loop.first %}0{% else %}6px{% endif %}">{{ source.frequency_label }} digest, following {% if source.url %}<a href="{{ source.url }}" style="color:#8a8a8a;text-decoration:underline;">{{ source.label }}</a>{% else %}{{ source.label }}{% endif %}. {{ source.frequency_explainer }}</mj-text>
+        <mj-raw>{% endfor %}</mj-raw>
+      </mj-column>
+    </mj-section>
+    <mj-section background-color="#ffffff" padding="10px 20px 24px">
+      <mj-column>
+        <mj-text font-size="12px" line-height="18px" color="#8a8a8a"><a href="{{ unsubscribe_link }}" style="color:#8a8a8a;text-decoration:underline;">Stop these emails</a>.</mj-text>
       </mj-column>
     </mj-section>
   </mj-body>

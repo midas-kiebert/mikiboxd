@@ -2,10 +2,15 @@
 
 Covers the two-phase pipeline in ``app/services/watchlist_digest.py``:
 ``refresh_digest_queue`` (not-listed -> listed transition detection) and
-``build_and_send_digest_for_source`` (per-source sending, frequency rules,
-cinema restriction, and the GOING/INTERESTED "already seen" exclusion). A
-user may have several ``WatchlistDigestSource`` rows; each is evaluated and
-notified independently.
+``build_and_send_combined_digest`` (per-source frequency rules, cinema
+restriction, and the GOING/INTERESTED "already seen" exclusion, all of it
+funnelled through the private ``_resolve_source_contribution`` helper). A
+user may have several ``WatchlistDigestSource`` rows; each is evaluated
+separately and its own contribution is marked notified under its own
+``source_id``, but at most one combined email is sent per call, and a movie
+already notified via *any* of the user's sources is never reconsidered by a
+sibling source either — see the "combining" section at the bottom of this
+file for tests specific to that behavior.
 """
 
 from collections.abc import Callable
@@ -18,6 +23,7 @@ from app.core.enums import DigestFrequency, GoingStatus
 from app.crud import watchlist as watchlist_crud
 from app.models.cinema import Cinema
 from app.models.cinema_preset import CinemaPreset
+from app.models.letterboxd_list import LetterboxdList, LetterboxdListFilm
 from app.models.movie import Movie
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
@@ -26,9 +32,19 @@ from app.models.watchlist_digest_notified_movie import WatchlistDigestNotifiedMo
 from app.models.watchlist_digest_queue_entry import WatchlistDigestQueueEntry
 from app.models.watchlist_digest_source import WatchlistDigestSource
 from app.services.watchlist_digest import (
-    build_and_send_digest_for_source,
+    build_and_send_combined_digest,
     refresh_digest_queue,
 )
+
+
+def _send_single(
+    *, session: Session, user: User, source: WatchlistDigestSource, now: datetime
+) -> bool:
+    """Thin wrapper matching the old per-source entry point's call shape, for
+    tests that exercise single-source behavior unaffected by combining."""
+    return build_and_send_combined_digest(
+        session=session, user=user, sources=[source], now=now
+    )
 from app.utils import now_amsterdam_naive
 
 
@@ -236,7 +252,7 @@ def test_reappearing_movie_is_queued_again(
 
 
 # ---------------------------------------------------------------------------
-# build_and_send_digest_for_source — DAILY
+# build_and_send_combined_digest — DAILY (single source)
 # ---------------------------------------------------------------------------
 
 
@@ -263,7 +279,7 @@ def test_daily_user_is_sent_a_pending_queued_movie(
     showtime_factory(movie=movie, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -304,7 +320,7 @@ def test_daily_user_is_not_resent_an_already_notified_movie(
     )
     db_transaction.commit()
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -343,7 +359,7 @@ def test_daily_user_is_notified_again_after_the_film_goes_dark_and_returns(
 
     refresh_digest_queue(session=db_transaction, now=announced_at)
     assert (
-        build_and_send_digest_for_source(
+        _send_single(
             session=db_transaction, user=user, source=source, now=announced_at
         )
         is True
@@ -362,7 +378,7 @@ def test_daily_user_is_notified_again_after_the_film_goes_dark_and_returns(
     refresh_digest_queue(session=db_transaction, now=after_the_run)
 
     assert (
-        build_and_send_digest_for_source(
+        _send_single(
             session=db_transaction, user=user, source=source, now=after_the_run
         )
         is True
@@ -392,7 +408,7 @@ def test_movie_not_in_users_source_is_not_sent(
     showtime_factory(movie=movie, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -423,7 +439,7 @@ def test_movie_with_no_current_future_showtime_is_not_sent_or_marked_notified(
     showtime_factory(movie=movie, datetime=now - timedelta(days=1))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -465,7 +481,7 @@ def test_movie_whose_only_showtime_is_deleted_before_send_stays_pending(
     db_transaction.delete(showtime)
     db_transaction.commit()
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -506,7 +522,7 @@ def test_movie_with_one_of_two_showtimes_deleted_is_still_sent_with_the_other(
     db_transaction.delete(soonest)
     db_transaction.commit()
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -551,7 +567,7 @@ def test_movie_already_marked_going_is_excluded_and_marked_notified(
     )
     db_transaction.commit()
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -593,7 +609,7 @@ def test_movie_marked_not_going_is_not_excluded(
     )
     db_transaction.commit()
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -601,7 +617,7 @@ def test_movie_marked_not_going_is_not_excluded(
 
 
 # ---------------------------------------------------------------------------
-# build_and_send_digest_for_source — WEEKLY
+# build_and_send_combined_digest — WEEKLY (single source)
 # ---------------------------------------------------------------------------
 
 # A fixed Thursday and the day after it, so the weekly send slot is exercised
@@ -643,7 +659,7 @@ def test_weekly_user_is_not_sent_on_a_non_thursday(
     showtime_factory(movie=movie, datetime=_FRIDAY + timedelta(days=1))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_FRIDAY)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=_FRIDAY
     )
 
@@ -673,7 +689,7 @@ def test_weekly_user_is_sent_on_thursday_for_a_showtime_inside_the_week(
     showtime_factory(movie=movie, datetime=_THURSDAY + timedelta(days=5))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_THURSDAY)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=_THURSDAY
     )
 
@@ -703,7 +719,7 @@ def test_weekly_user_does_not_get_a_showtime_beyond_the_horizon(
     showtime_factory(movie=movie, datetime=_THURSDAY + timedelta(days=150))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_THURSDAY)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=_THURSDAY
     )
 
@@ -737,7 +753,7 @@ def test_held_back_film_is_sent_once_a_showtime_falls_inside_the_week(
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_THURSDAY)
 
     assert (
-        build_and_send_digest_for_source(
+        _send_single(
             session=db_transaction, user=user, source=source, now=_THURSDAY
         )
         is False
@@ -748,7 +764,7 @@ def test_held_back_film_is_sent_once_a_showtime_falls_inside_the_week(
     showtime_factory(movie=movie, datetime=next_thursday + timedelta(days=3))
 
     assert (
-        build_and_send_digest_for_source(
+        _send_single(
             session=db_transaction, user=user, source=source, now=next_thursday
         )
         is True
@@ -784,7 +800,7 @@ def test_weekly_user_is_not_sent_twice_on_the_same_thursday(
     showtime_factory(movie=movie, datetime=_THURSDAY + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_THURSDAY)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=_THURSDAY
     )
 
@@ -812,7 +828,7 @@ def test_daily_user_is_sent_a_showtime_months_away(
     showtime_factory(movie=movie, datetime=_FRIDAY + timedelta(days=150))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_FRIDAY)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=_FRIDAY
     )
 
@@ -843,7 +859,7 @@ def test_send_failure_does_not_mark_movie_notified(
     showtime_factory(movie=movie, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -855,7 +871,7 @@ def test_send_failure_does_not_mark_movie_notified(
 
 
 # ---------------------------------------------------------------------------
-# build_and_send_digest_for_source — cinema restriction (preset or custom)
+# build_and_send_combined_digest — cinema restriction (preset or custom, single source)
 # ---------------------------------------------------------------------------
 
 
@@ -907,7 +923,7 @@ def test_pinned_cinema_preset_excludes_movie_showing_only_elsewhere(
     showtime_factory(movie=movie, cinema=other_cinema, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -957,7 +973,7 @@ def test_pinned_cinema_preset_sends_movie_showing_at_a_preset_cinema(
     )
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -1008,7 +1024,7 @@ def test_deleted_pinned_preset_is_treated_as_no_restriction(
     showtime_factory(movie=movie, cinema=other_cinema, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -1042,7 +1058,7 @@ def test_no_restriction_sends_regardless_of_cinema(
     )
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -1085,7 +1101,7 @@ def test_custom_cinema_selection_restricts_like_a_preset(
     showtime_factory(movie=movie, cinema=other_cinema, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -1145,7 +1161,7 @@ def test_pinned_preset_picks_the_preset_cinema_showtime_over_an_earlier_one(
     )
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest_for_source(
+    sent = _send_single(
         session=db_transaction, user=user, source=source, now=now
     )
 
@@ -1154,3 +1170,301 @@ def test_pinned_preset_picks_the_preset_cinema_showtime_over_an_earlier_one(
     assert len(entries) == 1
     _, chosen_showtime = entries[0]
     assert chosen_showtime.cinema_id == preset_cinema.id
+
+
+# ---------------------------------------------------------------------------
+# build_and_send_combined_digest — combining several sources into one email
+# ---------------------------------------------------------------------------
+
+
+def test_two_sources_due_same_day_send_exactly_one_combined_email(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    cinema_factory: Callable[..., Cinema],
+    monkeypatch,
+):
+    """Two sources each with something new to say the same day are folded into
+    one email, not two — but each still gets its own movie(s) marked notified
+    and its own `last_sent_at` bumped."""
+    now = now_amsterdam_naive()
+    monkeypatch.setattr(
+        "app.services.watchlist_digest.now_amsterdam_naive", lambda: now
+    )
+    send_calls: list[dict] = []
+    monkeypatch.setattr(
+        "app.services.watchlist_digest.send_email",
+        lambda **kwargs: send_calls.append(kwargs),
+    )
+
+    user = user_factory()
+    cinema_a = cinema_factory()
+    cinema_b = cinema_factory()
+    source_a = _create_source(
+        session=db_transaction,
+        user=user,
+        frequency=DigestFrequency.DAILY,
+        custom_cinema_ids=[cinema_a.id],
+    )
+    source_b = _create_source(
+        session=db_transaction,
+        user=user,
+        frequency=DigestFrequency.DAILY,
+        custom_cinema_ids=[cinema_b.id],
+    )
+
+    movie_a = movie_factory()
+    movie_b = movie_factory()
+    _add_to_watchlist(session=db_transaction, user=user, movie=movie_a)
+    _add_to_watchlist(session=db_transaction, user=user, movie=movie_b)
+    showtime_factory(movie=movie_a, cinema=cinema_a, datetime=now + timedelta(days=2))
+    showtime_factory(movie=movie_b, cinema=cinema_b, datetime=now + timedelta(days=3))
+    _queue_movie(session=db_transaction, movie_id=movie_a.id, added_at=now)
+    _queue_movie(session=db_transaction, movie_id=movie_b.id, added_at=now)
+
+    sent = build_and_send_combined_digest(
+        session=db_transaction, user=user, sources=[source_a, source_b], now=now
+    )
+
+    assert sent is True
+    assert len(send_calls) == 1
+    assert source_a.last_sent_at == now
+    assert source_b.last_sent_at == now
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source_a.id, movie_a.id))
+        is not None
+    )
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source_b.id, movie_b.id))
+        is not None
+    )
+
+
+def test_same_movie_pending_in_two_sources_appears_once_in_the_combined_email(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    monkeypatch,
+):
+    """A movie pending via both the user's watchlist and a custom list they
+    added as a second source is deduped, not shown twice."""
+    now = now_amsterdam_naive()
+    monkeypatch.setattr(
+        "app.services.watchlist_digest.now_amsterdam_naive", lambda: now
+    )
+    monkeypatch.setattr(
+        "app.services.watchlist_digest.send_email", lambda **kwargs: None
+    )
+    captured: dict = {}
+
+    def _capture(*, movie_entries, **_kwargs):
+        captured["movie_entries"] = movie_entries
+        return _FakeEmail()
+
+    monkeypatch.setattr(
+        "app.services.watchlist_digest.generate_watchlist_digest_email", _capture
+    )
+
+    user = user_factory()
+    movie = movie_factory()
+    _add_to_watchlist(session=db_transaction, user=user, movie=movie)
+    watchlist_source = _create_source(
+        session=db_transaction, user=user, frequency=DigestFrequency.DAILY
+    )
+
+    lb_list = LetterboxdList(owner="someone-else", list_slug="favorites")
+    db_transaction.add(lb_list)
+    db_transaction.flush()
+    db_transaction.add(
+        LetterboxdListFilm(
+            list_id=lb_list.id,
+            letterboxd_slug=movie.letterboxd_slug,
+            movie_id=movie.id,
+        )
+    )
+    db_transaction.commit()
+    list_source = _create_source(
+        session=db_transaction,
+        user=user,
+        frequency=DigestFrequency.DAILY,
+        list_id=lb_list.id,
+    )
+
+    showtime_factory(movie=movie, datetime=now + timedelta(days=2))
+    _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
+
+    sent = build_and_send_combined_digest(
+        session=db_transaction,
+        user=user,
+        sources=[watchlist_source, list_source],
+        now=now,
+    )
+
+    assert sent is True
+    entries = captured["movie_entries"]
+    assert len(entries) == 1
+    assert entries[0][0].id == movie.id
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (watchlist_source.id, movie.id))
+        is not None
+    )
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (list_source.id, movie.id))
+        is not None
+    )
+
+
+def test_source_not_due_today_leaves_its_last_sent_at_untouched(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    cinema_factory: Callable[..., Cinema],
+    monkeypatch,
+):
+    """One source due, one not (WEEKLY on a non-Thursday): only the due
+    source's movie is sent, and only its `last_sent_at` is bumped."""
+    monkeypatch.setattr(
+        "app.services.watchlist_digest.send_email", lambda **kwargs: None
+    )
+
+    user = user_factory()
+    cinema_daily = cinema_factory()
+    daily_source = _create_source(
+        session=db_transaction,
+        user=user,
+        frequency=DigestFrequency.DAILY,
+        custom_cinema_ids=[cinema_daily.id],
+    )
+    weekly_source = _weekly_source(session=db_transaction, user=user)
+
+    movie_daily = movie_factory()
+    movie_weekly = movie_factory()
+    _add_to_watchlist(session=db_transaction, user=user, movie=movie_daily)
+    _add_to_watchlist(session=db_transaction, user=user, movie=movie_weekly)
+    showtime_factory(
+        movie=movie_daily, cinema=cinema_daily, datetime=_FRIDAY + timedelta(days=2)
+    )
+    showtime_factory(movie=movie_weekly, datetime=_FRIDAY + timedelta(days=3))
+    _queue_movie(session=db_transaction, movie_id=movie_daily.id, added_at=_FRIDAY)
+    _queue_movie(session=db_transaction, movie_id=movie_weekly.id, added_at=_FRIDAY)
+
+    sent = build_and_send_combined_digest(
+        session=db_transaction,
+        user=user,
+        sources=[daily_source, weekly_source],
+        now=_FRIDAY,
+    )
+
+    assert sent is True
+    assert daily_source.last_sent_at == _FRIDAY
+    assert weekly_source.last_sent_at is None
+    assert (
+        db_transaction.get(
+            WatchlistDigestNotifiedMovie, (daily_source.id, movie_daily.id)
+        )
+        is not None
+    )
+    assert (
+        db_transaction.get(
+            WatchlistDigestNotifiedMovie, (weekly_source.id, movie_weekly.id)
+        )
+        is None
+    )
+
+
+def test_no_source_contributing_sends_nothing(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    monkeypatch,
+):
+    """No source has anything to say (whether the list is empty or every
+    source turns up nothing) -> no send attempt, and False is returned."""
+    send_calls: list[dict] = []
+    monkeypatch.setattr(
+        "app.services.watchlist_digest.send_email",
+        lambda **kwargs: send_calls.append(kwargs),
+    )
+
+    user = user_factory()
+    now = now_amsterdam_naive()
+
+    assert (
+        build_and_send_combined_digest(
+            session=db_transaction, user=user, sources=[], now=now
+        )
+        is False
+    )
+
+    empty_source = _create_source(
+        session=db_transaction, user=user, frequency=DigestFrequency.DAILY
+    )
+    assert (
+        build_and_send_combined_digest(
+            session=db_transaction, user=user, sources=[empty_source], now=now
+        )
+        is False
+    )
+    assert not send_calls
+
+
+def test_movie_notified_by_one_source_is_not_resent_via_a_sibling_source(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    monkeypatch,
+):
+    """The per-source notified record only tracks *who* sent a movie, not a
+    per-source eligibility bubble: once any of the user's sources has told
+    them about a film, a sibling source must never resurface it later just
+    because that sibling never happened to mark it notified itself."""
+    monkeypatch.setattr(
+        "app.services.watchlist_digest.send_email", lambda **kwargs: None
+    )
+
+    user = user_factory()
+    daily_source = _create_source(
+        session=db_transaction, user=user, frequency=DigestFrequency.DAILY
+    )
+    weekly_source = _weekly_source(session=db_transaction, user=user)
+
+    movie = movie_factory()
+    _add_to_watchlist(session=db_transaction, user=user, movie=movie)
+    showtime_factory(movie=movie, datetime=_THURSDAY + timedelta(days=2))
+    _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_THURSDAY)
+
+    # The eager source sends it first, the day before.
+    first_sent = build_and_send_combined_digest(
+        session=db_transaction,
+        user=user,
+        sources=[daily_source],
+        now=_THURSDAY - timedelta(days=1),
+    )
+    assert first_sent is True
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (daily_source.id, movie.id))
+        is not None
+    )
+
+    # The following Thursday, the weekly source is due and has never itself
+    # marked this movie notified — but the eager source already told the user.
+    second_sent = build_and_send_combined_digest(
+        session=db_transaction,
+        user=user,
+        sources=[daily_source, weekly_source],
+        now=_THURSDAY,
+    )
+
+    assert second_sent is False
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (weekly_source.id, movie.id))
+        is None
+    )

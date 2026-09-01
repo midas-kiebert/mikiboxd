@@ -10,15 +10,22 @@ Two-phase pipeline, both run daily by the scheduler:
      queued again, because losing all showtimes clears its queue and notified
      records.
 
-  2. ``send_due_digests`` walks every eligible user and, for each of their
-     ``WatchlistDigestSource`` rows independently, looks at queue entries
-     matching that source's watchlist/list that haven't been sent *for that
-     source* before (tracked in ``WatchlistDigestNotifiedMovie``, keyed by
-     source rather than by user — the same movie can be pending for one
-     source and already sent for another). Any such movie the user has
-     already marked GOING/INTERESTED on (any of its showtimes) is dropped
-     silently — they already know about it — and marked notified without
-     ever appearing in an email.
+  2. ``send_due_digests`` walks every eligible user and evaluates each of
+     their ``WatchlistDigestSource`` rows against queue entries matching that
+     source's watchlist/list that haven't been sent by *any* of the user's
+     sources before (tracked in ``WatchlistDigestNotifiedMovie``, keyed by the
+     source that actually sent it — but read across every source the user
+     has: once one source has told the user about a film, a slower sibling
+     source never re-sends it, even much later on its own schedule). Any such
+     movie the user has already marked GOING/INTERESTED on (any of its
+     showtimes) is dropped silently — they already know about it — and marked
+     notified without ever appearing in an email.
+
+     A user is sent at most one digest email a day: every source due today
+     (see ``_should_send_now``) is evaluated, and if more than one has
+     something to say they are combined into a single email rather than one
+     each, with the same movie appearing once even if more than one source
+     surfaced it on the same day (``build_and_send_combined_digest``).
 
      What's left is sent depending on the source's frequency:
        - DAILY: sent every day there is something pending, with no horizon —
@@ -168,7 +175,9 @@ def _resolve_digest_source_label(
     if list_id is not None:
         source_list = session.get(LetterboxdList, list_id)
         if source_list is None:
-            return DigestSource(label="the Letterboxd list you chose", url=None)
+            return DigestSource(
+                label="the Letterboxd list you chose", url=None, frequency=source.frequency
+            )
         name = source_list.title or source_list.list_slug
         return DigestSource(
             label=f"the Letterboxd list \u201c{name}\u201d",
@@ -176,19 +185,36 @@ def _resolve_digest_source_label(
                 f"https://letterboxd.com/{source_list.owner}"
                 f"/list/{source_list.list_slug}/"
             ),
+            frequency=source.frequency,
         )
     return DigestSource(
         label="your Letterboxd watchlist",
         url=f"https://letterboxd.com/{user.letterboxd_username}/watchlist/",
+        frequency=source.frequency,
     )
 
 
-def _pending_movie_ids_for_source(
-    *, session: Session, source_id: UUID, source_subquery: Any
+def _pending_movie_ids_for_user_source(
+    *, session: Session, user_id: UUID, source_subquery: Any
 ) -> set[int]:
-    """Queued movies matching the source that haven't been sent for it before."""
-    notified_subquery = select(WatchlistDigestNotifiedMovie.movie_id).where(
-        col(WatchlistDigestNotifiedMovie.source_id) == source_id
+    """Queued movies matching the source that haven't been sent by *any* of
+    this user's digest sources before.
+
+    Deliberately not scoped to just this source: a movie an eager source
+    already mailed must never resurface months later just because a slower
+    (weekly) source of the same user's also happened to be watching it — once
+    any source has told the user about it, every sibling source considers it
+    done too. `_mark_notified` still records the specific source that
+    actually sent it (see `WatchlistDigestNotifiedMovie`'s per-source key),
+    but this check reads across all of the user's sources rather than one.
+    """
+    notified_subquery = (
+        select(WatchlistDigestNotifiedMovie.movie_id)
+        .join(
+            WatchlistDigestSource,
+            col(WatchlistDigestSource.id) == col(WatchlistDigestNotifiedMovie.source_id),
+        )
+        .where(col(WatchlistDigestSource.owner_user_id) == user_id)
     )
     return set(
         session.exec(
@@ -340,30 +366,41 @@ def _is_eligible(user: User) -> bool:
     return True
 
 
-def build_and_send_digest_for_source(
+def _resolve_source_contribution(
     *,
     session: Session,
     user: User,
     source: WatchlistDigestSource,
-    now: datetime | None = None,
-) -> bool:
-    """Evaluate and, if due, send one digest source's email.
+    now: datetime,
+) -> tuple[set[int], list[tuple[Movie, Showtime]]] | None:
+    """What one source would add to today's digest, if anything.
 
-    Returns whether an email was sent.
+    Returns ``None`` if the source has nothing to send (not due, no watchlist
+    to fall back on, nothing pending, or nothing left after already-marked
+    movies are dropped) — the caller can skip it without any special-casing.
+    Movies the user already marked GOING/INTERESTED on are dropped and marked
+    notified here regardless, exactly as before combining: that housekeeping
+    doesn't depend on whether this source ends up contributing to an email.
+
+    Returns ``(sent_movie_ids, movie_entries)``: ``sent_movie_ids`` is what
+    this source should mark notified for itself once *some* email is sent
+    (whether or not every one of those movies survives the cross-source
+    dedupe in the combined entry list) — a movie this source is done with
+    must never be reconsidered by it again just because another source also
+    happened to carry it.
     """
+    if not _should_send_now(source=source, now=now):
+        return None
+
     source_subquery = _resolve_source_movie_ids_subquery(user=user, source=source)
     if source_subquery is None:
-        return False
+        return None
 
-    reference_time = now or now_amsterdam_naive()
-    if not _should_send_now(source=source, now=reference_time):
-        return False
-
-    pending_movie_ids = _pending_movie_ids_for_source(
-        session=session, source_id=source.id, source_subquery=source_subquery
+    pending_movie_ids = _pending_movie_ids_for_user_source(
+        session=session, user_id=user.id, source_subquery=source_subquery
     )
     if not pending_movie_ids:
-        return False
+        return None
 
     already_interested_ids = _movie_ids_with_user_interest(
         session=session, user_id=user.id, movie_ids=pending_movie_ids
@@ -373,32 +410,76 @@ def build_and_send_digest_for_source(
             session=session,
             source_id=source.id,
             movie_ids=already_interested_ids,
-            now=reference_time,
+            now=now,
         )
         session.commit()
 
     candidate_ids = pending_movie_ids - already_interested_ids
     if not candidate_ids:
-        return False
+        return None
 
     cinema_ids = _resolve_digest_cinema_ids(session=session, user=user, source=source)
     movie_entries = _resolve_movie_entries(
         session=session,
         movie_ids=candidate_ids,
         cinema_ids=cinema_ids,
-        now=reference_time,
+        now=now,
         horizon=_digest_horizon(source),
     )
     if not movie_entries:
+        return None
+
+    sent_movie_ids = {movie.id for movie, _ in movie_entries}
+    return sent_movie_ids, movie_entries
+
+
+def build_and_send_combined_digest(
+    *,
+    session: Session,
+    user: User,
+    sources: list[WatchlistDigestSource],
+    now: datetime | None = None,
+) -> bool:
+    """Evaluate every one of the user's sources and send at most one combined
+    email covering whichever of them are due and have something to say today.
+
+    Returns whether an email was sent.
+    """
+    reference_time = now or now_amsterdam_naive()
+
+    contributions: list[
+        tuple[WatchlistDigestSource, set[int], list[tuple[Movie, Showtime]]]
+    ] = []
+    for source in sources:
+        contribution = _resolve_source_contribution(
+            session=session, user=user, source=source, now=reference_time
+        )
+        if contribution is not None:
+            sent_movie_ids, movie_entries = contribution
+            contributions.append((source, sent_movie_ids, movie_entries))
+
+    if not contributions:
         return False
 
-    movie_entries.sort(key=lambda pair: pair[0].title.lower())
+    # The same film can surface via more than one source (e.g. it's on both
+    # the watchlist and a chosen list) — shown once, keeping whichever
+    # source's cinema restriction found it the soonest showtime.
+    merged_entries: dict[int, tuple[Movie, Showtime]] = {}
+    for _, _, movie_entries in contributions:
+        for movie, showtime in movie_entries:
+            existing = merged_entries.get(movie.id)
+            if existing is None or showtime.datetime < existing[1].datetime:
+                merged_entries[movie.id] = (movie, showtime)
+    combined_entries = sorted(merged_entries.values(), key=lambda pair: pair[0].title.lower())
 
     email_data = generate_watchlist_digest_email(
         email_to=user.email,
-        movie_entries=movie_entries,
-        frequency=source.frequency,
-        source=_resolve_digest_source_label(session=session, user=user, source=source),
+        movie_entries=combined_entries,
+        sources=[
+            _resolve_digest_source_label(session=session, user=user, source=source)
+            for source, _, _ in contributions
+        ],
+        now=reference_time,
     )
     try:
         send_email(
@@ -411,21 +492,19 @@ def build_and_send_digest_for_source(
         logger.exception("Failed sending watchlist digest email to %s", user.email)
         return False
 
-    sent_movie_ids = {movie.id for movie, _ in movie_entries}
-    _mark_notified(
-        session=session,
-        source_id=source.id,
-        movie_ids=sent_movie_ids,
-        now=reference_time,
-    )
-    source.last_sent_at = reference_time
-    session.add(source)
+    for source, sent_movie_ids, _ in contributions:
+        _mark_notified(
+            session=session, source_id=source.id, movie_ids=sent_movie_ids, now=reference_time
+        )
+        source.last_sent_at = reference_time
+        session.add(source)
     session.commit()
     return True
 
 
 def send_due_digests(*, session: Session, now: datetime | None = None) -> int:
-    """Send every eligible, due source's digest. Returns the number of emails sent."""
+    """Send each eligible user at most one combined digest email.
+    Returns the number of emails sent."""
     reference_time = now or now_amsterdam_naive()
     users = session.exec(
         select(User).where(col(User.notify_watchlist_digest_enabled).is_(True))
@@ -436,9 +515,8 @@ def send_due_digests(*, session: Session, now: datetime | None = None) -> int:
         if not _is_eligible(user):
             continue
         sources = sources_crud.list_user_sources(session=session, user_id=user.id)
-        for source in sources:
-            if build_and_send_digest_for_source(
-                session=session, user=user, source=source, now=reference_time
-            ):
-                sent_count += 1
+        if build_and_send_combined_digest(
+            session=session, user=user, sources=sources, now=reference_time
+        ):
+            sent_count += 1
     return sent_count

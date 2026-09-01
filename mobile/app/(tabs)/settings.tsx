@@ -749,22 +749,30 @@ function SettingsScreen() {
               </View>
               {digestEnabled && !user?.letterboxd_username ? (
                 <View style={styles.digestWarningCard}>
-                  <ThemedText style={styles.digestWarningText}>
-                    No Letterboxd username set, so there&apos;s no watchlist to follow yet.
-                  </ThemedText>
-                  <View style={styles.digestWarningActions}>
-                    <TouchableOpacity onPress={handleJumpToLetterboxdSection} activeOpacity={0.8}>
-                      <ThemedText style={styles.digestWarningLink}>Set a username</ThemedText>
-                    </TouchableOpacity>
-                    <ThemedText style={styles.digestWarningText}> or </ThemedText>
-                    <TouchableOpacity
-                      onPress={() => setDigestAdvancedOpen(true)}
-                      activeOpacity={0.8}
-                    >
-                      <ThemedText style={styles.digestWarningLink}>
-                        use a list in advanced settings
-                      </ThemedText>
-                    </TouchableOpacity>
+                  <MaterialIcons
+                    name="warning-amber"
+                    size={16}
+                    color={colors.yellow.secondary}
+                    style={styles.digestWarningIcon}
+                  />
+                  <View style={styles.digestWarningBody}>
+                    <ThemedText style={styles.digestWarningText}>
+                      No Letterboxd username set, so there&apos;s no watchlist to follow yet.
+                    </ThemedText>
+                    <View style={styles.digestWarningActions}>
+                      <TouchableOpacity onPress={handleJumpToLetterboxdSection} activeOpacity={0.8}>
+                        <ThemedText style={styles.digestWarningLink}>Set a username</ThemedText>
+                      </TouchableOpacity>
+                      <ThemedText style={styles.digestWarningText}> or </ThemedText>
+                      <TouchableOpacity
+                        onPress={() => setDigestAdvancedOpen(true)}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText style={styles.digestWarningLink}>
+                          use a list in advanced settings
+                        </ThemedText>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               ) : null}
@@ -1245,17 +1253,25 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       color: colors.tint,
     },
     digestWarningCard: {
-      gap: 4,
+      flexDirection: 'row',
+      gap: 8,
       borderWidth: 1,
-      borderColor: colors.cardBorder,
+      borderColor: colors.yellow.border,
       borderRadius: 8,
       paddingHorizontal: 10,
       paddingVertical: 8,
-      backgroundColor: colors.surfaceMuted,
+      backgroundColor: colors.yellow.primary,
+    },
+    digestWarningIcon: {
+      marginTop: 1,
+    },
+    digestWarningBody: {
+      flex: 1,
+      gap: 4,
     },
     digestWarningText: {
       fontSize: 11,
-      color: colors.textSecondary,
+      color: colors.yellow.secondary,
       lineHeight: 15,
     },
     digestWarningActions: {
@@ -1266,7 +1282,8 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     digestWarningLink: {
       fontSize: 11,
       fontWeight: '700',
-      color: colors.tint,
+      color: colors.yellow.secondary,
+      textDecorationLine: 'underline',
     },
     cinevilleShortcutRow: {
       flexDirection: 'row',

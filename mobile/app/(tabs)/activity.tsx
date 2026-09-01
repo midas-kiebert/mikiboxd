@@ -5,22 +5,33 @@
  *   All     — you and your friends, together (the original "you + friends"
  *             query the premade "Friends' showtimes" filter preset used to
  *             apply on the Showtimes tab).
- *   Friends — friends only, your own selections dropped. See `friendsOnly`
- *             in `_build_main_page_showtimes_query`
- *             (`backend/app/crud/showtime.py`).
  *   You     — your personal agenda: what you're going to or interested in,
  *             plus anything a friend has invited you to. This replaces the
  *             standalone Agenda tab; the invite always counts here now
  *             (the old "include invites" toggle is gone, since an invite is
  *             always relevant to you).
+ *   Friends — friends only, your own selections dropped. See `friendsOnly`
+ *             in `_build_main_page_showtimes_query`
+ *             (`backend/app/crud/showtime.py`).
+ *
+ * "You" sits in the middle because it is the one slice reachable from either
+ * side in a single swipe: the three are a pager as well as a control, and the
+ * middle page is the one that is never two pages away.
  *
  * All three ignore the viewer's cinema selection on purpose — see
  * `_skips_cinema_default` in `backend/app/services/viewer_context.py` for the
  * "All"/"Friends" side; "You" never had a cinema filter to begin with.
+ *
+ * All three are also *mounted* at once, not just the selected one. A page has to
+ * be there, with its data, before the finger reaches it — a page built on
+ * release arrives after the swipe that asked for it, which is exactly what the
+ * swipe was meant to avoid.
  */
-import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import { GestureDetector } from "react-native-gesture-handler";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -39,8 +50,9 @@ import SignedOutPanel from "@/components/auth/SignedOutPanel";
 import { ShowtimesListContent } from "@/components/showtimes/ShowtimesScreen";
 import SegmentedControl, { type SegmentedOption } from "@/components/ui/SegmentedControl";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useSwipePager } from "@/hooks/useSwipePager";
 import { useIsSignedIn } from "@/utils/auth-session";
-import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
+import { buildSnapshotTime, useSnapshotRefresh } from "@/utils/reset-infinite-query";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 /** What signing in would put on this tab, in the order it would appear. */
@@ -55,10 +67,11 @@ const ACTIVITY_STATUSES = ["GOING", "INTERESTED"] as const;
 
 type ActivityMode = "all" | "friends" | "you";
 
+/** Left to right: the order of the segments *and* of the pages behind them. */
 const MODE_OPTIONS: readonly SegmentedOption<ActivityMode>[] = [
   { value: "all", label: "All", icon: "grid-view" },
-  { value: "friends", label: "Friends", icon: "people" },
   { value: "you", label: "You", icon: "person" },
+  { value: "friends", label: "Friends", icon: "people" },
 ];
 
 /** Which mode a `?mode=` deep link lands in (e.g. a showtime-invite push notification). */
@@ -70,14 +83,13 @@ function ActivityScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
-  const router = useRouter();
   const queryClient = useQueryClient();
   const isFocused = useIsFocused();
+  const { width: pageWidth } = useWindowDimensions();
   // A feed of who's doing what is a feed about accounts, so there is nothing
   // here for a guest — same shape as Friends, which stays in the bar and
   // explains itself instead of disappearing.
   const isSignedIn = useIsSignedIn();
-  const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
   const { mode: deepLinkMode } = useLocalSearchParams<{ mode?: string | string[] }>();
@@ -94,51 +106,11 @@ function ActivityScreen() {
     setMode(requestedMode);
   }, [requestedMode]);
 
+  const modeIndex = Math.max(
+    0,
+    MODE_OPTIONS.findIndex((option) => option.value === mode)
+  );
   const isYou = mode === "you";
-  const isFriendsOnly = mode === "friends";
-
-  const filters = useMemo(
-    () => ({ selectedStatuses: [...ACTIVITY_STATUSES], friendsOnly: isFriendsOnly }),
-    [isFriendsOnly]
-  );
-
-  const mainQuery = useFetchMainPageShowtimes({
-    limit: 20,
-    snapshotTime,
-    filters,
-    enabled: isFocused && isSignedIn && !isYou,
-  });
-
-  // "You" is your personal agenda rather than the friends-oriented main-page
-  // query — it already knows how to fold invites in (`includeInvited`), which
-  // is always on here: an invite is relevant to you by definition, so there is
-  // no toggle for it any more.
-  const agendaQuery = useFetchAgenda({
-    limit: 20,
-    snapshotTime,
-    includeInterested: true,
-    includeInvited: true,
-    enabled: isFocused && isSignedIn && isYou,
-  });
-
-  const showtimes = useMemo(
-    () => (isYou ? agendaQuery.data : mainQuery.data)?.pages.flat() ?? [],
-    [isYou, agendaQuery.data, mainQuery.data]
-  );
-  const isLoading = isYou ? agendaQuery.isLoading : mainQuery.isLoading;
-  const isFetching = isYou ? agendaQuery.isFetching : mainQuery.isFetching;
-  const isFetchingNextPage = isYou ? agendaQuery.isFetchingNextPage : mainQuery.isFetchingNextPage;
-  const hasNextPage = isYou ? agendaQuery.hasNextPage : mainQuery.hasNextPage;
-  const fetchNextPage = isYou ? agendaQuery.fetchNextPage : mainQuery.fetchNextPage;
-
-  // Distinguishes "you have no friends yet" from "your friends have nothing
-  // on right now" — the empty state and its CTA differ between the two. Not
-  // needed for "You", which has its own, friend-independent empty state.
-  const { data: friends, isFetching: isFetchingFriends } = useFetchFriends({
-    enabled: isSignedIn && !isYou,
-  });
-  const hasFriends = (friends?.length ?? 0) > 0;
-  const isLoadingFriends = isFetchingFriends && friends === undefined;
 
   // Mark received invites as seen as soon as "You" is viewed, clearing the badge.
   const markSeenMutation = useMutation({
@@ -161,14 +133,158 @@ function ActivityScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused, isSignedIn, isYou]);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  // `useRef` rather than a value: `handleChangeMode` is handed to the pager as
+  // `onIndexChange`, so it cannot close over the pager it is being built with.
+  const goToPageRef = useRef<((index: number) => void) | null>(null);
+
+  const handleChangeMode = useCallback((next: ActivityMode) => {
+    // Start the pages moving here, not from the render this is about to cause:
+    // that commit rebuilds three feeds, and until it lands nothing driven by
+    // React state has moved. A swipe arrives with the movement already under
+    // way, and this is how a tap does the same.
+    goToPageRef.current?.(MODE_OPTIONS.findIndex((option) => option.value === next));
+    setMode(next);
+  }, []);
+
+  const handleChangeIndex = useCallback(
+    // No haptic: a swipe is a continuous gesture the user is already watching
+    // answer them, unlike a tap, where the segment fires one of its own.
+    (index: number) => handleChangeMode(MODE_OPTIONS[index].value),
+    [handleChangeMode]
+  );
+
+  const { progress, panGesture, goTo } = useSwipePager({
+    pageCount: MODE_OPTIONS.length,
+    index: modeIndex,
+    onIndexChange: handleChangeIndex,
+    pageWidth,
+  });
+  goToPageRef.current = goTo;
+
+  const pagerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -progress.value * pageWidth }],
+  }));
+
+  // Render/output using the state and derived values prepared above.
+  if (!isSignedIn) {
+    return (
+      <TopSafeAreaView style={styles.container}>
+        <TopBar title="Activity" icon="bolt.fill" />
+        <SignedOutPanel feature="activity" bullets={ACTIVITY_HIGHLIGHTS} />
+      </TopSafeAreaView>
+    );
+  }
+
+  return (
+    <TopSafeAreaView style={styles.container}>
+      <TopBar title="Activity" icon="bolt.fill" />
+      <View style={styles.modeRow}>
+        <SegmentedControl
+          options={MODE_OPTIONS}
+          value={mode}
+          onChange={handleChangeMode}
+          accessibilityLabelPrefix="Show"
+          stretch
+          size="large"
+          progress={progress}
+        />
+      </View>
+      <View style={styles.pagerViewport}>
+        <GestureDetector gesture={panGesture}>
+          <Animated.View
+            style={[styles.pager, { width: pageWidth * MODE_OPTIONS.length }, pagerStyle]}
+          >
+            {MODE_OPTIONS.map((option) => (
+              <View key={option.value} style={{ width: pageWidth }}>
+                <ActivityPage
+                  mode={option.value}
+                  isFocused={isFocused}
+                  snapshotTime={snapshotTime}
+                  setSnapshotTime={setSnapshotTime}
+                  colors={colors}
+                  styles={styles}
+                />
+              </View>
+            ))}
+          </Animated.View>
+        </GestureDetector>
+      </View>
+    </TopSafeAreaView>
+  );
+}
+
+type ActivityPageProps = {
+  mode: ActivityMode;
+  isFocused: boolean;
+  snapshotTime: string;
+  setSnapshotTime: (snapshotTime: string) => void;
+  colors: ThemeColors;
+  styles: ReturnType<typeof createStyles>;
+};
+
+/**
+ * One page of the pager: the feed for a single mode, with the query behind it.
+ *
+ * Each page runs its own query rather than the screen swapping one query's
+ * arguments, because all three are on screen at once as far as the pager is
+ * concerned — a page being dragged into view has to already hold its own feed.
+ * The two `useFetch…` hooks are called unconditionally and one of them is left
+ * disabled, since which page this is never changes for the life of the mount.
+ */
+function ActivityPage({
+  mode,
+  isFocused,
+  snapshotTime,
+  setSnapshotTime,
+  colors,
+  styles,
+}: ActivityPageProps) {
+  const router = useRouter();
+  const isYou = mode === "you";
+  const isFriendsOnly = mode === "friends";
+
+  const filters = useMemo(
+    () => ({ selectedStatuses: [...ACTIVITY_STATUSES], friendsOnly: isFriendsOnly }),
+    [isFriendsOnly]
+  );
+
+  const mainQuery = useFetchMainPageShowtimes({
+    limit: 20,
+    snapshotTime,
+    filters,
+    enabled: isFocused && !isYou,
+  });
+
+  // "You" is your personal agenda rather than the friends-oriented main-page
+  // query — it already knows how to fold invites in (`includeInvited`), which
+  // is always on here: an invite is relevant to you by definition, so there is
+  // no toggle for it any more.
+  const agendaQuery = useFetchAgenda({
+    limit: 20,
+    snapshotTime,
+    includeInterested: true,
+    includeInvited: true,
+    enabled: isFocused && isYou,
+  });
+
+  const showtimes = useMemo(
+    () => (isYou ? agendaQuery.data : mainQuery.data)?.pages.flat() ?? [],
+    [isYou, agendaQuery.data, mainQuery.data]
+  );
+  const isLoading = isYou ? agendaQuery.isLoading : mainQuery.isLoading;
+  const isFetching = isYou ? agendaQuery.isFetching : mainQuery.isFetching;
+  const isFetchingNextPage = isYou ? agendaQuery.isFetchingNextPage : mainQuery.isFetchingNextPage;
+  const hasNextPage = isYou ? agendaQuery.hasNextPage : mainQuery.hasNextPage;
+  const fetchNextPage = isYou ? agendaQuery.fetchNextPage : mainQuery.fetchNextPage;
+
+  const { refreshing, handleRefresh } = useSnapshotRefresh({ setSnapshotTime, isFetching });
+
+  // Distinguishes "you have no friends yet" from "your friends have nothing
+  // on right now" — the empty state and its CTA differ between the two. Not
+  // needed for "You", which has its own, friend-independent empty state.
+  const { data: friends, isFetching: isFetchingFriends } = useFetchFriends({ enabled: !isYou });
+  const hasFriends = (friends?.length ?? 0) > 0;
+  const isLoadingFriends = isFetchingFriends && friends === undefined;
 
   const goToAddFriends = () => {
     triggerSelectionHaptic();
@@ -178,11 +294,6 @@ function ActivityScreen() {
   const goToShowtimes = () => {
     triggerSelectionHaptic();
     router.push("/(tabs)");
-  };
-
-  const handleChangeMode = (next: ActivityMode) => {
-    triggerSelectionHaptic();
-    setMode(next);
   };
 
   const emptyText = isYou
@@ -224,44 +335,21 @@ function ActivityScreen() {
     </View>
   );
 
-  // Render/output using the state and derived values prepared above.
-  if (!isSignedIn) {
-    return (
-      <TopSafeAreaView style={styles.container}>
-        <TopBar title="Activity" icon="bolt.fill" />
-        <SignedOutPanel feature="activity" bullets={ACTIVITY_HIGHLIGHTS} />
-      </TopSafeAreaView>
-    );
-  }
-
   return (
-    <TopSafeAreaView style={styles.container}>
-      <TopBar title="Activity" icon="bolt.fill" />
-      <View style={styles.modeRow}>
-        <SegmentedControl
-          options={MODE_OPTIONS}
-          value={mode}
-          onChange={handleChangeMode}
-          accessibilityLabelPrefix="Show"
-          stretch
-          size="large"
-        />
-      </View>
-      <ShowtimesListContent
-        showtimes={showtimes}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        isFetchingNextPage={isFetchingNextPage}
-        hasNextPage={hasNextPage}
-        onLoadMore={() => {
-          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
-        }}
-        refreshing={refreshing}
-        onRefresh={handleRefresh}
-        emptyText={emptyText}
-        emptyExtra={emptyExtra}
-      />
-    </TopSafeAreaView>
+    <ShowtimesListContent
+      showtimes={showtimes}
+      isLoading={isLoading}
+      isFetching={isFetching}
+      isFetchingNextPage={isFetchingNextPage}
+      hasNextPage={hasNextPage}
+      onLoadMore={() => {
+        if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+      }}
+      refreshing={refreshing}
+      onRefresh={handleRefresh}
+      emptyText={emptyText}
+      emptyExtra={emptyExtra}
+    />
   );
 }
 
@@ -271,7 +359,12 @@ const createStyles = (colors: ThemeColors) =>
     modeRow: {
       paddingHorizontal: 16,
       paddingTop: 12,
+      paddingBottom: 8,
     },
+    // The row of pages is wider than the screen, so the window it moves behind
+    // has to clip it — on Android nothing else does.
+    pagerViewport: { flex: 1, overflow: "hidden" },
+    pager: { flex: 1, flexDirection: "row" },
     emptyActionRow: { alignItems: "center", gap: 4 },
     emptyExtraText: {
       fontSize: 13,
@@ -314,7 +407,7 @@ const createStyles = (colors: ThemeColors) =>
 export default function ActivityScreenTab() {
   const ready = useDeferredMount("tab:activity", tabContentHoldMs);
   if (!ready) {
-    return <TabScreenSkeleton title="Activity" icon="bolt.fill" rowHeight={112} />;
+    return <TabScreenSkeleton title="Activity" icon="bolt.fill" />;
   }
   return <ActivityScreen />;
 }

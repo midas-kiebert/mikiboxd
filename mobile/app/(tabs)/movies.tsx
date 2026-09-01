@@ -25,6 +25,7 @@ import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
 import TopBar from '@/components/layout/TopBar';
 import SearchBar from '@/components/inputs/SearchBar';
 import PresetsRow from '@/components/filters/PresetsRow';
+import { FILTER_ROW_SETTLE_MS } from '@/components/filters/filter-change-animation';
 import FiltersButton from '@/components/filters/FiltersButton';
 import SearchFieldFallback from '@/components/inputs/SearchFieldFallback';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
@@ -50,7 +51,7 @@ import {
   useScrollTriggeredLoadMore,
 } from '@/components/feeds/feed-paging';
 import { useIsSignedIn } from '@/utils/auth-session';
-import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
+import { buildSnapshotTime, useSnapshotRefresh } from '@/utils/reset-infinite-query';
 
 // One request per pause in typing, not one per keystroke — see
 // useDebouncedValue and (tabs)/index.tsx's identical guard.
@@ -67,9 +68,20 @@ export default function MovieScreen() {
   // Clearing the field drops the results immediately — waiting out the
   // debounce to remove what the user just deleted would feel broken.
   const effectiveSearchQuery = searchQuery.trim().length > 0 ? debouncedSearchQuery : '';
-  const [refreshing, setRefreshing] = useState(false);
   const { openFiltersModal } = useFiltersModal();
   const isFocused = useIsFocused();
+  // A preset can write `watchlistOnly`/`hideWatched` alone, which reach the
+  // query a frame late (see useSharedTabFilters' rAF-deferred "applied"
+  // values) — for that one frame `movieFilters` hasn't moved yet, so if the
+  // *previous* filters also had zero results, isLoading/isFetching are still
+  // false and "No movies found" flashes before the real load state catches
+  // up. Held for the same settle window the filter row's own animation uses,
+  // which comfortably outlasts that one frame. `feedHoldUntil` (not just a
+  // boolean) so a second preset tapped during the first one's hold re-arms
+  // the wait instead of inheriting the first one's deadline — see
+  // (tabs)/index.tsx, which uses the same pattern.
+  const [isFilterTransitionLoading, setIsFilterTransitionLoading] = useState(false);
+  const [feedHoldUntil, setFeedHoldUntil] = useState(0);
 
   const {
     selectedShowtimeFilter,
@@ -195,14 +207,18 @@ export default function MovieScreen() {
 
   const movies = moviesData?.pages.flat() || [];
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
-    } finally {
-      setRefreshing(false);
+  useEffect(() => {
+    if (!isFilterTransitionLoading) return;
+    const wait = feedHoldUntil - Date.now();
+    if (wait > 0) {
+      const timer = setTimeout(() => setIsFilterTransitionLoading(false), wait);
+      return () => clearTimeout(timer);
     }
-  };
+    const frame = requestAnimationFrame(() => setIsFilterTransitionLoading(false));
+    return () => cancelAnimationFrame(frame);
+  }, [feedHoldUntil, isFilterTransitionLoading]);
+
+  const { refreshing, handleRefresh } = useSnapshotRefresh({ setSnapshotTime, isFetching });
 
   // One identity for the life of the list: a new `renderItem` re-renders every
   // cell, which would undo `MovieCard`'s memo.
@@ -227,33 +243,51 @@ export default function MovieScreen() {
   // Pull-to-refresh no longer clears the list: RefreshControl's own spinner
   // at the top already says a reload is happening, so the old cards just
   // stay up and get swapped for the fresh ones once they land — no separate
-  // "reload" state needed, and nothing for the loading panel to do here.
-  const visibleMovies = movies;
+  // "reload" state needed, and nothing for the loading panel to do here. A
+  // preset apply does still clear it: `isFilterTransitionLoading` covers the
+  // frame where the query hasn't moved yet but the old results no longer
+  // describe what's selected.
+  const visibleMovies = isFilterTransitionLoading ? [] : movies;
 
-  // `isLoading` means there's no cached data at all for this query — nothing
-  // to lose by showing the panel immediately, and a delay here is exactly the
-  // "blank screen for too long" a genuine first load (or a filter combo
-  // that's never been fetched before) doesn't need. `isFetching`-only (data
-  // already empty, but a background refetch is running) is the case that can
-  // resolve from cache almost instantly, so that one keeps the anti-flash
-  // delay and cooldown. `!refreshing` on both: RefreshControl's own spinner
-  // already covers a pull-to-refresh, so the panel has nothing to do for one
-  // even on an already-empty list.
-  const isFirstLoadEmpty = isLoading && !refreshing && visibleMovies.length === 0;
-  const isBackgroundFetchEmpty =
-    isFetching && !isLoading && !refreshing && visibleMovies.length === 0;
-  const showBackgroundFetchLoadingLogo = useDelayedTrue(
-    isBackgroundFetchEmpty,
+  // `!refreshing`: RefreshControl's own spinner already covers a
+  // pull-to-refresh, so the panel has nothing to do for one even on an
+  // already-empty list. Both a genuine first load and a background refetch
+  // go through the same delay+cooldown — a preset or filter combo that's
+  // been used before (or just hits a nearby cache entry) very often resolves
+  // faster than LOADING_LOGO_DELAY_MS even with nothing cached yet, so
+  // showing `isLoading` immediately just moved the flash from "quick filter
+  // taps" to "quick presets" instead of removing it.
+  const isFetchEmptyLoading =
+    (isLoading || isFetching) && !refreshing && visibleMovies.length === 0;
+  const showFetchLoadingLogo = useDelayedTrue(
+    isFetchEmptyLoading,
     LOADING_LOGO_DELAY_MS,
     LOADING_LOGO_COOLDOWN_MS
   );
-  const showLoadingLogo = isFirstLoadEmpty || showBackgroundFetchLoadingLogo;
-  const isEmptyLoading = isFirstLoadEmpty || isBackgroundFetchEmpty;
+  // Same show delay (a preset whose results are already cached resolves well
+  // inside it, and forcing the panel up for the whole hold flashed it on
+  // every single tap) but deliberately *no* cooldown, on a clock of its own:
+  // the cooldown is there to absorb a raw fetch flag's flicker, and one left
+  // ticking by a previous preset would otherwise outlast this hold and
+  // swallow the panel for the next preset entirely.
+  const showTransitionLoadingLogo = useDelayedTrue(
+    isFilterTransitionLoading,
+    LOADING_LOGO_DELAY_MS
+  );
+  // The hold still suppresses the empty-state copy for its whole length,
+  // delay or not — "No movies found" must never describe filters that have
+  // already been replaced.
+  const isEmptyLoading = isFetchEmptyLoading || isFilterTransitionLoading;
+  const showLoadingLogo = showFetchLoadingLogo || showTransitionLoadingLogo;
 
   const renderEmpty = () => {
     // The loading panel is a fixed overlay (below), not part of the list's
-    // own content, so there's nothing to render here while it's up.
-    if (isEmptyLoading) return null;
+    // own content, so there's nothing to render here while it's up. And
+    // never the "nothing found" copy while a refresh is in flight either —
+    // the pull gesture's own spinner already covers that, and this would
+    // otherwise flash up for an already-empty list mid-refresh even though
+    // the loading panel is deliberately skipped for that case.
+    if (isEmptyLoading || refreshing) return null;
     return (
       <ThemedView style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>No movies found</ThemedText>
@@ -267,6 +301,8 @@ export default function MovieScreen() {
   };
 
   const handleApplyPreset = (preset: DisplayPreset) => {
+    setFeedHoldUntil(Date.now() + FILTER_ROW_SETTLE_MS);
+    setIsFilterTransitionLoading(true);
     applyDisplayPreset(preset, {
       hasLetterboxdUsername,
       setSelectedShowtimeFilter,

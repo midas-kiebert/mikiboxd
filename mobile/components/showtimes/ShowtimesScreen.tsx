@@ -52,6 +52,19 @@ type ShowtimesListContentProps = {
   inheritFiltersOnMovieNav?: boolean;
   /** Scrolls away with the list, unlike filterRow which stays pinned above it. */
   listHeader?: React.ReactElement | null;
+  /**
+   * A caller's own deliberate, bounded "just changed the filters" hold (e.g.
+   * a preset apply's settle window). Suppresses the empty-state copy for its
+   * whole length, and shows the loading panel on a clock of its own: the same
+   * short show delay as a fetch (a preset whose results are already cached
+   * resolves well inside it, and showing the panel for every tap regardless
+   * flashes it), but no cooldown. The cooldown absorbs a *raw* `isLoading`/
+   * `isFetching` flag's flicker; one left ticking by a previous preset would
+   * outlast a hold like this and swallow the panel for the next preset
+   * entirely. Folding a caller's own hold into `isLoading`/`isFetching`
+   * instead of passing it here hits exactly that bug.
+   */
+  immediateEmptyLoading?: boolean;
 };
 
 export function ShowtimesListContent({
@@ -68,6 +81,7 @@ export function ShowtimesListContent({
   openModalOptions,
   inheritFiltersOnMovieNav = false,
   listHeader,
+  immediateEmptyLoading = false,
 }: ShowtimesListContentProps) {
   const router = useRouter();
   const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimePublic) =>
@@ -121,29 +135,37 @@ export function ShowtimesListContent({
   // "reload" state needed, and nothing for the loading panel to do here.
   const data = showtimes;
 
-  // `isLoading` means there's no cached data at all for this query — nothing
-  // to lose by showing the panel immediately, and a delay here is exactly the
-  // "blank screen for too long" a genuine first load (or a filter combo
-  // that's never been fetched before) doesn't need. `isFetching`-only (data
-  // already empty, but a background refetch is running) is the case that can
-  // resolve from cache almost instantly, so that one keeps the anti-flash
-  // delay and cooldown. `!refreshing` on both: RefreshControl's own spinner
-  // already covers a pull-to-refresh, so the panel has nothing to do for one
-  // even on an already-empty list.
-  const isFirstLoadEmpty = isLoading && !refreshing && data.length === 0;
-  const isBackgroundFetchEmpty = isFetching && !isLoading && !refreshing && data.length === 0;
-  const showBackgroundFetchLoadingLogo = useDelayedTrue(
-    isBackgroundFetchEmpty,
+  // `!refreshing`: RefreshControl's own spinner already covers a
+  // pull-to-refresh, so the panel has nothing to do for one even on an
+  // already-empty list. Both a genuine first load and a background refetch
+  // go through the same delay+cooldown — a preset or filter combo that's
+  // been used before (or just hits a nearby cache entry) very often resolves
+  // faster than LOADING_LOGO_DELAY_MS even with nothing cached yet, so
+  // showing `isLoading` immediately just moved the flash from "quick filter
+  // taps" to "quick presets" instead of removing it.
+  const isFetchEmptyLoading = (isLoading || isFetching) && !refreshing && data.length === 0;
+  const showFetchLoadingLogo = useDelayedTrue(
+    isFetchEmptyLoading,
     LOADING_LOGO_DELAY_MS,
     LOADING_LOGO_COOLDOWN_MS
   );
-  const showLoadingLogo = isFirstLoadEmpty || showBackgroundFetchLoadingLogo;
-  const isEmptyLoading = isFirstLoadEmpty || isBackgroundFetchEmpty;
+  // Same show delay, no cooldown, own clock — see `immediateEmptyLoading`'s
+  // doc comment above.
+  const showTransitionLoadingLogo = useDelayedTrue(immediateEmptyLoading, LOADING_LOGO_DELAY_MS);
+  // The caller's hold still suppresses the empty-state copy for its whole
+  // length, delay or not — `emptyText` must never describe filters that have
+  // already been replaced.
+  const isEmptyLoading = isFetchEmptyLoading || immediateEmptyLoading;
+  const showLoadingLogo = showFetchLoadingLogo || showTransitionLoadingLogo;
 
   const renderEmpty = () => {
     // The loading panel is a fixed overlay (below), not part of the list's
-    // own content, so there's nothing to render here while it's up.
-    if (isEmptyLoading) return null;
+    // own content, so there's nothing to render here while it's up. And
+    // never the "nothing found" copy while a refresh is in flight either —
+    // the pull gesture's own spinner already covers that, and this would
+    // otherwise flash up for an already-empty list mid-refresh even though
+    // the loading panel is deliberately skipped for that case.
+    if (isEmptyLoading || refreshing) return null;
     return (
       <View style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>{emptyText}</ThemedText>

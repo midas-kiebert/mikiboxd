@@ -420,11 +420,20 @@ export const buildSavedPresetCreate = (args: {
   includeCinemas: boolean;
   currentFilters: PageFilterPresetState;
   cinemaIds: number[];
+  /**
+   * The cinema preset the current selection exactly matches, if any. When
+   * set, the saved preset follows that cinema preset live (edits to it, or
+   * its deletion, are picked up automatically — see the backend's
+   * `SavedPreset.cinema_preset_id`) instead of freezing `cinemaIds`.
+   */
+  matchedCinemaPresetId?: string | null;
 }): SavedPresetCreate => ({
   name: args.name,
   untouched_fields: args.untouchedFields,
   filters: normalizeFiltersForSave(args.currentFilters),
-  cinema_ids: args.includeCinemas ? args.cinemaIds : null,
+  cinema_ids:
+    args.includeCinemas && !args.matchedCinemaPresetId ? args.cinemaIds : null,
+  cinema_preset_id: args.includeCinemas ? args.matchedCinemaPresetId ?? null : null,
   is_favorite: args.isFavorite,
 });
 

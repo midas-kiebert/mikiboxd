@@ -24,6 +24,24 @@ export function triggerSelectionHaptic() {
 }
 
 /**
+ * A tab-bar press.
+ *
+ * Kept apart from {@link triggerSelectionHaptic} only because iOS has always
+ * answered a tab with an impact rather than a selection tick, and that is the
+ * feel the app shipped with; Android gets the same light tick every other
+ * control here gets. Both platforms buzz — the Expo tab template this started
+ * from fired on iOS only, on the grounds that Android "already has native
+ * ripple feedback", but a ripple is something you see, not something you feel.
+ */
+export function triggerTabPressHaptic() {
+  if (Platform.OS === "android") {
+    void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Context_Click);
+    return;
+  }
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+}
+
+/**
  * A slightly more pronounced tap than {@link triggerSelectionHaptic} for
  * meaningful one-shot actions (e.g. sending a friend invite).
  */

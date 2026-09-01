@@ -104,6 +104,10 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
   const [isReplacingNamedPreset, setIsReplacingNamedPreset] = useState(false);
   // The preset being renamed from the manage page, if any.
   const [presetBeingRenamed, setPresetBeingRenamed] = useState<CinemaPresetPublic | null>(null);
+  // The preset whose cinemas are being edited from the manage page, if any —
+  // the picker is seeded with its cinemas and "Save changes" writes back to
+  // this same preset by id, rather than creating or overwriting-by-name.
+  const [presetBeingEdited, setPresetBeingEdited] = useState<CinemaPresetPublic | null>(null);
   const [presetPendingDeletion, setPresetPendingDeletion] = useState<CinemaPresetPublic | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
   const renameInputRef = useRef<TextInput>(null);
@@ -188,6 +192,7 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     setIsSavePresetDialogVisible(false);
     setIsReplacingNamedPreset(false);
     setPresetBeingRenamed(null);
+    setPresetBeingEdited(null);
     setPresetPendingDeletion(null);
     setRenameError(null);
     setSavedMyCinemasSignature(null);
@@ -263,6 +268,20 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
         return;
       }
       setRenameError("Could not rename this preset. Please try again.");
+    },
+  });
+
+  const editPresetCinemasMutation = useMutation({
+    mutationFn: ({ presetId, name, cinemaIds }: { presetId: string; name: string; cinemaIds: number[] }) =>
+      MeService.renameCinemaPreset({ presetId, requestBody: { name, cinema_ids: cinemaIds } }),
+    onSuccess: () => {
+      setPresetBeingEdited(null);
+      invalidateCinemaPresets(queryClient);
+      triggerSelectionHaptic();
+      setPage("presets");
+    },
+    onError: () => {
+      Alert.alert("Could not save", "This preset's cinemas were not saved. Please try again.");
     },
   });
 
@@ -402,6 +421,29 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     setRenameValue(preset.name);
     setPresetBeingRenamed(preset);
   }, []);
+
+  const handleStartEditCinemas = useCallback((preset: CinemaPresetPublic) => {
+    triggerSelectionHaptic();
+    setLocalSelectedCinemaSet(new Set(preset.cinema_ids));
+    setPresetBeingEdited(preset);
+    setPage("selection");
+  }, []);
+
+  const handleCancelEditCinemas = useCallback(() => {
+    triggerSelectionHaptic();
+    setLocalSelectedCinemaSet(new Set(selectedCinemas));
+    setPresetBeingEdited(null);
+  }, [selectedCinemas]);
+
+  const handleConfirmEditCinemas = useCallback(() => {
+    if (!presetBeingEdited || localSelectedCinemaSet.size === 0) return;
+    triggerImpactHaptic();
+    editPresetCinemasMutation.mutate({
+      presetId: presetBeingEdited.id,
+      name: presetBeingEdited.name,
+      cinemaIds: sortCinemaIds(localSelectedCinemaSet),
+    });
+  }, [presetBeingEdited, localSelectedCinemaSet, editPresetCinemasMutation]);
 
   const handleCancelRename = useCallback(() => {
     if (renamePresetMutation.isPending) return;
@@ -562,6 +604,16 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                             <MaterialIcons name="edit" size={15} color={colors.textSecondary} />
                             <ThemedText style={styles.manageActionText}>Rename</ThemedText>
                           </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.manageAction}
+                            onPress={() => handleStartEditCinemas(myCinemasPreset)}
+                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            hitSlop={6}
+                          >
+                            <MaterialIcons name="theaters" size={15} color={colors.textSecondary} />
+                            <ThemedText style={styles.manageActionText}>Edit cinemas</ThemedText>
+                          </TouchableOpacity>
                         </View>
                       </>
                     ) : (
@@ -639,6 +691,16 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                               </TouchableOpacity>
                               <TouchableOpacity
                                 style={styles.manageAction}
+                                onPress={() => handleStartEditCinemas(item)}
+                                activeOpacity={0.7}
+                                accessibilityRole="button"
+                                hitSlop={6}
+                              >
+                                <MaterialIcons name="theaters" size={15} color={colors.textSecondary} />
+                                <ThemedText style={styles.manageActionText}>Edit cinemas</ThemedText>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.manageAction}
                                 onPress={() => handleUseAsMyCinemas(item)}
                                 activeOpacity={0.7}
                                 disabled={useAsMyCinemasMutation.isPending}
@@ -673,6 +735,35 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
           ) : (
             /* ── Cinema selection page ── */
             <>
+              {presetBeingEdited ? (
+                <View style={styles.editingBanner}>
+                  <ThemedText style={styles.editingBannerText} numberOfLines={1}>
+                    Editing “{presetBeingEdited.name}”
+                  </ThemedText>
+                  <View style={styles.editingBannerActions}>
+                    <TouchableOpacity
+                      onPress={handleCancelEditCinemas}
+                      activeOpacity={0.7}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      disabled={editPresetCinemasMutation.isPending}
+                    >
+                      <ThemedText style={styles.editingBannerCancel}>Cancel</ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleConfirmEditCinemas}
+                      activeOpacity={0.7}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      disabled={editPresetCinemasMutation.isPending || localSelectedCinemaSet.size === 0}
+                    >
+                      <ThemedText style={styles.editingBannerSave}>
+                        {editPresetCinemasMutation.isPending ? "Saving…" : "Save changes"}
+                      </ThemedText>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
               <BottomSheetScrollView
                 style={styles.scroll}
                 contentContainerStyle={styles.scrollContent}
@@ -1039,6 +1130,21 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     scroll: { flex: 1 },
     scrollContent: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 20 },
     loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 40 },
+    editingBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+      backgroundColor: colors.surfaceMuted,
+    },
+    editingBannerText: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.text },
+    editingBannerActions: { flexDirection: "row", alignItems: "center", gap: 16 },
+    editingBannerCancel: { fontSize: 13, fontWeight: "700", color: colors.textSecondary },
+    editingBannerSave: { fontSize: 13, fontWeight: "700", color: colors.tint },
     // Cinema selection
     pickerHeader: {
       flexDirection: "row",

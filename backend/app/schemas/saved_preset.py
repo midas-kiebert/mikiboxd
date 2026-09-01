@@ -118,6 +118,12 @@ class SavedPresetCreate(SQLModel):
     untouched_fields: list[str] = Field(default_factory=list)
     filters: SavedPresetFilters
     cinema_ids: list[int] | None = None
+    # A cinema preset that was active when saving, in place of a raw
+    # selection — this preset then follows it live (see `SavedPreset` model).
+    # Mutually exclusive with `cinema_ids` in intent, though the service reads
+    # `cinema_ids` from the linked preset itself rather than trusting the
+    # client's copy when both are sent.
+    cinema_preset_id: UUID | None = None
     is_favorite: bool | None = None
 
     @field_validator("untouched_fields")
@@ -148,7 +154,10 @@ class SavedPresetPublic(SQLModel):
     untouched_fields: list[str]
     filters: SavedPresetFilters
     # Expanded against the current cinema list; see ``CinemaPresetPublic``.
+    # Resolved live from `cinema_preset_id` when set.
     cinema_ids: list[int] | None
     cinema_scope: CinemaScope | None = None
+    # The cinema preset this follows, if any (see `SavedPreset` model docstring).
+    cinema_preset_id: UUID | None = None
     created_at: datetime
     updated_at: datetime

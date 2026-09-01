@@ -38,12 +38,18 @@ from app.schemas.showtime import ShowtimePublic
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe, UserWithFriendStatus
 from app.schemas.user_block import BlockedUserPublic
+from app.schemas.watchlist_digest_source import (
+    WatchlistDigestSourceCreate,
+    WatchlistDigestSourcePublic,
+    WatchlistDigestSourceUpdate,
+)
 from app.services import letterboxd_lists as letterboxd_lists_service
 from app.services import me as me_service
 from app.services import moderation as moderation_service
 from app.services import users as users_service
 from app.services import watched as watched_service
 from app.services import watchlist as watchlist_service
+from app.services import watchlist_digest_sources as watchlist_digest_sources_service
 from app.utils import now_amsterdam_naive
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -196,6 +202,7 @@ def rename_cinema_preset(
         user_id=current_user.id,
         preset_id=preset_id,
         name=payload.name,
+        cinema_ids=payload.cinema_ids,
     )
 
 
@@ -248,6 +255,71 @@ def delete_cinema_preset(
             detail="Cinema preset not found",
         )
     return Message(message="Cinema preset deleted successfully")
+
+
+@router.get(
+    "/watchlist-digest-sources", response_model=list[WatchlistDigestSourcePublic]
+)
+def get_watchlist_digest_sources(
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> list[WatchlistDigestSourcePublic]:
+    return watchlist_digest_sources_service.list_sources(
+        session=session,
+        user_id=current_user.id,
+    )
+
+
+@router.post(
+    "/watchlist-digest-sources", response_model=WatchlistDigestSourcePublic
+)
+def create_watchlist_digest_source(
+    session: SessionDep,
+    current_user: CurrentUser,
+    payload: WatchlistDigestSourceCreate,
+) -> WatchlistDigestSourcePublic:
+    return watchlist_digest_sources_service.create_source(
+        session=session,
+        user_id=current_user.id,
+        payload=payload,
+    )
+
+
+@router.patch(
+    "/watchlist-digest-sources/{source_id}",
+    response_model=WatchlistDigestSourcePublic,
+)
+def update_watchlist_digest_source(
+    session: SessionDep,
+    current_user: CurrentUser,
+    source_id: UUID,
+    payload: WatchlistDigestSourceUpdate,
+) -> WatchlistDigestSourcePublic:
+    return watchlist_digest_sources_service.update_source(
+        session=session,
+        user_id=current_user.id,
+        source_id=source_id,
+        payload=payload,
+    )
+
+
+@router.delete("/watchlist-digest-sources/{source_id}", response_model=Message)
+def delete_watchlist_digest_source(
+    session: SessionDep,
+    current_user: CurrentUser,
+    source_id: UUID,
+) -> Message:
+    deleted = watchlist_digest_sources_service.delete_source(
+        session=session,
+        user_id=current_user.id,
+        source_id=source_id,
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Watchlist digest source not found",
+        )
+    return Message(message="Watchlist digest source deleted successfully")
 
 
 @router.delete("/", response_model=Message)

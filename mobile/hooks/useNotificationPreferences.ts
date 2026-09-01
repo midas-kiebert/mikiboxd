@@ -27,7 +27,8 @@ export type NotificationPreferenceKey =
   | "notify_on_showtime_ping"
   | "notify_on_interest_reminder"
   | "notify_on_seat_alert"
-  | "notify_on_sold_out";
+  | "notify_on_sold_out"
+  | "notify_on_showtime_reminder";
 
 export type NotificationChannelPreferenceKey =
   | "notify_channel_friend_showtime_match"
@@ -35,7 +36,8 @@ export type NotificationChannelPreferenceKey =
   | "notify_channel_showtime_ping"
   | "notify_channel_interest_reminder"
   | "notify_channel_seat_alert"
-  | "notify_channel_sold_out";
+  | "notify_channel_sold_out"
+  | "notify_channel_showtime_reminder";
 
 type NotificationPreferencesState = Record<NotificationPreferenceKey, boolean>;
 type NotificationChannelsState = Record<NotificationChannelPreferenceKey, NotificationChannel>;
@@ -58,7 +60,14 @@ export type NotificationDelivery = "off" | NotificationChannel;
 export type NotificationToggleDescriptor = {
   key: NotificationPreferenceKey;
   label: string;
-  icon: "groups" | "mail" | "alarm" | "person-add" | "local-fire-department" | "event-busy";
+  icon:
+    | "groups"
+    | "mail"
+    | "alarm"
+    | "person-add"
+    | "local-fire-department"
+    | "event-busy"
+    | "notifications-active";
   delivery: NotificationDelivery;
 };
 
@@ -71,6 +80,7 @@ const preferenceToChannelKey: Record<NotificationPreferenceKey, NotificationChan
   notify_on_interest_reminder: "notify_channel_interest_reminder",
   notify_on_seat_alert: "notify_channel_seat_alert",
   notify_on_sold_out: "notify_channel_sold_out",
+  notify_on_showtime_reminder: "notify_channel_showtime_reminder",
 };
 
 // Labels carry the whole explanation now that the rows are one line each, so
@@ -85,12 +95,14 @@ const TOGGLE_COPY: Record<
   notify_on_seat_alert: { label: "Almost sold out", icon: "local-fire-department" },
   notify_on_sold_out: { label: "Sold out", icon: "event-busy" },
   notify_on_friend_requests: { label: "Friend requests", icon: "person-add" },
+  notify_on_showtime_reminder: { label: "Reminders from friends", icon: "notifications-active" },
 };
 
 // Fixed display order, which is not the declaration order of the copy above.
 const TOGGLE_ORDER: readonly NotificationPreferenceKey[] = [
   "notify_on_friend_showtime_match",
   "notify_on_showtime_ping",
+  "notify_on_showtime_reminder",
   "notify_on_interest_reminder",
   "notify_on_seat_alert",
   "notify_on_sold_out",
@@ -109,6 +121,7 @@ export const buildNotificationPreferencesState = (
   notify_on_interest_reminder: !!source?.notify_on_interest_reminder,
   notify_on_seat_alert: !!source?.notify_on_seat_alert,
   notify_on_sold_out: !!source?.notify_on_sold_out,
+  notify_on_showtime_reminder: !!source?.notify_on_showtime_reminder,
 });
 
 export const buildNotificationChannelsState = (
@@ -122,6 +135,9 @@ export const buildNotificationChannelsState = (
   notify_channel_interest_reminder: normalizeChannel(source?.notify_channel_interest_reminder),
   notify_channel_seat_alert: normalizeChannel(source?.notify_channel_seat_alert),
   notify_channel_sold_out: normalizeChannel(source?.notify_channel_sold_out),
+  notify_channel_showtime_reminder: normalizeChannel(
+    source?.notify_channel_showtime_reminder
+  ),
 });
 
 /**

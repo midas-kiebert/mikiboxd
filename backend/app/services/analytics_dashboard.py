@@ -34,6 +34,7 @@ _NOTIFY_SETTINGS = [
     "notify_on_showtime_ping",
     "notify_on_invite_response",
     "notify_on_interest_reminder",
+    "notify_on_showtime_reminder",
     "notify_watchlist_digest_enabled",
 ]
 

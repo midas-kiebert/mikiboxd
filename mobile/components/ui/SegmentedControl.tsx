@@ -26,7 +26,11 @@
 import { useMemo } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import Animated, { interpolateColor, useAnimatedStyle } from "react-native-reanimated";
+import Animated, {
+  interpolateColor,
+  useAnimatedStyle,
+  type SharedValue,
+} from "react-native-reanimated";
 
 import { ThemedText } from "@/components/themed-text";
 import { useOptimisticValue } from "@/hooks/useOptimisticValue";
@@ -69,6 +73,14 @@ type Props<T extends string> = {
   size?: "compact" | "large";
   /** Blocks every segment, e.g. while a save is in flight. */
   disabled?: boolean;
+  /**
+   * For a control that labels a pager: the pager's own continuous page position
+   * (fractional mid-drag). The thumb then follows the pages rather than being
+   * sent to a segment — it tracks the finger, and it never waits on the render
+   * that committing a page change sets off. The press handler stands down with
+   * it, since moving the pages is what moves the thumb.
+   */
+  progress?: SharedValue<number>;
 };
 
 type Styles = ReturnType<typeof createStyles>;
@@ -81,6 +93,7 @@ export default function SegmentedControl<T extends string>({
   stretch = false,
   size = "compact",
   disabled = false,
+  progress,
 }: Props<T>) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -96,7 +109,7 @@ export default function SegmentedControl<T extends string>({
     options.findIndex((option) => option.value === displayValue)
   );
 
-  const thumb = useSlidingThumb(selectedIndex);
+  const thumb = useSlidingThumb(selectedIndex, progress);
 
   // Memoised because the thumb's animated style reads them: a fresh array each
   // render would rebuild the worklet's inputs on every render.
@@ -142,7 +155,9 @@ export default function SegmentedControl<T extends string>({
               triggerSelectionHaptic();
               // The thumb leaves first, and from here rather than from a
               // render: whatever `change` sets off must not be able to hold it.
-              thumb.moveTo(index);
+              // With a pager driving it there is nothing to send — the pages
+              // carry the thumb, and `onChange` is what starts them moving.
+              if (progress === undefined) thumb.moveTo(index);
               change(option.value);
             }}
           />

@@ -61,5 +61,13 @@ class SavedPreset(SQLModel, table=True):
         default=None,
         sa_column=Column(JSON, nullable=True),
     )
+    # When set, this preset follows a saved `CinemaPreset` live rather than the
+    # frozen `cinema_ids`/`cinema_scope` above — editing that cinema preset
+    # changes this one's resolved cinemas too. `cinema_ids`/`cinema_scope` are
+    # still kept in sync as a snapshot: if the linked preset is ever deleted,
+    # `crud.saved_preset.resolve_preset_cinema_ids` converts this preset back
+    # to that snapshot and clears this field, permanently. No DB-level FK,
+    # matching `CinemaPreset`'s own dangling-reference columns.
+    cinema_preset_id: uuid.UUID | None = Field(default=None)
     created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
     updated_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)

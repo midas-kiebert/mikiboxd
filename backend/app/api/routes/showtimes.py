@@ -190,6 +190,30 @@ def ping_friend_for_showtime(
     return message
 
 
+@router.post("/{showtime_id}/remind/{friend_id}", response_model=Message)
+def send_showtime_reminder(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    friend_id: UUID,
+    current_user: CurrentUser,
+) -> Message:
+    """Nudge a friend already going/interested, or invited and not dismissed.
+
+    Never errors when the friend has reminders turned off — see
+    `services.showtimes.send_showtime_reminder` — so the response always
+    reads as "sent" from the caller's side, whether or not anything actually
+    reached the friend's device.
+    """
+    showtimes_service.send_showtime_reminder(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+        friend_id=friend_id,
+    )
+    return Message(message="Reminder sent")
+
+
 @router.post("/{showtime_id}/ping-link-token", response_model=ShowtimePingLinkToken)
 def create_showtime_ping_link_token(
     *,

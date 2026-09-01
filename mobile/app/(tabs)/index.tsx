@@ -58,7 +58,7 @@ import { useIntroPhase } from '@/utils/intro';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
-import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
+import { buildSnapshotTime, useSnapshotRefresh } from '@/utils/reset-infinite-query';
 
 // One request per pause in typing, not one per keystroke — five requests for
 // "alkmaar" racing each other otherwise, and whichever lands last (not
@@ -118,7 +118,6 @@ function MainShowtimesScreen() {
    * one's hold re-arms the wait instead of inheriting the first one's deadline.
    */
   const [feedHoldUntil, setFeedHoldUntil] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
   const { openFiltersModal } = useFiltersModal();
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
   const isFocused = useIsFocused();
@@ -351,16 +350,13 @@ function MainShowtimesScreen() {
     return () => cancelAnimationFrame(frame);
   }, [feedHoldUntil, isAppliedFilterTransitionPending, isFilterTransitionLoading]);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      // One snapshot drives both the showtimes and movies queries, so which
-      // mode is on screen no longer changes what a refresh has to do.
-      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  // One snapshot drives both the showtimes and movies queries, so which mode
+  // is on screen no longer changes what a refresh has to do — and the refresh
+  // is not over until whichever of them is on screen has its rows back.
+  const { refreshing, handleRefresh } = useSnapshotRefresh({
+    setSnapshotTime,
+    isFetching: showtimesFetching || moviesFetching,
+  });
 
   const handleApplyPreset = (preset: DisplayPreset) => {
     setFeedHoldUntil(Date.now() + FILTER_ROW_SETTLE_MS);
@@ -470,35 +466,45 @@ function MainShowtimesScreen() {
   // stall the filter row's animation on its way past.
   const visibleMovies = isFilterTransitionLoading ? [] : movies;
 
-  // `moviesLoading`/`isFilterTransitionLoading` mean there's nothing cached
-  // yet (no data, or a whole feed being mounted from nothing) — nothing to
-  // lose by showing the panel immediately, and a delay here is exactly the
-  // "blank screen for too long" a genuine wait like that doesn't need.
-  // `moviesFetching`-only (data already empty, but a background refetch is
-  // running) is the case that can resolve from cache almost instantly, so
-  // that one keeps the anti-flash delay and cooldown. `!refreshing` on both:
-  // RefreshControl's own spinner already covers a pull-to-refresh, so the
-  // panel has nothing to do for one even on an already-empty list.
-  const isMoviesFirstLoadEmpty =
-    (moviesLoading || isFilterTransitionLoading) && !refreshing && movies.length === 0;
-  const isMoviesBackgroundFetchEmpty =
-    moviesFetching &&
-    !moviesLoading &&
-    !isFilterTransitionLoading &&
-    !refreshing &&
-    movies.length === 0;
-  const showMoviesBackgroundFetchLoadingLogo = useDelayedTrue(
-    isMoviesBackgroundFetchEmpty,
+  // `!refreshing`: RefreshControl's own spinner already covers a
+  // pull-to-refresh, so the panel has nothing to do for one even on an
+  // already-empty list. A genuine first load and a background refetch go
+  // through the same delay+cooldown — a preset or filter combo that's been
+  // used before (or just hits a nearby cache entry) very often resolves
+  // faster than LOADING_LOGO_DELAY_MS even with nothing cached yet, so
+  // showing `moviesLoading` immediately just moved the flash from "quick
+  // filter taps" to "quick presets" instead of removing it.
+  const isMoviesFetchEmptyLoading =
+    (moviesLoading || moviesFetching) && !refreshing && visibleMovies.length === 0;
+  const showMoviesFetchLoadingLogo = useDelayedTrue(
+    isMoviesFetchEmptyLoading,
     LOADING_LOGO_DELAY_MS,
     LOADING_LOGO_COOLDOWN_MS
   );
-  const showMoviesLoadingLogo = isMoviesFirstLoadEmpty || showMoviesBackgroundFetchLoadingLogo;
-  const isMoviesEmptyLoading = isMoviesFirstLoadEmpty || isMoviesBackgroundFetchEmpty;
+  // Same show delay (a preset whose results are already cached resolves well
+  // inside it, and forcing the panel up for the whole hold flashed it on
+  // every single tap) but deliberately *no* cooldown, on a clock of its own:
+  // the cooldown is there to absorb a raw fetch flag's flicker, and one left
+  // ticking by a previous preset would otherwise outlast this hold and
+  // swallow the panel for the next preset entirely.
+  const showTransitionLoadingLogo = useDelayedTrue(
+    isFilterTransitionLoading,
+    LOADING_LOGO_DELAY_MS
+  );
+  // The hold still suppresses the empty-state copy for its whole length,
+  // delay or not — "No movies found" must never describe filters that have
+  // already been replaced.
+  const isMoviesEmptyLoading = isMoviesFetchEmptyLoading || isFilterTransitionLoading;
+  const showMoviesLoadingLogo = showMoviesFetchLoadingLogo || showTransitionLoadingLogo;
 
   const renderMoviesEmpty = () => {
     // The loading panel is a fixed overlay (below), not part of the list's
-    // own content, so there's nothing to render here while it's up.
-    if (isMoviesEmptyLoading) return null;
+    // own content, so there's nothing to render here while it's up. And
+    // never the "nothing found" copy while a refresh is in flight either —
+    // the pull gesture's own spinner already covers that, and this would
+    // otherwise flash up for an already-empty list mid-refresh even though
+    // the loading panel is deliberately skipped for that case.
+    if (isMoviesEmptyLoading || refreshing) return null;
     return (
       <ThemedView style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>No movies found</ThemedText>
@@ -551,8 +557,9 @@ function MainShowtimesScreen() {
       ) : (
         <ShowtimesListContent
           showtimes={visibleShowtimes}
-          isLoading={showtimesLoading || isFilterTransitionLoading}
-          isFetching={showtimesFetching || isFilterTransitionLoading}
+          isLoading={showtimesLoading}
+          isFetching={showtimesFetching}
+          immediateEmptyLoading={isFilterTransitionLoading}
           isFetchingNextPage={showtimesFetchingNextPage}
           hasNextPage={showtimesHasNextPage}
           onLoadMore={() => {
@@ -606,6 +613,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
  */
 export default function MainShowtimesScreenTab() {
   const ready = useDeferredMount('tab:index', tabContentHoldMs);
-  if (!ready) return <TabScreenSkeleton rowHeight={112} />;
+  if (!ready) return <TabScreenSkeleton />;
   return <MainShowtimesScreen />;
 }

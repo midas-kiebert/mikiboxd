@@ -633,6 +633,84 @@ def notify_user_on_showtime_ping(
     )
 
 
+def notify_user_on_showtime_reminder(
+    *,
+    session: Session,
+    sender_id: UUID,
+    receiver_id: UUID,
+    showtime_id: int,
+) -> bool:
+    """One friend manually nudging another about a showtime.
+
+    Eligibility (the receiver is already GOING/INTERESTED, or invited and
+    hasn't dismissed it) is checked by the caller — `services/showtimes.py` —
+    since it needs the receiver's `ShowtimeSelection`/`ShowtimePing` rows,
+    which this module doesn't otherwise touch. This function only checks the
+    receiver's own preference and sends. Returns whether a notification was
+    actually dispatched (used to tell the sender their tap did something).
+    """
+    showtime = showtime_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
+    if showtime is None:
+        return False
+    sender = user_crud.get_user_by_id(session=session, user_id=sender_id)
+    if sender is None:
+        return False
+    receiver = user_crud.get_user_by_id(session=session, user_id=receiver_id)
+    if receiver is None or not receiver.notify_on_showtime_reminder:
+        return False
+
+    sender_name = sender.display_name or "A friend"
+    formatted_datetime = showtime.datetime.strftime("%a, %b %d at %H:%M")
+    subject = f"{sender_name} sent you a reminder"
+    body = f"{showtime.movie.title} • {formatted_datetime}"
+    if receiver.notify_channel_showtime_reminder == NotificationChannel.EMAIL:
+        return _send_email_notification(
+            email_to=receiver.email,
+            subject=subject,
+            body=body,
+        )
+
+    push_tokens = push_token_crud.get_push_tokens_for_users(
+        session=session,
+        user_ids=[receiver_id],
+    )
+    if not push_tokens:
+        return False
+
+    messages = [
+        {
+            "to": token.token,
+            "title": subject,
+            "body": body,
+            "data": {
+                "type": "showtime_reminder",
+                "senderId": str(sender_id),
+                "showtimeId": showtime.id,
+                "movieId": showtime.movie_id,
+            },
+            "priority": "high",
+            "sound": "default",
+            "channelId": ANDROID_PUSH_CHANNEL_ID,
+        }
+        for token in push_tokens
+    ]
+
+    try:
+        results = _send_expo_messages(messages)
+    except Exception:
+        logger.exception("Failed sending showtime reminder notification")
+        return False
+
+    _handle_expo_results(
+        session=session,
+        tokens=[token.token for token in push_tokens],
+        results=results,
+    )
+    return True
+
+
 def send_seat_alerts(
     *,
     session: Session,

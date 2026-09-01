@@ -3,11 +3,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 from pydantic import EmailStr
-from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Column, Field, Relationship, SQLModel
 
-from app.core.enums import DigestFrequency, NotificationChannel
+from app.core.enums import NotificationChannel
 from app.utils import now_amsterdam_naive
 
 if TYPE_CHECKING:
@@ -28,6 +27,13 @@ class _UserBase(SQLModel):
     # Who has it is decided in `core/db.py`, per environment.
     is_pro: bool = Field(default=False)
     incognito_mode: bool = Field(default=False)
+    # Opt-in: also surface, on a showtime, friends of your friends who are
+    # GOING/INTERESTED — but only reachable through a mutual friend who is
+    # themself GOING/INTERESTED, and only when that mutual friend can already
+    # see the friend-of-friend's status (see
+    # `crud.showtime.get_friends_of_friends_for_showtime`). Off by default:
+    # this reaches beyond the user's own friend graph, so it must be asked for.
+    show_friends_of_friends_interest: bool = Field(default=False)
     notify_on_friend_showtime_match: bool = Field(default=True)
     notify_on_friend_requests: bool = Field(default=True)
     notify_on_showtime_ping: bool = Field(default=True)
@@ -42,6 +48,13 @@ class _UserBase(SQLModel):
     # wanted by different people — one hurries you along while you can still
     # act, the other tells you not to bother.
     notify_on_sold_out: bool = Field(default=True)
+    # A friend nudging you about a showtime you're already GOING/INTERESTED on,
+    # or invited to and haven't dismissed — distinct from `notify_on_showtime_ping`
+    # (the invite itself). This preference is deliberately dual-purpose: it also
+    # gates whether the mobile app offers *you* the "send reminder" button for
+    # your own friends, so turning reminders off opts out of the feature in both
+    # directions rather than just muting incoming ones.
+    notify_on_showtime_reminder: bool = Field(default=True)
     notify_channel_friend_showtime_match: NotificationChannel = Field(
         default=NotificationChannel.PUSH
     )
@@ -63,6 +76,9 @@ class _UserBase(SQLModel):
     notify_channel_sold_out: NotificationChannel = Field(
         default=NotificationChannel.PUSH
     )
+    notify_channel_showtime_reminder: NotificationChannel = Field(
+        default=NotificationChannel.PUSH
+    )
     display_name: str | None = Field(default=None, max_length=255)
     letterboxd_username: str | None = Field(
         default=None,
@@ -70,30 +86,9 @@ class _UserBase(SQLModel):
         sa_column_kwargs={"index": True},
         foreign_key="letterboxd.letterboxd_username",
     )
+    # Master switch. Which lists/cinemas/frequency to follow is configured per
+    # `WatchlistDigestSource` row rather than here — a user may have several.
     notify_watchlist_digest_enabled: bool = Field(default=False)
-    notify_watchlist_digest_frequency: DigestFrequency = Field(
-        sa_column=Column(
-            SAEnum(
-                DigestFrequency,
-                native_enum=False,
-                length=40,
-                values_callable=lambda enum: [m.value for m in enum],
-            ),
-            nullable=False,
-        ),
-        default=DigestFrequency.WEEKLY_OR_URGENT,
-    )
-    notify_watchlist_digest_list_id: uuid.UUID | None = Field(
-        default=None,
-        foreign_key="letterboxdlist.id",
-    )
-    # Restricts the digest to movies with a future showtime at one of this
-    # cinema preset's cinemas. None falls back to the user's favorite preset;
-    # if neither resolves, the digest is not cinema-filtered.
-    notify_watchlist_digest_cinema_preset_id: uuid.UUID | None = Field(
-        default=None,
-        foreign_key="cinemapreset.id",
-    )
 
 
 # Properties to receive via API on creation (admin/superuser use — exposes all fields)
@@ -114,6 +109,7 @@ class UserUpdate(SQLModel):
     email: EmailStr | None = Field(default=None, max_length=255)
     letterboxd_username: str | None = Field(default=None, max_length=255)
     incognito_mode: bool | None = Field(default=None)
+    show_friends_of_friends_interest: bool | None = Field(default=None)
     notify_on_friend_showtime_match: bool | None = Field(default=None)
     notify_on_friend_requests: bool | None = Field(default=None)
     notify_on_showtime_ping: bool | None = Field(default=None)
@@ -121,6 +117,7 @@ class UserUpdate(SQLModel):
     notify_on_interest_reminder: bool | None = Field(default=None)
     notify_on_seat_alert: bool | None = Field(default=None)
     notify_on_sold_out: bool | None = Field(default=None)
+    notify_on_showtime_reminder: bool | None = Field(default=None)
     notify_channel_friend_showtime_match: NotificationChannel | None = Field(
         default=None
     )
@@ -130,10 +127,8 @@ class UserUpdate(SQLModel):
     notify_channel_interest_reminder: NotificationChannel | None = Field(default=None)
     notify_channel_seat_alert: NotificationChannel | None = Field(default=None)
     notify_channel_sold_out: NotificationChannel | None = Field(default=None)
+    notify_channel_showtime_reminder: NotificationChannel | None = Field(default=None)
     notify_watchlist_digest_enabled: bool | None = Field(default=None)
-    notify_watchlist_digest_frequency: DigestFrequency | None = Field(default=None)
-    notify_watchlist_digest_list_id: uuid.UUID | None = Field(default=None)
-    notify_watchlist_digest_cinema_preset_id: uuid.UUID | None = Field(default=None)
     password: str | None = Field(default=None, min_length=1, max_length=255)
     # Required to confirm a username or email change (see me_service.update_me);
     # ignored otherwise. Never reaches the database — popped from the update
@@ -168,8 +163,6 @@ class User(_UserBase, table=True):
     # signed in before this shipped, or when Apple's code exchange did not
     # produce one — deletion then proceeds without revoking.
     apple_refresh_token: str | None = Field(default=None)
-    # Drives the digest lookback window and prevents double-sends; not user-facing.
-    notify_watchlist_digest_last_sent_at: datetime | None = Field(default=None)
     # Bookkeeping for the switch-to-push-until-reverified behaviour on email
     # change (see me_service.update_me): which notify_channel_* fields were set
     # to EMAIL, and whether the digest was on, at the moment the address became

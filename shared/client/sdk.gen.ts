@@ -86,6 +86,13 @@ import type {
   MeDeleteCinemaPresetResponse,
   MeSetFavoriteCinemaPresetData,
   MeSetFavoriteCinemaPresetResponse,
+  MeGetWatchlistDigestSourcesResponse,
+  MeCreateWatchlistDigestSourceData,
+  MeCreateWatchlistDigestSourceResponse,
+  MeUpdateWatchlistDigestSourceData,
+  MeUpdateWatchlistDigestSourceResponse,
+  MeDeleteWatchlistDigestSourceData,
+  MeDeleteWatchlistDigestSourceResponse,
   MeResendEmailVerificationResponse,
   MeUpdatePasswordMeData,
   MeUpdatePasswordMeResponse,
@@ -155,6 +162,8 @@ import type {
   ShowtimesPingFriendForShowtimeResponse,
   ShowtimesUninviteFriendFromShowtimeData,
   ShowtimesUninviteFriendFromShowtimeResponse,
+  ShowtimesSendShowtimeReminderData,
+  ShowtimesSendShowtimeReminderResponse,
   ShowtimesCreateShowtimePingLinkTokenData,
   ShowtimesCreateShowtimePingLinkTokenResponse,
   ShowtimesReceivePingFromLinkData,
@@ -1217,6 +1226,86 @@ export class MeService {
   }
 
   /**
+   * Get Watchlist Digest Sources
+   * @returns WatchlistDigestSourcePublic Successful Response
+   * @throws ApiError
+   */
+  public static getWatchlistDigestSources(): CancelablePromise<MeGetWatchlistDigestSourcesResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/watchlist-digest-sources",
+    })
+  }
+
+  /**
+   * Create Watchlist Digest Source
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns WatchlistDigestSourcePublic Successful Response
+   * @throws ApiError
+   */
+  public static createWatchlistDigestSource(
+    data: MeCreateWatchlistDigestSourceData,
+  ): CancelablePromise<MeCreateWatchlistDigestSourceResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/watchlist-digest-sources",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update Watchlist Digest Source
+   * @param data The data for the request.
+   * @param data.sourceId
+   * @param data.requestBody
+   * @returns WatchlistDigestSourcePublic Successful Response
+   * @throws ApiError
+   */
+  public static updateWatchlistDigestSource(
+    data: MeUpdateWatchlistDigestSourceData,
+  ): CancelablePromise<MeUpdateWatchlistDigestSourceResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/me/watchlist-digest-sources/{source_id}",
+      path: {
+        source_id: data.sourceId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Delete Watchlist Digest Source
+   * @param data The data for the request.
+   * @param data.sourceId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static deleteWatchlistDigestSource(
+    data: MeDeleteWatchlistDigestSourceData,
+  ): CancelablePromise<MeDeleteWatchlistDigestSourceResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/watchlist-digest-sources/{source_id}",
+      path: {
+        source_id: data.sourceId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Resend Email Verification
    * Send a fresh "confirm your email" link to the signed-in account.
    *
@@ -2248,6 +2337,36 @@ export class ShowtimesService {
     return __request(OpenAPI, {
       method: "DELETE",
       url: "/api/v1/showtimes/{showtime_id}/ping/{friend_id}",
+      path: {
+        showtime_id: data.showtimeId,
+        friend_id: data.friendId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Send Showtime Reminder
+   * Nudge a friend already going/interested, or invited and not dismissed.
+   *
+   * Never errors when the friend has reminders turned off — see
+   * `services.showtimes.send_showtime_reminder` — so the response always
+   * reads as "sent" from the caller's side, whether or not anything actually
+   * reached the friend's device.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @param data.friendId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static sendShowtimeReminder(
+    data: ShowtimesSendShowtimeReminderData,
+  ): CancelablePromise<ShowtimesSendShowtimeReminderResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/showtimes/{showtime_id}/remind/{friend_id}",
       path: {
         showtime_id: data.showtimeId,
         friend_id: data.friendId,

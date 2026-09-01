@@ -18,6 +18,16 @@
  * the effect after that commit started visibly late. Once `moveTo` has handed
  * the tween to the UI thread there is nothing left on the JS thread to block.
  *
+ * A control that sits above a pager passes an `externalProgress` instead, and
+ * then none of that applies: the thumb stops being something moved *to* a
+ * segment and becomes a readout of where the pages are, following a shared
+ * value that the pan gesture writes. It tracks the finger mid-drag for free,
+ * and — the reason it exists — it never waits on React. Committing a page
+ * change re-renders a whole screen of feed content, and on Android that commit
+ * ran for a second or more after the swipe was over, with the thumb still
+ * sitting on the page the user had left. Nothing on this path touches the JS
+ * thread, so nothing can hold it up.
+ *
  * The reconciliation pass below is for the value changing from somewhere other
  * than a press (a deep link, a rejected write reverting). It is a layout effect
  * rather than a passive one for the same reason, and it costs nothing after a
@@ -30,6 +40,7 @@ import {
   Easing,
   Extrapolation,
   interpolate,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -59,7 +70,17 @@ export type SlidingThumb = {
   progress: SharedValue<number>;
 };
 
-export function useSlidingThumb(selectedIndex: number): SlidingThumb {
+export function useSlidingThumb(
+  selectedIndex: number,
+  /**
+   * A continuous page position (0-based, fractional mid-drag) for the thumb to
+   * follow instead of tweening to `selectedIndex` itself — see the note on
+   * external drivers above. When this is given, everything below that moves the
+   * thumb from JS stands down.
+   */
+  externalProgress?: SharedValue<number>
+): SlidingThumb {
+  const isExternallyDriven = externalProgress !== undefined;
   // The measurements are held in a ref as well as in state: `moveTo` runs in a
   // press handler, which cannot wait for a render to read them.
   const layoutsRef = useRef<readonly SegmentLayout[]>([]);
@@ -71,12 +92,19 @@ export function useSlidingThumb(selectedIndex: number): SlidingThumb {
   const thumbWidth = useSharedValue(0);
   const thumbOpacity = useSharedValue(0);
   const progress = useSharedValue(selectedIndex);
+  // The same measurements again, on the UI thread, so a driver can be followed
+  // to a position *between* two segments without a round trip to JS.
+  const layoutXs = useSharedValue<number[]>([]);
+  const layoutWidths = useSharedValue<number[]>([]);
 
   const selectedIndexRef = useRef(selectedIndex);
   selectedIndexRef.current = selectedIndex;
 
   const applyTarget = useCallback(
     (index: number, layout: SegmentLayout) => {
+      // Position belongs to the driver; the only thing still owed here is the
+      // fade-in, which waits on the same first measurement either way.
+      if (isExternallyDriven) return;
       const applied = appliedRef.current;
       if (
         applied &&
@@ -100,7 +128,7 @@ export function useSlidingThumb(selectedIndex: number): SlidingThumb {
       thumbWidth.value = withTiming(layout.width, config);
       progress.value = withTiming(index, config);
     },
-    [progress, thumbOpacity, thumbWidth, thumbX]
+    [isExternallyDriven, progress, thumbOpacity, thumbWidth, thumbX]
   );
 
   const moveTo = useCallback(
@@ -122,6 +150,8 @@ export function useSlidingThumb(selectedIndex: number): SlidingThumb {
       const next = layoutsRef.current.slice();
       next[index] = { x, width };
       layoutsRef.current = next;
+      layoutXs.value = next.map((layout) => layout?.x ?? 0);
+      layoutWidths.value = next.map((layout) => layout?.width ?? 0);
       // The opening position is taken here rather than from the pass below,
       // which only runs a commit later: that commit is a frame in which the
       // selected label already wears its selected colour with no thumb behind
@@ -139,6 +169,24 @@ export function useSlidingThumb(selectedIndex: number): SlidingThumb {
     if (!layout) return;
     applyTarget(selectedIndex, layout);
   }, [layouts, selectedIndex, applyTarget]);
+
+  // The whole of the externally driven path, and all of it on the UI thread:
+  // the driver moves, the thumb is where it says, in the same frame. Reading
+  // the measurements here as well as the position is what seeds the thumb when
+  // they land, since a driver at rest publishes nothing to react to.
+  useAnimatedReaction(
+    () =>
+      externalProgress === undefined
+        ? null
+        : { at: externalProgress.value, xs: layoutXs.value, widths: layoutWidths.value },
+    (driver) => {
+      if (driver === null || driver.xs.length === 0) return;
+      thumbX.value = interpolateAcrossSegments(driver.at, driver.xs);
+      thumbWidth.value = interpolateAcrossSegments(driver.at, driver.widths);
+      progress.value = driver.at;
+      thumbOpacity.value = 1;
+    }
+  );
 
   return { onSegmentLayout, moveTo, thumbX, thumbWidth, thumbOpacity, progress };
 }
@@ -173,6 +221,19 @@ export function useSelectedCopyStyle(thumb: SlidingThumb, index: number) {
   return useAnimatedStyle(() => ({
     opacity: selectedFraction(thumb.progress.value, index) * thumb.thumbOpacity.value,
   }));
+}
+
+/**
+ * One segment measurement read at a fractional position: halfway between
+ * segments 1 and 2 gives halfway between their two x's (or widths), so a thumb
+ * following a drag resizes across segments of unequal width as it travels.
+ */
+function interpolateAcrossSegments(at: number, values: readonly number[]): number {
+  "worklet";
+  if (values.length === 0) return 0;
+  if (values.length === 1) return values[0];
+  const indices = values.map((_, index) => index);
+  return interpolate(at, indices, values as number[], Extrapolation.CLAMP);
 }
 
 /** 1 while the thumb is on segment `index`, 0 once it has reached a neighbour. */

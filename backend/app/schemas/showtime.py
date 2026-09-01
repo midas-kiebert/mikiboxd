@@ -100,6 +100,12 @@ class ShowtimeViewerState(ShowtimeInMovieViewerState):
     # Friends who have this movie watchlisted / watched on Letterboxd.
     friends_watchlisted: Sequence["UserPublic"] = []
     friends_watched: Sequence["UserPublic"] = []
+    # Friends of the viewer's friends who are also GOING/INTERESTED, present
+    # only when the viewer has opted into `show_friends_of_friends_interest`
+    # — see `crud.showtime.get_friends_of_friends_for_showtime` for exactly
+    # which friends-of-friends qualify and why.
+    friends_of_friends_going: Sequence["UserPublic"] = []
+    friends_of_friends_interested: Sequence["UserPublic"] = []
     # Non-friends in the same invite graph (direct/co-invited/chain) for this
     # showtime. Identity only, no going/interested status — the client shows
     # an inline friend-request control instead.

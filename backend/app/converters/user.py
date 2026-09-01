@@ -103,6 +103,7 @@ def to_me(user: User, *, session: Session) -> UserMe:
         ),
         is_superuser=user.is_superuser,
         incognito_mode=user.incognito_mode,
+        show_friends_of_friends_interest=user.show_friends_of_friends_interest,
         notify_on_friend_showtime_match=user.notify_on_friend_showtime_match,
         notify_on_friend_requests=user.notify_on_friend_requests,
         notify_on_showtime_ping=user.notify_on_showtime_ping,
@@ -110,6 +111,7 @@ def to_me(user: User, *, session: Session) -> UserMe:
         notify_on_interest_reminder=user.notify_on_interest_reminder,
         notify_on_seat_alert=user.notify_on_seat_alert,
         notify_on_sold_out=user.notify_on_sold_out,
+        notify_on_showtime_reminder=user.notify_on_showtime_reminder,
         notify_channel_friend_showtime_match=user.notify_channel_friend_showtime_match,
         notify_channel_friend_requests=user.notify_channel_friend_requests,
         notify_channel_showtime_ping=user.notify_channel_showtime_ping,
@@ -117,6 +119,7 @@ def to_me(user: User, *, session: Session) -> UserMe:
         notify_channel_interest_reminder=user.notify_channel_interest_reminder,
         notify_channel_seat_alert=user.notify_channel_seat_alert,
         notify_channel_sold_out=user.notify_channel_sold_out,
+        notify_channel_showtime_reminder=user.notify_channel_showtime_reminder,
         letterboxd_username=user.letterboxd_username,
         watchlist_count=watchlist_count,
         watched_count=watched_count,
@@ -137,11 +140,6 @@ def to_me(user: User, *, session: Session) -> UserMe:
             last_sync=watched_last_synced, last_attempt=watched_last_attempt
         ),
         notify_watchlist_digest_enabled=user.notify_watchlist_digest_enabled,
-        notify_watchlist_digest_frequency=user.notify_watchlist_digest_frequency,
-        notify_watchlist_digest_list_id=user.notify_watchlist_digest_list_id,
-        notify_watchlist_digest_cinema_preset_id=(
-            user.notify_watchlist_digest_cinema_preset_id
-        ),
         can_report=not is_report_banned(user),
         can_watch_sold_out=user.is_pro,
         has_password=user.hashed_password is not None,

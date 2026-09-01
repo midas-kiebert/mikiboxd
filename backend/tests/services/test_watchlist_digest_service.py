@@ -2,12 +2,15 @@
 
 Covers the two-phase pipeline in ``app/services/watchlist_digest.py``:
 ``refresh_digest_queue`` (not-listed -> listed transition detection) and
-``build_and_send_digest`` (per-user sending, frequency rules, and the
-GOING/INTERESTED "already seen" exclusion).
+``build_and_send_digest_for_source`` (per-source sending, frequency rules,
+cinema restriction, and the GOING/INTERESTED "already seen" exclusion). A
+user may have several ``WatchlistDigestSource`` rows; each is evaluated and
+notified independently.
 """
 
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from uuid import UUID, uuid4
 
 from sqlmodel import Session
 
@@ -21,7 +24,11 @@ from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
 from app.models.watchlist_digest_notified_movie import WatchlistDigestNotifiedMovie
 from app.models.watchlist_digest_queue_entry import WatchlistDigestQueueEntry
-from app.services.watchlist_digest import build_and_send_digest, refresh_digest_queue
+from app.models.watchlist_digest_source import WatchlistDigestSource
+from app.services.watchlist_digest import (
+    build_and_send_digest_for_source,
+    refresh_digest_queue,
+)
 from app.utils import now_amsterdam_naive
 
 
@@ -58,6 +65,30 @@ def _create_cinema_preset(
     session.add(preset)
     session.commit()
     return preset
+
+
+def _create_source(
+    *,
+    session: Session,
+    user: User,
+    frequency: DigestFrequency = DigestFrequency.DAILY,
+    list_id: UUID | None = None,
+    cinema_preset_id: UUID | None = None,
+    custom_cinema_ids: list[int] | None = None,
+    last_sent_at: datetime | None = None,
+) -> WatchlistDigestSource:
+    source = WatchlistDigestSource(
+        owner_user_id=user.id,
+        frequency=frequency,
+        list_id=list_id,
+        cinema_preset_id=cinema_preset_id,
+        custom_cinema_ids=custom_cinema_ids,
+        last_sent_at=last_sent_at,
+    )
+    session.add(source)
+    session.commit()
+    session.refresh(source)
+    return source
 
 
 # ---------------------------------------------------------------------------
@@ -159,19 +190,18 @@ def test_movie_losing_all_future_showtimes_clears_listed_queue_and_notified(
 ):
     """When a listed movie loses its future showtimes, its listed flag, queue
 
-    entry and every user's notified record are cleared so a later reappearance
-    counts as new.
+    entry and every source's notified record are cleared so a later
+    reappearance counts as new.
     """
     now = now_amsterdam_naive()
     movie = movie_factory()
     showtime_factory(movie=movie, datetime=now - timedelta(days=1))  # only past
     _set_listed(session=db_transaction, movie=movie, listed=True)
     user = user_factory()
+    source = _create_source(session=db_transaction, user=user)
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
     db_transaction.add(
-        WatchlistDigestNotifiedMovie(
-            user_id=user.id, movie_id=movie.id, notified_at=now
-        )
+        WatchlistDigestNotifiedMovie(source_id=source.id, movie_id=movie.id, notified_at=now)
     )
     db_transaction.commit()
 
@@ -180,7 +210,9 @@ def test_movie_losing_all_future_showtimes_clears_listed_queue_and_notified(
     db_transaction.refresh(movie)
     assert movie.currently_listed is False
     assert db_transaction.get(WatchlistDigestQueueEntry, movie.id) is None
-    assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is None
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id)) is None
+    )
 
 
 def test_reappearing_movie_is_queued_again(
@@ -204,7 +236,7 @@ def test_reappearing_movie_is_queued_again(
 
 
 # ---------------------------------------------------------------------------
-# build_and_send_digest — DAILY
+# build_and_send_digest_for_source — DAILY
 # ---------------------------------------------------------------------------
 
 
@@ -224,17 +256,20 @@ def test_daily_user_is_sent_a_pending_queued_movie(
         "app.services.watchlist_digest.send_email", lambda **kwargs: None
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is True
-    assert user.notify_watchlist_digest_last_sent_at == now
-    notified = db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id))
+    assert source.last_sent_at == now
+    notified = db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id))
     assert notified is not None
 
 
@@ -256,19 +291,22 @@ def test_daily_user_is_not_resent_an_already_notified_movie(
         lambda **kwargs: send_calls.append(kwargs),
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
     db_transaction.add(
         WatchlistDigestNotifiedMovie(
-            user_id=user.id, movie_id=movie.id, notified_at=now - timedelta(hours=1)
+            source_id=source.id, movie_id=movie.id, notified_at=now - timedelta(hours=1)
         )
     )
     db_transaction.commit()
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is False
     assert not send_calls
@@ -297,14 +335,17 @@ def test_daily_user_is_notified_again_after_the_film_goes_dark_and_returns(
     )
 
     announced_at = now_amsterdam_naive()
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, datetime=announced_at + timedelta(days=90))
 
     refresh_digest_queue(session=db_transaction, now=announced_at)
     assert (
-        build_and_send_digest(session=db_transaction, user=user, now=announced_at)
+        build_and_send_digest_for_source(
+            session=db_transaction, user=user, source=source, now=announced_at
+        )
         is True
     )
     assert len(send_calls) == 1
@@ -312,14 +353,18 @@ def test_daily_user_is_notified_again_after_the_film_goes_dark_and_returns(
     # Four months on, that screening has played and nothing replaced it.
     after_the_run = announced_at + timedelta(days=120)
     refresh_digest_queue(session=db_transaction, now=after_the_run)
-    assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is None
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id)) is None
+    )
 
     # A new run is announced a month out.
     showtime_factory(movie=movie, datetime=after_the_run + timedelta(days=30))
     refresh_digest_queue(session=db_transaction, now=after_the_run)
 
     assert (
-        build_and_send_digest(session=db_transaction, user=user, now=after_the_run)
+        build_and_send_digest_for_source(
+            session=db_transaction, user=user, source=source, now=after_the_run
+        )
         is True
     )
     assert len(send_calls) == 2
@@ -341,12 +386,15 @@ def test_movie_not_in_users_source_is_not_sent(
         "app.services.watchlist_digest.send_email", lambda **kwargs: None
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()  # not added to the user's watchlist
     showtime_factory(movie=movie, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is False
 
@@ -368,16 +416,21 @@ def test_movie_with_no_current_future_showtime_is_not_sent_or_marked_notified(
         "app.services.watchlist_digest.send_email", lambda **kwargs: None
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, datetime=now - timedelta(days=1))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is False
-    assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is None
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id)) is None
+    )
 
 
 def test_movie_whose_only_showtime_is_deleted_before_send_stays_pending(
@@ -403,7 +456,8 @@ def test_movie_whose_only_showtime_is_deleted_before_send_stays_pending(
         lambda **kwargs: send_calls.append(kwargs),
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime = showtime_factory(movie=movie, datetime=now + timedelta(days=2))
@@ -411,11 +465,15 @@ def test_movie_whose_only_showtime_is_deleted_before_send_stays_pending(
     db_transaction.delete(showtime)
     db_transaction.commit()
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is False
     assert not send_calls
-    assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is None
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id)) is None
+    )
 
 
 def test_movie_with_one_of_two_showtimes_deleted_is_still_sent_with_the_other(
@@ -438,7 +496,8 @@ def test_movie_with_one_of_two_showtimes_deleted_is_still_sent_with_the_other(
         "app.services.watchlist_digest.send_email", lambda **kwargs: None
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     soonest = showtime_factory(movie=movie, datetime=now + timedelta(days=1))
@@ -447,11 +506,13 @@ def test_movie_with_one_of_two_showtimes_deleted_is_still_sent_with_the_other(
     db_transaction.delete(soonest)
     db_transaction.commit()
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is True
     assert (
-        db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id))
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id))
         is not None
     )
 
@@ -475,7 +536,8 @@ def test_movie_already_marked_going_is_excluded_and_marked_notified(
         lambda **kwargs: send_calls.append(kwargs),
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime = showtime_factory(movie=movie, datetime=now + timedelta(days=2))
@@ -489,11 +551,13 @@ def test_movie_already_marked_going_is_excluded_and_marked_notified(
     )
     db_transaction.commit()
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is False
     assert not send_calls
-    notified = db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id))
+    notified = db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id))
     assert notified is not None
 
 
@@ -514,7 +578,8 @@ def test_movie_marked_not_going_is_not_excluded(
         "app.services.watchlist_digest.send_email", lambda **kwargs: None
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime = showtime_factory(movie=movie, datetime=now + timedelta(days=2))
@@ -528,13 +593,15 @@ def test_movie_marked_not_going_is_not_excluded(
     )
     db_transaction.commit()
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is True
 
 
 # ---------------------------------------------------------------------------
-# build_and_send_digest — WEEKLY
+# build_and_send_digest_for_source — WEEKLY
 # ---------------------------------------------------------------------------
 
 # A fixed Thursday and the day after it, so the weekly send slot is exercised
@@ -543,9 +610,14 @@ _THURSDAY = datetime(2026, 9, 3, 8, 0)
 _FRIDAY = datetime(2026, 9, 4, 8, 0)
 
 
-def _weekly_user(user_factory: Callable[..., User], **kwargs) -> User:
-    return user_factory(
-        notify_watchlist_digest_frequency=DigestFrequency.WEEKLY_OR_URGENT, **kwargs
+def _weekly_source(
+    *, session: Session, user: User, last_sent_at: datetime | None = None
+) -> WatchlistDigestSource:
+    return _create_source(
+        session=session,
+        user=user,
+        frequency=DigestFrequency.WEEKLY_OR_URGENT,
+        last_sent_at=last_sent_at,
     )
 
 
@@ -564,17 +636,22 @@ def test_weekly_user_is_not_sent_on_a_non_thursday(
         lambda **kwargs: send_calls.append(kwargs),
     )
 
-    user = _weekly_user(user_factory, notify_watchlist_digest_last_sent_at=None)
+    user = user_factory()
+    source = _weekly_source(session=db_transaction, user=user)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, datetime=_FRIDAY + timedelta(days=1))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_FRIDAY)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=_FRIDAY)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=_FRIDAY
+    )
 
     assert sent is False
     assert not send_calls
-    assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is None
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id)) is None
+    )
 
 
 def test_weekly_user_is_sent_on_thursday_for_a_showtime_inside_the_week(
@@ -589,16 +666,19 @@ def test_weekly_user_is_sent_on_thursday_for_a_showtime_inside_the_week(
         "app.services.watchlist_digest.send_email", lambda **kwargs: None
     )
 
-    user = _weekly_user(user_factory, notify_watchlist_digest_last_sent_at=None)
+    user = user_factory()
+    source = _weekly_source(session=db_transaction, user=user)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, datetime=_THURSDAY + timedelta(days=5))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_THURSDAY)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=_THURSDAY)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=_THURSDAY
+    )
 
     assert sent is True
-    assert user.notify_watchlist_digest_last_sent_at == _THURSDAY
+    assert source.last_sent_at == _THURSDAY
 
 
 def test_weekly_user_does_not_get_a_showtime_beyond_the_horizon(
@@ -616,18 +696,23 @@ def test_weekly_user_does_not_get_a_showtime_beyond_the_horizon(
         lambda **kwargs: send_calls.append(kwargs),
     )
 
-    user = _weekly_user(user_factory, notify_watchlist_digest_last_sent_at=None)
+    user = user_factory()
+    source = _weekly_source(session=db_transaction, user=user)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, datetime=_THURSDAY + timedelta(days=150))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_THURSDAY)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=_THURSDAY)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=_THURSDAY
+    )
 
     assert sent is False
     assert not send_calls
     # Still queued and still unnotified: it must surface on a later Thursday.
-    assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is None
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id)) is None
+    )
 
 
 def test_held_back_film_is_sent_once_a_showtime_falls_inside_the_week(
@@ -644,25 +729,34 @@ def test_held_back_film_is_sent_once_a_showtime_falls_inside_the_week(
         "app.services.watchlist_digest.send_email", lambda **kwargs: None
     )
 
-    user = _weekly_user(user_factory, notify_watchlist_digest_last_sent_at=None)
+    user = user_factory()
+    source = _weekly_source(session=db_transaction, user=user)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     far_showtime = showtime_factory(movie=movie, datetime=_THURSDAY + timedelta(days=60))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_THURSDAY)
 
-    assert build_and_send_digest(session=db_transaction, user=user, now=_THURSDAY) is False
+    assert (
+        build_and_send_digest_for_source(
+            session=db_transaction, user=user, source=source, now=_THURSDAY
+        )
+        is False
+    )
 
     # A nearer showtime appears; the movie was never requeued, only held.
     next_thursday = _THURSDAY + timedelta(days=7)
     showtime_factory(movie=movie, datetime=next_thursday + timedelta(days=3))
 
     assert (
-        build_and_send_digest(session=db_transaction, user=user, now=next_thursday)
+        build_and_send_digest_for_source(
+            session=db_transaction, user=user, source=source, now=next_thursday
+        )
         is True
     )
     assert far_showtime.datetime > next_thursday + timedelta(days=7)
     assert (
-        db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is not None
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id))
+        is not None
     )
 
 
@@ -681,15 +775,18 @@ def test_weekly_user_is_not_sent_twice_on_the_same_thursday(
         lambda **kwargs: send_calls.append(kwargs),
     )
 
-    user = _weekly_user(
-        user_factory, notify_watchlist_digest_last_sent_at=_THURSDAY - timedelta(hours=2)
+    user = user_factory()
+    source = _weekly_source(
+        session=db_transaction, user=user, last_sent_at=_THURSDAY - timedelta(hours=2)
     )
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, datetime=_THURSDAY + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_THURSDAY)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=_THURSDAY)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=_THURSDAY
+    )
 
     assert sent is False
     assert not send_calls
@@ -708,13 +805,16 @@ def test_daily_user_is_sent_a_showtime_months_away(
         "app.services.watchlist_digest.send_email", lambda **kwargs: None
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, datetime=_FRIDAY + timedelta(days=150))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=_FRIDAY)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=_FRIDAY)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=_FRIDAY
+    )
 
     assert sent is True
 
@@ -736,21 +836,26 @@ def test_send_failure_does_not_mark_movie_notified(
     )
     monkeypatch.setattr("app.services.watchlist_digest.send_email", _raise)
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is False
-    assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is None
-    assert user.notify_watchlist_digest_last_sent_at is None
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id)) is None
+    )
+    assert source.last_sent_at is None
 
 
 # ---------------------------------------------------------------------------
-# build_and_send_digest — cinema preset filter
+# build_and_send_digest_for_source — cinema restriction (preset or custom)
 # ---------------------------------------------------------------------------
 
 
@@ -781,7 +886,7 @@ def test_pinned_cinema_preset_excludes_movie_showing_only_elsewhere(
         lambda **kwargs: send_calls.append(kwargs),
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
     preset_cinema = cinema_factory()
     other_cinema = cinema_factory()
     preset = _create_cinema_preset(
@@ -790,20 +895,27 @@ def test_pinned_cinema_preset_excludes_movie_showing_only_elsewhere(
         cinema_ids=[preset_cinema.id],
         is_favorite=False,
     )
-    user.notify_watchlist_digest_cinema_preset_id = preset.id
-    db_transaction.add(user)
-    db_transaction.commit()
+    source = _create_source(
+        session=db_transaction,
+        user=user,
+        frequency=DigestFrequency.DAILY,
+        cinema_preset_id=preset.id,
+    )
 
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, cinema=other_cinema, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is False
     assert not send_calls
-    assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is None
+    assert (
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id)) is None
+    )
 
 
 def test_pinned_cinema_preset_sends_movie_showing_at_a_preset_cinema(
@@ -823,7 +935,7 @@ def test_pinned_cinema_preset_sends_movie_showing_at_a_preset_cinema(
         "app.services.watchlist_digest.send_email", lambda **kwargs: None
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
     preset_cinema = cinema_factory()
     preset = _create_cinema_preset(
         session=db_transaction,
@@ -831,9 +943,12 @@ def test_pinned_cinema_preset_sends_movie_showing_at_a_preset_cinema(
         cinema_ids=[preset_cinema.id],
         is_favorite=False,
     )
-    user.notify_watchlist_digest_cinema_preset_id = preset.id
-    db_transaction.add(user)
-    db_transaction.commit()
+    source = _create_source(
+        session=db_transaction,
+        user=user,
+        frequency=DigestFrequency.DAILY,
+        cinema_preset_id=preset.id,
+    )
 
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
@@ -842,16 +957,18 @@ def test_pinned_cinema_preset_sends_movie_showing_at_a_preset_cinema(
     )
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is True
     assert (
-        db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id))
+        db_transaction.get(WatchlistDigestNotifiedMovie, (source.id, movie.id))
         is not None
     )
 
 
-def test_no_pinned_preset_falls_back_to_favorite_preset(
+def test_deleted_pinned_preset_is_treated_as_no_restriction(
     *,
     db_transaction: Session,
     user_factory: Callable[..., User],
@@ -860,8 +977,8 @@ def test_no_pinned_preset_falls_back_to_favorite_preset(
     cinema_factory: Callable[..., Cinema],
     monkeypatch,
 ):
-    """With no preset pinned, the digest follows the user's favorite preset:
-    a movie outside it is dropped."""
+    """A pinned preset deleted after being chosen leaves the source unrestricted
+    — there is no implicit fallback to the favorite preset at the source level."""
     now = now_amsterdam_naive()
     monkeypatch.setattr(
         "app.services.watchlist_digest.now_amsterdam_naive", lambda: now
@@ -870,7 +987,7 @@ def test_no_pinned_preset_falls_back_to_favorite_preset(
         "app.services.watchlist_digest.send_email", lambda **kwargs: None
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
     favorite_cinema = cinema_factory()
     other_cinema = cinema_factory()
     _create_cinema_preset(
@@ -879,72 +996,26 @@ def test_no_pinned_preset_falls_back_to_favorite_preset(
         cinema_ids=[favorite_cinema.id],
         is_favorite=True,
     )
-    # No pinned preset -> notify_watchlist_digest_cinema_preset_id stays None.
+    source = _create_source(
+        session=db_transaction,
+        user=user,
+        frequency=DigestFrequency.DAILY,
+        cinema_preset_id=uuid4(),  # never resolves to a real row
+    )
 
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(movie=movie, cinema=other_cinema, datetime=now + timedelta(days=2))
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
-
-    assert sent is False
-    assert db_transaction.get(WatchlistDigestNotifiedMovie, (user.id, movie.id)) is None
-
-
-def test_pinned_preset_overrides_favorite_preset(
-    *,
-    db_transaction: Session,
-    user_factory: Callable[..., User],
-    movie_factory: Callable[..., Movie],
-    showtime_factory: Callable[..., Showtime],
-    cinema_factory: Callable[..., Cinema],
-    monkeypatch,
-):
-    """A pinned preset wins over the favorite: a movie at the pinned cinema is
-    sent even though it is not in the favorite preset."""
-    now = now_amsterdam_naive()
-    monkeypatch.setattr(
-        "app.services.watchlist_digest.now_amsterdam_naive", lambda: now
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
     )
-    monkeypatch.setattr(
-        "app.services.watchlist_digest.send_email", lambda **kwargs: None
-    )
-
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
-    pinned_cinema = cinema_factory()
-    favorite_cinema = cinema_factory()
-    _create_cinema_preset(
-        session=db_transaction,
-        user=user,
-        cinema_ids=[favorite_cinema.id],
-        is_favorite=True,
-        name="Favorite",
-    )
-    pinned = _create_cinema_preset(
-        session=db_transaction,
-        user=user,
-        cinema_ids=[pinned_cinema.id],
-        is_favorite=False,
-        name="Pinned",
-    )
-    user.notify_watchlist_digest_cinema_preset_id = pinned.id
-    db_transaction.add(user)
-    db_transaction.commit()
-
-    movie = movie_factory()
-    _add_to_watchlist(session=db_transaction, user=user, movie=movie)
-    showtime_factory(
-        movie=movie, cinema=pinned_cinema, datetime=now + timedelta(days=2)
-    )
-    _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
-
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
 
     assert sent is True
 
 
-def test_no_preset_configured_sends_regardless_of_cinema(
+def test_no_restriction_sends_regardless_of_cinema(
     *,
     db_transaction: Session,
     user_factory: Callable[..., User],
@@ -953,7 +1024,7 @@ def test_no_preset_configured_sends_regardless_of_cinema(
     cinema_factory: Callable[..., Cinema],
     monkeypatch,
 ):
-    """No pinned and no favorite preset means no cinema restriction at all."""
+    """No preset and no custom cinema list means no cinema restriction at all."""
     now = now_amsterdam_naive()
     monkeypatch.setattr(
         "app.services.watchlist_digest.now_amsterdam_naive", lambda: now
@@ -962,7 +1033,8 @@ def test_no_preset_configured_sends_regardless_of_cinema(
         "app.services.watchlist_digest.send_email", lambda **kwargs: None
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
+    source = _create_source(session=db_transaction, user=user, frequency=DigestFrequency.DAILY)
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
     showtime_factory(
@@ -970,9 +1042,55 @@ def test_no_preset_configured_sends_regardless_of_cinema(
     )
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is True
+
+
+def test_custom_cinema_selection_restricts_like_a_preset(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    movie_factory: Callable[..., Movie],
+    showtime_factory: Callable[..., Showtime],
+    cinema_factory: Callable[..., Cinema],
+    monkeypatch,
+):
+    """A one-off `custom_cinema_ids` selection (never saved as a preset)
+    restricts the digest the same way a pinned preset would."""
+    now = now_amsterdam_naive()
+    monkeypatch.setattr(
+        "app.services.watchlist_digest.now_amsterdam_naive", lambda: now
+    )
+    send_calls: list[dict] = []
+    monkeypatch.setattr(
+        "app.services.watchlist_digest.send_email",
+        lambda **kwargs: send_calls.append(kwargs),
+    )
+
+    user = user_factory()
+    custom_cinema = cinema_factory()
+    other_cinema = cinema_factory()
+    source = _create_source(
+        session=db_transaction,
+        user=user,
+        frequency=DigestFrequency.DAILY,
+        custom_cinema_ids=[custom_cinema.id],
+    )
+
+    movie = movie_factory()
+    _add_to_watchlist(session=db_transaction, user=user, movie=movie)
+    showtime_factory(movie=movie, cinema=other_cinema, datetime=now + timedelta(days=2))
+    _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
+
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
+
+    assert sent is False
+    assert not send_calls
 
 
 def test_pinned_preset_picks_the_preset_cinema_showtime_over_an_earlier_one(
@@ -1003,7 +1121,7 @@ def test_pinned_preset_picks_the_preset_cinema_showtime_over_an_earlier_one(
         "app.services.watchlist_digest.generate_watchlist_digest_email", _capture
     )
 
-    user = user_factory(notify_watchlist_digest_frequency=DigestFrequency.DAILY)
+    user = user_factory()
     preset_cinema = cinema_factory()
     other_cinema = cinema_factory()
     preset = _create_cinema_preset(
@@ -1012,9 +1130,12 @@ def test_pinned_preset_picks_the_preset_cinema_showtime_over_an_earlier_one(
         cinema_ids=[preset_cinema.id],
         is_favorite=False,
     )
-    user.notify_watchlist_digest_cinema_preset_id = preset.id
-    db_transaction.add(user)
-    db_transaction.commit()
+    source = _create_source(
+        session=db_transaction,
+        user=user,
+        frequency=DigestFrequency.DAILY,
+        cinema_preset_id=preset.id,
+    )
 
     movie = movie_factory()
     _add_to_watchlist(session=db_transaction, user=user, movie=movie)
@@ -1024,7 +1145,9 @@ def test_pinned_preset_picks_the_preset_cinema_showtime_over_an_earlier_one(
     )
     _queue_movie(session=db_transaction, movie_id=movie.id, added_at=now)
 
-    sent = build_and_send_digest(session=db_transaction, user=user, now=now)
+    sent = build_and_send_digest_for_source(
+        session=db_transaction, user=user, source=source, now=now
+    )
 
     assert sent is True
     entries = captured["movie_entries"]

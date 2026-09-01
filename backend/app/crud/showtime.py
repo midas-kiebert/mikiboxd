@@ -372,6 +372,69 @@ def get_friends_for_showtime(
     return friends
 
 
+def get_friends_of_friends_for_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID,
+    going_status: GoingStatus,
+    exclude_user_ids: set[UUID],
+) -> list[User]:
+    """Friends of the viewer's friends who are also `going_status` here.
+
+    Only reachable through a mutual ("bridge") friend who is themself
+    GOING/INTERESTED on this showtime, and only when that bridge friend can
+    already see the friend-of-friend's status for it (their own
+    `ShowtimeVisibilityEffective` row) — so this never surfaces more than the
+    friend-of-friend already chose to share with someone they know, it just
+    lets that reach one hop further for a viewer who has opted in.
+    `exclude_user_ids` drops the viewer and their direct friends, who are
+    already covered by `get_friends_for_showtime`.
+    """
+    viewer_to_bridge = aliased(Friendship)
+    bridge_to_fof = aliased(Friendship)
+    bridge_selection = aliased(ShowtimeSelection)
+    fof_selection = aliased(ShowtimeSelection)
+
+    stmt = (
+        select(User)
+        .join(bridge_to_fof, col(bridge_to_fof.friend_id) == col(User.id))
+        .join(
+            viewer_to_bridge,
+            col(viewer_to_bridge.friend_id) == col(bridge_to_fof.user_id),
+        )
+        .join(
+            bridge_selection,
+            (col(bridge_selection.user_id) == col(viewer_to_bridge.friend_id))
+            & (col(bridge_selection.showtime_id) == showtime_id),
+        )
+        .join(
+            fof_selection,
+            (col(fof_selection.user_id) == col(User.id))
+            & (col(fof_selection.showtime_id) == showtime_id),
+        )
+        .join(
+            ShowtimeVisibilityEffective,
+            (col(ShowtimeVisibilityEffective.owner_id) == col(User.id))
+            & (
+                col(ShowtimeVisibilityEffective.viewer_id)
+                == col(viewer_to_bridge.friend_id)
+            )
+            & (col(ShowtimeVisibilityEffective.showtime_id) == showtime_id),
+        )
+        .where(
+            col(viewer_to_bridge.user_id) == user_id,
+            col(bridge_selection.going_status).in_(
+                [GoingStatus.GOING, GoingStatus.INTERESTED]
+            ),
+            col(fof_selection.going_status) == going_status,
+            col(User.id).not_in(exclude_user_ids),
+        )
+        .distinct()
+    )
+    return list(session.exec(stmt).all())
+
+
 def get_friends_with_showtime_selection(
     *,
     session: Session,

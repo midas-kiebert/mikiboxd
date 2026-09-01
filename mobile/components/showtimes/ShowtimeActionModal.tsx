@@ -633,6 +633,33 @@ export default function ShowtimeActionModal({
     },
   });
 
+  // Friends reminded this session — a reminder has no persisted state to read
+  // back (unlike an invite), so "Sent" is purely local and resets the next
+  // time this sheet opens for a showtime.
+  const [remindedFriendIds, setRemindedFriendIds] = useState<Set<string>>(new Set());
+  // Local-only state must not survive into a reused sheet showing a
+  // different showtime.
+  useEffect(() => {
+    setRemindedFriendIds(new Set());
+  }, [selectedShowtimeId]);
+
+  const { mutate: remindFriendForShowtime, isPending: isRemindingFriend } = useMutation({
+    mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
+      ShowtimesService.sendShowtimeReminder({ showtimeId, friendId }),
+    onSuccess: (_message, variables) => {
+      setRemindedFriendIds((previous) => new Set(previous).add(variables.friendId));
+    },
+    onError: () => {
+      Alert.alert("Error", "Could not send reminder. Please try again.");
+    },
+  });
+
+  const handleRemindFriend = (friendId: string) => {
+    if (!showtime || isRemindingFriend) return;
+    triggerImpactHaptic();
+    remindFriendForShowtime({ showtimeId: showtime.id, friendId });
+  };
+
   const { mutate: reportShowtimeIssue, isPending: isSubmittingReport } = useMutation({
     mutationFn: ({
       showtimeId,
@@ -1504,6 +1531,23 @@ export default function ShowtimeActionModal({
     (showtime?.viewer?.friends_going?.length ?? 0) > 0 ||
     (showtime?.viewer?.friends_interested?.length ?? 0) > 0;
 
+  // "Friends of friends" — reachable only through a mutual friend, see the
+  // `show_friends_of_friends_interest` preference. Named rather than badged:
+  // these people aren't the viewer's own friends, and a badge identical to
+  // FriendBadges' would blur that distinction.
+  const friendsOfFriendsSummary = useMemo(() => {
+    const names = [
+      ...(showtime?.viewer?.friends_of_friends_going ?? []),
+      ...(showtime?.viewer?.friends_of_friends_interested ?? []),
+    ]
+      .map((person) => person.display_name?.trim())
+      .filter((name): name is string => !!name);
+    if (names.length === 0) return null;
+    if (names.length === 1) return `${names[0]} (a friend of a friend) is interested too`;
+    if (names.length === 2) return `${names[0]} and ${names[1]}, friends of your friends, are interested too`;
+    return `${names[0]}, ${names[1]} and ${names.length - 2} more friends of friends are interested too`;
+  }, [showtime?.viewer?.friends_of_friends_going, showtime?.viewer?.friends_of_friends_interested]);
+
   const statusOptions = [
     {
       key: "NOT_GOING" as const,
@@ -1788,6 +1832,19 @@ export default function ShowtimeActionModal({
             </View>
             ) : null}
 
+            {/* "Friends of friends" — only present when the viewer opted into
+                `show_friends_of_friends_interest`; kept apart from the
+                FriendBadges above rather than merged in, since these aren't
+                the viewer's own friends and shouldn't read as if they were. */}
+            {isSignedIn && friendsOfFriendsSummary ? (
+              <View style={styles.friendsOfFriendsBox}>
+                <MaterialIcons name="groups" size={13} color={colors.textSecondary} />
+                <ThemedText style={styles.friendsOfFriendsText} numberOfLines={2}>
+                  {friendsOfFriendsSummary}
+                </ThemedText>
+              </View>
+            ) : null}
+
             {/* Optional "X invited you." banner */}
             {invitedYouLabel ? (
               <View style={styles.invitedYouBannerWrap}>
@@ -1863,17 +1920,7 @@ export default function ShowtimeActionModal({
                 there. */}
             {showSeatBusynessInfo || hasTicketLink || shouldShowSeatButton ? (
               <View style={styles.seatInfoSection}>
-                {!showSeatBusynessInfo ? null : isCheckingSeatAvailability && !seatMeta ? (
-                  <View style={styles.seatInfoHeader}>
-                    <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
-                    <View style={styles.seatInfoCheckingRow}>
-                      <ActivityIndicator size="small" color={colors.textSecondary} />
-                      <ThemedText style={styles.seatInfoCheckingText}>
-                        Checking availability…
-                      </ThemedText>
-                    </View>
-                  </View>
-                ) : seatMeta ? (
+                {!showSeatBusynessInfo ? null : seatMeta ? (
                   <TouchableOpacity
                     style={styles.seatInfoHeader}
                     onPress={handleOpenSeatFloorPlanPreview}
@@ -1954,10 +2001,27 @@ export default function ShowtimeActionModal({
                     <View style={styles.seatInfoTextColumn}>
                       <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
                       <ThemedText style={styles.seatInfoCheckedAt}>
-                        {canRequestSeatCheck ? "Not tracked yet" : "No count available"}
+                        {isCheckingSeatAvailability
+                          ? "Checking now…"
+                          : canRequestSeatCheck
+                            ? "Not tracked yet"
+                            : "No count available"}
                       </ThemedText>
                     </View>
-                    {canRequestSeatCheck ? (
+                    {isCheckingSeatAvailability ? (
+                      // Same footprint as the Check button below, so the row
+                      // doesn't reflow the moment the tap lands — just its
+                      // "tap me" fill swapped for a disabled, working one.
+                      <View
+                        style={[
+                          styles.seatInfoValue,
+                          styles.seatInfoCheckButton,
+                          styles.seatInfoCheckButtonDisabled,
+                        ]}
+                      >
+                        <ActivityIndicator size="small" color={colors.pillActiveText} />
+                      </View>
+                    ) : canRequestSeatCheck ? (
                       <TouchableOpacity
                         style={[styles.seatInfoValue, styles.seatInfoCheckButton]}
                         onPress={handleRequestSeatCheck}
@@ -1965,7 +2029,7 @@ export default function ShowtimeActionModal({
                         accessibilityRole="button"
                         accessibilityLabel="Check how many seats are left"
                       >
-                        <MaterialIcons name="search" size={13} color={colors.tint} />
+                        <MaterialIcons name="search" size={13} color={colors.pillActiveText} />
                         <ThemedText style={styles.seatInfoCheckButtonText}>Check</ThemedText>
                       </TouchableOpacity>
                     ) : (
@@ -2268,6 +2332,27 @@ export default function ShowtimeActionModal({
                           const isHighlighted =
                             friend.id === firstEligibleFriendId &&
                             pingSearchQuery.trim().length > 0;
+                          // A friend already going/interested gets offered a
+                          // reminder instead of a duplicate invite, but only
+                          // once the current user has opted into the feature
+                          // themselves — see `notify_on_showtime_reminder`.
+                          const offerReminder =
+                            !!user?.notify_on_showtime_reminder && friend.availability !== "eligible";
+                          if (offerReminder) {
+                            return (
+                              <FriendListRow
+                                key={friend.id}
+                                userId={friend.id}
+                                name={friend.label}
+                                watchStatus={friend.watchStatus}
+                                pingStatus={getPingRowStatus(friend.availability)}
+                                mode="remind"
+                                reminded={remindedFriendIds.has(friend.id)}
+                                disabled={isRemindingFriend}
+                                onRemind={() => handleRemindFriend(friend.id)}
+                              />
+                            );
+                          }
                           return (
                             <FriendListRow
                               key={friend.id}
@@ -2611,6 +2696,20 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
       textAlign: "center",
     },
+    friendsOfFriendsBox: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 6,
+      paddingVertical: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderColor: `${colors.divider}80`,
+    },
+    friendsOfFriendsText: {
+      flex: 1,
+      fontSize: 12,
+      lineHeight: 16,
+      color: colors.textSecondary,
+    },
     // Never in the row's flow: it would either steal width from the title or
     // push the row taller for one 10pt line. Where it hangs depends on whether
     // "More info" is there to line up with (see reportLinkAlignedWithMoreInfo /
@@ -2796,17 +2895,24 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     // The one thing in this card that is an action rather than a reading, so
     // it borrows the busyness pill's geometry (it sits in that column) but not
-    // its filled look: tint on the recessed surface, the same "tap me" the
-    // ticket row uses, with nothing that could pass for a level.
+    // its filled look: a solid tint fill reads as a clear tap target, the
+    // same way the busyness pill's own fill reads as a clear reading.
     seatInfoCheckButton: {
-      backgroundColor: colors.checkboxBackground,
-      borderWidth: 1,
-      borderColor: colors.checkboxBorder,
+      backgroundColor: colors.tint,
+      // Fixed footprint so the disabled/loading fill below can swap in
+      // without the row reflowing — wide and tall enough for the icon+label
+      // to sit centered rather than pressed against the edges.
+      minWidth: 68,
+      minHeight: 26,
+      justifyContent: "center",
+    },
+    seatInfoCheckButtonDisabled: {
+      opacity: 0.7,
     },
     seatInfoCheckButtonText: {
       fontSize: 12,
       fontWeight: "700",
-      color: colors.tint,
+      color: colors.pillActiveText,
     },
     seatInfoCheckingRow: {
       flexDirection: "row",

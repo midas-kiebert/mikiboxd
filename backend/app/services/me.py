@@ -88,6 +88,7 @@ _EMAIL_DELIVERY_FIELDS: tuple[str, ...] = (
     "notify_channel_interest_reminder",
     "notify_channel_seat_alert",
     "notify_channel_sold_out",
+    "notify_channel_showtime_reminder",
 )
 
 
@@ -361,6 +362,7 @@ def _to_saved_preset_public(
                 session=session, preset=preset
             ),
             "cinema_scope": parse_cinema_scope(preset.cinema_scope),
+            "cinema_preset_id": preset.cinema_preset_id,
             "created_at": preset.created_at,
             "updated_at": preset.updated_at,
         }
@@ -390,7 +392,25 @@ def save_saved_preset(
     now = now_amsterdam_naive()
     preset_name = payload.name.strip()
     filters = payload.filters.model_dump(mode="json")
-    cinema_ids = list(payload.cinema_ids) if payload.cinema_ids is not None else None
+    cinema_preset_id = payload.cinema_preset_id
+    if cinema_preset_id is not None:
+        # A cinema preset was active, not just a raw selection: store the
+        # reference so this follows the preset if it's later renamed/edited,
+        # plus a raw snapshot of its cinemas today as the fallback used if the
+        # preset is ever deleted (see `resolve_preset_cinema_ids`).
+        linked_preset = cinema_presets_crud.get_user_preset_by_id(
+            session=session, user_id=user_id, preset_id=cinema_preset_id
+        )
+        if linked_preset is None:
+            raise CinemaPresetNotFound()
+        cinema_ids = (
+            cinema_presets_crud.resolve_preset_cinema_ids(
+                session=session, preset=linked_preset
+            )
+            or []
+        )
+    else:
+        cinema_ids = list(payload.cinema_ids) if payload.cinema_ids is not None else None
     cinema_scope = _scope_for_selection(session=session, cinema_ids=cinema_ids)
     should_set_favorite = payload.is_favorite is True
     existing = saved_presets_crud.get_user_preset_by_name(
@@ -414,6 +434,7 @@ def save_saved_preset(
             filters=filters,
             cinema_ids=cinema_ids,
             cinema_scope=cinema_scope,
+            cinema_preset_id=cinema_preset_id,
             is_favorite=should_set_favorite,
             now=now,
         )
@@ -425,6 +446,7 @@ def save_saved_preset(
             filters=filters,
             cinema_ids=cinema_ids,
             cinema_scope=cinema_scope,
+            cinema_preset_id=cinema_preset_id,
             is_favorite=payload.is_favorite,
             now=now,
         )
@@ -672,12 +694,16 @@ def rename_cinema_preset(
     user_id: UUID,
     preset_id: UUID,
     name: str,
+    cinema_ids: list[int] | None = None,
 ) -> CinemaPresetPublic:
-    """Rename a saved preset, including the favorite one.
+    """Rename a saved preset, including the favorite one, and optionally edit
+    its cinemas in the same call (the manage-presets page's "Edit" action).
 
     The favorite is identified by its flag, never by its name, so the user is
     free to call their cinemas whatever they like without any of the code that
-    reads the favorite losing track of it.
+    reads the favorite losing track of it. A `SavedPreset` following this
+    cinema preset (see `crud.saved_preset.resolve_preset_cinema_ids`) picks up
+    an edited cinema selection automatically, since it reads this row live.
     """
     now = now_amsterdam_naive()
     preset_name = name.strip()
@@ -700,6 +726,17 @@ def rename_cinema_preset(
     if clashing is not None and clashing.id != preset.id:
         raise CinemaPresetNameTaken()
 
+    if cinema_ids is not None:
+        cinema_scope = _scope_for_selection(session=session, cinema_ids=cinema_ids)
+        preset = cinema_presets_crud.update_preset(
+            session=session,
+            preset=preset,
+            cinema_ids=cinema_ids,
+            cinema_scope=cinema_scope,
+            is_favorite=None,
+            now=now,
+        )
+
     renamed = cinema_presets_crud.rename_preset(
         session=session,
         preset=preset,
@@ -719,6 +756,11 @@ def delete_cinema_preset(
     if preset_id == DEFAULT_CINEMA_PRESET_ID:
         return False
 
+    # Any saved (filter) preset following this cinema preset converts to its
+    # own raw snapshot before the row it was following disappears.
+    saved_presets_crud.clear_cinema_preset_link(
+        session=session, user_id=user_id, cinema_preset_id=preset_id
+    )
     deleted = cinema_presets_crud.delete_preset(
         session=session,
         user_id=user_id,

@@ -33,7 +33,7 @@ import { useThemeColors } from '@/hooks/use-theme-color';
 import { getAvatarColors, getAvatarInitial } from '@/utils/avatar-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
-import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from '@/utils/reset-infinite-query';
+import { buildSnapshotTime, useSnapshotRefresh } from '@/utils/reset-infinite-query';
 
 // One request per pause in typing, not one per keystroke — see
 // useDebouncedValue and (tabs)/index.tsx's identical guard.
@@ -159,7 +159,6 @@ function FriendShowtimesContent({
     [userId]
   );
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
   const {
@@ -298,15 +297,7 @@ function FriendShowtimesContent({
   usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id));
   usePrefetchShowtimeSeatAvailability(showtimes.map((showtime) => showtime.id));
 
-  const handleRefresh = async () => {
-    if (!userId) return;
-    setRefreshing(true);
-    try {
-      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  const { refreshing, handleRefresh } = useSnapshotRefresh({ setSnapshotTime, isFetching });
 
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) {

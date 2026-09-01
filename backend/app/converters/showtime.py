@@ -88,6 +88,39 @@ def _friends_for_showtime(
     return friends_going, friends_interested
 
 
+def _friends_of_friends_for_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID,
+    exclude_user_ids: set[UUID],
+) -> tuple[list[UserPublic], list[UserPublic]]:
+    """Mirrors `_friends_for_showtime`, one hop further out — see
+    `crud.showtime.get_friends_of_friends_for_showtime`."""
+    fof_going = [
+        user_converters.to_public(friend)
+        for friend in showtime_crud.get_friends_of_friends_for_showtime(
+            session=session,
+            showtime_id=showtime_id,
+            user_id=user_id,
+            going_status=GoingStatus.GOING,
+            exclude_user_ids=exclude_user_ids,
+        )
+    ]
+    fof_going_ids = {friend.id for friend in fof_going}
+    fof_interested = [
+        user_converters.to_public(friend)
+        for friend in showtime_crud.get_friends_of_friends_for_showtime(
+            session=session,
+            showtime_id=showtime_id,
+            user_id=user_id,
+            going_status=GoingStatus.INTERESTED,
+            exclude_user_ids=exclude_user_ids | fof_going_ids,
+        )
+    ]
+    return fof_going, fof_interested
+
+
 def _invite_info_for_showtime(
     *,
     session: Session,
@@ -331,6 +364,21 @@ def to_public(
                 current_user=user_id,
             )
         )
+        viewer_user = session.get(User, user_id)
+        friends_of_friends_going: list[UserPublic] = []
+        friends_of_friends_interested: list[UserPublic] = []
+        if viewer_user is not None and viewer_user.show_friends_of_friends_interest:
+            direct_friend_ids = friendship_crud.get_friend_ids(
+                session=session, user_id=user_id
+            )
+            friends_of_friends_going, friends_of_friends_interested = (
+                _friends_of_friends_for_showtime(
+                    session=session,
+                    showtime_id=showtime.id,
+                    user_id=user_id,
+                    exclude_user_ids=direct_friend_ids | {user_id},
+                )
+            )
         viewer = ShowtimeViewerState(
             **shared.model_dump(),
             friends_watchlisted=friends_watchlisted,
@@ -338,6 +386,8 @@ def to_public(
             non_friend_participants=_non_friend_participants(
                 session=session, showtime_id=showtime.id, user_id=user_id
             ),
+            friends_of_friends_going=friends_of_friends_going,
+            friends_of_friends_interested=friends_of_friends_interested,
         )
 
     return ShowtimePublic(

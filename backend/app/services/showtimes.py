@@ -26,6 +26,8 @@ from app.exceptions.showtime_exceptions import (
     ShowtimePingNonFriendError,
     ShowtimePingPastShowtimeError,
     ShowtimePingSelfError,
+    ShowtimeReminderNonFriendError,
+    ShowtimeReminderNotEligibleError,
     ShowtimeSeatValidationError,
 )
 from app.inputs.movie import Filters
@@ -311,6 +313,65 @@ def ping_friend_for_showtime(
     assert ping is not None and ping.id is not None
     should_notify = not ping.receiver_had_selection_at_creation
     return Message(message="Friend invited successfully"), ping.id, should_notify
+
+
+def send_showtime_reminder(
+    *,
+    session: Session,
+    showtime_id: int,
+    actor_id: UUID,
+    friend_id: UUID,
+) -> bool:
+    """Nudge a friend already GOING/INTERESTED, or invited and not dismissed.
+
+    Unlike `ping_friend_for_showtime`, this never creates or changes a
+    selection or ping row — it's a one-off notification, not an invite.
+    Returns whether a notification was actually dispatched: `False` (not an
+    error) when the friend has `notify_on_showtime_reminder` turned off,
+    since the mobile app already hides the button in that case and a sender
+    who reaches this endpoint anyway (a stale friend list, a race) gets a
+    quiet no-op rather than a message implying something is broken.
+    """
+    if actor_id == friend_id:
+        raise ShowtimePingSelfError()
+
+    if not friendship_crud.are_users_friends(
+        session=session, user_id=actor_id, friend_id=friend_id
+    ):
+        raise ShowtimeReminderNonFriendError()
+
+    if moderation_service.is_contact_blocked(
+        session=session, user_id=actor_id, other_id=friend_id
+    ):
+        raise UserBlockedError
+
+    showtime = showtimes_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
+    if showtime is None:
+        raise ShowtimeNotFoundError(showtime_id)
+
+    friend_status = user_crud.get_showtime_going_status(
+        session=session, showtime_id=showtime_id, user_id=friend_id
+    )
+    is_interested_or_going = friend_status in (
+        GoingStatus.GOING,
+        GoingStatus.INTERESTED,
+    )
+    has_active_invite = bool(
+        showtime_ping_crud.get_active_received_inviter_ids(
+            session=session, receiver_id=friend_id, showtime_id=showtime_id
+        )
+    )
+    if not is_interested_or_going and not has_active_invite:
+        raise ShowtimeReminderNotEligibleError()
+
+    return push_notifications.notify_user_on_showtime_reminder(
+        session=session,
+        sender_id=actor_id,
+        receiver_id=friend_id,
+        showtime_id=showtime_id,
+    )
 
 
 _PING_LINK_TOKEN_BYTES = 12  # ~16 url-safe chars, 96 bits — short but unguessable

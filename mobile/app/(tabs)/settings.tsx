@@ -19,7 +19,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { EXPAND_DURATION_MS, EXPAND_LAYOUT_ANIMATION } from '@/utils/expand-animation';
 import { triggerSelectionHaptic } from '@/utils/long-press';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import {
@@ -47,20 +47,12 @@ import {
 import { startIntro } from '@/utils/intro';
 import { markSignedOut, useIsSignedIn } from '@/utils/auth-session';
 import useAuth from 'shared/hooks/useAuth';
-import {
-  MeService,
-  UtilsService,
-  type ApiError,
-  type CinemaPresetPublic,
-  type DigestFrequency,
-  type UpdatePassword,
-  type UserUpdate,
-} from 'shared';
-import { useFetchLetterboxdLists } from 'shared/hooks/useLetterboxdLists';
+import { MeService, type ApiError, type UpdatePassword, type UserUpdate } from 'shared';
 import { emailPattern, handleError, usernameMaxLength, usernamePattern } from 'shared/utils';
 import { unregisterPushTokenForCurrentDevice } from '@/utils/push-notifications';
 import NotificationPreferenceList from '@/components/notifications/NotificationPreferenceList';
 import LetterboxdSection from '@/components/settings/LetterboxdSection';
+import WatchlistDigestSourcesSection from '@/components/settings/WatchlistDigestSourcesSection';
 import SignedOutPanel from '@/components/auth/SignedOutPanel';
 import CinevilleCardModal from '@/components/cineville/CinevilleCardModal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -89,12 +81,6 @@ const THEME_OPTIONS: readonly SegmentedOption<ThemePreference>[] = [
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
   { value: 'system', label: 'System' },
-];
-
-// The backend's two digest cadences, under the names the info sheet explains.
-const DIGEST_FREQUENCY_OPTIONS: readonly SegmentedOption<DigestFrequency>[] = [
-  { value: 'daily', label: 'Eager' },
-  { value: 'weekly_or_urgent', label: 'Weekly' },
 ];
 
 type ProfileState = {
@@ -154,42 +140,15 @@ function SettingsScreen() {
   // The notification preferences, their delivery channels and the OS permission
   // state, shared with the notification-permission tip.
   const notificationPreferences = useNotificationPreferences();
-  // Local state for the watchlist new-showtime email digest setting.
+  // Local state for the watchlist new-showtime email digest master switch.
+  // Per-source settings (frequency, list, cinemas) live in
+  // `WatchlistDigestSourcesSection` and its own `useWatchlistDigestSources`.
   const [digestEnabled, setDigestEnabled] = useState(false);
-  const [digestFrequency, setDigestFrequency] =
-    useState<DigestFrequency>('weekly_or_urgent');
-  const [digestListId, setDigestListId] = useState<string | null>(null);
-  // null = follow the favorite cinema preset; a uuid = pin a specific preset.
-  const [digestCinemaPresetId, setDigestCinemaPresetId] = useState<string | null>(null);
   const [digestAdvancedOpen, setDigestAdvancedOpen] = useState(false);
   const [isUpdatingDigest, setIsUpdatingDigest] = useState(false);
-  const [isDigestFrequencyInfoVisible, setIsDigestFrequencyInfoVisible] = useState(false);
-  // Explanation copy for the Eager/Weekly frequency modes, kept on the backend so
-  // it can be updated whenever the digest algorithm itself changes.
-  const { data: digestFrequencyInfo } = useQuery({
-    queryKey: ['watchlist-digest-frequency-info'],
-    queryFn: () => UtilsService.getWatchlistDigestFrequencyInfo(),
-    staleTime: Infinity,
-  });
-  // Always fetched (not gated on the advanced picker): needed to resolve the
-  // curated top-500 default below even when the picker has never been opened.
-  const { data: digestLists = [] } = useFetchLetterboxdLists(isSignedIn);
-  const { data: cinemaPresets = [] } = useQuery<CinemaPresetPublic[]>({
-    queryKey: ['cinema-presets'],
-    queryFn: () => MeService.getCinemaPresets(),
-    enabled: digestAdvancedOpen,
-  });
-  // The preset the digest follows when no specific one is pinned.
-  const favoriteCinemaPreset = cinemaPresets.find((preset) => preset.is_favorite);
-  // The backend prepends a synthetic "All Cinemas" preset to every list, and it
-  // is not a real row — `_resolve_digest_cinema_ids` cannot look it up, so
-  // picking it did nothing except sit next to this section's own "all cinemas"
-  // option as a case-mismatched duplicate. The sentinel below already covers
-  // it, so it is dropped here rather than offered twice.
-  const selectableCinemaPresets = useMemo(
-    () => cinemaPresets.filter((preset) => !preset.is_default),
-    [cinemaPresets]
-  );
+  // "See friends of friends" privacy opt-in (Privacy section below).
+  const [showFriendsOfFriends, setShowFriendsOfFriends] = useState(false);
+  const [isUpdatingFriendsOfFriends, setIsUpdatingFriendsOfFriends] = useState(false);
   // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   // Cineville card number (9 digits only, CP$ prefix is added automatically).
@@ -281,15 +240,11 @@ function SettingsScreen() {
 
   useEffect(() => {
     setDigestEnabled(!!user?.notify_watchlist_digest_enabled);
-    setDigestFrequency(user?.notify_watchlist_digest_frequency ?? 'weekly_or_urgent');
-    setDigestListId(user?.notify_watchlist_digest_list_id ?? null);
-    setDigestCinemaPresetId(user?.notify_watchlist_digest_cinema_preset_id ?? null);
-  }, [
-    user?.notify_watchlist_digest_enabled,
-    user?.notify_watchlist_digest_frequency,
-    user?.notify_watchlist_digest_list_id,
-    user?.notify_watchlist_digest_cinema_preset_id,
-  ]);
+  }, [user?.notify_watchlist_digest_enabled]);
+
+  useEffect(() => {
+    setShowFriendsOfFriends(!!user?.show_friends_of_friends_interest);
+  }, [user?.show_friends_of_friends_interest]);
 
   // Load the saved Cineville card digits from device storage.
   useEffect(() => {
@@ -499,74 +454,19 @@ function SettingsScreen() {
     );
   };
 
-  const handleDigestFrequencyChange = (frequency: DigestFrequency) => {
-    if (frequency === digestFrequency) return;
-    const previous = digestFrequency;
-    void handleDigestUpdate(
-      { notify_watchlist_digest_frequency: frequency },
-      () => setDigestFrequency(frequency),
-      () => setDigestFrequency(previous)
-    );
-  };
-
-  const handleDigestListChange = (listId: string | null) => {
-    if (listId === digestListId) return;
-    const previous = digestListId;
-    void handleDigestUpdate(
-      { notify_watchlist_digest_list_id: listId },
-      () => setDigestListId(listId),
-      () => setDigestListId(previous)
-    );
-  };
-
-  // "My watchlist" (a null list_id) resolves to nothing without a connected
-  // Letterboxd account, so a brand-new digest source defaults to the curated
-  // top-500 list instead. Only fires once — after the update lands,
-  // `user.notify_watchlist_digest_list_id` is no longer null and this bails
-  // out on subsequent renders.
-  useEffect(() => {
-    if (!user || user.notify_watchlist_digest_list_id || user.letterboxd_username) return;
-    if (digestListId) return;
-    const defaultList = digestLists.find(
-      (list) => list.is_curated && list.list_slug === 'letterboxds-top-500-films'
-    );
-    if (!defaultList) return;
-    void handleDigestUpdate(
-      { notify_watchlist_digest_list_id: defaultList.id },
-      () => setDigestListId(defaultList.id),
-      () => {}
-    );
-  }, [user, digestLists, digestListId]);
-
-  // Once a Letterboxd account is connected, "My watchlist" becomes a real
-  // source again. If the curated top-500 list is still selected, it's almost
-  // certainly still sitting there from the fallback above — from before the
-  // account was connected, or from before this list was selectable at all —
-  // so switch it back to the watchlist. A deliberately-picked different list
-  // is left untouched. Self-terminating: once the switch lands, digestListId
-  // is null and this bails on subsequent renders, same as the effect above.
-  useEffect(() => {
-    if (!user || !user.letterboxd_username) return;
-    if (digestListId === null) return;
-    const curatedTop500 = digestLists.find(
-      (list) => list.is_curated && list.list_slug === 'letterboxds-top-500-films'
-    );
-    if (!curatedTop500 || digestListId !== curatedTop500.id) return;
-    void handleDigestUpdate(
-      { notify_watchlist_digest_list_id: null },
-      () => setDigestListId(null),
-      () => {}
-    );
-  }, [user, digestLists, digestListId]);
-
-  const handleDigestCinemaPresetChange = (presetId: string | null) => {
-    if (presetId === digestCinemaPresetId) return;
-    const previous = digestCinemaPresetId;
-    void handleDigestUpdate(
-      { notify_watchlist_digest_cinema_preset_id: presetId },
-      () => setDigestCinemaPresetId(presetId),
-      () => setDigestCinemaPresetId(previous)
-    );
+  const handleFriendsOfFriendsToggle = async (enabled: boolean) => {
+    const previous = showFriendsOfFriends;
+    setShowFriendsOfFriends(enabled);
+    try {
+      setIsUpdatingFriendsOfFriends(true);
+      await digestMutation.mutateAsync({ show_friends_of_friends_interest: enabled });
+    } catch (error) {
+      setShowFriendsOfFriends(previous);
+      console.error('Error updating friends-of-friends preference:', error);
+      Alert.alert('Error', 'Could not update this setting.');
+    } finally {
+      setIsUpdatingFriendsOfFriends(false);
+    }
   };
 
   const handleSaveCinevilleCard = async () => {
@@ -829,127 +729,23 @@ function SettingsScreen() {
                   disabled={!user || isUpdatingDigest}
                 />
               </View>
-              <View style={styles.notificationChannelRow}>
-                <View style={styles.digestFrequencyLabelRow}>
-                  <ThemedText style={styles.notificationChannelLabel}>Frequency</ThemedText>
-                  <TouchableOpacity
-                    onPress={() => setIsDigestFrequencyInfoVisible(true)}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="What do Eager and Weekly mean?"
-                  >
-                    <MaterialIcons name="info-outline" size={15} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-                <SegmentedControl
-                  options={DIGEST_FREQUENCY_OPTIONS}
-                  value={digestFrequency}
-                  onChange={handleDigestFrequencyChange}
-                  accessibilityLabelPrefix="Frequency"
-                  disabled={!user || isUpdatingDigest}
-                />
-              </View>
-              <TouchableOpacity
-                onPress={() => setDigestAdvancedOpen((previous) => !previous)}
-                activeOpacity={0.8}
-              >
-                <ThemedText style={styles.digestAdvancedToggle}>
-                  {digestAdvancedOpen ? 'Hide advanced' : 'Advanced: list & cinemas'}
-                </ThemedText>
-              </TouchableOpacity>
-              {digestAdvancedOpen ? (
+              {digestEnabled ? (
                 <>
-                  <ThemedText style={styles.notificationChannelLabel}>Source</ThemedText>
-                  <View style={styles.digestListOptions}>
-                    {user?.letterboxd_username ? (
-                      <TouchableOpacity
-                        style={[
-                          styles.digestListOption,
-                          digestListId === null && styles.digestListOptionActive,
-                        ]}
-                        onPress={() => handleDigestListChange(null)}
-                        disabled={!user || isUpdatingDigest}
-                        activeOpacity={0.8}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.digestListOptionText,
-                            digestListId === null && styles.digestListOptionTextActive,
-                          ]}
-                        >
-                          My watchlist
-                        </ThemedText>
-                      </TouchableOpacity>
-                    ) : null}
-                    {digestLists.map((list) => (
-                      <TouchableOpacity
-                        key={list.id}
-                        style={[
-                          styles.digestListOption,
-                          digestListId === list.id && styles.digestListOptionActive,
-                        ]}
-                        onPress={() => handleDigestListChange(list.id)}
-                        disabled={!user || isUpdatingDigest}
-                        activeOpacity={0.8}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.digestListOptionText,
-                            digestListId === list.id && styles.digestListOptionTextActive,
-                          ]}
-                        >
-                          {list.title ?? list.list_slug}
-                          {list.is_curated ? ' (curated)' : ''}
-                        </ThemedText>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <ThemedText style={styles.notificationChannelLabel}>Cinemas</ThemedText>
-                  <View style={styles.digestListOptions}>
-                    <TouchableOpacity
-                      style={[
-                        styles.digestListOption,
-                        digestCinemaPresetId === null && styles.digestListOptionActive,
-                      ]}
-                      onPress={() => handleDigestCinemaPresetChange(null)}
-                      disabled={!user || isUpdatingDigest}
-                      activeOpacity={0.8}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.digestListOptionText,
-                          digestCinemaPresetId === null && styles.digestListOptionTextActive,
-                        ]}
-                      >
-                        {favoriteCinemaPreset
-                          ? `Default (${favoriteCinemaPreset.name})`
-                          : 'All cinemas'}
-                      </ThemedText>
-                    </TouchableOpacity>
-                    {selectableCinemaPresets.map((preset) => (
-                      <TouchableOpacity
-                        key={preset.id}
-                        style={[
-                          styles.digestListOption,
-                          digestCinemaPresetId === preset.id && styles.digestListOptionActive,
-                        ]}
-                        onPress={() => handleDigestCinemaPresetChange(preset.id)}
-                        disabled={!user || isUpdatingDigest}
-                        activeOpacity={0.8}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.digestListOptionText,
-                            digestCinemaPresetId === preset.id &&
-                              styles.digestListOptionTextActive,
-                          ]}
-                        >
-                          {preset.name}
-                          {preset.is_favorite ? ' (favorite)' : ''}
-                        </ThemedText>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                  <TouchableOpacity
+                    onPress={() => setDigestAdvancedOpen((previous) => !previous)}
+                    activeOpacity={0.8}
+                  >
+                    <ThemedText style={styles.digestAdvancedToggle}>
+                      {digestAdvancedOpen ? 'Hide advanced' : 'Advanced: sources'}
+                    </ThemedText>
+                  </TouchableOpacity>
+                  {digestAdvancedOpen ? (
+                    <WatchlistDigestSourcesSection
+                      isSignedIn={isSignedIn}
+                      enabled={digestEnabled}
+                      letterboxdUsername={user?.letterboxd_username ?? null}
+                    />
+                  ) : null}
                 </>
               ) : null}
             </View>
@@ -1102,6 +898,23 @@ function SettingsScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Privacy</ThemedText>
           <View style={styles.card}>
+            <View style={styles.notificationToggleHeader}>
+              <View style={styles.notificationToggleTextContainer}>
+                <ThemedText style={styles.notificationToggleTitle}>
+                  Friends of friends
+                </ThemedText>
+                <ThemedText style={styles.notificationToggleDescription}>
+                  On a showtime, also show friends of your friends who are going or
+                  interested — only through a mutual friend who is too, and only if
+                  they already let that friend see it.
+                </ThemedText>
+              </View>
+              <AppSwitch
+                value={showFriendsOfFriends}
+                onValueChange={(value) => void handleFriendsOfFriendsToggle(value)}
+                disabled={!user || isUpdatingFriendsOfFriends}
+              />
+            </View>
             <TouchableOpacity
               style={styles.aboutLinkRow}
               onPress={() => router.push('/blocked-users')}
@@ -1172,20 +985,6 @@ function SettingsScreen() {
         cancelLabel="Cancel"
         onConfirm={handleConfirmDeleteAccount}
         onCancel={() => setIsDeleteDialogVisible(false)}
-      />
-      <ConfirmDialog
-        visible={isDigestFrequencyInfoVisible}
-        icon="info-outline"
-        title="Eager vs Weekly"
-        message={
-          digestFrequencyInfo
-            ? `${digestFrequencyInfo.daily.label}: ${digestFrequencyInfo.daily.description}\n\n${digestFrequencyInfo.weekly_or_urgent.label}: ${digestFrequencyInfo.weekly_or_urgent.description}`
-            : 'Loading...'
-        }
-        confirmLabel="Got it"
-        tone="primary"
-        onConfirm={() => setIsDigestFrequencyInfoVisible(false)}
-        onCancel={() => setIsDigestFrequencyInfoVisible(false)}
       />
       <EmailVerificationRequiredDialog
         visible={isEmailVerificationRequired}
@@ -1401,38 +1200,10 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       fontSize: 11,
       color: colors.textSecondary,
     },
-    digestFrequencyLabelRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-    },
     digestAdvancedToggle: {
       fontSize: 12,
       fontWeight: '600',
       color: colors.tint,
-    },
-    digestListOptions: {
-      gap: 6,
-    },
-    digestListOption: {
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      borderRadius: 8,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      backgroundColor: colors.pillBackground,
-    },
-    digestListOptionActive: {
-      borderColor: colors.tint,
-      backgroundColor: colors.tint,
-    },
-    digestListOptionText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    digestListOptionTextActive: {
-      color: colors.pillActiveText,
     },
     cinevilleShortcutRow: {
       flexDirection: 'row',
@@ -1496,6 +1267,6 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
  */
 export default function SettingsScreenTab() {
   const ready = useDeferredMount('tab:settings', tabContentHoldMs);
-  if (!ready) return <TabScreenSkeleton title="Settings" icon="gearshape.fill" rowHeight={88} />;
+  if (!ready) return <TabScreenSkeleton title="Settings" icon="gearshape.fill" />;
   return <SettingsScreen />;
 }

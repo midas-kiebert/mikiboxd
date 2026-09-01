@@ -116,13 +116,16 @@ export type CinemaPresetPublic = {
 }
 
 /**
- * The only field of a saved preset the user can edit after the fact.
+ * Editing an existing preset: its name, and optionally its cinemas.
  *
- * Its cinemas are changed by re-picking them in the sheet and saving over the
- * preset, so a rename never carries a selection with it.
+ * ``cinema_ids`` is optional so a plain rename (the manage-presets page's
+ * inline text edit) never has to resend the selection — omitted means
+ * "leave the cinemas as they are"; an empty list is a real (if unusual)
+ * "no cinemas" selection, not "don't touch this".
  */
 export type CinemaPresetRename = {
   name: string
+  cinema_ids?: Array<number> | null
 }
 
 export type CinemaPublic = {
@@ -479,6 +482,7 @@ export type SavedPresetCreate = {
   untouched_fields?: Array<string>
   filters: SavedPresetFilters
   cinema_ids?: Array<number> | null
+  cinema_preset_id?: string | null
   is_favorite?: boolean | null
 }
 
@@ -508,6 +512,7 @@ export type SavedPresetPublic = {
   filters: SavedPresetFilters
   cinema_ids: Array<number> | null
   cinema_scope?: CinemaScope | null
+  cinema_preset_id?: string | null
   created_at: string
   updated_at: string
 }
@@ -922,6 +927,8 @@ export type ShowtimeViewerState = {
   pending_invited_friends?: Array<UserPublic>
   friends_watchlisted?: Array<UserPublic>
   friends_watched?: Array<UserPublic>
+  friends_of_friends_going?: Array<UserPublic>
+  friends_of_friends_interested?: Array<UserPublic>
   non_friend_participants?: Array<NonFriendParticipantPublic>
 }
 
@@ -1040,6 +1047,7 @@ export type UserMe = {
   show_watchlist_digest_tip: boolean
   is_superuser: boolean
   incognito_mode: boolean
+  show_friends_of_friends_interest: boolean
   notify_on_friend_showtime_match: boolean
   notify_on_friend_requests: boolean
   notify_on_showtime_ping: boolean
@@ -1047,6 +1055,7 @@ export type UserMe = {
   notify_on_interest_reminder: boolean
   notify_on_seat_alert: boolean
   notify_on_sold_out: boolean
+  notify_on_showtime_reminder: boolean
   notify_channel_friend_showtime_match: NotificationChannel
   notify_channel_friend_requests: NotificationChannel
   notify_channel_showtime_ping: NotificationChannel
@@ -1054,6 +1063,7 @@ export type UserMe = {
   notify_channel_interest_reminder: NotificationChannel
   notify_channel_seat_alert: NotificationChannel
   notify_channel_sold_out: NotificationChannel
+  notify_channel_showtime_reminder: NotificationChannel
   letterboxd_username: string | null
   watchlist_count: number
   watched_count: number
@@ -1066,9 +1076,6 @@ export type UserMe = {
   watchlist_sync_cooldown_ends_at?: string | null
   watched_sync_cooldown_ends_at?: string | null
   notify_watchlist_digest_enabled: boolean
-  notify_watchlist_digest_frequency: DigestFrequency
-  notify_watchlist_digest_list_id: string | null
-  notify_watchlist_digest_cinema_preset_id: string | null
   can_report: boolean
   can_watch_sold_out: boolean
   has_password: boolean
@@ -1147,6 +1154,7 @@ export type UserUpdate = {
   email?: string | null
   letterboxd_username?: string | null
   incognito_mode?: boolean | null
+  show_friends_of_friends_interest?: boolean | null
   notify_on_friend_showtime_match?: boolean | null
   notify_on_friend_requests?: boolean | null
   notify_on_showtime_ping?: boolean | null
@@ -1154,6 +1162,7 @@ export type UserUpdate = {
   notify_on_interest_reminder?: boolean | null
   notify_on_seat_alert?: boolean | null
   notify_on_sold_out?: boolean | null
+  notify_on_showtime_reminder?: boolean | null
   notify_channel_friend_showtime_match?: NotificationChannel | null
   notify_channel_friend_requests?: NotificationChannel | null
   notify_channel_showtime_ping?: NotificationChannel | null
@@ -1161,10 +1170,8 @@ export type UserUpdate = {
   notify_channel_interest_reminder?: NotificationChannel | null
   notify_channel_seat_alert?: NotificationChannel | null
   notify_channel_sold_out?: NotificationChannel | null
+  notify_channel_showtime_reminder?: NotificationChannel | null
   notify_watchlist_digest_enabled?: boolean | null
-  notify_watchlist_digest_frequency?: DigestFrequency | null
-  notify_watchlist_digest_list_id?: string | null
-  notify_watchlist_digest_cinema_preset_id?: string | null
   password?: string | null
   current_password?: string | null
 }
@@ -1201,6 +1208,38 @@ export type ValidationError = {
  * who invited you.
  */
 export type VisibilityMode = "ALL_FRIENDS" | "INVITED_ONLY"
+
+export type WatchlistDigestSourceCreate = {
+  frequency?: DigestFrequency
+  list_id?: string | null
+  cinema_preset_id?: string | null
+  custom_cinema_ids?: Array<number> | null
+}
+
+export type WatchlistDigestSourcePublic = {
+  id: string
+  frequency: DigestFrequency
+  list_id: string | null
+  cinema_preset_id: string | null
+  custom_cinema_ids: Array<number> | null
+  created_at: string
+}
+
+/**
+ * Every field is a partial update (PATCH semantics, `exclude_unset`).
+ *
+ * Switching the cinema selection from a preset to a custom list (or back)
+ * is done by sending both fields explicitly in the same request — e.g.
+ * `{"cinema_preset_id": "<id>", "custom_cinema_ids": null}` — the service
+ * also clears the other field itself if only one is sent, so a client never
+ * has to.
+ */
+export type WatchlistDigestSourceUpdate = {
+  frequency?: DigestFrequency | null
+  list_id?: string | null
+  cinema_preset_id?: string | null
+  custom_cinema_ids?: Array<number> | null
+}
 
 export type AdminSimulateSeatAvailabilityData = {
   requestBody: SimulateSeatAvailability
@@ -1454,6 +1493,28 @@ export type MeSetFavoriteCinemaPresetData = {
 }
 
 export type MeSetFavoriteCinemaPresetResponse = CinemaPresetPublic
+
+export type MeGetWatchlistDigestSourcesResponse =
+  Array<WatchlistDigestSourcePublic>
+
+export type MeCreateWatchlistDigestSourceData = {
+  requestBody: WatchlistDigestSourceCreate
+}
+
+export type MeCreateWatchlistDigestSourceResponse = WatchlistDigestSourcePublic
+
+export type MeUpdateWatchlistDigestSourceData = {
+  requestBody: WatchlistDigestSourceUpdate
+  sourceId: string
+}
+
+export type MeUpdateWatchlistDigestSourceResponse = WatchlistDigestSourcePublic
+
+export type MeDeleteWatchlistDigestSourceData = {
+  sourceId: string
+}
+
+export type MeDeleteWatchlistDigestSourceResponse = Message
 
 export type MeResendEmailVerificationResponse = Message
 
@@ -1972,6 +2033,13 @@ export type ShowtimesUninviteFriendFromShowtimeData = {
 }
 
 export type ShowtimesUninviteFriendFromShowtimeResponse = Message
+
+export type ShowtimesSendShowtimeReminderData = {
+  friendId: string
+  showtimeId: number
+}
+
+export type ShowtimesSendShowtimeReminderResponse = Message
 
 export type ShowtimesCreateShowtimePingLinkTokenData = {
   showtimeId: number

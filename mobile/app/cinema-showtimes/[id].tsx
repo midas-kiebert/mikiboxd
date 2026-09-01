@@ -44,7 +44,7 @@ import {
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
+import { buildSnapshotTime, useSnapshotRefresh } from "@/utils/reset-infinite-query";
 import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
 import { getCinemaColorPalette } from "@/utils/cinema-color";
 
@@ -216,7 +216,6 @@ function CinemaShowtimesContent({
   // the cinemas list finishes fetching.
   const routeBadgeBgColor = useMemo(() => getRouteParam(badgeBgColor)?.trim() ?? "", [badgeBgColor]);
   const routeUrl = useMemo(() => getRouteParam(url)?.trim() ?? "", [url]);
-  const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
   const {
@@ -438,16 +437,13 @@ function CinemaShowtimesContent({
   });
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      // One snapshot drives both the showtimes and movies queries, so which
-      // mode is on screen no longer changes what a refresh has to do.
-      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  // One snapshot drives both the showtimes and movies queries, so which mode
+  // is on screen no longer changes what a refresh has to do — and the refresh
+  // is not over until whichever of them is on screen has its rows back.
+  const { refreshing, handleRefresh } = useSnapshotRefresh({
+    setSnapshotTime,
+    isFetching: showtimesFetching || moviesFetching,
+  });
 
   const handleLoadMore = () => {
     if (showtimesHasNextPage && !showtimesFetchingNextPage) {
@@ -495,25 +491,21 @@ function CinemaShowtimesContent({
   // "reload" state needed, and nothing for the loading panel to do here.
   const visibleMovies = movies;
 
-  // `moviesLoading` means there's no cached data at all for this query —
-  // nothing to lose by showing the panel immediately, and a delay here is
-  // exactly the "blank screen for too long" a genuine first load (or a
-  // filter combo that's never been fetched before) doesn't need.
-  // `moviesFetching`-only (data already empty, but a background refetch is
-  // running) is the case that can resolve from cache almost instantly, so
-  // that one keeps the anti-flash delay and cooldown. `!refreshing` on both:
-  // RefreshControl's own spinner already covers a pull-to-refresh, so the
-  // panel has nothing to do for one even on an already-empty list.
-  const isMoviesFirstLoadEmpty = moviesLoading && !refreshing && movies.length === 0;
-  const isMoviesBackgroundFetchEmpty =
-    moviesFetching && !moviesLoading && !refreshing && movies.length === 0;
-  const showMoviesBackgroundFetchLoadingLogo = useDelayedTrue(
-    isMoviesBackgroundFetchEmpty,
+  // `!refreshing`: RefreshControl's own spinner already covers a
+  // pull-to-refresh, so the panel has nothing to do for one even on an
+  // already-empty list. Both a genuine first load and a background refetch
+  // go through the same delay+cooldown — a preset or filter combo that's
+  // been used before (or just hits a nearby cache entry) very often resolves
+  // faster than LOADING_LOGO_DELAY_MS even with nothing cached yet, so
+  // showing `moviesLoading` immediately just moved the flash from "quick
+  // filter taps" to "quick presets" instead of removing it.
+  const isMoviesEmptyLoading =
+    (moviesLoading || moviesFetching) && !refreshing && movies.length === 0;
+  const showMoviesLoadingLogo = useDelayedTrue(
+    isMoviesEmptyLoading,
     LOADING_LOGO_DELAY_MS,
     LOADING_LOGO_COOLDOWN_MS
   );
-  const showMoviesLoadingLogo = isMoviesFirstLoadEmpty || showMoviesBackgroundFetchLoadingLogo;
-  const isMoviesEmptyLoading = isMoviesFirstLoadEmpty || isMoviesBackgroundFetchEmpty;
 
   const moviesContent = appliedGroupByMovie ? (
     <View style={styles.flex}>
@@ -526,8 +518,13 @@ function CinemaShowtimesContent({
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           // The loading panel is a fixed overlay (below), not part of the
-          // list's own content, so there's nothing to render here while it's up.
-          isMoviesEmptyLoading ? null : (
+          // list's own content, so there's nothing to render here while it's
+          // up. And never the "nothing found" copy while a refresh is in
+          // flight either — the pull gesture's own spinner already covers
+          // that, and this would otherwise flash up for an already-empty list
+          // mid-refresh even though the loading panel is deliberately skipped
+          // for that case.
+          isMoviesEmptyLoading || refreshing ? null : (
             <View style={styles.centerContainer}>
               <ThemedText style={styles.emptyText}>No movies found</ThemedText>
               {searchFieldFallback}

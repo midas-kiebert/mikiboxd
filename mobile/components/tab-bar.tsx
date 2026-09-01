@@ -52,7 +52,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import { triggerTabPressHaptic } from '@/utils/long-press';
 
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
@@ -294,11 +294,10 @@ export function HapticTab({
         flashStartedAt = Date.now();
         flash.value = 0;
         flash.value = withTiming(1, FLASH_TIMING);
-        // iOS haptics feel natural for tab presses; Android already has native ripple feedback.
-        if (process.env.EXPO_OS === 'ios') {
-          // Add a soft haptic feedback when pressing down on the tabs.
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        }
+        // On touch-down with the flash, not on the navigation that follows it:
+        // the press is answered by the bar, and the haptic is part of that
+        // answer rather than a report that the screen has changed.
+        triggerTabPressHaptic();
         props.onPressIn?.(ev);
       }}
       onPress={(ev) => {

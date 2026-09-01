@@ -1,11 +1,2 @@
-- Interested Included / Invites included should be reworked and made animated
-- Make the "Check" button look nicer
-- make showtimes / movies load more smoothly (animated, faded in?).
-- For the notify on showtimes: move the frequency settings to the advanced settings, and make it so you can have multiple sources: i.e. you should be able to add a "source" (pick a better name), where you can choose between eager and weekly/lazy, and you can pick the list and the cinemas, also with buttons to add a new list (gets added to the exact same spot as your other lists which were in filters) and choose custom cinemas (this will not be saved as a preset)
-- Notify on showtimes shouldn't automatically select top 500 films when no watchlist is set, this is not expected behaviour, it should tell you to connect your letterboxd or go to advanced settings to select a custom list.
-- You should be able to edit cinema presets in the manage presets page, filter presets should save cinema presets (if one is selected) instead of the raw selection, it should follow that preset if you ever edit the cinema preset, if the cinema preset is ever deleted, this should convert the filter preset selection to the raw selection.
-- Add more cinemas for seat availability and seat layout picker
-- Add the ability to "send reminders" to friends that are already interested (or invited and haven't dismissed) to a showtime. There should be a setting (in the notifications section) where you can disable this, the option should only be visible to users who have this enabled.
-- Add a feature that you can enable seeing the friends of all your friends that are interested in a showtime (if that mutual friend is also interested)
-- Put that loading panel (`components/layout/LoadingLogo.tsx`, the one the theme switch uses) in more places instead of making people wait on a frozen screen — anywhere an expensive mount or a slow fetch holds a screen or sheet up. Replace it later with a custom loading animation, once, in that one component.
-- Revert the "Set preset" and "Manage preset" styles from cinema modal
+- Improve the "Set preset" and "Manage preset" styles from cinema modal
+- Improve the empty state on the agenda page

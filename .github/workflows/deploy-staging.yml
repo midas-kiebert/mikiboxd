@@ -106,10 +106,19 @@ jobs:
         # for columns pg_dump could still handle.
         run: |
           set -euo pipefail
+          # Order matters now that each table is copied (and FK-checked) on
+          # its own: `letterboxd` must land before `user` (notify_watchlist_
+          # digest_list_id/letterboxd_username reference it) and before
+          # `watchlistselection`/`watchedselection`, or every row with a
+          # foreign key into it fails as "skipped" even though the
+          # referenced row exists on both sides — it just hadn't been
+          # copied yet. Every other listed table depends on `user`, so
+          # anything is fine after that.
           USER_DATA_TABLES=(
+            letterboxd
             user user_login_email userblock userreport
             friendship friendrequest
-            letterboxd userletterboxdlist
+            userletterboxdlist
             cinemaselection cinemapreset savedpreset
             notification
             watchlistselection watchedselection showtimeselection

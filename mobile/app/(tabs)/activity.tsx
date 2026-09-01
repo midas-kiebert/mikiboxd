@@ -40,6 +40,7 @@ import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtime
 import { useFetchAgenda } from "shared/hooks/useFetchAgenda";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
 
+import CinevilleCardButton from "@/components/cineville/CinevilleCardButton";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import TabScreenSkeleton from "@/components/layout/TabScreenSkeleton";
 import { tabContentHoldMs } from "@/components/tab-bar";
@@ -209,6 +210,8 @@ function ActivityScreen() {
           </Animated.View>
         </GestureDetector>
       </View>
+      {/* Floats over whichever slice is on screen, so it goes after the pager. */}
+      <CinevilleCardButton surface="activity" />
     </TopSafeAreaView>
   );
 }

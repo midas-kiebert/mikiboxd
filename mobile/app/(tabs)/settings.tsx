@@ -160,6 +160,7 @@ function SettingsScreen() {
   const [isCinevilleCardVisible, setIsCinevilleCardVisible] = useState(false);
   // Which feeds the floating pass shortcut is allowed to appear on.
   const isShortcutOnShowtimes = useCinevilleShortcutEnabled('showtimes');
+  const isShortcutOnActivity = useCinevilleShortcutEnabled('activity');
   // Confirmations for the two irreversible actions on this screen. Themed
   // dialogs rather than Alert.alert, which is app-wide reserved for pure error
   // toasts — a native alert is the one surface in the app that ignores the
@@ -700,6 +701,13 @@ function SettingsScreen() {
                   <AppSwitch
                     value={isShortcutOnShowtimes}
                     onValueChange={(value) => setCinevilleShortcutEnabled('showtimes', value)}
+                  />
+                </View>
+                <View style={styles.cinevilleShortcutRow}>
+                  <ThemedText style={styles.cinevilleShortcutLabel}>On the activity tab</ThemedText>
+                  <AppSwitch
+                    value={isShortcutOnActivity}
+                    onValueChange={(value) => setCinevilleShortcutEnabled('activity', value)}
                   />
                 </View>
               </>

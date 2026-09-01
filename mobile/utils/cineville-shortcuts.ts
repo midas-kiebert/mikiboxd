@@ -1,7 +1,7 @@
 /**
- * Whether the Cineville pass shortcut is shown on the showtimes feed, chosen
- * in Settings and stored on the device next to the card number itself
- * ([[cineville-card]]).
+ * Whether the Cineville pass shortcut is shown on a given surface (the
+ * showtimes feed, the activity tab), chosen per-surface in Settings and
+ * stored on the device next to the card number itself ([[cineville-card]]).
  *
  * Defaults to on: someone who has saved a card number is exactly the person
  * who wants the shortcut, and a button that has to be switched on before it can
@@ -11,10 +11,11 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import * as SecureStore from 'expo-secure-store';
 
-export type CinevilleShortcutSurface = 'showtimes';
+export type CinevilleShortcutSurface = 'showtimes' | 'activity';
 
 const STORAGE_KEYS: Record<CinevilleShortcutSurface, string> = {
   showtimes: 'cineville_shortcut_showtimes',
+  activity: 'cineville_shortcut_activity',
 };
 
 /** Stored as a flag rather than JSON — this is one boolean per surface. */
@@ -23,6 +24,7 @@ const DISABLED_VALUE = '0';
 
 const enabledBySurface: Record<CinevilleShortcutSurface, boolean> = {
   showtimes: true,
+  activity: true,
 };
 
 let hasLoaded = false;

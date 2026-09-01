@@ -27,10 +27,16 @@ def upgrade():
         "ADD COLUMN IF NOT EXISTS notify_on_showtime_reminder boolean "
         "NOT NULL DEFAULT true"
     )
+    # Stored by the enum member's *name*, not its value — 'PUSH'/'EMAIL',
+    # matching every other notify_channel_* column (see
+    # bc34de56fa78_fix_notification_channel_enum_storage.py). Getting this
+    # wrong crashes every read of the user table, not just this column: the
+    # ORM decodes the whole row through NotificationChannel, and a stored
+    # value that isn't a valid member name (lowercase 'push') raises.
     op.execute(
         'ALTER TABLE "user" '
         "ADD COLUMN IF NOT EXISTS notify_channel_showtime_reminder varchar(16) "
-        "NOT NULL DEFAULT 'push'"
+        "NOT NULL DEFAULT 'PUSH'"
     )
 
 

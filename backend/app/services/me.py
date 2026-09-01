@@ -865,13 +865,19 @@ def apply_cinema_preset_as_favorite(
     user_id: UUID,
     preset_id: UUID,
 ) -> CinemaPresetPublic | None:
-    """Point "my cinemas" at what a saved preset covers.
+    """Swap "my cinemas" with what a saved preset covers.
 
-    Copies the cinemas across rather than moving the favorite flag onto the
-    preset. Moving it would leave the row the user thinks of as "my cinemas"
-    sitting in the list as an ordinary preset under that same name, and would
-    quietly turn a preset they saved for one purpose into the thing applied on
-    every startup. One row is the favorite, always, and it keeps its identity.
+    The two selections exchange places: the preset's cinemas become the ones
+    applied on startup, and the outgoing preferred selection is handed back to
+    the preset. Nothing is lost that way — the selection being replaced is
+    still saved under the preset the user just promoted, so the swap is undone
+    by tapping the same button again.
+
+    The favorite flag itself never moves. Moving it would leave the row the
+    user thinks of as "my cinemas" sitting in the list as an ordinary preset
+    under that same name, and would quietly turn a preset they saved for one
+    purpose into the thing applied on every startup. One row is the favorite,
+    always, and it keeps its identity and its name.
     """
     preset = cinema_presets_crud.get_user_preset_by_id(
         session=session,
@@ -880,17 +886,48 @@ def apply_cinema_preset_as_favorite(
     )
     if preset is None:
         return None
+    if preset.is_favorite:
+        # Already the preferred selection; there is nothing to swap it with.
+        return get_favorite_cinema_preset(session=session, user_id=user_id)
 
-    # Resolved, not the frozen snapshot: copying "everything in Amsterdam"
-    # across has to copy the rule, and the rule is re-derived from the ids.
+    favorite = cinema_presets_crud.get_user_favorite_preset(
+        session=session,
+        user_id=user_id,
+    )
+    # Resolved, not the frozen snapshot: moving "everything in Amsterdam"
+    # across has to move the rule, and the rule is re-derived from the ids.
+    # Both sides are read before either is written.
+    incoming_cinema_ids = (
+        cinema_presets_crud.resolve_preset_cinema_ids(session=session, preset=preset)
+        or []
+    )
+    outgoing_cinema_ids = (
+        cinema_presets_crud.resolve_preset_cinema_ids(session=session, preset=favorite)
+        or []
+        if favorite is not None
+        else []
+    )
+
     set_favorite_cinema_ids(
         session=session,
         user_id=user_id,
-        cinema_ids=cinema_presets_crud.resolve_preset_cinema_ids(
-            session=session, preset=preset
-        )
-        or [],
+        cinema_ids=incoming_cinema_ids,
     )
+    # Only a real previous selection is handed back. With no favorite row yet
+    # there was nothing being replaced, so the preset keeps what it had.
+    if favorite is not None:
+        normalized_outgoing_ids = _normalize_cinema_ids(outgoing_cinema_ids)
+        cinema_presets_crud.update_preset(
+            session=session,
+            preset=preset,
+            cinema_ids=normalized_outgoing_ids,
+            cinema_scope=_scope_for_selection(
+                session=session, cinema_ids=normalized_outgoing_ids
+            ),
+            is_favorite=None,
+            now=now_amsterdam_naive(),
+        )
+        session.commit()
     return get_favorite_cinema_preset(session=session, user_id=user_id)
 
 

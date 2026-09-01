@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for friend-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { DateTime } from 'luxon';
@@ -23,6 +23,7 @@ import { useDeferredMount } from '@/utils/use-deferred-mount';
 import FiltersButton from '@/components/filters/FiltersButton';
 import FiltersModal from '@/components/filters/FiltersModal';
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
+import type { OpenCinemaModalOptions } from '@/components/filters/CinemaFilterModal';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import SearchFieldFallback from '@/components/inputs/SearchFieldFallback';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
@@ -159,6 +160,16 @@ function FriendShowtimesContent({
     [userId]
   );
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
+  // Set when the cinema pill's dropdown opens the sheet on a preset's pencil.
+  const [cinemaEditPresetId, setCinemaEditPresetId] = useState<string | null>(null);
+  const openCinemaModal = useCallback((options?: OpenCinemaModalOptions) => {
+    setCinemaEditPresetId(options?.editPresetId ?? null);
+    setCinemaModalVisible(true);
+  }, []);
+  const closeCinemaModal = useCallback(() => {
+    setCinemaModalVisible(false);
+    setCinemaEditPresetId(null);
+  }, []);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
   const {
@@ -389,7 +400,7 @@ function FriendShowtimesContent({
         filterRow={
           <ActiveFilterChips
             onOpenFilters={() => setFiltersModalVisible(true)}
-            onOpenCinemaModal={() => setCinemaModalVisible(true)}
+            onOpenCinemaModal={openCinemaModal}
             groupByMovie={false}
             setGroupByMovie={NOOP_GROUP_BY_MOVIE}
             watchlistOnly={effectiveWatchlistOnly}
@@ -454,7 +465,7 @@ function FriendShowtimesContent({
         setIncludeInterested={setIncludeInterested}
         showInterestedFilter
         showCinemas
-        onOpenCinemaModal={() => setCinemaModalVisible(true)}
+        onOpenCinemaModal={openCinemaModal}
         showRuntime={false}
         selectedDays={selectedDays}
         setSelectedDays={setSelectedDays}
@@ -473,7 +484,8 @@ function FriendShowtimesContent({
       />
       <CinemaFilterModal
         visible={cinemaModalVisible}
-        onClose={() => setCinemaModalVisible(false)}
+        onClose={closeCinemaModal}
+        initialEditPresetId={cinemaEditPresetId}
       />
     </>
   );

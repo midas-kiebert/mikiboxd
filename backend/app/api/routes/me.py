@@ -212,7 +212,7 @@ def set_favorite_cinema_preset(
     current_user: CurrentUser,
     preset_id: UUID,
 ) -> CinemaPresetPublic:
-    """Point "my cinemas" at this preset's cinemas — a copy, not a handover."""
+    """Swap "my cinemas" with this preset's cinemas — the favorite row stays put."""
     favorite = me_service.apply_cinema_preset_as_favorite(
         session=session,
         user_id=current_user.id,

@@ -1225,8 +1225,10 @@ def test_cinema_presets_and_favorite_cinema_selection(
     assert weekend_create.status_code == 200
     weekend_id = weekend_create.json()["id"]
 
-    # Promoting a preset copies its cinemas into the user's own row; the preset
+    # Promoting a preset moves its cinemas into the user's own row; the preset
     # itself stays an ordinary preset rather than becoming the startup one.
+    # With no favorite row yet there is no outgoing selection to hand back, so
+    # this first promotion leaves the preset's own cinemas as they were.
     set_favorite = client.put(
         f"{settings.API_V1_STR}/me/cinema-presets/{weekend_id}/favorite",
         headers=normal_user_token_headers,
@@ -1293,6 +1295,82 @@ def test_cinema_presets_and_favorite_cinema_selection(
         headers=normal_user_token_headers,
     )
     assert delete_default_response.status_code == 404
+
+
+def test_promoting_a_cinema_preset_swaps_it_with_the_preferred_selection(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    """The two selections exchange places, so neither is lost by promoting one."""
+    client.post(
+        f"{settings.API_V1_STR}/me/cinemas",
+        headers=normal_user_token_headers,
+        json=[7, 8],
+    )
+    weekday_create = client.post(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+        json={"name": "Weekday Run", "cinema_ids": [1, 2, 3]},
+    )
+    assert weekday_create.status_code == 200
+    weekday_id = weekday_create.json()["id"]
+
+    promote = client.put(
+        f"{settings.API_V1_STR}/me/cinema-presets/{weekday_id}/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert promote.status_code == 200
+    assert promote.json()["is_favorite"] is True
+    assert promote.json()["cinema_ids"] == [1, 2, 3]
+    # The preset keeps its name and its id, and takes over the cinemas that
+    # were the preferred selection a moment ago.
+    assert promote.json()["id"] != weekday_id
+
+    presets = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+    )
+    by_id = {preset["id"]: preset for preset in presets.json()}
+    assert by_id[weekday_id]["name"] == "Weekday Run"
+    assert by_id[weekday_id]["is_favorite"] is False
+    assert by_id[weekday_id]["cinema_ids"] == [7, 8]
+
+    # Tapping it again swaps them straight back.
+    promote_again = client.put(
+        f"{settings.API_V1_STR}/me/cinema-presets/{weekday_id}/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert promote_again.status_code == 200
+    assert promote_again.json()["cinema_ids"] == [7, 8]
+
+    presets_again = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+    )
+    by_id_again = {preset["id"]: preset for preset in presets_again.json()}
+    assert by_id_again[weekday_id]["cinema_ids"] == [1, 2, 3]
+
+
+def test_promoting_the_preferred_preset_itself_changes_nothing(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    client.post(
+        f"{settings.API_V1_STR}/me/cinemas",
+        headers=normal_user_token_headers,
+        json=[4, 5],
+    )
+    favorite = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets/favorite",
+        headers=normal_user_token_headers,
+    )
+    favorite_id = favorite.json()["id"]
+
+    promote = client.put(
+        f"{settings.API_V1_STR}/me/cinema-presets/{favorite_id}/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert promote.status_code == 200
+    assert promote.json()["id"] == favorite_id
+    assert promote.json()["cinema_ids"] == [4, 5]
 
 
 def test_cinema_preset_name_clash_needs_an_explicit_overwrite(

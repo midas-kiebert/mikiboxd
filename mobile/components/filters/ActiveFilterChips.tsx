@@ -38,6 +38,7 @@ import ActiveFilterChip from "@/components/filters/ActiveFilterChip";
 import { PHASE_ONE_MS } from "@/components/filters/filter-change-animation";
 import { usePresetApply } from "@/components/filters/preset-apply-signal";
 import { isListDimension, type PresetDimension } from "@/components/filters/saved-presets";
+import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterModal";
 import { triggerImpactHaptic } from "@/utils/long-press";
 
 type ActiveFilterChipsProps = {
@@ -78,7 +79,7 @@ type ActiveFilterChipsProps = {
   /** When provided, the cinema chip is always rendered and opens the filters modal. */
   onOpenFilters?: () => void;
   /** Optional override for the cinema chip's "select cinemas" action (used outside the tab provider). */
-  onOpenCinemaModal?: () => void;
+  onOpenCinemaModal?: (options?: OpenCinemaModalOptions) => void;
   /** True while searching by cinema name — see CinemaFilterChip's `disabled`. */
   cinemaFilterDisabled?: boolean;
   onClearAll?: () => void;

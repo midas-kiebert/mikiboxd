@@ -51,6 +51,7 @@ import FilterSection, { FilterInlineRow, FilterNavRow, FilterSubLabel } from "@/
 import SegmentedControl, { type SegmentedOption } from "@/components/ui/SegmentedControl";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
+import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterModal";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
 const GROUP_BY_OPTIONS: readonly SegmentedOption<"showtimes" | "movies">[] = [
@@ -118,7 +119,7 @@ export type FiltersModalProps = {
   showInterestedFilter?: boolean;
   showCinemas?: boolean;
   /** Override the cinema modal opener (for pages rendered outside FiltersModalProvider). */
-  onOpenCinemaModal?: () => void;
+  onOpenCinemaModal?: (options?: OpenCinemaModalOptions) => void;
   showRuntime?: boolean;
   selectedDays: string[];
   setSelectedDays: (v: string[]) => void;

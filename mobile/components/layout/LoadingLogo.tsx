@@ -12,18 +12,24 @@
  * curtain is painted in the palette being switched *to*, which the hook cannot
  * know yet.
  *
- * The spinner is an `ActivityIndicator` and not a pulsing logo on purpose:
- * what this covers is a heavy render, i.e. the JS thread is busy for most of
- * the time it is on screen, and `Animated.loop` over a sequence steps between
- * its halves from JS — a pulse would stall exactly when it is meant to be
- * saying "still working". `ActivityIndicator` spins natively and cannot.
+ * The logo breathes, the same slow swell the splash screen uses, so a wait
+ * mid-app reads as the same app still starting up. It must be *one* native
+ * animation looping forever, never `Animated.loop` over a sequence: what this
+ * covers is a heavy render, i.e. the JS thread is busy for most of the time
+ * the panel is on screen, and a sequence steps between its halves from JS —
+ * so it would stall exactly when it is meant to be saying "still working".
+ * A single timing driven natively cannot stall; the swell's shape comes from
+ * interpolating that one linear ramp, not from chaining animations.
+ *
+ * The `ActivityIndicator` stays for the reason it was there before the
+ * breathing existed: it is unambiguous progress, where the swell is only
+ * atmosphere. Callers that already have their own spinner drop it.
  */
 import { useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   Animated,
   Easing,
-  Image,
   StyleSheet,
   Text,
   type StyleProp,
@@ -32,6 +38,17 @@ import {
 
 /** Short enough that a wait which never happens is never seen. */
 export const LOADING_LOGO_FADE_IN_MS = 140;
+
+/** One full breath in and out, matching the splash screen's pulse. */
+const BREATHE_DURATION_MS = 1800;
+
+/**
+ * A sine-shaped swell sampled off the loop's single linear ramp: at rest at
+ * both ends so the loop's seam is invisible, easing in and out of the peak
+ * the way chained `Easing.inOut` timings would, but without the JS hand-off.
+ */
+const BREATHE_INPUT_RANGE = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1];
+const BREATHE_SCALE_RANGE = [1, 1.009, 1.03, 1.051, 1.06, 1.051, 1.03, 1.009, 1];
 
 type LoadingLogoProps = {
   /** The line under the spinner. Omit for a wait too short to read. */
@@ -68,6 +85,21 @@ export default function LoadingLogo({
   style,
 }: LoadingLogoProps) {
   const opacity = useRef(new Animated.Value(fadeIn ? 0 : 1)).current;
+  const breathe = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.timing(breathe, {
+        toValue: 1,
+        duration: BREATHE_DURATION_MS,
+        easing: Easing.linear,
+        useNativeDriver: true,
+        isInteraction: false,
+      })
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [breathe]);
 
   useEffect(() => {
     if (!fadeIn) return;
@@ -84,11 +116,16 @@ export default function LoadingLogo({
     return () => animation.stop();
   }, [fadeIn, opacity]);
 
+  const scale = breathe.interpolate({
+    inputRange: BREATHE_INPUT_RANGE,
+    outputRange: BREATHE_SCALE_RANGE,
+  });
+
   return (
     <Animated.View style={[styles.container, style, { opacity }]}>
-      <Image
+      <Animated.Image
         source={require("../../assets/images/splash-icon.png")}
-        style={{ width: logoSize, height: logoSize }}
+        style={{ width: logoSize, height: logoSize, transform: [{ scale }] }}
         resizeMode="contain"
       />
       {hideSpinner ? null : <ActivityIndicator size="small" color={tintColor} />}

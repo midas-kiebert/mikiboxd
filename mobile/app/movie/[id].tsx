@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for movie / [id]. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   SectionList,
   Image,
@@ -45,6 +45,7 @@ import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 import FiltersModal from "@/components/filters/FiltersModal";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
+import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
 import {
@@ -245,6 +246,16 @@ function MovieContent({
   const { openShowtimeModal, openShowtimeModalById } = useShowtimeModal();
 
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
+  // Set when the cinema pill's dropdown opens the sheet on a preset's pencil.
+  const [cinemaEditPresetId, setCinemaEditPresetId] = useState<string | null>(null);
+  const openCinemaModal = useCallback((options?: OpenCinemaModalOptions) => {
+    setCinemaEditPresetId(options?.editPresetId ?? null);
+    setCinemaModalVisible(true);
+  }, []);
+  const closeCinemaModal = useCallback(() => {
+    setCinemaModalVisible(false);
+    setCinemaEditPresetId(null);
+  }, []);
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<FriendWatchKind | null>(null);
 
@@ -642,7 +653,7 @@ function MovieContent({
             <ActiveFilterChips
               inline
               onOpenFilters={() => { triggerSelectionHaptic(); setFiltersModalVisible(true); }}
-              onOpenCinemaModal={() => setCinemaModalVisible(true)}
+              onOpenCinemaModal={openCinemaModal}
               groupByMovie={false}
               setGroupByMovie={() => {}}
               watchlistOnly={false}
@@ -796,7 +807,7 @@ function MovieContent({
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}
         showStatusFilter
         showCinemas
-        onOpenCinemaModal={() => setCinemaModalVisible(true)}
+        onOpenCinemaModal={openCinemaModal}
         showRuntime={false}
         selectedDays={selectedDays}
         setSelectedDays={setSelectedDays}
@@ -810,7 +821,8 @@ function MovieContent({
       />
       <CinemaFilterModal
         visible={cinemaModalVisible}
-        onClose={() => setCinemaModalVisible(false)}
+        onClose={closeCinemaModal}
+        initialEditPresetId={cinemaEditPresetId}
       />
       {/* Static list — a movie page has no single showtime to invite anyone to. */}
       <FriendWatchListModal

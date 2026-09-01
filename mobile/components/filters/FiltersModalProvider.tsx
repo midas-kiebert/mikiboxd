@@ -13,6 +13,7 @@ import { MoviesService, ShowtimesService } from 'shared';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import FiltersModal from '@/components/filters/FiltersModal';
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
+import type { OpenCinemaModalOptions } from '@/components/filters/CinemaFilterModal';
 import { getSelectedStatusesFromShowtimeFilter } from '@/components/filters/shared-tab-filters';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
@@ -22,7 +23,7 @@ type OpenConfig = { showGroupByMovie?: boolean; showPresets?: boolean };
 
 type FiltersModalContextValue = {
   openFiltersModal: (config?: OpenConfig) => void;
-  openCinemaModal: () => void;
+  openCinemaModal: (options?: OpenCinemaModalOptions) => void;
 };
 
 const FiltersModalContext = createContext<FiltersModalContextValue>({
@@ -39,6 +40,8 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   const [showGroupByMovie, setShowGroupByMovieConfig] = useState(false);
   const [showPresets, setShowPresetsConfig] = useState(false);
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
+  // Set when the cinema pill's dropdown opens the sheet on a preset's pencil.
+  const [cinemaEditPresetId, setCinemaEditPresetId] = useState<string | null>(null);
 
   // Lets anything that must be the only thing on screen hold off while either
   // sheet is up — or close them outright (the intro's filters highlight does
@@ -143,11 +146,15 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     setVisible(true);
   }, []);
 
-  const openCinemaModal = useCallback(() => {
+  const openCinemaModal = useCallback((options?: OpenCinemaModalOptions) => {
+    setCinemaEditPresetId(options?.editPresetId ?? null);
     setCinemaModalVisible(true);
   }, []);
 
-  const handleCloseCinemaModal = useCallback(() => setCinemaModalVisible(false), []);
+  const handleCloseCinemaModal = useCallback(() => {
+    setCinemaModalVisible(false);
+    setCinemaEditPresetId(null);
+  }, []);
   const handleCloseFiltersModal = useCallback(() => setVisible(false), []);
   // Only show the back button (→ step back to Filters) when Filters is also open.
   const cinemaModalBack = visible ? handleCloseCinemaModal : undefined;
@@ -160,6 +167,7 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         onClose={handleCloseCinemaModal}
         onBack={cinemaModalBack}
         initialPage="selection"
+        initialEditPresetId={cinemaEditPresetId}
       />
       <FiltersModal
         visible={visible}

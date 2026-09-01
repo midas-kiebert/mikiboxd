@@ -13,6 +13,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { useCinemaSelection } from "@/hooks/useCinemaSelection";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
+import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterModal";
 import MorphingChipLabel from "@/components/filters/MorphingChipLabel";
 import {
   CHIP_LAYOUT_TRANSITION,
@@ -28,7 +29,7 @@ type CinemaFilterChipProps = {
    * cinema modal (used on the tab screens). Pages rendered outside that provider
    * (movie / friend agenda) pass their own local cinema modal opener.
    */
-  onOpenCinemaModal?: () => void;
+  onOpenCinemaModal?: (options?: OpenCinemaModalOptions) => void;
   /**
    * Searching by cinema name makes a cinema selection redundant — the query
    * already narrows to matching cinemas — so the chip reads "All cinemas" and
@@ -194,10 +195,17 @@ export default function CinemaFilterChip({
     closeDropdown();
   };
 
-  const handleOpenFilters = () => {
+  const handleOpenFilters = (options?: OpenCinemaModalOptions) => {
     triggerSelectionHaptic();
     closeDropdown();
-    (onOpenCinemaModal ?? openCinemaModal)();
+    (onOpenCinemaModal ?? openCinemaModal)(options);
+  };
+
+  // The pencil hands the whole preset — name and cinemas — to the picker's
+  // edit page. It sits inside the row but is its own touchable, so tapping it
+  // edits rather than applies.
+  const handleEditPreset = (presetId: string) => {
+    handleOpenFilters({ editPresetId: presetId });
   };
 
   // The dropdown exists to offer saved cinema presets, which belong to an
@@ -298,6 +306,16 @@ export default function CinemaFilterChip({
                       onPress={() => applyPreset(preset.cinema_ids)}
                       activeOpacity={0.8}
                     >
+                      <ThemedText
+                        style={[styles.presetLabel, isActive && styles.presetLabelActive]}
+                        numberOfLines={1}
+                      >
+                        {preset.name}
+                      </ThemedText>
+                      {/* Trails the name: it qualifies the preset, so it reads
+                          as part of it rather than as a marker in a gutter.
+                          The row's own highlight already says which preset is
+                          applied — no tick needed for that. */}
                       {preset.is_favorite && (
                         <MaterialIcons
                           name="star"
@@ -305,15 +323,19 @@ export default function CinemaFilterChip({
                           color={isActive ? colors.pillActiveText : colors.yellow.secondary}
                         />
                       )}
-                      <ThemedText
-                        style={[styles.presetLabel, isActive && styles.presetLabelActive]}
-                        numberOfLines={1}
+                      <TouchableOpacity
+                        onPress={() => handleEditPreset(preset.id)}
+                        activeOpacity={0.7}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit ${preset.name}`}
                       >
-                        {preset.name}
-                      </ThemedText>
-                      {isActive && (
-                        <MaterialIcons name="check" size={14} color={colors.pillActiveText} />
-                      )}
+                        <MaterialIcons
+                          name="edit"
+                          size={15}
+                          color={isActive ? colors.pillActiveText : colors.textSecondary}
+                        />
+                      </TouchableOpacity>
                     </TouchableOpacity>
                   );
                 })}
@@ -321,7 +343,7 @@ export default function CinemaFilterChip({
             )}
             <TouchableOpacity
               style={styles.hintRow}
-              onPress={handleOpenFilters}
+              onPress={() => handleOpenFilters()}
               activeOpacity={0.7}
             >
               <ThemedText style={styles.hintText} numberOfLines={2}>

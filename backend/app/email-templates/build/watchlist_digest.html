@@ -56,9 +56,11 @@
           {% endfor %}
           {% for source in sources %}
           <tr>
-            <td style="{% if loop.first %}padding-top:28px;{% else %}padding-top:6px;{% endif %}font-size:12px;line-height:18px;color:#8a8a8a;">
-              {{ source.frequency_label }} digest, following {% if source.url %}<a href="{{ source.url }}" style="color:#8a8a8a;text-decoration:underline;">{{ source.label }}</a>{% else %}{{ source.label }}{% endif %}.
-              {{ source.frequency_explainer }}
+            <td style="{% if loop.first %}padding-top:28px;{% else %}padding-top:14px;{% endif %}font-size:12px;line-height:18px;color:#8a8a8a;">
+              {% if sources|length > 1 %}<div style="font-weight:600;color:#5a5a5a;">Source {{ loop.index }}</div>{% endif %}
+              <div><strong>Frequency:</strong> {{ source.frequency_label }} &mdash; {{ source.frequency_explainer }}</div>
+              <div><strong>List:</strong> {% if source.url %}<a href="{{ source.url }}" style="color:#8a8a8a;text-decoration:underline;">{{ source.label }}</a>{% else %}{{ source.label }}{% endif %}</div>
+              <div><strong>Cinemas:</strong> {{ source.cinemas_label }}</div>
             </td>
           </tr>
           {% endfor %}

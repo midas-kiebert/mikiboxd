@@ -134,16 +134,19 @@ _WATCHLIST = DigestSource(
     label="your Letterboxd watchlist",
     url="https://letterboxd.com/midas/watchlist/",
     frequency=DigestFrequency.DAILY,
+    cinemas_label="All cinemas",
 )
 _WATCHLIST_WEEKLY = DigestSource(
     label="your Letterboxd watchlist",
     url="https://letterboxd.com/midas/watchlist/",
     frequency=DigestFrequency.WEEKLY_OR_URGENT,
+    cinemas_label="All cinemas",
 )
 _LIST = DigestSource(
     label="the Letterboxd list \u201cBest of 2026\u201d",
     url="https://letterboxd.com/midas/list/best-of-2026/",
     frequency=DigestFrequency.WEEKLY_OR_URGENT,
+    cinemas_label="My Cinemas",
 )
 _MOVIES = [
     {
@@ -167,14 +170,14 @@ def _text(within_week: bool, sources: list[DigestSource]) -> str:
 
 
 def test_footer_names_the_mode_the_reader_chose():
-    assert "Eager digest" in _text(False, [_WATCHLIST])
-    assert "Weekly digest" in _text(True, [_WATCHLIST_WEEKLY])
+    assert "Frequency: Eager" in _text(False, [_WATCHLIST])
+    assert "Frequency: Weekly" in _text(True, [_WATCHLIST_WEEKLY])
 
 
 def test_footer_names_and_links_the_watchlist_source():
     text = _text(False, [_WATCHLIST])
 
-    assert "following your Letterboxd watchlist" in text
+    assert "List: your Letterboxd watchlist" in text
     assert "https://letterboxd.com/midas/watchlist/" in text
 
 
@@ -186,6 +189,12 @@ def test_footer_names_and_links_a_chosen_list_instead():
     assert "your Letterboxd watchlist" not in text
 
 
+def test_footer_shows_the_cinema_restriction_on_its_own_row():
+    text = _text(False, [_LIST])
+
+    assert "Cinemas: My Cinemas" in text
+
+
 def test_footer_survives_a_source_that_cannot_be_linked():
     """A chosen list whose row was deleted is still named, just not linked."""
     text = _text(
@@ -195,11 +204,12 @@ def test_footer_survives_a_source_that_cannot_be_linked():
                 label="the Letterboxd list you chose",
                 url=None,
                 frequency=DigestFrequency.DAILY,
+                cinemas_label="All cinemas",
             )
         ],
     )
 
-    assert "the Letterboxd list you chose." in text
+    assert "List: the Letterboxd list you chose" in text
     assert "http" in text  # the unsubscribe link is still there
 
 
@@ -214,14 +224,17 @@ def test_footer_explains_what_the_mode_does():
 
 def test_footer_renders_every_contributing_source_with_its_own_frequency():
     """A combined email mixing a DAILY-labeled source and a WEEKLY-labeled one
-    must show both lines, each with its own explainer \u2014 the footer no longer
-    assumes a single shared frequency for the whole email."""
+    must show both sources' rows, each with its own explainer and cinema
+    restriction \u2014 the footer no longer assumes a single shared frequency (or
+    cinema selection) for the whole email."""
     text = _text(False, [_WATCHLIST, _LIST])
 
-    assert "Eager digest" in text
-    assert "Weekly digest" in text
-    assert "following your Letterboxd watchlist" in text
-    assert "following the Letterboxd list \u201cBest of 2026\u201d" in text
+    assert "Frequency: Eager" in text
+    assert "Frequency: Weekly" in text
+    assert "List: your Letterboxd watchlist" in text
+    assert "List: the Letterboxd list \u201cBest of 2026\u201d" in text
+    assert "Cinemas: All cinemas" in text
+    assert "Cinemas: My Cinemas" in text
     assert _watchlist_digest_explainer(DigestFrequency.DAILY) in text
     assert _watchlist_digest_explainer(DigestFrequency.WEEKLY_OR_URGENT) in text
     # Only one unsubscribe line at the very end, not one per source.

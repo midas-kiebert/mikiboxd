@@ -47,11 +47,16 @@ class DigestSource:
     sentence shape. ``url`` is None when the source can't be linked — a chosen
     list whose row has since been deleted. ``frequency`` is this source's own
     cadence, since sources combined into one email may not share one.
+    ``cinemas_label`` names its cinema restriction ("All cinemas", "My
+    Cinemas", "3 custom cinemas") the same way — each row of the footer
+    describes one axis of the source rather than folding all three into one
+    sentence, so a source with an unusual combination is never left implicit.
     """
 
     label: str
     url: str | None
     frequency: DigestFrequency
+    cinemas_label: str
 
 
 @dataclass
@@ -303,12 +308,17 @@ def _watchlist_digest_text(
         lines.append(f"{movie['cinema_name']} - {movie['datetime_label']}")
         lines.append(str(movie["mikino_link"]))
         lines.append("")
-    for source in sources:
+    for index, source in enumerate(sources):
         following = source.label + (f" ({source.url})" if source.url else "")
+        if len(sources) > 1:
+            lines.append(f"Source {index + 1}:")
         lines.append(
-            f"{DIGEST_FREQUENCY_LABELS[source.frequency]} digest, following {following}."
+            f"Frequency: {DIGEST_FREQUENCY_LABELS[source.frequency]}"
+            f" — {_watchlist_digest_explainer(source.frequency)}"
         )
-        lines.append(_watchlist_digest_explainer(source.frequency))
+        lines.append(f"List: {following}")
+        lines.append(f"Cinemas: {source.cinemas_label}")
+        lines.append("")
     lines.append(f"To stop these emails: {unsubscribe_link}")
     return "\n".join(lines)
 
@@ -372,6 +382,7 @@ def generate_watchlist_digest_email(
                     "url": source.url,
                     "frequency_label": DIGEST_FREQUENCY_LABELS[source.frequency],
                     "frequency_explainer": _watchlist_digest_explainer(source.frequency),
+                    "cinemas_label": source.cinemas_label,
                 }
                 for source in sources
             ],

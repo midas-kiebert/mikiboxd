@@ -160,6 +160,30 @@ def _resolve_source_movie_ids_subquery(
     return None
 
 
+def _resolve_digest_cinemas_label(
+    *, session: Session, user: User, source: WatchlistDigestSource
+) -> str:
+    """Name this source's cinema restriction, for the email footer.
+
+    Mirrors `_resolve_digest_cinema_ids`'s branching exactly (custom ids, then
+    the synthetic "All Cinemas" row, then a real preset, falling back to no
+    restriction), so the label never claims one the send didn't actually
+    apply.
+    """
+    if source.custom_cinema_ids is not None:
+        count = len(source.custom_cinema_ids)
+        return f"{count} custom cinema{'' if count == 1 else 's'}"
+    if source.cinema_preset_id == DEFAULT_CINEMA_PRESET_ID:
+        return "All cinemas"
+    if source.cinema_preset_id is not None:
+        preset = cinema_preset_crud.get_user_preset_by_id(
+            session=session, user_id=user.id, preset_id=source.cinema_preset_id
+        )
+        if preset is not None:
+            return preset.name
+    return "All cinemas"
+
+
 def _resolve_digest_source_label(
     *, session: Session, user: User, source: WatchlistDigestSource
 ) -> DigestSource:
@@ -171,12 +195,16 @@ def _resolve_digest_source_label(
     still filters nothing, so it is named without a link rather than silently
     relabelled as the watchlist.
     """
+    cinemas_label = _resolve_digest_cinemas_label(session=session, user=user, source=source)
     list_id = source.list_id
     if list_id is not None:
         source_list = session.get(LetterboxdList, list_id)
         if source_list is None:
             return DigestSource(
-                label="the Letterboxd list you chose", url=None, frequency=source.frequency
+                label="the Letterboxd list you chose",
+                url=None,
+                frequency=source.frequency,
+                cinemas_label=cinemas_label,
             )
         name = source_list.title or source_list.list_slug
         return DigestSource(
@@ -186,11 +214,13 @@ def _resolve_digest_source_label(
                 f"/list/{source_list.list_slug}/"
             ),
             frequency=source.frequency,
+            cinemas_label=cinemas_label,
         )
     return DigestSource(
         label="your Letterboxd watchlist",
         url=f"https://letterboxd.com/{user.letterboxd_username}/watchlist/",
         frequency=source.frequency,
+        cinemas_label=cinemas_label,
     )
 
 

@@ -98,25 +98,32 @@ WATCHLIST = DigestSource(
     label="your Letterboxd watchlist",
     url="https://letterboxd.com/midas/watchlist/",
     frequency=DigestFrequency.WEEKLY_OR_URGENT,
+    cinemas_label="All cinemas",
 )
 WATCHLIST_DAILY = DigestSource(
     label="your Letterboxd watchlist",
     url="https://letterboxd.com/midas/watchlist/",
     frequency=DigestFrequency.DAILY,
+    cinemas_label="My Cinemas",
 )
 CHOSEN_LIST = DigestSource(
     label="the Letterboxd list “Slow Cinema, Fast Food”",
     url="https://letterboxd.com/midas/list/slow-cinema-fast-food/",
     frequency=DigestFrequency.WEEKLY_OR_URGENT,
+    cinemas_label="All cinemas",
 )
 CHOSEN_LIST_DAILY = DigestSource(
     label="the Letterboxd list “Slow Cinema, Fast Food”",
     url="https://letterboxd.com/midas/list/slow-cinema-fast-food/",
     frequency=DigestFrequency.DAILY,
+    cinemas_label="3 custom cinemas",
 )
 # A list the user picked whose row has since been deleted: still named, no link.
 DELETED_LIST = DigestSource(
-    label="the Letterboxd list you chose", url=None, frequency=DigestFrequency.WEEKLY_OR_URGENT
+    label="the Letterboxd list you chose",
+    url=None,
+    frequency=DigestFrequency.WEEKLY_OR_URGENT,
+    cinemas_label="All cinemas",
 )
 
 CASES: list[tuple[str, list[DigestSource], int, str]] = [

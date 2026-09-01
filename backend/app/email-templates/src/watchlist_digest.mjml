@@ -29,8 +29,12 @@
     <mj-raw>{% endfor %}</mj-raw>
     <mj-section background-color="#ffffff" padding="28px 20px 0">
       <mj-column>
-        <mj-raw>{% for source in sources %}</mj-raw>
-        <mj-text font-size="12px" line-height="18px" color="#8a8a8a" padding-top="{% if loop.first %}0{% else %}6px{% endif %}">{{ source.frequency_label }} digest, following {% if source.url %}<a href="{{ source.url }}" style="color:#8a8a8a;text-decoration:underline;">{{ source.label }}</a>{% else %}{{ source.label }}{% endif %}. {{ source.frequency_explainer }}</mj-text>
+        <mj-raw>{% for source in sources %}{% if sources|length > 1 %}</mj-raw>
+        <mj-text font-size="12px" line-height="18px" font-weight="600" color="#5a5a5a" padding-top="{% if loop.first %}0{% else %}14px{% endif %}">Source {{ loop.index }}</mj-text>
+        <mj-raw>{% endif %}</mj-raw>
+        <mj-text font-size="12px" line-height="18px" color="#8a8a8a" padding-top="{% if loop.first and sources|length == 1 %}0{% else %}2px{% endif %}"><strong>Frequency:</strong> {{ source.frequency_label }} &mdash; {{ source.frequency_explainer }}</mj-text>
+        <mj-text font-size="12px" line-height="18px" color="#8a8a8a"><strong>List:</strong> {% if source.url %}<a href="{{ source.url }}" style="color:#8a8a8a;text-decoration:underline;">{{ source.label }}</a>{% else %}{{ source.label }}{% endif %}</mj-text>
+        <mj-text font-size="12px" line-height="18px" color="#8a8a8a"><strong>Cinemas:</strong> {{ source.cinemas_label }}</mj-text>
         <mj-raw>{% endfor %}</mj-raw>
       </mj-column>
     </mj-section>

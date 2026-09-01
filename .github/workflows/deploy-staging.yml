@@ -89,6 +89,16 @@ jobs:
         # that one INSERT and the rest of the sync continues. pushtoken is
         # truncated only, never copied: production device tokens must never
         # reach staging.
+        #
+        # --column-inserts (not plain --inserts): dev migrates ahead of prod
+        # by design, so a table's column order/count on staging and prod can
+        # differ at deploy time. Plain --inserts writes positional VALUES
+        # lists with no column names, which silently scrambles data — or
+        # worse, hard-fails every row with a type mismatch — the moment the
+        # two schemas diverge (this broke the `user` copy entirely once,
+        # 2026-09-01). --column-inserts names each column explicitly, so a
+        # copy only ever fails on genuinely incompatible columns, never on
+        # column order.
         run: |
           set -o pipefail
           USER_DATA_TABLES=(
@@ -117,7 +127,7 @@ jobs:
             -c "TRUNCATE TABLE $(IFS=,; echo "${QUOTED_TABLES[*]}") CASCADE;"
 
           docker exec mikiboxd-db-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-            --no-owner --no-privileges --data-only --inserts \
+            --no-owner --no-privileges --data-only --column-inserts \
             "${TABLE_ARGS[@]}" \
             | docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging up --detach

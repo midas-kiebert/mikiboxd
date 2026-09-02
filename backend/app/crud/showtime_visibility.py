@@ -476,9 +476,7 @@ def _compute_visible_friend_ids_for_attending_owner(
     # Not intersected with `all_friend_ids` — FRIENDS_OF_FRIENDS deliberately
     # reaches non-friends via `base_visible_ids`, and the other three sources
     # are already friend-scoped on their own, so this is a no-op for them.
-    return (
-        base_visible_ids | direct_invited_ids | co_invited_ids | chain_invited_ids
-    )
+    return base_visible_ids | direct_invited_ids | co_invited_ids | chain_invited_ids
 
 
 def rebuild_effective_visibility_for_showtime(

@@ -43,9 +43,7 @@ def _skips_cinema_default(filters: Filters) -> bool:
     feeds (like Activity's "All") that are about everyone, not just friends.
     """
     return (
-        _is_cinema_name_search(filters)
-        or filters.friends_only
-        or filters.all_cinemas
+        _is_cinema_name_search(filters) or filters.friends_only or filters.all_cinemas
     )
 
 

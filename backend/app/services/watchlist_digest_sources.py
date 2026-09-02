@@ -87,7 +87,10 @@ def update_source(
     sends_preset = "cinema_preset_id" in data
     sends_custom = "custom_cinema_ids" in data
     if sends_preset and sends_custom:
-        if data["cinema_preset_id"] is not None and data["custom_cinema_ids"] is not None:
+        if (
+            data["cinema_preset_id"] is not None
+            and data["custom_cinema_ids"] is not None
+        ):
             raise WatchlistDigestSourceCinemaSelectionConflict()
     elif sends_preset and data["cinema_preset_id"] is not None:
         data["custom_cinema_ids"] = None

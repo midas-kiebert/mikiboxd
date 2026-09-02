@@ -347,7 +347,8 @@ def generate_watchlist_digest_email(
     footer lists each of them.
     """
     within_week = all(
-        showtime.datetime <= now + _SUBJECT_WEEK_HORIZON for _, showtime in movie_entries
+        showtime.datetime <= now + _SUBJECT_WEEK_HORIZON
+        for _, showtime in movie_entries
     )
     movies: list[dict[str, Any]] = [
         {
@@ -381,7 +382,9 @@ def generate_watchlist_digest_email(
                     "label": source.label,
                     "url": source.url,
                     "frequency_label": DIGEST_FREQUENCY_LABELS[source.frequency],
-                    "frequency_explainer": _watchlist_digest_explainer(source.frequency),
+                    "frequency_explainer": _watchlist_digest_explainer(
+                        source.frequency
+                    ),
                     "cinemas_label": source.cinemas_label,
                 }
                 for source in sources

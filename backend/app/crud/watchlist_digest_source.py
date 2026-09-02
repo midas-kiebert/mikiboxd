@@ -55,9 +55,7 @@ def create_source(
     return source
 
 
-def delete_source(
-    *, session: Session, user_id: UUID, source_id: UUID
-) -> bool:
+def delete_source(*, session: Session, user_id: UUID, source_id: UUID) -> bool:
     source = get_user_source_by_id(
         session=session, user_id=user_id, source_id=source_id
     )

@@ -359,9 +359,7 @@ def _fetch_tricket_taken_seats(
     return tuple(taken)
 
 
-def _fetch_tricket_booked_seat_ids(
-    *, host: str, screening_id: str
-) -> list[str] | None:
+def _fetch_tricket_booked_seat_ids(*, host: str, screening_id: str) -> list[str] | None:
     """The `bookedSeats` id list, opening or renewing a basket as needed."""
     for refresh in (False, True):
         basket_id = _tricket_basket_id(host, refresh=refresh)

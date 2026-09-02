@@ -369,7 +369,8 @@ def get_friends_for_showtime(
         # `get_visible_non_friends_for_showtime`'s badge, not this one.
         .join(
             Friendship,
-            (col(Friendship.user_id) == user_id) & (col(Friendship.friend_id) == User.id),
+            (col(Friendship.user_id) == user_id)
+            & (col(Friendship.friend_id) == User.id),
         )
         .where(
             col(ShowtimeSelection.showtime_id) == showtime_id,

@@ -270,9 +270,7 @@ def get_watchlist_digest_sources(
     )
 
 
-@router.post(
-    "/watchlist-digest-sources", response_model=WatchlistDigestSourcePublic
-)
+@router.post("/watchlist-digest-sources", response_model=WatchlistDigestSourcePublic)
 def create_watchlist_digest_source(
     session: SessionDep,
     current_user: CurrentUser,

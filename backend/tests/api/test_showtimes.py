@@ -1156,17 +1156,10 @@ def test_incognito_mode_overrides_and_restores_status_visibility(
     )
     db_transaction.commit()
 
-    # Pinned rather than left on the account default, which is
-    # FRIENDS_OF_FRIENDS: this test is about incognito replacing a mode and
-    # then handing the same one back, and it can only assert that if it knows
-    # which mode was in force to begin with.
-    set_mode_response = client.put(
-        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
-        headers=normal_user_token_headers,
-        json={"mode": "ALL_FRIENDS"},
-    )
-    assert set_mode_response.status_code == 200
-
+    # Deliberately left on the account default rather than pinned to a mode:
+    # incognito overrides the *default*, and an explicit per-showtime setting
+    # wins over it — so pinning one here would stop incognito taking effect
+    # at all, which is the thing under test.
     # Opt out of the hidden friend so only the visible friend can see by default.
     hide_response = client.put(
         f"{settings.API_V1_STR}/friends/{hidden_friend_id}/status-visibility",
@@ -1249,7 +1242,7 @@ def test_incognito_mode_overrides_and_restores_status_visibility(
     )
     assert after_incognito_response.status_code == 200
     # Default mode restored, sharing friend visible again (opted-out one stays hidden).
-    assert after_incognito_response.json()["mode"] == "ALL_FRIENDS"
+    assert after_incognito_response.json()["mode"] == "FRIENDS_OF_FRIENDS"
     db_transaction.expire_all()
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
         visible_friend_id

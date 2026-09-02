@@ -18,6 +18,7 @@ from app.scraping import seat_availability as seat_availability_module
 from app.scraping.seat_availability import (
     ACTIVETICKETS_URL_PATTERN,
     SeatAvailabilityFetchError,
+    fetch_activetickets_room_geometry,
     fetch_seat_availability,
     supports,
 )
@@ -268,3 +269,64 @@ def test_a_page_without_the_view_model_raises_rather_than_reading_empty(
 
     with pytest.raises(SeatAvailabilityFetchError):
         fetch_seat_availability(ticket_link=LUMEN_URL)
+
+
+# --- floor-plan geometry ------------------------------------------------------
+
+
+def test_a_numbered_room_yields_a_seat_plan(serve_page) -> None:
+    serve_page(
+        _page(
+            33176,
+            room="Zaal 1",
+            seats=[
+                _seat(1, "1", "11", available=True),
+                _seat(2, "1", "10", available=True, blocked=True),
+            ],
+        )
+    )
+
+    geometry = fetch_activetickets_room_geometry(LUMEN_URL)
+
+    assert geometry is not None
+    assert geometry.room == "Zaal 1"
+    assert geometry.seats == [
+        {
+            "row_name": "1",
+            "seat_name": "11",
+            "position_left": 20.0,
+            "position_top": 0.0,
+            "width": 32,
+            "height": 32,
+            "selectable": True,
+        },
+        {
+            "row_name": "1",
+            "seat_name": "10",
+            "position_left": 40.0,
+            "position_top": 0.0,
+            "width": 32,
+            "height": 32,
+            "selectable": True,
+        },
+    ]
+
+
+def test_a_free_seating_room_yields_no_geometry(serve_page) -> None:
+    """No `Seats` on the page means there is nothing to draw a plan from."""
+    serve_page(_page(11926930, room="ZAAL ONDER", sold_out=False))
+
+    assert fetch_activetickets_room_geometry(RIALTO_URL) is None
+
+
+def test_a_screening_the_shop_no_longer_lists_yields_no_geometry(serve_page) -> None:
+    serve_page(_page(99999999, room="Zaal 1", sold_out=True))
+
+    assert fetch_activetickets_room_geometry(LUMEN_URL) is None
+
+
+def test_an_unrecognised_link_yields_no_geometry() -> None:
+    assert (
+        fetch_activetickets_room_geometry("https://tickets.example.com/Show/Details/1")
+        is None
+    )

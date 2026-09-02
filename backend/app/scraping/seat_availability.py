@@ -1036,6 +1036,72 @@ def _fetch_activetickets(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailab
     )
 
 
+class ActiveTicketsSeatPlanGeometry(NamedTuple):
+    """One room's layout, as the floor-plan store wants it."""
+
+    room: str | None
+    seats: list[dict]
+
+
+def fetch_activetickets_room_geometry(url: str) -> ActiveTicketsSeatPlanGeometry | None:
+    """One showtime's room layout, for the floor-plan ingest.
+
+    The same page the poller already reads for the seat count carries the
+    full geometry (`X`/`Y` alongside `S`/`B`/`Description`), so this is a
+    plain re-fetch rather than a second endpoint. Returns None for a
+    free-seating show, an unresolved show id, or anything that does not come
+    back whole, so the ingest moves on to another showtime in the same room
+    rather than storing half a plan. Nothing in the payload marks which end
+    the screen is at, the same gap Eagerly has — the ingest's override/default
+    covers it.
+    """
+    match = ACTIVETICKETS_URL_PATTERN.match(url)
+    if match is None:
+        return None
+    show_id = match.group(1)
+    try:
+        cart = _activetickets_cart(_get(url).text)
+    except SeatAvailabilityFetchError:
+        return None
+    show = _activetickets_show(cart, show_id)
+    if show is None:
+        return None
+
+    edit_data = show.get("EditData") or {}
+    seats = [seat for seat in (edit_data.get("Seats") or []) if isinstance(seat, dict)]
+    if not seats:
+        return None
+
+    geometry: list[dict] = []
+    for seat in seats:
+        name = _activetickets_seat_name(seat)
+        if name is None:
+            continue
+        row_name, seat_name = name
+        try:
+            x = float(seat.get("X"))
+            y = float(seat.get("Y"))
+        except (TypeError, ValueError):
+            continue
+        geometry.append(
+            {
+                "row_name": row_name,
+                "seat_name": seat_name,
+                "position_left": x,
+                "position_top": y,
+                "width": 32,
+                "height": 32,
+                "selectable": True,
+            }
+        )
+    if not geometry:
+        return None
+
+    return ActiveTicketsSeatPlanGeometry(
+        room=normalize_room(show.get("Location")), seats=geometry
+    )
+
+
 # --- Ticketlab ---------------------------------------------------------------
 
 # A white-label ticket shop used by a long tail of small arthouse cinemas, each
@@ -1360,6 +1426,73 @@ def _fetch_ticketmatic(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailabil
         # ten free or four hundred, the page doesn't say.
         return SeatAvailability(None, None, room, "ticketmatic")
     return SeatAvailability(seats_left, seats_left == 0, room, "ticketmatic")
+
+
+class TicketmaticSeatPlanGeometry(NamedTuple):
+    """One room's layout, as the floor-plan store wants it."""
+
+    room: str | None
+    seats: list[dict]
+
+
+def fetch_ticketmatic_room_geometry(url: str) -> TicketmaticSeatPlanGeometry | None:
+    """One performance's room layout, for the floor-plan ingest.
+
+    The same SVG the poller already reads for the seat count carries each
+    seat's `x`/`y`/`width`/`height` as ordinary rect attributes, so this is a
+    plain re-fetch rather than a second endpoint. Returns None for a
+    general-admission room, an unresolved performance id, or anything that
+    does not come back whole. Nothing in the SVG marks which end the screen
+    is at, so the ingest's override/default covers it, same as Eagerly and
+    ActiveTickets.
+    """
+    match = TICKETMATIC_URL_PATTERN.match(url)
+    if match is None:
+        return None
+    try:
+        page = _get(url).text
+    except SeatAvailabilityFetchError:
+        return None
+
+    seat_blocks = _TICKETMATIC_SEAT_RECT.findall(page)
+    if not seat_blocks:
+        return None
+
+    geometry: list[dict] = []
+    for block in seat_blocks:
+        attrs = dict(_TICKETMATIC_ATTR.findall(block))
+        name = _ticketmatic_seat_name(attrs)
+        if name is None:
+            continue
+        row_name, seat_name = name
+        try:
+            x = float(attrs.get("x", ""))
+            y = float(attrs.get("y", ""))
+        except ValueError:
+            continue
+        try:
+            width = float(attrs.get("width", ""))
+        except ValueError:
+            width = 32.0
+        try:
+            height = float(attrs.get("height", ""))
+        except ValueError:
+            height = 32.0
+        geometry.append(
+            {
+                "row_name": row_name,
+                "seat_name": seat_name,
+                "position_left": x,
+                "position_top": y,
+                "width": width,
+                "height": height,
+                "selectable": True,
+            }
+        )
+    if not geometry:
+        return None
+
+    return TicketmaticSeatPlanGeometry(room=_ticketmatic_room(page), seats=geometry)
 
 
 _Handler = Callable[[str, EagerlyFeedCache], SeatAvailability]

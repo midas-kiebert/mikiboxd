@@ -38,15 +38,19 @@ from app.crud import cinema as cinema_crud
 from app.models.cinema_room_floor_plan import CinemaRoomFloorPlan
 from app.models.showtime import Showtime
 from app.scraping.seat_availability import (
+    ACTIVETICKETS_HOSTS,
     EAGERLY_BOOKING_HOSTS,
     EAGERLY_BOOKING_HOSTS_BY_CINEMA,
     TICKETLAB_HOSTS,
+    TICKETMATIC_HOSTS,
     TRICKET_ROOM_NAMES,
     TRICKET_SEAT_MAP_HOSTS,
     TRICKET_URL_PATTERN,
     EagerlyFeedCache,
+    fetch_activetickets_room_geometry,
     fetch_eagerly_room_geometry,
     fetch_ticketlab_room_geometry,
+    fetch_ticketmatic_room_geometry,
     fetch_tricket_room_geometry,
 )
 from app.scraping.seat_availability import eagerly_shows as fetch_eagerly_shows
@@ -213,6 +217,8 @@ def ingest_floor_plans(*, force: bool = False) -> None:
 
     ingested += _ingest_tricket_floor_plans(skipped=skipped)
     ingested += _ingest_ticketlab_floor_plans(skipped=skipped)
+    ingested += _ingest_activetickets_floor_plans(skipped=skipped)
+    ingested += _ingest_ticketmatic_floor_plans(skipped=skipped)
 
     print(f"Done. Ingested {ingested} rooms, skipped {len(skipped)}: {skipped}")
 
@@ -322,7 +328,7 @@ def _ingest_ticketlab_floor_plans(*, skipped: list[str]) -> int:
             continue
         with get_db_context() as session:
             cinema_id = cinema_crud.get_cinema_id_by_key(session=session, key=cinema_key)
-            links = _ticketlab_ticket_links(session=session, host=host)
+            links = _ticket_links_for_host(session=session, host=host)
 
         done: set[str] = set()
         for link in links[:MAX_TICKETLAB_CANDIDATES_PER_CINEMA]:
@@ -355,7 +361,131 @@ def _ingest_ticketlab_floor_plans(*, skipped: list[str]) -> int:
     return ingested
 
 
-def _ticketlab_ticket_links(*, session: Session, host: str) -> list[str]:
+# ActiveTickets host (ACTIVETICKETS_HOSTS' entries) -> cinemas.yaml key.
+# Hand-mapped once, the same way the Ticketlab table above is. Four of these
+# nine sell every room free-seating (Rialto De Pijp, De Balie, Cinebergen,
+# Slieker) and so will never yield a plan — that is expected, not an error,
+# and shows up as a normal "no seated showtime" skip below.
+_ACTIVETICKETS_HOST_TO_CINEMA_KEY = {
+    "activetickets.filmhuisdenhaag.nl": "filmhuis-den-haag",
+    "tickets-depijp.rialtofilm.nl": "rialto-de-pijp",
+    "tickets.cinebergen.nl": "cinebergen",
+    "tickets.debalie.nl": "de-balie",
+    "tickets.filmhuis-lumen.nl": "lumen",
+    "tickets.filmhuisalkmaar.nl": "filmhuis-alkmaar",
+    "tickets.filmtheaterhilversum.nl": "filmtheater-hilversum",
+    "tickets.sliekerfilm.nl": "slieker",
+    "webshop.lux-nijmegen.nl": "lux",
+}
+
+MAX_ACTIVETICKETS_CANDIDATES_PER_CINEMA = 30
+
+
+def _ingest_activetickets_floor_plans(*, skipped: list[str]) -> int:
+    """ActiveTickets rooms, whose geometry, name and screen side (via the
+    override/default) all come off the same show page the poller already reads
+    for the seat count.
+
+    Like Ticketlab there is no programme feed to walk, so the showtimes
+    already in the database supply the candidate links, and a room's name is
+    right there on the page.
+    """
+    ingested = 0
+    for host in ACTIVETICKETS_HOSTS:
+        cinema_key = _ACTIVETICKETS_HOST_TO_CINEMA_KEY.get(host)
+        if cinema_key is None:
+            skipped.append(f"{host} (no cinemas.yaml key mapped)")
+            continue
+        with get_db_context() as session:
+            cinema_id = cinema_crud.get_cinema_id_by_key(session=session, key=cinema_key)
+            links = _ticket_links_for_host(session=session, host=host)
+
+        done: set[str] = set()
+        for link in links[:MAX_ACTIVETICKETS_CANDIDATES_PER_CINEMA]:
+            geometry = fetch_activetickets_room_geometry(link)
+            time.sleep(REQUEST_DELAY_SECONDS)
+            if geometry is None or geometry.room is None or geometry.room in done:
+                continue
+            done.add(geometry.room)
+            with get_db_context() as session:
+                _upsert_floor_plan(
+                    session=session,
+                    cinema_id=cinema_id,
+                    room=geometry.room,
+                    seats=geometry.seats,
+                    # ActiveTickets' seat plan carries no screen marker at
+                    # all, so this is the override or the default, never the
+                    # platform.
+                    screen_side=_screen_side(
+                        cinema_key=cinema_key, room=geometry.room, reported=None
+                    ),
+                )
+                session.commit()
+            print(f"{cinema_key}/{geometry.room}: {len(geometry.seats)} seats")
+            ingested += 1
+
+        if not done:
+            skipped.append(f"{cinema_key} (no seated showtime yielded a plan)")
+    return ingested
+
+
+# Ticketmatic host (TICKETMATIC_HOSTS' entries) -> cinemas.yaml key.
+_TICKETMATIC_HOST_TO_CINEMA_KEY = {
+    "kaartverkoop.lievevrouw.nl": "de-lieve-vrouw",
+    "ticketing.lumiere.nl": "lumiere-cinema",
+    "tickets.concordia.nl": "concordia",
+    "tickets.forum.nl": "forum",
+    "tickets.gigant.nl": "gigant",
+    "tickets.mimik.nl": "mimik",
+    "tickets.schuur.nl": "schuur",
+}
+
+MAX_TICKETMATIC_CANDIDATES_PER_CINEMA = 30
+
+
+def _ingest_ticketmatic_floor_plans(*, skipped: list[str]) -> int:
+    """Ticketmatic rooms, whose geometry, name and screen side (via the
+    override/default) all come off the same performance page the poller
+    already reads for the seat count. General-admission rooms never yield a
+    plan — that is expected, not an error.
+    """
+    ingested = 0
+    for host in TICKETMATIC_HOSTS:
+        cinema_key = _TICKETMATIC_HOST_TO_CINEMA_KEY.get(host)
+        if cinema_key is None:
+            skipped.append(f"{host} (no cinemas.yaml key mapped)")
+            continue
+        with get_db_context() as session:
+            cinema_id = cinema_crud.get_cinema_id_by_key(session=session, key=cinema_key)
+            links = _ticket_links_for_host(session=session, host=host)
+
+        done: set[str] = set()
+        for link in links[:MAX_TICKETMATIC_CANDIDATES_PER_CINEMA]:
+            geometry = fetch_ticketmatic_room_geometry(link)
+            time.sleep(REQUEST_DELAY_SECONDS)
+            if geometry is None or geometry.room is None or geometry.room in done:
+                continue
+            done.add(geometry.room)
+            with get_db_context() as session:
+                _upsert_floor_plan(
+                    session=session,
+                    cinema_id=cinema_id,
+                    room=geometry.room,
+                    seats=geometry.seats,
+                    screen_side=_screen_side(
+                        cinema_key=cinema_key, room=geometry.room, reported=None
+                    ),
+                )
+                session.commit()
+            print(f"{cinema_key}/{geometry.room}: {len(geometry.seats)} seats")
+            ingested += 1
+
+        if not done:
+            skipped.append(f"{cinema_key} (no seated showtime yielded a plan)")
+    return ingested
+
+
+def _ticket_links_for_host(*, session: Session, host: str) -> list[str]:
     """Upcoming ticket links for this shop, from the showtimes already stored."""
     return list(
         session.exec(

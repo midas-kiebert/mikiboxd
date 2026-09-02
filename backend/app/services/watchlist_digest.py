@@ -195,7 +195,9 @@ def _resolve_digest_source_label(
     still filters nothing, so it is named without a link rather than silently
     relabelled as the watchlist.
     """
-    cinemas_label = _resolve_digest_cinemas_label(session=session, user=user, source=source)
+    cinemas_label = _resolve_digest_cinemas_label(
+        session=session, user=user, source=source
+    )
     list_id = source.list_id
     if list_id is not None:
         source_list = session.get(LetterboxdList, list_id)
@@ -242,7 +244,8 @@ def _pending_movie_ids_for_user_source(
         select(WatchlistDigestNotifiedMovie.movie_id)
         .join(
             WatchlistDigestSource,
-            col(WatchlistDigestSource.id) == col(WatchlistDigestNotifiedMovie.source_id),
+            col(WatchlistDigestSource.id)
+            == col(WatchlistDigestNotifiedMovie.source_id),
         )
         .where(col(WatchlistDigestSource.owner_user_id) == user_id)
     )
@@ -500,7 +503,9 @@ def build_and_send_combined_digest(
             existing = merged_entries.get(movie.id)
             if existing is None or showtime.datetime < existing[1].datetime:
                 merged_entries[movie.id] = (movie, showtime)
-    combined_entries = sorted(merged_entries.values(), key=lambda pair: pair[0].title.lower())
+    combined_entries = sorted(
+        merged_entries.values(), key=lambda pair: pair[0].title.lower()
+    )
 
     email_data = generate_watchlist_digest_email(
         email_to=user.email,
@@ -524,7 +529,10 @@ def build_and_send_combined_digest(
 
     for source, sent_movie_ids, _ in contributions:
         _mark_notified(
-            session=session, source_id=source.id, movie_ids=sent_movie_ids, now=reference_time
+            session=session,
+            source_id=source.id,
+            movie_ids=sent_movie_ids,
+            now=reference_time,
         )
         source.last_sent_at = reference_time
         session.add(source)

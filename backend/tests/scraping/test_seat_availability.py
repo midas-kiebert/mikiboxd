@@ -470,14 +470,19 @@ def test_eagerly_seat_plan_all_taken_is_sold_out(monkeypatch) -> None:
 
 
 def test_eagerly_falls_back_to_status_when_site_has_no_booking_host(monkeypatch) -> None:
-    """A site not yet in the booking-host lookup table (or an unmapped
-    `cinema_id`) should still work at the old, coarser precision rather than
-    erroring."""
-    link = "https://not-yet-mapped-cinema.nl/tickets/42"
+    """An Eagerly site with no booking host to ask (here an unmapped
+    `cinema_id` on the one multi-cinema site) should still work at the old,
+    coarser precision rather than erroring.
+
+    The host has to be a real Eagerly one: a `/tickets/<id>` path on a host
+    outside `EAGERLY_SITE_HOSTS` is not an Eagerly link at all and is not
+    supported — see `test_eagerly_host_matching.py`.
+    """
+    link = "https://bioscopenleiden.nl/tickets/42"
     requested = _stub_get(
         monkeypatch,
         {
-            "https://not-yet-mapped-cinema.nl/fk-feed/agenda": _eagerly_feed(
+            "https://bioscopenleiden.nl/fk-feed/agenda": _eagerly_feed(
                 {"42": "tickets available"}, cinema_id="2"
             )
         },
@@ -531,7 +536,10 @@ def test_eagerly_seat_plan_with_no_selectable_seats_falls_back(monkeypatch) -> N
 
 def test_unsupported_link_makes_no_request(monkeypatch) -> None:
     requested = _stub_get(monkeypatch, {})
-    link = "https://tickets.cinebergen.nl/Show/Details/La-Vita-va-Cosi-24-Aug-20903"
+    # Deliberately a host no platform claims. Real shop URLs make poor
+    # examples here: every one of them is a platform we have not read yet,
+    # and this test starts failing the day we do.
+    link = "https://not-a-ticket-shop.example/showtimes/20903"
     availability = fetch_seat_availability(ticket_link=link)
     assert supports(link) is False
     assert availability.is_known is False

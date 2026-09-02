@@ -83,7 +83,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import Any, NamedTuple
 from urllib.parse import urlsplit
 
 import requests
@@ -1085,10 +1085,9 @@ def fetch_activetickets_room_geometry(url: str) -> ActiveTicketsSeatPlanGeometry
         if name is None:
             continue
         row_name, seat_name = name
-        try:
-            x = float(seat.get("X"))
-            y = float(seat.get("Y"))
-        except (TypeError, ValueError):
+        x = _seat_coordinate(seat.get("X"))
+        y = _seat_coordinate(seat.get("Y"))
+        if x is None or y is None:
             continue
         positions.append((row_name, seat_name, x, y))
     if not positions:
@@ -1111,6 +1110,20 @@ def fetch_activetickets_room_geometry(url: str) -> ActiveTicketsSeatPlanGeometry
     return ActiveTicketsSeatPlanGeometry(
         room=normalize_room(show.get("Location")), seats=geometry
     )
+
+
+def _seat_coordinate(value: Any) -> float | None:
+    """One seat coordinate out of an untyped ticketing payload.
+
+    Every platform hands these over as whatever JSON happened to hold them —
+    a number, a string, or nothing at all when the seat is decorative. A
+    coordinate that will not parse means the seat cannot be placed, and a
+    seat that cannot be placed is dropped rather than drawn at the origin.
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _activetickets_seat_size(positions: list[tuple[str, str, float, float]]) -> float:
@@ -1393,10 +1406,9 @@ def fetch_ticketlab_room_geometry(url: str) -> TicketlabSeatPlanGeometry | None:
         if name is None:
             continue
         row_name, seat_name = name
-        try:
-            x = float(seat.get("x"))
-            y = float(seat.get("y"))
-        except (TypeError, ValueError):
+        x = _seat_coordinate(seat.get("x"))
+        y = _seat_coordinate(seat.get("y"))
+        if x is None or y is None:
             continue
         geometry.append(
             {
@@ -1463,7 +1475,9 @@ TICKETMATIC_URL_PATTERN = re.compile(
 _TICKETMATIC_ROOM = re.compile(
     r"<div class='mtPerformance'.*?<span class='location'>.*?</i>([^<]*)</span>", re.S
 )
-_TICKETMATIC_SEAT_RECT = re.compile(r'<rect id="\d+" class="seat[^"]*".*?></rect>', re.S)
+_TICKETMATIC_SEAT_RECT = re.compile(
+    r'<rect id="\d+" class="seat[^"]*".*?></rect>', re.S
+)
 _TICKETMATIC_ATTR = re.compile(r'([\w-]+)="([^"]*)"')
 _TICKETMATIC_SEAT_AVAILABLE = "AVAILABLE"
 

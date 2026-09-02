@@ -498,6 +498,7 @@ def save_saved_preset(
     preset_name = payload.name.strip()
     filters = payload.filters.model_dump(mode="json")
     cinema_preset_id = payload.cinema_preset_id
+    cinema_ids: list[int] | None
     if cinema_preset_id is not None:
         # A cinema preset was active, not just a raw selection: store the
         # reference so this follows the preset if it's later renamed/edited,
@@ -515,7 +516,9 @@ def save_saved_preset(
             or []
         )
     else:
-        cinema_ids = list(payload.cinema_ids) if payload.cinema_ids is not None else None
+        cinema_ids = (
+            list(payload.cinema_ids) if payload.cinema_ids is not None else None
+        )
     cinema_scope = _scope_for_selection(session=session, cinema_ids=cinema_ids)
     should_set_favorite = payload.is_favorite is True
     existing = saved_presets_crud.get_user_preset_by_name(

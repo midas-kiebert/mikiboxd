@@ -266,7 +266,10 @@ def test_a_reading_survives_its_ticket_link_becoming_unreadable() -> None:
     read, just with nothing on offer beyond it."""
     showtime = _showtime(
         ticket_link=UNREADABLE_TICKET_LINK,
-        seats_left=40,
+        # A quarter free sits inside VERY_BUSY rather than on one of its
+        # edges: this test is about the reading surviving, and it should not
+        # start failing the next time a cutoff moves by a percent.
+        seats_left=25,
         seats_capacity=100,
         seats_checked_at=NOW - timedelta(minutes=1),
         seats_next_check_at=NOW + timedelta(hours=1),

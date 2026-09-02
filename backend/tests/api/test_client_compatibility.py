@@ -19,6 +19,8 @@ from app.core.config import settings
 from app.core.enums import GoingStatus
 from app.crud import showtime as showtime_crud
 from app.models.user import User
+from app.schemas.legacy_viewer_compat import LEGACY_VIEWER_FIELD
+from app.schemas.showtime import ShowtimePublic
 
 _HEALTH_CHECK = f"{settings.API_V1_STR}/utils/health-check/"
 
@@ -69,8 +71,21 @@ def test_legacy_flat_fields_mirror_the_viewer_block(
     viewer = body["viewer"]
     assert viewer is not None
     assert viewer["going"] == GoingStatus.GOING
-    for field, value in viewer.items():
-        assert body[field] == value, field
+
+    # Driven by the mirrors rather than by `viewer`'s keys: the viewer block
+    # goes on growing, and a field added to it after the split has no old
+    # build reading it at the top level and so is deliberately not mirrored.
+    # What must hold is the other direction — a mirror that exists can never
+    # disagree with the block it is derived from.
+    mirrored = [
+        name
+        for name, field in ShowtimePublic.model_computed_fields.items()
+        if field.deprecated == LEGACY_VIEWER_FIELD
+    ]
+    assert mirrored, "the legacy shim is gone; delete this test with it"
+    for field_name in mirrored:
+        assert field_name in viewer, field_name
+        assert body[field_name] == viewer[field_name], field_name
 
 
 def test_version_gate_floors_are_independent_per_platform(

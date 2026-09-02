@@ -392,7 +392,10 @@ def send_showtime_reminder(
     existing_reminder = showtime_reminder_crud.get_showtime_reminder(
         session=session, showtime_id=showtime_id, receiver_id=friend_id
     )
-    if existing_reminder is not None and now - existing_reminder.sent_at < REMINDER_COOLDOWN:
+    if (
+        existing_reminder is not None
+        and now - existing_reminder.sent_at < REMINDER_COOLDOWN
+    ):
         raise ShowtimeReminderCooldownError()
 
     was_sent = push_notifications.notify_user_on_showtime_reminder(

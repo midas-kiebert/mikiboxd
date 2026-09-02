@@ -78,8 +78,13 @@ export default function DefaultVisibilityScreen() {
     if (mode === selectedMode) return;
     triggerSelectionHaptic();
     // Nothing to apply the new default to, so there is nothing to ask about:
-    // the account is going to / interested in no showtime at all.
-    if (!user?.has_selected_showtimes) {
+    // the account is going to / interested in no showtime at all. Tested
+    // against an explicit `false` rather than for falsiness, because the
+    // flag is also absent when the field is missing from the response (a
+    // backend older than it, a cached user from before it shipped) — and
+    // there the question very much does need asking: skipping it would
+    // quietly move every showtime the account has already picked.
+    if (user?.has_selected_showtimes === false) {
       save(mode, true);
       return;
     }

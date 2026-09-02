@@ -16,6 +16,7 @@ from app.models.showtime_ping import ShowtimePing
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
 from app.utils import now_amsterdam_naive
+from app.services import share_preview as share_preview_service
 
 
 def _mint_ping_link_token(session: Session, *, showtime_id: int, sender_id) -> str:
@@ -737,8 +738,8 @@ def test_showtime_visibility_get_and_update(
     initial_body = initial_response.json()
     assert initial_body["showtime_id"] == showtime_id
     assert initial_body["movie_id"] == showtime.movie_id
-    # Default is ALL_FRIENDS, so both (non-opted-out) friends can see.
-    assert initial_body["mode"] == "ALL_FRIENDS"
+    # The account default, so both (non-opted-out) friends can see.
+    assert initial_body["mode"] == "FRIENDS_OF_FRIENDS"
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
         first_friend_id,
         second_friend_id,
@@ -879,7 +880,7 @@ def test_removing_showtime_selection_clears_effective_but_keeps_setting(
     )
     db_transaction.commit()
 
-    # Default ALL_FRIENDS shows the friend; INVITED_ONLY differs so a row is stored.
+    # The account default shows the friend; INVITED_ONLY differs so a row is stored.
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
         friend_id
     }
@@ -975,9 +976,9 @@ def test_showtime_visibility_batch_returns_payload_per_showtime(
     ]
     assert body[0]["movie_id"] == first_showtime_movie_id
     assert body[0]["mode"] == "INVITED_ONLY"
-    # Second showtime has no override → the default (ALL_FRIENDS).
+    # Second showtime has no override → the account default.
     assert body[1]["movie_id"] == second_showtime_movie_id
-    assert body[1]["mode"] == "ALL_FRIENDS"
+    assert body[1]["mode"] == "FRIENDS_OF_FRIENDS"
 
 
 def test_showtime_visibility_batch_rejects_an_oversized_request(
@@ -1048,7 +1049,7 @@ def test_showtime_visibility_is_scoped_per_showtime(
     )
     assert unaffected_response.status_code == 200
     # The second showtime keeps the default mode.
-    assert unaffected_response.json()["mode"] == "ALL_FRIENDS"
+    assert unaffected_response.json()["mode"] == "FRIENDS_OF_FRIENDS"
 
 
 def test_all_friends_mode_excludes_opted_out_friends(
@@ -1084,7 +1085,17 @@ def test_all_friends_mode_excludes_opted_out_friends(
     )
     db_transaction.commit()
 
-    # Default ALL_FRIENDS shows both friends.
+    # ALL_FRIENDS is the subject here, and it is no longer the account
+    # default, so it is asked for rather than assumed.
+    set_mode_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"mode": "ALL_FRIENDS"},
+    )
+    assert set_mode_response.status_code == 200
+    db_transaction.expire_all()
+
+    # ALL_FRIENDS shows both friends.
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
         sharing_friend_id,
         hidden_friend_id,
@@ -1144,6 +1155,17 @@ def test_incognito_mode_overrides_and_restores_status_visibility(
         going_status=GoingStatus.GOING,
     )
     db_transaction.commit()
+
+    # Pinned rather than left on the account default, which is
+    # FRIENDS_OF_FRIENDS: this test is about incognito replacing a mode and
+    # then handing the same one back, and it can only assert that if it knows
+    # which mode was in force to begin with.
+    set_mode_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"mode": "ALL_FRIENDS"},
+    )
+    assert set_mode_response.status_code == 200
 
     # Opt out of the hidden friend so only the visible friend can see by default.
     hide_response = client.put(
@@ -1293,7 +1315,7 @@ def test_showtime_visibility_filters_friend_status_in_showtime_payload(
     )
     db_transaction.commit()
 
-    # Opt out of the hidden friend; the default ALL_FRIENDS shows the other.
+    # Opt out of the hidden friend; the account default shows the other.
     hide_response = client.put(
         f"{settings.API_V1_STR}/friends/{hidden_friend_id}/status-visibility",
         headers=normal_user_token_headers,
@@ -1688,7 +1710,7 @@ def test_opting_out_of_status_sharing_changes_effective_visibility(
     )
     db_transaction.commit()
 
-    # Default ALL_FRIENDS + sharing-by-default → both friends see.
+    # The account default + sharing-by-default → both friends see.
     assert _effective_viewer_ids(db_transaction, current_user_id, showtime_id) == {
         friend_id,
         other_friend_id,
@@ -1872,6 +1894,9 @@ def test_being_invited_by_an_all_friends_inviter_stays_all_friends(
     """
     inviter = user_factory()
     inviter_id = inviter.id
+    # ALL_FRIENDS is what this case is about and is no longer what an account
+    # starts on, so the inviter is put there explicitly.
+    inviter.default_visibility_mode = VisibilityMode.ALL_FRIENDS
     showtime = showtime_factory()
     showtime_id = showtime.id
     current_user_id = _normal_user_id(db_transaction)
@@ -1879,6 +1904,7 @@ def test_being_invited_by_an_all_friends_inviter_stays_all_friends(
     friendship_crud.create_friendship(
         session=db_transaction, user_id=current_user_id, friend_id=inviter_id
     )
+    db_transaction.add(inviter)
     db_transaction.commit()
 
     showtime_ping_crud.create_showtime_ping(
@@ -1895,7 +1921,9 @@ def test_being_invited_by_an_all_friends_inviter_stays_all_friends(
         headers=normal_user_token_headers,
     )
     assert visibility_response.status_code == 200
-    assert visibility_response.json()["mode"] == "ALL_FRIENDS"
+    # Untouched: the receiver keeps their own account default rather than
+    # inheriting anything from a non-private inviter.
+    assert visibility_response.json()["mode"] == "FRIENDS_OF_FRIENDS"
 
 
 def test_co_invitees_see_your_status_and_inherit_invite_only_default(
@@ -2216,7 +2244,7 @@ def test_share_preview_falls_back_to_static_logo_without_poster(
     )
 
     assert response.status_code == 200
-    expected_fallback = f"{settings.FRONTEND_HOST}/assets/images/mikino-logo.png"
+    expected_fallback = share_preview_service.DEFAULT_SHARE_PREVIEW_IMAGE
     body = response.text
     assert f'property="og:image" content="{expected_fallback}"' in body
     assert f'name="twitter:image" content="{expected_fallback}"' in body
@@ -2275,10 +2303,16 @@ def test_cinema_search_reaches_cinemas_outside_the_saved_selection(
     """
     saved = showtime_factory(cinema__name="Plaza")
     unsaved = showtime_factory(cinema__name="The Grand Picture House")
+    # Read off before the commit: the request below runs on its own session,
+    # and touching a factory instance again afterwards re-reads it through a
+    # session it is no longer attached to.
+    saved_cinema_id = saved.cinema_id
+    saved_id = saved.id
+    unsaved_id = unsaved.id
     user_crud.set_cinema_selections(
         session=db_transaction,
         user_id=_normal_user_id(db_transaction),
-        cinema_ids=[saved.cinema_id],
+        cinema_ids=[saved_cinema_id],
     )
     db_transaction.commit()
 
@@ -2290,8 +2324,8 @@ def test_cinema_search_reaches_cinemas_outside_the_saved_selection(
 
     assert response.status_code == 200
     returned_ids = {item["id"] for item in response.json()}
-    assert unsaved.id in returned_ids
-    assert saved.id not in returned_ids
+    assert unsaved_id in returned_ids
+    assert saved_id not in returned_ids
 
 
 def test_saved_cinemas_still_apply_without_a_cinema_search(
@@ -2309,10 +2343,16 @@ def test_saved_cinemas_still_apply_without_a_cinema_search(
     unsaved = showtime_factory(
         cinema__name="The Grand Picture House", movie__title="Shared Title"
     )
+    # Read off before the commit: the request below runs on its own session,
+    # and touching a factory instance again afterwards re-reads it through a
+    # session it is no longer attached to.
+    saved_cinema_id = saved.cinema_id
+    saved_id = saved.id
+    unsaved_id = unsaved.id
     user_crud.set_cinema_selections(
         session=db_transaction,
         user_id=_normal_user_id(db_transaction),
-        cinema_ids=[saved.cinema_id],
+        cinema_ids=[saved_cinema_id],
     )
     db_transaction.commit()
 
@@ -2328,8 +2368,8 @@ def test_saved_cinemas_still_apply_without_a_cinema_search(
 
         assert response.status_code == 200
         returned_ids = {item["id"] for item in response.json()}
-        assert saved.id in returned_ids, params
-        assert unsaved.id not in returned_ids, params
+        assert saved_id in returned_ids, params
+        assert unsaved_id not in returned_ids, params
 
 
 # LAB111's Z-ELITE shop, one of the platforms `scraping.seat_availability` reads.
@@ -2517,8 +2557,8 @@ def test_listed_showtimes_carry_the_viewers_visibility_mode(
     assert response.status_code == 200
     by_id = {item["id"]: item for item in response.json()}
     assert by_id[overridden_id]["viewer"]["visibility_mode"] == "INVITED_ONLY"
-    # No override, so the viewer's own default stands.
-    assert by_id[defaulted_id]["viewer"]["visibility_mode"] == "ALL_FRIENDS"
+    # No override, so the viewer's own account default stands.
+    assert by_id[defaulted_id]["viewer"]["visibility_mode"] == "FRIENDS_OF_FRIENDS"
 
 
 def test_hidden_attending_friends_route_returns_404_for_unknown_showtime(
@@ -2586,7 +2626,7 @@ def test_hidden_attending_friends_route_omits_a_friend_who_would_already_see_you
     user_factory,
     showtime_factory,
 ) -> None:
-    """An attending friend under the default ALL_FRIENDS mode, with no
+    """An attending friend under the account default mode, with no
     opt-out, would already see the actor's status — so the route must not
     warn about them."""
     visible_friend = user_factory()

@@ -64,7 +64,9 @@ def test_alerting_stamps_seat_alert_sent_at_so_it_cannot_repeat(
         "app.services.push_notifications.user_crud.get_users_by_ids",
         return_value=[recipient],
     )
-    token = mocker.MagicMock(token="ExponentPushToken[abc]")
+    # `user_id` matters: the sender groups tokens by owner before building
+    # messages, so a token that names nobody reaches nobody.
+    token = mocker.MagicMock(user_id=user_id, token="ExponentPushToken[abc]")
     mocker.patch(
         "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
         return_value=[token],
@@ -154,7 +156,9 @@ def test_sold_out_kind_uses_its_own_preference_stamp_and_wording(
         "app.services.push_notifications.user_crud.get_users_by_ids",
         return_value=[recipient],
     )
-    token = mocker.MagicMock(token="ExponentPushToken[abc]")
+    # `user_id` matters: the sender groups tokens by owner before building
+    # messages, so a token that names nobody reaches nobody.
+    token = mocker.MagicMock(user_id=user_id, token="ExponentPushToken[abc]")
     mocker.patch(
         "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
         return_value=[token],

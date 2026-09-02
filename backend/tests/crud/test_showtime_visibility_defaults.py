@@ -89,8 +89,8 @@ def test_batch_defaults_are_per_showtime_and_match_single_lookup(
 
     assert modes == {
         private_showtime.id: VisibilityMode.INVITED_ONLY,
-        open_showtime.id: VisibilityMode.ALL_FRIENDS,
-        uninvited_showtime.id: VisibilityMode.ALL_FRIENDS,
+        open_showtime.id: VisibilityMode.FRIENDS_OF_FRIENDS,
+        uninvited_showtime.id: VisibilityMode.FRIENDS_OF_FRIENDS,
     }
     _assert_matches_single_lookup(db_transaction, owner=owner, modes=modes)
 
@@ -119,7 +119,7 @@ def test_batch_defaults_follow_an_incognito_inviter(
 
     assert modes == {
         invited_showtime.id: VisibilityMode.INVITED_ONLY,
-        other_showtime.id: VisibilityMode.ALL_FRIENDS,
+        other_showtime.id: VisibilityMode.FRIENDS_OF_FRIENDS,
     }
     _assert_matches_single_lookup(db_transaction, owner=owner, modes=modes)
 
@@ -172,7 +172,7 @@ def test_batch_defaults_ignore_a_dismissed_invite(
 
     modes = _default_modes(db_transaction, owner=owner, showtimes=[showtime])
 
-    assert modes == {showtime.id: VisibilityMode.ALL_FRIENDS}
+    assert modes == {showtime.id: VisibilityMode.FRIENDS_OF_FRIENDS}
     _assert_matches_single_lookup(db_transaction, owner=owner, modes=modes)
 
 

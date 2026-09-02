@@ -296,8 +296,8 @@ def test_a_numbered_room_yields_a_seat_plan(serve_page) -> None:
             "seat_name": "11",
             "position_left": 20.0,
             "position_top": 0.0,
-            "width": 32,
-            "height": 32,
+            "width": 18.0,
+            "height": 18.0,
             "selectable": True,
         },
         {
@@ -305,11 +305,41 @@ def test_a_numbered_room_yields_a_seat_plan(serve_page) -> None:
             "seat_name": "10",
             "position_left": 40.0,
             "position_top": 0.0,
-            "width": 32,
-            "height": 32,
+            "width": 18.0,
+            "height": 18.0,
             "selectable": True,
         },
     ]
+
+
+def test_seat_size_is_derived_from_the_rooms_own_grid_pitch(serve_page) -> None:
+    """The payload never states a seat's size, only positions — nothing here
+    may hardcode one bigger than a real room's pitch, the bug that rendered
+    Lumen's seats bunched on top of each other with no gap at all."""
+
+    def _positioned(seat_id: int, row: str, seat: str, *, x: int, y: int) -> dict:
+        raw = _seat(seat_id, row, seat, available=True)
+        raw["X"] = x
+        raw["Y"] = y
+        return raw
+
+    serve_page(
+        _page(
+            33176,
+            room="Zaal 1",
+            seats=[
+                _positioned(1, "1", "1", x=0, y=0),
+                _positioned(2, "1", "2", x=10, y=0),
+                _positioned(3, "2", "1", x=0, y=10),
+            ],
+        )
+    )
+
+    geometry = fetch_activetickets_room_geometry(LUMEN_URL)
+
+    assert geometry is not None
+    assert {seat["width"] for seat in geometry.seats} == {8.0}
+    assert {seat["height"] for seat in geometry.seats} == {8.0}
 
 
 def test_a_free_seating_room_yields_no_geometry(serve_page) -> None:

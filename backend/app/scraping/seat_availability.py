@@ -1072,7 +1072,7 @@ def fetch_activetickets_room_geometry(url: str) -> ActiveTicketsSeatPlanGeometry
     if not seats:
         return None
 
-    geometry: list[dict] = []
+    positions: list[tuple[str, str, float, float]] = []
     for seat in seats:
         name = _activetickets_seat_name(seat)
         if name is None:
@@ -1083,23 +1083,46 @@ def fetch_activetickets_room_geometry(url: str) -> ActiveTicketsSeatPlanGeometry
             y = float(seat.get("Y"))
         except (TypeError, ValueError):
             continue
-        geometry.append(
-            {
-                "row_name": row_name,
-                "seat_name": seat_name,
-                "position_left": x,
-                "position_top": y,
-                "width": 32,
-                "height": 32,
-                "selectable": True,
-            }
-        )
-    if not geometry:
+        positions.append((row_name, seat_name, x, y))
+    if not positions:
         return None
+
+    seat_size = _activetickets_seat_size(positions)
+    geometry = [
+        {
+            "row_name": row_name,
+            "seat_name": seat_name,
+            "position_left": x,
+            "position_top": y,
+            "width": seat_size,
+            "height": seat_size,
+            "selectable": True,
+        }
+        for row_name, seat_name, x, y in positions
+    ]
 
     return ActiveTicketsSeatPlanGeometry(
         room=normalize_room(show.get("Location")), seats=geometry
     )
+
+
+def _activetickets_seat_size(positions: list[tuple[str, str, float, float]]) -> float:
+    """A room's seat size, in the same units as `X`/`Y`.
+
+    Nothing in the payload states a seat's physical size the way Tricket's SVG
+    or Ticketlab's `settings` do — only positions. Filing every room under a
+    flat 32 rendered Lumen's seats overlapping into one bunched mass: its
+    seats sit 20 units apart, smaller than that guess. The room's own grid
+    pitch — the smallest gap between two distinct positions on the same axis
+    — is what a real seat's footprint has to fit inside of, so the seat is
+    drawn a little smaller than that pitch to leave a gap between neighbours.
+    """
+    xs = sorted({x for _, _, x, _ in positions})
+    ys = sorted({y for _, _, _, y in positions})
+    gaps = [b - a for a, b in zip(xs, xs[1:], strict=False) if b > a]
+    gaps += [b - a for a, b in zip(ys, ys[1:], strict=False) if b > a]
+    pitch = min(gaps) if gaps else 32.0
+    return max(pitch - 2, 4.0)
 
 
 # --- Ticketlab ---------------------------------------------------------------

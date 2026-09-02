@@ -19,3 +19,19 @@ export function ThemedRefreshControl(props: RefreshControlProps) {
     />
   );
 }
+
+/**
+ * Spread onto any scrollable that carries a {@link ThemedRefreshControl}, and
+ * pair with {@link pullToRefreshContentStyle} on its `contentContainerStyle`.
+ *
+ * A list with only a row or two otherwise answers the pull gesture over its
+ * rows and nowhere else: with nothing to scroll, the empty space below the
+ * last row is dead, so a pull started low on the screen does nothing. The
+ * bounce is what makes the gesture available there, and the grown content
+ * container is what puts that space inside the list's own content rather than
+ * behind it.
+ */
+export const pullToRefreshScrollProps = { alwaysBounceVertical: true } as const;
+
+/** Merged into a refreshable list's `contentContainerStyle` — see {@link pullToRefreshScrollProps}. */
+export const pullToRefreshContentStyle = { flexGrow: 1 } as const;

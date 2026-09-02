@@ -13,7 +13,8 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useRouter } from "expo-router";
-import type { UserPublic } from "shared";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import type { UserPublic, UserWithFriendStatus } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
@@ -24,6 +25,14 @@ type FriendBadgesProps = {
   friendsInterested?: UserPublic[];
   /** Friends you invited who haven't responded yet — shown last, muted/dashed. */
   friendsPending?: UserPublic[];
+  /**
+   * Friends of the viewer's friends, reachable only through a mutual friend —
+   * never the viewer's own friends, so they render with the same dashed
+   * "not really your circle" border as `friendsPending` and a "+" instead of
+   * the remind bell (see `onAddFriend`).
+   */
+  friendsOfFriendsGoing?: UserWithFriendStatus[];
+  friendsOfFriendsInterested?: UserWithFriendStatus[];
   variant?: "compact" | "default";
   maxVisible?: number;
   maxRows?: number;
@@ -31,6 +40,25 @@ type FriendBadgesProps = {
   disabledUserId?: string;
   /** Called right before navigating to a friend's page (e.g. to close an open sheet first). */
   onNavigate?: () => void;
+  /**
+   * When given, interested badges (not going — see nextfix.md) grow a small
+   * "remind" bell so a friend who's already interested can still be nudged,
+   * without offering a duplicate invite. Omitted everywhere badges are just a
+   * read-only audience summary (movie cards, compact rows).
+   */
+  onRemindFriend?: (friendId: string, name: string) => void;
+  remindedFriendIds?: Set<string>;
+  remindDisabled?: boolean;
+  /**
+   * Friends who can't currently see the viewer's own status on this showtime
+   * (their visibility mode or a per-friend opt-out hides it) — their remind
+   * bell is suppressed, since nudging someone about a showtime they can't
+   * see the viewer is attending would out that attendance without the
+   * viewer having chosen to share it.
+   */
+  hiddenFromFriendIds?: Set<string>;
+  /** Opens the add/accept-friend popup for a friend-of-friend badge's "+". */
+  onAddFriend?: (user: UserWithFriendStatus) => void;
 };
 
 type FriendBadgeProps = {
@@ -48,6 +76,13 @@ type FriendBadgeProps = {
   onMeasureWidth?: (badgeKey: string, width: number) => void;
   disabledUserId?: string;
   onNavigate?: () => void;
+  onRemind?: () => void;
+  reminded?: boolean;
+  remindDisabled?: boolean;
+  remindIconColor?: string;
+  remindIconColorSent?: string;
+  onAdd?: () => void;
+  isFriendOfFriend?: boolean;
 };
 
 type VariantStyles = {
@@ -64,6 +99,8 @@ type BadgeItem = {
   borderColor: string;
   accentColor: string;
   isPending?: boolean;
+  isInterested?: boolean;
+  isFriendOfFriend?: boolean;
 };
 
 const FRIEND_BADGE_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
@@ -123,6 +160,13 @@ const FriendBadge = ({
   disabledUserId,
   onNavigate,
   isPending,
+  onRemind,
+  reminded,
+  remindDisabled,
+  remindIconColor,
+  remindIconColorSent,
+  onAdd,
+  isFriendOfFriend,
 }: FriendBadgeProps & { isPending?: boolean }) => {
   const router = useRouter();
   const goToFriendShowtimes = useSingleFireNavigation((id: string, friendName: string) =>
@@ -142,10 +186,19 @@ const FriendBadge = ({
           badgeSeatText: styles.defaultBadgeSeatText,
           statusDot: styles.defaultStatusDot,
         };
+  const actionButtonStyle =
+    variant === "compact" ? styles.actionButtonCompact : styles.actionButtonDefault;
+  const actionIconSize = variant === "compact" ? 11 : 14;
 
   const handlePress = (event: GestureResponderEvent) => {
     if (disabledUserId !== undefined && friendId === disabledUserId) return;
     event.stopPropagation();
+    // Same destination as any other friend badge — `/friend-showtimes/[id]`
+    // already renders `NonFriendProfile` (with a friend-request control, plus
+    // Block/Report) whenever the viewer and this person aren't friends yet,
+    // so a friend-of-friend's own page is just as reachable. The "+" stays
+    // its own tap target for the quick add/accept popup, not a substitute
+    // for getting to their page.
     onNavigate?.();
     goToFriendShowtimes(friendId, name);
   };
@@ -164,14 +217,14 @@ const FriendBadge = ({
         styles.badge,
         sizeStyles.badge,
         { backgroundColor, borderColor },
-        isPending && styles.pendingBadge,
+        (isPending || isFriendOfFriend) && styles.pendingBadge,
       ]}
     >
       <View
         style={[
           styles.statusDot,
           sizeStyles.statusDot,
-          isPending
+          isPending || isFriendOfFriend
             ? { backgroundColor: "transparent", borderWidth: 1, borderColor: accentColor }
             : { backgroundColor: accentColor },
         ]}
@@ -189,6 +242,42 @@ const FriendBadge = ({
           </ThemedText>
         ) : null}
       </ThemedText>
+      {onRemind ? (
+        <TouchableOpacity
+          onPress={(event) => {
+            event.stopPropagation();
+            if (reminded || remindDisabled) return;
+            onRemind();
+          }}
+          disabled={reminded || remindDisabled}
+          hitSlop={FRIEND_BADGE_HIT_SLOP}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={reminded ? `Reminder sent to ${name}` : `Send ${name} a reminder`}
+          style={[actionButtonStyle, reminded && styles.remindButtonSent]}
+        >
+          <MaterialIcons
+            name="notifications-none"
+            size={actionIconSize}
+            color={reminded ? remindIconColorSent : remindIconColor}
+          />
+        </TouchableOpacity>
+      ) : null}
+      {onAdd ? (
+        <TouchableOpacity
+          onPress={(event) => {
+            event.stopPropagation();
+            onAdd();
+          }}
+          hitSlop={FRIEND_BADGE_HIT_SLOP}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Add ${name} as a friend`}
+          style={actionButtonStyle}
+        >
+          <MaterialIcons name="add" size={actionIconSize} color={accentColor} />
+        </TouchableOpacity>
+      ) : null}
     </TouchableOpacity>
   );
 };
@@ -197,12 +286,19 @@ export default function FriendBadges({
   friendsGoing = [],
   friendsInterested = [],
   friendsPending = [],
+  friendsOfFriendsGoing = [],
+  friendsOfFriendsInterested = [],
   variant = "default",
   maxVisible,
   maxRows,
   style,
   disabledUserId,
   onNavigate,
+  onRemindFriend,
+  remindedFriendIds,
+  remindDisabled,
+  hiddenFromFriendIds,
+  onAddFriend,
 }: FriendBadgesProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
@@ -228,6 +324,7 @@ export default function FriendBadges({
       backgroundColor: colors.friendInterested.primary,
       borderColor: colors.friendInterested.border,
       accentColor: colors.friendInterested.secondary,
+      isInterested: true,
     })),
     ...friendsPending.map((friend) => ({
       key: `pending-${friend.id}`,
@@ -236,6 +333,23 @@ export default function FriendBadges({
       borderColor: colors.gray.border,
       accentColor: colors.textSecondary,
       isPending: true,
+    })),
+    ...friendsOfFriendsGoing.map((friend) => ({
+      key: `fof-going-${friend.id}`,
+      friend,
+      backgroundColor: colors.friendGoing.primary,
+      borderColor: colors.friendGoing.border,
+      accentColor: colors.friendGoing.secondary,
+      isFriendOfFriend: true,
+    })),
+    ...friendsOfFriendsInterested.map((friend) => ({
+      key: `fof-interested-${friend.id}`,
+      friend,
+      backgroundColor: colors.friendInterested.primary,
+      borderColor: colors.friendInterested.border,
+      accentColor: colors.friendInterested.secondary,
+      isInterested: true,
+      isFriendOfFriend: true,
     })),
   ];
 
@@ -362,24 +476,53 @@ export default function FriendBadges({
       ]}
       onLayout={handleContainerLayout}
     >
-      {visibleItems.map(({ key, friend, backgroundColor, borderColor, accentColor, isPending }) => (
-        <FriendBadge
-          key={key}
-          badgeKey={key}
-          friendId={friend.id}
-          name={getFriendName(friend)}
-          seatLabel={isPending ? null : getSeatLabel(friend)}
-          backgroundColor={backgroundColor}
-          borderColor={borderColor}
-          accentColor={accentColor}
-          styles={styles}
-          variant={variant}
-          onMeasureWidth={handleMeasureBadgeWidth}
-          disabledUserId={disabledUserId}
-          onNavigate={onNavigate}
-          isPending={isPending}
-        />
-      ))}
+      {visibleItems.map(
+        ({
+          key,
+          friend,
+          backgroundColor,
+          borderColor,
+          accentColor,
+          isPending,
+          isInterested,
+          isFriendOfFriend,
+        }) => (
+          <FriendBadge
+            key={key}
+            badgeKey={key}
+            friendId={friend.id}
+            name={getFriendName(friend)}
+            seatLabel={isPending || isFriendOfFriend ? null : getSeatLabel(friend)}
+            backgroundColor={backgroundColor}
+            borderColor={borderColor}
+            accentColor={accentColor}
+            styles={styles}
+            variant={variant}
+            onMeasureWidth={handleMeasureBadgeWidth}
+            disabledUserId={disabledUserId}
+            onNavigate={onNavigate}
+            isPending={isPending}
+            isFriendOfFriend={isFriendOfFriend}
+            onRemind={
+              !isFriendOfFriend &&
+              isInterested &&
+              onRemindFriend &&
+              !hiddenFromFriendIds?.has(friend.id)
+                ? () => onRemindFriend(friend.id, getFriendName(friend))
+                : undefined
+            }
+            reminded={remindedFriendIds?.has(friend.id)}
+            remindDisabled={remindDisabled}
+            remindIconColor={accentColor}
+            remindIconColorSent={colors.textSecondary}
+            onAdd={
+              isFriendOfFriend && onAddFriend
+                ? () => onAddFriend(friend as UserWithFriendStatus)
+                : undefined
+            }
+          />
+        )
+      )}
       {hiddenCount > 0 ? (
         <View
           style={[
@@ -442,6 +585,25 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 999,
       flexShrink: 0,
     },
+    // Sized to fit inside the badge's own height rather than to the glyph: at
+    // 18 the button plus the badge's vertical padding came to 20, two points
+    // over `defaultBadge`'s 18, so a badge carrying an action stood taller
+    // than the plain ones beside it.
+    actionButtonDefault: {
+      width: 16,
+      height: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+    },
+    actionButtonCompact: {
+      width: 12,
+      height: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+    },
+    remindButtonSent: {},
     badgeText: {
       fontWeight: "600",
       includeFontPadding: false,

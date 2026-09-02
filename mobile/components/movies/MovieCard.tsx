@@ -59,6 +59,23 @@ function MovieCard({ movie, onPress, showCinema = true }: MovieCardProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [friendBadgeAreaHeight, setFriendBadgeAreaHeight] = useState(0);
+  // Widest weekday/day/month and widest date+time block across this card's
+  // own showtime rows, fed back into each row so each date segment and the
+  // cinema pill's left edge line up with the others.
+  const [dateColumnWidths, setDateColumnWidths] = useState<{
+    weekday: number;
+    day: number;
+    month: number;
+  }>({ weekday: 0, day: 0, month: 0 });
+  const [leadingColumnWidth, setLeadingColumnWidth] = useState(0);
+  const handleMeasureDateColumnWidth = (segment: "weekday" | "day" | "month", width: number) => {
+    setDateColumnWidths((prev) =>
+      width > prev[segment] ? { ...prev, [segment]: width } : prev
+    );
+  };
+  const handleMeasureLeadingWidth = (width: number) => {
+    setLeadingColumnWidth((prev) => (width > prev ? width : prev));
+  };
   // Use backend totals when available so collapsed rows still show accurate "+N more" text.
   const showtimes = movie.showtimes || [];
   const totalShowtimes = movie.total_showtimes ?? showtimes.length;
@@ -133,8 +150,13 @@ function MovieCard({ movie, onPress, showCinema = true }: MovieCardProps) {
                       subtitlesAfterCinema
                       isSyntheticMovie={isSynthetic}
                       showCinema={showCinema}
+                      showEndTime={false}
                       seatAvailabilityIconOnly
                       seatAvailabilityUrgentOnly
+                      dateColumnWidths={dateColumnWidths}
+                      leadingColumnWidth={leadingColumnWidth || undefined}
+                      onMeasureDateColumnWidth={handleMeasureDateColumnWidth}
+                      onMeasureLeadingWidth={handleMeasureLeadingWidth}
                     />
                   ))}
                 </View>

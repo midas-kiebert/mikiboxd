@@ -594,6 +594,29 @@ def get_uninvited_selected_friends_for_showtime(
     )
 
 
+@router.get(
+    "/{showtime_id}/visibility/hidden-attending-friends",
+    response_model=UninvitedSelectedFriendsPublic,
+)
+def get_hidden_attending_friends_for_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> UninvitedSelectedFriendsPublic:
+    """Friends already going/interested who won't see the actor's status.
+
+    Used to prompt the actor, before marking going/interested, to invite
+    friends who are already visibly attending but whom the actor's current
+    visibility mode or per-friend opt-out would otherwise hide from.
+    """
+    return showtimes_service.get_hidden_attending_friends_for_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+    )
+
+
 @router.put("/{showtime_id}/visibility", response_model=ShowtimeVisibilityPublic)
 def update_showtime_visibility(
     *,

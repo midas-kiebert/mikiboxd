@@ -78,6 +78,7 @@ Legend:
 - [x] `cinema_room_capacity.py` — Largest seat count ever seen in one room of one cinema, keyed `(cinema_id, room)`. Shared across every screening in the room, which is what lets the estimate converge at all — a single showtime is read a handful of times, a busy room hundreds
 - [x] `showtime_seat_map.py` — Which individual seats were taken at a showtime's last reading, keyed by showtime. The per-seat half of a seat availability reading, written by the same poller pass from the same response; kept off `Showtime` because every catalogue query selects that row in full and exactly one endpoint ever wants this. Absent means "unknown", never "nothing taken"
 - [x] `showtime_ping.py` — Notification sent to a friend about a showtime
+- [x] `showtime_reminder.py` — Cooldown record for the manual "remind a friend" nudge, one row per (showtime, receiver). Keyed on the receiver rather than the sender pair on purpose: the 72h cooldown is about how often that person may be nudged about that screening, not about who did the nudging
 - [ ] `showtime_ping_link.py` — Short opaque code (not a self-contained token) mapping a shared `/ping/{showtime_id}/{token}` invite link back to who minted it and for which showtime
 - [x] `notification.py` — Notification-centre entry (match / invite-response / request-accepted)
 - [x] `showtime_visibility.py` — Per-showtime visibility mode + effective-visibility cache
@@ -146,6 +147,7 @@ Legend:
 - [x] `showtime_visibility.py` — Effective-visibility cache from mode + status-sharing + pings (incl. co-invitees)
 - [ ] `showtime_ping.py` — Ping queries and creation
 - [ ] `showtime_ping_link.py` — Create/look-up for a shared invite link's short code
+- [x] `showtime_reminder.py` — Read/upsert of that cooldown row; `record_showtime_reminder` moves the existing row's timestamp forward rather than inserting a second one, so the unique (showtime, receiver) constraint never sees two
 - [x] `notification.py` — Notification-centre row queries (upsert, feed, decay)
 - [x] `sold_out_watch.py` — Sold-out watch reads/writes; `set_watch_for_user` moves the user's single row rather than delete-and-insert, so the one-per-user constraint never sees two
 - [ ] `friendship.py` — Friend request and friendship queries (+ status-sharing)
@@ -308,6 +310,12 @@ Legend:
 - [x] `tests/scraping/test_eagerly_host_matching.py` — Which ticket links count as Eagerly: `/tickets/<number>` is only an Eagerly link on a host in `EAGERLY_SITE_HOSTS` (AnnexCinema and De Sien sell at that path without running Eagerly, and matching them made the client promise seat counts that 404 for ever), and both the `www.` form our scrapers build and the bare form Cineville hands out must resolve to the same booking host or a cinema silently drops to sold-out-only depending on which source won the dedupe
 - [x] `tests/scraping/test_tricket_seat_map.py` — Reading a Tricket seat map: positions come from the map's SVG and names from the screening resource, so neither is usable alone; a seat the resource does not name is dropped rather than drawn unmatchable. Also the one place a `screen_side` is *derived* — Tricket draws the screen line itself, and Cinecenter draws it below every seat — plus the guards that keep Studio/K's decorative map out and every seat-map host nameable
 - [x] `tests/scraping/test_activetickets_seat_availability.py` — The platform sells two kinds of room through one page shape: a numbered room inlines its seat plan (count, capacity, taken map, blocked seats taken but still counted towards the room) and a free-seating room inlines nothing but the sold-out flag. Also the id-at-the-end-of-the-slug URL parsing, the unknown-host rejection, and the two states that must never read as sold out — a screening the shop no longer lists, and a page with no view-model at all
+- [x] `tests/scraping/test_ticketlab_seat_availability.py` — The platform whose shops mostly never name a room: a nameless room is still identified by `util.seating.locationid` (keying on the name alone left Cinema Oostereiland, De Drom, Filmhuis Bussum, Fizi and Luxor Zutphen with no room, no stored floor plan and no seat map), a named one reports both, and the one red alert box the shop uses for "not found", "sale finished" and "sale disabled" alike drops the count — which reads 0 whatever the room holds — while keeping the room the plan is looked up by
+- [x] `tests/crud/test_showtime_friends_of_friends_visibility.py` — Who FRIENDS_OF_FRIENDS actually reaches: a friend-of-a-friend only sees the status when the bridging friend is themself going/interested on that showtime, and the two opt-out directions (the owner's `shares_status` towards the bridge, the bridge's towards the viewer) gate different halves of the bridge
+- [x] `tests/crud/test_showtime_friends_of_friends_display.py` — The other direction: which friends-of-friends are *listed* on a showtime the viewer is looking at, now that the viewing side is unconditional rather than a per-user opt-in
+- [x] `tests/crud/test_showtime_hidden_attending_friends.py` — The friends who are already visibly attending but would lose sight of the actor's status when it goes INVITED_ONLY — the set `InviteBeforePrivateDialog` offers to invite
+- [x] `tests/services/test_moderation_visibility_rebuild.py` — Blocking and unblocking rebuild the effective-visibility cache for both users' showtimes, so a block takes a status out of the other person's feed immediately instead of at the next write
+- [x] `tests/services/test_default_visibility_apply.py` — Switching the account default with and without applying it to showtimes already selected: "new showtimes only" pins the mode each going/interested showtime was running under so the default moves out from under it, unselected showtimes still take the new default, an omitted flag keeps the old apply-to-everything behaviour, and explicit per-showtime choices are untouched either way, plus the `has_selected_showtimes` flag the screen skips the prompt on
 - [ ] `tests/fixtures/` — Test factories and shared fixtures
 - [ ] Add tests for `services/me.py`
 - [ ] Add tests for `services/showtimes.py` (visibility logic)
@@ -619,6 +627,9 @@ Only components created or reworked during the cleanup are listed here; the rest
 - [x] `components/cineville/CinevilleCardButton.tsx` — The floating shortcut into the above, at the bottom of the agenda and showtimes feeds where a thumb actually reaches. Rendered for guests too since the card is stored on the device and needs no account; hidden until a number is saved, and on any feed its Settings switch is off
 - [x] `utils/cineville-shortcuts.ts` — Per-feed on/off for that shortcut, stored on the device beside the card number. Both default to on (a button that must be switched on before it can be found never is), and only an explicit "off" is persisted
 - [x] `ui/AppSwitch.tsx` — The app's on/off switch, wrapping RN's `Switch` because iOS and Android want opposite props from it: `trackColor.false` is only an *outline* on iOS, so a white `thumbColor` on a near-white card left the off state a pale empty capsule. iOS gets `ios_backgroundColor` and the system thumb, Android keeps the explicit colors, and both get the selection haptic every other control in the app fires
+- [x] `app/default-visibility.tsx` — The account-level "default status visibility" screen: which of the 3 modes a newly selected showtime starts in. Reached from the per-showtime visibility dropdown, and on save asks once whether the new default should also take over the showtimes already selected (the screen skips that prompt when the account has none)
+- [x] `friends/FriendOfFriendPopup.tsx` — The "+" on a friend-of-friend badge: send or accept a friend request without leaving the showtime sheet. Deliberately lighter than `NonFriendProfile.tsx` — Block/Report stay on the full profile
+- [x] `utils/cineville-auto-copy.ts` — Whether opening a Cineville cinema's ticket link also copies the saved card code to the clipboard. Same shape as `utils/cineville-shortcuts.ts`: defaults to on, only an explicit "off" is persisted
 
 ---
 
@@ -651,6 +662,8 @@ Only components created or reworked during the cleanup are listed here; the rest
 - [ ] `.env` structure — What variables are required? What are the defaults?
 - [ ] `alembic/versions/` — 114 migrations: understand the schema evolution
 - [ ] `.pre-commit-config.yaml` — What hooks run on commit?
+- [x] `scripts/deploy-staging.sh` — Rsyncs the *local working tree* to the self-hosted runner's checkout on mi-ki and rebuilds the staging stack over SSH, so staging can be tried without pushing to dev. The prod→staging data reseed the real workflow does on every push is opt-in here (`--with-reseed`): it is slow and has taken staging down before
+- [x] `scripts/server-maintenance.sh` — Cron job on mi-ki: prunes the Docker containers/images/build cache repeated deploys leave behind, then emails an alert if root disk usage is still over 85%. Reuses the SMTP creds already in the staging `.env`
 
 ---
 

@@ -1,7 +1,9 @@
-import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { ShowtimesService, ShowtimesGetMainPageShowtimesResponse } from "../client";
 import { ApiError } from "../client";
 import type { GoingStatus, Language, SearchField } from "../client";
+import { seedShowtimeSeatAvailability } from "./useShowtimeSeatAvailability";
+import { seedShowtimeVisibility } from "./useShowtimeVisibility";
 
 type ShowtimesFilters = {
     query?: string;
@@ -17,6 +19,7 @@ type ShowtimesFilters = {
     watchedOnly?: boolean;
     selectedStatuses?: GoingStatus[];
     friendsOnly?: boolean;
+    allCinemas?: boolean;
     selectedListIds?: string[];
     excludeListIds?: string[];
     selectedLanguages?: Language[];
@@ -49,6 +52,7 @@ export function useFetchMainPageShowtimes(
         enabled = true,
     } : useFetchMainPageShowtimesProps
 ): UseInfiniteQueryResult<InfiniteData<ShowtimesGetMainPageShowtimesResponse>, Error>{
+    const queryClient = useQueryClient();
     const result = useInfiniteQuery<
         ShowtimesGetMainPageShowtimesResponse,
         Error,
@@ -61,8 +65,8 @@ export function useFetchMainPageShowtimes(
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
-        queryFn: ({ pageParam = 0}) => {
-            return ShowtimesService.getMainPageShowtimes({
+        queryFn: async ({ pageParam = 0 }) => {
+            const page = await ShowtimesService.getMainPageShowtimes({
                 offset: pageParam,
                 // Offset zero is the first page, and nothing else can be: the
                 // offsets below are cumulative row counts, which only start at
@@ -71,6 +75,12 @@ export function useFetchMainPageShowtimes(
                 snapshotTime: snapshotTime,
                 ...filters,
             });
+            // The badges read this cache, so filling it here — with what the
+            // page itself already carries — is what lets them paint with the
+            // cards instead of a request later. See `seedShowtimeSeatAvailability`.
+            seedShowtimeSeatAvailability(queryClient, page);
+            seedShowtimeVisibility(queryClient, page);
+            return page;
         },
         retry: (failureCount, error) => {
             if (error instanceof ApiError && error.status === 403) {

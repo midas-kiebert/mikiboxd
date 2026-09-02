@@ -15,6 +15,7 @@ from app.crud import movie as movies_crud
 from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_ping_link as showtime_ping_link_crud
+from app.crud import showtime_reminder as showtime_reminder_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.exceptions.base import AppError
@@ -26,8 +27,10 @@ from app.exceptions.showtime_exceptions import (
     ShowtimePingNonFriendError,
     ShowtimePingPastShowtimeError,
     ShowtimePingSelfError,
+    ShowtimeReminderCooldownError,
     ShowtimeReminderNonFriendError,
     ShowtimeReminderNotEligibleError,
+    ShowtimeReminderNotGoingError,
     ShowtimeSeatValidationError,
 )
 from app.inputs.movie import Filters
@@ -315,6 +318,9 @@ def ping_friend_for_showtime(
     return Message(message="Friend invited successfully"), ping.id, should_notify
 
 
+REMINDER_COOLDOWN = timedelta(hours=72)
+
+
 def send_showtime_reminder(
     *,
     session: Session,
@@ -324,6 +330,10 @@ def send_showtime_reminder(
 ) -> bool:
     """Nudge a friend already GOING/INTERESTED, or invited and not dismissed.
 
+    Only a sender who is themselves GOING may send a reminder — the mobile
+    app hides the button otherwise, so reaching this without it raises
+    `ShowtimeReminderNotGoingError`.
+
     Unlike `ping_friend_for_showtime`, this never creates or changes a
     selection or ping row — it's a one-off notification, not an invite.
     Returns whether a notification was actually dispatched: `False` (not an
@@ -331,6 +341,12 @@ def send_showtime_reminder(
     since the mobile app already hides the button in that case and a sender
     who reaches this endpoint anyway (a stale friend list, a race) gets a
     quiet no-op rather than a message implying something is broken.
+
+    The friend can only be reminded about this showtime once every
+    `REMINDER_COOLDOWN` — enforced across senders, not per sender, so one
+    friend nudging them doesn't reset the clock for the next one. This
+    raises `ShowtimeReminderCooldownError` (unlike the opted-out case above)
+    since it's actionable for the sender: try again later.
     """
     if actor_id == friend_id:
         raise ShowtimePingSelfError()
@@ -351,6 +367,12 @@ def send_showtime_reminder(
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
 
+    actor_status = user_crud.get_showtime_going_status(
+        session=session, showtime_id=showtime_id, user_id=actor_id
+    )
+    if actor_status != GoingStatus.GOING:
+        raise ShowtimeReminderNotGoingError()
+
     friend_status = user_crud.get_showtime_going_status(
         session=session, showtime_id=showtime_id, user_id=friend_id
     )
@@ -366,12 +388,29 @@ def send_showtime_reminder(
     if not is_interested_or_going and not has_active_invite:
         raise ShowtimeReminderNotEligibleError()
 
-    return push_notifications.notify_user_on_showtime_reminder(
+    now = now_amsterdam_naive()
+    existing_reminder = showtime_reminder_crud.get_showtime_reminder(
+        session=session, showtime_id=showtime_id, receiver_id=friend_id
+    )
+    if existing_reminder is not None and now - existing_reminder.sent_at < REMINDER_COOLDOWN:
+        raise ShowtimeReminderCooldownError()
+
+    was_sent = push_notifications.notify_user_on_showtime_reminder(
         session=session,
         sender_id=actor_id,
         receiver_id=friend_id,
         showtime_id=showtime_id,
     )
+    if was_sent:
+        showtime_reminder_crud.record_showtime_reminder(
+            session=session,
+            showtime_id=showtime_id,
+            sender_id=actor_id,
+            receiver_id=friend_id,
+            sent_at=now,
+        )
+        session.commit()
+    return was_sent
 
 
 _PING_LINK_TOKEN_BYTES = 12  # ~16 url-safe chars, 96 bits — short but unguessable
@@ -667,21 +706,12 @@ def get_showtime_visibility_batch(
     if len(showtimes_by_id) == 0:
         return []
 
-    settings_by_showtime_id = (
-        showtime_visibility_crud.get_showtime_visibility_settings_for_showtimes(
-            session=session,
-            owner_id=actor_id,
-            showtime_ids=deduped_showtime_ids,
-        )
-    )
     # Resolved for the whole batch at once — a per-showtime lookup here would
     # make prefetching a list of showtimes O(n) queries.
-    default_modes_by_showtime_id = (
-        showtime_visibility_crud.get_owner_default_modes_for_showtimes(
-            session=session,
-            owner_id=actor_id,
-            showtime_ids=deduped_showtime_ids,
-        )
+    modes_by_showtime_id = showtime_visibility_crud.get_effective_modes_for_showtimes(
+        session=session,
+        owner_id=actor_id,
+        showtime_ids=deduped_showtime_ids,
     )
 
     visibility_payload: list[ShowtimeVisibilityPublic] = []
@@ -690,17 +720,11 @@ def get_showtime_visibility_batch(
         if showtime is None:
             continue
 
-        setting = settings_by_showtime_id.get(showtime_id)
-        mode = (
-            setting.mode
-            if setting is not None
-            else default_modes_by_showtime_id[showtime_id]
-        )
         visibility_payload.append(
             ShowtimeVisibilityPublic(
                 showtime_id=showtime_id,
                 movie_id=showtime.movie_id,
-                mode=mode,
+                mode=modes_by_showtime_id[showtime_id],
             )
         )
 
@@ -761,6 +785,39 @@ def get_uninvited_selected_friends_for_showtime(
 
     friend_ids = (
         showtime_visibility_crud.get_uninvited_selected_friend_ids_for_showtime(
+            session=session,
+            owner_id=actor_id,
+            showtime_id=showtime_id,
+        )
+    )
+    friends = user_crud.get_users_by_ids(session=session, user_ids=friend_ids)
+    return UninvitedSelectedFriendsPublic(
+        friends=[user_converters.to_public(friend) for friend in friends]
+    )
+
+
+def get_hidden_attending_friends_for_showtime(
+    *,
+    session: Session,
+    showtime_id: int,
+    actor_id: UUID,
+) -> UninvitedSelectedFriendsPublic:
+    """Friends already going/interested who would not see the actor's status
+    if the actor selects going/interested now, given the actor's own
+    visibility mode and per-friend opt-outs.
+
+    Used by the mobile client to warn before marking going/interested: these
+    friends are already visibly attending but won't see the actor's status
+    unless invited.
+    """
+    showtime = showtimes_crud.get_showtime_by_id(
+        session=session, showtime_id=showtime_id
+    )
+    if showtime is None:
+        raise ShowtimeNotFoundError(showtime_id)
+
+    friend_ids = (
+        showtime_visibility_crud.get_hidden_attending_friend_ids_for_showtime(
             session=session,
             owner_id=actor_id,
             showtime_id=showtime_id,
@@ -1061,9 +1118,17 @@ def get_main_page_showtimes(
         filters=filters,
         letterboxd_username=letterboxd_username,
     )
+    # Resolved once for the page: every conversion needs the viewer's mode for
+    # its showtime, and one lookup each would be a query per row.
+    visibility_modes = showtime_converters.viewer_visibility_modes(
+        session=session, showtimes=showtimes, user_id=current_user_id
+    )
     return [
         showtime_converters.to_public(
-            showtime=showtime, session=session, user_id=current_user_id
+            showtime=showtime,
+            session=session,
+            user_id=current_user_id,
+            visibility_modes=visibility_modes,
         )
         for showtime in showtimes
     ]

@@ -11,6 +11,7 @@ from sqlmodel import Session, Time, cast, col, or_, select
 from app.core.enums import GoingStatus, SearchField, SeatAlertKind
 from app.core.viewer import ViewerId
 from app.crud import showtime_visibility as showtime_visibility_crud
+from app.crud import user_block as user_block_crud
 from app.crud.movie import apply_language_filter, apply_search_filter
 from app.crud.movie_set_filters import apply_movie_set_filters
 from app.inputs.movie import Filters
@@ -362,6 +363,14 @@ def get_friends_for_showtime(
             )
             & (col(ShowtimeVisibilityEffective.viewer_id) == user_id),
         )
+        # A direct Friendship, not just visibility: under FRIENDS_OF_FRIENDS
+        # mode, ShowtimeVisibilityEffective can include a friend-of-a-friend
+        # with no Friendship row at all — those belong in
+        # `get_visible_non_friends_for_showtime`'s badge, not this one.
+        .join(
+            Friendship,
+            (col(Friendship.user_id) == user_id) & (col(Friendship.friend_id) == User.id),
+        )
         .where(
             col(ShowtimeSelection.showtime_id) == showtime_id,
             col(ShowtimeSelection.going_status) == going_status,
@@ -372,7 +381,7 @@ def get_friends_for_showtime(
     return friends
 
 
-def get_friends_of_friends_for_showtime(
+def get_visible_non_friends_for_showtime(
     *,
     session: Session,
     showtime_id: int,
@@ -380,54 +389,38 @@ def get_friends_of_friends_for_showtime(
     going_status: GoingStatus,
     exclude_user_ids: set[UUID],
 ) -> list[User]:
-    """Friends of the viewer's friends who are also `going_status` here.
+    """People the viewer can see on this showtime who aren't their friends.
 
-    Only reachable through a mutual ("bridge") friend who is themself
-    GOING/INTERESTED on this showtime, and only when that bridge friend can
-    already see the friend-of-friend's status for it (their own
-    `ShowtimeVisibilityEffective` row) — so this never surfaces more than the
-    friend-of-friend already chose to share with someone they know, it just
-    lets that reach one hop further for a viewer who has opted in.
-    `exclude_user_ids` drops the viewer and their direct friends, who are
-    already covered by `get_friends_for_showtime`.
+    Read straight off the grants in `ShowtimeVisibilityEffective` rather than
+    re-deriving who qualifies. Both were tried, and any daylight between them
+    is a leak in one direction or the other: the activity feed lists a
+    showtime whenever *some* selection on it is visible, so a second rule that
+    admits fewer people leaves a showtime on the feed with nobody on it —
+    which announces that someone is there and hiding. Whatever
+    `crud.showtime_visibility` granted is exactly what gets a name here.
+
+    In practice these are friends-of-friends (see
+    `_friends_of_friends_ids_for_showtime` for who earns a grant and why) and
+    non-friends in a shared invite. `exclude_user_ids` drops the viewer and
+    their direct friends, who are already covered by
+    `get_friends_for_showtime`. Blocked users are dropped too: a grant can
+    outlive a block that had no direct friendship or ping to tear down.
     """
-    viewer_to_bridge = aliased(Friendship)
-    bridge_to_fof = aliased(Friendship)
-    bridge_selection = aliased(ShowtimeSelection)
-    fof_selection = aliased(ShowtimeSelection)
+    hidden_ids = user_block_crud.get_hidden_user_ids(session=session, user_id=user_id)
+    exclude_user_ids = exclude_user_ids | hidden_ids
 
     stmt = (
         select(User)
-        .join(bridge_to_fof, col(bridge_to_fof.friend_id) == col(User.id))
-        .join(
-            viewer_to_bridge,
-            col(viewer_to_bridge.friend_id) == col(bridge_to_fof.user_id),
-        )
-        .join(
-            bridge_selection,
-            (col(bridge_selection.user_id) == col(viewer_to_bridge.friend_id))
-            & (col(bridge_selection.showtime_id) == showtime_id),
-        )
-        .join(
-            fof_selection,
-            (col(fof_selection.user_id) == col(User.id))
-            & (col(fof_selection.showtime_id) == showtime_id),
-        )
+        .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == col(User.id))
         .join(
             ShowtimeVisibilityEffective,
             (col(ShowtimeVisibilityEffective.owner_id) == col(User.id))
-            & (
-                col(ShowtimeVisibilityEffective.viewer_id)
-                == col(viewer_to_bridge.friend_id)
-            )
+            & (col(ShowtimeVisibilityEffective.viewer_id) == user_id)
             & (col(ShowtimeVisibilityEffective.showtime_id) == showtime_id),
         )
         .where(
-            col(viewer_to_bridge.user_id) == user_id,
-            col(bridge_selection.going_status).in_(
-                [GoingStatus.GOING, GoingStatus.INTERESTED]
-            ),
-            col(fof_selection.going_status) == going_status,
+            col(ShowtimeSelection.showtime_id) == showtime_id,
+            col(ShowtimeSelection.going_status) == going_status,
             col(User.id).not_in(exclude_user_ids),
         )
         .distinct()

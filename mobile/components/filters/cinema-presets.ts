@@ -7,6 +7,8 @@
 import { useQuery, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { MeService, type CinemaPresetPublic } from "shared";
 
+import { displayPresetsQueryKey } from "@/components/filters/saved-presets";
+
 export const cinemaPresetsQueryKey = ["cinema-presets"] as const;
 
 /** The selection query too: creating a preset can change the active selection. */
@@ -26,10 +28,17 @@ export const useCinemaPresets = (
     queryFn: () => MeService.getCinemaPresets(),
   });
 
-/** Refresh everything a preset write can affect. */
+/**
+ * Refresh everything a preset write can affect — including any saved (filter)
+ * preset that follows one of these by `cinema_preset_id`: its resolved cinema
+ * list is read fresh from the backend on every fetch, but the display-presets
+ * query caches that resolved value, so editing a cinema preset has to bust it
+ * too or a linked saved preset keeps showing the pre-edit cinemas.
+ */
 export const invalidateCinemaPresets = (queryClient: QueryClient): void => {
   queryClient.invalidateQueries({ queryKey: cinemaPresetsQueryKey });
   queryClient.invalidateQueries({ queryKey: cinemaSelectionsQueryKey });
+  queryClient.invalidateQueries({ queryKey: displayPresetsQueryKey });
 };
 
 /**
@@ -44,7 +53,7 @@ export const findMyCinemasPreset = (
 
 /**
  * The presets the user deliberately named and can manage: everything except
- * their cinemas and the synthetic "All Cinemas" row, which has no database row
+ * their cinemas and the synthetic "All cinemas" row, which has no database row
  * behind it and so can be neither renamed nor deleted.
  */
 export const findNamedCinemaPresets = (

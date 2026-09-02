@@ -35,11 +35,11 @@ UNREADABLE_TICKET_LINK = "https://tickets.example.com/order/1"
 
 def _showtime(**kwargs) -> Showtime:
     kwargs.setdefault("ticket_link", READABLE_TICKET_LINK)
+    kwargs.setdefault("datetime", NOW + timedelta(days=2))
     return Showtime(
         id=1,
         movie_id=1,
         cinema_id=1,
-        datetime=NOW + timedelta(days=2),
         **kwargs,
     )
 
@@ -52,6 +52,33 @@ def test_a_due_showtime_reports_a_reading_on_the_way() -> None:
         seats_next_check_at=NOW - timedelta(minutes=1),
     )
     assert is_read_pending(showtime, now=NOW) is True
+
+
+def test_a_long_overdue_showtime_stops_reporting_pending() -> None:
+    """Nobody is coming for it. The poller only takes screenings somebody has
+    selected, so a hand-requested check (the "Check" button) on one nobody is
+    interested in leaves a due time behind that nothing will ever consume — and
+    "Checking now…" would stick for the rest of the screening's life."""
+    showtime = _showtime(
+        seats_left=40,
+        seats_capacity=100,
+        seats_checked_at=NOW - timedelta(hours=6),
+        seats_next_check_at=NOW - timedelta(hours=5),
+    )
+    assert is_read_pending(showtime, now=NOW) is False
+
+
+def test_a_started_showtime_reports_nothing_pending() -> None:
+    """The candidate query only takes screenings that have not started, and a
+    sold-out one is parked at its own start time on purpose."""
+    showtime = _showtime(
+        datetime=NOW - timedelta(minutes=10),
+        seats_left=0,
+        seats_capacity=100,
+        seats_checked_at=NOW - timedelta(hours=1),
+        seats_next_check_at=NOW - timedelta(minutes=10),
+    )
+    assert is_read_pending(showtime, now=NOW) is False
 
 
 def test_a_showtime_on_cooldown_reports_nothing_pending() -> None:

@@ -8,22 +8,45 @@
  * which is what lets the root layout's guard hold the "no account without a
  * username" rule on every route change rather than only at the sign-in call site.
  */
-import { useEffect, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { MeService, type UserMe } from 'shared'
 
 import { useAuthStatus } from '@/utils/auth-session'
 
 export const currentUserQueryKey = ['currentUser'] as const
 
-/** How often the account is re-read while waiting for a confirmation link. */
-const VERIFICATION_POLL_INTERVAL_MS = 4000
 /**
- * The account request usually answers in well under a frame or two, so the
- * spinner it drives would flicker rather than read as "checking". Held this
- * long so each poll is actually seen.
+ * A check that answers faster than this would flash its spinner rather than
+ * read as "checking", so the spinner is held at least this long. Deliberate
+ * feedback for a button the user pressed: they need to see that the tap did
+ * something, even when the account comes back in 50ms.
  */
 const VERIFICATION_SPINNER_MIN_MS = 600
+/**
+ * Much tighter than the app-wide request timeout: this one drives a visible
+ * spinner on a button, and a spinner that outlives the user's patience stops
+ * reading as progress and starts reading as broken. A check that cannot answer
+ * within this is abandoned and the badge is left as it was — the user can
+ * simply press again.
+ */
+const VERIFICATION_REQUEST_TIMEOUT_MS = 10_000
+
+/**
+ * The generated client has no per-request timeout, so the request is raced
+ * against a timer and cancelled — `CancelablePromise.cancel()` aborts the
+ * underlying axios request rather than leaving it running unwatched.
+ */
+function readAccountWithTimeout(): Promise<UserMe> {
+    const request = MeService.getCurrentUser()
+    return new Promise<UserMe>((resolve, reject) => {
+        const timer = setTimeout(() => {
+            request.cancel()
+            reject(new Error('Timed out while checking the account'))
+        }, VERIFICATION_REQUEST_TIMEOUT_MS)
+        request.then(resolve, reject).finally(() => clearTimeout(timer))
+    })
+}
 
 export function useCurrentUser(): UserMe | undefined {
     const isAuthenticated = useAuthStatus() === 'signed-in'
@@ -38,38 +61,69 @@ export function useCurrentUser(): UserMe | undefined {
 }
 
 /**
- * Re-reads the account every few seconds while `isWaiting` (i.e. the email is
- * still unconfirmed), so the confirmation link being opened elsewhere — in a
- * mail app, on a laptop — turns the badge over on its own rather than waiting
- * for the user to leave the screen and come back.
+ * A one-shot "has it been confirmed yet?" re-read of the account, for the
+ * refresh control next to the unverified-email badge.
  *
- * Returns whether a check is currently in flight, for the caller to show: the
- * point of the polling is that the user can see it happening, otherwise a
- * screen that looks frozen on "Not verified" invites them to hunt for a button.
+ * Manual rather than a background poll: the confirmation link is opened in
+ * another app or on another device, so the app has no way to know when to look
+ * — and a timer that re-reads the account every few seconds while Settings
+ * happens to be open is traffic nobody asked for, to answer a question only
+ * the user knows they are waiting on.
+ *
+ * The result is written straight into the shared `currentUser` cache, so a
+ * confirmation that has landed turns the badge (and everything else reading the
+ * account) over immediately. A failed or timed-out check changes nothing: the
+ * badge keeps saying what it said, and pressing again is the whole recovery.
  */
-export function useEmailVerificationPolling(isWaiting: boolean): boolean {
-    const isAuthenticated = useAuthStatus() === 'signed-in'
-    const isEnabled = isAuthenticated && isWaiting
-    const { isFetching } = useQuery({
-        queryKey: currentUserQueryKey,
-        queryFn: MeService.getCurrentUser,
-        enabled: isEnabled,
-        refetchInterval: isEnabled ? VERIFICATION_POLL_INTERVAL_MS : false,
-    })
-    const [isHeld, setIsHeld] = useState(false)
-    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
+export function useEmailVerificationCheck(): {
+    isChecking: boolean
+    check: () => void
+} {
+    const queryClient = useQueryClient()
+    const [isChecking, setIsChecking] = useState(false)
+    // Guards the two things a fired-and-forgotten request can get wrong: a
+    // second check racing the first, and either one landing after the screen
+    // is gone.
+    const isCheckingRef = useRef(false)
+    const isMountedRef = useRef(true)
     useEffect(() => {
-        if (!isFetching) return
-        setIsHeld(true)
-        if (timeoutRef.current) clearTimeout(timeoutRef.current)
-        timeoutRef.current = setTimeout(() => setIsHeld(false), VERIFICATION_SPINNER_MIN_MS)
+        isMountedRef.current = true
         return () => {
-            if (timeoutRef.current) clearTimeout(timeoutRef.current)
+            isMountedRef.current = false
         }
-    }, [isFetching])
+    }, [])
 
-    return isEnabled && (isFetching || isHeld)
+    const check = useCallback(() => {
+        if (isCheckingRef.current) return
+        isCheckingRef.current = true
+        // Painted on the tap itself rather than off the request, so the button
+        // acknowledges the press in the same frame.
+        setIsChecking(true)
+        const startedAt = Date.now()
+        void readAccountWithTimeout()
+            .then((user) => {
+                queryClient.setQueryData(currentUserQueryKey, user)
+            })
+            .catch(() => {
+                // Nothing to report: the badge already says the account is
+                // unconfirmed, which is still the best answer available.
+            })
+            .finally(() => {
+                // Measured from the start of the request, so a slow check is
+                // not padded with an extra delay on top of the wait the user
+                // already sat through.
+                const remaining = Math.max(
+                    0,
+                    VERIFICATION_SPINNER_MIN_MS - (Date.now() - startedAt),
+                )
+                setTimeout(() => {
+                    isCheckingRef.current = false
+                    if (isMountedRef.current) setIsChecking(false)
+                }, remaining)
+            })
+    }, [queryClient])
+
+    return { isChecking, check }
 }
 
 /**

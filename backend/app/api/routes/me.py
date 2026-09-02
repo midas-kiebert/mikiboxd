@@ -212,7 +212,7 @@ def set_favorite_cinema_preset(
     current_user: CurrentUser,
     preset_id: UUID,
 ) -> CinemaPresetPublic:
-    """Swap "my cinemas" with this preset's cinemas — the favorite row stays put."""
+    """Swap "my cinemas" onto this preset — it keeps its name, the old favorite becomes an ordinary preset."""
     favorite = me_service.apply_cinema_preset_as_favorite(
         session=session,
         user_id=current_user.id,

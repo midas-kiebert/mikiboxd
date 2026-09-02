@@ -37,7 +37,11 @@ import {
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { GestureDetector } from 'react-native-gesture-handler';
-import { ThemedRefreshControl } from '@/components/themed-refresh-control';
+import {
+  pullToRefreshContentStyle,
+  pullToRefreshScrollProps,
+  ThemedRefreshControl,
+} from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MeService, type UserWithFriendStatus } from 'shared';
@@ -63,6 +67,7 @@ import { FeedItemEntrance } from '@/components/ui/FeedItemEntrance';
 import SegmentedControl, { type SegmentedOption } from '@/components/ui/SegmentedControl';
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
 import { useIsSignedIn } from '@/utils/auth-session';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useSwipePager } from '@/hooks/useSwipePager';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 import { triggerSelectionHaptic } from '@/utils/long-press';
@@ -79,6 +84,9 @@ const FRIENDS_HIGHLIGHTS = [
 
 /** The QR plate is a fixed size, so its loading state has to match it exactly. */
 const QR_SIZE = 210;
+
+/** Matches `UserSearchResults` and the other search screens' debounce. */
+const SEARCH_DEBOUNCE_MS = 280;
 
 type FriendsMode = 'friends' | 'discover';
 
@@ -124,7 +132,15 @@ function FriendsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const normalizedSearchQuery = searchQuery.trim();
   const normalizedSearchQueryLower = normalizedSearchQuery.toLowerCase();
+  // The friends list below is filtered locally on every keystroke — cheap,
+  // and instant is exactly what that box should feel like. Strangers are
+  // filtered on the server, so that half waits for typing to settle: firing
+  // a request per keystroke raced each one's response against the next,
+  // occasionally landing an older, shorter page's row on top of the latest
+  // one's.
+  const debouncedSearchQuery = useDebouncedValue(normalizedSearchQuery, SEARCH_DEBOUNCE_MS);
   const hasUserSearch = normalizedSearchQuery.length > 0;
+  const hasDebouncedUserSearch = debouncedSearchQuery.length > 0;
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
   const { tab } = useLocalSearchParams<{ tab?: string | string[] }>();
@@ -150,8 +166,8 @@ function FriendsScreen() {
 
   // Build the filter payload from current UI selections.
   const userFilters = useMemo(
-    () => ({ query: normalizedSearchQuery }),
-    [normalizedSearchQuery]
+    () => ({ query: debouncedSearchQuery }),
+    [debouncedSearchQuery]
   );
 
   // Searching strangers is the only list here that needs pagination. It stays
@@ -167,7 +183,7 @@ function FriendsScreen() {
   } = useFetchUsers({
     limit: 20,
     filters: userFilters,
-    enabled: isSignedIn && isDiscovering && hasUserSearch,
+    enabled: isSignedIn && isDiscovering && hasDebouncedUserSearch,
   });
 
   // Not gated on the mode any more: the two modes are pages of one pager, and
@@ -190,7 +206,7 @@ function FriendsScreen() {
 
   // Flatten/derive list data for rendering efficiency.
   const users = useMemo(() => usersData?.pages.flat() ?? [], [usersData]);
-  const displayedUsers = hasUserSearch ? users : [];
+  const displayedUsers = hasDebouncedUserSearch ? users : [];
   const friends = useMemo(() => friendsData ?? [], [friendsData]);
   const received = useMemo(() => receivedRequests ?? [], [receivedRequests]);
   const sent = useMemo(() => sentRequests ?? [], [sentRequests]);
@@ -252,7 +268,7 @@ function FriendsScreen() {
   const isListLoading =
     !refreshing &&
     (isDiscovering
-      ? hasUserSearch && isFetchingUsers && displayedUsers.length === 0
+      ? hasDebouncedUserSearch && isFetchingUsers && displayedUsers.length === 0
       : isLoadingFriendsView);
   const showLoadingLogo = useDelayedTrue(
     isListLoading,
@@ -374,7 +390,8 @@ function FriendsScreen() {
       // up until the fresh ones land.
       sections={isLoadingFriendsView ? EMPTY_SECTIONS : sections}
       keyExtractor={(item) => `friend-row-${item.id}`}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, pullToRefreshContentStyle]}
+      {...pullToRefreshScrollProps}
       showsVerticalScrollIndicator={false}
       stickySectionHeadersEnabled={false}
       refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
@@ -454,7 +471,8 @@ function FriendsScreen() {
     <FlatList
       data={displayedUsers}
       keyExtractor={(item) => `user-${item.id}`}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, pullToRefreshContentStyle]}
+      {...pullToRefreshScrollProps}
       showsVerticalScrollIndicator={false}
       refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       renderItem={({ item, index }) => (
@@ -468,17 +486,31 @@ function FriendsScreen() {
       ListEmptyComponent={
         // The loading panel is a fixed overlay (below), not part of the
         // list's own content, so there's nothing to render here while a
-        // search is still coming back.
-        !hasUserSearch ? inviteCard : isListLoading || refreshing ? null : (
+        // search is still coming back. No card for "no search yet" any
+        // more either: the invite card below covers that case on its own.
+        hasDebouncedUserSearch && !isListLoading && !refreshing ? (
           <View style={styles.emptyCard}>
             <ThemedText style={styles.emptyTitle}>No one found</ThemedText>
             <ThemedText style={styles.emptyText}>
               Try a different name, or show them your QR code instead.
             </ThemedText>
           </View>
-        )
+        ) : null
       }
-      ListFooterComponent={<LoadMoreFooter loading={isFetchingNextPage} size="small" />}
+      ListFooterComponent={
+        // Always under the results, not swapped in only when there are
+        // none: someone who found who they wanted can still add a second
+        // person by having them scan, without clearing the search first.
+        // The load-more spinner only reserves its row while there are rows
+        // to paginate — otherwise (no query yet, or "No one found") it's
+        // just dead space between the message above and the QR code.
+        <View style={styles.inviteFooterNoResults}>
+          {displayedUsers.length > 0 ? (
+            <LoadMoreFooter loading={isFetchingNextPage} size="small" />
+          ) : null}
+          {inviteCard}
+        </View>
+      }
     />
   );
 
@@ -633,6 +665,12 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     },
     inviteFooter: {
       paddingTop: 24,
+    },
+    // Used on the discover page, where the invite card follows either the
+    // reserved load-more row or nothing at all — neither needs its own
+    // clearance on top of that.
+    inviteFooterNoResults: {
+      paddingTop: 0,
     },
     inviteCard: {
       borderRadius: 12,

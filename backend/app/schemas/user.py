@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import EmailStr
 from sqlmodel import SQLModel
 
-from app.core.enums import NotificationChannel
+from app.core.enums import NotificationChannel, VisibilityMode
 
 if TYPE_CHECKING:
     from .showtime import ShowtimePublic
@@ -39,7 +39,12 @@ class UserMe(UserPublic):
     show_watchlist_digest_tip: bool
     is_superuser: bool
     incognito_mode: bool
-    show_friends_of_friends_interest: bool
+    default_visibility_mode: VisibilityMode
+    # Whether the account is going to / interested in anything at all. Those
+    # showtimes follow `default_visibility_mode` unless individually overridden,
+    # so changing it asks whether they should come along — a question the
+    # settings screen skips entirely when this is False.
+    has_selected_showtimes: bool
     notify_on_friend_showtime_match: bool
     notify_on_friend_requests: bool
     notify_on_showtime_ping: bool

@@ -32,18 +32,14 @@ type FriendListRowProps = {
    * label, so it reads the same way at a glance everywhere in the app.
    */
   pingStatus?: FriendPingStatus;
-  mode?: "invite" | "display" | "remind";
+  mode?: "invite" | "display";
   /** invite mode: already pinged → shows an "Invited" check instead of the button. */
   invited?: boolean;
-  /** remind mode: a reminder was just sent → shows a "Sent" check instead of the button. */
-  reminded?: boolean;
   /** invite mode: this row is the Enter-key target → the button shows a return glyph. */
   highlighted?: boolean;
   disabled?: boolean;
   /** invite mode: pressing the Invite button invites the friend. */
   onInvite?: () => void;
-  /** remind mode: pressing the Remind button nudges the friend. */
-  onRemind?: () => void;
   /** display mode: makes the row tappable (e.g. to open the friend's page). */
   onPress?: () => void;
 };
@@ -55,11 +51,9 @@ export default function FriendListRow({
   pingStatus = null,
   mode = "invite",
   invited = false,
-  reminded = false,
   highlighted = false,
   disabled = false,
   onInvite,
-  onRemind,
   onPress,
 }: FriendListRowProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
@@ -73,11 +67,9 @@ export default function FriendListRow({
     pingStatus === "GOING" ? colors.green : pingStatus === "INTERESTED" ? colors.orange : null;
 
   const isInvite = mode === "invite";
-  const isRemind = mode === "remind";
   // A friend already going/interested can still be invited — it just won't
   // notify them — so the row is tinted for context but the button stays live.
   const canInvite = isInvite && !invited && !disabled && Boolean(onInvite);
-  const canRemind = isRemind && !reminded && !disabled && Boolean(onRemind);
   // The row itself always opens the friend's page when a handler is given —
   // in invite mode that's a separate action from the labelled Invite button
   // (which stops its own press from reaching the row), so nobody invites a
@@ -123,29 +115,6 @@ export default function FriendListRow({
             {highlighted ? (
               <MaterialIcons name="keyboard-return" size={13} color={colors.blue.secondary} />
             ) : null}
-          </TouchableOpacity>
-        )
-      ) : isRemind ? (
-        reminded ? (
-          <View style={[styles.inviteButton, styles.invitedButton]}>
-            <MaterialIcons name="check" size={13} color={colors.textSecondary} />
-            <ThemedText style={styles.invitedButtonText}>Sent</ThemedText>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={[styles.inviteButton, !canRemind && styles.inviteButtonDisabled]}
-            onPress={(event) => {
-              event.stopPropagation();
-              onRemind?.();
-            }}
-            disabled={!canRemind}
-            activeOpacity={0.8}
-            hitSlop={6}
-            accessibilityRole="button"
-            accessibilityLabel={`Send ${name} a reminder about this showtime`}
-          >
-            <MaterialIcons name="notifications-active" size={13} color={colors.blue.secondary} />
-            <ThemedText style={styles.inviteButtonText}>Remind</ThemedText>
           </TouchableOpacity>
         )
       ) : rowPress ? (

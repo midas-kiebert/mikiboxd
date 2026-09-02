@@ -1,3 +1,4 @@
+from collections.abc import Mapping, Sequence
 from uuid import UUID
 
 from sqlmodel import Session, col, select
@@ -5,11 +6,12 @@ from sqlmodel import Session, col, select
 from app.converters import cinema as cinema_converters
 from app.converters import movie as movie_converters
 from app.converters import user as user_converters
-from app.core.enums import GoingStatus
+from app.core.enums import GoingStatus, VisibilityMode
 from app.core.viewer import ViewerId
 from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtime_crud
 from app.crud import showtime_ping as showtime_ping_crud
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.user import User
@@ -21,7 +23,8 @@ from app.schemas.showtime import (
     ShowtimePublic,
     ShowtimeViewerState,
 )
-from app.schemas.user import UserPublic
+from app.schemas.user import UserPublic, UserWithFriendStatus
+from app.services import seat_availability as seat_availability_service
 
 
 def _friend_to_public_with_seat(
@@ -88,18 +91,31 @@ def _friends_for_showtime(
     return friends_going, friends_interested
 
 
-def _friends_of_friends_for_showtime(
+def _visible_non_friends_for_showtime(
     *,
     session: Session,
     showtime_id: int,
     user_id: UUID,
     exclude_user_ids: set[UUID],
-) -> tuple[list[UserPublic], list[UserPublic]]:
-    """Mirrors `_friends_for_showtime`, one hop further out — see
-    `crud.showtime.get_friends_of_friends_for_showtime`."""
+) -> tuple[list[UserWithFriendStatus], list[UserWithFriendStatus]]:
+    """Mirrors `_friends_for_showtime` for everyone visible who isn't a friend
+    — see `crud.showtime.get_visible_non_friends_for_showtime`.
+
+    Carries friend-request status (rather than plain identity) so the client
+    can offer a "+" to send or accept a friend request straight from the
+    showtime — these people are never the viewer's own friends.
+    """
+    sharing_friend_ids = friendship_crud.get_status_sharing_friend_ids(
+        session=session, owner_id=user_id
+    )
     fof_going = [
-        user_converters.to_public(friend)
-        for friend in showtime_crud.get_friends_of_friends_for_showtime(
+        user_converters.to_with_friend_status(
+            friend,
+            session=session,
+            current_user=user_id,
+            sharing_friend_ids=sharing_friend_ids,
+        )
+        for friend in showtime_crud.get_visible_non_friends_for_showtime(
             session=session,
             showtime_id=showtime_id,
             user_id=user_id,
@@ -109,8 +125,13 @@ def _friends_of_friends_for_showtime(
     ]
     fof_going_ids = {friend.id for friend in fof_going}
     fof_interested = [
-        user_converters.to_public(friend)
-        for friend in showtime_crud.get_friends_of_friends_for_showtime(
+        user_converters.to_with_friend_status(
+            friend,
+            session=session,
+            current_user=user_id,
+            sharing_friend_ids=sharing_friend_ids,
+        )
+        for friend in showtime_crud.get_visible_non_friends_for_showtime(
             session=session,
             showtime_id=showtime_id,
             user_id=user_id,
@@ -276,11 +297,49 @@ def _non_friend_participants(
     ]
 
 
+def viewer_visibility_modes(
+    *,
+    session: Session,
+    showtimes: Sequence[Showtime],
+    user_id: ViewerId,
+) -> dict[int, VisibilityMode]:
+    """The viewer's visibility mode for a whole page of showtimes, in one go.
+
+    Pass the result to the converters below when converting a list: resolving
+    the modes is a constant number of queries for any number of showtimes, and
+    letting each conversion resolve its own would turn that into O(n).
+    """
+    if user_id is None:
+        return {}
+    return showtime_visibility_crud.get_effective_modes_for_showtimes(
+        session=session,
+        owner_id=user_id,
+        showtime_ids=[showtime.id for showtime in showtimes],
+    )
+
+
+def _visibility_mode(
+    *,
+    session: Session,
+    showtime_id: int,
+    user_id: UUID,
+    visibility_modes: Mapping[int, VisibilityMode] | None,
+) -> VisibilityMode:
+    """This viewer's mode for one showtime, from the batch when the caller
+    resolved one and on its own otherwise (a single-showtime response)."""
+    if visibility_modes is not None and showtime_id in visibility_modes:
+        return visibility_modes[showtime_id]
+    return showtime_visibility_crud.get_effective_modes_for_showtimes(
+        session=session, owner_id=user_id, showtime_ids=[showtime_id]
+    )[showtime_id]
+
+
 def _in_movie_viewer_state(
     *,
     session: Session,
     showtime_id: int,
     user_id: UUID,
+    visibility_modes: Mapping[int, VisibilityMode] | None,
 ) -> ShowtimeInMovieViewerState:
     """The viewer fields both showtime shapes carry, gathered once."""
     friends_going, friends_interested = _friends_for_showtime(
@@ -304,6 +363,15 @@ def _in_movie_viewer_state(
     responded_ids = {friend.id for friend in friends_going} | {
         friend.id for friend in friends_interested
     }
+    direct_friend_ids = friendship_crud.get_friend_ids(session=session, user_id=user_id)
+    friends_of_friends_going, friends_of_friends_interested = (
+        _visible_non_friends_for_showtime(
+            session=session,
+            showtime_id=showtime_id,
+            user_id=user_id,
+            exclude_user_ids=direct_friend_ids | {user_id},
+        )
+    )
     return ShowtimeInMovieViewerState(
         going=going,
         seat_row=seat_row,
@@ -321,6 +389,14 @@ def _in_movie_viewer_state(
             user_id=user_id,
             responded_ids=responded_ids,
         ),
+        friends_of_friends_going=friends_of_friends_going,
+        friends_of_friends_interested=friends_of_friends_interested,
+        visibility_mode=_visibility_mode(
+            session=session,
+            showtime_id=showtime_id,
+            user_id=user_id,
+            visibility_modes=visibility_modes,
+        ),
     )
 
 
@@ -329,6 +405,7 @@ def to_public(
     *,
     session: Session,
     user_id: ViewerId,
+    visibility_modes: Mapping[int, VisibilityMode] | None = None,
 ) -> ShowtimePublic:
     """
     Converts a Showtime object to a ShowtimePublic object: the screening itself,
@@ -355,7 +432,10 @@ def to_public(
     viewer: ShowtimeViewerState | None = None
     if user_id is not None:
         shared = _in_movie_viewer_state(
-            session=session, showtime_id=showtime.id, user_id=user_id
+            session=session,
+            showtime_id=showtime.id,
+            user_id=user_id,
+            visibility_modes=visibility_modes,
         )
         friends_watchlisted, friends_watched = (
             movie_converters.friends_letterboxd_lists_for_movie(
@@ -364,21 +444,6 @@ def to_public(
                 current_user=user_id,
             )
         )
-        viewer_user = session.get(User, user_id)
-        friends_of_friends_going: list[UserPublic] = []
-        friends_of_friends_interested: list[UserPublic] = []
-        if viewer_user is not None and viewer_user.show_friends_of_friends_interest:
-            direct_friend_ids = friendship_crud.get_friend_ids(
-                session=session, user_id=user_id
-            )
-            friends_of_friends_going, friends_of_friends_interested = (
-                _friends_of_friends_for_showtime(
-                    session=session,
-                    showtime_id=showtime.id,
-                    user_id=user_id,
-                    exclude_user_ids=direct_friend_ids | {user_id},
-                )
-            )
         viewer = ShowtimeViewerState(
             **shared.model_dump(),
             friends_watchlisted=friends_watchlisted,
@@ -386,8 +451,6 @@ def to_public(
             non_friend_participants=_non_friend_participants(
                 session=session, showtime_id=showtime.id, user_id=user_id
             ),
-            friends_of_friends_going=friends_of_friends_going,
-            friends_of_friends_interested=friends_of_friends_interested,
         )
 
     return ShowtimePublic(
@@ -395,6 +458,7 @@ def to_public(
         movie=movie,
         cinema=cinema,
         viewer=viewer,
+        seat_availability=seat_availability_service.to_public(showtime),
     )
 
 
@@ -403,6 +467,7 @@ def to_in_movie_public(
     *,
     session: Session,
     user_id: ViewerId,
+    visibility_modes: Mapping[int, VisibilityMode] | None = None,
 ) -> ShowtimeInMoviePublic:
     """
     Converts a Showtime object to a ShowtimeInMoviePublic object: a screening
@@ -426,9 +491,13 @@ def to_in_movie_public(
     return ShowtimeInMoviePublic(
         **showtime.model_dump(),
         cinema=cinema,
+        seat_availability=seat_availability_service.to_public(showtime),
         viewer=(
             _in_movie_viewer_state(
-                session=session, showtime_id=showtime.id, user_id=user_id
+                session=session,
+                showtime_id=showtime.id,
+                user_id=user_id,
+                visibility_modes=visibility_modes,
             )
             if user_id is not None
             else None

@@ -3,7 +3,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
-import { ThemedRefreshControl } from '@/components/themed-refresh-control';
+import {
+  pullToRefreshContentStyle,
+  pullToRefreshScrollProps,
+  ThemedRefreshControl,
+} from '@/components/themed-refresh-control';
 import { DateTime } from 'luxon';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
@@ -534,7 +538,8 @@ function MainShowtimesScreen() {
             data={visibleMovies}
             renderItem={renderMovie}
             keyExtractor={byIdKeyExtractor}
-            contentContainerStyle={styles.movieFeed}
+            contentContainerStyle={[styles.movieFeed, pullToRefreshContentStyle]}
+            {...pullToRefreshScrollProps}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={renderMoviesEmpty}
             ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} />}

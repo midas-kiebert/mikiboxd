@@ -6,7 +6,7 @@ from pydantic import EmailStr
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Column, Field, Relationship, SQLModel
 
-from app.core.enums import DigestFrequency, NotificationChannel
+from app.core.enums import DigestFrequency, NotificationChannel, VisibilityMode
 from app.utils import now_amsterdam_naive
 
 if TYPE_CHECKING:
@@ -27,13 +27,12 @@ class _UserBase(SQLModel):
     # Who has it is decided in `core/db.py`, per environment.
     is_pro: bool = Field(default=False)
     incognito_mode: bool = Field(default=False)
-    # Opt-in: also surface, on a showtime, friends of your friends who are
-    # GOING/INTERESTED — but only reachable through a mutual friend who is
-    # themself GOING/INTERESTED, and only when that mutual friend can already
-    # see the friend-of-friend's status (see
-    # `crud.showtime.get_friends_of_friends_for_showtime`). Off by default:
-    # this reaches beyond the user's own friend graph, so it must be asked for.
-    show_friends_of_friends_interest: bool = Field(default=False)
+    # The visibility mode a new showtime starts with until the user picks a
+    # different one for it (see `crud.showtime_visibility.get_owner_default_mode_for_showtime`).
+    # Editable from its own settings screen, not just per-showtime.
+    default_visibility_mode: VisibilityMode = Field(
+        default=VisibilityMode.FRIENDS_OF_FRIENDS, nullable=False
+    )
     notify_on_friend_showtime_match: bool = Field(default=True)
     notify_on_friend_requests: bool = Field(default=True)
     notify_on_showtime_ping: bool = Field(default=True)
@@ -109,7 +108,15 @@ class UserUpdate(SQLModel):
     email: EmailStr | None = Field(default=None, max_length=255)
     letterboxd_username: str | None = Field(default=None, max_length=255)
     incognito_mode: bool | None = Field(default=None)
-    show_friends_of_friends_interest: bool | None = Field(default=None)
+    default_visibility_mode: VisibilityMode | None = Field(default=None)
+    # Only meaningful alongside a `default_visibility_mode` change: whether the
+    # new default also takes over the showtimes the user is already
+    # going/interested on (they all track the default unless individually
+    # overridden), or applies to new ones only. Never reaches the database —
+    # popped from the update dict in `me_service.update_me`, same as
+    # `current_password` is. Defaults to True when absent so clients built
+    # before this existed keep the old behaviour.
+    apply_default_visibility_to_existing: bool | None = Field(default=None)
     notify_on_friend_showtime_match: bool | None = Field(default=None)
     notify_on_friend_requests: bool | None = Field(default=None)
     notify_on_showtime_ping: bool | None = Field(default=None)

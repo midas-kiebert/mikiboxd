@@ -1,10 +1,10 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Animated, Dimensions, Easing, LayoutChangeEvent, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 // Aliased: this file already animates its caret with RN's own `Animated`.
 import Reanimated, { FadeIn } from "react-native-reanimated";
 import { useQuery } from "@tanstack/react-query";
-import { MeService } from "shared";
+import { MeService, type CinemaPresetPublic } from "shared";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 
@@ -125,11 +125,25 @@ export default function CinemaFilterChip({
   const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
   const { cinemaIds: sessionCinemaIds, setCinemaIds: setSessionCinemaIds } =
     useCinemaSelection();
-  const { data: cinemaPresets = [] } = useQuery({
+  const { data: rawCinemaPresets = [] } = useQuery({
     queryKey: ["cinema-presets"],
     queryFn: () => MeService.getCinemaPresets(),
     enabled: isSignedIn,
   });
+  // The preferred selection is what most taps are for, so it always leads;
+  // "All cinemas" answers nothing a saved preset couldn't, so it always
+  // trails. A stable sort keeps every other preset in the order the backend
+  // already sent them in (see `list_user_presets`), rather than re-deriving
+  // one here.
+  const cinemaPresets = useMemo(
+    () =>
+      [...rawCinemaPresets].sort((a, b) => {
+        const rank = (preset: CinemaPresetPublic) =>
+          preset.is_favorite ? 0 : preset.is_default ? 2 : 1;
+        return rank(a) - rank(b);
+      }),
+    [rawCinemaPresets]
+  );
 
   const effectiveIds = sessionCinemaIds ?? preferredCinemaIds ?? [];
   const sortedEffectiveIds = Array.from(new Set(effectiveIds)).sort((a, b) => a - b);
@@ -156,10 +170,7 @@ export default function CinemaFilterChip({
       : matchingPreset?.name ?? `${sortedEffectiveIds.length} cinemas`;
 
   // Only ever read inside the dropdown, which a guest never opens.
-  const hintText =
-    cinemaPresets.length === 0
-      ? "Select cinemas and save presets"
-      : "Select cinemas or manage presets";
+  const hintText = "Select cinemas";
 
   // Capture height from the layout event — this is always accurate.
   const handleChipLayout = (e: LayoutChangeEvent) => {
@@ -306,36 +317,45 @@ export default function CinemaFilterChip({
                       onPress={() => applyPreset(preset.cinema_ids)}
                       activeOpacity={0.8}
                     >
-                      <ThemedText
-                        style={[styles.presetLabel, isActive && styles.presetLabelActive]}
-                        numberOfLines={1}
-                      >
-                        {preset.name}
-                      </ThemedText>
-                      {/* Trails the name: it qualifies the preset, so it reads
-                          as part of it rather than as a marker in a gutter.
-                          The row's own highlight already says which preset is
-                          applied — no tick needed for that. */}
-                      {preset.is_favorite && (
-                        <MaterialIcons
-                          name="star"
-                          size={13}
-                          color={isActive ? colors.pillActiveText : colors.yellow.secondary}
-                        />
+                      {/* Name and star share one flexed block so the star sits
+                          right after the (possibly truncated) name instead of
+                          drifting to the row's far edge next to the pencil.
+                          It qualifies the name, so it reads as part of it
+                          rather than as a marker in a gutter — no tick needed
+                          for "applied", since the row's own highlight says that. */}
+                      <View style={styles.presetNameRow}>
+                        <ThemedText
+                          style={[styles.presetLabel, isActive && styles.presetLabelActive]}
+                          numberOfLines={1}
+                        >
+                          {preset.name}
+                        </ThemedText>
+                        {preset.is_favorite && (
+                          <MaterialIcons
+                            name="star"
+                            size={13}
+                            color={isActive ? colors.pillActiveText : colors.yellow.secondary}
+                          />
+                        )}
+                      </View>
+                      {/* "All cinemas" is the built-in fallback, not a saved
+                          row — there is no name or cinema list of its own to
+                          edit, so it gets no pencil. */}
+                      {!preset.is_default && (
+                        <TouchableOpacity
+                          onPress={() => handleEditPreset(preset.id)}
+                          activeOpacity={0.7}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Edit ${preset.name}`}
+                        >
+                          <MaterialIcons
+                            name="edit"
+                            size={15}
+                            color={isActive ? colors.pillActiveText : colors.textSecondary}
+                          />
+                        </TouchableOpacity>
                       )}
-                      <TouchableOpacity
-                        onPress={() => handleEditPreset(preset.id)}
-                        activeOpacity={0.7}
-                        hitSlop={8}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Edit ${preset.name}`}
-                      >
-                        <MaterialIcons
-                          name="edit"
-                          size={15}
-                          color={isActive ? colors.pillActiveText : colors.textSecondary}
-                        />
-                      </TouchableOpacity>
                     </TouchableOpacity>
                   );
                 })}
@@ -424,8 +444,14 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
     presetRowActive: {
       backgroundColor: colors.pillActiveBackground,
     },
-    presetLabel: {
+    presetNameRow: {
       flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+    },
+    presetLabel: {
+      flexShrink: 1,
       fontSize: 14,
       fontWeight: "500",
       color: colors.pillText,

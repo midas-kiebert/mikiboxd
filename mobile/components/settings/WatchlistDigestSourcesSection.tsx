@@ -168,9 +168,7 @@ export default function WatchlistDigestSourcesSection({
   return (
     <View style={styles.container}>
       <ThemedText style={styles.explainerText}>
-        A source is one rule for this digest: which movies to watch for — your
-        Letterboxd watchlist, or a list you pick — and which cinemas to check
-        them at. You can have up to {MAX_SOURCES}, each on its own schedule.
+        You can add multiple sources for where MiKiNO should look to notify you on new films. Each source specifies a frequency, list of films you want to be notified about, and the cinemas they have to be playing in.
       </ThemedText>
 
       {sources.map((source) => {

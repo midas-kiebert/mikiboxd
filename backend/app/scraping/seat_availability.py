@@ -121,6 +121,13 @@ class SeatAvailability:
     sold_out: bool | None
     room: str | None
     platform: str
+    # The platform's own identity for that room, when it has one that is not
+    # the display name. Only Ticketlab needs it: most of its shops render no
+    # room name at all, but every seated page carries the numeric
+    # `util.seating.locationid` that keys the room across shows — so a room
+    # can be recognised, and its stored floor plan found, even where it can
+    # never be named. `None` everywhere else, where the name *is* the key.
+    room_key: str | None = None
     # The room's real total, when a platform hands back every seat rather
     # than just a remaining count (only Eagerly's seat map does). `None`
     # elsewhere doesn't mean "no seats" — the poller's running max
@@ -1165,15 +1172,27 @@ TICKETLAB_URL_PATTERN = re.compile(
     + r")/shop/tickets-new\.php\?showid=(\d+)$"
 )
 
-# A showid that no longer resolves (sold as a different show, or a stale link)
-# renders this alert instead of the order form — "Show not found." or, in the
-# Dutch locale `_get`'s Accept-Language header asks for, "Voorstelling niet
-# gevonden." Matched on the wrapper alone since the two share no text; not
-# evidence of a full house either way.
-_TICKETLAB_NOT_FOUND = re.compile(r'class="alert alert-danger" role="alert">')
+# The one red alert box Ticketlab has, used for every reason it will not sell
+# this show right now: a showid that no longer resolves ("Show not found." /
+# "Voorstelling niet gevonden."), online sale finished ("Online kaartverkoop
+# voor deze voorstelling is beëindigd.") and online sale never enabled
+# ("Online kaartverkoop is uitgeschakeld voor deze voorstelling."). Matched on
+# the wrapper alone since those share no text.
+#
+# It is not evidence of a full house — a closed page still reports
+# `availabletickets` as 0 whatever the room actually holds, which is exactly
+# why the count is dropped when this matches. What it does *not* invalidate is
+# the room: a closed page still carries the seat map and its `locationid`, so
+# the room identity is read either way and this showtime's floor plan keeps
+# working after its sale window shuts.
+_TICKETLAB_SALE_CLOSED = re.compile(r'class="alert alert-danger" role="alert">')
 _TICKETLAB_AVAILABLE_TICKETS = re.compile(r'id="availabletickets"[^>]*value="(\d+)"')
 # "<h4 ...><small>Location</small></h4></div><div ...><h4 ...>Club Zaal</h4>",
-# or "Zaal" for "Location" in the Dutch locale.
+# or "Zaal" for "Location" in the Dutch locale. Optional, and in practice
+# absent: of the fourteen shops only Focus, Wenneker and Cinema Middelburg put
+# a room row on the page at all — Oostereiland, De Drom, Filmhuis Bussum,
+# Fizi and Luxor Zutphen all list film/date/time and nothing else. Hence
+# `_ticketlab_room_key` below, which is what actually identifies the room.
 _TICKETLAB_ROOM = re.compile(
     r"<small>(?:Location|Zaal)</small></h4></div><div class=\"col-md-9\">"
     r'<h4 class="event-label">([^<]*)</h4>'
@@ -1184,6 +1203,20 @@ _TICKETLAB_SEAT_STATE_AVAILABLE = 2
 def _ticketlab_room(page: str) -> str | None:
     match = _TICKETLAB_ROOM.search(page)
     return normalize_room(match.group(1) if match else None)
+
+
+def _ticketlab_room_key(seating: dict) -> str | None:
+    """The room's stable identity, from the seat map's `locationid`.
+
+    Every seated page carries it, named or not, and it is the same number for
+    every show in that room — so it, not the mostly-absent display name, is
+    what a stored floor plan is filed under. Free-seating shows carry no
+    seating object and so no key, which is correct: there is no seat plan to
+    find. Only unique within one shop, which is all it has to be — floor plans
+    are keyed by cinema as well.
+    """
+    location_id = seating.get("locationid")
+    return str(location_id) if isinstance(location_id, int | str) else None
 
 
 def _ticketlab_js_object(page: str, var_name: str) -> dict:
@@ -1208,6 +1241,21 @@ def _ticketlab_js_object(page: str, var_name: str) -> dict:
     return obj
 
 
+def _ticketlab_seating(page: str) -> dict | None:
+    """`util.seating`, the room's seat map — None for a free-seating show.
+
+    `util` is absent on a page that carries no order form at all, which is not
+    the same thing as a show without a seat map, so both come back as None
+    here and the caller separates them by whether `state` parsed.
+    """
+    try:
+        util = _ticketlab_js_object(page, "util")
+    except SeatAvailabilityFetchError:
+        return None
+    seating = util.get("seating")
+    return seating if isinstance(seating, dict) else None
+
+
 def _ticketlab_seat_name(seat: dict) -> TakenSeat | None:
     row = str(seat.get("row") or "").strip()
     name = str(seat.get("seat") or "").strip()
@@ -1219,12 +1267,23 @@ def _fetch_ticketlab(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailabilit
     if match is None:
         return _UNKNOWN
     page = _get(url).text
-    if _TICKETLAB_NOT_FOUND.search(page):
+    room = _ticketlab_room(page)
+    try:
+        state = _ticketlab_js_object(page, "state")
+    except SeatAvailabilityFetchError:
+        # No order form at all — an unresolved showid, which is the one case
+        # where there is nothing on the page to read.
         return SeatAvailability(None, None, None, "ticketlab")
 
-    room = _ticketlab_room(page)
-    state = _ticketlab_js_object(page, "state")
-    if not state.get("seated"):
+    seating = _ticketlab_seating(page)
+    room_key = _ticketlab_room_key(seating) if seating is not None else None
+
+    if _TICKETLAB_SALE_CLOSED.search(page):
+        # Sale closed: the room is still worth learning (see
+        # `_TICKETLAB_SALE_CLOSED`), the count is not.
+        return SeatAvailability(None, None, room, "ticketlab", room_key=room_key)
+
+    if not state.get("seated") or seating is None:
         # Free seating: the room is not sold seat by seat, so only the running
         # count is on offer, the same shape as ActiveTickets' unnumbered rooms.
         available = _TICKETLAB_AVAILABLE_TICKETS.search(page)
@@ -1234,12 +1293,12 @@ def _fetch_ticketlab(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailabilit
             seats_left == 0 if seats_left is not None else None,
             room,
             "ticketlab",
+            room_key=room_key,
         )
 
-    util = _ticketlab_js_object(page, "util")
-    seats = (util.get("seating") or {}).get("seats")
+    seats = seating.get("seats")
     if not isinstance(seats, list) or not seats:
-        return SeatAvailability(None, None, room, "ticketlab")
+        return SeatAvailability(None, None, room, "ticketlab", room_key=room_key)
 
     taken: list[TakenSeat] = []
     free = 0
@@ -1258,14 +1317,20 @@ def _fetch_ticketlab(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailabilit
         free == 0,
         room,
         "ticketlab",
+        room_key=room_key,
         capacity=len(seats),
         taken_seats=tuple(taken),
     )
 
 
 class TicketlabSeatPlanGeometry(NamedTuple):
-    """One room's layout, as the floor-plan store wants it."""
+    """One room's layout, as the floor-plan store wants it.
 
+    `room_key` is what the plan is filed under and is always present; `room`
+    is the display name, which most of these shops never print.
+    """
+
+    room_key: str
     room: str | None
     screen_side: str
     seats: list[dict]
@@ -1279,6 +1344,11 @@ def fetch_ticketlab_room_geometry(url: str) -> TicketlabSeatPlanGeometry | None:
     None for a free-seating show, an unresolved showid, or anything that does
     not come back whole, so the ingest moves on to another showtime in the
     same room rather than storing half a plan.
+
+    A show whose online sale has closed is *not* skipped: its page still
+    carries the whole seat map, and the geometry of a room does not depend on
+    whether tickets are on sale for one screening in it. Only the live counts
+    are untrustworthy there, and those are not what this reads.
     """
     match = TICKETLAB_URL_PATTERN.match(url)
     if match is None:
@@ -1287,17 +1357,14 @@ def fetch_ticketlab_room_geometry(url: str) -> TicketlabSeatPlanGeometry | None:
         page = _get(url).text
     except SeatAvailabilityFetchError:
         return None
-    if _TICKETLAB_NOT_FOUND.search(page):
-        return None
 
-    try:
-        state = _ticketlab_js_object(page, "state")
-        if not state.get("seated"):
-            return None
-        util = _ticketlab_js_object(page, "util")
-    except SeatAvailabilityFetchError:
+    seating = _ticketlab_seating(page)
+    if seating is None:
         return None
-    seats = (util.get("seating") or {}).get("seats")
+    room_key = _ticketlab_room_key(seating)
+    if room_key is None:
+        return None
+    seats = seating.get("seats")
     if not isinstance(seats, list) or not seats:
         return None
 
@@ -1346,7 +1413,10 @@ def fetch_ticketlab_room_geometry(url: str) -> TicketlabSeatPlanGeometry | None:
         return None
 
     return TicketlabSeatPlanGeometry(
-        room=_ticketlab_room(page), screen_side=screen_side.value, seats=geometry
+        room_key=room_key,
+        room=_ticketlab_room(page),
+        screen_side=screen_side.value,
+        seats=geometry,
     )
 
 

@@ -2433,3 +2433,183 @@ def test_requesting_a_seat_reading_needs_an_account(
 
     assert response.status_code == 401
     check_now.assert_not_called()
+
+
+def test_listed_showtimes_carry_their_own_seat_availability(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    """The busyness badge is drawn from the list response itself.
+
+    It used to take a second request per screenful, which is why the badges
+    appeared a beat after the cards they belong to. Carrying the reading inline
+    is what lets the client paint them in the same frame, so the field has to
+    be there — with the same `None`-means-nothing-to-say rule as the batch
+    endpoint, which is what the client caches to stop asking again.
+    """
+    readable = showtime_factory(
+        datetime=now_amsterdam_naive() + timedelta(days=2),
+        ticket_link=_READABLE_TICKET_LINK,
+        seats_left=12,
+        seats_capacity=100,
+        seats_checked_at=now_amsterdam_naive() - timedelta(minutes=5),
+    )
+    unreadable = showtime_factory(
+        datetime=now_amsterdam_naive() + timedelta(days=2),
+        ticket_link="https://example.com/some-other-ticket-shop/1",
+    )
+    readable_id = readable.id
+    unreadable_id = unreadable.id
+    db_transaction.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/",
+        params={"limit": 100},
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    by_id = {item["id"]: item for item in response.json()}
+    inline = by_id[readable_id]["seat_availability"]
+    assert inline["showtime_id"] == readable_id
+    assert inline["seats_left"] == 12
+    assert inline["seats_capacity"] == 100
+    assert inline["level"] is not None
+    assert inline["trackable"] is True
+    # A ticket shop nothing here can read: no block, and never will be one.
+    assert by_id[unreadable_id]["seat_availability"] is None
+
+
+def test_listed_showtimes_carry_the_viewers_visibility_mode(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    """The sheet's mode pill is drawn from the list the sheet was opened from.
+
+    It used to cost a batched request of its own, which is what made the pill
+    arrive after the sheet. The mode is viewer state — the asker's own setting
+    — so it rides along in `viewer`, and an explicit override has to win over
+    the default exactly as the batch endpoint has it.
+    """
+    overridden = showtime_factory(datetime=now_amsterdam_naive() + timedelta(days=2))
+    defaulted = showtime_factory(datetime=now_amsterdam_naive() + timedelta(days=2))
+    overridden_id = overridden.id
+    defaulted_id = defaulted.id
+    db_transaction.commit()
+
+    update_response = client.put(
+        f"{settings.API_V1_STR}/showtimes/{overridden_id}/visibility",
+        headers=normal_user_token_headers,
+        json={"mode": "INVITED_ONLY"},
+    )
+    assert update_response.status_code == 200
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/",
+        params={"limit": 100},
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    by_id = {item["id"]: item for item in response.json()}
+    assert by_id[overridden_id]["viewer"]["visibility_mode"] == "INVITED_ONLY"
+    # No override, so the viewer's own default stands.
+    assert by_id[defaulted_id]["viewer"]["visibility_mode"] == "ALL_FRIENDS"
+
+
+def test_hidden_attending_friends_route_returns_404_for_unknown_showtime(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+) -> None:
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/99999999/visibility/hidden-attending-friends",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Showtime with ID 99999999 not found."
+
+
+def test_hidden_attending_friends_route_warns_about_an_invisible_attending_friend(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    """The mirror of `uninvited-selected-friends`: this warns before marking
+    going/interested rather than before switching to INVITED_ONLY, so it must
+    take the actor's own INVITED_ONLY mode into account and surface the
+    already-attending friend who would not see the actor's status."""
+    hidden_friend = user_factory()
+    hidden_friend_id = hidden_friend.id
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=current_user_id, friend_id=hidden_friend_id
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=hidden_friend_id,
+        going_status=GoingStatus.GOING,
+    )
+    showtime_visibility_crud.set_visibility_mode_for_showtime(
+        session=db_transaction,
+        owner_id=current_user_id,
+        showtime_id=showtime_id,
+        mode=VisibilityMode.INVITED_ONLY,
+        now=now_amsterdam_naive(),
+    )
+    db_transaction.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility/hidden-attending-friends",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    friend_ids = {friend["id"] for friend in response.json()["friends"]}
+    assert friend_ids == {str(hidden_friend_id)}
+
+
+def test_hidden_attending_friends_route_omits_a_friend_who_would_already_see_you(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    user_factory,
+    showtime_factory,
+) -> None:
+    """An attending friend under the default ALL_FRIENDS mode, with no
+    opt-out, would already see the actor's status — so the route must not
+    warn about them."""
+    visible_friend = user_factory()
+    visible_friend_id = visible_friend.id
+    showtime = showtime_factory()
+    showtime_id = showtime.id
+    current_user_id = _normal_user_id(db_transaction)
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=current_user_id, friend_id=visible_friend_id
+    )
+    showtime_crud.add_showtime_selection(
+        session=db_transaction,
+        showtime_id=showtime_id,
+        user_id=visible_friend_id,
+        going_status=GoingStatus.INTERESTED,
+    )
+    db_transaction.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/visibility/hidden-attending-friends",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["friends"] == []

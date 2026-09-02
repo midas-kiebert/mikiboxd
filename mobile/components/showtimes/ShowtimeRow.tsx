@@ -3,7 +3,7 @@
  */
 import { StyleSheet, View } from "react-native";
 import { DateTime } from "luxon";
-import type { CinemaPublic, GoingStatus, UserPublic } from "shared";
+import type { CinemaPublic, GoingStatus, UserPublic, UserWithFriendStatus } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import CinemaPill from "@/components/badges/CinemaPill";
@@ -11,6 +11,7 @@ import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import SeatAvailabilityBadge from "@/components/badges/SeatAvailabilityBadge";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { Fonts } from "@/constants/theme";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
 
 type ShowtimeBase = {
@@ -22,9 +23,13 @@ type ShowtimeBase = {
   seat_number?: string | null;
   cinema: CinemaPublic;
   subtitles?: string[] | null;
-  friends_going?: UserPublic[];
-  friends_interested?: UserPublic[];
-  pending_invited_friends?: UserPublic[];
+  viewer?: {
+    friends_going?: UserPublic[];
+    friends_interested?: UserPublic[];
+    pending_invited_friends?: UserPublic[];
+    friends_of_friends_going?: UserWithFriendStatus[];
+    friends_of_friends_interested?: UserWithFriendStatus[];
+  } | null;
 };
 
 type ShowtimeRowProps = {
@@ -36,25 +41,47 @@ type ShowtimeRowProps = {
   subtitlesAfterCinema?: boolean;
   isSyntheticMovie?: boolean;
   showCinema?: boolean;
+  // Off inside a movie card: that row is too dense to spare space for the end time.
+  showEndTime?: boolean;
   // Off inside a movie card: that row has no space to spare for a seat count.
   showSeatAvailability?: boolean;
   // Icon only, no count: still enough to glance at inside a movie card.
   seatAvailabilityIconOnly?: boolean;
   // Only the levels worth hurrying for: a calm room is not news on a dense row.
   seatAvailabilityUrgentOnly?: boolean;
+  // Widths measured across a set of sibling rows (by the parent list), fed
+  // back in so each date segment and the block before the cinema pill line
+  // up at the widest row's edge instead of each row's own content width.
+  dateColumnWidths?: DateColumnWidths;
+  leadingColumnWidth?: number;
+  onMeasureDateColumnWidth?: (segment: DateSegment, width: number) => void;
+  onMeasureLeadingWidth?: (width: number) => void;
+  /**
+   * Opens the add/accept-friend popup for a friend-of-friend badge's "+".
+   * Omitted where the row is only a summary to glance at (inside a movie
+   * card), which is also what leaves the "+" off those rows.
+   */
+  onAddFriend?: (user: UserWithFriendStatus) => void;
 };
 
-const formatShowtime = (
+type DateSegment = "weekday" | "day" | "month";
+type DateColumnWidths = Partial<Record<DateSegment, number>>;
+
+const buildTimeParts = (
   datetime: string,
   endDatetime: string | null | undefined,
   showDate: boolean,
   isSyntheticMovie: boolean
 ) => {
   const timeLabel = formatShowtimeTimeRange(datetime, endDatetime, isSyntheticMovie);
-  if (!showDate) return timeLabel;
-  const dateFormat = "ccc d LLL";
-  const dateLabel = DateTime.fromISO(datetime).toFormat(dateFormat);
-  return `${dateLabel} • ${timeLabel}`;
+  if (!showDate) return { weekdayLabel: null, dayLabel: null, monthLabel: null, timeLabel };
+  const start = DateTime.fromISO(datetime);
+  return {
+    weekdayLabel: start.toFormat("ccc").toUpperCase(),
+    dayLabel: start.toFormat("d"),
+    monthLabel: start.toFormat("LLL").toUpperCase(),
+    timeLabel,
+  };
 };
 
 export default function ShowtimeRow({
@@ -66,15 +93,28 @@ export default function ShowtimeRow({
   subtitlesAfterCinema = false,
   isSyntheticMovie = false,
   showCinema = true,
+  showEndTime = true,
   showSeatAvailability = true,
   seatAvailabilityIconOnly = false,
   seatAvailabilityUrgentOnly = false,
+  dateColumnWidths,
+  leadingColumnWidth,
+  onMeasureDateColumnWidth,
+  onMeasureLeadingWidth,
+  onAddFriend,
 }: ShowtimeRowProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
   const styles = createStyles(colors);
   // Compact mode is used in dense cards; default mode is used in full showtime lists.
   const isCompact = variant === "compact";
+  const { weekdayLabel, dayLabel, monthLabel, timeLabel } = buildTimeParts(
+    showtime.datetime,
+    showEndTime ? showtime.end_datetime : null,
+    showDate,
+    showEndTime && isSyntheticMovie
+  );
+  const timeTextStyle = [styles.time, isCompact ? styles.timeCompact : styles.timeDefault];
   const subtitlesBadges = (
     <SubtitlesBadges subtitles={showtime.subtitles} variant={isCompact ? "compact" : "default"} />
   );
@@ -96,16 +136,81 @@ export default function ShowtimeRow({
   return (
     <View style={[styles.container, isCompact ? styles.compactContainer : styles.defaultContainer]}>
       <View style={[styles.header, alignCinemaRight && styles.headerRightAligned]}>
-        <ThemedText
+        <View
           style={[
-            styles.time,
-            isCompact ? styles.timeCompact : styles.timeDefault,
+            styles.leadingBlock,
             alignCinemaRight && styles.timeRightAligned,
+            leadingColumnWidth ? { minWidth: leadingColumnWidth } : null,
           ]}
-          numberOfLines={1}
+          onLayout={
+            onMeasureLeadingWidth
+              ? (event) => onMeasureLeadingWidth(event.nativeEvent.layout.width)
+              : undefined
+          }
         >
-          {formatShowtime(showtime.datetime, showtime.end_datetime, showDate, isSyntheticMovie)}
-        </ThemedText>
+          {weekdayLabel ? (
+            <>
+              <ThemedText
+                style={[
+                  timeTextStyle,
+                  styles.dateMono,
+                  styles.dateGray,
+                  dateColumnWidths?.weekday ? { minWidth: dateColumnWidths.weekday } : null,
+                ]}
+                numberOfLines={1}
+                onLayout={
+                  onMeasureDateColumnWidth
+                    ? (event) => onMeasureDateColumnWidth("weekday", event.nativeEvent.layout.width)
+                    : undefined
+                }
+              >
+                {weekdayLabel}
+              </ThemedText>
+              <View style={styles.weekdayDaySpacer} />
+              <ThemedText
+                style={[
+                  timeTextStyle,
+                  styles.dateMono,
+                  styles.dateRight,
+                  dateColumnWidths?.day ? { minWidth: dateColumnWidths.day } : null,
+                ]}
+                numberOfLines={1}
+                onLayout={
+                  onMeasureDateColumnWidth
+                    ? (event) => onMeasureDateColumnWidth("day", event.nativeEvent.layout.width)
+                    : undefined
+                }
+              >
+                {dayLabel}
+              </ThemedText>
+              <ThemedText style={timeTextStyle} numberOfLines={1}>
+                {" "}
+              </ThemedText>
+              <ThemedText
+                style={[
+                  timeTextStyle,
+                  styles.dateMono,
+                  styles.dateGray,
+                  dateColumnWidths?.month ? { minWidth: dateColumnWidths.month } : null,
+                ]}
+                numberOfLines={1}
+                onLayout={
+                  onMeasureDateColumnWidth
+                    ? (event) => onMeasureDateColumnWidth("month", event.nativeEvent.layout.width)
+                    : undefined
+                }
+              >
+                {monthLabel}
+              </ThemedText>
+              <ThemedText style={timeTextStyle} numberOfLines={1}>
+                {" • "}
+              </ThemedText>
+            </>
+          ) : null}
+          <ThemedText style={timeTextStyle} numberOfLines={1}>
+            {timeLabel}
+          </ThemedText>
+        </View>
         {subtitlesAfterCinema ? (
           <>
             {cinemaPill}
@@ -125,8 +230,11 @@ export default function ShowtimeRow({
           friendsGoing={showtime.viewer?.friends_going}
           friendsInterested={showtime.viewer?.friends_interested}
           friendsPending={showtime.viewer?.pending_invited_friends}
+          friendsOfFriendsGoing={showtime.viewer?.friends_of_friends_going}
+          friendsOfFriendsInterested={showtime.viewer?.friends_of_friends_interested}
           variant={isCompact ? "compact" : "default"}
           style={styles.friendRow}
+          onAddFriend={onAddFriend}
         />
       ) : null}
     </View>
@@ -152,9 +260,26 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     headerRightAligned: {
       justifyContent: "space-between",
     },
+    leadingBlock: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
     time: {
       color: colors.text,
       flexShrink: 1,
+    },
+    dateMono: {
+      fontFamily: Fonts?.mono,
+      fontWeight: "600",
+    },
+    dateGray: {
+      color: colors.textSecondary,
+    },
+    dateRight: {
+      textAlign: "right",
+    },
+    weekdayDaySpacer: {
+      width: 2,
     },
     timeRightAligned: {
       flex: 1,

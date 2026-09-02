@@ -1,6 +1,8 @@
-import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { MoviesService, MoviesReadMoviesResponse } from "../client";
 import type { GoingStatus, Language, SearchField } from "../client";
+import { seedShowtimeSeatAvailability } from "./useShowtimeSeatAvailability";
+import { seedShowtimeVisibility } from "./useShowtimeVisibility";
 
 export type MovieFilters = {
     query?: string;
@@ -48,14 +50,15 @@ export function useFetchMovies(
         enabled = true,
     }: useFetchMoviesProps = {}
 ): UseInfiniteQueryResult<InfiniteData<MoviesReadMoviesResponse>, Error>{
+    const queryClient = useQueryClient();
     const result = useInfiniteQuery<MoviesReadMoviesResponse, Error, InfiniteData<MoviesReadMoviesResponse>, [string, string | undefined, MovieFilters], number>({
         queryKey: ["movies", snapshotTime, filters],
         enabled,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
-        queryFn: ({ pageParam = 0 }) => {
-            return MoviesService.readMovies({
+        queryFn: async ({ pageParam = 0 }) => {
+            const page = await MoviesService.readMovies({
                 offset: pageParam,
                 // Offset zero is the first page, and nothing else can be: the
                 // offsets below are cumulative row counts, which only start at
@@ -64,6 +67,19 @@ export function useFetchMovies(
                 snapshotTime,
                 ...filters
             });
+            // A movie card lists its own showtimes, each carrying how full it
+            // is, so the busyness icons can be cached straight off the payload
+            // rather than fetched once the cards are already on screen.
+            seedShowtimeSeatAvailability(
+                queryClient,
+                page.flatMap((movie) => movie.showtimes),
+            );
+            for (const movie of page) {
+                seedShowtimeVisibility(queryClient, movie.showtimes, {
+                    movieId: movie.id,
+                });
+            }
+            return page;
         },
         select: (data) => {
             const seen = new Set<number>();

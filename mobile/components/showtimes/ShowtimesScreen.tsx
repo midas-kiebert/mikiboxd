@@ -3,7 +3,11 @@
  */
 import React from "react";
 import { FlatList, StyleSheet, View } from "react-native";
-import { ThemedRefreshControl } from "@/components/themed-refresh-control";
+import {
+  pullToRefreshContentStyle,
+  pullToRefreshScrollProps,
+  ThemedRefreshControl,
+} from "@/components/themed-refresh-control";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { type ShowtimePublic } from "shared";
 import type { SearchField } from "shared/client";
@@ -184,7 +188,8 @@ export function ShowtimesListContent({
         data={data}
         renderItem={renderItem}
         keyExtractor={byIdKeyExtractor}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, pullToRefreshContentStyle]}
+        {...pullToRefreshScrollProps}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           listHeader ? <View style={styles.listHeaderWrapper}>{listHeader}</View> : undefined

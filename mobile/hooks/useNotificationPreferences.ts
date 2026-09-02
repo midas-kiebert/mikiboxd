@@ -83,6 +83,15 @@ const preferenceToChannelKey: Record<NotificationPreferenceKey, NotificationChan
   notify_on_showtime_reminder: "notify_channel_showtime_reminder",
 };
 
+/**
+ * "Almost sold out" and "Sold out" are two backend fields (and two push
+ * kinds) but one decision for the user, so notify_on_seat_alert's row also
+ * drives notify_on_sold_out and neither is shown separately in TOGGLE_ORDER.
+ */
+const LINKED_PREFERENCE_KEYS: Partial<Record<NotificationPreferenceKey, NotificationPreferenceKey[]>> = {
+  notify_on_seat_alert: ["notify_on_sold_out"],
+};
+
 // Labels carry the whole explanation now that the rows are one line each, so
 // they have to stand on their own next to the icon.
 const TOGGLE_COPY: Record<
@@ -92,20 +101,21 @@ const TOGGLE_COPY: Record<
   notify_on_friend_showtime_match: { label: "Friend activity", icon: "groups" },
   notify_on_showtime_ping: { label: "Invites", icon: "mail" },
   notify_on_interest_reminder: { label: "Interest reminders", icon: "alarm" },
-  notify_on_seat_alert: { label: "Almost sold out", icon: "local-fire-department" },
+  notify_on_seat_alert: { label: "Seat availability", icon: "local-fire-department" },
   notify_on_sold_out: { label: "Sold out", icon: "event-busy" },
   notify_on_friend_requests: { label: "Friend requests", icon: "person-add" },
   notify_on_showtime_reminder: { label: "Reminders from friends", icon: "notifications-active" },
 };
 
 // Fixed display order, which is not the declaration order of the copy above.
+// notify_on_sold_out is deliberately absent: it rides along with
+// notify_on_seat_alert via LINKED_PREFERENCE_KEYS instead of its own row.
 const TOGGLE_ORDER: readonly NotificationPreferenceKey[] = [
   "notify_on_friend_showtime_match",
   "notify_on_showtime_ping",
   "notify_on_showtime_reminder",
   "notify_on_interest_reminder",
   "notify_on_seat_alert",
-  "notify_on_sold_out",
   "notify_on_friend_requests",
 ];
 
@@ -318,9 +328,15 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
   const setDelivery = useCallback(
     async (key: NotificationPreferenceKey, delivery: NotificationDelivery): Promise<void> => {
       if (!user) return;
+      // A row can drive more than one backend field (see LINKED_PREFERENCE_KEYS),
+      // and every one of them moves together in the same request.
+      const keys = [key, ...(LINKED_PREFERENCE_KEYS[key] ?? [])];
       const channelKey = preferenceToChannelKey[key];
       const previousEnabled = preferences[key];
       const previousChannel = channels[channelKey];
+      const previousChannels: Partial<NotificationChannelsState> = Object.fromEntries(
+        keys.map((k) => [preferenceToChannelKey[k], channels[preferenceToChannelKey[k]]])
+      );
       const nextEnabled = delivery !== "off";
       // Turning a preference off leaves its channel alone, so switching it back
       // on later restores the channel the user last picked.
@@ -337,12 +353,21 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
       }
 
       const rollback = () => {
-        setPreferences((previous) => ({ ...previous, [key]: previousEnabled }));
-        setChannels((previous) => ({ ...previous, [channelKey]: previousChannel }));
+        setPreferences((previous) => ({
+          ...previous,
+          ...Object.fromEntries(keys.map((k) => [k, previousEnabled])),
+        }));
+        setChannels((previous) => ({ ...previous, ...previousChannels }));
       };
 
-      setPreferences((previous) => ({ ...previous, [key]: nextEnabled }));
-      setChannels((previous) => ({ ...previous, [channelKey]: nextChannel }));
+      setPreferences((previous) => ({
+        ...previous,
+        ...Object.fromEntries(keys.map((k) => [k, nextEnabled])),
+      }));
+      setChannels((previous) => ({
+        ...previous,
+        ...Object.fromEntries(keys.map((k) => [preferenceToChannelKey[k], nextChannel])),
+      }));
       try {
         setPendingKey(key);
         // A push is worthless without permission, so ask up front and put the
@@ -354,7 +379,13 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
             return;
           }
         }
-        const updatedUser = await savePreference({ [key]: nextEnabled, [channelKey]: nextChannel });
+        const payload: UserUpdate = Object.fromEntries(
+          keys.flatMap((k) => [
+            [k, nextEnabled],
+            [preferenceToChannelKey[k], nextChannel],
+          ])
+        );
+        const updatedUser = await savePreference(payload);
         setPreferences(buildNotificationPreferencesState(updatedUser));
         setChannels(buildNotificationChannelsState(updatedUser));
       } catch (error) {

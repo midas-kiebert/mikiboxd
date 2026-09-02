@@ -3,7 +3,11 @@
  */
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { FlatList, Linking, StyleSheet, View } from "react-native";
-import { ThemedRefreshControl } from "@/components/themed-refresh-control";
+import {
+  pullToRefreshContentStyle,
+  pullToRefreshScrollProps,
+  ThemedRefreshControl,
+} from "@/components/themed-refresh-control";
 import { DateTime } from "luxon";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
@@ -514,7 +518,8 @@ function CinemaShowtimesContent({
         data={visibleMovies}
         renderItem={renderMovie}
         keyExtractor={byIdKeyExtractor}
-        contentContainerStyle={styles.movieFeed}
+        contentContainerStyle={[styles.movieFeed, pullToRefreshContentStyle]}
+        {...pullToRefreshScrollProps}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           // The loading panel is a fixed overlay (below), not part of the

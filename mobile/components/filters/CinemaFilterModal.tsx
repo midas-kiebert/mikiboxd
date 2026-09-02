@@ -136,6 +136,11 @@ export default function CinemaFilterModal({
   // Guards the auto-start below against the reset effect running again (the
   // cinema list resolving re-fires it) and throwing the edit away.
   const autoEditStartedRef = useRef(false);
+  // Set alongside it: opened straight into an edit from the dropdown's
+  // pencil, this sheet was never on the manage-presets list, so Cancel and
+  // Save changes have nowhere sensible to land but closed — back to whatever
+  // screen the pencil was tapped from, not a page the user never opened.
+  const editOpenedFromShortcutRef = useRef(false);
   // Flips the moment "Set as my cinemas" is tapped, so the button reports the
   // result on the same frame instead of after the round trip. Holds the
   // selection it was tapped for, so editing the picker afterwards re-arms it.
@@ -211,6 +216,7 @@ export default function CinemaFilterModal({
   useEffect(() => {
     if (!visible) {
       autoEditStartedRef.current = false;
+      editOpenedFromShortcutRef.current = false;
       return;
     }
     setPresetError(null);
@@ -294,6 +300,22 @@ export default function CinemaFilterModal({
       autoEditStartedRef.current = false;
       invalidateCinemaPresets(queryClient);
       triggerSelectionHaptic();
+      // Opened straight into this edit from the dropdown's pencil: there is
+      // no manage-presets list underneath to reveal, so the sheet closes
+      // outright rather than navigating to a page this visit never opened.
+      // The picker held the preset's own cinemas, not the active filter, so
+      // it is reset first — closing must not silently apply them as the
+      // session's selection.
+      if (editOpenedFromShortcutRef.current) {
+        editOpenedFromShortcutRef.current = false;
+        // See handleCancelEditPreset: handleClose reads the ref synchronously,
+        // ahead of the effect that would otherwise sync it to the state below.
+        const revertedSet = new Set(selectedCinemas);
+        localSelectedCinemaSetRef.current = revertedSet;
+        setLocalSelectedCinemaSet(revertedSet);
+        handleClose();
+        return;
+      }
       setPage("presets");
     },
     onError: (error) => {
@@ -442,6 +464,10 @@ export default function CinemaFilterModal({
   }, [useAsMyCinemasMutation]);
 
   const handleStartEditPreset = useCallback((preset: CinemaPresetPublic) => {
+    // "All cinemas" is the built-in fallback, not a saved row — nothing here
+    // could edit it meaningfully. Every caller already filters it out; this
+    // is just the backstop for `initialEditPresetId`, which names an id.
+    if (preset.is_default) return;
     triggerSelectionHaptic();
     setLocalSelectedCinemaSet(new Set(preset.cinema_ids));
     setEditNameValue(preset.name);
@@ -456,7 +482,17 @@ export default function CinemaFilterModal({
     setPresetBeingEdited(null);
     setEditNameError(null);
     autoEditStartedRef.current = false;
-  }, [selectedCinemas]);
+    // See the mutation's onSuccess: a shortcut-opened edit has no
+    // manage-presets list to fall back to, so cancelling closes the sheet too.
+    if (editOpenedFromShortcutRef.current) {
+      editOpenedFromShortcutRef.current = false;
+      // handleClose reads the ref, which only picks up the reset above on the
+      // next effect pass — too late for a close happening in this same tick.
+      // Written through directly so the close sees the reverted selection.
+      localSelectedCinemaSetRef.current = new Set(selectedCinemas);
+      handleClose();
+    }
+  }, [selectedCinemas, handleClose, localSelectedCinemaSetRef]);
 
   const handleConfirmEditPreset = useCallback(() => {
     const trimmedName = editNameValue.trim();
@@ -477,6 +513,7 @@ export default function CinemaFilterModal({
     const target = presets.find((preset) => preset.id === initialEditPresetId);
     if (!target) return;
     autoEditStartedRef.current = true;
+    editOpenedFromShortcutRef.current = true;
     handleStartEditPreset(target);
   }, [visible, initialEditPresetId, presets, handleStartEditPreset]);
 
@@ -596,8 +633,7 @@ export default function CinemaFilterModal({
                       falls back to. */}
                   <ThemedText style={styles.manageSectionTitle}>Your preferred cinemas</ThemedText>
                   <ThemedText style={styles.hintText}>
-                    Selected by default every time you open the app. Setting a saved preset as your
-                    preferred cinemas swaps the two, so this selection is kept under that preset.
+                    Selected by default every time you open the app.
                   </ThemedText>
                   <View style={styles.manageCard}>
                     {myCinemasPreset ? (
@@ -883,7 +919,7 @@ export default function CinemaFilterModal({
                       anything, so it is the quiet one of the pair whatever the
                       selection is. */}
                   <TouchableOpacity
-                    style={[styles.footerTextButton, styles.footerButtonNarrow]}
+                    style={styles.footerTextButton}
                     onPress={() => {
                       triggerSelectionHaptic();
                       setPage("presets");
@@ -1192,12 +1228,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderColor: colors.green.border,
     },
     footerButtonDisabled: { opacity: 0.5 },
-    // Mirrors `footerPrimaryRow` below it: one button takes the leftover
-    // width, the other stays at its label's size.
+    // Unlike `footerPrimaryRow` below it, these two are deliberately equal
+    // weight: both stay plain text (no outline or fill) so neither reads as
+    // a boxed button someone would be steered toward, but they split the row
+    // evenly so each label centers over its own half instead of one hugging
+    // the leftover space and the other hugging the edge.
     footerPresetRow: { flexDirection: "row", alignItems: "stretch", gap: 8 },
-    footerButtonNarrow: { flex: 0 },
-    // Save/manage preset actions read as secondary to the preferred-cinemas
-    // row below, so they stay plain text with no outline or fill.
     footerTextButton: {
       flexDirection: "row",
       alignItems: "center",

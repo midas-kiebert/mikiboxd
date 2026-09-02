@@ -620,7 +620,7 @@ export type SeatAvailabilityLevel =
  */
 export type SeatFloorPlanPublic = {
   showtime_id: number
-  room: string
+  room: string | null
   seats: Array<SeatFloorPlanSeatPublic>
   screen_side?: ScreenSide
   seats_checked_at?: string | null
@@ -672,6 +672,7 @@ export type ShowtimeInMoviePublic = {
   id: number
   cinema: CinemaPublic
   viewer?: ShowtimeInMovieViewerState | null
+  seat_availability?: ShowtimeSeatAvailabilityPublic | null
   /**
    * @deprecated
    */
@@ -731,6 +732,9 @@ export type ShowtimeInMovieViewerState = {
   invite_ping_ids?: Array<number>
   co_invited_friends?: Array<CoInvitedFriendPublic>
   pending_invited_friends?: Array<UserPublic>
+  friends_of_friends_going?: Array<UserWithFriendStatus>
+  friends_of_friends_interested?: Array<UserWithFriendStatus>
+  visibility_mode?: VisibilityMode | null
 }
 
 export type ShowtimePingLinkToken = {
@@ -775,6 +779,7 @@ export type ShowtimePublic = {
   movie: MovieInShowtime
   cinema: CinemaPublic
   viewer?: ShowtimeViewerState | null
+  seat_availability?: ShowtimeSeatAvailabilityPublic | null
   /**
    * @deprecated
    */
@@ -925,10 +930,11 @@ export type ShowtimeViewerState = {
   invite_ping_ids?: Array<number>
   co_invited_friends?: Array<CoInvitedFriendPublic>
   pending_invited_friends?: Array<UserPublic>
+  friends_of_friends_going?: Array<UserWithFriendStatus>
+  friends_of_friends_interested?: Array<UserWithFriendStatus>
+  visibility_mode?: VisibilityMode | null
   friends_watchlisted?: Array<UserPublic>
   friends_watched?: Array<UserPublic>
-  friends_of_friends_going?: Array<UserPublic>
-  friends_of_friends_interested?: Array<UserPublic>
   non_friend_participants?: Array<NonFriendParticipantPublic>
 }
 
@@ -1047,7 +1053,8 @@ export type UserMe = {
   show_watchlist_digest_tip: boolean
   is_superuser: boolean
   incognito_mode: boolean
-  show_friends_of_friends_interest: boolean
+  default_visibility_mode: VisibilityMode
+  has_selected_showtimes: boolean
   notify_on_friend_showtime_match: boolean
   notify_on_friend_requests: boolean
   notify_on_showtime_ping: boolean
@@ -1154,7 +1161,8 @@ export type UserUpdate = {
   email?: string | null
   letterboxd_username?: string | null
   incognito_mode?: boolean | null
-  show_friends_of_friends_interest?: boolean | null
+  default_visibility_mode?: VisibilityMode | null
+  apply_default_visibility_to_existing?: boolean | null
   notify_on_friend_showtime_match?: boolean | null
   notify_on_friend_requests?: boolean | null
   notify_on_showtime_ping?: boolean | null
@@ -1172,6 +1180,9 @@ export type UserUpdate = {
   notify_channel_sold_out?: NotificationChannel | null
   notify_channel_showtime_reminder?: NotificationChannel | null
   notify_watchlist_digest_enabled?: boolean | null
+  notify_watchlist_digest_frequency?: DigestFrequency | null
+  notify_watchlist_digest_list_id?: string | null
+  notify_watchlist_digest_cinema_preset_id?: string | null
   password?: string | null
   current_password?: string | null
 }
@@ -1200,6 +1211,12 @@ export type ValidationError = {
  *
  * Stored per showtime on ShowtimeVisibilitySetting.
  *
+ * - FRIENDS_OF_FRIENDS: every friend you haven't opted out of sharing with,
+ * plus every friend of a friend who is themself GOING/INTERESTED on this
+ * showtime — the friend-of-friend need not be attending. See
+ * `crud.showtime_visibility._friends_of_friends_ids_for_showtime` for the
+ * exact bridging rules (opt-outs run in both directions, gating
+ * different things).
  * - ALL_FRIENDS: every friend you haven't opted out of sharing with.
  * - INVITED_ONLY: nobody by default.
  *
@@ -1207,7 +1224,10 @@ export type ValidationError = {
  * invited, friends who invited you, and friends co-invited by the same person
  * who invited you.
  */
-export type VisibilityMode = "ALL_FRIENDS" | "INVITED_ONLY"
+export type VisibilityMode =
+  | "FRIENDS_OF_FRIENDS"
+  | "ALL_FRIENDS"
+  | "INVITED_ONLY"
 
 export type WatchlistDigestSourceCreate = {
   frequency?: DigestFrequency
@@ -1525,6 +1545,10 @@ export type MeUpdatePasswordMeData = {
 export type MeUpdatePasswordMeResponse = Message
 
 export type MeCountMyShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
@@ -1581,6 +1605,10 @@ export type MeCountMyShowtimesData = {
 export type MeCountMyShowtimesResponse = number
 
 export type MeGetMyShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
@@ -1751,6 +1779,10 @@ export type MeRecordEventData = {
 export type MeRecordEventResponse = void
 
 export type MoviesCountMoviesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
@@ -1807,6 +1839,10 @@ export type MoviesCountMoviesData = {
 export type MoviesCountMoviesResponse = number
 
 export type MoviesReadMoviesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
@@ -1866,6 +1902,10 @@ export type MoviesReadMoviesData = {
 export type MoviesReadMoviesResponse = Array<MovieSummaryPublic>
 
 export type MoviesReadMovieShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
@@ -1925,6 +1965,10 @@ export type MoviesReadMovieShowtimesData = {
 export type MoviesReadMovieShowtimesResponse = Array<ShowtimeInMoviePublic>
 
 export type MoviesReadMovieData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
@@ -2132,7 +2176,18 @@ export type ShowtimesGetUninvitedSelectedFriendsForShowtimeData = {
 export type ShowtimesGetUninvitedSelectedFriendsForShowtimeResponse =
   UninvitedSelectedFriendsPublic
 
+export type ShowtimesGetHiddenAttendingFriendsForShowtimeData = {
+  showtimeId: number
+}
+
+export type ShowtimesGetHiddenAttendingFriendsForShowtimeResponse =
+  UninvitedSelectedFriendsPublic
+
 export type ShowtimesCountMainPageShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
@@ -2189,6 +2244,10 @@ export type ShowtimesCountMainPageShowtimesData = {
 export type ShowtimesCountMainPageShowtimesResponse = number
 
 export type ShowtimesGetMainPageShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
@@ -2310,6 +2369,10 @@ export type UsersGetUserData = {
 export type UsersGetUserResponse = UserPublic
 
 export type UsersGetUserSelectedShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists

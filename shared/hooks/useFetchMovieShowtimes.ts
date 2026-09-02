@@ -1,7 +1,9 @@
-import { useInfiniteQuery, keepPreviousData, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient, keepPreviousData, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { MoviesService, MoviesReadMovieShowtimesResponse } from "../client";
 import { ApiError } from "../client";
 import type { GoingStatus, Language } from "../client";
+import { seedShowtimeSeatAvailability } from "./useShowtimeSeatAvailability";
+import { seedShowtimeVisibility } from "./useShowtimeVisibility";
 
 type ShowtimesFilters = {
     query?: string;
@@ -31,6 +33,7 @@ export function useFetchMovieShowtimes(
         filters = {},
     } : useFetchMovieShowtimesProps
 ): UseInfiniteQueryResult<InfiniteData<MoviesReadMovieShowtimesResponse>, Error>{
+    const queryClient = useQueryClient();
     const result = useInfiniteQuery<
         MoviesReadMovieShowtimesResponse,
         Error,
@@ -45,14 +48,22 @@ export function useFetchMovieShowtimes(
         // `!== 0` (not `> 0`): synthetic listings like sneak previews use
         // negative movie ids. 0 and NaN remain invalid.
         enabled: Number.isFinite(movieId) && movieId !== 0,
-        queryFn: ({ pageParam = 0}) => {
-            return MoviesService.readMovieShowtimes({
+        queryFn: async ({ pageParam = 0 }) => {
+            const page = await MoviesService.readMovieShowtimes({
                 offset: pageParam,
                 limit: limit,
                 snapshotTime: snapshotTime,
                 id: movieId,
                 ...filters,
             });
+            // The badges read this cache, so filling it here — with what the
+            // page itself already carries — is what lets them paint with the
+            // cards instead of a request later. See `seedShowtimeSeatAvailability`.
+            seedShowtimeSeatAvailability(queryClient, page);
+            // Listed under the movie, so these showtimes carry no movie of
+            // their own — it is the one this screen is about.
+            seedShowtimeVisibility(queryClient, page, { movieId });
+            return page;
         },
         retry: (failureCount, error) => {
             if (error instanceof ApiError && error.status === 403) {

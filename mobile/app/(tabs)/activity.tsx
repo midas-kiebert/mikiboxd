@@ -18,9 +18,10 @@
  * side in a single swipe: the three are a pager as well as a control, and the
  * middle page is the one that is never two pages away.
  *
- * All three ignore the viewer's cinema selection on purpose — see
- * `_skips_cinema_default` in `backend/app/services/viewer_context.py` for the
- * "All"/"Friends" side; "You" never had a cinema filter to begin with.
+ * All three ignore the viewer's cinema selection on purpose — "All"/"Friends"
+ * send `allCinemas`/`friendsOnly` so `_skips_cinema_default` in
+ * `backend/app/services/viewer_context.py` leaves them unrestricted; "You"
+ * never had a cinema filter to begin with.
  *
  * All three are also *mounted* at once, not just the selected one. A page has to
  * be there, with its data, before the finger reaches it — a page built on
@@ -247,7 +248,11 @@ function ActivityPage({
   const isFriendsOnly = mode === "friends";
 
   const filters = useMemo(
-    () => ({ selectedStatuses: [...ACTIVITY_STATUSES], friendsOnly: isFriendsOnly }),
+    () => ({
+      selectedStatuses: [...ACTIVITY_STATUSES],
+      friendsOnly: isFriendsOnly,
+      allCinemas: true,
+    }),
     [isFriendsOnly]
   );
 
@@ -304,37 +309,57 @@ function ActivityPage({
     : hasFriends
       ? "Nothing lined up right now"
       : "No friends yet";
-  const emptyExtra = isYou || isLoadingFriends ? null : hasFriends ? (
+  const browseShowtimesButton = (
+    <TouchableOpacity
+      style={styles.emptyAction}
+      onPress={goToShowtimes}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel="Browse all showtimes"
+    >
+      <MaterialIcons name="list" size={17} color={colors.pillActiveText} />
+      <ThemedText style={styles.emptyActionText}>Browse showtimes</ThemedText>
+    </TouchableOpacity>
+  );
+  const addFriendsButton = (
+    <TouchableOpacity
+      style={styles.emptyAction}
+      onPress={goToAddFriends}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel="Add friends"
+    >
+      <MaterialIcons name="person-add" size={17} color={colors.pillActiveText} />
+      <ThemedText style={styles.emptyActionText}>Add friends</ThemedText>
+    </TouchableOpacity>
+  );
+
+  const emptyExtra = isYou ? (
+    <View style={styles.emptyActionRow}>
+      <ThemedText style={styles.emptyExtraText}>
+        See what's playing and mark something you're going to.
+      </ThemedText>
+      {browseShowtimesButton}
+    </View>
+  ) : isLoadingFriends ? null : hasFriends ? (
     <View style={styles.emptyActionRow}>
       <ThemedText style={styles.emptyExtraText}>
         Nobody's marked a screening going or interested yet.
       </ThemedText>
-      <TouchableOpacity
-        style={styles.emptyAction}
-        onPress={goToShowtimes}
-        activeOpacity={0.85}
-        accessibilityRole="button"
-        accessibilityLabel="Browse all showtimes"
-      >
-        <MaterialIcons name="list" size={17} color={colors.pillActiveText} />
-        <ThemedText style={styles.emptyActionText}>Browse showtimes</ThemedText>
-      </TouchableOpacity>
+      <View style={styles.emptyActionButtonRow}>
+        {mode === "all" ? browseShowtimesButton : null}
+        {addFriendsButton}
+      </View>
     </View>
   ) : (
     <View style={styles.emptyActionRow}>
       <ThemedText style={styles.emptyExtraText}>
         Add friends to see what they're going to.
       </ThemedText>
-      <TouchableOpacity
-        style={styles.emptyAction}
-        onPress={goToAddFriends}
-        activeOpacity={0.85}
-        accessibilityRole="button"
-        accessibilityLabel="Add friends"
-      >
-        <MaterialIcons name="person-add" size={17} color={colors.pillActiveText} />
-        <ThemedText style={styles.emptyActionText}>Add friends</ThemedText>
-      </TouchableOpacity>
+      <View style={styles.emptyActionButtonRow}>
+        {mode === "all" ? browseShowtimesButton : null}
+        {addFriendsButton}
+      </View>
     </View>
   );
 
@@ -369,6 +394,7 @@ const createStyles = (colors: ThemeColors) =>
     pagerViewport: { flex: 1, overflow: "hidden" },
     pager: { flex: 1, flexDirection: "row" },
     emptyActionRow: { alignItems: "center", gap: 4 },
+    emptyActionButtonRow: { flexDirection: "row", gap: 10 },
     emptyExtraText: {
       fontSize: 13,
       color: colors.textSecondary,

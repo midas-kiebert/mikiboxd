@@ -6,6 +6,7 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.core.config import settings
 from app.crud import friendship as friendship_crud
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.crud import watched as watched_crud
 from app.crud import watchlist as watchlist_crud
@@ -103,7 +104,10 @@ def to_me(user: User, *, session: Session) -> UserMe:
         ),
         is_superuser=user.is_superuser,
         incognito_mode=user.incognito_mode,
-        show_friends_of_friends_interest=user.show_friends_of_friends_interest,
+        default_visibility_mode=user.default_visibility_mode,
+        has_selected_showtimes=showtime_visibility_crud.has_selected_showtimes(
+            session=session, owner_id=user.id
+        ),
         notify_on_friend_showtime_match=user.notify_on_friend_showtime_match,
         notify_on_friend_requests=user.notify_on_friend_requests,
         notify_on_showtime_ping=user.notify_on_showtime_ping,
@@ -230,19 +234,26 @@ def to_with_showtimes_public(
     filters.snapshot_time = now
 
     User.model_validate(user)
+    selected_showtimes = user_crud.get_selected_showtimes(
+        session=session,
+        user_id=user.id,
+        viewer_id=user.id,
+        limit=limit,
+        offset=offset,
+        filters=filters,
+        letterboxd_username=user.letterboxd_username,
+    )
+    visibility_modes = showtime_converters.viewer_visibility_modes(
+        session=session, showtimes=selected_showtimes, user_id=user.id
+    )
     showtimes = [
         showtime_converters.to_public(
-            showtime=showtime, session=session, user_id=user.id
-        )
-        for showtime in user_crud.get_selected_showtimes(
+            showtime=showtime,
             session=session,
             user_id=user.id,
-            viewer_id=user.id,
-            limit=limit,
-            offset=offset,
-            filters=filters,
-            letterboxd_username=user.letterboxd_username,
+            visibility_modes=visibility_modes,
         )
+        for showtime in selected_showtimes
     ]
 
     return UserWithShowtimesPublic(

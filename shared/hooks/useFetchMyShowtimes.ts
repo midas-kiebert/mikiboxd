@@ -1,6 +1,8 @@
-import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { MeService, MeGetMyShowtimesResponse } from "../client";
 import type { GoingStatus } from "../client";
+import { seedShowtimeSeatAvailability } from "./useShowtimeSeatAvailability";
+import { seedShowtimeVisibility } from "./useShowtimeVisibility";
 
 type ShowtimesFilters = {
     query?: string;
@@ -28,6 +30,7 @@ export function useFetchMyShowtimes(
         enabled = true,
     } : useFetchShowtimesProps = {}
 ): UseInfiniteQueryResult<InfiniteData<MeGetMyShowtimesResponse>, Error>{
+    const queryClient = useQueryClient();
     const result = useInfiniteQuery<
         MeGetMyShowtimesResponse,
         Error,
@@ -40,13 +43,19 @@ export function useFetchMyShowtimes(
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
-        queryFn: ({ pageParam = 0}) => {
-            return MeService.getMyShowtimes({
+        queryFn: async ({ pageParam = 0 }) => {
+            const page = await MeService.getMyShowtimes({
                 offset: pageParam,
                 limit: limit,
                 snapshotTime: snapshotTime,
                 ...filters,
             });
+            // The badges read this cache, so filling it here — with what the
+            // page itself already carries — is what lets them paint with the
+            // cards instead of a request later. See `seedShowtimeSeatAvailability`.
+            seedShowtimeSeatAvailability(queryClient, page);
+            seedShowtimeVisibility(queryClient, page);
+            return page;
         },
         select: (data) => {
             const seen = new Set<number>();

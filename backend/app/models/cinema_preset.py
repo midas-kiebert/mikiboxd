@@ -15,7 +15,7 @@ from app.utils import now_amsterdam_naive
 # rather than in the service so consumers (the watchlist digest) can recognise
 # it without importing the whole `me` service.
 DEFAULT_CINEMA_PRESET_ID = uuid.UUID("00000000-0000-0000-0000-000000000003")
-DEFAULT_CINEMA_PRESET_NAME = "All Cinemas"
+DEFAULT_CINEMA_PRESET_NAME = "All cinemas"
 
 # The name of the one preset every user has whether they asked for it or not:
 # the cinemas they actually go to, applied on startup. It is a real row, marked

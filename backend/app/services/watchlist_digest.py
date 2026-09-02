@@ -166,7 +166,7 @@ def _resolve_digest_cinemas_label(
     """Name this source's cinema restriction, for the email footer.
 
     Mirrors `_resolve_digest_cinema_ids`'s branching exactly (custom ids, then
-    the synthetic "All Cinemas" row, then a real preset, falling back to no
+    the synthetic "All cinemas" row, then a real preset, falling back to no
     restriction), so the label never claims one the send didn't actually
     apply.
     """

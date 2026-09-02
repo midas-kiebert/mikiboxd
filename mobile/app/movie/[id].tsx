@@ -12,14 +12,23 @@ import {
   Share,
   Alert,
 } from "react-native";
-import { ThemedRefreshControl } from "@/components/themed-refresh-control";
+import {
+  pullToRefreshContentStyle,
+  pullToRefreshScrollProps,
+  ThemedRefreshControl,
+} from "@/components/themed-refresh-control";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import type { Language } from "shared/client";
-import type { MoviePublic, ShowtimePublic, ShowtimeInMoviePublic } from "shared";
+import type {
+  MoviePublic,
+  ShowtimePublic,
+  ShowtimeInMoviePublic,
+  UserWithFriendStatus,
+} from "shared";
 import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
@@ -28,6 +37,7 @@ import { usePrefetchShowtimeSeatAvailability } from "shared/hooks/useShowtimeSea
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
+import FriendOfFriendPopup from "@/components/friends/FriendOfFriendPopup";
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
 import {
   getFriendWatchKindMeta,
@@ -258,6 +268,9 @@ function MovieContent({
   }, []);
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<FriendWatchKind | null>(null);
+  // The friend-request popup for a "+" tapped on a friend-of-friend badge.
+  // One popup for the whole list rather than one per row.
+  const [addFriendTarget, setAddFriendTarget] = useState<UserWithFriendStatus | null>(null);
 
   // The tabs' filters (status/day/time/language) are page-scoped here: they only
   // carry over when `inheritFilters` says this page was opened from the
@@ -744,6 +757,7 @@ function MovieContent({
                         alignCinemaRight
                         showDate={false}
                         isSyntheticMovie={isSynthetic}
+                        onAddFriend={setAddFriendTarget}
                       />
                     </View>
                   </TouchableOpacity>
@@ -759,7 +773,12 @@ function MovieContent({
                   </View>
                 </FeedItemEntrance>
               )}
-              contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) }]}
+              contentContainerStyle={[
+                styles.content,
+                pullToRefreshContentStyle,
+                { paddingBottom: Math.max(insets.bottom, 16) },
+              ]}
+              {...pullToRefreshScrollProps}
               refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
               onEndReached={handleEndReached}
               onEndReachedThreshold={0.4}
@@ -830,6 +849,7 @@ function MovieContent({
         friends={watchModalKind === "watched" ? friendsWatched : friendsWatchlisted}
         onClose={() => setWatchModalKind(null)}
       />
+      <FriendOfFriendPopup user={addFriendTarget} onClose={() => setAddFriendTarget(null)} />
     </>
   );
 }

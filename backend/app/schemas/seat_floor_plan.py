@@ -42,7 +42,10 @@ class SeatFloorPlanPublic(SQLModel):
     """A room's seat map for one showtime, merged with polled + personal state."""
 
     showtime_id: int
-    room: str
+    # Null where the room has no name anyone publishes — most Ticketlab shops
+    # identify a room by number internally and never print it. The plan is
+    # still complete; it just has nothing to be called.
+    room: str | None
     seats: list[SeatFloorPlanSeatPublic]
     # Which end of the geometry above to draw the screen at. Stored per room
     # because it cannot be worked out from the seats — row 1 is usually the

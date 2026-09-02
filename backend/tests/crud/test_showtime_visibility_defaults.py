@@ -176,6 +176,66 @@ def test_batch_defaults_ignore_a_dismissed_invite(
     _assert_matches_single_lookup(db_transaction, owner=owner, modes=modes)
 
 
+def test_batch_defaults_use_the_owners_configured_default_visibility_mode(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    showtime_factory: Callable[..., Showtime],
+) -> None:
+    """The baseline default is the owner's own `default_visibility_mode`, not
+    a hardcoded mode — an owner who has switched theirs to ALL_FRIENDS (or
+    left it at the FRIENDS_OF_FRIENDS default) sees that reflected for a
+    showtime with no invites and no override at all."""
+    all_friends_owner = user_factory(default_visibility_mode=VisibilityMode.ALL_FRIENDS)
+    fof_owner = user_factory(default_visibility_mode=VisibilityMode.FRIENDS_OF_FRIENDS)
+    showtime = showtime_factory()
+
+    all_friends_modes = _default_modes(
+        db_transaction, owner=all_friends_owner, showtimes=[showtime]
+    )
+    fof_modes = _default_modes(db_transaction, owner=fof_owner, showtimes=[showtime])
+
+    assert all_friends_modes == {showtime.id: VisibilityMode.ALL_FRIENDS}
+    assert fof_modes == {showtime.id: VisibilityMode.FRIENDS_OF_FRIENDS}
+    _assert_matches_single_lookup(
+        db_transaction, owner=all_friends_owner, modes=all_friends_modes
+    )
+    _assert_matches_single_lookup(db_transaction, owner=fof_owner, modes=fof_modes)
+
+
+def test_batch_defaults_still_follow_a_private_inviter_over_a_custom_default(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    showtime_factory: Callable[..., Showtime],
+) -> None:
+    """An owner who has personally set their default to ALL_FRIENDS is still
+    escalated to INVITED_ONLY by an incognito inviter — the inviter-privacy
+    override applies on top of whatever the owner's own default is, not just
+    on top of the old hardcoded ALL_FRIENDS."""
+    owner = user_factory(default_visibility_mode=VisibilityMode.ALL_FRIENDS)
+    incognito_inviter = user_factory(incognito_mode=True)
+    invited_showtime = showtime_factory()
+    other_showtime = showtime_factory()
+
+    _invite(
+        db_transaction,
+        showtime_id=invited_showtime.id,
+        sender=incognito_inviter,
+        receiver=owner,
+    )
+
+    modes = _default_modes(
+        db_transaction, owner=owner, showtimes=[invited_showtime, other_showtime]
+    )
+
+    assert modes == {
+        invited_showtime.id: VisibilityMode.INVITED_ONLY,
+        other_showtime.id: VisibilityMode.ALL_FRIENDS,
+    }
+    _assert_matches_single_lookup(db_transaction, owner=owner, modes=modes)
+
+
 def test_batch_defaults_for_no_showtimes(
     *,
     db_transaction: Session,

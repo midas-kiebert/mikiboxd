@@ -37,11 +37,16 @@ def _skips_cinema_default(filters: Filters) -> bool:
     """Does this request already mean "every cinema", one way or another?
 
     A cinema-name search names its own cinemas (see above). `friends_only`
-    is the other case: it asks "where are my friends going", and narrowing
-    that to the viewer's own usual cinemas would silently hide a friend at a
-    cinema the viewer never picked — the opposite of what the feed is for.
+    asks "where are my friends going", and narrowing that to the viewer's
+    own usual cinemas would silently hide a friend at a cinema the viewer
+    never picked. `all_cinemas` is the explicit form of the same thing, for
+    feeds (like Activity's "All") that are about everyone, not just friends.
     """
-    return _is_cinema_name_search(filters) or filters.friends_only
+    return (
+        _is_cinema_name_search(filters)
+        or filters.friends_only
+        or filters.all_cinemas
+    )
 
 
 def _keep_curated(

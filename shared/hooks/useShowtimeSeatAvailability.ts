@@ -1,11 +1,16 @@
 /**
  * Reads of how full a showtime is.
  *
- * Batched and cached exactly like `useShowtimeVisibility`, and for the same
+ * Cached per showtime, exactly like `useShowtimeVisibility`, and for the same
  * reason: a list of showtimes renders a busyness icon per row, and the sheet
- * has to paint one the moment it opens. Ids queued within a short window are
- * coalesced into one request and seeded into the react-query cache under the
- * per-showtime key both the rows and the sheet read.
+ * has to paint one the moment it opens.
+ *
+ * The cache is filled two ways. Normally the showtime payload brings its own
+ * availability with it and the fetch hooks seed it on arrival
+ * (`seedShowtimeSeatAvailability`), so a list has every badge in hand before it
+ * renders. The batched request is the fallback, for ids nobody fetched a
+ * showtime for: ids queued within a short window are coalesced into one
+ * request and written under the same per-showtime keys.
  *
  * Two things differ from the visibility hook. The answer is the same for
  * everyone, so it survives signing in and out and does not need refetching on
@@ -27,6 +32,12 @@ import {
   ShowtimesService,
   type ShowtimeSeatAvailabilityPublic,
 } from "../client";
+
+/** Any showtime shape the API returns: they all carry their own availability. */
+type SeatAvailabilityCarrier = {
+  id: number;
+  seat_availability?: ShowtimeSeatAvailabilityPublic | null;
+};
 
 const SEAT_AVAILABILITY_QUERY_KEY_PREFIX = ["showtimes", "seatAvailability"] as const;
 
@@ -106,6 +117,35 @@ function flushBatch(queryClient: QueryClient): void {
       queryClient,
       state,
       showtimeIds.slice(start, start + MAX_IDS_PER_REQUEST)
+    );
+  }
+}
+
+/**
+ * Cache the availability the server already sent with a list of showtimes.
+ *
+ * Every showtime payload carries its own `seat_availability` (see
+ * `ShowtimePublic` in `backend/app/schemas/showtime.py`), so the answer is
+ * already in hand the moment a page of showtimes lands. Seeding it here — from
+ * the fetch hooks, before the list has rendered a single card — is what lets
+ * the busyness badges paint in the same frame as the cards they belong to,
+ * instead of a round trip later. The batch prefetch below stays as the
+ * fallback for anything that arrives without the field (an older backend) and
+ * for the ids nothing has fetched a showtime for.
+ *
+ * `null` is seeded as deliberately as a reading is: it is the server saying
+ * there is nothing to know about this screening, which is exactly what the
+ * badge needs in order to render nothing rather than wait.
+ */
+export function seedShowtimeSeatAvailability(
+  queryClient: QueryClient,
+  showtimes: readonly SeatAvailabilityCarrier[]
+): void {
+  for (const showtime of showtimes) {
+    if (showtime.seat_availability === undefined) continue;
+    queryClient.setQueryData(
+      showtimeSeatAvailabilityQueryKey(showtime.id),
+      showtime.seat_availability
     );
   }
 }

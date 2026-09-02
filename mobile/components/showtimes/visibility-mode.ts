@@ -9,6 +9,7 @@ type MaterialIconName = ComponentProps<typeof MaterialIcons>["name"];
 
 // Order shown in the dropdown, from most to least visible.
 export const VISIBILITY_MODE_ORDER: VisibilityMode[] = [
+  "FRIENDS_OF_FRIENDS",
   "ALL_FRIENDS",
   "INVITED_ONLY",
 ];
@@ -29,10 +30,18 @@ export function getVisibilityModeMeta(
   colors: ThemeColors,
 ): VisibilityModeMeta {
   switch (mode) {
+    case "FRIENDS_OF_FRIENDS":
+      return {
+        mode,
+        label: "Friends of friends",
+        description: "All your friends, and their friends when they're going or interested.",
+        icon: "hub",
+        color: colors.purple.secondary,
+      };
     case "ALL_FRIENDS":
       return {
         mode,
-        label: "All friends",
+        label: "Friends",
         description: "Every friend you haven't hidden your status from.",
         icon: "groups",
         color: colors.green.secondary,

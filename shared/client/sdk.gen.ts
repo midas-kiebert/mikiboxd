@@ -192,6 +192,8 @@ import type {
   ShowtimesUpdateShowtimeVisibilityResponse,
   ShowtimesGetUninvitedSelectedFriendsForShowtimeData,
   ShowtimesGetUninvitedSelectedFriendsForShowtimeResponse,
+  ShowtimesGetHiddenAttendingFriendsForShowtimeData,
+  ShowtimesGetHiddenAttendingFriendsForShowtimeResponse,
   ShowtimesCountMainPageShowtimesData,
   ShowtimesCountMainPageShowtimesResponse,
   ShowtimesGetMainPageShowtimesData,
@@ -1204,7 +1206,7 @@ export class MeService {
 
   /**
    * Set Favorite Cinema Preset
-   * Point "my cinemas" at this preset's cinemas — a copy, not a handover.
+   * Swap "my cinemas" onto this preset — it keeps its name, the old favorite becomes an ordinary preset.
    * @param data The data for the request.
    * @param data.presetId
    * @returns CinemaPresetPublic Successful Response
@@ -1365,6 +1367,7 @@ export class MeService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1393,6 +1396,7 @@ export class MeService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -1423,6 +1427,7 @@ export class MeService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1453,6 +1458,7 @@ export class MeService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -1928,6 +1934,7 @@ export class MoviesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1956,6 +1963,7 @@ export class MoviesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -1987,6 +1995,7 @@ export class MoviesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2018,6 +2027,7 @@ export class MoviesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2049,6 +2059,7 @@ export class MoviesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2082,6 +2093,7 @@ export class MoviesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2112,6 +2124,7 @@ export class MoviesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2144,6 +2157,7 @@ export class MoviesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2730,6 +2744,33 @@ export class ShowtimesService {
   }
 
   /**
+   * Get Hidden Attending Friends For Showtime
+   * Friends already going/interested who won't see the actor's status.
+   *
+   * Used to prompt the actor, before marking going/interested, to invite
+   * friends who are already visibly attending but whom the actor's current
+   * visibility mode or per-friend opt-out would otherwise hide from.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns UninvitedSelectedFriendsPublic Successful Response
+   * @throws ApiError
+   */
+  public static getHiddenAttendingFriendsForShowtime(
+    data: ShowtimesGetHiddenAttendingFriendsForShowtimeData,
+  ): CancelablePromise<ShowtimesGetHiddenAttendingFriendsForShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/{showtime_id}/visibility/hidden-attending-friends",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Count Main Page Showtimes
    * @param data The data for the request.
    * @param data.query
@@ -2745,6 +2786,7 @@ export class ShowtimesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2773,6 +2815,7 @@ export class ShowtimesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2803,6 +2846,7 @@ export class ShowtimesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2833,6 +2877,7 @@ export class ShowtimesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -3119,6 +3164,7 @@ export class UsersService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -3152,6 +3198,7 @@ export class UsersService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,

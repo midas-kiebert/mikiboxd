@@ -176,9 +176,15 @@ def get_selected_showtimes(
         filters=filters,
         letterboxd_username=letterboxd_username,
     )
+    visibility_modes = showtime_converters.viewer_visibility_modes(
+        session=session, showtimes=showtimes, user_id=current_user_id
+    )
     return [
         showtime_converters.to_public(
-            showtime=showtime, session=session, user_id=current_user_id
+            showtime=showtime,
+            session=session,
+            user_id=current_user_id,
+            visibility_modes=visibility_modes,
         )
         for showtime in showtimes
     ]

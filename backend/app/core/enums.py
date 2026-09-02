@@ -45,6 +45,12 @@ class VisibilityMode(str, Enum):
 
     Stored per showtime on ShowtimeVisibilitySetting.
 
+    - FRIENDS_OF_FRIENDS: every friend you haven't opted out of sharing with,
+      plus every friend of a friend who is themself GOING/INTERESTED on this
+      showtime — the friend-of-friend need not be attending. See
+      `crud.showtime_visibility._friends_of_friends_ids_for_showtime` for the
+      exact bridging rules (opt-outs run in both directions, gating
+      different things).
     - ALL_FRIENDS: every friend you haven't opted out of sharing with.
     - INVITED_ONLY: nobody by default.
 
@@ -53,6 +59,7 @@ class VisibilityMode(str, Enum):
     who invited you.
     """
 
+    FRIENDS_OF_FRIENDS = "FRIENDS_OF_FRIENDS"
     ALL_FRIENDS = "ALL_FRIENDS"
     INVITED_ONLY = "INVITED_ONLY"
 

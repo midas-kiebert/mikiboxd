@@ -312,6 +312,11 @@ _RECHECK_JITTER = timedelta(minutes=4)
 # links in place.
 UNSUPPORTED_RECHECK_AFTER = timedelta(days=7)
 
+# How long after a showtime falls due it may still be reported as "checking".
+# The poller ticks every minute, so anything older than this was never going to
+# be taken at all — see `is_read_pending`, which is the only reader.
+_PENDING_READ_WINDOW = timedelta(minutes=15)
+
 
 def next_check_at(
     *,
@@ -529,12 +534,36 @@ def is_read_pending(showtime: Showtime, *, now: datetime | None = None) -> bool:
     lands a reading pushes the due time into the future, which is exactly when
     this should stop being true. A due time that is absent means nobody has
     queued a read at all — no active selection — so nothing is coming.
+
+    A due time on its own is not enough, though, because the poller only ever
+    takes showtimes at least one person has selected, and only before they
+    start (see `showtimes_crud.get_seat_availability_candidates`). Everything
+    else is due for ever, so the two conditions the candidate query applies on
+    top of the due time are applied here too:
+
+    * A screening that has already started is never read again. This is also
+      what stops a sold-out one — parked at its own start time on purpose — from
+      claiming to be checking from the moment it begins.
+    * A due time far enough in the past that the once-a-minute poller would have
+      taken it by now means nobody is coming for it: a hand-requested check
+      (`check_now`) on a screening nobody has selected leaves exactly this
+      behind once its own reading lands and the next one falls due, and there is
+      no selection to make the poller pick it up. Saying "checking now…" for the
+      rest of that screening's life is the one thing that must not happen — the
+      client offers the check again instead.
+
+    The window is generous next to the one-minute tick so that a genuine
+    backlog — more due at once than `POLL_BATCH_LIMIT` takes in a run — still
+    reads as pending while it drains.
     """
     if showtime.ticket_link is None or not supports(showtime.ticket_link):
         return False
     if showtime.seats_next_check_at is None:
         return False
-    return showtime.seats_next_check_at <= (now or now_amsterdam_naive())
+    reference = now or now_amsterdam_naive()
+    if showtime.datetime <= reference:
+        return False
+    return reference - _PENDING_READ_WINDOW <= showtime.seats_next_check_at <= reference
 
 
 def is_trackable(showtime: Showtime) -> bool:
@@ -778,6 +807,14 @@ def _apply_reading(
 ) -> None:
     if availability.room is not None:
         showtime.room = availability.room
+    # Falls back to the name where the platform states no separate key, so the
+    # floor-plan lookup has one column to join on rather than two rules. Only
+    # ever written, never cleared: a reading that could not see the room (a
+    # closed sale page, an unresolved showid) says nothing about which room
+    # the showtime is in.
+    room_key = availability.room_key or availability.room
+    if room_key is not None:
+        showtime.room_key = room_key
 
     # A platform that hands back every seat (Eagerly, Tricket, Ticketlab) or
     # a full seat count for a numbered room (ActiveTickets) tells us the

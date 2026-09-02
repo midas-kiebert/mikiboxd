@@ -14,7 +14,7 @@ import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
-import { UNKNOWN_METADATA_PLACEHOLDER, isSyntheticMovieId } from "@/constants/synthetic-movies";
+import { isSyntheticMovieId } from "@/constants/synthetic-movies";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import {
@@ -80,12 +80,6 @@ function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
   const month = date.toFormat("LLL");
   const startTime = date.toFormat("HH:mm");
   const isSyntheticMovie = isSyntheticMovieId(showtime.movie.id);
-  const endDate = showtime.end_datetime ? DateTime.fromISO(showtime.end_datetime) : null;
-  const endTime = endDate?.isValid
-    ? endDate.toFormat("HH:mm")
-    : isSyntheticMovie
-      ? UNKNOWN_METADATA_PLACEHOLDER
-      : null;
   // Everything below is about the person looking at the card, so it is absent
   // for a guest — the card then draws in its plain, unannotated state.
   const viewer = showtime.viewer;
@@ -118,7 +112,9 @@ function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
   const hasAudience =
     (viewer?.friends_going?.length ?? 0) > 0 ||
     (viewer?.friends_interested?.length ?? 0) > 0 ||
-    (viewer?.pending_invited_friends?.length ?? 0) > 0;
+    (viewer?.pending_invited_friends?.length ?? 0) > 0 ||
+    (viewer?.friends_of_friends_going?.length ?? 0) > 0 ||
+    (viewer?.friends_of_friends_interested?.length ?? 0) > 0;
   const responsiveBadgeRows = useMemo(() => {
     if (!hasAudience) return undefined;
     return getCompactBadgeRowsForHeight(friendBadgeAreaHeight - COMPACT_BADGE_TOP_PADDING);
@@ -177,8 +173,7 @@ function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
             {month}
           </ThemedText>
           <ThemedText style={styles.time} maxFontSizeMultiplier={DATE_COLUMN_MAX_FONT_SCALE}>
-            <ThemedText style={styles.timeStart}>{startTime}</ThemedText>
-            {endTime ? <ThemedText style={styles.timeEnd}>{`~${endTime}`}</ThemedText> : null}
+            {startTime}
           </ThemedText>
         </View>
         {isSyntheticMovie ? (
@@ -212,10 +207,14 @@ function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
               setFriendBadgeAreaHeight(nextHeight);
             }}
           >
+            {/* No `onAddFriend`: the feed shows who's around, it doesn't act —
+                the "+" lives on the movie page and in the showtime sheet. */}
             <FriendBadges
               friendsGoing={viewer?.friends_going}
               friendsInterested={viewer?.friends_interested}
               friendsPending={viewer?.pending_invited_friends}
+              friendsOfFriendsGoing={viewer?.friends_of_friends_going}
+              friendsOfFriendsInterested={viewer?.friends_of_friends_interested}
               variant="compact"
               maxRows={responsiveBadgeRows}
             />
@@ -308,22 +307,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       letterSpacing: 0.6,
     },
     time: {
-      fontSize: 10,
-      lineHeight: 12,
-      fontWeight: "700",
+      fontSize: 15,
+      lineHeight: 17,
+      fontWeight: "800",
       color: colors.text,
-    },
-    timeStart: {
-      fontSize: 11,
-      lineHeight: 13,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    timeEnd: {
-      fontSize: 8,
-      lineHeight: 10,
-      fontWeight: "700",
-      color: colors.textSecondary,
+      marginTop: 2,
     },
     poster: {
       width: 72,

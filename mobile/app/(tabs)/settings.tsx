@@ -16,13 +16,14 @@ import {
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { EXPAND_DURATION_MS, EXPAND_LAYOUT_ANIMATION } from '@/utils/expand-animation';
 import { triggerSelectionHaptic } from '@/utils/long-press';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
 import {
+  buildCinevilleBarcodeValue,
   CINEVILLE_DIGITS_LENGTH,
   CINEVILLE_PREFIX,
   deleteCinevilleCard,
@@ -34,6 +35,11 @@ import {
   setCinevilleShortcutEnabled,
   useCinevilleShortcutEnabled,
 } from '@/utils/cineville-shortcuts';
+import {
+  setCinevilleAutoCopyEnabled,
+  useCinevilleAutoCopyEnabled,
+} from '@/utils/cineville-auto-copy';
+import * as Clipboard from 'expo-clipboard';
 
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
@@ -59,7 +65,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import AppSwitch from '@/components/ui/AppSwitch';
 import SegmentedControl, { type SegmentedOption } from '@/components/ui/SegmentedControl';
 import EmailVerificationRequiredDialog from '@/components/ui/EmailVerificationRequiredDialog';
-import { useEmailVerificationPolling } from '@/hooks/useCurrentUser';
+import { currentUserQueryKey, useEmailVerificationCheck } from '@/hooks/useCurrentUser';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 import { PRIVACY_POLICY_URL, SUPPORT_PAGE_URL } from '@/constants/legal-links';
 import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
@@ -76,6 +82,11 @@ const SECTION_GAP = 12;
 // Bottom room the content always keeps, so the last card is never clipped under
 // the tab bar / home indicator.
 const CONTENT_PADDING_BOTTOM = 72;
+// Fixed rather than padding-derived: a View sized by paddingVertical around a
+// bare Text line renders visibly taller than a TextInput given the same
+// padding, so the CP$ prefix and the digits field must share an explicit
+// height to actually line up.
+const CINEVILLE_INPUT_HEIGHT = 40;
 
 const THEME_OPTIONS: readonly SegmentedOption<ThemePreference>[] = [
   { value: 'light', label: 'Light' },
@@ -146,9 +157,6 @@ function SettingsScreen() {
   const [digestEnabled, setDigestEnabled] = useState(false);
   const [digestAdvancedOpen, setDigestAdvancedOpen] = useState(false);
   const [isUpdatingDigest, setIsUpdatingDigest] = useState(false);
-  // "See friends of friends" privacy opt-in (Privacy section below).
-  const [showFriendsOfFriends, setShowFriendsOfFriends] = useState(false);
-  const [isUpdatingFriendsOfFriends, setIsUpdatingFriendsOfFriends] = useState(false);
   // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   // Cineville card number (9 digits only, CP$ prefix is added automatically).
@@ -161,6 +169,8 @@ function SettingsScreen() {
   // Which feeds the floating pass shortcut is allowed to appear on.
   const isShortcutOnShowtimes = useCinevilleShortcutEnabled('showtimes');
   const isShortcutOnActivity = useCinevilleShortcutEnabled('activity');
+  const isCinevilleAutoCopyEnabled = useCinevilleAutoCopyEnabled();
+  const [didCopyCinevilleCode, setDidCopyCinevilleCode] = useState(false);
   // Confirmations for the two irreversible actions on this screen. Themed
   // dialogs rather than Alert.alert, which is app-wide reserved for pure error
   // toasts — a native alert is the one surface in the app that ignores the
@@ -175,15 +185,12 @@ function SettingsScreen() {
   // can tell an email change from a username-only one. A ref rather than the
   // user object: by then the account query has been invalidated.
   const emailBeforeSaveRef = useRef('');
-  // While the address is unconfirmed the account is re-read every few seconds,
-  // so opening the link in a mail app turns the badge over while Settings is
-  // still on screen. The returned flag drives the spinner next to it.
-  // Only while Settings is the screen being looked at: this tab stays mounted
-  // behind the others, and a poll nobody can see is just traffic.
-  const isSettingsFocused = useIsFocused();
-  const isCheckingVerification = useEmailVerificationPolling(
-    isSettingsFocused && isSignedIn && user !== undefined && !user.email_verified
-  );
+  // The confirmation link is opened elsewhere — a mail app, a laptop — so the
+  // app cannot know when it has been followed. Rather than re-read the account
+  // on a timer, the unverified badge carries a refresh control the user presses
+  // once they have clicked the link.
+  const { isChecking: isCheckingVerification, check: checkVerification } =
+    useEmailVerificationCheck();
   // The danger zone is collapsed by default so it takes an extra, deliberate
   // tap to reach account deletion.
   const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
@@ -253,10 +260,6 @@ function SettingsScreen() {
     setDigestEnabled(!!user?.notify_watchlist_digest_enabled);
   }, [user?.notify_watchlist_digest_enabled]);
 
-  useEffect(() => {
-    setShowFriendsOfFriends(!!user?.show_friends_of_friends_interest);
-  }, [user?.show_friends_of_friends_interest]);
-
   // Load the saved Cineville card digits from device storage.
   useEffect(() => {
     loadCinevilleCardDigits()
@@ -267,9 +270,15 @@ function SettingsScreen() {
   // Profile updates are persisted to backend and then current-user cache is refreshed.
   const profileMutation = useMutation({
     mutationFn: (data: UserUpdate) => MeService.updateUserMe({ requestBody: data }),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
       setProfile((prev) => ({ ...prev, current_password: '' }));
-      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+      // The response is written to the cache rather than the query invalidated:
+      // PATCH /me returns exactly what GET /me would (same `to_me` converter),
+      // so refetching only buys a round trip during which the screen still
+      // shows the old account. That gap is visible — a changed address comes
+      // back `email_verified: false`, and the badge beside it has to say "Not
+      // verified" the moment the save lands, not once a second request answers.
+      queryClient.setQueryData(currentUserQueryKey, data);
       const newEmail = variables.email?.trim() ?? '';
       const emailChanged =
         newEmail !== '' &&
@@ -465,21 +474,6 @@ function SettingsScreen() {
     );
   };
 
-  const handleFriendsOfFriendsToggle = async (enabled: boolean) => {
-    const previous = showFriendsOfFriends;
-    setShowFriendsOfFriends(enabled);
-    try {
-      setIsUpdatingFriendsOfFriends(true);
-      await digestMutation.mutateAsync({ show_friends_of_friends_interest: enabled });
-    } catch (error) {
-      setShowFriendsOfFriends(previous);
-      console.error('Error updating friends-of-friends preference:', error);
-      Alert.alert('Error', 'Could not update this setting.');
-    } finally {
-      setIsUpdatingFriendsOfFriends(false);
-    }
-  };
-
   const handleSaveCinevilleCard = async () => {
     const trimmed = cinevilleDigits.trim();
     if (trimmed && !/^\d{9}$/.test(trimmed)) {
@@ -501,8 +495,21 @@ function SettingsScreen() {
     }
   };
 
+  const handleCopyCinevilleCode = async () => {
+    if (!savedCinevilleDigits) return;
+    await Clipboard.setStringAsync(buildCinevilleBarcodeValue(savedCinevilleDigits));
+    setDidCopyCinevilleCode(true);
+    setTimeout(() => setDidCopyCinevilleCode(false), 1500);
+  };
+
+  const isCinevilleCardUnchanged = cinevilleDigits.trim() === (savedCinevilleDigits ?? '');
+
   const isProfileSaving = profileMutation.isPending;
   const isPasswordSaving = passwordMutation.isPending;
+  const isPasswordFormIncomplete =
+    (hasPassword && !passwords.current_password) ||
+    !passwords.new_password ||
+    !passwords.confirm_password;
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -551,15 +558,35 @@ function SettingsScreen() {
                   </ThemedText>
                 </View>
               ) : (
-                <TouchableOpacity
-                  style={styles.emailStatus}
-                  onPress={() => setIsEmailVerificationRequired(true)}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  {/* The spinner takes the warning icon's place rather than
-                      sitting beside it, so the row never shifts width as the
-                      poll comes and goes. */}
-                  <View style={styles.emailStatusIcon}>
+                <View style={styles.emailStatusGroup}>
+                  <TouchableOpacity
+                    style={styles.emailStatus}
+                    onPress={() => setIsEmailVerificationRequired(true)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <View style={styles.emailStatusIcon}>
+                      <MaterialIcons name="warning" size={13} color={colors.yellow.secondary} />
+                    </View>
+                    <ThemedText style={[styles.emailStatusText, { color: colors.yellow.secondary }]}>
+                      Not verified
+                    </ThemedText>
+                  </TouchableOpacity>
+                  {/* Its own target, next to the badge rather than part of it:
+                      pressing the badge explains what verification is for,
+                      pressing this re-reads the account. The spinner takes the
+                      icon's place rather than sitting beside it, so the row
+                      never shifts width while a check is running. */}
+                  <TouchableOpacity
+                    style={styles.emailRefreshButton}
+                    onPress={() => {
+                      triggerSelectionHaptic();
+                      checkVerification();
+                    }}
+                    disabled={isCheckingVerification}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Check whether the email has been verified"
+                  >
                     {isCheckingVerification ? (
                       <ActivityIndicator
                         size="small"
@@ -567,13 +594,10 @@ function SettingsScreen() {
                         style={styles.emailStatusSpinner}
                       />
                     ) : (
-                      <MaterialIcons name="warning" size={13} color={colors.yellow.secondary} />
+                      <MaterialIcons name="refresh" size={14} color={colors.yellow.secondary} />
                     )}
-                  </View>
-                  <ThemedText style={[styles.emailStatusText, { color: colors.yellow.secondary }]}>
-                    {isCheckingVerification ? 'Checking...' : 'Not verified'}
-                  </ThemedText>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
             <TextInput
@@ -670,7 +694,7 @@ function SettingsScreen() {
           <ThemedText style={styles.sectionTitle}>Cineville</ThemedText>
           <View style={styles.card}>
             <ThemedText style={styles.helperText}>
-              Your Cineville card number is stored only on this device and never shared. It will be copied into your clipboard when you press a ticket link.
+              Your Cineville card number is stored only on this device and never shared.
             </ThemedText>
             <ThemedText style={styles.label}>Card number</ThemedText>
             <View style={styles.cinevilleInputRow}>
@@ -689,9 +713,12 @@ function SettingsScreen() {
               />
             </View>
             <TouchableOpacity
-              style={[styles.primaryButton, isSavingCineville && styles.buttonDisabled]}
+              style={[
+                styles.primaryButton,
+                (isSavingCineville || isCinevilleCardUnchanged) && styles.buttonDisabled,
+              ]}
               onPress={() => void handleSaveCinevilleCard()}
-              disabled={isSavingCineville}
+              disabled={isSavingCineville || isCinevilleCardUnchanged}
             >
               <ThemedText style={styles.primaryButtonText}>
                 {isSavingCineville ? 'Saving...' : 'Save card'}
@@ -699,12 +726,37 @@ function SettingsScreen() {
             </TouchableOpacity>
             {savedCinevilleDigits ? (
               <>
-                <TouchableOpacity
-                  style={styles.secondaryButton}
-                  onPress={() => setIsCinevilleCardVisible(true)}
-                >
-                  <ThemedText style={styles.secondaryButtonText}>Show barcode</ThemedText>
-                </TouchableOpacity>
+                <View style={styles.cinevilleActionRow}>
+                  <TouchableOpacity
+                    style={styles.cinevilleActionButton}
+                    onPress={() => setIsCinevilleCardVisible(true)}
+                  >
+                    <MaterialCommunityIcons name="barcode" size={16} color={colors.text} />
+                    <ThemedText style={styles.cinevilleActionButtonText}>Show barcode</ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.cinevilleActionButton}
+                    onPress={() => void handleCopyCinevilleCode()}
+                  >
+                    <MaterialIcons
+                      name={didCopyCinevilleCode ? 'check' : 'content-copy'}
+                      size={15}
+                      color={colors.text}
+                    />
+                    <ThemedText style={styles.cinevilleActionButtonText}>
+                      {didCopyCinevilleCode ? 'Copied!' : 'Copy code'}
+                    </ThemedText>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.cinevilleShortcutRow}>
+                  <ThemedText style={styles.cinevilleShortcutLabel}>
+                    Copy code when opening a ticket link
+                  </ThemedText>
+                  <AppSwitch
+                    value={isCinevilleAutoCopyEnabled}
+                    onValueChange={(value) => setCinevilleAutoCopyEnabled(value)}
+                  />
+                </View>
                 <ThemedText style={styles.label}>Shortcut button</ThemedText>
                 <View style={styles.cinevilleShortcutRow}>
                   <ThemedText style={styles.cinevilleShortcutLabel}>On the showtimes tab</ThemedText>
@@ -738,7 +790,7 @@ function SettingsScreen() {
                 <View style={styles.notificationToggleTextContainer}>
                   <ThemedText style={styles.notificationToggleTitle}>Notify on new films</ThemedText>
                   <ThemedText style={styles.notificationToggleDescription}>
-                    Email me when a film from my Letterboxd watchlist, or a list I pick, becomes available.
+                    Email me when a film from my Letterboxd watchlist becomes available.
                   </ThemedText>
                 </View>
                 <AppSwitch
@@ -877,9 +929,12 @@ function SettingsScreen() {
               secureTextEntry
             />
             <TouchableOpacity
-              style={[styles.primaryButton, isPasswordSaving && styles.buttonDisabled]}
+              style={[
+                styles.primaryButton,
+                (isPasswordSaving || isPasswordFormIncomplete) && styles.buttonDisabled,
+              ]}
               onPress={handlePasswordSave}
-              disabled={isPasswordSaving}
+              disabled={isPasswordSaving || isPasswordFormIncomplete}
             >
               <ThemedText style={styles.primaryButtonText}>
                 {isPasswordSaving ? 'Saving...' : hasPassword ? 'Update password' : 'Add password'}
@@ -945,23 +1000,17 @@ function SettingsScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Privacy</ThemedText>
           <View style={styles.card}>
-            <View style={styles.notificationToggleHeader}>
-              <View style={styles.notificationToggleTextContainer}>
-                <ThemedText style={styles.notificationToggleTitle}>
-                  Friends of friends
-                </ThemedText>
-                <ThemedText style={styles.notificationToggleDescription}>
-                  On a showtime, also show friends of your friends who are going or
-                  interested — only through a mutual friend who is too, and only if
-                  they already let that friend see it.
-                </ThemedText>
-              </View>
-              <AppSwitch
-                value={showFriendsOfFriends}
-                onValueChange={(value) => void handleFriendsOfFriendsToggle(value)}
-                disabled={!user || isUpdatingFriendsOfFriends}
-              />
-            </View>
+            <TouchableOpacity
+              style={styles.aboutLinkRow}
+              onPress={() => router.push('/default-visibility')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Default status visibility"
+            >
+              <MaterialIcons name="visibility" size={16} color={colors.textSecondary} />
+              <ThemedText style={styles.aboutLinkText}>Default status visibility</ThemedText>
+              <MaterialIcons name="chevron-right" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.aboutLinkRow}
               onPress={() => router.push('/blocked-users')}
@@ -1108,6 +1157,11 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       alignItems: 'center',
       justifyContent: 'space-between',
     },
+    emailStatusGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
     emailStatus: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1116,6 +1170,12 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     emailStatusIcon: {
       width: 13,
       height: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emailRefreshButton: {
+      width: 16,
+      height: 16,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -1161,6 +1221,29 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     secondaryButtonText: {
       color: colors.text,
       fontWeight: '700',
+    },
+    cinevilleActionRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 4,
+    },
+    cinevilleActionButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      paddingVertical: 7,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+    },
+    cinevilleActionButtonText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.text,
     },
     // Roomier than the shared card: this is the one place in Settings where a
     // mis-tap is unrecoverable, so the explanation and the button each get
@@ -1300,7 +1383,9 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     },
     cinevilleShortcutLabel: {
       flex: 1,
-      fontSize: 14,
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.text,
       lineHeight: 18,
     },
     cinevilleInputRow: {
@@ -1309,23 +1394,26 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       gap: 0,
     },
     cinevillePrefix: {
+      height: CINEVILLE_INPUT_HEIGHT,
       borderWidth: 1,
       borderRightWidth: 0,
       borderColor: colors.cardBorder,
       borderTopLeftRadius: 8,
       borderBottomLeftRadius: 8,
       paddingHorizontal: 10,
-      paddingVertical: 10,
       backgroundColor: colors.surfaceMuted,
       justifyContent: 'center',
     },
     cinevillePrefixText: {
       fontSize: 14,
+      lineHeight: 16,
       fontWeight: '700',
       color: colors.textSecondary,
     },
     cinevilleInput: {
       flex: 1,
+      height: CINEVILLE_INPUT_HEIGHT,
+      paddingVertical: 0,
       borderTopLeftRadius: 0,
       borderBottomLeftRadius: 0,
     },

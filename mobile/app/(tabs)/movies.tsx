@@ -7,7 +7,11 @@ import {
   FlatList,
   View,
 } from 'react-native';
-import { ThemedRefreshControl } from '@/components/themed-refresh-control';
+import {
+  pullToRefreshContentStyle,
+  pullToRefreshScrollProps,
+  ThemedRefreshControl,
+} from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
@@ -388,7 +392,8 @@ export default function MovieScreen() {
           data={visibleMovies}
           renderItem={renderMovie}
           keyExtractor={byIdKeyExtractor}
-          contentContainerStyle={styles.movieFeed}
+          contentContainerStyle={[styles.movieFeed, pullToRefreshContentStyle]}
+          {...pullToRefreshScrollProps}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={renderEmpty}
           ListFooterComponent={renderFooter}

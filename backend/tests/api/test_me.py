@@ -1225,24 +1225,24 @@ def test_cinema_presets_and_favorite_cinema_selection(
     assert weekend_create.status_code == 200
     weekend_id = weekend_create.json()["id"]
 
-    # Promoting a preset copies its cinemas into the user's own row; the preset
-    # itself stays an ordinary preset rather than becoming the startup one.
+    # Promoting a preset moves the favorite flag onto it directly — its own
+    # name and cinemas become the preferred ones, with no separate row
+    # created for them. Nothing existed to swap the flag away from yet.
     set_favorite = client.put(
         f"{settings.API_V1_STR}/me/cinema-presets/{weekend_id}/favorite",
         headers=normal_user_token_headers,
     )
     assert set_favorite.status_code == 200
     assert set_favorite.json()["is_favorite"] is True
-    assert set_favorite.json()["id"] != weekend_id
-    my_cinemas_id = set_favorite.json()["id"]
-    assert set_favorite.json()["name"] == "My Cinemas"
+    assert set_favorite.json()["id"] == weekend_id
+    assert set_favorite.json()["name"] == "Weekend Run"
 
     favorite_preset = client.get(
         f"{settings.API_V1_STR}/me/cinema-presets/favorite",
         headers=normal_user_token_headers,
     )
     assert favorite_preset.status_code == 200
-    assert favorite_preset.json()["id"] == my_cinemas_id
+    assert favorite_preset.json()["id"] == weekend_id
     assert favorite_preset.json()["cinema_ids"] == [4, 5]
 
     legacy_selected = client.get(
@@ -1259,12 +1259,11 @@ def test_cinema_presets_and_favorite_cinema_selection(
     assert list_response.status_code == 200
     by_id = {preset["id"]: preset for preset in list_response.json()}
     assert default_preset_id in by_id
-    assert by_id[default_preset_id]["name"] == "All Cinemas"
+    assert by_id[default_preset_id]["name"] == "All cinemas"
     assert by_id[default_preset_id]["is_default"] is True
     assert by_id[weekday_id]["is_favorite"] is False
-    assert by_id[weekend_id]["is_favorite"] is False
+    assert by_id[weekend_id]["is_favorite"] is True
     assert by_id[weekend_id]["cinema_ids"] == [4, 5]
-    assert by_id[my_cinemas_id]["is_favorite"] is True
 
     legacy_set = client.post(
         f"{settings.API_V1_STR}/me/cinemas",
@@ -1278,8 +1277,9 @@ def test_cinema_presets_and_favorite_cinema_selection(
         headers=normal_user_token_headers,
     )
     assert favorite_after_legacy_set.status_code == 200
-    # Still the same row: setting cinemas overwrites it rather than adding one.
-    assert favorite_after_legacy_set.json()["id"] == my_cinemas_id
+    # Still the same row (still "Weekend Run"): setting cinemas overwrites
+    # whichever row currently holds the flag rather than adding a new one.
+    assert favorite_after_legacy_set.json()["id"] == weekend_id
     assert favorite_after_legacy_set.json()["cinema_ids"] == [2, 6]
 
     delete_response = client.delete(
@@ -1293,6 +1293,94 @@ def test_cinema_presets_and_favorite_cinema_selection(
         headers=normal_user_token_headers,
     )
     assert delete_default_response.status_code == 404
+
+
+def test_promoting_a_cinema_preset_swaps_its_identity_with_the_preferred_selection(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    """Promoting a preset makes *it* the preferred cinemas, by name and id —
+    it is not a copy of its cinemas onto some other row. The row that used to
+    be preferred becomes an ordinary saved preset, unmodified, under its own
+    name and id."""
+    client.post(
+        f"{settings.API_V1_STR}/me/cinemas",
+        headers=normal_user_token_headers,
+        json=[7, 8],
+    )
+    favorite_before = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets/favorite",
+        headers=normal_user_token_headers,
+    )
+    favorite_before_id = favorite_before.json()["id"]
+
+    weekday_create = client.post(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+        json={"name": "Weekday Run", "cinema_ids": [1, 2, 3]},
+    )
+    assert weekday_create.status_code == 200
+    weekday_id = weekday_create.json()["id"]
+
+    promote = client.put(
+        f"{settings.API_V1_STR}/me/cinema-presets/{weekday_id}/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert promote.status_code == 200
+    assert promote.json()["is_favorite"] is True
+    # Its own row, its own name and cinemas — unchanged by becoming favorite.
+    assert promote.json()["id"] == weekday_id
+    assert promote.json()["name"] == "Weekday Run"
+    assert promote.json()["cinema_ids"] == [1, 2, 3]
+
+    presets = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+    )
+    by_id = {preset["id"]: preset for preset in presets.json()}
+    # The old favorite is now an ordinary preset — same id, same cinemas.
+    assert by_id[favorite_before_id]["is_favorite"] is False
+    assert by_id[favorite_before_id]["cinema_ids"] == [7, 8]
+    assert by_id[weekday_id]["is_favorite"] is True
+
+    # Promoting the old favorite again swaps the flag straight back.
+    promote_again = client.put(
+        f"{settings.API_V1_STR}/me/cinema-presets/{favorite_before_id}/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert promote_again.status_code == 200
+    assert promote_again.json()["id"] == favorite_before_id
+    assert promote_again.json()["cinema_ids"] == [7, 8]
+
+    presets_again = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+    )
+    by_id_again = {preset["id"]: preset for preset in presets_again.json()}
+    assert by_id_again[weekday_id]["is_favorite"] is False
+    assert by_id_again[weekday_id]["cinema_ids"] == [1, 2, 3]
+
+
+def test_promoting_the_preferred_preset_itself_changes_nothing(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    client.post(
+        f"{settings.API_V1_STR}/me/cinemas",
+        headers=normal_user_token_headers,
+        json=[4, 5],
+    )
+    favorite = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets/favorite",
+        headers=normal_user_token_headers,
+    )
+    favorite_id = favorite.json()["id"]
+
+    promote = client.put(
+        f"{settings.API_V1_STR}/me/cinema-presets/{favorite_id}/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert promote.status_code == 200
+    assert promote.json()["id"] == favorite_id
+    assert promote.json()["cinema_ids"] == [4, 5]
 
 
 def test_cinema_preset_name_clash_needs_an_explicit_overwrite(
@@ -1529,3 +1617,145 @@ def test_legacy_preferred_cinemas_still_work_on_me_cinemas(
     )
     assert favorite_get.status_code == 200
     assert favorite_get.json() == [first_cinema_id]
+
+
+def test_saved_preset_covering_a_whole_city_picks_up_a_new_cinema_there(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    cinema_factory,
+    city_factory,
+) -> None:
+    """The whole point of storing the rule instead of the ids.
+
+    A preset saved as "everything in Amsterdam" has to still mean that once
+    another Amsterdam cinema opens — which happens every few months — without
+    the user re-saving it.
+    """
+    amsterdam = city_factory()
+    utrecht = city_factory()
+    amsterdam_cinemas = [cinema_factory(city=amsterdam), cinema_factory(city=amsterdam)]
+    # A second city, so selecting Amsterdam is not also selecting everything.
+    cinema_factory(city=utrecht)
+    cinema_factory(city=utrecht)
+    db_transaction.flush()
+
+    create = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={
+            "name": "All of Amsterdam",
+            "filters": {"selected_showtime_filter": "all"},
+            "cinema_ids": [cinema.id for cinema in amsterdam_cinemas],
+        },
+    )
+    assert create.status_code == 200
+    assert create.json()["cinema_scope"]["city_ids"] == [amsterdam.id]
+
+    newcomer = cinema_factory(city=amsterdam)
+    db_transaction.flush()
+
+    presets = client.get(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+    )
+    assert presets.status_code == 200
+    stored = presets.json()[0]
+    assert stored["cinema_ids"] == sorted(
+        [cinema.id for cinema in amsterdam_cinemas] + [newcomer.id]
+    )
+
+
+def test_saved_preset_with_a_partial_city_does_not_pick_up_a_new_cinema(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    cinema_factory,
+    city_factory,
+) -> None:
+    """The counterpart: a deliberately narrow selection stays narrow."""
+    amsterdam = city_factory()
+    picked = cinema_factory(city=amsterdam)
+    cinema_factory(city=amsterdam)
+    cinema_factory(city=amsterdam)
+    db_transaction.flush()
+
+    create = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Just the one",
+            "filters": {"selected_showtime_filter": "all"},
+            "cinema_ids": [picked.id],
+        },
+    )
+    assert create.status_code == 200
+    assert create.json()["cinema_scope"]["city_ids"] == []
+
+    cinema_factory(city=amsterdam)
+    db_transaction.flush()
+
+    presets = client.get(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+    )
+    assert presets.json()[0]["cinema_ids"] == [picked.id]
+
+
+def test_saved_preset_without_cinemas_still_leaves_them_alone(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    cinema_factory,
+) -> None:
+    """No selection must not become one, however the rule is inferred."""
+    cinema_factory()
+    cinema_factory()
+
+    create = client.post(
+        f"{settings.API_V1_STR}/me/saved-presets",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Filters only",
+            "filters": {"selected_showtime_filter": "going"},
+        },
+    )
+    assert create.status_code == 200
+    body = create.json()
+    assert body["cinema_ids"] is None
+    assert body["cinema_scope"] is None
+
+
+def test_cinema_preset_covering_every_cinema_picks_up_a_new_one(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    cinema_factory,
+    city_factory,
+) -> None:
+    """"My cinemas" is applied on startup, so it is the one that matters most."""
+    existing = [cinema_factory(), cinema_factory()]
+    db_transaction.flush()
+
+    create = client.post(
+        f"{settings.API_V1_STR}/me/cinema-presets",
+        headers=normal_user_token_headers,
+        json={
+            "name": "Everything",
+            "cinema_ids": [cinema.id for cinema in existing],
+            "is_favorite": True,
+        },
+    )
+    assert create.status_code == 200
+    assert create.json()["cinema_scope"]["all_cinemas"] is True
+
+    newcomer = cinema_factory(city=city_factory())
+    db_transaction.flush()
+
+    favorite = client.get(
+        f"{settings.API_V1_STR}/me/cinema-presets/favorite",
+        headers=normal_user_token_headers,
+    )
+    assert favorite.status_code == 200
+    assert favorite.json()["cinema_ids"] == sorted(
+        [cinema.id for cinema in existing] + [newcomer.id]
+    )

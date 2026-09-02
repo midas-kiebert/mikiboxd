@@ -89,6 +89,47 @@ export default function FilterSection({ label, defaultOpen = false, summary, chi
 }
 
 /**
+ * A header-styled row that isn't collapsible: tapping it navigates elsewhere
+ * (e.g. opens a picker modal) instead of expanding content in place. Shares
+ * `FilterSection`'s label/summary metrics so sections line up, but the caret
+ * points right rather than down since there is nothing to expand here.
+ */
+export function FilterNavRow({
+  label,
+  summary,
+  onPress,
+}: {
+  label: string;
+  summary?: string;
+  onPress: () => void;
+}) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  return (
+    <TouchableOpacity
+      style={styles.header}
+      onPress={() => {
+        triggerSelectionHaptic();
+        onPress();
+      }}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+    >
+      <ThemedText style={styles.label}>{label}</ThemedText>
+      <View style={styles.headerRight}>
+        {summary !== undefined && (
+          <ThemedText style={styles.summary} numberOfLines={1}>
+            {summary}
+          </ThemedText>
+        )}
+        <MaterialIcons name="chevron-right" size={20} color={colors.textSecondary} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/**
  * A section that is a single control: label on the left, control on the right,
  * always on one line. The controls are sized to leave room for their labels;
  * `adjustsFontSizeToFit` is the backstop for the narrowest phones, where a

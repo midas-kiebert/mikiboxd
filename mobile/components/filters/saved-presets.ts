@@ -8,6 +8,7 @@
  */
 import {
   MeService,
+  type CinemaScope,
   type Language,
   type SavedPresetCreate,
   type SavedPresetFilters,
@@ -17,12 +18,14 @@ import { storage } from "shared/storage";
 
 import {
   normalizeFiltersForSave,
+  serializeFilters,
   type PageFilterPresetState,
 } from "@/components/filters/filter-preset-utils";
 import {
   toSharedTabShowtimeFilter,
   type SharedTabShowtimeFilter,
 } from "@/components/filters/shared-tab-filters";
+import { formatCinemaScopeLabel } from "@/components/filters/cinema-grouping";
 import { formatDayPillLabel } from "@/components/filters/day-filter-utils";
 import { formatTimePillLabel } from "@/components/filters/time-range-utils";
 import { formatRuntimePillLabel } from "@/components/filters/runtime-range-utils";
@@ -82,7 +85,15 @@ export type DisplayPreset = {
   /** Dimensions the preset leaves as-is on apply; everything else is controlled. */
   untouchedFields: PresetDimension[];
   filters: SavedPresetFilters;
+  /** Resolved against the current cinema list by the backend. */
   cinemaIds: number[] | null;
+  /**
+   * The rule the ids were resolved from — "every cinema", "every cinema in
+   * these cities", or a plain list. Only for describing the preset; applying
+   * one still goes through `cinemaIds`, which the backend has already
+   * expanded. `null` on presets saved before rules existed.
+   */
+  cinemaScope: CinemaScope | null;
 };
 
 const savedToDisplay = (preset: SavedPresetPublic): DisplayPreset => ({
@@ -92,6 +103,7 @@ const savedToDisplay = (preset: SavedPresetPublic): DisplayPreset => ({
   untouchedFields: preset.untouched_fields.filter(isUntouchedToken),
   filters: preset.filters,
   cinemaIds: preset.cinema_ids ?? null,
+  cinemaScope: preset.cinema_scope ?? null,
 });
 
 export const displayPresetsQueryKey = ["display-presets"] as const;
@@ -201,6 +213,142 @@ export const applyDisplayPreset = (
   }
 };
 
+/** Everything needed to say what an apply would leave behind. */
+export type PresetApplyContext = {
+  currentFilters: PageFilterPresetState;
+  /** The cinemas the feed is on, resolved the way the pill resolves them. */
+  currentCinemaIds: readonly number[];
+  hasLetterboxdUsername: boolean;
+};
+
+/**
+ * What the filters would be after applying `preset` — the same branching as
+ * `applyDisplayPreset`, returning the result instead of writing it.
+ *
+ * Kept immediately below the apply on purpose: the two must agree, and the
+ * only way to see that they do is to read them together.
+ */
+const resultOfApplying = (
+  preset: DisplayPreset,
+  context: PresetApplyContext
+): PageFilterPresetState => {
+  const untouched = new Set(preset.untouchedFields);
+  const controls = (dimension: PresetDimension) => !untouched.has(dimension);
+  const { filters } = preset;
+  const { currentFilters: current, hasLetterboxdUsername } = context;
+  const next: PageFilterPresetState = { ...current };
+
+  if (controls("selected_showtime_filter")) {
+    next.selected_showtime_filter = toSharedTabShowtimeFilter(
+      filters.selected_showtime_filter
+    );
+  }
+  if (controls("watchlist_only")) {
+    next.watchlist_only = hasLetterboxdUsername && Boolean(filters.watchlist_only);
+    next.watchlist_exclude = hasLetterboxdUsername && Boolean(filters.watchlist_exclude);
+  }
+  if (controls("hide_watched")) {
+    next.hide_watched = hasLetterboxdUsername && Boolean(filters.hide_watched);
+    next.watched_only = hasLetterboxdUsername && Boolean(filters.watched_only);
+  }
+  if (controls("days")) next.days = filters.days ?? [];
+  if (controls("time_ranges")) next.time_ranges = filters.time_ranges ?? [];
+  if (controls("runtime_ranges")) next.runtime_ranges = filters.runtime_ranges ?? [];
+  if (controls("group_by_movie")) next.group_by_movie = Boolean(filters.group_by_movie);
+  if (controls("selected_languages")) {
+    next.selected_languages = filters.selected_languages ?? [];
+  }
+
+  if (hasLetterboxdUsername) {
+    const keepListId = (id: string) => untouched.has(listDimension(id));
+    const applyStored = (ids: readonly string[]) =>
+      ids.filter((id) => controls(listDimension(id)));
+    next.selected_list_ids = dedupe([
+      ...(current.selected_list_ids ?? []).filter(keepListId),
+      ...applyStored(filters.selected_list_ids ?? []),
+    ]);
+    next.exclude_list_ids = dedupe([
+      ...(current.exclude_list_ids ?? []).filter(keepListId),
+      ...applyStored(filters.exclude_list_ids ?? []),
+    ]);
+  }
+
+  return next;
+};
+
+const sortedIds = (ids: readonly number[]): string =>
+  Array.from(new Set(ids))
+    .sort((left, right) => left - right)
+    .join(",");
+
+/**
+ * Whether applying this preset would move the cinema selection.
+ *
+ * Its own predicate because the cinema pill is the one dimension with no chip:
+ * the filter row can watch every other change land as a chip arriving or
+ * leaving, but a preset that writes the cinemas it is already on looks from
+ * there exactly like one that skipped them — and the row has to tell those
+ * apart, because only one of them has anything to animate.
+ */
+export const presetChangesCinemas = (
+  preset: DisplayPreset,
+  context: PresetApplyContext
+): boolean =>
+  preset.cinemaIds != null &&
+  sortedIds(preset.cinemaIds) !== sortedIds(context.currentCinemaIds);
+
+/**
+ * Whether applying this preset would leave everything exactly as it is.
+ *
+ * Compared through `serializeFilters` rather than field by field, so that a
+ * different order of the same days — or any other difference the filters
+ * themselves treat as none — counts as no change here too.
+ */
+export const presetChangesNothing = (
+  preset: DisplayPreset,
+  context: PresetApplyContext
+): boolean => {
+  if (presetChangesCinemas(preset, context)) {
+    return false;
+  }
+  return (
+    serializeFilters(resultOfApplying(preset, context)) ===
+    serializeFilters(context.currentFilters)
+  );
+};
+
+/**
+ * The dimensions an apply of this preset writes to — whether or not the value
+ * it writes differs from what is already there.
+ *
+ * A partial preset is only legible if the row can tell "this preset does not
+ * carry days" from "this preset carries the days you already had". The first
+ * has to leave the day chip alone; the second has to show the chip being set,
+ * or the preset looks like it half-worked. Only the apply knows the
+ * difference, so it says so (see `preset-apply-signal`).
+ *
+ * List dimensions are reported for the ids the preset actually stores. A list
+ * it merely switches off says so by the chip going, which needs no help.
+ */
+export const controlledPresetDimensions = (preset: DisplayPreset): PresetDimension[] => {
+  const untouched = new Set(preset.untouchedFields);
+  const controlled: PresetDimension[] = CONTROLLABLE_FILTER_DIMENSIONS.filter(
+    (dimension) => !untouched.has(dimension)
+  );
+
+  const storedListIds = dedupe([
+    ...(preset.filters.selected_list_ids ?? []),
+    ...(preset.filters.exclude_list_ids ?? []),
+  ]);
+  for (const id of storedListIds) {
+    const dimension = listDimension(id);
+    if (!untouched.has(dimension)) controlled.push(dimension);
+  }
+
+  if (preset.cinemaIds) controlled.push("cinemas");
+  return controlled;
+};
+
 export const deleteDisplayPreset = (preset: DisplayPreset): Promise<unknown> =>
   MeService.deleteSavedPreset({ presetId: preset.id });
 
@@ -272,11 +420,20 @@ export const buildSavedPresetCreate = (args: {
   includeCinemas: boolean;
   currentFilters: PageFilterPresetState;
   cinemaIds: number[];
+  /**
+   * The cinema preset the current selection exactly matches, if any. When
+   * set, the saved preset follows that cinema preset live (edits to it, or
+   * its deletion, are picked up automatically — see the backend's
+   * `SavedPreset.cinema_preset_id`) instead of freezing `cinemaIds`.
+   */
+  matchedCinemaPresetId?: string | null;
 }): SavedPresetCreate => ({
   name: args.name,
   untouched_fields: args.untouchedFields,
   filters: normalizeFiltersForSave(args.currentFilters),
-  cinema_ids: args.includeCinemas ? args.cinemaIds : null,
+  cinema_ids:
+    args.includeCinemas && !args.matchedCinemaPresetId ? args.cinemaIds : null,
+  cinema_preset_id: args.includeCinemas ? args.matchedCinemaPresetId ?? null : null,
   is_favorite: args.isFavorite,
 });
 
@@ -423,10 +580,13 @@ export const summarizeCurrentSelections = (args: {
 
 /**
  * Build a compact human-readable summary of what a preset will apply, e.g.
- * "Interested · Today · Evening · < 90 min · 3 cinemas"
+ * "Interested · Today · Evening · < 90 min · All Amsterdam cinemas"
  * Used in the manage-presets list and any other places that need a one-liner.
  */
-export const describeDisplayPreset = (preset: DisplayPreset): string => {
+export const describeDisplayPreset = (
+  preset: DisplayPreset,
+  cityNamesById: ReadonlyMap<number, string>
+): string => {
   const untouched = new Set(preset.untouchedFields);
   const controls = (dimension: PresetDimension) => !untouched.has(dimension);
   const f = preset.filters;
@@ -467,8 +627,9 @@ export const describeDisplayPreset = (preset: DisplayPreset): string => {
     parts.push(formatLanguagesLabel(f.selected_languages ?? []));
   }
   if (preset.cinemaIds != null) {
-    const n = preset.cinemaIds.length;
-    parts.push(`${n} cinema${n === 1 ? "" : "s"}`);
+    parts.push(
+      formatCinemaScopeLabel(preset.cinemaScope, preset.cinemaIds, cityNamesById)
+    );
   }
 
   return parts.length > 0 ? parts.join(" · ") : "No restrictions";

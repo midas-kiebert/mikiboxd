@@ -17,7 +17,10 @@ import { ThemedText } from "@/components/themed-text";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { describeDisplayPreset, type DisplayPreset } from "@/components/filters/saved-presets";
+import { buildCityNameIndex } from "@/components/filters/cinema-grouping";
 import { useDisplayPresets } from "@/components/filters/useDisplayPresets";
+import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
+import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 
 type ManagePresetsModalProps = {
   visible: boolean;
@@ -36,6 +39,13 @@ export default function ManagePresetsModal({
   const { presets, isLoading, remove, setFavorite, move } = useDisplayPresets({
     enabled: visible,
   });
+  // A preset that follows a whole city says so by name rather than by count,
+  // which needs the city names (see `formatCinemaScopeLabel`).
+  const { data: allCinemas } = useFetchCinemas();
+  const cityNamesById = useMemo(
+    () => buildCityNameIndex(allCinemas ?? []),
+    [allCinemas]
+  );
 
   const favoriteHasCinemas = presets.some(
     (p) => p.isFavorite && p.cinemaIds != null
@@ -47,7 +57,14 @@ export default function ManagePresetsModal({
       `Remove "${preset.name}"?`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => remove(preset) },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            triggerImpactHaptic();
+            remove(preset);
+          },
+        },
       ],
       { cancelable: true }
     );
@@ -114,7 +131,7 @@ export default function ManagePresetsModal({
                       {preset.name}
                     </ThemedText>
                     <ThemedText style={styles.description} numberOfLines={2}>
-                      {describeDisplayPreset(preset)}
+                      {describeDisplayPreset(preset, cityNamesById)}
                     </ThemedText>
                   </View>
 
@@ -133,7 +150,10 @@ export default function ManagePresetsModal({
 
                   <TouchableOpacity
                     style={styles.iconBtn}
-                    onPress={() => confirmDelete(preset)}
+                    onPress={() => {
+                      triggerSelectionHaptic();
+                      confirmDelete(preset);
+                    }}
                     activeOpacity={0.7}
                     hitSlop={6}
                   >

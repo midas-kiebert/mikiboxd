@@ -107,19 +107,38 @@ export default function NonFriendProfile({ user: seed }: NonFriendProfileProps) 
         <ThemedText style={styles.name} numberOfLines={2}>
           {name}
         </ThemedText>
-        <View style={styles.statusRow}>
-          <MaterialIcons
-            name={status === "friend" ? "people" : "lock-outline"}
-            size={13}
-            color={colors.textSecondary}
-          />
-          <ThemedText style={styles.statusText}>{subtitle}</ThemedText>
-        </View>
-        <ThemedText style={styles.hint}>
-          Become friends to see {name}&apos;s agenda and invite them to showtimes.
-        </ThemedText>
 
-        {status === "received" ? (
+        {isBlocked ? (
+          // Louder than the quiet `statusRow`/`moderationLink` styling this
+          // screen otherwise uses everywhere: a block is the one state here
+          // that's easy to forget you're in, since nothing else about the
+          // screen changes to remind you — worth its own colored badge.
+          <View style={styles.blockedBanner}>
+            <MaterialIcons name="block" size={14} color={colors.red.secondary} />
+            <ThemedText style={styles.blockedBannerText}>You&apos;ve blocked this account</ThemedText>
+          </View>
+        ) : (
+          <View style={styles.statusRow}>
+            <MaterialIcons
+              name={status === "friend" ? "people" : "lock-outline"}
+              size={13}
+              color={colors.textSecondary}
+            />
+            <ThemedText style={styles.statusText}>{subtitle}</ThemedText>
+          </View>
+        )}
+
+        {isBlocked ? (
+          <ThemedText style={styles.hint}>
+            Unblock {name} to send or receive friend requests and invites again.
+          </ThemedText>
+        ) : (
+          <ThemedText style={styles.hint}>
+            Become friends to see {name}&apos;s agenda and invite them to showtimes.
+          </ThemedText>
+        )}
+
+        {isBlocked ? null : status === "received" ? (
           <View style={styles.buttonRow}>
             <TouchableOpacity
               style={[styles.button, styles.ghostButton]}
@@ -273,6 +292,23 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       fontSize: 13,
       fontWeight: "600",
       color: colors.textSecondary,
+    },
+    blockedBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginTop: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.red.border,
+      backgroundColor: colors.red.primary,
+    },
+    blockedBannerText: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.red.secondary,
     },
     hint: {
       fontSize: 13,

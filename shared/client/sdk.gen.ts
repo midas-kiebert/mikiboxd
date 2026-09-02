@@ -86,6 +86,13 @@ import type {
   MeDeleteCinemaPresetResponse,
   MeSetFavoriteCinemaPresetData,
   MeSetFavoriteCinemaPresetResponse,
+  MeGetWatchlistDigestSourcesResponse,
+  MeCreateWatchlistDigestSourceData,
+  MeCreateWatchlistDigestSourceResponse,
+  MeUpdateWatchlistDigestSourceData,
+  MeUpdateWatchlistDigestSourceResponse,
+  MeDeleteWatchlistDigestSourceData,
+  MeDeleteWatchlistDigestSourceResponse,
   MeResendEmailVerificationResponse,
   MeUpdatePasswordMeData,
   MeUpdatePasswordMeResponse,
@@ -155,6 +162,8 @@ import type {
   ShowtimesPingFriendForShowtimeResponse,
   ShowtimesUninviteFriendFromShowtimeData,
   ShowtimesUninviteFriendFromShowtimeResponse,
+  ShowtimesSendShowtimeReminderData,
+  ShowtimesSendShowtimeReminderResponse,
   ShowtimesCreateShowtimePingLinkTokenData,
   ShowtimesCreateShowtimePingLinkTokenResponse,
   ShowtimesReceivePingFromLinkData,
@@ -169,6 +178,8 @@ import type {
   ShowtimesGetSeatAvailabilityBatchResponse,
   ShowtimesGetSeatAvailabilityData,
   ShowtimesGetSeatAvailabilityResponse,
+  ShowtimesRequestSeatAvailabilityCheckData,
+  ShowtimesRequestSeatAvailabilityCheckResponse,
   ShowtimesGetSoldOutWatchResponse,
   ShowtimesStopSoldOutWatchResponse,
   ShowtimesStartSoldOutWatchData,
@@ -181,6 +192,8 @@ import type {
   ShowtimesUpdateShowtimeVisibilityResponse,
   ShowtimesGetUninvitedSelectedFriendsForShowtimeData,
   ShowtimesGetUninvitedSelectedFriendsForShowtimeResponse,
+  ShowtimesGetHiddenAttendingFriendsForShowtimeData,
+  ShowtimesGetHiddenAttendingFriendsForShowtimeResponse,
   ShowtimesCountMainPageShowtimesData,
   ShowtimesCountMainPageShowtimesResponse,
   ShowtimesGetMainPageShowtimesData,
@@ -1193,7 +1206,7 @@ export class MeService {
 
   /**
    * Set Favorite Cinema Preset
-   * Point "my cinemas" at this preset's cinemas — a copy, not a handover.
+   * Swap "my cinemas" onto this preset — it keeps its name, the old favorite becomes an ordinary preset.
    * @param data The data for the request.
    * @param data.presetId
    * @returns CinemaPresetPublic Successful Response
@@ -1207,6 +1220,86 @@ export class MeService {
       url: "/api/v1/me/cinema-presets/{preset_id}/favorite",
       path: {
         preset_id: data.presetId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Watchlist Digest Sources
+   * @returns WatchlistDigestSourcePublic Successful Response
+   * @throws ApiError
+   */
+  public static getWatchlistDigestSources(): CancelablePromise<MeGetWatchlistDigestSourcesResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/watchlist-digest-sources",
+    })
+  }
+
+  /**
+   * Create Watchlist Digest Source
+   * @param data The data for the request.
+   * @param data.requestBody
+   * @returns WatchlistDigestSourcePublic Successful Response
+   * @throws ApiError
+   */
+  public static createWatchlistDigestSource(
+    data: MeCreateWatchlistDigestSourceData,
+  ): CancelablePromise<MeCreateWatchlistDigestSourceResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/watchlist-digest-sources",
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update Watchlist Digest Source
+   * @param data The data for the request.
+   * @param data.sourceId
+   * @param data.requestBody
+   * @returns WatchlistDigestSourcePublic Successful Response
+   * @throws ApiError
+   */
+  public static updateWatchlistDigestSource(
+    data: MeUpdateWatchlistDigestSourceData,
+  ): CancelablePromise<MeUpdateWatchlistDigestSourceResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/me/watchlist-digest-sources/{source_id}",
+      path: {
+        source_id: data.sourceId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Delete Watchlist Digest Source
+   * @param data The data for the request.
+   * @param data.sourceId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static deleteWatchlistDigestSource(
+    data: MeDeleteWatchlistDigestSourceData,
+  ): CancelablePromise<MeDeleteWatchlistDigestSourceResponse> {
+    return __request(OpenAPI, {
+      method: "DELETE",
+      url: "/api/v1/me/watchlist-digest-sources/{source_id}",
+      path: {
+        source_id: data.sourceId,
       },
       errors: {
         422: "Validation Error",
@@ -1273,6 +1366,8 @@ export class MeService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1300,6 +1395,8 @@ export class MeService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -1329,6 +1426,8 @@ export class MeService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1358,6 +1457,8 @@ export class MeService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -1832,6 +1933,8 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1859,6 +1962,8 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -1889,6 +1994,8 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1919,6 +2026,8 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -1949,6 +2058,8 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -1981,6 +2092,8 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2010,6 +2123,8 @@ export class MoviesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2041,6 +2156,8 @@ export class MoviesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2245,6 +2362,36 @@ export class ShowtimesService {
   }
 
   /**
+   * Send Showtime Reminder
+   * Nudge a friend already going/interested, or invited and not dismissed.
+   *
+   * Never errors when the friend has reminders turned off — see
+   * `services.showtimes.send_showtime_reminder` — so the response always
+   * reads as "sent" from the caller's side, whether or not anything actually
+   * reached the friend's device.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @param data.friendId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static sendShowtimeReminder(
+    data: ShowtimesSendShowtimeReminderData,
+  ): CancelablePromise<ShowtimesSendShowtimeReminderResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/showtimes/{showtime_id}/remind/{friend_id}",
+      path: {
+        showtime_id: data.showtimeId,
+        friend_id: data.friendId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Create Showtime Ping Link Token
    * Mint the signed token embedded in this showtime's shared invite link.
    *
@@ -2413,6 +2560,43 @@ export class ShowtimesService {
   }
 
   /**
+   * Request Seat Availability Check
+   * Ask for this screening's first seat reading.
+   *
+   * From here on it is exactly the path selecting a showtime already takes: the
+   * read is queued for the poller, with every cap it has, and attempted straight
+   * away in the background under the same concurrency and per-host guards. What
+   * bounds it is `should_check_immediately` — true only for a showtime that has
+   * never been read at all — so a screening can cost at most one hand-requested
+   * request in its life, however many people tap the button.
+   *
+   * Signed in only. Reading the answer is public (see `get_seat_availability`);
+   * *causing* a request at a small cinema's ticket shop is not, and an account
+   * is what stops the button being an anonymous way to walk the catalogue.
+   *
+   * Already-read showtimes are not an error — the caller wanted a number and
+   * there is one, so it comes back as-is.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns unknown Successful Response
+   * @throws ApiError
+   */
+  public static requestSeatAvailabilityCheck(
+    data: ShowtimesRequestSeatAvailabilityCheckData,
+  ): CancelablePromise<ShowtimesRequestSeatAvailabilityCheckResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/showtimes/{showtime_id}/seat-availability/check",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Get Sold Out Watch
    * The one showtime this user is waiting on a returned ticket for, if any.
    * @returns unknown Successful Response
@@ -2560,6 +2744,33 @@ export class ShowtimesService {
   }
 
   /**
+   * Get Hidden Attending Friends For Showtime
+   * Friends already going/interested who won't see the actor's status.
+   *
+   * Used to prompt the actor, before marking going/interested, to invite
+   * friends who are already visibly attending but whom the actor's current
+   * visibility mode or per-friend opt-out would otherwise hide from.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns UninvitedSelectedFriendsPublic Successful Response
+   * @throws ApiError
+   */
+  public static getHiddenAttendingFriendsForShowtime(
+    data: ShowtimesGetHiddenAttendingFriendsForShowtimeData,
+  ): CancelablePromise<ShowtimesGetHiddenAttendingFriendsForShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/showtimes/{showtime_id}/visibility/hidden-attending-friends",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
    * Count Main Page Showtimes
    * @param data The data for the request.
    * @param data.query
@@ -2574,6 +2785,8 @@ export class ShowtimesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2601,6 +2814,8 @@ export class ShowtimesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2630,6 +2845,8 @@ export class ShowtimesService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2659,6 +2876,8 @@ export class ShowtimesService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,
@@ -2944,6 +3163,8 @@ export class UsersService {
    * @param data.timeRanges
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
    * @param data.runtimeMin Minimum movie runtime in minutes
@@ -2976,6 +3197,8 @@ export class UsersService {
         time_ranges: data.timeRanges,
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
+        all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
         runtime_min: data.runtimeMin,

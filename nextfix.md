@@ -1,3 +1,4 @@
-- Not verified text polls every few seconds with visible reload
-- Always notify on verify email sent (so when user changes email for example)
-- Opening a cinema page from a showtime modal should close the showtime modal
+- Make pull down to refresh work even on short lists
+- Make watchlist easier to find
+- investigate cinema oostereiland, de drom, filmhuis bussum, fizi, focus, luxor seat maps
+- investigate Artishock seat availability

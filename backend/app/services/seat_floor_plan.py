@@ -33,10 +33,16 @@ def get_seat_floor_plan(
     )
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
-    if showtime.room is None:
+    # `room_key` rather than `room`: for most platforms the two are the same
+    # string, but Ticketlab's shops mostly print no room name at all, and
+    # there the key is the only thing that says which room this is. Either
+    # way it is the availability poller that fills it in, so a showtime that
+    # has never been polled has no seat map yet — the same condition that
+    # leaves it with no seat count.
+    if showtime.room_key is None:
         return None
 
-    plan = session.get(CinemaRoomFloorPlan, (showtime.cinema_id, showtime.room))
+    plan = session.get(CinemaRoomFloorPlan, (showtime.cinema_id, showtime.room_key))
     if plan is None:
         return None
 
@@ -98,7 +104,12 @@ def get_seat_floor_plan(
 
     return SeatFloorPlanPublic(
         showtime_id=showtime_id,
-        room=showtime.room,
+        # The showtime's own label first — a scraper that knows the room
+        # names it the way the cinema's own programme does — and the plan's
+        # otherwise. Null when neither has a name for it, which is the normal
+        # case on Ticketlab.
+        room=showtime.room or plan.room_name,
         seats=seats,
+        screen_side=plan.screen_side,
         seats_checked_at=seat_map.checked_at if seat_map is not None else None,
     )

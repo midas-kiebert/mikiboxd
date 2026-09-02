@@ -20,6 +20,22 @@ import { storage } from './storage';
 
 const REFRESH_PATH = '/api/v1/login/refresh-token';
 
+/**
+ * Axios waits forever by default, so a socket that stalls without erroring —
+ * a flaky mobile network, a connection dropped while backgrounded — leaves the
+ * request promise permanently pending: no result, no error, and no way for a
+ * caller to tell it has been abandoned. Anything polling on it (the email
+ * verification badge, say) then sits on "checking" indefinitely. Generous
+ * enough that genuinely slow endpoints still finish; the point is only that
+ * every request eventually settles.
+ */
+const REQUEST_TIMEOUT_MS = 60_000;
+/**
+ * Tighter than the general one: a refresh that never settles wedges not just
+ * itself but every later 401, which all await the same in-flight promise.
+ */
+const REFRESH_TIMEOUT_MS = 15_000;
+
 // In-flight refresh shared by all requests that 401 at once, so a burst of
 // concurrent failures triggers exactly one refresh.
 let refreshPromise: Promise<string> | null = null;
@@ -31,7 +47,7 @@ async function performRefresh(): Promise<string> {
   }
   // A bare client (no interceptors) so a 401 from the refresh endpoint itself
   // can never recurse back into this handler.
-  const response = await axios.create().post<Token>(
+  const response = await axios.create({ timeout: REFRESH_TIMEOUT_MS }).post<Token>(
     `${OpenAPI.BASE}${REFRESH_PATH}`,
     { refresh_token: refreshToken },
   );
@@ -43,6 +59,11 @@ async function performRefresh(): Promise<string> {
 type RetriableConfig = InternalAxiosRequestConfig & { _retriedAfterRefresh?: boolean };
 
 export function installAuthRefreshInterceptor(onRefreshFailed: () => void): void {
+  // Set here rather than in the generated client, which regeneration would
+  // overwrite. `axios.create()` inherits the defaults, so this bounds the
+  // refresh client below as well as every generated API call.
+  axios.defaults.timeout = REQUEST_TIMEOUT_MS;
+
   axios.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {

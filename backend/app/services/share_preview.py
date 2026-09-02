@@ -9,7 +9,12 @@ import html
 
 from app.core.config import settings
 
-DEFAULT_SHARE_PREVIEW_IMAGE = f"{settings.FRONTEND_HOST}/assets/images/mikino-logo.png"
+# Poster-shaped (2:3), not the square logo — a near-square/landscape og:image
+# makes WhatsApp et al. render a huge full-width banner instead of the small,
+# left-aligned card real posters get.
+DEFAULT_SHARE_PREVIEW_IMAGE = (
+    f"{settings.FRONTEND_HOST}/assets/images/share-preview-fallback.png"
+)
 
 
 def render_share_preview_html(

@@ -3,9 +3,14 @@
  */
 import React from "react";
 import { FlatList, StyleSheet, View } from "react-native";
-import { ThemedRefreshControl } from "@/components/themed-refresh-control";
+import {
+  pullToRefreshContentStyle,
+  pullToRefreshScrollProps,
+  ThemedRefreshControl,
+} from "@/components/themed-refresh-control";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { type ShowtimePublic } from "shared";
+import type { SearchField } from "shared/client";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 import { usePrefetchShowtimeSeatAvailability } from "shared/hooks/useShowtimeSeatAvailability";
 
@@ -14,6 +19,7 @@ import { useRouter } from "expo-router";
 import { ThemedText } from "@/components/themed-text";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useDelayedTrue } from "@/hooks/useDelayedTrue";
 import { useShowtimeModal, type OpenOptions } from "@/components/showtimes/ShowtimeModalProvider";
 import { useIsSignedIn } from "@/utils/auth-session";
 import TopBar from "@/components/layout/TopBar";
@@ -22,9 +28,16 @@ import FilterPills, {
   type FilterPillLongPressPosition,
 } from "@/components/filters/FilterPills";
 import ShowtimeCard from "@/components/showtimes/ShowtimeCard";
+import {
+  byIdKeyExtractor,
+  useScrollTriggeredLoadMore,
+} from "@/components/feeds/feed-paging";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { FeedItemEntrance } from "@/components/ui/FeedItemEntrance";
+import ListLoadingLogo from "@/components/layout/ListLoadingLogo";
 import { tabletCappedContentStyle } from "@/constants/tablet-layout";
+import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from "@/constants/loading-logo";
 
 type ShowtimesListContentProps = {
   showtimes: ShowtimePublic[];
@@ -36,11 +49,26 @@ type ShowtimesListContentProps = {
   refreshing: boolean;
   onRefresh: () => void | Promise<void>;
   emptyText?: string;
+  /** Rendered under `emptyText` when the list is empty (e.g. a search-field notice). */
+  emptyExtra?: React.ReactNode;
   openModalOptions?: OpenOptions;
   /** Carry the showtimes-tab filters over when long-pressing into the movie page. */
   inheritFiltersOnMovieNav?: boolean;
   /** Scrolls away with the list, unlike filterRow which stays pinned above it. */
   listHeader?: React.ReactElement | null;
+  /**
+   * A caller's own deliberate, bounded "just changed the filters" hold (e.g.
+   * a preset apply's settle window). Suppresses the empty-state copy for its
+   * whole length, and shows the loading panel on a clock of its own: the same
+   * short show delay as a fetch (a preset whose results are already cached
+   * resolves well inside it, and showing the panel for every tap regardless
+   * flashes it), but no cooldown. The cooldown absorbs a *raw* `isLoading`/
+   * `isFetching` flag's flicker; one left ticking by a previous preset would
+   * outlast a hold like this and swallow the panel for the next preset
+   * entirely. Folding a caller's own hold into `isLoading`/`isFetching`
+   * instead of passing it here hits exactly that bug.
+   */
+  immediateEmptyLoading?: boolean;
 };
 
 export function ShowtimesListContent({
@@ -53,9 +81,11 @@ export function ShowtimesListContent({
   refreshing,
   onRefresh,
   emptyText = "No showtimes found",
+  emptyExtra,
   openModalOptions,
   inheritFiltersOnMovieNav = false,
   listHeader,
+  immediateEmptyLoading = false,
 }: ShowtimesListContentProps) {
   const router = useRouter();
   const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimePublic) =>
@@ -86,56 +116,102 @@ export function ShowtimesListContent({
   // reaching the bottom never changes the layout under the user's scroll.
   const renderFooter = () => <LoadMoreFooter loading={isFetchingNextPage} />;
 
+  // One identity each, for the life of the list. A `FlatList` re-renders every
+  // cell when `renderItem` changes, which undoes `ShowtimeCard`'s memo — and
+  // the whole point of the memo is that a tab switch, which re-renders this
+  // screen for no reason the cards care about, costs nothing.
+  const openModal = React.useCallback(
+    (showtime: ShowtimePublic) => openShowtimeModal(showtime, openModalOptions),
+    [openShowtimeModal, openModalOptions]
+  );
+  const renderItem = React.useCallback(
+    ({ item, index }: { item: ShowtimePublic; index: number }) => (
+      <FeedItemEntrance index={index}>
+        <ShowtimeCard showtime={item} onPress={openModal} onLongPress={goToMovieFromLongPress} />
+      </FeedItemEntrance>
+    ),
+    [openModal, goToMovieFromLongPress]
+  );
+
+  // Pull-to-refresh no longer clears the list: RefreshControl's own spinner
+  // at the top already says a reload is happening, so the old cards just
+  // stay up and get swapped for the fresh ones once they land — no separate
+  // "reload" state needed, and nothing for the loading panel to do here.
+  const data = showtimes;
+
+  // `!refreshing`: RefreshControl's own spinner already covers a
+  // pull-to-refresh, so the panel has nothing to do for one even on an
+  // already-empty list. Both a genuine first load and a background refetch
+  // go through the same delay+cooldown — a preset or filter combo that's
+  // been used before (or just hits a nearby cache entry) very often resolves
+  // faster than LOADING_LOGO_DELAY_MS even with nothing cached yet, so
+  // showing `isLoading` immediately just moved the flash from "quick filter
+  // taps" to "quick presets" instead of removing it.
+  const isFetchEmptyLoading = (isLoading || isFetching) && !refreshing && data.length === 0;
+  const showFetchLoadingLogo = useDelayedTrue(
+    isFetchEmptyLoading,
+    LOADING_LOGO_DELAY_MS,
+    LOADING_LOGO_COOLDOWN_MS
+  );
+  // Same show delay, no cooldown, own clock — see `immediateEmptyLoading`'s
+  // doc comment above.
+  const showTransitionLoadingLogo = useDelayedTrue(immediateEmptyLoading, LOADING_LOGO_DELAY_MS);
+  // The caller's hold still suppresses the empty-state copy for its whole
+  // length, delay or not — `emptyText` must never describe filters that have
+  // already been replaced.
+  const isEmptyLoading = isFetchEmptyLoading || immediateEmptyLoading;
+  const showLoadingLogo = showFetchLoadingLogo || showTransitionLoadingLogo;
+
   const renderEmpty = () => {
-    if (isLoading || isFetching || refreshing) {
-      // Skeleton cards (rather than a lone spinner) so the list keeps its shape
-      // while data loads instead of popping in.
-      return (
-        <View>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} style={styles.skeletonCard} />
-          ))}
-        </View>
-      );
-    }
+    // The loading panel is a fixed overlay (below), not part of the list's
+    // own content, so there's nothing to render here while it's up. And
+    // never the "nothing found" copy while a refresh is in flight either —
+    // the pull gesture's own spinner already covers that, and this would
+    // otherwise flash up for an already-empty list mid-refresh even though
+    // the loading panel is deliberately skipped for that case.
+    if (isEmptyLoading || refreshing) return null;
     return (
       <View style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>{emptyText}</ThemedText>
+        {emptyExtra}
       </View>
     );
   };
 
-  // While pull-to-refresh is running, clear the list so it visibly reloads into
-  // skeletons and back — otherwise an unchanged result looks like nothing
-  // happened. The fresh data renders the moment `refreshing` flips back to false.
-  const data = refreshing ? [] : showtimes;
+  const loadMore = useScrollTriggeredLoadMore(() => {
+    if (hasNextPage && !isFetchingNextPage) onLoadMore();
+  });
 
   return (
     <View style={styles.container}>
       <FlatList
         data={data}
-        renderItem={({ item }) => (
-          <ShowtimeCard
-            showtime={item}
-            onPress={(showtime) => openShowtimeModal(showtime, openModalOptions)}
-            onLongPress={goToMovieFromLongPress}
-          />
-        )}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContent}
+        renderItem={renderItem}
+        keyExtractor={byIdKeyExtractor}
+        contentContainerStyle={[styles.listContent, pullToRefreshContentStyle]}
+        {...pullToRefreshScrollProps}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           listHeader ? <View style={styles.listHeaderWrapper}>{listHeader}</View> : undefined
         }
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
-        onEndReached={() => {
-          if (hasNextPage && !isFetchingNextPage) onLoadMore();
-        }}
+        onScrollBeginDrag={loadMore.onScrollBeginDrag}
+        onEndReached={loadMore.onEndReached}
         onEndReachedThreshold={2}
         refreshing={isLoading}
         refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />
+      {/* An overlay, not the list's ListEmptyComponent: that content scrolls
+          and shifts with RefreshControl's pull, which read as the logo
+          drifting down the screen. Sitting outside the FlatList keeps it
+          fixed in place and (via pointerEvents="none") never intercepts the
+          pull-to-refresh gesture underneath it. */}
+      {showLoadingLogo ? (
+        <View style={styles.loadingOverlay} pointerEvents="none">
+          <ListLoadingLogo />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -167,6 +243,17 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   onRefresh: () => void;
   searchQuery: string;
   onSearchChange: (value: string) => void;
+  /**
+   * Passing both of these turns the plain search field into the main feed's
+   * field-selector one (Title / Director / Actor / …); leaving them off keeps
+   * the plain field. `hiddenSearchFields` drops options that make no sense on
+   * the screen in question.
+   */
+  searchField?: SearchField;
+  onChangeSearchField?: (searchField: SearchField) => void;
+  hiddenSearchFields?: readonly SearchField[];
+  /** Sits inside the search row, left of the field — the Filters button, where a screen has one. */
+  searchLeftSlot?: React.ReactNode;
   // Legacy pill-based filters — omit when using filterRow slot instead
   filters?: readonly FilterOption<TFilterId>[];
   activeFilterIds?: readonly TFilterId[];
@@ -180,6 +267,8 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   // New slot: replaces ShowtimesListContent when provided (e.g. for group-by-movies)
   listContent?: React.ReactNode;
   emptyText?: string;
+  /** Rendered under `emptyText` when the list is empty (e.g. a search-field notice). */
+  emptyExtra?: React.ReactNode;
   openModalOptions?: OpenOptions;
   inheritFiltersOnMovieNav?: boolean;
   /** Scrolls away with the list, unlike filterRow which stays pinned above it. */
@@ -204,6 +293,10 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   onRefresh,
   searchQuery,
   onSearchChange,
+  searchField,
+  onChangeSearchField,
+  hiddenSearchFields,
+  searchLeftSlot,
   filters,
   activeFilterIds,
   onToggleFilter,
@@ -211,6 +304,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   filterRow,
   listContent,
   emptyText = "No showtimes found",
+  emptyExtra,
   openModalOptions,
   inheritFiltersOnMovieNav,
   listHeader,
@@ -233,6 +327,10 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         value={searchQuery}
         onChangeText={onSearchChange}
         placeholder="Search showtimes"
+        searchField={searchField}
+        onChangeSearchField={onChangeSearchField}
+        hiddenSearchFields={hiddenSearchFields}
+        leftSlot={searchLeftSlot}
         clearOnAndroidBack
       />
       {filterRow ?? (
@@ -255,6 +353,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
           refreshing={refreshing}
           onRefresh={onRefresh}
           emptyText={emptyText}
+          emptyExtra={emptyExtra}
           openModalOptions={openModalOptions}
           inheritFiltersOnMovieNav={inheritFiltersOnMovieNav}
           listHeader={listHeader}
@@ -287,6 +386,10 @@ export function ShowtimesScreenSkeleton({
   searchQuery,
   onSearchChange,
   searchPlaceholder = "Search showtimes",
+  searchField,
+  onChangeSearchField,
+  hiddenSearchFields,
+  searchLeftSlot,
   filterRow,
 }: {
   topBarTitle?: string;
@@ -299,6 +402,11 @@ export function ShowtimesScreenSkeleton({
   searchQuery?: string;
   onSearchChange?: (value: string) => void;
   searchPlaceholder?: string;
+  searchField?: SearchField;
+  onChangeSearchField?: (searchField: SearchField) => void;
+  hiddenSearchFields?: readonly SearchField[];
+  searchLeftSlot?: React.ReactNode;
+  /** `false` (rather than omitted) for a screen with no filter row at all: it skips the placeholder pills. */
   filterRow?: React.ReactNode;
 }) {
   const colors = useThemeColors();
@@ -319,6 +427,10 @@ export function ShowtimesScreenSkeleton({
           value={searchQuery ?? ""}
           onChangeText={onSearchChange}
           placeholder={searchPlaceholder}
+          searchField={searchField}
+          onChangeSearchField={onChangeSearchField}
+          hiddenSearchFields={hiddenSearchFields}
+          leftSlot={searchLeftSlot}
           clearOnAndroidBack
         />
       ) : (
@@ -332,10 +444,8 @@ export function ShowtimesScreenSkeleton({
           <Skeleton style={{ height: 40, width: 72, borderRadius: 18 }} />
         </View>
       )}
-      <View style={styles.listContent}>
-        {[0, 1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} style={styles.skeletonCard} />
-        ))}
+      <View style={[styles.listContent, styles.listContentFill]}>
+        <ListLoadingLogo />
       </View>
     </TopSafeAreaView>
   );
@@ -369,6 +479,18 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       // Matches the movie feeds' padding: a list short enough not to render the
       // end-of-list spacer would otherwise butt straight against the tab bar.
       paddingBottom: 16,
+    },
+    // Grows the content container to fill the list's viewport so the loading
+    // panel can center within it instead of sizing to its own small height —
+    // that's also what stops a short screen from having anything to scroll.
+    listContentFill: {
+      flexGrow: 1,
+    },
+    // Absolutely positioned over the list (not part of its scrollable
+    // content) so it stays fixed instead of moving with RefreshControl's pull
+    // or the content's own scroll offset.
+    loadingOverlay: {
+      ...StyleSheet.absoluteFillObject,
     },
     // listHeader supplies its own horizontal padding/divider (it's a full-width
     // section like the card list rows above it), so cancel out listContent's
@@ -411,11 +533,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       height: 36,
       width: 120,
       borderRadius: 14,
-    },
-    skeletonCard: {
-      height: 112,
-      borderRadius: 12,
-      marginBottom: 16,
     },
     centerContainer: {
       paddingVertical: 40,

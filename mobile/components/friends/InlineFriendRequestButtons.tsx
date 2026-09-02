@@ -22,12 +22,20 @@ import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type InlineFriendRequestButtonsProps = {
   user: UserWithFriendStatus;
+  /**
+   * The relationship a tap is heading for, reported the moment it happens.
+   * Lets a caller that says something about the same relationship in its own
+   * words (see `FriendOfFriendPopup`) repaint with the buttons rather than a
+   * beat later, when the round trip lands.
+   */
+  onAction?: (next: "sent" | "cleared" | "friend") => void;
 };
 
 type Override = "sent" | "cleared" | "friend" | null;
 
 export default function InlineFriendRequestButtons({
   user: seed,
+  onAction,
 }: InlineFriendRequestButtonsProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -38,6 +46,7 @@ export default function InlineFriendRequestButtons({
   const runAction = (next: Override, action: () => void) => {
     triggerSelectionHaptic();
     setOverride(next);
+    if (next) onAction?.(next);
     action();
   };
 

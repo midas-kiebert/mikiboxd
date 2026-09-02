@@ -26,7 +26,14 @@ def sent_emails(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, str]]:
     """Capture outgoing mail instead of handing it to SMTP."""
     captured: list[dict[str, str]] = []
 
-    def _capture(*, email_to: str, subject: str = "", html_content: str = "") -> None:
+    # `**_rest` rather than the exact signature: every caller of the real
+    # `send_email` wraps it in `except Exception`, so a keyword this stand-in
+    # has not caught up with (`text_content`, `attachments`) does not fail
+    # here — it is swallowed there, and the mail simply never arrives, which
+    # reads as a missing feature rather than a stale double.
+    def _capture(
+        *, email_to: str, subject: str = "", html_content: str = "", **_rest: object
+    ) -> None:
         captured.append(
             {"email_to": email_to, "subject": subject, "html_content": html_content}
         )

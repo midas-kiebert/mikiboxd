@@ -8,7 +8,7 @@
 import type { CinemaPublic } from "shared";
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
-type CinemaColorPalette = { primary: string; secondary: string };
+type CinemaColorPalette = { primary: string; secondary: string; border: string };
 
 type CinemaColorKey =
   | "pink"

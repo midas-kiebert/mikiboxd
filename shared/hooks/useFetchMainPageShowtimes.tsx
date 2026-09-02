@@ -1,7 +1,9 @@
-import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { ShowtimesService, ShowtimesGetMainPageShowtimesResponse } from "../client";
 import { ApiError } from "../client";
 import type { GoingStatus, Language, SearchField } from "../client";
+import { seedShowtimeSeatAvailability } from "./useShowtimeSeatAvailability";
+import { seedShowtimeVisibility } from "./useShowtimeVisibility";
 
 type ShowtimesFilters = {
     query?: string;
@@ -16,6 +18,8 @@ type ShowtimesFilters = {
     hideWatched?: boolean;
     watchedOnly?: boolean;
     selectedStatuses?: GoingStatus[];
+    friendsOnly?: boolean;
+    allCinemas?: boolean;
     selectedListIds?: string[];
     excludeListIds?: string[];
     selectedLanguages?: Language[];
@@ -23,6 +27,17 @@ type ShowtimesFilters = {
 
 type useFetchMainPageShowtimesProps = {
     limit?: number;
+    /**
+     * Page size for the first page only. Defaults to `limit`.
+     *
+     * The first page is the one page that is always fetched, and on a filtered
+     * feed it is very often the only one anybody looks at — four or five cards
+     * fit a phone screen, so a full page of twenty is fifteen rows of query,
+     * payload and prefetch spent on a scroll that never happens. Later pages
+     * stay large: by then the user is scrolling, and a big page is what keeps
+     * them from meeting the loader again.
+     */
+    firstPageLimit?: number;
     snapshotTime?: string;
     filters?: ShowtimesFilters;
     enabled?: boolean;
@@ -31,11 +46,13 @@ type useFetchMainPageShowtimesProps = {
 export function useFetchMainPageShowtimes(
     {
         limit,
+        firstPageLimit = limit,
         snapshotTime,
         filters = {},
         enabled = true,
     } : useFetchMainPageShowtimesProps
 ): UseInfiniteQueryResult<InfiniteData<ShowtimesGetMainPageShowtimesResponse>, Error>{
+    const queryClient = useQueryClient();
     const result = useInfiniteQuery<
         ShowtimesGetMainPageShowtimesResponse,
         Error,
@@ -48,13 +65,22 @@ export function useFetchMainPageShowtimes(
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
-        queryFn: ({ pageParam = 0}) => {
-            return ShowtimesService.getMainPageShowtimes({
+        queryFn: async ({ pageParam = 0 }) => {
+            const page = await ShowtimesService.getMainPageShowtimes({
                 offset: pageParam,
-                limit: limit,
+                // Offset zero is the first page, and nothing else can be: the
+                // offsets below are cumulative row counts, which only start at
+                // zero before anything has been fetched.
+                limit: pageParam === 0 ? firstPageLimit : limit,
                 snapshotTime: snapshotTime,
                 ...filters,
             });
+            // The badges read this cache, so filling it here — with what the
+            // page itself already carries — is what lets them paint with the
+            // cards instead of a request later. See `seedShowtimeSeatAvailability`.
+            seedShowtimeSeatAvailability(queryClient, page);
+            seedShowtimeVisibility(queryClient, page);
+            return page;
         },
         retry: (failureCount, error) => {
             if (error instanceof ApiError && error.status === 403) {
@@ -80,8 +106,14 @@ export function useFetchMainPageShowtimes(
                 pages: dedupedPages,
             };
         },
-        getNextPageParam: (lastPage, allPages) =>
-            lastPage.length === limit ? allPages.length * limit : undefined,
+        // Summed rather than `allPages.length * limit`, which assumes every
+        // page is the same size and would skip or repeat rows the moment the
+        // first one is not. A short page means the end of the results.
+        getNextPageParam: (lastPage, allPages) => {
+            const requested = allPages.length === 1 ? firstPageLimit : limit;
+            if (requested === undefined || lastPage.length < requested) return undefined;
+            return allPages.reduce((total, page) => total + page.length, 0);
+        },
         staleTime: 0,
         gcTime: 5 * 60 * 1000, // 5 minutes
     });

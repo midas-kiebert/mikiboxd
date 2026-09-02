@@ -107,19 +107,24 @@ def to_summary_public(
     """Movie card: the film and its screenings, plus the viewer's own state when
     there is a viewer — see `app.core.viewer`."""
     Movie.model_validate(movie)
+    movie_showtimes = movies_crud.get_showtimes_for_movie(
+        session=session,
+        movie_id=movie.id,
+        limit=showtime_limit,
+        filters=filters,
+        current_user_id=current_user,
+    )
+    visibility_modes = showtime_converters.viewer_visibility_modes(
+        session=session, showtimes=movie_showtimes, user_id=current_user
+    )
     showtimes = [
         showtime_converters.to_in_movie_public(
             showtime=showtime,
             session=session,
             user_id=current_user,
+            visibility_modes=visibility_modes,
         )
-        for showtime in movies_crud.get_showtimes_for_movie(
-            session=session,
-            movie_id=movie.id,
-            limit=showtime_limit,
-            filters=filters,
-            current_user_id=current_user,
-        )
+        for showtime in movie_showtimes
     ]
     cinemas = [
         cinema_converters.to_public(cinema)
@@ -185,19 +190,24 @@ def to_public(
         MoviePublic: The converted MoviePublic schema.
     """
     Movie.model_validate(movie)
+    movie_showtimes = movies_crud.get_showtimes_for_movie(
+        session=session,
+        movie_id=movie.id,
+        limit=showtime_limit,
+        filters=filters,
+        current_user_id=current_user,
+    )
+    visibility_modes = showtime_converters.viewer_visibility_modes(
+        session=session, showtimes=movie_showtimes, user_id=current_user
+    )
     showtimes = [
         showtime_converters.to_in_movie_public(
             showtime=showtime,
             session=session,
             user_id=current_user,
+            visibility_modes=visibility_modes,
         )
-        for showtime in movies_crud.get_showtimes_for_movie(
-            session=session,
-            movie_id=movie.id,
-            limit=showtime_limit,
-            filters=filters,
-            current_user_id=current_user,
-        )
+        for showtime in movie_showtimes
     ]
 
     viewer: MovieViewerState | None = None

@@ -45,9 +45,23 @@ export const Colors = {
     pillText: '#4f695e',
     pillActiveBackground: tintColorLight,
     pillActiveText: '#ffffff',
+    // What a pill flashes when something other than the user put it there: a
+    // filter preset adding a chip, a preset button answering a tap. Not an
+    // accent — a flash is "look here", not "this is on", and an accent says
+    // the second. So it is a step in whichever direction the theme has room
+    // for. In light mode that is *down*, since a white pill cannot go lighter:
+    // the recessed fill, one shade firmer at the border to hold the outline.
+    pillFlashBackground: '#e6edea',
+    pillFlashBorder: '#c3d3cb',
     // The recessed fill for things a hairline can't define: segmented-control
     // tracks, icon tiles, count bubbles, micro-badges and gradient stops.
     surfaceMuted: '#e6edea',
+    // An *empty* checkbox, which has to stay visible on every surface it can
+    // sit on — a white pill, a card, the sheet background. Reusing
+    // `surfaceMuted` + `pillBorder` for it worked in light mode by accident
+    // and vanished in dark, where all three of those tokens are the same gray.
+    checkboxBackground: '#e6edea',
+    checkboxBorder: '#c3d3cb',
     // Two deliberately unremarkable, solid grays for the seat floor plan's
     // free/taken fills — plain neutral gray (no green undertone) rather than
     // reusing the app's tinted neutrals, since a hint of the brand green read
@@ -166,7 +180,19 @@ export const Colors = {
     pillText: '#9BA1A6',
     pillActiveBackground: tintColorDark,
     pillActiveText: '#151718',
+    // See the light theme's `pillFlashBackground`. Here there is room upwards,
+    // so the flash is a lighter gray — and the border lighter still, so the
+    // pill's outline appears for the length of it rather than staying the
+    // invisible same-as-its-fill it is at rest.
+    pillFlashBackground: '#454545',
+    pillFlashBorder: '#585858',
     surfaceMuted: '#2a2a2a',
+    // See the light theme's `checkboxBackground`/`checkboxBorder`. Dark mode
+    // has no room to recess a fill below the pill gray without hitting the
+    // page background, so the empty box is defined by its outline: a mid gray
+    // that reads on the pill (#2a2a2a), the card (#1c1c1c) and the background.
+    checkboxBackground: '#1b1d1e',
+    checkboxBorder: '#6f7679',
     // See the light theme's `seatFree`/`seatTaken`/`seatFriend`/`seatYou` for
     // what these are for.
     seatFree: '#6a6e70',

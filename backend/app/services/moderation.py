@@ -73,8 +73,6 @@ def _tear_down_contact(
     other_id: UUID,
 ) -> None:
     """Remove every standing channel between two users. Caller owns the commit."""
-    # Friendship first: deleting it already rebuilds both sides' effective
-    # visibility, which is most of what blocking has to achieve.
     if friendship_crud.are_users_friends(
         session=session, user_id=user_id, friend_id=other_id
     ):
@@ -96,21 +94,21 @@ def _tear_down_contact(
         except NoResultFound:
             pass
 
-    removed_pings = showtime_ping_crud.delete_pings_between_users(
+    showtime_ping_crud.delete_pings_between_users(
         session=session,
         user_id=user_id,
         other_id=other_id,
     )
 
-    # An invite grants visibility on its showtime regardless of friendship, so
-    # removing one changes what each side may see even when the two were never
-    # friends and the friendship rebuild above never ran.
-    if removed_pings:
-        for owner_id in (user_id, other_id):
-            showtime_visibility_crud.rebuild_effective_visibility_for_owner(
-                session=session,
-                owner_id=owner_id,
-            )
+    # Unconditional, not just when a friendship or ping existed: under
+    # FRIENDS_OF_FRIENDS mode two users can see each other purely through a
+    # mutual friend, with no direct Friendship or ShowtimePing row to delete —
+    # nothing above would otherwise clear that stale cross-visibility.
+    for owner_id in (user_id, other_id):
+        showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+            session=session,
+            owner_id=owner_id,
+        )
 
 
 def block_user(
@@ -167,6 +165,15 @@ def unblock_user(
     they happened to be friends before a block would be a nasty surprise for
     both of them.
 
+    What does need refreshing is `ShowtimeVisibilityEffective`: while blocked,
+    both users' effective-visibility rows were computed with each other
+    excluded (see `crud.showtime_visibility`'s use of `get_hidden_user_ids`),
+    and nothing else ever recomputes those rows. Without an explicit rebuild
+    here, a pair who were only ever connected through a mutual friend (a
+    FRIENDS_OF_FRIENDS bridge, never a direct friendship) would stay invisible
+    to each other forever after unblocking — there'd be no later event to
+    naturally clear the stale exclusion.
+
     Raises:
         UserBlockNotFoundError: If the current user has not blocked this user.
         AppError: For any other (unexpected) errors.
@@ -179,6 +186,11 @@ def unblock_user(
         )
         if not lifted:
             raise UserBlockNotFoundError(blocker_id, blocked_id)
+        for owner_id in (blocker_id, blocked_id):
+            showtime_visibility_crud.rebuild_effective_visibility_for_owner(
+                session=session,
+                owner_id=owner_id,
+            )
         session.commit()
     except AppError:
         session.rollback()

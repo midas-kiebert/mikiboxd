@@ -1,9 +1,12 @@
 /**
  * Scales a room's raw seat geometry (desktop-booking-page pixel coordinates)
- * to fit a device screen, preserving the room's true proportions.
+ * to fit a device screen, preserving the room's true proportions — and, past
+ * a point, declining to fill the space at all (see `MAX_RENDERED_SEAT_SIZE`).
  *
  * Kept free of React Native so the bounding-box/scale math is plain and
- * testable — `SeatFloorPlan` is the only caller.
+ * testable. Both seat sheets share it — `SeatFloorPlan` (the picker) and
+ * `SeatFloorPlanPreview` (the read-only map) — which is what keeps a room the
+ * same size in each.
  */
 import type { SeatFloorPlanSeatPublic } from "shared";
 
@@ -29,6 +32,22 @@ export type SeatFloorPlanLayout = {
 // render at a legible size rather than shrinking further than the space
 // actually available.
 const FIT_PADDING_FACTOR = 0.97;
+
+// A ceiling on how big one seat may be drawn, and so on the scale itself.
+//
+// Fitting a room to the space available is the right rule right up until the
+// room is small, at which point it stops meaning "as big as it needs to be"
+// and starts meaning "as big as the sheet will allow". A 31-seat Cinecenter
+// room fitted to a phone gives seats near 40pt — twice a 256-seat Filmhallen
+// room's, for a room a fraction of the size — which reads as a zoomed-in
+// fragment rather than a floor plan, and leaves the SCREEN bar looking like a
+// stray line under a wall of blocks. Capping the scale keeps a small room
+// looking small and, more usefully, keeps a seat roughly the same size in
+// every room, so the maps are comparable to each other.
+//
+// It only ever binds on rooms the available space would have oversized; every
+// room big enough to be fit-constrained is untouched.
+const MAX_RENDERED_SEAT_SIZE = 24;
 
 // Vertical space reserved above the seat grid for the "SCREEN" bar rendered
 // by both `SeatFloorPlan` and `SeatFloorPlanPreview` (see `ScreenIndicator`
@@ -73,9 +92,12 @@ export function layoutSeatFloorPlan(
   // indicator sits above the grid within the same available height, so the
   // seats must scale to fit what's left after it, not the full body.
   const availableHeightForSeats = Math.max(availableHeight - SCREEN_INDICATOR_HEIGHT, 1);
+  // Seat boxes are uniform within a room, so one seat's is the whole room's.
+  const seatBoxSize = Math.max(...seats.map((seat) => Math.max(seat.width, seat.height)), 1);
   const scale = Math.min(
     (availableWidth * FIT_PADDING_FACTOR) / boundingWidth,
-    (availableHeightForSeats * FIT_PADDING_FACTOR) / boundingHeight
+    (availableHeightForSeats * FIT_PADDING_FACTOR) / boundingHeight,
+    MAX_RENDERED_SEAT_SIZE / seatBoxSize
   );
 
   const scaledSeats = seats.map((seat) => {

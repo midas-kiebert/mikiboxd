@@ -94,6 +94,60 @@ class ShowtimePingSelfError(AppError):
         super().__init__("You cannot invite yourself.")
 
 
+class ShowtimeReminderNonFriendError(AppError):
+    status_code = status.HTTP_403_FORBIDDEN
+    openapi_description = "Returned when reminding a user who is not your friend."
+    openapi_example = {"detail": "You can only remind your friends."}
+
+    def __init__(self):
+        super().__init__("You can only remind your friends.")
+
+
+class ShowtimeReminderNotGoingError(AppError):
+    status_code = status.HTTP_403_FORBIDDEN
+    openapi_description = (
+        "Returned when the sender is not themselves going to this showtime."
+    )
+    openapi_example = {
+        "detail": "You can only send reminders for showtimes you're going to."
+    }
+
+    def __init__(self):
+        super().__init__("You can only send reminders for showtimes you're going to.")
+
+
+class ShowtimeReminderNotEligibleError(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+    openapi_description = (
+        "Returned when the friend is neither going/interested nor has an "
+        "active (non-dismissed) invite for this showtime."
+    )
+    openapi_example = {
+        "detail": "This friend isn't going, interested, or invited to this showtime."
+    }
+
+    def __init__(self):
+        super().__init__(
+            "This friend isn't going, interested, or invited to this showtime."
+        )
+
+
+class ShowtimeReminderCooldownError(AppError):
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    openapi_description = (
+        "Returned when this friend was already reminded about this showtime "
+        "(by anyone) within the last 72 hours."
+    )
+    openapi_example = {
+        "detail": "This friend was already reminded about this showtime recently."
+    }
+
+    def __init__(self):
+        super().__init__(
+            "This friend was already reminded about this showtime recently."
+        )
+
+
 class ShowtimePingInvalidLinkError(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
     openapi_description = (

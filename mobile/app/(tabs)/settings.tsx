@@ -16,13 +16,14 @@ import {
 } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { EXPAND_DURATION_MS, EXPAND_LAYOUT_ANIMATION } from '@/utils/expand-animation';
 import { triggerSelectionHaptic } from '@/utils/long-press';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
 import {
+  buildCinevilleBarcodeValue,
   CINEVILLE_DIGITS_LENGTH,
   CINEVILLE_PREFIX,
   deleteCinevilleCard,
@@ -34,6 +35,11 @@ import {
   setCinevilleShortcutEnabled,
   useCinevilleShortcutEnabled,
 } from '@/utils/cineville-shortcuts';
+import {
+  setCinevilleAutoCopyEnabled,
+  useCinevilleAutoCopyEnabled,
+} from '@/utils/cineville-auto-copy';
+import * as Clipboard from 'expo-clipboard';
 
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
@@ -47,28 +53,24 @@ import {
 import { startIntro } from '@/utils/intro';
 import { markSignedOut, useIsSignedIn } from '@/utils/auth-session';
 import useAuth from 'shared/hooks/useAuth';
-import {
-  MeService,
-  UtilsService,
-  type ApiError,
-  type CinemaPresetPublic,
-  type DigestFrequency,
-  type UpdatePassword,
-  type UserUpdate,
-} from 'shared';
-import { useFetchLetterboxdLists } from 'shared/hooks/useLetterboxdLists';
+import { MeService, type ApiError, type UpdatePassword, type UserUpdate } from 'shared';
 import { emailPattern, handleError, usernameMaxLength, usernamePattern } from 'shared/utils';
 import { unregisterPushTokenForCurrentDevice } from '@/utils/push-notifications';
 import NotificationPreferenceList from '@/components/notifications/NotificationPreferenceList';
 import LetterboxdSection from '@/components/settings/LetterboxdSection';
+import WatchlistDigestSourcesSection from '@/components/settings/WatchlistDigestSourcesSection';
 import SignedOutPanel from '@/components/auth/SignedOutPanel';
 import CinevilleCardModal from '@/components/cineville/CinevilleCardModal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import AppSwitch from '@/components/ui/AppSwitch';
+import SegmentedControl, { type SegmentedOption } from '@/components/ui/SegmentedControl';
 import EmailVerificationRequiredDialog from '@/components/ui/EmailVerificationRequiredDialog';
-import { useEmailVerificationPolling } from '@/hooks/useCurrentUser';
+import { currentUserQueryKey, useEmailVerificationCheck } from '@/hooks/useCurrentUser';
 import { openSystemSettings, useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 import { PRIVACY_POLICY_URL, SUPPORT_PAGE_URL } from '@/constants/legal-links';
+import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
+import { tabContentHoldMs } from '@/components/tab-bar';
+import { useDeferredMount } from '@/utils/use-deferred-mount';
 
 // Placeholder for the danger zone card's height until it has been measured
 // once. Sized from the card's own styles (18pt padding top and bottom, roughly
@@ -80,6 +82,17 @@ const SECTION_GAP = 12;
 // Bottom room the content always keeps, so the last card is never clipped under
 // the tab bar / home indicator.
 const CONTENT_PADDING_BOTTOM = 72;
+// Fixed rather than padding-derived: a View sized by paddingVertical around a
+// bare Text line renders visibly taller than a TextInput given the same
+// padding, so the CP$ prefix and the digits field must share an explicit
+// height to actually line up.
+const CINEVILLE_INPUT_HEIGHT = 40;
+
+const THEME_OPTIONS: readonly SegmentedOption<ThemePreference>[] = [
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'system', label: 'System' },
+];
 
 type ProfileState = {
   display_name: string;
@@ -93,7 +106,7 @@ type PasswordState = {
   confirm_password: string;
 };
 
-export default function SettingsScreen() {
+function SettingsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -138,42 +151,12 @@ export default function SettingsScreen() {
   // The notification preferences, their delivery channels and the OS permission
   // state, shared with the notification-permission tip.
   const notificationPreferences = useNotificationPreferences();
-  // Local state for the watchlist new-showtime email digest setting.
+  // Local state for the watchlist new-showtime email digest master switch.
+  // Per-source settings (frequency, list, cinemas) live in
+  // `WatchlistDigestSourcesSection` and its own `useWatchlistDigestSources`.
   const [digestEnabled, setDigestEnabled] = useState(false);
-  const [digestFrequency, setDigestFrequency] =
-    useState<DigestFrequency>('weekly_or_urgent');
-  const [digestListId, setDigestListId] = useState<string | null>(null);
-  // null = follow the favorite cinema preset; a uuid = pin a specific preset.
-  const [digestCinemaPresetId, setDigestCinemaPresetId] = useState<string | null>(null);
   const [digestAdvancedOpen, setDigestAdvancedOpen] = useState(false);
   const [isUpdatingDigest, setIsUpdatingDigest] = useState(false);
-  const [isDigestFrequencyInfoVisible, setIsDigestFrequencyInfoVisible] = useState(false);
-  // Explanation copy for the Eager/Lazy frequency modes, kept on the backend so
-  // it can be updated whenever the digest algorithm itself changes.
-  const { data: digestFrequencyInfo } = useQuery({
-    queryKey: ['watchlist-digest-frequency-info'],
-    queryFn: () => UtilsService.getWatchlistDigestFrequencyInfo(),
-    staleTime: Infinity,
-  });
-  // Always fetched (not gated on the advanced picker): needed to resolve the
-  // curated top-500 default below even when the picker has never been opened.
-  const { data: digestLists = [] } = useFetchLetterboxdLists(isSignedIn);
-  const { data: cinemaPresets = [] } = useQuery<CinemaPresetPublic[]>({
-    queryKey: ['cinema-presets'],
-    queryFn: () => MeService.getCinemaPresets(),
-    enabled: digestAdvancedOpen,
-  });
-  // The preset the digest follows when no specific one is pinned.
-  const favoriteCinemaPreset = cinemaPresets.find((preset) => preset.is_favorite);
-  // The backend prepends a synthetic "All Cinemas" preset to every list, and it
-  // is not a real row — `_resolve_digest_cinema_ids` cannot look it up, so
-  // picking it did nothing except sit next to this section's own "all cinemas"
-  // option as a case-mismatched duplicate. The sentinel below already covers
-  // it, so it is dropped here rather than offered twice.
-  const selectableCinemaPresets = useMemo(
-    () => cinemaPresets.filter((preset) => !preset.is_default),
-    [cinemaPresets]
-  );
   // True while logout request/cleanup is running.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   // Cineville card number (9 digits only, CP$ prefix is added automatically).
@@ -185,7 +168,9 @@ export default function SettingsScreen() {
   const [isCinevilleCardVisible, setIsCinevilleCardVisible] = useState(false);
   // Which feeds the floating pass shortcut is allowed to appear on.
   const isShortcutOnShowtimes = useCinevilleShortcutEnabled('showtimes');
-  const isShortcutOnAgenda = useCinevilleShortcutEnabled('agenda');
+  const isShortcutOnActivity = useCinevilleShortcutEnabled('activity');
+  const isCinevilleAutoCopyEnabled = useCinevilleAutoCopyEnabled();
+  const [didCopyCinevilleCode, setDidCopyCinevilleCode] = useState(false);
   // Confirmations for the two irreversible actions on this screen. Themed
   // dialogs rather than Alert.alert, which is app-wide reserved for pure error
   // toasts — a native alert is the one surface in the app that ignores the
@@ -200,15 +185,12 @@ export default function SettingsScreen() {
   // can tell an email change from a username-only one. A ref rather than the
   // user object: by then the account query has been invalidated.
   const emailBeforeSaveRef = useRef('');
-  // While the address is unconfirmed the account is re-read every few seconds,
-  // so opening the link in a mail app turns the badge over while Settings is
-  // still on screen. The returned flag drives the spinner next to it.
-  // Only while Settings is the screen being looked at: this tab stays mounted
-  // behind the others, and a poll nobody can see is just traffic.
-  const isSettingsFocused = useIsFocused();
-  const isCheckingVerification = useEmailVerificationPolling(
-    isSettingsFocused && isSignedIn && user !== undefined && !user.email_verified
-  );
+  // The confirmation link is opened elsewhere — a mail app, a laptop — so the
+  // app cannot know when it has been followed. Rather than re-read the account
+  // on a timer, the unverified badge carries a refresh control the user presses
+  // once they have clicked the link.
+  const { isChecking: isCheckingVerification, check: checkVerification } =
+    useEmailVerificationCheck();
   // The danger zone is collapsed by default so it takes an extra, deliberate
   // tap to reach account deletion.
   const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
@@ -216,6 +198,16 @@ export default function SettingsScreen() {
   // The ScrollView is scrolled to the end once the danger zone expands, so the
   // newly revealed card is never left cut off below the fold.
   const scrollViewRef = useRef<ScrollView>(null);
+  // Where the Letterboxd card sits in the scroll content, captured on layout
+  // so the "no watchlist connected" digest warning can jump straight to it
+  // instead of leaving someone to hunt for it themselves.
+  const letterboxdSectionY = useRef(0);
+  const handleLetterboxdSectionLayout = useCallback((event: LayoutChangeEvent) => {
+    letterboxdSectionY.current = event.nativeEvent.layout.y;
+  }, []);
+  const handleJumpToLetterboxdSection = useCallback(() => {
+    scrollViewRef.current?.scrollTo({ y: letterboxdSectionY.current, animated: true });
+  }, []);
   // While collapsed, the exact height the expanded card will take is held open
   // as blank space below the header, so expanding leaves the total content
   // height unchanged: someone already scrolled to the bottom sees the card
@@ -266,15 +258,7 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     setDigestEnabled(!!user?.notify_watchlist_digest_enabled);
-    setDigestFrequency(user?.notify_watchlist_digest_frequency ?? 'weekly_or_urgent');
-    setDigestListId(user?.notify_watchlist_digest_list_id ?? null);
-    setDigestCinemaPresetId(user?.notify_watchlist_digest_cinema_preset_id ?? null);
-  }, [
-    user?.notify_watchlist_digest_enabled,
-    user?.notify_watchlist_digest_frequency,
-    user?.notify_watchlist_digest_list_id,
-    user?.notify_watchlist_digest_cinema_preset_id,
-  ]);
+  }, [user?.notify_watchlist_digest_enabled]);
 
   // Load the saved Cineville card digits from device storage.
   useEffect(() => {
@@ -286,9 +270,15 @@ export default function SettingsScreen() {
   // Profile updates are persisted to backend and then current-user cache is refreshed.
   const profileMutation = useMutation({
     mutationFn: (data: UserUpdate) => MeService.updateUserMe({ requestBody: data }),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
       setProfile((prev) => ({ ...prev, current_password: '' }));
-      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+      // The response is written to the cache rather than the query invalidated:
+      // PATCH /me returns exactly what GET /me would (same `to_me` converter),
+      // so refetching only buys a round trip during which the screen still
+      // shows the old account. That gap is visible — a changed address comes
+      // back `email_verified: false`, and the badge beside it has to say "Not
+      // verified" the moment the save lands, not once a second request answers.
+      queryClient.setQueryData(currentUserQueryKey, data);
       const newEmail = variables.email?.trim() ?? '';
       const emailChanged =
         newEmail !== '' &&
@@ -484,76 +474,6 @@ export default function SettingsScreen() {
     );
   };
 
-  const handleDigestFrequencyChange = (frequency: DigestFrequency) => {
-    if (frequency === digestFrequency) return;
-    const previous = digestFrequency;
-    void handleDigestUpdate(
-      { notify_watchlist_digest_frequency: frequency },
-      () => setDigestFrequency(frequency),
-      () => setDigestFrequency(previous)
-    );
-  };
-
-  const handleDigestListChange = (listId: string | null) => {
-    if (listId === digestListId) return;
-    const previous = digestListId;
-    void handleDigestUpdate(
-      { notify_watchlist_digest_list_id: listId },
-      () => setDigestListId(listId),
-      () => setDigestListId(previous)
-    );
-  };
-
-  // "My watchlist" (a null list_id) resolves to nothing without a connected
-  // Letterboxd account, so a brand-new digest source defaults to the curated
-  // top-500 list instead. Only fires once — after the update lands,
-  // `user.notify_watchlist_digest_list_id` is no longer null and this bails
-  // out on subsequent renders.
-  useEffect(() => {
-    if (!user || user.notify_watchlist_digest_list_id || user.letterboxd_username) return;
-    if (digestListId) return;
-    const defaultList = digestLists.find(
-      (list) => list.is_curated && list.list_slug === 'letterboxds-top-500-films'
-    );
-    if (!defaultList) return;
-    void handleDigestUpdate(
-      { notify_watchlist_digest_list_id: defaultList.id },
-      () => setDigestListId(defaultList.id),
-      () => {}
-    );
-  }, [user, digestLists, digestListId]);
-
-  // Once a Letterboxd account is connected, "My watchlist" becomes a real
-  // source again. If the curated top-500 list is still selected, it's almost
-  // certainly still sitting there from the fallback above — from before the
-  // account was connected, or from before this list was selectable at all —
-  // so switch it back to the watchlist. A deliberately-picked different list
-  // is left untouched. Self-terminating: once the switch lands, digestListId
-  // is null and this bails on subsequent renders, same as the effect above.
-  useEffect(() => {
-    if (!user || !user.letterboxd_username) return;
-    if (digestListId === null) return;
-    const curatedTop500 = digestLists.find(
-      (list) => list.is_curated && list.list_slug === 'letterboxds-top-500-films'
-    );
-    if (!curatedTop500 || digestListId !== curatedTop500.id) return;
-    void handleDigestUpdate(
-      { notify_watchlist_digest_list_id: null },
-      () => setDigestListId(null),
-      () => {}
-    );
-  }, [user, digestLists, digestListId]);
-
-  const handleDigestCinemaPresetChange = (presetId: string | null) => {
-    if (presetId === digestCinemaPresetId) return;
-    const previous = digestCinemaPresetId;
-    void handleDigestUpdate(
-      { notify_watchlist_digest_cinema_preset_id: presetId },
-      () => setDigestCinemaPresetId(presetId),
-      () => setDigestCinemaPresetId(previous)
-    );
-  };
-
   const handleSaveCinevilleCard = async () => {
     const trimmed = cinevilleDigits.trim();
     if (trimmed && !/^\d{9}$/.test(trimmed)) {
@@ -575,8 +495,21 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleCopyCinevilleCode = async () => {
+    if (!savedCinevilleDigits) return;
+    await Clipboard.setStringAsync(buildCinevilleBarcodeValue(savedCinevilleDigits));
+    setDidCopyCinevilleCode(true);
+    setTimeout(() => setDidCopyCinevilleCode(false), 1500);
+  };
+
+  const isCinevilleCardUnchanged = cinevilleDigits.trim() === (savedCinevilleDigits ?? '');
+
   const isProfileSaving = profileMutation.isPending;
   const isPasswordSaving = passwordMutation.isPending;
+  const isPasswordFormIncomplete =
+    (hasPassword && !passwords.current_password) ||
+    !passwords.new_password ||
+    !passwords.confirm_password;
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -625,15 +558,35 @@ export default function SettingsScreen() {
                   </ThemedText>
                 </View>
               ) : (
-                <TouchableOpacity
-                  style={styles.emailStatus}
-                  onPress={() => setIsEmailVerificationRequired(true)}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  {/* The spinner takes the warning icon's place rather than
-                      sitting beside it, so the row never shifts width as the
-                      poll comes and goes. */}
-                  <View style={styles.emailStatusIcon}>
+                <View style={styles.emailStatusGroup}>
+                  <TouchableOpacity
+                    style={styles.emailStatus}
+                    onPress={() => setIsEmailVerificationRequired(true)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <View style={styles.emailStatusIcon}>
+                      <MaterialIcons name="warning" size={13} color={colors.yellow.secondary} />
+                    </View>
+                    <ThemedText style={[styles.emailStatusText, { color: colors.yellow.secondary }]}>
+                      Not verified
+                    </ThemedText>
+                  </TouchableOpacity>
+                  {/* Its own target, next to the badge rather than part of it:
+                      pressing the badge explains what verification is for,
+                      pressing this re-reads the account. The spinner takes the
+                      icon's place rather than sitting beside it, so the row
+                      never shifts width while a check is running. */}
+                  <TouchableOpacity
+                    style={styles.emailRefreshButton}
+                    onPress={() => {
+                      triggerSelectionHaptic();
+                      checkVerification();
+                    }}
+                    disabled={isCheckingVerification}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Check whether the email has been verified"
+                  >
                     {isCheckingVerification ? (
                       <ActivityIndicator
                         size="small"
@@ -641,13 +594,10 @@ export default function SettingsScreen() {
                         style={styles.emailStatusSpinner}
                       />
                     ) : (
-                      <MaterialIcons name="warning" size={13} color={colors.yellow.secondary} />
+                      <MaterialIcons name="refresh" size={14} color={colors.yellow.secondary} />
                     )}
-                  </View>
-                  <ThemedText style={[styles.emailStatusText, { color: colors.yellow.secondary }]}>
-                    {isCheckingVerification ? 'Checking...' : 'Not verified'}
-                  </ThemedText>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
             <TextInput
@@ -679,12 +629,16 @@ export default function SettingsScreen() {
               </ThemedText>
             )}
             <TouchableOpacity
-              style={[styles.primaryButton, isProfileSaving && styles.buttonDisabled]}
+              style={[
+                styles.primaryButton,
+                (isProfileSaving || (hasPassword && !profile.current_password)) &&
+                  styles.buttonDisabled,
+              ]}
               onPress={handleProfileSave}
-              disabled={isProfileSaving}
+              disabled={isProfileSaving || (hasPassword && !profile.current_password)}
             >
               <ThemedText style={styles.primaryButtonText}>
-                {isProfileSaving ? 'Saving...' : 'Save profile'}
+                {isProfileSaving ? 'Updating...' : 'Update profile'}
               </ThemedText>
             </TouchableOpacity>
           </View>
@@ -692,7 +646,7 @@ export default function SettingsScreen() {
         ) : null}
 
         {isSignedIn ? (
-        <View style={styles.section}>
+        <View style={styles.section} onLayout={handleLetterboxdSectionLayout}>
           <ThemedText style={styles.sectionTitle}>Letterboxd</ThemedText>
           <LetterboxdSection />
         </View>
@@ -701,30 +655,14 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Appearance</ThemedText>
           <View style={styles.card}>
-            <View style={styles.appearanceRow}>
-              {(['light', 'dark', 'system'] as ThemePreference[]).map((option, index, arr) => (
-                <TouchableOpacity
-                  key={option}
-                  style={[
-                    styles.appearanceOption,
-                    index === 0 && styles.appearanceOptionLeft,
-                    index === arr.length - 1 && styles.appearanceOptionRight,
-                    themePreference === option && styles.appearanceOptionActive,
-                  ]}
-                  onPress={() => setThemePreference(option)}
-                  activeOpacity={0.8}
-                >
-                  <ThemedText
-                    style={[
-                      styles.appearanceOptionText,
-                      themePreference === option && styles.appearanceOptionTextActive,
-                    ]}
-                  >
-                    {option === 'light' ? 'Light' : option === 'dark' ? 'Dark' : 'System'}
-                  </ThemedText>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <SegmentedControl
+              options={THEME_OPTIONS}
+              value={themePreference}
+              onChange={setThemePreference}
+              accessibilityLabelPrefix="Appearance"
+              stretch
+              size="large"
+            />
           </View>
         </View>
 
@@ -756,7 +694,7 @@ export default function SettingsScreen() {
           <ThemedText style={styles.sectionTitle}>Cineville</ThemedText>
           <View style={styles.card}>
             <ThemedText style={styles.helperText}>
-              Your Cineville card number is stored only on this device and never shared. It will be copied into your clipboard when you press a ticket link.
+              Your Cineville card number is stored only on this device and never shared.
             </ThemedText>
             <ThemedText style={styles.label}>Card number</ThemedText>
             <View style={styles.cinevilleInputRow}>
@@ -775,9 +713,12 @@ export default function SettingsScreen() {
               />
             </View>
             <TouchableOpacity
-              style={[styles.primaryButton, isSavingCineville && styles.buttonDisabled]}
+              style={[
+                styles.primaryButton,
+                (isSavingCineville || isCinevilleCardUnchanged) && styles.buttonDisabled,
+              ]}
               onPress={() => void handleSaveCinevilleCard()}
-              disabled={isSavingCineville}
+              disabled={isSavingCineville || isCinevilleCardUnchanged}
             >
               <ThemedText style={styles.primaryButtonText}>
                 {isSavingCineville ? 'Saving...' : 'Save card'}
@@ -785,12 +726,37 @@ export default function SettingsScreen() {
             </TouchableOpacity>
             {savedCinevilleDigits ? (
               <>
-                <TouchableOpacity
-                  style={styles.secondaryButton}
-                  onPress={() => setIsCinevilleCardVisible(true)}
-                >
-                  <ThemedText style={styles.secondaryButtonText}>Show barcode</ThemedText>
-                </TouchableOpacity>
+                <View style={styles.cinevilleActionRow}>
+                  <TouchableOpacity
+                    style={styles.cinevilleActionButton}
+                    onPress={() => setIsCinevilleCardVisible(true)}
+                  >
+                    <MaterialCommunityIcons name="barcode" size={16} color={colors.text} />
+                    <ThemedText style={styles.cinevilleActionButtonText}>Show barcode</ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.cinevilleActionButton}
+                    onPress={() => void handleCopyCinevilleCode()}
+                  >
+                    <MaterialIcons
+                      name={didCopyCinevilleCode ? 'check' : 'content-copy'}
+                      size={15}
+                      color={colors.text}
+                    />
+                    <ThemedText style={styles.cinevilleActionButtonText}>
+                      {didCopyCinevilleCode ? 'Copied!' : 'Copy code'}
+                    </ThemedText>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.cinevilleShortcutRow}>
+                  <ThemedText style={styles.cinevilleShortcutLabel}>
+                    Copy code when opening a ticket link
+                  </ThemedText>
+                  <AppSwitch
+                    value={isCinevilleAutoCopyEnabled}
+                    onValueChange={(value) => setCinevilleAutoCopyEnabled(value)}
+                  />
+                </View>
                 <ThemedText style={styles.label}>Shortcut button</ThemedText>
                 <View style={styles.cinevilleShortcutRow}>
                   <ThemedText style={styles.cinevilleShortcutLabel}>On the showtimes tab</ThemedText>
@@ -800,10 +766,10 @@ export default function SettingsScreen() {
                   />
                 </View>
                 <View style={styles.cinevilleShortcutRow}>
-                  <ThemedText style={styles.cinevilleShortcutLabel}>On the agenda tab</ThemedText>
+                  <ThemedText style={styles.cinevilleShortcutLabel}>On the activity tab</ThemedText>
                   <AppSwitch
-                    value={isShortcutOnAgenda}
-                    onValueChange={(value) => setCinevilleShortcutEnabled('agenda', value)}
+                    value={isShortcutOnActivity}
+                    onValueChange={(value) => setCinevilleShortcutEnabled('activity', value)}
                   />
                 </View>
               </>
@@ -822,9 +788,9 @@ export default function SettingsScreen() {
             <View style={styles.notificationToggleRow}>
               <View style={styles.notificationToggleHeader}>
                 <View style={styles.notificationToggleTextContainer}>
-                  <ThemedText style={styles.notificationToggleTitle}>Notify on new showtimes</ThemedText>
+                  <ThemedText style={styles.notificationToggleTitle}>Notify on new films</ThemedText>
                   <ThemedText style={styles.notificationToggleDescription}>
-                    Email me when a watchlisted movie gets a showtime it didn&apos;t have before.
+                    Email me when a film from my Letterboxd watchlist becomes available.
                   </ThemedText>
                 </View>
                 <AppSwitch
@@ -833,162 +799,52 @@ export default function SettingsScreen() {
                   disabled={!user || isUpdatingDigest}
                 />
               </View>
-              <View style={styles.notificationChannelRow}>
-                <View style={styles.digestFrequencyLabelRow}>
-                  <ThemedText style={styles.notificationChannelLabel}>Frequency</ThemedText>
-                  <TouchableOpacity
-                    onPress={() => setIsDigestFrequencyInfoVisible(true)}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="What do Eager and Lazy mean?"
-                  >
-                    <MaterialIcons name="info-outline" size={15} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.notificationChannelPill}>
-                  <TouchableOpacity
-                    style={[
-                      styles.notificationChannelOption,
-                      styles.notificationChannelOptionLeft,
-                      digestFrequency === 'daily' && styles.notificationChannelOptionActive,
-                    ]}
-                    onPress={() => handleDigestFrequencyChange('daily')}
-                    disabled={!user || isUpdatingDigest}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText
-                      style={[
-                        styles.notificationChannelOptionText,
-                        digestFrequency === 'daily' && styles.notificationChannelOptionTextActive,
-                      ]}
-                    >
-                      Eager
+              {digestEnabled && !user?.letterboxd_username ? (
+                <View style={styles.digestWarningCard}>
+                  <MaterialIcons
+                    name="warning-amber"
+                    size={16}
+                    color={colors.yellow.secondary}
+                    style={styles.digestWarningIcon}
+                  />
+                  <View style={styles.digestWarningBody}>
+                    <ThemedText style={styles.digestWarningText}>
+                      No Letterboxd username set, so there&apos;s no watchlist to follow yet.
                     </ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.notificationChannelOption,
-                      styles.notificationChannelOptionRight,
-                      digestFrequency === 'weekly_or_urgent' &&
-                        styles.notificationChannelOptionActive,
-                    ]}
-                    onPress={() => handleDigestFrequencyChange('weekly_or_urgent')}
-                    disabled={!user || isUpdatingDigest}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText
-                      style={[
-                        styles.notificationChannelOptionText,
-                        digestFrequency === 'weekly_or_urgent' &&
-                          styles.notificationChannelOptionTextActive,
-                      ]}
-                    >
-                      Lazy
-                    </ThemedText>
-                  </TouchableOpacity>
+                    <View style={styles.digestWarningActions}>
+                      <TouchableOpacity onPress={handleJumpToLetterboxdSection} activeOpacity={0.8}>
+                        <ThemedText style={styles.digestWarningLink}>Set a username</ThemedText>
+                      </TouchableOpacity>
+                      <ThemedText style={styles.digestWarningText}> or </ThemedText>
+                      <TouchableOpacity
+                        onPress={() => setDigestAdvancedOpen(true)}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText style={styles.digestWarningLink}>
+                          use a list in advanced settings
+                        </ThemedText>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
-              </View>
-              <TouchableOpacity
-                onPress={() => setDigestAdvancedOpen((previous) => !previous)}
-                activeOpacity={0.8}
-              >
-                <ThemedText style={styles.digestAdvancedToggle}>
-                  {digestAdvancedOpen ? 'Hide advanced' : 'Advanced: list & cinemas'}
-                </ThemedText>
-              </TouchableOpacity>
-              {digestAdvancedOpen ? (
+              ) : null}
+              {digestEnabled ? (
                 <>
-                  <ThemedText style={styles.notificationChannelLabel}>Source</ThemedText>
-                  <View style={styles.digestListOptions}>
-                    {user?.letterboxd_username ? (
-                      <TouchableOpacity
-                        style={[
-                          styles.digestListOption,
-                          digestListId === null && styles.digestListOptionActive,
-                        ]}
-                        onPress={() => handleDigestListChange(null)}
-                        disabled={!user || isUpdatingDigest}
-                        activeOpacity={0.8}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.digestListOptionText,
-                            digestListId === null && styles.digestListOptionTextActive,
-                          ]}
-                        >
-                          My watchlist
-                        </ThemedText>
-                      </TouchableOpacity>
-                    ) : null}
-                    {digestLists.map((list) => (
-                      <TouchableOpacity
-                        key={list.id}
-                        style={[
-                          styles.digestListOption,
-                          digestListId === list.id && styles.digestListOptionActive,
-                        ]}
-                        onPress={() => handleDigestListChange(list.id)}
-                        disabled={!user || isUpdatingDigest}
-                        activeOpacity={0.8}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.digestListOptionText,
-                            digestListId === list.id && styles.digestListOptionTextActive,
-                          ]}
-                        >
-                          {list.title ?? list.list_slug}
-                          {list.is_curated ? ' (curated)' : ''}
-                        </ThemedText>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <ThemedText style={styles.notificationChannelLabel}>Cinemas</ThemedText>
-                  <View style={styles.digestListOptions}>
-                    <TouchableOpacity
-                      style={[
-                        styles.digestListOption,
-                        digestCinemaPresetId === null && styles.digestListOptionActive,
-                      ]}
-                      onPress={() => handleDigestCinemaPresetChange(null)}
-                      disabled={!user || isUpdatingDigest}
-                      activeOpacity={0.8}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.digestListOptionText,
-                          digestCinemaPresetId === null && styles.digestListOptionTextActive,
-                        ]}
-                      >
-                        {favoriteCinemaPreset
-                          ? `Default (${favoriteCinemaPreset.name})`
-                          : 'All cinemas'}
-                      </ThemedText>
-                    </TouchableOpacity>
-                    {selectableCinemaPresets.map((preset) => (
-                      <TouchableOpacity
-                        key={preset.id}
-                        style={[
-                          styles.digestListOption,
-                          digestCinemaPresetId === preset.id && styles.digestListOptionActive,
-                        ]}
-                        onPress={() => handleDigestCinemaPresetChange(preset.id)}
-                        disabled={!user || isUpdatingDigest}
-                        activeOpacity={0.8}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.digestListOptionText,
-                            digestCinemaPresetId === preset.id &&
-                              styles.digestListOptionTextActive,
-                          ]}
-                        >
-                          {preset.name}
-                          {preset.is_favorite ? ' (favorite)' : ''}
-                        </ThemedText>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                  <TouchableOpacity
+                    onPress={() => setDigestAdvancedOpen((previous) => !previous)}
+                    activeOpacity={0.8}
+                  >
+                    <ThemedText style={styles.digestAdvancedToggle}>
+                      {digestAdvancedOpen ? 'Hide advanced settings' : 'Advanced settings'}
+                    </ThemedText>
+                  </TouchableOpacity>
+                  {digestAdvancedOpen ? (
+                    <WatchlistDigestSourcesSection
+                      isSignedIn={isSignedIn}
+                      enabled={digestEnabled}
+                      letterboxdUsername={user?.letterboxd_username ?? null}
+                    />
+                  ) : null}
                 </>
               ) : null}
             </View>
@@ -1073,9 +929,12 @@ export default function SettingsScreen() {
               secureTextEntry
             />
             <TouchableOpacity
-              style={[styles.primaryButton, isPasswordSaving && styles.buttonDisabled]}
+              style={[
+                styles.primaryButton,
+                (isPasswordSaving || isPasswordFormIncomplete) && styles.buttonDisabled,
+              ]}
               onPress={handlePasswordSave}
-              disabled={isPasswordSaving}
+              disabled={isPasswordSaving || isPasswordFormIncomplete}
             >
               <ThemedText style={styles.primaryButtonText}>
                 {isPasswordSaving ? 'Saving...' : hasPassword ? 'Update password' : 'Add password'}
@@ -1141,6 +1000,17 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Privacy</ThemedText>
           <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.aboutLinkRow}
+              onPress={() => router.push('/default-visibility')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Default status visibility"
+            >
+              <MaterialIcons name="visibility" size={16} color={colors.textSecondary} />
+              <ThemedText style={styles.aboutLinkText}>Default status visibility</ThemedText>
+              <MaterialIcons name="chevron-right" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.aboutLinkRow}
               onPress={() => router.push('/blocked-users')}
@@ -1211,20 +1081,6 @@ export default function SettingsScreen() {
         cancelLabel="Cancel"
         onConfirm={handleConfirmDeleteAccount}
         onCancel={() => setIsDeleteDialogVisible(false)}
-      />
-      <ConfirmDialog
-        visible={isDigestFrequencyInfoVisible}
-        icon="info-outline"
-        title="Eager vs Lazy"
-        message={
-          digestFrequencyInfo
-            ? `${digestFrequencyInfo.daily.label}: ${digestFrequencyInfo.daily.description}\n\n${digestFrequencyInfo.weekly_or_urgent.label}: ${digestFrequencyInfo.weekly_or_urgent.description}`
-            : 'Loading...'
-        }
-        confirmLabel="Got it"
-        tone="primary"
-        onConfirm={() => setIsDigestFrequencyInfoVisible(false)}
-        onCancel={() => setIsDigestFrequencyInfoVisible(false)}
       />
       <EmailVerificationRequiredDialog
         visible={isEmailVerificationRequired}
@@ -1301,6 +1157,11 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       alignItems: 'center',
       justifyContent: 'space-between',
     },
+    emailStatusGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
     emailStatus: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1309,6 +1170,12 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     emailStatusIcon: {
       width: 13,
       height: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emailRefreshButton: {
+      width: 16,
+      height: 16,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -1354,6 +1221,29 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     secondaryButtonText: {
       color: colors.text,
       fontWeight: '700',
+    },
+    cinevilleActionRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 4,
+    },
+    cinevilleActionButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      backgroundColor: colors.pillBackground,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      paddingVertical: 7,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+    },
+    cinevilleActionButtonText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.text,
     },
     // Roomier than the shared card: this is the one place in Settings where a
     // mis-tap is unrecoverable, so the explanation and the button each get
@@ -1440,72 +1330,43 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       fontSize: 11,
       color: colors.textSecondary,
     },
-    digestFrequencyLabelRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-    },
-    notificationChannelPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      borderRadius: 999,
-      backgroundColor: colors.surfaceMuted,
-      padding: 2,
-    },
-    notificationChannelOption: {
-      minWidth: 72,
-      paddingVertical: 6,
-      paddingHorizontal: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 999,
-    },
-    notificationChannelOptionLeft: {
-      marginRight: 2,
-    },
-    notificationChannelOptionRight: {
-      marginLeft: 2,
-    },
-    notificationChannelOptionActive: {
-      backgroundColor: colors.tint,
-    },
-    notificationChannelOptionText: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: colors.textSecondary,
-    },
-    notificationChannelOptionTextActive: {
-      color: colors.pillActiveText,
-    },
     digestAdvancedToggle: {
       fontSize: 12,
       fontWeight: '600',
       color: colors.tint,
     },
-    digestListOptions: {
-      gap: 6,
-    },
-    digestListOption: {
+    digestWarningCard: {
+      flexDirection: 'row',
+      gap: 8,
       borderWidth: 1,
-      borderColor: colors.cardBorder,
+      borderColor: colors.yellow.border,
       borderRadius: 8,
+      paddingHorizontal: 10,
       paddingVertical: 8,
-      paddingHorizontal: 12,
-      backgroundColor: colors.pillBackground,
+      backgroundColor: colors.yellow.primary,
     },
-    digestListOptionActive: {
-      borderColor: colors.tint,
-      backgroundColor: colors.tint,
+    digestWarningIcon: {
+      marginTop: 1,
     },
-    digestListOptionText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.text,
+    digestWarningBody: {
+      flex: 1,
+      gap: 4,
     },
-    digestListOptionTextActive: {
-      color: colors.pillActiveText,
+    digestWarningText: {
+      fontSize: 11,
+      color: colors.yellow.secondary,
+      lineHeight: 15,
+    },
+    digestWarningActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+    },
+    digestWarningLink: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.yellow.secondary,
+      textDecorationLine: 'underline',
     },
     cinevilleShortcutRow: {
       flexDirection: 'row',
@@ -1522,7 +1383,9 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     },
     cinevilleShortcutLabel: {
       flex: 1,
-      fontSize: 14,
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.text,
       lineHeight: 18,
     },
     cinevilleInputRow: {
@@ -1531,52 +1394,47 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       gap: 0,
     },
     cinevillePrefix: {
+      height: CINEVILLE_INPUT_HEIGHT,
       borderWidth: 1,
       borderRightWidth: 0,
       borderColor: colors.cardBorder,
       borderTopLeftRadius: 8,
       borderBottomLeftRadius: 8,
       paddingHorizontal: 10,
-      paddingVertical: 10,
       backgroundColor: colors.surfaceMuted,
       justifyContent: 'center',
     },
     cinevillePrefixText: {
       fontSize: 14,
+      lineHeight: 16,
       fontWeight: '700',
       color: colors.textSecondary,
     },
     cinevilleInput: {
       flex: 1,
+      height: CINEVILLE_INPUT_HEIGHT,
+      paddingVertical: 0,
       borderTopLeftRadius: 0,
       borderBottomLeftRadius: 0,
     },
-    appearanceRow: {
-      flexDirection: 'row' as const,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      borderRadius: 999,
-      backgroundColor: colors.surfaceMuted,
-      padding: 2,
-    },
-    appearanceOption: {
-      flex: 1,
-      paddingVertical: 8,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      borderRadius: 999,
-    },
-    appearanceOptionLeft: {},
-    appearanceOptionRight: {},
-    appearanceOptionActive: {
-      backgroundColor: colors.tint,
-    },
-    appearanceOptionText: {
-      fontSize: 13,
-      fontWeight: '700' as const,
-      color: colors.textSecondary,
-    },
-    appearanceOptionTextActive: {
-      color: colors.pillActiveText,
-    },
   });
+
+/**
+ * The shell in front of the screen above.
+ *
+ * A tab is built the first time it is opened, and until it is, the tab you
+ * pressed away from stays on screen — which reads as the press being ignored.
+ * The gate is a component of its own so that every hook the screen owns lives
+ * *behind* it: an early return inside one component would only defer the
+ * render, not the queries and subscriptions that set it up.
+ *
+ * The wait is whatever {@link tabContentHoldMs} still owes the tab bar's press
+ * flash, so the mount takes the UI thread only once that movement is over
+ * rather than stalling it half-way. Once a tab has been built it is never
+ * gated again.
+ */
+export default function SettingsScreenTab() {
+  const ready = useDeferredMount('tab:settings', tabContentHoldMs);
+  if (!ready) return <TabScreenSkeleton title="Settings" icon="gearshape.fill" />;
+  return <SettingsScreen />;
+}

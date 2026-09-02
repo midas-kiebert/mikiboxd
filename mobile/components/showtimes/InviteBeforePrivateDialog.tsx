@@ -1,9 +1,11 @@
 /**
  * Confirmation shown right before a showtime's visibility switches to
- * INVITED_ONLY, when friends are already going/interested but were never
- * pinged. Left alone, those friends would silently lose the ability to see
- * the owner's status the moment the mode changes — this offers to invite
- * them (non-notifying, since they already know) to keep them in the loop.
+ * INVITED_ONLY, or right before the viewer marks going/interested, when
+ * friends are already going/interested but were never pinged. Left alone,
+ * those friends would silently be unable to see the owner's status — this
+ * offers to invite them (non-notifying, since they already know) to keep
+ * them in the loop. `title`/`message` default to the visibility-switch
+ * copy; the going/interested flow passes its own.
  *
  * Structurally a checkbox-list variant of ConfirmDialog (same Modal + fade
  * timing), since ConfirmDialog itself has no list slot.
@@ -26,13 +28,22 @@ type InviteBeforePrivateDialogProps = {
   friends: UserPublic[];
   onConfirm: (selectedIds: string[]) => void;
   onSkip: () => void;
+  title?: string;
+  message?: string;
 };
+
+const DEFAULT_TITLE = "Keep these friends in the loop?";
+const DEFAULT_MESSAGE =
+  "These friends already see your status here but haven't been invited. Switching " +
+  "to invite-only will hide it from them unless you invite them now.";
 
 export default function InviteBeforePrivateDialog({
   visible,
   friends,
   onConfirm,
   onSkip,
+  title = DEFAULT_TITLE,
+  message = DEFAULT_MESSAGE,
 }: InviteBeforePrivateDialogProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -114,11 +125,8 @@ export default function InviteBeforePrivateDialog({
           <View style={[styles.iconCircle, { backgroundColor: colors.surfaceMuted }]}>
             <MaterialIcons name="visibility-off" size={20} color={colors.tint} />
           </View>
-          <ThemedText style={styles.title}>Keep these friends in the loop?</ThemedText>
-          <ThemedText style={styles.message}>
-            These friends already see your status here but haven&apos;t been invited. Switching
-            to invite-only will hide it from them unless you invite them now.
-          </ThemedText>
+          <ThemedText style={styles.title}>{title}</ThemedText>
+          <ThemedText style={styles.message}>{message}</ThemedText>
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
             {friends.map((friend) => {
               const isSelected = selectedIds.has(friend.id);

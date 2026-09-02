@@ -64,6 +64,15 @@ class Showtime(ShowtimeBase, table=True):
     movie: "Movie" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
     cinema_id: int = Field(foreign_key="cinema.id")
     cinema: "Cinema" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    # The ticketing platform's own identity for `room`, filled in by the
+    # availability poller from the same page it reads the count off. Only
+    # Ticketlab needs it: most of its shops print no room name at all, so
+    # `room` stays None there and this number is the only thing that says
+    # which room a showtime plays in — and so the only thing a stored floor
+    # plan can be looked up by. Everywhere else it is the room name itself,
+    # and where a showtime has never been polled it is None, exactly like
+    # `room`.
+    room_key: str | None = Field(default=None, max_length=255)
     # Seat availability, refreshed by the availability poller (see
     # services/seat_availability.py) rather than by the scrape, and only for
     # showtimes someone has actually selected — polling every showtime would

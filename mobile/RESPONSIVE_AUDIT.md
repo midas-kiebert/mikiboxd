@@ -444,7 +444,8 @@ sheet). Worth revisiting only if analytics show mis-taps.
 ### 20. Four near-identical "Filters pill" implementations have drifted
 
 **Where:** `components/filters/FiltersRow.tsx:75-90`,
-`components/filters/FiltersButtonRow.tsx:52-68`,
+`components/filters/FiltersButtonRow.tsx:52-68` (since deleted — the sub-pages
+now mount `FiltersButton` in the search row),
 `components/filters/FilterPills.tsx:271-278`, `app/movie/[id].tsx:687-700`.
 
 **Severity:** nitpick (consistency).

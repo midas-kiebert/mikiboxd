@@ -15,6 +15,11 @@
  * blocks the save. Applying without saving anything needs no button at all:
  * closing the sheet already commits the selection to the session.
  *
+ * Editing a saved preset uses the same page with a different frame: a name
+ * field above the list, and a footer holding nothing but Cancel and Save
+ * changes. A preset's name and its cinemas are one edit, so there is one Edit
+ * button on the manage page and no separate rename dialog anywhere.
+ *
  * The cinemas are drawn by the shared {@link CinemaPickerList}, so the sheet and
  * the cinema-preset feature tip pick cinemas in exactly the same way.
  */
@@ -30,7 +35,7 @@ import {
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { QueryClientProvider, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
@@ -61,17 +66,31 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { useCinemaSelection } from "@/hooks/useCinemaSelection";
 import { useIsSignedIn } from "@/utils/auth-session";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
+import { useSheetContentReady } from "@/components/sheets/use-sheet-content-ready";
+import LoadingLogo from "@/components/layout/LoadingLogo";
 import { retireCinemaPresetTip } from "@/utils/feature-tips";
-import { triggerSelectionHaptic } from "@/utils/long-press";
+import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 
 type CinemaFilterModalProps = {
   visible: boolean;
   onClose: () => void;
   onBack?: () => void;
   initialPage?: CinemaModalPage;
+  /**
+   * Opens straight into editing this preset — the picker seeded with its
+   * cinemas and the edit footer up — rather than on the plain selection page.
+   * Set by the cinema pill's dropdown, whose rows each carry a pencil.
+   */
+  initialEditPresetId?: string | null;
 };
 
+/** What the cinema pill's dropdown (and anything else opening this sheet) can ask for. */
+export type OpenCinemaModalOptions = { editPresetId?: string };
+
 type CinemaModalPage = "selection" | "presets";
+
+/** Smaller than the theme curtain's: this sits in a sheet, not a whole screen. */
+const LOADING_LOGO_SIZE = 96;
 
 const formatCinemaCount = (count: number) => `${count} cinema${count === 1 ? "" : "s"}`;
 
@@ -81,7 +100,13 @@ const setsMatch = (left: Set<number>, right: Set<number>) => {
   return true;
 };
 
-export default function CinemaFilterModal({ visible, onClose, onBack, initialPage = "selection" }: CinemaFilterModalProps) {
+export default function CinemaFilterModal({
+  visible,
+  onClose,
+  onBack,
+  initialPage = "selection",
+  initialEditPresetId = null,
+}: CinemaFilterModalProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
@@ -97,12 +122,25 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
   // offers to replace that preset, so overwriting is always a second, deliberate
   // tap rather than something that happens silently behind a reused name.
   const [isReplacingNamedPreset, setIsReplacingNamedPreset] = useState(false);
-  // The preset being renamed from the manage page, if any.
-  const [presetBeingRenamed, setPresetBeingRenamed] = useState<CinemaPresetPublic | null>(null);
+  // The preset being edited, if any — the picker is seeded with its cinemas,
+  // the name field with its name, and "Save changes" writes both back to this
+  // same preset by id, rather than creating or overwriting-by-name. Name and
+  // cinemas are one edit: there is no separate rename anywhere.
+  const [presetBeingEdited, setPresetBeingEdited] = useState<CinemaPresetPublic | null>(null);
   const [presetPendingDeletion, setPresetPendingDeletion] = useState<CinemaPresetPublic | null>(null);
-  const [renameError, setRenameError] = useState<string | null>(null);
-  const renameInputRef = useRef<TextInput>(null);
-  const [renameValue, setRenameValue] = useState("");
+  // Uncontrolled like the save dialog's field, for the same reason: a
+  // controlled value swallows fast keystrokes. `BottomSheetTextInput`, not a
+  // bare one: it lives inside the sheet, which has to know it holds focus.
+  const [editNameValue, setEditNameValue] = useState("");
+  const [editNameError, setEditNameError] = useState<string | null>(null);
+  // Guards the auto-start below against the reset effect running again (the
+  // cinema list resolving re-fires it) and throwing the edit away.
+  const autoEditStartedRef = useRef(false);
+  // Set alongside it: opened straight into an edit from the dropdown's
+  // pencil, this sheet was never on the manage-presets list, so Cancel and
+  // Save changes have nowhere sensible to land but closed — back to whatever
+  // screen the pencil was tapped from, not a page the user never opened.
+  const editOpenedFromShortcutRef = useRef(false);
   // Flips the moment "Set as my cinemas" is tapped, so the button reports the
   // result on the same frame instead of after the round trip. Holds the
   // selection it was tapped for, so editing the picker afterwards re-arms it.
@@ -149,6 +187,14 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     onClose();
   }, [onClose, setSessionCinemaIds]);
 
+  // "Apply": the same commit `handleClose` already does implicitly on swipe-down
+  // or backdrop tap, spelled out as a button next to "Set as preferred cinemas"
+  // for anyone who wants a one-off selection without changing their default.
+  const handleApplySelection = useCallback(() => {
+    triggerSelectionHaptic();
+    handleClose();
+  }, [handleClose]);
+
   // Header back button: step back from the presets page, else return to the
   // parent sheet (when opened nested), else nothing (root selection page).
   const headerBack =
@@ -168,16 +214,23 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
   }, [page, onBack, handleClose]);
 
   useEffect(() => {
-    if (!visible) return;
-    setLocalSelectedCinemaSet(new Set(selectedCinemas));
+    if (!visible) {
+      autoEditStartedRef.current = false;
+      editOpenedFromShortcutRef.current = false;
+      return;
+    }
     setPresetError(null);
     setPresetName("");
     setIsSavePresetDialogVisible(false);
     setIsReplacingNamedPreset(false);
-    setPresetBeingRenamed(null);
     setPresetPendingDeletion(null);
-    setRenameError(null);
     setSavedMyCinemasSignature(null);
+    // An edit already under way owns the picker and the page; this effect
+    // re-runs whenever the cinema list settles, which would otherwise wipe it.
+    if (autoEditStartedRef.current) return;
+    setLocalSelectedCinemaSet(new Set(selectedCinemas));
+    setPresetBeingEdited(null);
+    setEditNameError(null);
     setPage(initialPage);
   }, [visible, selectedCinemas, initialPage]);
 
@@ -236,20 +289,43 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     },
   });
 
-  const renamePresetMutation = useMutation({
-    mutationFn: ({ presetId, name }: { presetId: string; name: string }) =>
-      MeService.renameCinemaPreset({ presetId, requestBody: { name } }),
+  // One write for both halves of an edit: the endpoint takes a name and a
+  // cinema list, and the edit page offers both at once.
+  const editPresetMutation = useMutation({
+    mutationFn: ({ presetId, name, cinemaIds }: { presetId: string; name: string; cinemaIds: number[] }) =>
+      MeService.renameCinemaPreset({ presetId, requestBody: { name, cinema_ids: cinemaIds } }),
     onSuccess: () => {
-      setPresetBeingRenamed(null);
-      setRenameError(null);
+      setPresetBeingEdited(null);
+      setEditNameError(null);
+      autoEditStartedRef.current = false;
       invalidateCinemaPresets(queryClient);
-    },
-    onError: (error) => {
-      if (error instanceof ApiError && error.status === 409) {
-        setRenameError("You already have a preset with that name.");
+      triggerSelectionHaptic();
+      // Opened straight into this edit from the dropdown's pencil: there is
+      // no manage-presets list underneath to reveal, so the sheet closes
+      // outright rather than navigating to a page this visit never opened.
+      // The picker held the preset's own cinemas, not the active filter, so
+      // it is reset first — closing must not silently apply them as the
+      // session's selection.
+      if (editOpenedFromShortcutRef.current) {
+        editOpenedFromShortcutRef.current = false;
+        // See handleCancelEditPreset: handleClose reads the ref synchronously,
+        // ahead of the effect that would otherwise sync it to the state below.
+        const revertedSet = new Set(selectedCinemas);
+        localSelectedCinemaSetRef.current = revertedSet;
+        setLocalSelectedCinemaSet(revertedSet);
+        handleClose();
         return;
       }
-      setRenameError("Could not rename this preset. Please try again.");
+      setPage("presets");
+    },
+    onError: (error) => {
+      // A taken name is a question for the field, not a failure of the save:
+      // keep the page as it is and answer under the input.
+      if (error instanceof ApiError && error.status === 409) {
+        setEditNameError("You already have a preset with that name.");
+        return;
+      }
+      setEditNameError("Could not save this preset. Please try again.");
     },
   });
 
@@ -322,6 +398,10 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
   // has no bearing on whether the other is worth a tap.
   const canSaveMyCinemas = selectedCount > 0 && !isCurrentSelectionMyCinemas;
   const canSaveAsPreset = selectedCount > 0 && !selectionMatchesNamedPreset;
+  // An edit needs both halves to be sayable: a preset with no cinemas filters
+  // everything away, and one with no name cannot be picked out of a list.
+  const canSaveEditedPreset =
+    !editPresetMutation.isPending && selectedCount > 0 && editNameValue.trim().length > 0;
 
   const handleToggle = useCallback((cinemaId: number) => {
     setLocalSelectedCinemaSet((current) => {
@@ -374,6 +454,7 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
 
   const handleConfirmDelete = useCallback(() => {
     if (!presetPendingDeletion) return;
+    triggerImpactHaptic();
     deletePresetMutation.mutate(presetPendingDeletion.id);
   }, [deletePresetMutation, presetPendingDeletion]);
 
@@ -382,28 +463,59 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     useAsMyCinemasMutation.mutate(preset.id);
   }, [useAsMyCinemasMutation]);
 
-  const handleStartRename = useCallback((preset: CinemaPresetPublic) => {
+  const handleStartEditPreset = useCallback((preset: CinemaPresetPublic) => {
+    // "All cinemas" is the built-in fallback, not a saved row — nothing here
+    // could edit it meaningfully. Every caller already filters it out; this
+    // is just the backstop for `initialEditPresetId`, which names an id.
+    if (preset.is_default) return;
     triggerSelectionHaptic();
-    setRenameError(null);
-    setRenameValue(preset.name);
-    setPresetBeingRenamed(preset);
+    setLocalSelectedCinemaSet(new Set(preset.cinema_ids));
+    setEditNameValue(preset.name);
+    setEditNameError(null);
+    setPresetBeingEdited(preset);
+    setPage("selection");
   }, []);
 
-  const handleCancelRename = useCallback(() => {
-    if (renamePresetMutation.isPending) return;
-    setPresetBeingRenamed(null);
-    setRenameError(null);
-  }, [renamePresetMutation.isPending]);
-
-  const handleConfirmRename = useCallback(() => {
-    const trimmed = renameValue.trim();
-    if (!presetBeingRenamed || !trimmed) return;
-    if (trimmed === presetBeingRenamed.name) {
-      setPresetBeingRenamed(null);
-      return;
+  const handleCancelEditPreset = useCallback(() => {
+    triggerSelectionHaptic();
+    setLocalSelectedCinemaSet(new Set(selectedCinemas));
+    setPresetBeingEdited(null);
+    setEditNameError(null);
+    autoEditStartedRef.current = false;
+    // See the mutation's onSuccess: a shortcut-opened edit has no
+    // manage-presets list to fall back to, so cancelling closes the sheet too.
+    if (editOpenedFromShortcutRef.current) {
+      editOpenedFromShortcutRef.current = false;
+      // handleClose reads the ref, which only picks up the reset above on the
+      // next effect pass — too late for a close happening in this same tick.
+      // Written through directly so the close sees the reverted selection.
+      localSelectedCinemaSetRef.current = new Set(selectedCinemas);
+      handleClose();
     }
-    renamePresetMutation.mutate({ presetId: presetBeingRenamed.id, name: trimmed });
-  }, [presetBeingRenamed, renamePresetMutation, renameValue]);
+  }, [selectedCinemas, handleClose, localSelectedCinemaSetRef]);
+
+  const handleConfirmEditPreset = useCallback(() => {
+    const trimmedName = editNameValue.trim();
+    if (!presetBeingEdited || localSelectedCinemaSet.size === 0 || !trimmedName) return;
+    triggerImpactHaptic();
+    editPresetMutation.mutate({
+      presetId: presetBeingEdited.id,
+      name: trimmedName,
+      cinemaIds: sortCinemaIds(localSelectedCinemaSet),
+    });
+  }, [presetBeingEdited, localSelectedCinemaSet, editNameValue, editPresetMutation]);
+
+  // Opened from the dropdown's pencil: the presets query has to land before
+  // there is anything to edit, so this waits for it rather than running in the
+  // reset effect. Once armed it stays armed until the edit ends (see the ref).
+  useEffect(() => {
+    if (!visible || !initialEditPresetId || autoEditStartedRef.current) return;
+    const target = presets.find((preset) => preset.id === initialEditPresetId);
+    if (!target) return;
+    autoEditStartedRef.current = true;
+    editOpenedFromShortcutRef.current = true;
+    handleStartEditPreset(target);
+  }, [visible, initialEditPresetId, presets, handleStartEditPreset]);
 
   const persistPresetOrder = useCallback((orderedIds: readonly string[]) => {
     const normalizedOrder = sanitizeCinemaPresetOrderIds(orderedIds);
@@ -469,6 +581,13 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
     cinemas === undefined ||
     (sessionCinemaIds === undefined && favoriteCinemaIds === undefined && isFavoritesLoading);
 
+  // ~80 cinema chips are several hundred native views, and gorhom builds its
+  // children before the sheet starts to rise — so mounting them on open made
+  // the sheet answer the tap a beat late. Nothing is mounted here until the
+  // sheet is up; the panel below stands in until then.
+  const isSheetContentReady = useSheetContentReady(visible);
+  const isWaitingForContent = isLoadingSelection || !isSheetContentReady;
+
   return (
     <>
       <AppBottomSheet
@@ -485,11 +604,17 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
       >
         {/* @gorhom/portal does not forward React context; re-provide QueryClient for hooks inside. */}
         <QueryClientProvider client={queryClient}>
-          {isLoadingSelection ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.tint} />
-              <ThemedText style={styles.loadingText}>Loading cinemas...</ThemedText>
-            </View>
+          {isWaitingForContent ? (
+            <LoadingLogo
+              style={styles.loadingContainer}
+              label="Loading cinemas…"
+              tintColor={colors.tint}
+              labelColor={colors.textSecondary}
+              logoSize={LOADING_LOGO_SIZE}
+              // Most opens are over before the fade finishes, so a fast one
+              // shows next to nothing rather than a blink of logo.
+              fadeIn
+            />
           ) : page === "presets" ? (
             /* ── Manage presets page ── */
             <BottomSheetScrollView
@@ -507,6 +632,9 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                       one of the presets, it is the selection every other screen
                       falls back to. */}
                   <ThemedText style={styles.manageSectionTitle}>Your preferred cinemas</ThemedText>
+                  <ThemedText style={styles.hintText}>
+                    Selected by default every time you open the app.
+                  </ThemedText>
                   <View style={styles.manageCard}>
                     {myCinemasPreset ? (
                       <>
@@ -521,19 +649,21 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                             {myCinemasPreset.name}
                           </ThemedText>
                           <ThemedText style={styles.manageMeta} numberOfLines={1}>
-                            {formatCinemaCount(myCinemasPreset.cinema_ids.length)} · applied on startup
+                            {formatCinemaCount(myCinemasPreset.cinema_ids.length)}
                           </ThemedText>
                         </TouchableOpacity>
+                        {/* One Edit: the name and the cinemas are the same
+                            edit, and the page it opens carries both. */}
                         <View style={styles.manageActions}>
                           <TouchableOpacity
                             style={styles.manageAction}
-                            onPress={() => handleStartRename(myCinemasPreset)}
+                            onPress={() => handleStartEditPreset(myCinemasPreset)}
                             activeOpacity={0.7}
                             accessibilityRole="button"
                             hitSlop={6}
                           >
                             <MaterialIcons name="edit" size={15} color={colors.textSecondary} />
-                            <ThemedText style={styles.manageActionText}>Rename</ThemedText>
+                            <ThemedText style={styles.manageActionText}>Edit</ThemedText>
                           </TouchableOpacity>
                         </View>
                       </>
@@ -602,13 +732,13 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
                             <View style={styles.manageActions}>
                               <TouchableOpacity
                                 style={styles.manageAction}
-                                onPress={() => handleStartRename(item)}
+                                onPress={() => handleStartEditPreset(item)}
                                 activeOpacity={0.7}
                                 accessibilityRole="button"
                                 hitSlop={6}
                               >
                                 <MaterialIcons name="edit" size={15} color={colors.textSecondary} />
-                                <ThemedText style={styles.manageActionText}>Rename</ThemedText>
+                                <ThemedText style={styles.manageActionText}>Edit</ThemedText>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 style={styles.manageAction}
@@ -646,6 +776,33 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
           ) : (
             /* ── Cinema selection page ── */
             <>
+              {presetBeingEdited ? (
+                /* The name lives here rather than behind a second dialog:
+                   renaming and re-picking cinemas are one edit, so the page
+                   that does one does both. Keyed so switching preset re-mounts
+                   the uncontrolled field on the new name. */
+                <View style={styles.editingBanner}>
+                  <ThemedText style={styles.editingBannerLabel}>Preset name</ThemedText>
+                  <BottomSheetTextInput
+                    key={presetBeingEdited.id}
+                    defaultValue={presetBeingEdited.name}
+                    onChangeText={(value) => {
+                      setEditNameValue(value);
+                      if (editNameError) setEditNameError(null);
+                    }}
+                    placeholder="Preset name"
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.editingNameInput}
+                    maxLength={80}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    selectTextOnFocus
+                  />
+                  {editNameError ? (
+                    <ThemedText style={styles.editingBannerError}>{editNameError}</ThemedText>
+                  ) : null}
+                </View>
+              ) : null}
               <BottomSheetScrollView
                 style={styles.scroll}
                 contentContainerStyle={styles.scrollContent}
@@ -692,80 +849,131 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
               {/* Pinned footer: the preset actions stay reachable at any scroll
                   position, since the cinema list is far longer than a screen.
                   Absent for a guest — nothing in it does anything without an
-                  account, and an empty bordered strip reads as broken. */}
-              {isSignedIn ? (
+                  account, and an empty bordered strip reads as broken.
+
+                  While a preset's cinemas are being edited the footer carries
+                  nothing but that edit's two outcomes: every other action here
+                  writes somewhere else (the session, the preferred cinemas, a
+                  new preset), which is not what this visit is for. */}
+              {presetBeingEdited ? (
+                <View style={[styles.footer, { paddingBottom: bottomInset + 12 }]}>
+                  <View style={styles.footerPrimaryRow}>
+                    <TouchableOpacity
+                      style={styles.footerButton}
+                      onPress={handleCancelEditPreset}
+                      activeOpacity={0.8}
+                      disabled={editPresetMutation.isPending}
+                      accessibilityRole="button"
+                    >
+                      <ThemedText style={styles.footerButtonText} numberOfLines={1}>
+                        Cancel
+                      </ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.editSaveButton, !canSaveEditedPreset && styles.editSaveButtonDisabled]}
+                      onPress={handleConfirmEditPreset}
+                      activeOpacity={0.8}
+                      disabled={!canSaveEditedPreset}
+                      accessibilityRole="button"
+                    >
+                      <ThemedText style={styles.editSaveButtonText} numberOfLines={1}>
+                        {editPresetMutation.isPending ? "Saving…" : "Save changes"}
+                      </ThemedText>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : isSignedIn ? (
               <View style={[styles.footer, { paddingBottom: bottomInset + 12 }]}>
-                {/* The one action nearly every user wants, and the only one
-                    that needs no name: it writes the selection applied on
-                    startup, creating it the first time. */}
-                <TouchableOpacity
-                  style={[
-                    styles.footerButton,
-                    canSaveMyCinemas
-                      ? styles.footerButtonHighlighted
-                      : styles.footerButtonDisabled,
-                  ]}
-                  onPress={handleSaveMyCinemas}
-                  activeOpacity={0.8}
-                  disabled={!canSaveMyCinemas}
-                  accessibilityRole="button"
-                >
-                  <MaterialIcons
-                    name={isCurrentSelectionMyCinemas ? "check" : "star-border"}
-                    size={17}
-                    color={canSaveMyCinemas ? colors.green.secondary : colors.textSecondary}
-                  />
-                  <ThemedText
-                    style={[
-                      styles.footerButtonText,
-                      canSaveMyCinemas && styles.footerButtonTextHighlighted,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {isCurrentSelectionMyCinemas ? "These are your preferred cinemas" : "Set as preferred cinemas"}
-                  </ThemedText>
-                </TouchableOpacity>
-                {/* Demoted to a text row: presets are a power feature, and
-                    giving them equal weight is what made the naming step read
-                    as a required step rather than an optional one. Always
-                    present all the same, or a first preset is never made. */}
-                <View style={styles.footerLinks}>
+                {/* The same button as the preferred-cinemas one below, in the
+                    same two states: quiet until there is something worth
+                    saving, then a soft accent fill. Saving a named selection
+                    and setting the preferred one are the two ways to keep a
+                    selection, and one of them being a text link made it read
+                    as a lesser kind of thing rather than a different one.
+                    Still placed above the primary row, so the row you act on
+                    last sits closest to the thumb. */}
+                <View style={styles.footerPresetRow}>
                   <TouchableOpacity
-                    style={[
-                      styles.footerLinkButton,
-                      !canSaveAsPreset && styles.footerLinkButtonDisabled,
-                    ]}
+                    style={styles.footerTextButton}
                     onPress={handleOpenSavePresetDialog}
-                    activeOpacity={0.7}
+                    activeOpacity={0.6}
                     disabled={!canSaveAsPreset}
-                    hitSlop={6}
                     accessibilityRole="button"
                   >
                     <MaterialIcons
                       name={selectionMatchesNamedPreset ? "bookmark" : "bookmark-add"}
-                      size={14}
-                      color={canSaveAsPreset ? colors.tint : colors.textSecondary}
+                      size={17}
+                      color={canSaveAsPreset ? colors.green.secondary : colors.textSecondary}
                     />
                     <ThemedText
-                      style={[styles.footerLink, !canSaveAsPreset && styles.footerLinkDisabled]}
+                      style={[
+                        styles.footerButtonText,
+                        canSaveAsPreset && styles.footerButtonTextHighlighted,
+                      ]}
                       numberOfLines={1}
                     >
                       {selectionMatchesNamedPreset ? "Already a preset" : "Save as preset"}
                     </ThemedText>
                   </TouchableOpacity>
+                  {/* Never highlighted: it opens a page rather than writing
+                      anything, so it is the quiet one of the pair whatever the
+                      selection is. */}
                   <TouchableOpacity
-                    style={styles.footerLinkButton}
+                    style={styles.footerTextButton}
                     onPress={() => {
                       triggerSelectionHaptic();
                       setPage("presets");
                     }}
-                    activeOpacity={0.7}
-                    hitSlop={6}
+                    activeOpacity={0.6}
                     accessibilityRole="button"
                   >
-                    <MaterialIcons name="tune" size={14} color={colors.tint} />
-                    <ThemedText style={styles.footerLink} numberOfLines={1}>
+                    <MaterialIcons name="tune" size={17} color={colors.textSecondary} />
+                    <ThemedText style={styles.footerButtonText} numberOfLines={1}>
                       Manage presets
+                    </ThemedText>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.footerPrimaryRow}>
+                  {/* The one action nearly every user wants, and the only one
+                      that needs no name: it writes the selection applied on
+                      startup, creating it the first time. */}
+                  <TouchableOpacity
+                    style={[
+                      styles.footerButton,
+                      canSaveMyCinemas
+                        ? styles.footerButtonHighlighted
+                        : styles.footerButtonDisabled,
+                    ]}
+                    onPress={handleSaveMyCinemas}
+                    activeOpacity={0.8}
+                    disabled={!canSaveMyCinemas}
+                    accessibilityRole="button"
+                  >
+                    <MaterialIcons
+                      name={isCurrentSelectionMyCinemas ? "check" : "star-border"}
+                      size={17}
+                      color={canSaveMyCinemas ? colors.green.secondary : colors.textSecondary}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.footerButtonText,
+                        canSaveMyCinemas && styles.footerButtonTextHighlighted,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {isCurrentSelectionMyCinemas ? "These are your preferred cinemas" : "Set as preferred cinemas"}
+                    </ThemedText>
+                  </TouchableOpacity>
+                  {/* Applies the picker's current selection to this session
+                      without touching the preferred-cinemas row above. */}
+                  <TouchableOpacity
+                    style={styles.applyButton}
+                    onPress={handleApplySelection}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                  >
+                    <ThemedText style={styles.applyButtonText} numberOfLines={1}>
+                      Apply
                     </ThemedText>
                   </TouchableOpacity>
                 </View>
@@ -861,79 +1069,6 @@ export default function CinemaFilterModal({ visible, onClose, onBack, initialPag
 
       <Modal
         transparent
-        visible={presetBeingRenamed !== null}
-        animationType="fade"
-        onRequestClose={handleCancelRename}
-      >
-        <View style={styles.dialogBackdrop}>
-          <TouchableOpacity
-            style={styles.dialogBackdropPressable}
-            activeOpacity={1}
-            onPress={handleCancelRename}
-          />
-          {presetBeingRenamed !== null ? (
-            <View style={styles.dialogCard}>
-              <View style={styles.dialogHeader}>
-                <ThemedText style={styles.dialogTitle}>Rename preset</ThemedText>
-                <ThemedText style={styles.dialogSubtitle}>
-                  Only the name changes — the cinemas it covers stay the same.
-                </ThemedText>
-              </View>
-              <TextInput
-                ref={renameInputRef}
-                defaultValue={presetBeingRenamed.name}
-                onChangeText={(value) => {
-                  setRenameValue(value);
-                  if (renameError) setRenameError(null);
-                }}
-                // selectTextOnFocus doesn't reliably select on the focus that
-                // autoFocus triggers (only on a manual tap), so select explicitly.
-                onFocus={() => renameInputRef.current?.setSelection(0, renameValue.length)}
-                placeholder="Preset name"
-                placeholderTextColor={colors.textSecondary}
-                style={styles.dialogInput}
-                maxLength={80}
-                autoCapitalize="words"
-                autoCorrect={false}
-                selectTextOnFocus
-                autoFocus
-              />
-              {renameError ? (
-                <ThemedText style={styles.presetErrorText}>{renameError}</ThemedText>
-              ) : null}
-              <View style={styles.dialogActions}>
-                <TouchableOpacity
-                  style={[styles.dialogButton, styles.dialogButtonSecondary]}
-                  onPress={handleCancelRename}
-                  activeOpacity={0.8}
-                  disabled={renamePresetMutation.isPending}
-                >
-                  <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextSecondary]}>
-                    Cancel
-                  </ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.dialogButton,
-                    styles.dialogButtonPrimary,
-                    (renamePresetMutation.isPending || renameValue.trim().length === 0) &&
-                      styles.dialogButtonDisabled,
-                  ]}
-                  onPress={handleConfirmRename}
-                  activeOpacity={0.8}
-                  disabled={renamePresetMutation.isPending || renameValue.trim().length === 0}
-                >
-                  <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextPrimary]}>
-                    {renamePresetMutation.isPending ? "Saving..." : "Rename"}
-                  </ThemedText>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : null}
-        </View>
-      </Modal>
-      <Modal
-        transparent
         visible={presetPendingDeletion !== null}
         animationType="fade"
         onRequestClose={handleCancelDelete}
@@ -993,7 +1128,27 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     scroll: { flex: 1 },
     scrollContent: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 20 },
     loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 40 },
-    loadingText: { fontSize: 14, color: colors.textSecondary },
+    editingBanner: {
+      gap: 6,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+      backgroundColor: colors.surfaceMuted,
+    },
+    editingBannerLabel: { fontSize: 12, fontWeight: "600", color: colors.textSecondary },
+    editingNameInput: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: colors.text,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.checkboxBorder,
+      backgroundColor: colors.checkboxBackground,
+    },
+    editingBannerError: { fontSize: 12, color: colors.red.secondary },
     // Cinema selection
     pickerHeader: {
       flexDirection: "row",
@@ -1009,10 +1164,16 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     footer: {
       paddingHorizontal: 20,
       paddingTop: 12,
+      gap: 10,
       borderTopWidth: 1,
       borderTopColor: colors.divider,
       backgroundColor: colors.nestedModalBackground,
     },
+    // Preferred-cinemas button shares its row with the smaller Apply button,
+    // so it takes the leftover width instead of the full row. `center`, not
+    // `stretch`: Apply sets its own (shorter) vertical padding, and stretch
+    // would pull it up to the taller preferred button's height regardless.
+    footerPrimaryRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     footerButton: {
       flexDirection: "row",
       alignItems: "center",
@@ -1024,46 +1185,65 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderWidth: 1.5,
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
-      // Full width: it is the only button on its row, and the preset actions
-      // below it are deliberately not competing for the same weight.
-      alignSelf: "stretch",
+      flex: 1,
     },
+    // Applies the current selection to this session only — no account write,
+    // so it stays the tint-filled "go" action next to the quieter preferred
+    // button, but narrow since it names a much smaller commitment.
+    applyButton: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 28,
+      paddingVertical: 9,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: colors.tint,
+      backgroundColor: colors.tint,
+    },
+    applyButtonText: { fontSize: 13, fontWeight: "700", color: colors.pillActiveText },
+    // The commit half of the editing footer: same filled treatment as Apply,
+    // but it takes the wider share of the row since it is the reason the page
+    // is open at all.
+    editSaveButton: {
+      flex: 1.4,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: colors.tint,
+      backgroundColor: colors.tint,
+    },
+    editSaveButtonDisabled: { opacity: 0.5 },
+    editSaveButtonText: { fontSize: 13, fontWeight: "700", color: colors.pillActiveText },
     // Saving is only worth a tap once the selection is actually new, so the
-    // button stays quiet until then — a soft tinted fill rather than an outline,
-    // at the same border width so nothing shifts when the state flips.
+    // button stays quiet until then — a soft tinted fill at the same border
+    // width, so nothing shifts when the state flips. The outline is the accent's
+    // own border tone rather than the fill: a soft tint on the footer's
+    // background has almost no edge of its own, which left the one primary
+    // action in the modal reading as a flat patch of colour.
     footerButtonHighlighted: {
       backgroundColor: colors.green.primary,
-      borderColor: colors.green.primary,
+      borderColor: colors.green.border,
     },
     footerButtonDisabled: { opacity: 0.5 },
-    footerButtonText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
-    footerButtonTextHighlighted: { color: colors.green.secondary },
-    // The preset row under the primary button. Recessed chips rather than the
-    // primary's raised fill: they read as an aside, not as a second thing to
-    // decide about, while still being obviously tappable — bare text at the two
-    // outer edges looked stranded. Centred, so the pair sits under the button
-    // as one group.
-    footerLinks: {
+    // Unlike `footerPrimaryRow` below it, these two are deliberately equal
+    // weight: both stay plain text (no outline or fill) so neither reads as
+    // a boxed button someone would be steered toward, but they split the row
+    // evenly so each label centers over its own half instead of one hugging
+    // the leftover space and the other hugging the edge.
+    footerPresetRow: { flexDirection: "row", alignItems: "stretch", gap: 8 },
+    footerTextButton: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 8,
-      paddingTop: 10,
+      gap: 7,
+      paddingVertical: 8,
+      flex: 1,
     },
-    footerLinkButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 10,
-      backgroundColor: colors.surfaceMuted,
-    },
-    footerLinkButtonDisabled: { opacity: 0.6 },
-    // Explicit lineHeight: ThemedText's default type carries 24, which survives
-    // the fontSize override and would make these chips button-height.
-    footerLink: { fontSize: 12, lineHeight: 16, fontWeight: "700", color: colors.tint },
-    footerLinkDisabled: { color: colors.textSecondary },
+    footerButtonText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
+    footerButtonTextHighlighted: { color: colors.green.secondary },
     // Manage presets page
     emptyContainer: { paddingVertical: 24, alignItems: "center", justifyContent: "center" },
     emptyText: { fontSize: 13, color: colors.textSecondary, textAlign: "center" },

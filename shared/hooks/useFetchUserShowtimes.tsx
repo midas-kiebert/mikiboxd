@@ -1,14 +1,19 @@
-import { useInfiniteQuery, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient, InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import {
     ApiError,
     type GoingStatus,
     type Language,
+    type SearchField,
     UsersService,
     UsersGetUserSelectedShowtimesResponse,
 } from "../client";
+import { seedShowtimeSeatAvailability } from "./useShowtimeSeatAvailability";
+import { seedShowtimeVisibility } from "./useShowtimeVisibility";
 
 type ShowtimesFilters = {
     query?: string;
+    /** Which attribute `query` is matched against; the API defaults to the title. */
+    searchField?: SearchField;
     days?: string[];
     selectedCinemaIds?: number[];
     timeRanges?: string[];
@@ -41,6 +46,7 @@ export function useFetchUserShowtimes(
         enabled = true,
     } : useFetchUserShowtimesProps
 ): UseInfiniteQueryResult<InfiniteData<UsersGetUserSelectedShowtimesResponse>, Error>{
+    const queryClient = useQueryClient();
     const result = useInfiniteQuery<
         UsersGetUserSelectedShowtimesResponse,
         Error,
@@ -53,14 +59,20 @@ export function useFetchUserShowtimes(
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         initialPageParam: 0,
-        queryFn: ({ pageParam = 0}) => {
-            return UsersService.getUserSelectedShowtimes({
+        queryFn: async ({ pageParam = 0 }) => {
+            const page = await UsersService.getUserSelectedShowtimes({
                 offset: pageParam,
                 limit: limit,
                 snapshotTime: snapshotTime,
                 userId: userId,
                 ...filters,
             });
+            // The badges read this cache, so filling it here — with what the
+            // page itself already carries — is what lets them paint with the
+            // cards instead of a request later. See `seedShowtimeSeatAvailability`.
+            seedShowtimeSeatAvailability(queryClient, page);
+            seedShowtimeVisibility(queryClient, page);
+            return page;
         },
         retry: (failureCount, error) => {
             if (error instanceof ApiError && error.status === 403) {

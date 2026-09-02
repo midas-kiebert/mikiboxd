@@ -1,16 +1,19 @@
-"""The once-per-showtime "nearly sold out" notice."""
+"""The once-per-showtime "nearly sold out" and "sold out" notices."""
 
 from uuid import uuid4
 
 from pytest_mock import MockerFixture
 
-from app.core.enums import GoingStatus, NotificationChannel
+from app.core.enums import GoingStatus, NotificationChannel, SeatAlertKind
 from app.services import push_notifications
 
 
 def _selection(mocker, *, user_id, going_status=GoingStatus.INTERESTED):
     return mocker.MagicMock(
-        user_id=user_id, going_status=going_status, seat_alert_sent_at=None
+        user_id=user_id,
+        going_status=going_status,
+        seat_alert_sent_at=None,
+        sold_out_alert_sent_at=None,
     )
 
 
@@ -25,12 +28,15 @@ def test_only_selections_never_alerted_before_are_queried(
         return_value=[],
     )
 
-    push_notifications.send_seat_alerts(session=session, showtime_ids=[1, 2])
+    push_notifications.send_seat_alerts(
+        session=session, showtime_ids=[1, 2], kind=SeatAlertKind.NEARLY_SOLD_OUT
+    )
 
     get_candidates.assert_called_once_with(
         session=session,
         showtime_ids=[1, 2],
         statuses=push_notifications.SEAT_ALERT_STATUSES,
+        kind=SeatAlertKind.NEARLY_SOLD_OUT,
     )
     assert push_notifications.SEAT_ALERT_STATUSES == (GoingStatus.INTERESTED,)
 
@@ -58,7 +64,9 @@ def test_alerting_stamps_seat_alert_sent_at_so_it_cannot_repeat(
         "app.services.push_notifications.user_crud.get_users_by_ids",
         return_value=[recipient],
     )
-    token = mocker.MagicMock(token="ExponentPushToken[abc]")
+    # `user_id` matters: the sender groups tokens by owner before building
+    # messages, so a token that names nobody reaches nobody.
+    token = mocker.MagicMock(user_id=user_id, token="ExponentPushToken[abc]")
     mocker.patch(
         "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
         return_value=[token],
@@ -68,10 +76,14 @@ def test_alerting_stamps_seat_alert_sent_at_so_it_cannot_repeat(
         return_value=[{"status": "ok"}],
     )
     mocker.patch("app.services.push_notifications._handle_expo_results")
-    mocker.patch("app.services.push_notifications.notification_crud.upsert_notification")
+    mocker.patch(
+        "app.services.push_notifications.notification_crud.upsert_notification"
+    )
 
     sent_count = push_notifications.send_seat_alerts(
-        session=session, showtime_ids=[showtime.id]
+        session=session,
+        showtime_ids=[showtime.id],
+        kind=SeatAlertKind.NEARLY_SOLD_OUT,
     )
 
     assert sent_count == 1
@@ -105,9 +117,74 @@ def test_opted_out_recipients_receive_nothing(
     send_messages = mocker.patch("app.services.push_notifications._send_expo_messages")
 
     sent_count = push_notifications.send_seat_alerts(
-        session=session, showtime_ids=[showtime.id]
+        session=session,
+        showtime_ids=[showtime.id],
+        kind=SeatAlertKind.NEARLY_SOLD_OUT,
     )
 
     send_messages.assert_not_called()
     assert sent_count == 0
     assert selection.seat_alert_sent_at is None
+
+
+def test_sold_out_kind_uses_its_own_preference_stamp_and_wording(
+    mocker: MockerFixture,
+) -> None:
+    """The sold-out notice is not a second copy of the nearly-sold-out one with
+    a different name — it reads `notify_on_sold_out`, stamps
+    `sold_out_alert_sent_at`, and says "sold out" rather than "nearly"."""
+    session = mocker.MagicMock()
+    user_id = uuid4()
+    showtime = mocker.MagicMock(id=1, movie_id=2)
+    showtime.movie.title = "Perfect Days"
+    showtime.cinema.name = "Eye"
+    selection = _selection(mocker, user_id=user_id)
+
+    get_candidates = mocker.patch(
+        "app.services.push_notifications.showtime_crud.get_seat_alert_candidates",
+        return_value=[(selection, showtime)],
+    )
+    # Opted out of the nearly-sold-out nudge but in on the sold-out notice: the
+    # two preferences must be read independently.
+    recipient = mocker.MagicMock(
+        id=user_id,
+        notify_on_seat_alert=False,
+        notify_on_sold_out=True,
+        notify_channel_sold_out=NotificationChannel.PUSH,
+    )
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_users_by_ids",
+        return_value=[recipient],
+    )
+    # `user_id` matters: the sender groups tokens by owner before building
+    # messages, so a token that names nobody reaches nobody.
+    token = mocker.MagicMock(user_id=user_id, token="ExponentPushToken[abc]")
+    mocker.patch(
+        "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
+        return_value=[token],
+    )
+    send_expo = mocker.patch(
+        "app.services.push_notifications._send_expo_messages",
+        return_value=[{"status": "ok"}],
+    )
+    mocker.patch("app.services.push_notifications._handle_expo_results")
+    mocker.patch(
+        "app.services.push_notifications.notification_crud.upsert_notification"
+    )
+
+    sent_count = push_notifications.send_seat_alerts(
+        session=session, showtime_ids=[showtime.id], kind=SeatAlertKind.SOLD_OUT
+    )
+
+    get_candidates.assert_called_once_with(
+        session=session,
+        showtime_ids=[showtime.id],
+        statuses=push_notifications.SEAT_ALERT_STATUSES,
+        kind=SeatAlertKind.SOLD_OUT,
+    )
+    assert sent_count == 1
+    assert selection.sold_out_alert_sent_at is not None
+    assert selection.seat_alert_sent_at is None
+    sent_message = send_expo.call_args.args[0][0]
+    assert sent_message["title"] == "Perfect Days is sold out"
+    assert sent_message["data"]["type"] == "sold_out"

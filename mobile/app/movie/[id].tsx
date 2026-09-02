@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for movie / [id]. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   SectionList,
   Image,
@@ -12,14 +12,23 @@ import {
   Share,
   Alert,
 } from "react-native";
-import { ThemedRefreshControl } from "@/components/themed-refresh-control";
+import {
+  pullToRefreshContentStyle,
+  pullToRefreshScrollProps,
+  ThemedRefreshControl,
+} from "@/components/themed-refresh-control";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import type { Language } from "shared/client";
-import type { MoviePublic, ShowtimePublic, ShowtimeInMoviePublic } from "shared";
+import type {
+  MoviePublic,
+  ShowtimePublic,
+  ShowtimeInMoviePublic,
+  UserWithFriendStatus,
+} from "shared";
 import { MoviesService, ShowtimesService } from "shared";
 import { useFetchMovieShowtimes } from "shared/hooks/useFetchMovieShowtimes";
 import { usePrefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
@@ -28,6 +37,7 @@ import { usePrefetchShowtimeSeatAvailability } from "shared/hooks/useShowtimeSea
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
+import FriendOfFriendPopup from "@/components/friends/FriendOfFriendPopup";
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
 import {
   getFriendWatchKindMeta,
@@ -35,13 +45,17 @@ import {
 } from "@/components/friends/friend-watch-kind";
 import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import MovieDescriptionSection from "@/components/movies/MovieDescriptionSection";
-import { SkeletonRows } from "@/components/ui/SkeletonRows";
+import ListLoadingLogo from "@/components/layout/ListLoadingLogo";
+import { useDelayedTrue } from "@/hooks/useDelayedTrue";
+import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from "@/constants/loading-logo";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
+import { FeedItemEntrance } from "@/components/ui/FeedItemEntrance";
 import { Skeleton } from "@/components/ui/Skeleton";
 import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 import FiltersModal from "@/components/filters/FiltersModal";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
+import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
 import {
@@ -51,7 +65,7 @@ import {
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
-import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
+import { buildSnapshotTime, useSnapshotRefresh } from "@/utils/reset-infinite-query";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import { formatLanguageCode } from "@/utils/language";
@@ -201,6 +215,11 @@ function MovieHeaderSkeleton({ styles }: { styles: MovieStyles }) {
   );
 }
 
+/**
+ * The whole page, before it has been built at all. The filter row is the real,
+ * already-interactive one — the rest is the app's loading panel rather than a
+ * poster-and-rows shell, since nothing on the page is known yet.
+ */
 function MovieSkeleton({
   styles,
   filtersButton,
@@ -210,14 +229,11 @@ function MovieSkeleton({
 }) {
   return (
     <>
-      <MovieHeaderSkeleton styles={styles} />
       <View style={styles.divider} />
       <View style={styles.filterRow}>{filtersButton}</View>
       <View style={styles.divider} />
       <View style={styles.skeletonList}>
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} style={styles.skeletonCard} />
-        ))}
+        <ListLoadingLogo />
       </View>
     </>
   );
@@ -240,9 +256,21 @@ function MovieContent({
   const { openShowtimeModal, openShowtimeModalById } = useShowtimeModal();
 
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  // Set when the cinema pill's dropdown opens the sheet on a preset's pencil.
+  const [cinemaEditPresetId, setCinemaEditPresetId] = useState<string | null>(null);
+  const openCinemaModal = useCallback((options?: OpenCinemaModalOptions) => {
+    setCinemaEditPresetId(options?.editPresetId ?? null);
+    setCinemaModalVisible(true);
+  }, []);
+  const closeCinemaModal = useCallback(() => {
+    setCinemaModalVisible(false);
+    setCinemaEditPresetId(null);
+  }, []);
   // Which "watchlisted/watched by friends" popup is open, if any.
   const [watchModalKind, setWatchModalKind] = useState<FriendWatchKind | null>(null);
+  // The friend-request popup for a "+" tapped on a friend-of-friend badge.
+  // One popup for the whole list rather than one per row.
+  const [addFriendTarget, setAddFriendTarget] = useState<UserWithFriendStatus | null>(null);
 
   // The tabs' filters (status/day/time/language) are page-scoped here: they only
   // carry over when `inheritFilters` says this page was opened from the
@@ -368,6 +396,7 @@ function MovieContent({
     data: showtimesData,
     isLoading: isShowtimesLoading,
     isError: isShowtimesError,
+    isFetching: isShowtimesFetching,
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
@@ -379,6 +408,20 @@ function MovieContent({
   });
 
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
+  const { refreshing, handleRefresh: refreshShowtimes } = useSnapshotRefresh({
+    setSnapshotTime,
+    isFetching: isShowtimesFetching,
+  });
+  // `!refreshing`: ThemedRefreshControl's own spinner already covers a
+  // pull-to-refresh, so the panel has nothing to do for one even on an
+  // already-empty list. The delay keeps a filter change that resolves from
+  // cache from flashing the panel up and straight back out.
+  const isShowtimesEmptyLoading = isShowtimesLoading && !refreshing && showtimes.length === 0;
+  const showLoadingLogo = useDelayedTrue(
+    isShowtimesEmptyLoading,
+    LOADING_LOGO_DELAY_MS,
+    LOADING_LOGO_COOLDOWN_MS
+  );
   // Each row here opens the showtime sheet, so its visibility mode is fetched
   // up front — including for a showtime deep-linked via `targetShowtimeId`.
   usePrefetchShowtimeVisibility(showtimes.map((showtime) => showtime.id), {
@@ -422,13 +465,13 @@ function MovieContent({
 
   const handleRefresh = async () => {
     if (!Number.isFinite(movieId) || movieId === 0) return;
-    setRefreshing(true);
-    try {
-      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
-      await queryClient.invalidateQueries({ queryKey: ["movie", movieId] });
-    } finally {
-      setRefreshing(false);
-    }
+    // The header's own query is not snapshot-keyed, so it has to be told
+    // separately. Both run together — the refresh is over when the slower of
+    // them is, which `useSnapshotRefresh` decides from the showtimes query.
+    await Promise.all([
+      refreshShowtimes(),
+      queryClient.invalidateQueries({ queryKey: ["movie", movieId] }),
+    ]);
   };
 
   const isSynthetic = movie ? isSyntheticMovieId(movie.id) : false;
@@ -623,7 +666,7 @@ function MovieContent({
             <ActiveFilterChips
               inline
               onOpenFilters={() => { triggerSelectionHaptic(); setFiltersModalVisible(true); }}
-              onOpenCinemaModal={() => setCinemaModalVisible(true)}
+              onOpenCinemaModal={openCinemaModal}
               groupByMovie={false}
               setGroupByMovie={() => {}}
               watchlistOnly={false}
@@ -651,84 +694,121 @@ function MovieContent({
             />
           </View>
           <View style={styles.divider} />
-          <SectionList
-            sections={refreshing ? [] : showtimeSections}
-            keyExtractor={(item) => item.id.toString()}
-            stickySectionHeadersEnabled
-            ListHeaderComponent={
-              movie?.description ? (
-                <MovieDescriptionSection
-                  description={movie.description}
-                  letterboxdUrl={letterboxdSlug ? letterboxdUrl : null}
-                />
-              ) : null
-            }
-            renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.showtimeCardGlow,
-                    item.viewer?.going === "GOING"
-                      ? styles.showtimeCardGlowGoing
-                      : item.viewer?.going === "INTERESTED"
-                        ? styles.showtimeCardGlowInterested
-                        : undefined,
-                  ]}
-                  onPress={() => {
-                    if (movie) {
-                      openShowtimeModal(
-                        withMovieWatchLists(item, movie),
-                        { openedFrom: { movieId } }
-                      );
-                      return;
-                    }
-                    // The list no longer waits on the movie query, so a row can
-                    // be tapped in the window before the metadata lands. Open
-                    // the sheet by id rather than swallow the tap — it fetches
-                    // what it needs itself and is up immediately either way.
-                    openShowtimeModalById(item.id, { openedFrom: { movieId } });
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <View
+          <View style={styles.listWrapper}>
+            <SectionList
+              // Not cleared for a refresh: ThemedRefreshControl's own spinner
+              // already says a reload is running, and the rows it replaces stay
+              // up until the fresh ones land.
+              sections={showtimeSections}
+              keyExtractor={(item) => item.id.toString()}
+              stickySectionHeadersEnabled
+              ListHeaderComponent={
+                movie?.description ? (
+                  <MovieDescriptionSection
+                    description={movie.description}
+                    letterboxdUrl={letterboxdSlug ? letterboxdUrl : null}
+                  />
+                ) : null
+              }
+              // `index` here is the row's place *within its date group*, not in
+              // the list as a whole, so each group cascades from its own header
+              // rather than every group after the first arriving at once. The
+              // +1 leaves the group's date on step 0, ahead of its first row.
+              renderItem={({ item, index }) => (
+                <FeedItemEntrance index={index + 1}>
+                  <TouchableOpacity
                     style={[
-                      styles.showtimeCard,
+                      styles.showtimeCardGlow,
                       item.viewer?.going === "GOING"
-                        ? styles.showtimeCardGoing
+                        ? styles.showtimeCardGlowGoing
                         : item.viewer?.going === "INTERESTED"
-                          ? styles.showtimeCardInterested
-                        : undefined,
+                          ? styles.showtimeCardGlowInterested
+                          : undefined,
                     ]}
+                    onPress={() => {
+                      if (movie) {
+                        openShowtimeModal(
+                          withMovieWatchLists(item, movie),
+                          { openedFrom: { movieId } }
+                        );
+                        return;
+                      }
+                      // The list no longer waits on the movie query, so a row can
+                      // be tapped in the window before the metadata lands. Open
+                      // the sheet by id rather than swallow the tap — it fetches
+                      // what it needs itself and is up immediately either way.
+                      openShowtimeModalById(item.id, { openedFrom: { movieId } });
+                    }}
+                    activeOpacity={0.85}
                   >
-                    <ShowtimeRow
-                      showtime={item}
-                      showFriends
-                      alignCinemaRight
-                      showDate={false}
-                      isSyntheticMovie={isSynthetic}
-                    />
+                    <View
+                      style={[
+                        styles.showtimeCard,
+                        item.viewer?.going === "GOING"
+                          ? styles.showtimeCardGoing
+                          : item.viewer?.going === "INTERESTED"
+                            ? styles.showtimeCardInterested
+                          : undefined,
+                      ]}
+                    >
+                      <ShowtimeRow
+                        showtime={item}
+                        showFriends
+                        alignCinemaRight
+                        showDate={false}
+                        isSyntheticMovie={isSynthetic}
+                        onAddFriend={setAddFriendTarget}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                </FeedItemEntrance>
+              )}
+              // Index 0, with the rows behind it starting at 1: the date leads
+              // its own group in, rather than being the one thing on the list
+              // that snaps into place while everything under it fades up.
+              renderSectionHeader={({ section }) => (
+                <FeedItemEntrance index={0}>
+                  <View style={styles.dateGroupHeader}>
+                    <ThemedText style={styles.dateGroupHeaderText}>{section.title}</ThemedText>
                   </View>
-                </TouchableOpacity>
-            )}
-            renderSectionHeader={({ section }) => (
-              <View style={styles.dateGroupHeader}>
-                <ThemedText style={styles.dateGroupHeaderText}>{section.title}</ThemedText>
-              </View>
-            )}
-            contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) }]}
-            refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-            onEndReached={handleEndReached}
-            onEndReachedThreshold={0.4}
-            ListEmptyComponent={
-              isShowtimesLoading || refreshing ? (
-                <SkeletonRows height={64} />
-              ) : isShowtimesError ? (
-                <ThemedText style={styles.errorText}>Could not load showtimes.</ThemedText>
-              ) : (
-                <ThemedText style={styles.noShowtimes}>No upcoming showtimes</ThemedText>
-              )
-            }
-            ListFooterComponent={<LoadMoreFooter loading={isFetchingNextPage} size="small" />}
-          />
+                </FeedItemEntrance>
+              )}
+              contentContainerStyle={[
+                styles.content,
+                pullToRefreshContentStyle,
+                { paddingBottom: Math.max(insets.bottom, 16) },
+              ]}
+              {...pullToRefreshScrollProps}
+              refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+              onEndReached={handleEndReached}
+              onEndReachedThreshold={0.4}
+              ListEmptyComponent={
+                // Unlike the app's other feeds, the panel here is part of the
+                // list's own content rather than a fixed overlay over the whole
+                // viewport. This list has a header the other feeds don't — the
+                // movie's description — and that description is already loaded
+                // and often long, so an overlay centred on the viewport printed
+                // the logo straight over text that was fine. In the empty slot
+                // it lands where the showtimes themselves will: under the
+                // description, at the top of the section, scrolling with it.
+                //
+                // What the overlay bought was immunity to RefreshControl's pull
+                // dragging the panel down the screen, and that is not needed
+                // here: `isShowtimesEmptyLoading` carries `!refreshing`, so this
+                // is never up for a pull-to-refresh in the first place.
+                showLoadingLogo ? (
+                  <View style={styles.loadingPanel}>
+                    <ListLoadingLogo />
+                  </View>
+                ) : isShowtimesEmptyLoading || refreshing ? null : isShowtimesError ? (
+                  <ThemedText style={styles.errorText}>Could not load showtimes.</ThemedText>
+                ) : (
+                  <ThemedText style={styles.noShowtimes}>No upcoming showtimes</ThemedText>
+                )
+              }
+              ListFooterComponent={<LoadMoreFooter loading={isFetchingNextPage} size="small" />}
+            />
+          </View>
         </>
       )}
       <FiltersModal
@@ -746,7 +826,7 @@ function MovieContent({
         setSelectedShowtimeFilter={setSelectedShowtimeFilter}
         showStatusFilter
         showCinemas
-        onOpenCinemaModal={() => setCinemaModalVisible(true)}
+        onOpenCinemaModal={openCinemaModal}
         showRuntime={false}
         selectedDays={selectedDays}
         setSelectedDays={setSelectedDays}
@@ -760,7 +840,8 @@ function MovieContent({
       />
       <CinemaFilterModal
         visible={cinemaModalVisible}
-        onClose={() => setCinemaModalVisible(false)}
+        onClose={closeCinemaModal}
+        initialEditPresetId={cinemaEditPresetId}
       />
       {/* Static list — a movie page has no single showtime to invite anyone to. */}
       <FriendWatchListModal
@@ -768,6 +849,7 @@ function MovieContent({
         friends={watchModalKind === "watched" ? friendsWatched : friendsWatchlisted}
         onClose={() => setWatchModalKind(null)}
       />
+      <FriendOfFriendPopup user={addFriendTarget} onClose={() => setAddFriendTarget(null)} />
     </>
   );
 }
@@ -970,14 +1052,19 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 10,
       backgroundColor: colors.cardBackground,
     },
+    // Fills what's left below the filter row, so the loading panel centres in
+    // the space the showtimes will take rather than against the divider.
     skeletonList: {
+      flex: 1,
       padding: 16,
-      gap: 12,
     },
-    skeletonCard: {
-      height: 72,
-      borderRadius: 10,
-    },
+    listWrapper: { flex: 1 },
+    // `ListLoadingLogo` is built to fill a viewport-sized overlay (`flex: 1`
+    // around its own 200pt floor). Here it sits in list content instead, where
+    // height comes from the content, so the panel is given a height to lay its
+    // logo out within — enough to read as the top of the section waiting to
+    // fill, without reserving a whole screen for it.
+    loadingPanel: { height: 260 },
     showtimeCardGlowGoing: glowStyles.going,
     showtimeCardGlowInterested: glowStyles.interested,
     showtimeCardGoing: {

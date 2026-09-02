@@ -23,6 +23,7 @@ const MAPPING = {
   'calendar': 'event',
   'list.bullet.rectangle': 'format-list-bulleted',
   'person.2.fill': 'people',
+  'bolt.fill': 'bolt',
   'bell.fill': 'notifications',
   'gearshape.fill': 'settings',
 } as IconMapping;

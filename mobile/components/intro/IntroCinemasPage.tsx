@@ -25,12 +25,10 @@ import { invalidateCinemaPresets } from "@/components/filters/cinema-presets";
 import IntroPageShell from "@/components/intro/IntroPageShell";
 import { ThemedText } from "@/components/themed-text";
 import { Skeleton } from "@/components/ui/Skeleton";
+import ListLoadingLogo from "@/components/layout/ListLoadingLogo";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { retireCinemaPresetTip } from "@/utils/feature-tips";
 import { triggerSelectionHaptic } from "@/utils/long-press";
-
-/** Placeholder rows drawn while the cinema list is still in flight. */
-const SKELETON_ROW_COUNT = 8;
 
 export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
   // Read flow: local state and data hooks first, then handlers, then the JSX.
@@ -121,8 +119,8 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
       message="We'll only show you showtimes at the cinemas you pick. You can change this any time."
       primaryLabel={selectedCount === 0 ? "Continue without saving" : "Save and continue"}
       onPrimary={handleSave}
-      // Only the loading case is blocked: pressing through an empty skeleton
-      // would silently skip the step the user is looking at.
+      // Only the loading case is blocked: pressing through a list that has
+      // not arrived would silently skip the step the user is looking at.
       isPrimaryDisabled={isCinemaListLoading}
       isPrimaryBusy={saveMutation.isPending}
       secondaryLabel="Skip for now"
@@ -151,16 +149,17 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
       </View>
       <ScrollView
         style={styles.pickerBox}
-        contentContainerStyle={styles.pickerContent}
+        // Grown while loading so the panel centres in the box rather than
+        // sitting against its top edge.
+        contentContainerStyle={[
+          styles.pickerContent,
+          isCinemaListLoading && styles.pickerContentFill,
+        ]}
         showsVerticalScrollIndicator={!isCinemaListLoading}
         scrollEnabled={!isCinemaListLoading}
       >
         {isCinemaListLoading ? (
-          <View style={styles.skeletonList}>
-            {Array.from({ length: SKELETON_ROW_COUNT }, (_unused, index) => (
-              <Skeleton key={index} style={styles.skeletonRow} />
-            ))}
-          </View>
+          <ListLoadingLogo />
         ) : (
           <CinemaPickerList
             cinemas={cinemaList}
@@ -212,11 +211,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingHorizontal: 24,
       paddingVertical: 12,
     },
-    skeletonList: {
-      gap: 14,
-    },
-    skeletonRow: {
-      height: 20,
-      borderRadius: 5,
+    pickerContentFill: {
+      flexGrow: 1,
     },
   });

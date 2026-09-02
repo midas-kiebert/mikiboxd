@@ -47,11 +47,27 @@ class SavedPreset(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(JSON, nullable=False),
     )
-    # Cinema selection. ``None`` means the preset does not touch the cinema
-    # selection; a list applies it.
+    # Cinema selection as it was ticked when the preset was saved. ``None``
+    # means the preset does not touch the cinema selection; a list applies it.
+    # Kept as the fallback for rows saved before scopes existed.
     cinema_ids: list[int] | None = Field(
         default=None,
         sa_column=Column(JSON, nullable=True),
     )
+    # The rule behind that selection (``app.schemas.cinema_scope.CinemaScope``),
+    # so cinemas that open after the preset was saved land inside it. ``None``
+    # both on rows that predate scopes and on presets that leave cinemas alone.
+    cinema_scope: dict[str, Any] | None = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True),
+    )
+    # When set, this preset follows a saved `CinemaPreset` live rather than the
+    # frozen `cinema_ids`/`cinema_scope` above — editing that cinema preset
+    # changes this one's resolved cinemas too. `cinema_ids`/`cinema_scope` are
+    # still kept in sync as a snapshot: if the linked preset is ever deleted,
+    # `crud.saved_preset.resolve_preset_cinema_ids` converts this preset back
+    # to that snapshot and clears this field, permanently. No DB-level FK,
+    # matching `CinemaPreset`'s own dangling-reference columns.
+    cinema_preset_id: uuid.UUID | None = Field(default=None)
     created_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)
     updated_at: datetime = Field(default_factory=now_amsterdam_naive, nullable=False)

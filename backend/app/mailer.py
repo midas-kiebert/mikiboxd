@@ -9,7 +9,9 @@ SMTP settings come from environment variables (see core/config.py).
 
 import html
 import logging
+import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +19,7 @@ import emails  # type: ignore
 from jinja2 import Template
 
 from app.core.config import settings
+from app.core.enums import DIGEST_FREQUENCY_LABELS, DigestFrequency
 from app.core.security import generate_watchlist_digest_unsubscribe_token
 
 if TYPE_CHECKING:
@@ -26,14 +29,43 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 BRAND_NAME = "MiKiNO"
-BRAND_LOGO_URL = "https://mikino.nl/assets/images/mikino-logo.png"
 REPORT_NOTIFICATION_EMAIL = "info@mikino.nl"
+
+
+@dataclass
+class DigestSource:
+    """One `WatchlistDigestSource` that contributed films to a digest email,
+    named and dated for the email's footer.
+
+    A user with several digest sources due the same day gets one combined
+    email rather than one per source (see
+    `services/watchlist_digest.py::build_and_send_combined_digest`), so the
+    footer lists every contributing source — usually just one.
+
+    ``label`` is a complete noun phrase ("your Letterboxd watchlist", "the
+    Letterboxd list “Best of 2026”") because the two cases don't share a
+    sentence shape. ``url`` is None when the source can't be linked — a chosen
+    list whose row has since been deleted. ``frequency`` is this source's own
+    cadence, since sources combined into one email may not share one.
+    ``cinemas_label`` names its cinema restriction ("All cinemas", "My
+    Cinemas", "3 custom cinemas") the same way — each row of the footer
+    describes one axis of the source rather than folding all three into one
+    sentence, so a source with an unusual combination is never left implicit.
+    """
+
+    label: str
+    url: str | None
+    frequency: DigestFrequency
+    cinemas_label: str
 
 
 @dataclass
 class EmailData:
     html_content: str
     subject: str
+    # Hand-written text/plain alternative. Generators that care about the
+    # wording set it; the rest fall back to _html_to_plain_text().
+    text_content: str = ""
 
 
 class EmailDeliveryError(Exception):
@@ -45,8 +77,57 @@ def _render_email_template(*, template_name: str, context: dict[str, Any]) -> st
     template_str = (
         Path(__file__).parent / "email-templates" / "build" / template_name
     ).read_text()
-    template: Template = Template(template_str)
+    # autoescape: film titles come from TMDB and list titles from Letterboxd,
+    # so every value interpolated here is third-party text.
+    template: Template = Template(template_str, autoescape=True)
     return template.render(context)
+
+
+# <head> goes wholesale: MJML puts the <title> and the responsive <style> block
+# there, and both would otherwise surface as stray text.
+_DROPPED_BLOCK_RE = re.compile(
+    r"<(script|style|head)\b.*?</\1>", re.IGNORECASE | re.DOTALL
+)
+# Comments carry MJML's Outlook ghost tables and its <o:PixelsPerInch>96</...>
+# block, which leaks a bare "96" into the text part if left in.
+_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_LINK_RE = re.compile(
+    r"<a\b[^>]*\bhref=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", re.IGNORECASE | re.DOTALL
+)
+_BLOCK_BOUNDARY_RE = re.compile(
+    r"</(?:p|div|tr|li|h[1-6]|table)\s*>|<br\s*/?>", re.IGNORECASE
+)
+_ANY_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _html_to_plain_text(html_content: str) -> str:
+    """Derive a readable text/plain part from rendered HTML.
+
+    Every email goes out as multipart/alternative rather than HTML-only: an
+    HTML-only body is one of the signals mail clients use to sort a message as
+    bulk mail, which is part of why the watchlist digest was landing in Proton's
+    Promotions category instead of the primary inbox.
+
+    This is the fallback for the internal emails (moderation reports, scrape
+    recap) whose plain-text wording nobody reads closely. User-facing
+    generators hand-write `EmailData.text_content` instead.
+    """
+    text = _COMMENT_RE.sub("", html_content)
+    text = _DROPPED_BLOCK_RE.sub("", text)
+    text = _LINK_RE.sub(
+        lambda match: f"{_ANY_TAG_RE.sub('', match.group(2)).strip()} ({match.group(1)})",
+        text,
+    )
+    text = _BLOCK_BOUNDARY_RE.sub("\n", text)
+    text = _ANY_TAG_RE.sub("", text)
+    text = html.unescape(text)
+    lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        # Collapse runs of blank lines, but keep single ones as paragraph breaks.
+        if line or (lines and lines[-1]):
+            lines.append(line)
+    return "\n".join(lines).strip()
 
 
 def send_email(
@@ -54,9 +135,10 @@ def send_email(
     email_to: str,
     subject: str = "",
     html_content: str = "",
+    text_content: str = "",
     attachments: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Send an HTML email via the configured SMTP server.
+    """Send a multipart/alternative email via the configured SMTP server.
 
     Raises:
         AssertionError: If email settings are not configured.
@@ -74,6 +156,7 @@ def send_email(
     message = emails.Message(
         subject=subject,
         html=html_content,
+        text=text_content or _html_to_plain_text(html_content),
         mail_from=(settings.EMAILS_FROM_NAME, settings.EMAILS_FROM_EMAIL),
     )
     for attachment in attachments or []:
@@ -148,14 +231,126 @@ def generate_verify_email_email(email_to: str, token: str) -> EmailData:
     return EmailData(html_content=html_content, subject=subject)
 
 
+def _watchlist_digest_subject(
+    movie_entries: list[tuple["Movie", "Showtime"]], *, within_week: bool
+) -> str:
+    """Build the digest subject line from the films it is about.
+
+    Deliberately no "MiKiNO - " prefix and no standing phrase: a brand-prefixed,
+    identical-every-time subject is one of the shapes mail clients score as bulk
+    marketing, and this digest was being filed under Proton's Promotions
+    category. Naming the actual films makes it read like the notification it is.
+
+    ``within_week`` is about the films actually being sent, not a source's
+    declared frequency: a combined email can carry films from a DAILY source
+    and a WEEKLY one in the same send, so "this week" is only said when every
+    film shown really is screening within seven days — never inferred from
+    which source(s) contributed them.
+    """
+    titles = [movie.title for movie, _ in movie_entries]
+    if len(titles) == 1:
+        cinema_name = movie_entries[0][1].cinema.name
+        if within_week:
+            return f"{titles[0]} is showing at {cinema_name} this week"
+        return f"{titles[0]} is coming to {cinema_name}"
+    if len(titles) == 2:
+        subjects = f"{titles[0]} and {titles[1]}"
+    else:
+        subjects = f"{titles[0]}, {titles[1]} and {len(titles) - 2} more"
+    if within_week:
+        return f"{subjects} are showing this week"
+    return f"{subjects} are coming up"
+
+
+def _watchlist_digest_intro(within_week: bool) -> str:
+    """The email's opening line, matched to whether every film shown is
+    actually screening within the coming week (see `_watchlist_digest_subject`
+    on why this is derived from the films themselves rather than a frequency).
+
+    Says nothing about where the films came from — the source is named in the
+    footer, and it isn't always a watchlist.
+    """
+    if within_week:
+        return "These films are showing in the coming week:"
+    return "These films are coming to your cinemas:"
+
+
+def _watchlist_digest_explainer(frequency: DigestFrequency) -> str:
+    """One sentence telling the reader what their chosen mode actually does.
+
+    Kept in the email rather than left to Settings so the footer answers "why am
+    I getting this now?" on its own. Deliberately shorter than the settings
+    descriptions in api/routes/utils.py, but must not contradict them.
+    """
+    if frequency == DigestFrequency.WEEKLY_OR_URGENT:
+        return "You get one email each Thursday, covering the next seven days."
+    return (
+        "You get an email the day a film on it becomes available, "
+        "however far ahead it screens."
+    )
+
+
+def _watchlist_digest_text(
+    *,
+    intro: str,
+    movies: list[dict[str, Any]],
+    sources: list[DigestSource],
+    unsubscribe_link: str,
+) -> str:
+    """Render the text/plain half of the digest.
+
+    Hand-written rather than derived from the HTML so the plain-text part reads
+    as a real message; some clients show it, and all of them weigh it.
+    """
+    lines = [intro, ""]
+    for movie in movies:
+        lines.append(str(movie["title"]))
+        lines.append(f"{movie['cinema_name']} - {movie['datetime_label']}")
+        lines.append(str(movie["mikino_link"]))
+        lines.append("")
+    for index, source in enumerate(sources):
+        following = source.label + (f" ({source.url})" if source.url else "")
+        if len(sources) > 1:
+            lines.append(f"Source {index + 1}:")
+        lines.append(
+            f"Frequency: {DIGEST_FREQUENCY_LABELS[source.frequency]}"
+            f" — {_watchlist_digest_explainer(source.frequency)}"
+        )
+        lines.append(f"List: {following}")
+        lines.append(f"Cinemas: {source.cinemas_label}")
+        lines.append("")
+    lines.append(f"To stop these emails: {unsubscribe_link}")
+    return "\n".join(lines)
+
+
+# How far ahead a film has to screen to still count as "this week" in the
+# subject/intro — matches `_WEEKLY_HORIZON` in `services/watchlist_digest.py`,
+# the same seven-day window a WEEKLY source's own films are always filtered
+# to. Kept as a separate constant since this module has no reason to import
+# that one — the two are the same figure by design, not by coincidence.
+_SUBJECT_WEEK_HORIZON = timedelta(days=7)
+
+
 def generate_watchlist_digest_email(
     *,
     email_to: str,
     movie_entries: list[tuple["Movie", "Showtime"]],
+    sources: list[DigestSource],
+    now: datetime,
 ) -> EmailData:
-    """Generate the watchlist digest email for movies that just got a new showtime."""
-    subject = f"{BRAND_NAME} - New showtimes for your watchlist"
-    movies = [
+    """Generate the watchlist digest email for movies that just became available.
+
+    ``sources`` is every digest source that contributed at least one of
+    ``movie_entries`` to this send — usually one, but a user with several due
+    the same day gets a single combined email rather than one per source (see
+    `services/watchlist_digest.py::build_and_send_combined_digest`), so the
+    footer lists each of them.
+    """
+    within_week = all(
+        showtime.datetime <= now + _SUBJECT_WEEK_HORIZON
+        for _, showtime in movie_entries
+    )
+    movies: list[dict[str, Any]] = [
         {
             "title": movie.title,
             "cinema_name": showtime.cinema.name,
@@ -175,16 +370,38 @@ def generate_watchlist_digest_email(
         f"{settings.API_HOST}{settings.API_V1_STR}"
         f"/users/unsubscribe-watchlist-digest?token={unsubscribe_token}"
     )
+    intro = _watchlist_digest_intro(within_week)
     html_content = _render_email_template(
         template_name="watchlist_digest.html",
         context={
             "brand_name": BRAND_NAME,
-            "logo_url": BRAND_LOGO_URL,
+            "intro": intro,
             "movies": movies,
+            "sources": [
+                {
+                    "label": source.label,
+                    "url": source.url,
+                    "frequency_label": DIGEST_FREQUENCY_LABELS[source.frequency],
+                    "frequency_explainer": _watchlist_digest_explainer(
+                        source.frequency
+                    ),
+                    "cinemas_label": source.cinemas_label,
+                }
+                for source in sources
+            ],
             "unsubscribe_link": unsubscribe_link,
         },
     )
-    return EmailData(html_content=html_content, subject=subject)
+    return EmailData(
+        html_content=html_content,
+        subject=_watchlist_digest_subject(movie_entries, within_week=within_week),
+        text_content=_watchlist_digest_text(
+            intro=intro,
+            movies=movies,
+            sources=sources,
+            unsubscribe_link=unsubscribe_link,
+        ),
+    )
 
 
 def generate_user_report_email(

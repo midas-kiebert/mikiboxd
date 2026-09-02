@@ -25,7 +25,7 @@ import {
   useImperativeHandle,
   useState,
 } from "react";
-import type { SeatFloorPlanSeatPublic } from "shared";
+import type { ScreenSide, SeatFloorPlanSeatPublic } from "shared";
 
 import SeatFloorPlan from "@/components/showtimes/SeatFloorPlan";
 import SeatFloorPlanPreview from "@/components/showtimes/SeatFloorPlanPreview";
@@ -42,6 +42,8 @@ export type SeatSheetsHandle = {
 type SeatSheetsProps = {
   room: string | null;
   seats: SeatFloorPlanSeatPublic[] | null;
+  /** Which end of `seats` the screen is at — a fact about the room, stored. */
+  screenSide: ScreenSide;
   isLoadingFloorPlan: boolean;
   isFloorPlanError: boolean;
   cinemaName: string | null;
@@ -65,6 +67,7 @@ const SeatSheets = memo(
     {
       room,
       seats,
+      screenSide,
       isLoadingFloorPlan,
       isFloorPlanError,
       cinemaName,
@@ -114,6 +117,7 @@ const SeatSheets = memo(
           visible={openSheet === "picker"}
           room={room}
           seats={seats}
+          screenSide={screenSide}
           isLoading={openSheet === "picker" && isLoadingFloorPlan}
           isError={isFloorPlanError}
           cinemaName={cinemaName}
@@ -134,6 +138,7 @@ const SeatSheets = memo(
           visible={openSheet === "preview"}
           room={room}
           seats={seats}
+          screenSide={screenSide}
           isLoading={openSheet === "preview" && isLoadingFloorPlan}
           cinemaName={cinemaName}
           movieTitle={movieTitle}

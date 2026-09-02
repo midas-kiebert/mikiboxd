@@ -14,11 +14,16 @@
  * strangers, or show them your QR code), so it gets its own mode rather than a
  * pill in among the rest.
  *
+ * The two modes are pages of a pager as well as segments of a control: the
+ * finger drags between them, and the thumb travels to meet whichever page it
+ * was let go on. Both are mounted at once, so the page being dragged into view
+ * already holds its rows rather than being built on release.
+ *
  * Every row is a `FriendCard`, which already adapts to the relationship, so a
  * request row carries Accept/Decline and a friend row carries the per-friend
  * visibility control without this screen knowing the difference.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
@@ -27,9 +32,16 @@ import {
   StyleSheet,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { ThemedRefreshControl } from '@/components/themed-refresh-control';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { GestureDetector } from 'react-native-gesture-handler';
+import {
+  pullToRefreshContentStyle,
+  pullToRefreshScrollProps,
+  ThemedRefreshControl,
+} from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MeService, type UserWithFriendStatus } from 'shared';
@@ -47,13 +59,21 @@ import SearchBar from '@/components/inputs/SearchBar';
 import FriendCard from '@/components/friends/FriendCard';
 import SignedOutPanel from '@/components/auth/SignedOutPanel';
 import ShareInviteLinkButton from '@/components/friends/ShareInviteLinkButton';
-import { SkeletonRows } from '@/components/ui/SkeletonRows';
+import ListLoadingLogo from '@/components/layout/ListLoadingLogo';
+import { useDelayedTrue } from '@/hooks/useDelayedTrue';
+import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from '@/constants/loading-logo';
 import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
+import { FeedItemEntrance } from '@/components/ui/FeedItemEntrance';
 import SegmentedControl, { type SegmentedOption } from '@/components/ui/SegmentedControl';
 import { buildFriendInviteUrl } from '@/constants/friend-invite';
 import { useIsSignedIn } from '@/utils/auth-session';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useSwipePager } from '@/hooks/useSwipePager';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 import { triggerSelectionHaptic } from '@/utils/long-press';
+import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
+import { tabContentHoldMs } from '@/components/tab-bar';
+import { useDeferredMount } from '@/utils/use-deferred-mount';
 
 /** What signing in would put on this tab, in the order it would appear. */
 const FRIENDS_HIGHLIGHTS = [
@@ -62,13 +82,15 @@ const FRIENDS_HIGHLIGHTS = [
   "Find people by username, or share your own link",
 ] as const;
 
-/** Friend rows carry the visibility control, so their skeleton is taller than a plain user row. */
-const FRIEND_ROW_SKELETON_HEIGHT = 104;
 /** The QR plate is a fixed size, so its loading state has to match it exactly. */
 const QR_SIZE = 210;
 
+/** Matches `UserSearchResults` and the other search screens' debounce. */
+const SEARCH_DEBOUNCE_MS = 280;
+
 type FriendsMode = 'friends' | 'discover';
 
+/** Left to right: the order of the segments *and* of the pages behind them. */
 const MODE_OPTIONS: readonly SegmentedOption<FriendsMode>[] = [
   { value: 'friends', label: 'Friends', icon: 'people' },
   { value: 'discover', label: 'Find people', icon: 'person-search' },
@@ -95,7 +117,7 @@ type FriendsSection = {
  *  type is still inferred from `FriendsSection` rather than from `never[]`. */
 const EMPTY_SECTIONS: FriendsSection[] = [];
 
-export default function FriendsScreen() {
+function FriendsScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -110,7 +132,15 @@ export default function FriendsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const normalizedSearchQuery = searchQuery.trim();
   const normalizedSearchQueryLower = normalizedSearchQuery.toLowerCase();
+  // The friends list below is filtered locally on every keystroke — cheap,
+  // and instant is exactly what that box should feel like. Strangers are
+  // filtered on the server, so that half waits for typing to settle: firing
+  // a request per keystroke raced each one's response against the next,
+  // occasionally landing an older, shorter page's row on top of the latest
+  // one's.
+  const debouncedSearchQuery = useDebouncedValue(normalizedSearchQuery, SEARCH_DEBOUNCE_MS);
   const hasUserSearch = normalizedSearchQuery.length > 0;
+  const hasDebouncedUserSearch = debouncedSearchQuery.length > 0;
   // Controls pull-to-refresh spinner visibility.
   const [refreshing, setRefreshing] = useState(false);
   const { tab } = useLocalSearchParams<{ tab?: string | string[] }>();
@@ -128,14 +158,22 @@ export default function FriendsScreen() {
   }, [requestedMode]);
 
   const isDiscovering = mode === 'discover';
+  const modeIndex = Math.max(
+    0,
+    MODE_OPTIONS.findIndex((option) => option.value === mode)
+  );
+  const { width: pageWidth } = useWindowDimensions();
 
   // Build the filter payload from current UI selections.
   const userFilters = useMemo(
-    () => ({ query: normalizedSearchQuery }),
-    [normalizedSearchQuery]
+    () => ({ query: debouncedSearchQuery }),
+    [debouncedSearchQuery]
   );
 
-  // Searching strangers is the only list here that needs pagination.
+  // Searching strangers is the only list here that needs pagination. It stays
+  // gated on the mode, unlike the lists below: it is the one query here that
+  // costs a request per keystroke, and the box is cleared on every switch, so
+  // that page never has anything worth preloading anyway.
   const {
     data: usersData,
     fetchNextPage,
@@ -145,17 +183,20 @@ export default function FriendsScreen() {
   } = useFetchUsers({
     limit: 20,
     filters: userFilters,
-    enabled: isSignedIn && isDiscovering && hasUserSearch,
+    enabled: isSignedIn && isDiscovering && hasDebouncedUserSearch,
   });
 
+  // Not gated on the mode any more: the two modes are pages of one pager, and
+  // the Friends page has to already hold its rows when the finger drags it into
+  // view rather than filling in behind the swipe.
   const { data: friendsData, isFetching: isFetchingFriends } = useFetchFriends({
-    enabled: isSignedIn && !isDiscovering,
+    enabled: isSignedIn,
   });
   const { data: receivedRequests, isFetching: isFetchingReceived } = useFetchReceivedRequests({
     enabled: isSignedIn,
   });
   const { data: sentRequests } = useFetchSentRequests({
-    enabled: isSignedIn && !isDiscovering,
+    enabled: isSignedIn,
   });
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -165,7 +206,7 @@ export default function FriendsScreen() {
 
   // Flatten/derive list data for rendering efficiency.
   const users = useMemo(() => usersData?.pages.flat() ?? [], [usersData]);
-  const displayedUsers = hasUserSearch ? users : [];
+  const displayedUsers = hasDebouncedUserSearch ? users : [];
   const friends = useMemo(() => friendsData ?? [], [friendsData]);
   const received = useMemo(() => receivedRequests ?? [], [receivedRequests]);
   const sent = useMemo(() => sentRequests ?? [], [sentRequests]);
@@ -221,6 +262,20 @@ export default function FriendsScreen() {
   const isLoadingFriendsView =
     (isFetchingFriends || isFetchingReceived) && friends.length === 0 && received.length === 0;
 
+  // Whichever list is on screen, waiting on its first rows. `refreshing` is
+  // deliberately not in here: ThemedRefreshControl's own spinner already says
+  // a reload is running, and the rows stay up until the fresh ones land.
+  const isListLoading =
+    !refreshing &&
+    (isDiscovering
+      ? hasDebouncedUserSearch && isFetchingUsers && displayedUsers.length === 0
+      : isLoadingFriendsView);
+  const showLoadingLogo = useDelayedTrue(
+    isListLoading,
+    LOADING_LOGO_DELAY_MS,
+    LOADING_LOGO_COOLDOWN_MS
+  );
+
   const searchPlaceholder = isDiscovering ? 'Search everyone' : 'Search your friends';
   const inviteUrl = useMemo(
     () => (currentUser?.id ? buildFriendInviteUrl(currentUser.id) : null),
@@ -261,13 +316,41 @@ export default function FriendsScreen() {
     }
   };
 
+  // `useRef` rather than a value: `handleChangeMode` is handed to the pager as
+  // `onIndexChange`, so it cannot close over the pager it is being built with.
+  const goToPageRef = useRef<((index: number) => void) | null>(null);
+
   const handleChangeMode = useCallback((next: FriendsMode) => {
+    // Start the pages moving here rather than from the render this causes:
+    // until that commit lands, nothing driven by React state has moved. A
+    // swipe arrives with the movement already under way; this is a tap doing
+    // the same.
+    goToPageRef.current?.(MODE_OPTIONS.findIndex((option) => option.value === next));
     // The query means something different on each side (a stranger's name vs.
     // one of your own friends'), so carrying it across would silently apply a
     // filter to a list the user has not looked at yet.
     setSearchQuery('');
     setMode(next);
   }, []);
+
+  const handleChangeIndex = useCallback(
+    // No haptic: a swipe is a continuous gesture the user is already watching
+    // answer them, unlike a tap, where the segment fires one of its own.
+    (index: number) => handleChangeMode(MODE_OPTIONS[index].value),
+    [handleChangeMode]
+  );
+
+  const { progress, panGesture, goTo } = useSwipePager({
+    pageCount: MODE_OPTIONS.length,
+    index: modeIndex,
+    onIndexChange: handleChangeIndex,
+    pageWidth,
+  });
+  goToPageRef.current = goTo;
+
+  const pagerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -progress.value * pageWidth }],
+  }));
 
   // Unlike switching modes by hand, this carries the query across: the whole
   // point is to run the name they already typed against everyone.
@@ -298,6 +381,139 @@ export default function FriendsScreen() {
     </View>
   );
 
+  // The two pages, in the order `MODE_OPTIONS` lists them. Both are built every
+  // render now rather than one being chosen — see the pager below.
+  const friendsPage = (
+    <SectionList
+      // Not cleared for a refresh: ThemedRefreshControl's own spinner
+      // already says a reload is running, and the rows it replaces stay
+      // up until the fresh ones land.
+      sections={isLoadingFriendsView ? EMPTY_SECTIONS : sections}
+      keyExtractor={(item) => `friend-row-${item.id}`}
+      contentContainerStyle={[styles.content, pullToRefreshContentStyle]}
+      {...pullToRefreshScrollProps}
+      showsVerticalScrollIndicator={false}
+      stickySectionHeadersEnabled={false}
+      refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      // Per-section index, so each section cascades from its own header rather
+      // than the ones below the first all arriving together.
+      renderItem={({ item, index }) => (
+        <FeedItemEntrance index={index}>
+          <View style={styles.row}>
+            <FriendCard user={item} />
+          </View>
+        </FeedItemEntrance>
+      )}
+      renderSectionHeader={({ section }) => (
+        <View style={styles.sectionHeader}>
+          <ThemedText
+            style={[styles.sectionTitle, section.isCallToAction && styles.sectionTitleCallToAction]}
+          >
+            {section.title}
+          </ThemedText>
+          <View
+            style={[styles.sectionCount, section.isCallToAction && styles.sectionCountCallToAction]}
+          >
+            <ThemedText
+              style={[
+                styles.sectionCountText,
+                section.isCallToAction && styles.sectionCountTextCallToAction,
+              ]}
+            >
+              {section.count}
+            </ThemedText>
+          </View>
+        </View>
+      )}
+      renderSectionFooter={({ section }) =>
+        section.data.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <ThemedText style={styles.emptyTitle}>
+              {hasUserSearch ? 'No matches' : 'No friends yet'}
+            </ThemedText>
+            <ThemedText style={styles.emptyText}>
+              {!hasUserSearch
+                ? 'Find people by name, or let them scan your QR code.'
+                : hasNoSearchMatches
+                  ? 'This box only searches people you are already friends with.'
+                  : 'Nobody in your friends matches that name.'}
+            </ThemedText>
+            {hasNoSearchMatches ? (
+              <TouchableOpacity
+                style={styles.emptyAction}
+                onPress={handleSearchEveryone}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={`Search everyone for ${normalizedSearchQuery}`}
+              >
+                <MaterialIcons name="person-search" size={17} color={colors.pillActiveText} />
+                <ThemedText style={styles.emptyActionText}>Find people instead</ThemedText>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null
+      }
+      // Only ever empty of *sections* while loading (see `sections`
+      // above), and the loading panel is a fixed overlay below rather
+      // than list content — a section with no rows says so in its own
+      // footer instead.
+      ListEmptyComponent={null}
+      ListFooterComponent={
+        // The invite card sits at the bottom of your own list rather than
+        // behind a separate tab: adding people is the natural next thing
+        // after looking at who you already have.
+        isLoadingFriendsView ? null : <View style={styles.inviteFooter}>{inviteCard}</View>
+      }
+    />
+  );
+
+  const discoverPage = (
+    <FlatList
+      data={displayedUsers}
+      keyExtractor={(item) => `user-${item.id}`}
+      contentContainerStyle={[styles.content, pullToRefreshContentStyle]}
+      {...pullToRefreshScrollProps}
+      showsVerticalScrollIndicator={false}
+      refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      renderItem={({ item, index }) => (
+        <FeedItemEntrance index={index}>
+          <FriendCard user={item} showStatusBadge />
+        </FeedItemEntrance>
+      )}
+      ItemSeparatorComponent={() => <View style={styles.separator} />}
+      onEndReached={handleLoadMore}
+      onEndReachedThreshold={0.4}
+      ListEmptyComponent={
+        // The loading panel is a fixed overlay (below), not part of the
+        // list's own content, so there's nothing to render here while a
+        // search is still coming back. No card for "no search yet" any
+        // more either: the invite card below covers that case on its own.
+        hasDebouncedUserSearch && !isListLoading && !refreshing ? (
+          <View style={styles.emptyCard}>
+            <ThemedText style={styles.emptyTitle}>No one found</ThemedText>
+            <ThemedText style={styles.emptyText}>
+              Try a different name, or show them your QR code instead.
+            </ThemedText>
+          </View>
+        ) : null
+      }
+      ListFooterComponent={
+        // Always under the results, not swapped in only when there are
+        // none: someone who found who they wanted can still add a second
+        // person by having them scan, without clearing the search first.
+        // The load-more spinner only reserves its row while there are rows
+        // to paginate — otherwise (no query yet, or "No one found") it's
+        // just dead space between the message above and the QR code.
+        <View style={styles.inviteFooterNoResults}>
+          {displayedUsers.length > 0 ? (
+            <LoadMoreFooter loading={isFetchingNextPage} size="small" />
+          ) : null}
+          {inviteCard}
+        </View>
+      }
+    />
+  );
+
   // Render/output using the state and derived values prepared above.
   if (!isSignedIn) {
     return (
@@ -319,6 +535,7 @@ export default function FriendsScreen() {
           accessibilityLabelPrefix="Show"
           stretch
           size="large"
+          progress={progress}
         />
       </View>
       <SearchBar
@@ -328,112 +545,26 @@ export default function FriendsScreen() {
         clearOnAndroidBack
       />
 
-      {isDiscovering ? (
-        <FlatList
-          data={hasUserSearch && refreshing ? [] : displayedUsers}
-          keyExtractor={(item) => `user-${item.id}`}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-          renderItem={({ item }) => <FriendCard user={item} showStatusBadge />}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.4}
-          ListEmptyComponent={
-            !hasUserSearch ? (
-              inviteCard
-            ) : isFetchingUsers || refreshing ? (
-              <SkeletonRows height={64} />
-            ) : (
-              <View style={styles.emptyCard}>
-                <ThemedText style={styles.emptyTitle}>No one found</ThemedText>
-                <ThemedText style={styles.emptyText}>
-                  Try a different name, or show them your QR code instead.
-                </ThemedText>
-              </View>
-            )
-          }
-          ListFooterComponent={<LoadMoreFooter loading={isFetchingNextPage} size="small" />}
-        />
-      ) : (
-        <SectionList
-          sections={refreshing || isLoadingFriendsView ? EMPTY_SECTIONS : sections}
-          keyExtractor={(item) => `friend-row-${item.id}`}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          stickySectionHeadersEnabled={false}
-          refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-          renderItem={({ item }) => (
-            <View style={styles.row}>
-              <FriendCard user={item} />
-            </View>
-          )}
-          renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
-              <ThemedText
-                style={[
-                  styles.sectionTitle,
-                  section.isCallToAction && styles.sectionTitleCallToAction,
-                ]}
-              >
-                {section.title}
-              </ThemedText>
-              <View
-                style={[
-                  styles.sectionCount,
-                  section.isCallToAction && styles.sectionCountCallToAction,
-                ]}
-              >
-                <ThemedText
-                  style={[
-                    styles.sectionCountText,
-                    section.isCallToAction && styles.sectionCountTextCallToAction,
-                  ]}
-                >
-                  {section.count}
-                </ThemedText>
-              </View>
-            </View>
-          )}
-          renderSectionFooter={({ section }) =>
-            section.data.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <ThemedText style={styles.emptyTitle}>
-                  {hasUserSearch ? 'No matches' : 'No friends yet'}
-                </ThemedText>
-                <ThemedText style={styles.emptyText}>
-                  {!hasUserSearch
-                    ? 'Find people by name, or let them scan your QR code.'
-                    : hasNoSearchMatches
-                      ? 'This box only searches people you are already friends with.'
-                      : 'Nobody in your friends matches that name.'}
-                </ThemedText>
-                {hasNoSearchMatches ? (
-                  <TouchableOpacity
-                    style={styles.emptyAction}
-                    onPress={handleSearchEveryone}
-                    activeOpacity={0.85}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Search everyone for ${normalizedSearchQuery}`}
-                  >
-                    <MaterialIcons name="person-search" size={17} color={colors.pillActiveText} />
-                    <ThemedText style={styles.emptyActionText}>Find people instead</ThemedText>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={<SkeletonRows height={FRIEND_ROW_SKELETON_HEIGHT} />}
-          ListFooterComponent={
-            // The invite card sits at the bottom of your own list rather than
-            // behind a separate tab: adding people is the natural next thing
-            // after looking at who you already have.
-            refreshing || isLoadingFriendsView ? null : (
-              <View style={styles.inviteFooter}>{inviteCard}</View>
-            )
-          }
-        />
-      )}
+      <View style={styles.listWrapper}>
+        <GestureDetector gesture={panGesture}>
+          <Animated.View
+            style={[styles.pager, { width: pageWidth * MODE_OPTIONS.length }, pagerStyle]}
+          >
+            <View style={{ width: pageWidth }}>{friendsPage}</View>
+            <View style={{ width: pageWidth }}>{discoverPage}</View>
+          </Animated.View>
+        </GestureDetector>
+        {/* An overlay, not either list's ListEmptyComponent: that content
+            scrolls and shifts with RefreshControl's pull, which reads as the
+            logo drifting down the screen. Sitting outside the list keeps it
+            fixed and (via pointerEvents="none") never intercepts the
+            pull-to-refresh gesture underneath it. */}
+        {showLoadingLogo ? (
+          <View style={styles.loadingOverlay} pointerEvents="none">
+            <ListLoadingLogo />
+          </View>
+        ) : null}
+      </View>
     </TopSafeAreaView>
   );
 }
@@ -444,6 +575,11 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       flex: 1,
       backgroundColor: colors.background,
     },
+    // The row of pages is wider than the screen, so the window it moves behind
+    // has to clip it — on Android nothing else does.
+    listWrapper: { flex: 1, overflow: 'hidden' },
+    pager: { flex: 1, flexDirection: 'row' },
+    loadingOverlay: { ...StyleSheet.absoluteFillObject },
     modeRow: {
       paddingHorizontal: 16,
       paddingTop: 12,
@@ -530,6 +666,12 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     inviteFooter: {
       paddingTop: 24,
     },
+    // Used on the discover page, where the invite card follows either the
+    // reserved load-more row or nothing at all — neither needs its own
+    // clearance on top of that.
+    inviteFooterNoResults: {
+      paddingTop: 0,
+    },
     inviteCard: {
       borderRadius: 12,
       borderWidth: 1,
@@ -587,3 +729,23 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
       textAlign: 'center',
     },
   });
+
+/**
+ * The shell in front of the screen above.
+ *
+ * A tab is built the first time it is opened, and until it is, the tab you
+ * pressed away from stays on screen — which reads as the press being ignored.
+ * The gate is a component of its own so that every hook the screen owns lives
+ * *behind* it: an early return inside one component would only defer the
+ * render, not the queries and subscriptions that set it up.
+ *
+ * The wait is whatever {@link tabContentHoldMs} still owes the tab bar's press
+ * flash, so the mount takes the UI thread only once that movement is over
+ * rather than stalling it half-way. Once a tab has been built it is never
+ * gated again.
+ */
+export default function FriendsScreenTab() {
+  const ready = useDeferredMount('tab:friends', tabContentHoldMs);
+  if (!ready) return <TabScreenSkeleton title="Friends" icon="person.2.fill" />;
+  return <FriendsScreen />;
+}

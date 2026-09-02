@@ -14,11 +14,37 @@ from uuid import UUID
 
 from sqlmodel import Session
 
+from app.core.enums import SearchField
 from app.core.viewer import ViewerId
 from app.crud import cinema_preset as cinema_presets_crud
 from app.crud import letterboxd_list as lists_crud
 from app.crud import user as users_crud
 from app.inputs.movie import Filters
+
+
+def _is_cinema_name_search(filters: Filters) -> bool:
+    """Is this request searching *for* cinemas by name?
+
+    Such a search already names the cinemas it wants, so falling back to the
+    viewer's usual ones on top of it could only ever hide the cinema they typed.
+    """
+    return filters.search_field == SearchField.CINEMA and bool(
+        filters.query and filters.query.strip()
+    )
+
+
+def _skips_cinema_default(filters: Filters) -> bool:
+    """Does this request already mean "every cinema", one way or another?
+
+    A cinema-name search names its own cinemas (see above). `friends_only`
+    asks "where are my friends going", and narrowing that to the viewer's
+    own usual cinemas would silently hide a friend at a cinema the viewer
+    never picked. `all_cinemas` is the explicit form of the same thing, for
+    feeds (like Activity's "All") that are about everyone, not just friends.
+    """
+    return (
+        _is_cinema_name_search(filters) or filters.friends_only or filters.all_cinemas
+    )
 
 
 def _keep_curated(
@@ -42,8 +68,10 @@ def apply_viewer_defaults(
     Cinemas: an explicit list from the client always wins — that is the user
     narrowing the feed by hand for this one request. Only when none was sent do
     we fall back to the account's favourite cinema preset, then to its legacy
-    cinema selection. An anonymous viewer has neither, so the field is left as
-    None, which every query reads as "no cinema restriction".
+    cinema selection. A cinema-name search is the other way a request already
+    says which cinemas it means, and it is left unrestricted for the same
+    reason. An anonymous viewer has neither, so the field is left as None, which
+    every query reads as "no cinema restriction".
 
     Letterboxd lists: the curated ones are shared by everybody, so an anonymous
     request may filter by them exactly as a signed-in one does. Any other id
@@ -57,7 +85,7 @@ def apply_viewer_defaults(
         filters.exclude_list_ids = _keep_curated(filters.exclude_list_ids, curated_ids)
         return
 
-    if filters.selected_cinema_ids is None:
+    if filters.selected_cinema_ids is None and not _skips_cinema_default(filters):
         favorite_preset = cinema_presets_crud.get_user_favorite_preset(
             session=session,
             user_id=viewer_id,

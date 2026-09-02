@@ -503,8 +503,10 @@ const createStyles = (colors: Colors) =>
       height: 20,
       borderRadius: 6,
       borderWidth: 1.5,
-      borderColor: colors.pillBorder,
-      backgroundColor: colors.surfaceMuted,
+      // Shared with the cinema picker's box: `pillBorder`/`surfaceMuted` are
+      // the same gray as the surfaces a checkbox sits on in dark mode.
+      borderColor: colors.checkboxBorder,
+      backgroundColor: colors.checkboxBackground,
       alignItems: "center",
       justifyContent: "center",
     },

@@ -35,6 +35,14 @@ class Filters(BaseModel):
     runtime_min: int | None = None
     runtime_max: int | None = None
     selected_statuses: list[GoingStatus] | None = None
+    # Narrows `selected_statuses` to friends' selections only, dropping the
+    # viewer's own — for a feed about what *other people* are doing.
+    friends_only: bool = False
+    # A feed already scoped to "everyone" or "everyone but me" (e.g. the
+    # Activity screen's All/Friends pages) — never narrow it to the viewer's
+    # usual cinemas, since that would silently hide people at cinemas the
+    # viewer never picked. See `_skips_cinema_default`.
+    all_cinemas: bool = False
     selected_languages: list[Language] | None = None
 
 
@@ -94,6 +102,20 @@ def get_filters(
             description="Filter by selection statuses (GOING/INTERESTED)",
         ),
     ] = None,
+    friends_only: Annotated[
+        bool,
+        Query(
+            alias="friends_only",
+            description="With selected_statuses, match only friends' selections, not the viewer's own",
+        ),
+    ] = False,
+    all_cinemas: Annotated[
+        bool,
+        Query(
+            alias="all_cinemas",
+            description="Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)",
+        ),
+    ] = False,
     selected_list_ids: Annotated[
         list[UUID] | None,
         Query(
@@ -170,6 +192,8 @@ def get_filters(
         runtime_min=runtime_min,
         runtime_max=runtime_max,
         selected_statuses=selected_statuses,
+        friends_only=friends_only,
+        all_cinemas=all_cinemas,
         list_ids=selected_list_ids,
         exclude_list_ids=exclude_list_ids,
         selected_languages=selected_languages,

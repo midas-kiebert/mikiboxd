@@ -6,6 +6,7 @@ from pydantic import BaseModel, computed_field
 from app.core.enums import GoingStatus, VisibilityMode
 from app.models.showtime import ShowtimeBase
 from app.schemas.legacy_viewer_compat import LEGACY_VIEWER_FIELD
+from app.schemas.seat_availability import ShowtimeSeatAvailabilityPublic
 
 if TYPE_CHECKING:
     from .cinema import CinemaPublic
@@ -87,6 +88,23 @@ class ShowtimeInMovieViewerState(BaseModel):
     co_invited_friends: Sequence["CoInvitedFriendPublic"] = []
     # Friends you invited who haven't responded going/interested yet (pending).
     pending_invited_friends: Sequence["UserPublic"] = []
+    # Everyone GOING/INTERESTED the viewer can see but isn't friends with —
+    # friends-of-friends, and non-friends in a shared invite. Read off the
+    # visibility grants themselves (see
+    # `crud.showtime.get_visible_non_friends_for_showtime`) so that whatever
+    # made a showtime visible always has a name to show for it. The field
+    # names predate that widening. Carries friend-request status since these
+    # are never the viewer's own friends: the client offers a "+" to send or
+    # accept a request straight from here.
+    friends_of_friends_going: Sequence["UserWithFriendStatus"] = []
+    friends_of_friends_interested: Sequence["UserWithFriendStatus"] = []
+    # Who can see the viewer's status on this screening — the mode in force,
+    # whether they set it themselves or it comes from their default. Carried
+    # here (rather than fetched per showtime by the client) so the sheet's mode
+    # pill paints the instant it opens, from a list the client already has. It
+    # is viewer state in the strictest sense: it is the *asker's* own setting,
+    # which is why it sits here and not on the screening.
+    visibility_mode: VisibilityMode | None = None
 
 
 class ShowtimeViewerState(ShowtimeInMovieViewerState):
@@ -117,6 +135,15 @@ class ShowtimePublic(ShowtimeBase):
     movie: "MovieInShowtime"
     cinema: "CinemaPublic"
     viewer: "ShowtimeViewerState | None" = None
+    # How full the screening is, carried inline so a list can paint its
+    # busyness badges in the same frame as the cards. Derived from this very
+    # row (see `services.seat_availability.to_public`), so it costs nothing
+    # extra here, and it saves the client the follow-up batch request whose
+    # round trip is what used to make the badges appear a beat late.
+    #
+    # `None` keeps the same meaning as an absent entry in the batch response:
+    # nothing to say about this screening, and there never will be.
+    seat_availability: ShowtimeSeatAvailabilityPublic | None = None
 
     # --- LEGACY_VIEWER_FIELDS: delete this whole block with the shim ---
     @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
@@ -189,6 +216,8 @@ class ShowtimeInMoviePublic(ShowtimeBase):
     id: int
     cinema: "CinemaPublic"
     viewer: "ShowtimeInMovieViewerState | None" = None
+    # Same inline availability as `ShowtimePublic` — see its field.
+    seat_availability: ShowtimeSeatAvailabilityPublic | None = None
 
     # --- LEGACY_VIEWER_FIELDS: delete this whole block with the shim ---
     @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362

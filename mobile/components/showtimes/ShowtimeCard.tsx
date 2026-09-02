@@ -2,7 +2,7 @@
  * Mobile showtimes feature component: Showtime Card.
  */
 import { Image, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
-import { useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { DateTime } from "luxon";
 import { useRouter } from "expo-router";
 import type { ShowtimePublic } from "shared";
@@ -14,7 +14,7 @@ import SubtitlesBadges from "@/components/badges/SubtitlesBadges";
 import FriendBadges from "@/components/badges/FriendBadges";
 import { createShowtimeStatusGlowStyles } from "@/components/showtimes/showtime-glow";
 import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
-import { UNKNOWN_METADATA_PLACEHOLDER, isSyntheticMovieId } from "@/constants/synthetic-movies";
+import { isSyntheticMovieId } from "@/constants/synthetic-movies";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import {
@@ -29,6 +29,14 @@ type ShowtimeCardProps = {
 };
 
 const POSTER_HEIGHT = 112;
+const CARD_GAP = 16;
+/**
+ * What one row of the showtimes feed occupies, top to top. Fixed, because the
+ * card is: the poster sets its height and nothing inside can push it taller.
+ * Exported so a list can work out how many rows a screen holds without
+ * measuring one first — see `SHOWTIMES_FIRST_PAGE_LIMIT`.
+ */
+export const SHOWTIME_ROW_HEIGHT = POSTER_HEIGHT + CARD_GAP;
 const COMPACT_BADGE_ROW_HEIGHT = 14;
 const COMPACT_BADGE_ROW_GAP = 2;
 const COMPACT_BADGE_TOP_PADDING = 2;
@@ -48,7 +56,7 @@ const getCompactBadgeRowsForHeight = (height: number) => {
   return Math.max(1, Math.min(MAX_COMPACT_BADGE_ROWS, rows));
 };
 
-export default function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
+function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
   const goToMovie = useSingleFireNavigation((movieId: number) => router.push(`/movie/${movieId}`));
@@ -56,7 +64,11 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const [friendBadgeAreaHeight, setFriendBadgeAreaHeight] = useState(0);
   // Read the active theme color tokens used by this screen/component.
   const colors = useThemeColors();
-  const styles = createStyles(colors);
+  // Memoised, unlike most of the app's components: this one is rendered once
+  // per row of a feed, and `createStyles` builds some thirty style objects
+  // through `StyleSheet.create`. Thirty times twenty, on every render of the
+  // screen, is most of what made switching to a loaded tab take a moment.
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const date = DateTime.fromISO(showtime.datetime);
   const originalTitle =
     showtime.movie.original_title &&
@@ -68,12 +80,6 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const month = date.toFormat("LLL");
   const startTime = date.toFormat("HH:mm");
   const isSyntheticMovie = isSyntheticMovieId(showtime.movie.id);
-  const endDate = showtime.end_datetime ? DateTime.fromISO(showtime.end_datetime) : null;
-  const endTime = endDate?.isValid
-    ? endDate.toFormat("HH:mm")
-    : isSyntheticMovie
-      ? UNKNOWN_METADATA_PLACEHOLDER
-      : null;
   // Everything below is about the person looking at the card, so it is absent
   // for a guest — the card then draws in its plain, unannotated state.
   const viewer = showtime.viewer;
@@ -106,7 +112,9 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
   const hasAudience =
     (viewer?.friends_going?.length ?? 0) > 0 ||
     (viewer?.friends_interested?.length ?? 0) > 0 ||
-    (viewer?.pending_invited_friends?.length ?? 0) > 0;
+    (viewer?.pending_invited_friends?.length ?? 0) > 0 ||
+    (viewer?.friends_of_friends_going?.length ?? 0) > 0 ||
+    (viewer?.friends_of_friends_interested?.length ?? 0) > 0;
   const responsiveBadgeRows = useMemo(() => {
     if (!hasAudience) return undefined;
     return getCompactBadgeRowsForHeight(friendBadgeAreaHeight - COMPACT_BADGE_TOP_PADDING);
@@ -165,8 +173,7 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
             {month}
           </ThemedText>
           <ThemedText style={styles.time} maxFontSizeMultiplier={DATE_COLUMN_MAX_FONT_SCALE}>
-            <ThemedText style={styles.timeStart}>{startTime}</ThemedText>
-            {endTime ? <ThemedText style={styles.timeEnd}>{`~${endTime}`}</ThemedText> : null}
+            {startTime}
           </ThemedText>
         </View>
         {isSyntheticMovie ? (
@@ -200,10 +207,14 @@ export default function ShowtimeCard({ showtime, onPress, onLongPress }: Showtim
               setFriendBadgeAreaHeight(nextHeight);
             }}
           >
+            {/* No `onAddFriend`: the feed shows who's around, it doesn't act —
+                the "+" lives on the movie page and in the showtime sheet. */}
             <FriendBadges
               friendsGoing={viewer?.friends_going}
               friendsInterested={viewer?.friends_interested}
               friendsPending={viewer?.pending_invited_friends}
+              friendsOfFriendsGoing={viewer?.friends_of_friends_going}
+              friendsOfFriendsInterested={viewer?.friends_of_friends_interested}
               variant="compact"
               maxRows={responsiveBadgeRows}
             />
@@ -224,7 +235,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
   const glowStyles = createShowtimeStatusGlowStyles(colors);
   return StyleSheet.create({
     cardGlow: {
-      marginBottom: 16,
+      marginBottom: CARD_GAP,
       borderRadius: 12,
       backgroundColor: colors.cardBackground,
     },
@@ -296,22 +307,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       letterSpacing: 0.6,
     },
     time: {
-      fontSize: 10,
-      lineHeight: 12,
-      fontWeight: "700",
+      fontSize: 15,
+      lineHeight: 17,
+      fontWeight: "800",
       color: colors.text,
-    },
-    timeStart: {
-      fontSize: 11,
-      lineHeight: 13,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    timeEnd: {
-      fontSize: 8,
-      lineHeight: 10,
-      fontWeight: "700",
-      color: colors.textSecondary,
+      marginTop: 2,
     },
     poster: {
       width: 72,
@@ -372,3 +372,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
   });
 };
+
+/**
+ * Memoised on purpose. A feed re-renders whenever its screen does — and a tab
+ * switch alone does that, twice, because `useIsFocused` changes on the screen
+ * being left and the one being arrived at. Without this, every visible card
+ * rebuilt itself for a change that concerned none of them.
+ *
+ * The props have to hold still for it to be worth anything: see the list, which
+ * keeps one `renderItem` and one set of handlers for its lifetime.
+ */
+export default memo(ShowtimeCard);

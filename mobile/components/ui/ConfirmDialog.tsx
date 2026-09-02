@@ -28,6 +28,14 @@ type ConfirmDialogProps = {
    * back gesture closes it.
    */
   cancelLabel?: string;
+  /**
+   * A second answer, offered alongside `confirmLabel` and styled like the
+   * cancel button — for a question with two real answers where only one of them
+   * should be the highlighted one. The buttons then stack vertically: three
+   * side by side leaves no room for labels that say what they do.
+   */
+  secondaryLabel?: string;
+  onSecondary?: () => void;
   /** "destructive" paints the confirm button red; "primary" uses the app tint. */
   tone?: "destructive" | "primary";
   onConfirm: () => void;
@@ -41,6 +49,8 @@ export default function ConfirmDialog({
   icon,
   confirmLabel,
   cancelLabel,
+  secondaryLabel,
+  onSecondary,
   tone = "destructive",
   onConfirm,
   onCancel,
@@ -79,6 +89,13 @@ export default function ConfirmDialog({
     onConfirm();
   }, [onConfirm]);
 
+  const handleSecondary = useCallback(() => {
+    triggerSelectionHaptic();
+    onSecondary?.();
+  }, [onSecondary]);
+
+  const hasSecondary = secondaryLabel !== undefined && onSecondary !== undefined;
+
   const isDestructive = tone === "destructive";
   const accentColor = isDestructive ? colors.red.secondary : colors.tint;
 
@@ -102,19 +119,11 @@ export default function ConfirmDialog({
           ) : null}
           <ThemedText style={styles.title}>{title}</ThemedText>
           {message ? <ThemedText style={styles.message}>{message}</ThemedText> : null}
-          <View style={styles.actions}>
-            {cancelLabel ? (
-              <TouchableOpacity
-                style={[styles.button, styles.cancelButton]}
-                onPress={onCancel}
-                activeOpacity={0.8}
-              >
-                <ThemedText style={styles.cancelText}>{cancelLabel}</ThemedText>
-              </TouchableOpacity>
-            ) : null}
+          <View style={[styles.actions, hasSecondary && styles.stackedActions]}>
             <TouchableOpacity
               style={[
                 styles.button,
+                hasSecondary && styles.stackedButton,
                 isDestructive ? styles.destructiveButton : styles.primaryButton,
               ]}
               onPress={handleConfirm}
@@ -129,6 +138,24 @@ export default function ConfirmDialog({
                 {confirmLabel}
               </ThemedText>
             </TouchableOpacity>
+            {hasSecondary ? (
+              <TouchableOpacity
+                style={[styles.button, styles.stackedButton, styles.cancelButton]}
+                onPress={handleSecondary}
+                activeOpacity={0.8}
+              >
+                <ThemedText style={styles.cancelText}>{secondaryLabel}</ThemedText>
+              </TouchableOpacity>
+            ) : null}
+            {cancelLabel ? (
+              <TouchableOpacity
+                style={[styles.button, hasSecondary && styles.stackedButton, styles.cancelButton]}
+                onPress={onCancel}
+                activeOpacity={0.8}
+              >
+                <ThemedText style={styles.cancelText}>{cancelLabel}</ThemedText>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </Animated.View>
       </Animated.View>
@@ -178,7 +205,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       textAlign: "center",
       color: colors.textSecondary,
     },
-    actions: { flexDirection: "row", gap: 8, alignSelf: "stretch", marginTop: 8 },
+    // Two buttons sit side by side, cancel first — the layout every other
+    // caller was written against. `stackedActions` flips that for three.
+    actions: { flexDirection: "row-reverse", gap: 8, alignSelf: "stretch", marginTop: 8 },
+    stackedActions: { flexDirection: "column" },
+    // Stacked, the buttons are full-width rows rather than equal columns:
+    // `flex: 1` in a column would have them fight over the card's auto height.
+    stackedButton: { flex: 0, alignSelf: "stretch" },
     button: {
       flex: 1,
       minHeight: 42,

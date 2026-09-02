@@ -6,7 +6,7 @@
  * it. The footer holds the actions that end the visit — applying the filters,
  * and saving/managing presets — so they are reachable from any scroll
  * position. Saved presets themselves are applied from the top bar
- * (SavedPresetChips in FiltersRow), not from in here.
+ * (SavedPresetChips in PresetsRow), not from in here.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -42,13 +42,16 @@ import ManagePresetsModal from "@/components/filters/ManagePresetsModal";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import TimeRangeSliderInline from "@/components/filters/TimeRangeSliderInline";
 import RuntimeRangeSliderInline from "@/components/filters/RuntimeRangeSliderInline";
+import { formatTimePillLabel } from "@/components/filters/time-range-utils";
+import { formatRuntimePillLabel } from "@/components/filters/runtime-range-utils";
 import DaysFilterSection from "@/components/filters/DaysFilterSection";
 import SpecificDatesModal from "@/components/filters/SpecificDatesModal";
 import FilterMoviesSection from "@/components/filters/FilterMoviesSection";
-import FilterSection, { FilterInlineRow, FilterSubLabel } from "@/components/filters/FilterSection";
+import FilterSection, { FilterInlineRow, FilterNavRow, FilterSubLabel } from "@/components/filters/FilterSection";
 import SegmentedControl, { type SegmentedOption } from "@/components/ui/SegmentedControl";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
+import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterModal";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
 const GROUP_BY_OPTIONS: readonly SegmentedOption<"showtimes" | "movies">[] = [
@@ -77,6 +80,12 @@ const ENGLISH_FILTER_LABEL = "English subtitled (or spoken)";
 const ENGLISH: Language = "en";
 
 /**
+ * Checked is the default an agenda opens at: it holds both what its owner is
+ * going to and what they are interested in. Unchecking it narrows to Going.
+ */
+const INTERESTED_FILTER_LABEL = "Include interested";
+
+/**
  * Slack below the last section ("Time of day") so its slider has somewhere to
  * appear when the section is expanded from the bottom of the scroll: without it
  * the content mounts just past the viewport and you have to scroll down again to
@@ -100,9 +109,17 @@ export type FiltersModalProps = {
   selectedShowtimeFilter: SharedTabShowtimeFilter;
   setSelectedShowtimeFilter: (v: SharedTabShowtimeFilter) => void;
   showStatusFilter?: boolean;
+  /**
+   * An agenda's "interested as well as going" switch — the friend agenda's, so
+   * off by default. Included is the unfiltered state; switching it off is what
+   * puts the ⊘ Interested chip in the row above.
+   */
+  includeInterested?: boolean;
+  setIncludeInterested?: (v: boolean) => void;
+  showInterestedFilter?: boolean;
   showCinemas?: boolean;
   /** Override the cinema modal opener (for pages rendered outside FiltersModalProvider). */
-  onOpenCinemaModal?: () => void;
+  onOpenCinemaModal?: (options?: OpenCinemaModalOptions) => void;
   showRuntime?: boolean;
   selectedDays: string[];
   setSelectedDays: (v: string[]) => void;
@@ -139,6 +156,9 @@ export default function FiltersModal({
   selectedShowtimeFilter,
   setSelectedShowtimeFilter,
   showStatusFilter = false,
+  includeInterested = true,
+  setIncludeInterested = () => {},
+  showInterestedFilter = false,
   showCinemas = true,
   onOpenCinemaModal,
   showRuntime = true,
@@ -206,8 +226,7 @@ export default function FiltersModal({
   // not. A guest's selection is the session value itself, persisted to the
   // device by `useCinemaSelection`.
   const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
-  const { cinemaIds: sessionCinemaIds, setCinemaIds: setSessionCinemaIds } =
-    useCinemaSelection();
+  const { cinemaIds: sessionCinemaIds, setCinemaIds } = useCinemaSelection();
   const { data: cinemaPresets = [] } = useQuery({
     queryKey: ["cinema-presets"],
     queryFn: () => MeService.getCinemaPresets(),
@@ -221,6 +240,36 @@ export default function FiltersModal({
 
 
   const dayLabel = formatDayPillLabel(selectedDays);
+  const timeLabel = formatTimePillLabel(selectedTimeRanges);
+
+  // Short summary of the "Movie Filters" section shown in its header while
+  // collapsed, mirroring the Days/Time sections. Only counts dimensions that
+  // section actually renders (list filtering only shows up with showLists).
+  const movieFiltersSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (watchlistOnly) parts.push("Watchlist");
+    if (watchlistExclude) parts.push("Hide watchlist");
+    if (watchedOnly) parts.push("Watched only");
+    if (hideWatched) parts.push("Hide watched");
+    if (showLists) {
+      const listCount = selectedListIds.length + excludeListIds.length;
+      if (listCount > 0) parts.push(`${listCount} list${listCount === 1 ? "" : "s"}`);
+    }
+    if (showRuntime && selectedRuntimeRanges.length > 0) {
+      parts.push(formatRuntimePillLabel(selectedRuntimeRanges));
+    }
+    return parts.length > 0 ? parts.join(", ") : "All movies";
+  }, [
+    watchlistOnly,
+    watchlistExclude,
+    watchedOnly,
+    hideWatched,
+    showLists,
+    selectedListIds,
+    excludeListIds,
+    showRuntime,
+    selectedRuntimeRanges,
+  ]);
 
   // ─── Presets (apply + save) ──────────────────────────────────────────────────
   const [savePresetVisible, setSavePresetVisible] = useState(false);
@@ -280,7 +329,7 @@ export default function FiltersModal({
     ]
   );
 
-  // Drives the "Save current filters" highlight: there is only something worth
+  // Drives the "Save as preset" highlight: there is only something worth
   // saving once the user has actually narrowed something down (a cinema
   // selection counts here, even though hasAnyActiveFilter ignores it — saving a
   // preset does store the cinemas).
@@ -288,6 +337,34 @@ export default function FiltersModal({
     () => hasAnyActiveFilter(currentFilters) || cinemaActive,
     [currentFilters, cinemaActive]
   );
+
+  // What there is to save is exactly what there is to clear, cinemas included —
+  // plus the interested switch, which no preset carries (it belongs to one
+  // agenda, not to the shared filter set) but "Clear filters" still resets.
+  const hasSomethingToClear =
+    hasSomethingToSave || (showInterestedFilter && !includeInterested);
+
+  // Mirrors the feeds' own "clear all" (the × beside the active filter chips)
+  // down to the cinemas: they go back to the account's saved picks rather than
+  // to every cinema, since "no selection" is not what the user chose once.
+  const handleClearFilters = () => {
+    triggerSelectionHaptic();
+    setSelectedShowtimeFilter("all");
+    // Included is this filter's unfiltered state, so clearing puts it back on.
+    setIncludeInterested(true);
+    setWatchlistOnly(false);
+    setWatchlistExclude(false);
+    setHideWatched(false);
+    setWatchedOnly(false);
+    setGroupByMovie(false);
+    setSelectedDays([]);
+    setSelectedTimeRanges([]);
+    setSelectedRuntimeRanges([]);
+    setSelectedListIds([]);
+    setExcludeListIds([]);
+    setSelectedLanguages([]);
+    if (preferredCinemaIds) setCinemaIds(preferredCinemaIds);
+  };
 
   // Pill toggles below paint optimistically and defer the real (potentially
   // expensive) state update by one frame — see useOptimisticValue.
@@ -319,6 +396,8 @@ export default function FiltersModal({
       })),
     [colors]
   );
+  const { value: displayIncludeInterested, change: changeIncludeInterested } =
+    useOptimisticValue(includeInterested, setIncludeInterested);
   const { value: displayWatchlistOnlySimple, change: changeWatchlistOnlySimple } =
     useOptimisticValue(watchlistOnly, setWatchlistOnly);
   const { value: displayHideWatchedSimple, change: changeHideWatchedSimple } =
@@ -326,75 +405,29 @@ export default function FiltersModal({
 
   return (
     <>
-      <AppBottomSheet visible={visible} onClose={handleClose} title="Filters">
-        {/* @gorhom/portal (used by the bottom sheet) does not forward React
-            context, so re-provide the QueryClient for hooks rendered inside. */}
-        <QueryClientProvider client={queryClient}>
-        <BottomSheetScrollView
-          ref={scrollViewRef}
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-{!contentMounted ? (
-            <View style={{ alignItems: "center", paddingVertical: 60 }}>
-              <ActivityIndicator size="large" color={colors.tint} />
-            </View>
-          ) : (<>
+        <AppBottomSheet visible={visible} onClose={handleClose} title="Filters">
+          {/* @gorhom/portal (used by the bottom sheet) does not forward React
+              context, so re-provide the QueryClient for hooks rendered inside. */}
+          <QueryClientProvider client={queryClient}>
+          <BottomSheetScrollView
+            ref={scrollViewRef}
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+  {!contentMounted ? (
+              <View style={{ alignItems: "center", paddingVertical: 60 }}>
+                <ActivityIndicator size="large" color={colors.tint} />
+              </View>
+            ) : (<>
 
-            {/* Cinemas */}
-            {showCinemas && (
-              <>
-                <FilterSection label="Cinemas">
-                  {cinemaPresets.length > 0 && (
-                    <View style={styles.cinemaPresetGrid}>
-                      {cinemaPresets.map((preset) => {
-                        const presetSig = JSON.stringify(Array.from(new Set(preset.cinema_ids)).sort((a, b) => a - b));
-                        const isActive = presetSig === JSON.stringify(sortedEffectiveIds);
-                        const n = new Set(preset.cinema_ids).size;
-                        return (
-                          <TouchableOpacity
-                            key={preset.id}
-                            style={[styles.cinemaPresetCard, isActive && styles.cinemaPresetCardActive]}
-                            onPress={() => { triggerSelectionHaptic(); setSessionCinemaIds(Array.from(preset.cinema_ids)); }}
-                            activeOpacity={0.75}
-                          >
-                            <View style={styles.cinemaPresetCardRow}>
-                              <ThemedText
-                                style={[styles.cinemaPresetName, isActive && styles.cinemaPresetNameActive]}
-                                numberOfLines={2}
-                              >
-                                {preset.name}
-                              </ThemedText>
-                              {preset.is_favorite && (
-                                <MaterialIcons
-                                  name="star"
-                                  size={13}
-                                  color={isActive ? colors.pillActiveText : colors.yellow.secondary}
-                                />
-                              )}
-                            </View>
-                            <ThemedText style={[styles.cinemaPresetDesc, isActive && styles.cinemaPresetDescActive]}>
-                              {n} cinema{n === 1 ? "" : "s"}
-                            </ThemedText>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-                  <TouchableOpacity style={styles.cinemaOpenRow} onPress={() => { triggerSelectionHaptic(); openCinemaModal(); }} activeOpacity={0.8}>
-                    <View style={styles.cinemaOpenIcon}>
-                      <MaterialIcons name="movie" size={17} color={colors.tint} />
-                    </View>
-                    <View style={styles.cinemaOpenTextBlock}>
-                      <ThemedText style={styles.cinemaOpenTitle}>Select cinemas</ThemedText>
-                      <ThemedText style={styles.cinemaOpenSubtitle} numberOfLines={1}>{cinemaLabel}</ThemedText>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={18} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                </FilterSection>
-                <Divider colors={colors} />
+              {/* Cinemas: presets already live in the main page's cinema dropdown,
+                  so this row only ever opens the cinema selection modal. */}
+              {showCinemas && (
+                <>
+                  <FilterNavRow label="Cinemas" summary={cinemaLabel} onPress={openCinemaModal} />
+                  <Divider colors={colors} />
               </>
             )}
 
@@ -423,6 +456,19 @@ export default function FiltersModal({
                 </FilterInlineRow>
               )}
 
+              {showInterestedFilter && (
+                <FilterInlineRow label="Interested">
+                  <Pill
+                    label={INTERESTED_FILTER_LABEL}
+                    icon={displayIncludeInterested ? "check-box" : "check-box-outline-blank"}
+                    active={displayIncludeInterested}
+                    onPress={() => changeIncludeInterested(!displayIncludeInterested)}
+                    colors={colors}
+                    style={styles.inlineControlPill}
+                  />
+                </FilterInlineRow>
+              )}
+
               <FilterInlineRow label="Language">
                 <Pill
                   label={ENGLISH_FILTER_LABEL}
@@ -440,7 +486,7 @@ export default function FiltersModal({
                 Letterboxd sets it belongs to, and how long it is. */}
             {(showRuntime || showLists || canUseWatchlistFilter) && (
               <>
-                <FilterSection label="Movie Filters">
+                <FilterSection label="Movie Filters" summary={movieFiltersSummary}>
                   {showLists ? (
                     <FilterMoviesSection
                       colors={colors}
@@ -501,12 +547,46 @@ export default function FiltersModal({
             <Divider colors={colors} />
 
             {/* Time */}
-            <FilterSection label="Time of day">
+            <FilterSection label="Time of day" summary={timeLabel}>
               <TimeRangeSliderInline
                 selectedTimeRanges={selectedTimeRanges}
                 onChange={setSelectedTimeRanges}
               />
             </FilterSection>
+
+            <Divider colors={colors} />
+
+            {/* Below the last filter rather than in the footer: it undoes what
+                is above it, and the space under the sections was empty anyway.
+                Text, not a button — a bordered control down here would read as
+                a fourth thing to decide about, and clearing is a way back, not
+                an action the sheet is asking for. */}
+            <TouchableOpacity
+              style={styles.clearFiltersLink}
+              onPress={handleClearFilters}
+              // Quiet until there is something to undo: a clear control with
+              // nothing to clear is a dead control, not a shortcut.
+              disabled={!hasSomethingToClear}
+              activeOpacity={0.6}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Clear filters"
+            >
+              <MaterialIcons
+                name="filter-alt-off"
+                size={17}
+                color={hasSomethingToClear ? colors.tint : colors.textSecondary}
+                style={!hasSomethingToClear ? styles.clearFiltersIdle : undefined}
+              />
+              <ThemedText
+                style={[
+                  styles.clearFiltersText,
+                  !hasSomethingToClear && styles.clearFiltersTextIdle,
+                ]}
+              >
+                Clear filters
+              </ThemedText>
+            </TouchableOpacity>
 
           </>)}
         </BottomSheetScrollView>
@@ -538,7 +618,7 @@ export default function FiltersModal({
                   ]}
                   numberOfLines={1}
                 >
-                  Save current filters
+                  Save as preset
                 </ThemedText>
               </TouchableOpacity>
               <TouchableOpacity
@@ -667,71 +747,45 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderWidth: 1.5,
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
-      // "Save current filters" is the primary of the two, so it takes the
+      // "Save as preset" is the primary of the two, so it takes the
       // leftover width while "Manage" stays at its label's size.
       flex: 1,
     },
     // Saving is only worth a tap once something is actually filtered, so the
-    // button stays quiet until then. Highlighted as a soft tinted fill rather
-    // than a tint-coloured outline: a ring competes with the solid tint button
-    // right below it, while the muted fill reads as "available" without
-    // claiming to be the sheet's primary action. The border stays at the same
-    // width (just tinted to match) so nothing shifts when the state flips.
+    // button stays quiet until then. Highlighted as a soft tinted fill, outlined
+    // in the accent's own border tone: the fill alone has almost no edge against
+    // the footer, which left it reading as a patch of colour rather than a
+    // control. Not the tint the "View results" button below uses — this stays
+    // the quieter of the two. Same border width in both states, so nothing
+    // shifts when it flips.
     presetButtonHighlighted: {
       backgroundColor: colors.green.primary,
-      borderColor: colors.green.primary,
+      borderColor: colors.green.border,
     },
     managePresetsButton: { flex: 0 },
+    // Sits in the run-out space under the last section, centred so it does not
+    // read as another labelled row in the list above it. Still text rather than
+    // a control — the icon and the weight are what carry it, not a box.
+    clearFiltersLink: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "center",
+      gap: 7,
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+    },
+    clearFiltersText: {
+      fontSize: 15,
+      // ThemedText's default type carries a 24pt line height that survives the
+      // size override, which would sit the label off-centre against the icon.
+      lineHeight: 20,
+      fontWeight: "700",
+      color: colors.tint,
+    },
+    clearFiltersIdle: { opacity: 0.5 },
+    clearFiltersTextIdle: { color: colors.textSecondary, opacity: 0.5 },
     presetButtonText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
     presetButtonTextHighlighted: { color: colors.green.secondary },
-    cinemaPresetGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      marginBottom: 10,
-    },
-    cinemaPresetCard: {
-      flexBasis: "47%",
-      flexGrow: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      borderRadius: 12,
-      borderWidth: 1.5,
-      borderColor: colors.divider,
-      backgroundColor: colors.cardBackground,
-      gap: 4,
-    },
-    cinemaPresetCardActive: {
-      borderColor: colors.tint,
-      backgroundColor: colors.pillActiveBackground,
-    },
-    cinemaPresetCardRow: { flexDirection: "row", alignItems: "flex-start", gap: 4 },
-    cinemaPresetName: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.text },
-    cinemaPresetNameActive: { color: colors.pillActiveText },
-    cinemaPresetDesc: { fontSize: 11, color: colors.textSecondary },
-    cinemaPresetDescActive: { color: colors.pillActiveText, opacity: 0.8 },
-    cinemaOpenRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.divider,
-      backgroundColor: colors.cardBackground,
-    },
-    cinemaOpenIcon: {
-      width: 34,
-      height: 34,
-      borderRadius: 10,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.surfaceMuted,
-    },
-    cinemaOpenTextBlock: { flex: 1 },
-    cinemaOpenTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
-    cinemaOpenSubtitle: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
     viewResultsButton: {
       backgroundColor: colors.tint,
       paddingHorizontal: 20,
@@ -739,6 +793,13 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderRadius: 14,
       alignItems: "center",
     },
-    viewResultsButtonText: { color: "#000", fontWeight: "700", fontSize: 15, lineHeight: 20 },
+    // The shared on-tint text colour rather than a hardcoded black: the light
+    // theme's tint is a deep green, and black on it was barely readable.
+    viewResultsButtonText: {
+      color: colors.pillActiveText,
+      fontWeight: "700",
+      fontSize: 15,
+      lineHeight: 20,
+    },
 
   });

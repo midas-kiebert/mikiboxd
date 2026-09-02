@@ -169,6 +169,8 @@
   cineville: true
   badge_bg_color: "yellow"
   url: "https://www.cinecenter.nl"
+  # Rows are letters (A-L, no I), seats 1-2 digits — read off its own seat maps.
+  seating: letter-number
 
 - key: cinecitta
   name: Cinecitta
@@ -433,7 +435,7 @@
   name: LAB-1
   city: Eindhoven
   cineville: true
-  badge_bg_color: "red"
+  badge_bg_color: "blue"
   url: "https://www.lab-1.nl"
 
 - key: lantarenvenster

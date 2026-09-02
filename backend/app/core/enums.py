@@ -45,6 +45,12 @@ class VisibilityMode(str, Enum):
 
     Stored per showtime on ShowtimeVisibilitySetting.
 
+    - FRIENDS_OF_FRIENDS: every friend you haven't opted out of sharing with,
+      plus every friend of a friend who is themself GOING/INTERESTED on this
+      showtime — the friend-of-friend need not be attending. See
+      `crud.showtime_visibility._friends_of_friends_ids_for_showtime` for the
+      exact bridging rules (opt-outs run in both directions, gating
+      different things).
     - ALL_FRIENDS: every friend you haven't opted out of sharing with.
     - INVITED_ONLY: nobody by default.
 
@@ -53,6 +59,7 @@ class VisibilityMode(str, Enum):
     who invited you.
     """
 
+    FRIENDS_OF_FRIENDS = "FRIENDS_OF_FRIENDS"
     ALL_FRIENDS = "ALL_FRIENDS"
     INVITED_ONLY = "INVITED_ONLY"
 
@@ -111,13 +118,34 @@ class NotificationChannel(str, Enum):
 class DigestFrequency(str, Enum):
     """How often a user wants to receive the watchlist new-showtime email digest.
 
-    DAILY sends every newly-available movie every day. WEEKLY_OR_URGENT holds
-    new movies back for up to a week, but sends early if one of the pending
-    showtimes is happening soon — see app/services/watchlist_digest.py.
+    DAILY mails you the day a watchlisted film becomes available, however far
+    out its first showtime is — it exists so you can book months ahead for the
+    screenings that sell out. Shown as "Eager".
+
+    WEEKLY_OR_URGENT mails you once, on Thursday morning, and only about films
+    screening within the next seven days. A film whose showtimes are all
+    further out is not dropped: it stays queued until one of them comes within
+    the week. Shown as "Weekly".
+
+    The WEEKLY_OR_URGENT name is a leftover: the "or urgent" half — an early
+    send when a pending showtime was within three days — was removed, but the
+    stored/wire value is deliberately left alone so installed app builds keep
+    round-tripping it. Rename it only alongside a client version floor.
+
+    See app/services/watchlist_digest.py.
     """
 
     DAILY = "daily"
     WEEKLY_OR_URGENT = "weekly_or_urgent"
+
+
+# What each mode is called wherever a user can see it — the settings picker, the
+# explainer dialog and the digest email's own footer. One mapping so the email
+# can never name a mode differently from the screen the reader set it on.
+DIGEST_FREQUENCY_LABELS: dict[DigestFrequency, str] = {
+    DigestFrequency.DAILY: "Eager",
+    DigestFrequency.WEEKLY_OR_URGENT: "Weekly",
+}
 
 
 @unique
@@ -183,6 +211,24 @@ class NotificationType(str, Enum):
     SEATS_RELEASED = "seats_released"
     # A showtime you marked interested in has nearly sold out.
     SEATS_RUNNING_OUT = "seats_running_out"
+    # A showtime you marked interested in has now actually sold out.
+    SOLD_OUT = "sold_out"
+
+
+@unique
+class SeatAlertKind(str, Enum):
+    """Which of the two seat-count notices an interested user is being sent.
+
+    They are two notices, not one repeated: "nearly sold out" is a nudge to
+    decide, sent once ever on the way up, while "sold out" is the answer to
+    that nudge and only means anything after the fact. Each carries its own
+    "already told them" stamp on the selection and its own delivery preference
+    on the user, and this is what picks between the two sets — see
+    ``app.services.push_notifications.send_seat_alerts``.
+    """
+
+    NEARLY_SOLD_OUT = "nearly_sold_out"
+    SOLD_OUT = "sold_out"
 
 
 @unique
@@ -275,3 +321,19 @@ class LoginEmailSource(str, Enum):
     PRIMARY = "primary"
     GOOGLE = "google"
     APPLE = "apple"
+
+
+@unique
+class ScreenSide(str, Enum):
+    """Which end of a room's stored seat geometry the screen sits at.
+
+    Not derivable from the seats: the row nearest the screen is usually row 1,
+    but not always — Filmhuis Alkmaar numbers its rows from the back, so its
+    row 1 sits at the bottom of a plan whose screen is at the top. Only
+    Tricket states it outright (its seat map draws the screen line as part of
+    the layout); every other platform hands back seats and nothing else, so
+    the value is stored per room and corrected by hand where it is wrong.
+    """
+
+    TOP = "top"
+    BOTTOM = "bottom"

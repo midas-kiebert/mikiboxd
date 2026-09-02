@@ -109,19 +109,23 @@ export type CinemaPresetPublic = {
   name: string
   is_default: boolean
   cinema_ids: Array<number>
+  cinema_scope?: CinemaScope | null
   is_favorite: boolean
   created_at: string
   updated_at: string
 }
 
 /**
- * The only field of a saved preset the user can edit after the fact.
+ * Editing an existing preset: its name, and optionally its cinemas.
  *
- * Its cinemas are changed by re-picking them in the sheet and saving over the
- * preset, so a rename never carries a selection with it.
+ * ``cinema_ids`` is optional so a plain rename (the manage-presets page's
+ * inline text edit) never has to resend the selection — omitted means
+ * "leave the cinemas as they are"; an empty list is a real (if unusual)
+ * "no cinemas" selection, not "don't touch this".
  */
 export type CinemaPresetRename = {
   name: string
+  cinema_ids?: Array<number> | null
 }
 
 export type CinemaPublic = {
@@ -135,6 +139,19 @@ export type CinemaPublic = {
   seating?: CinemaSeatingPreset
   id: number
   city: CityPublic
+}
+
+/**
+ * A cinema selection as a rule rather than a frozen list of ids.
+ *
+ * The three parts are a union: the selection is every cinema (``all_cinemas``),
+ * or everything in ``city_ids`` together with everything in ``cinema_ids``.
+ * ``all_cinemas`` subsumes the other two, which are left empty when it is set.
+ */
+export type CinemaScope = {
+  all_cinemas?: boolean
+  city_ids?: Array<number>
+  cinema_ids?: Array<number>
 }
 
 /**
@@ -185,9 +202,21 @@ export type CoInvitedFriendPublic = {
 /**
  * How often a user wants to receive the watchlist new-showtime email digest.
  *
- * DAILY sends every newly-available movie every day. WEEKLY_OR_URGENT holds
- * new movies back for up to a week, but sends early if one of the pending
- * showtimes is happening soon — see app/services/watchlist_digest.py.
+ * DAILY mails you the day a watchlisted film becomes available, however far
+ * out its first showtime is — it exists so you can book months ahead for the
+ * screenings that sell out. Shown as "Eager".
+ *
+ * WEEKLY_OR_URGENT mails you once, on Thursday morning, and only about films
+ * screening within the next seven days. A film whose showtimes are all
+ * further out is not dropped: it stays queued until one of them comes within
+ * the week. Shown as "Weekly".
+ *
+ * The WEEKLY_OR_URGENT name is a leftover: the "or urgent" half — an early
+ * send when a pending showtime was within three days — was removed, but the
+ * stored/wire value is deliberately left alone so installed app builds keep
+ * round-tripping it. Rename it only alongside a client version floor.
+ *
+ * See app/services/watchlist_digest.py.
  */
 export type DigestFrequency = "daily" | "weekly_or_urgent"
 
@@ -402,6 +431,7 @@ export type NotificationFeedItem = {
     | "friend_request_accepted"
     | "seats_released"
     | "seats_running_out"
+    | "sold_out"
   created_at: string
   seen_at: string | null
   actor: UserPublic | null
@@ -418,6 +448,7 @@ export type type =
   | "friend_request_accepted"
   | "seats_released"
   | "seats_running_out"
+  | "sold_out"
 
 export type NotificationOptInBreakdown = {
   setting: string
@@ -451,6 +482,7 @@ export type SavedPresetCreate = {
   untouched_fields?: Array<string>
   filters: SavedPresetFilters
   cinema_ids?: Array<number> | null
+  cinema_preset_id?: string | null
   is_favorite?: boolean | null
 }
 
@@ -479,6 +511,8 @@ export type SavedPresetPublic = {
   untouched_fields: Array<string>
   filters: SavedPresetFilters
   cinema_ids: Array<number> | null
+  cinema_scope?: CinemaScope | null
+  cinema_preset_id?: string | null
   created_at: string
   updated_at: string
 }
@@ -542,6 +576,18 @@ export type ScrapeRunView = {
 }
 
 /**
+ * Which end of a room's stored seat geometry the screen sits at.
+ *
+ * Not derivable from the seats: the row nearest the screen is usually row 1,
+ * but not always — Filmhuis Alkmaar numbers its rows from the back, so its
+ * row 1 sits at the bottom of a plan whose screen is at the top. Only
+ * Tricket states it outright (its seat map draws the screen line as part of
+ * the layout); every other platform hands back seats and nothing else, so
+ * the value is stored per room and corrected by hand where it is wrong.
+ */
+export type ScreenSide = "top" | "bottom"
+
+/**
  * Which attribute the movie search ``query`` is matched against.
  *
  * TITLE also matches ``original_title``; the others match arrays/related
@@ -574,8 +620,9 @@ export type SeatAvailabilityLevel =
  */
 export type SeatFloorPlanPublic = {
   showtime_id: number
-  room: string
+  room: string | null
   seats: Array<SeatFloorPlanSeatPublic>
+  screen_side?: ScreenSide
   seats_checked_at?: string | null
 }
 
@@ -625,6 +672,7 @@ export type ShowtimeInMoviePublic = {
   id: number
   cinema: CinemaPublic
   viewer?: ShowtimeInMovieViewerState | null
+  seat_availability?: ShowtimeSeatAvailabilityPublic | null
   /**
    * @deprecated
    */
@@ -684,6 +732,9 @@ export type ShowtimeInMovieViewerState = {
   invite_ping_ids?: Array<number>
   co_invited_friends?: Array<CoInvitedFriendPublic>
   pending_invited_friends?: Array<UserPublic>
+  friends_of_friends_going?: Array<UserWithFriendStatus>
+  friends_of_friends_interested?: Array<UserWithFriendStatus>
+  visibility_mode?: VisibilityMode | null
 }
 
 export type ShowtimePingLinkToken = {
@@ -728,6 +779,7 @@ export type ShowtimePublic = {
   movie: MovieInShowtime
   cinema: CinemaPublic
   viewer?: ShowtimeViewerState | null
+  seat_availability?: ShowtimeSeatAvailabilityPublic | null
   /**
    * @deprecated
    */
@@ -829,13 +881,18 @@ export type ShowtimeReportUpdate = {
  *
  * The same for everyone — this is a fact about the screening, not about who
  * asked — which is what lets it be cached per showtime and prefetched for a
- * whole list at once. A showtime with no usable reading and no read pending
- * is simply absent from the response rather than present with a null level,
- * so the client never has to tell "empty" from "unknown". A showtime whose
- * reading has not landed yet, but is expected soon, is the one exception: it
- * is present with `checking` set — with a level if it has ever had one, and
- * without if this is its first — so the client can say a number is coming
- * instead of showing nothing or a stale one with no explanation.
+ * whole list at once.
+ *
+ * A showtime is absent from the response only when there is nothing to say
+ * about it *and never will be*: no reading, none pending, and a ticket shop
+ * nothing here can read. That absence is what the client hides the whole
+ * "Available seats" block on, so it has to mean "not a thing here", not
+ * "not known yet" — the two get very different treatment, and a row of
+ * dashes where an answer never appears is worse than no row at all.
+ * Everything else comes back present: with a level once one has been read,
+ * with `checking` while one is on its way, and with neither (but
+ * `trackable` set) for a screening whose count could be read and has not
+ * been.
  */
 export type ShowtimeSeatAvailabilityPublic = {
   showtime_id: number
@@ -845,6 +902,8 @@ export type ShowtimeSeatAvailabilityPublic = {
   checked_at?: string | null
   watchable?: boolean
   checking?: boolean
+  trackable?: boolean
+  can_request_check?: boolean
 }
 
 export type ShowtimeSelectionUpdate = {
@@ -871,6 +930,9 @@ export type ShowtimeViewerState = {
   invite_ping_ids?: Array<number>
   co_invited_friends?: Array<CoInvitedFriendPublic>
   pending_invited_friends?: Array<UserPublic>
+  friends_of_friends_going?: Array<UserWithFriendStatus>
+  friends_of_friends_interested?: Array<UserWithFriendStatus>
+  visibility_mode?: VisibilityMode | null
   friends_watchlisted?: Array<UserPublic>
   friends_watched?: Array<UserPublic>
   non_friend_participants?: Array<NonFriendParticipantPublic>
@@ -991,18 +1053,24 @@ export type UserMe = {
   show_watchlist_digest_tip: boolean
   is_superuser: boolean
   incognito_mode: boolean
+  default_visibility_mode: VisibilityMode
+  has_selected_showtimes: boolean
   notify_on_friend_showtime_match: boolean
   notify_on_friend_requests: boolean
   notify_on_showtime_ping: boolean
   notify_on_invite_response: boolean
   notify_on_interest_reminder: boolean
   notify_on_seat_alert: boolean
+  notify_on_sold_out: boolean
+  notify_on_showtime_reminder: boolean
   notify_channel_friend_showtime_match: NotificationChannel
   notify_channel_friend_requests: NotificationChannel
   notify_channel_showtime_ping: NotificationChannel
   notify_channel_invite_response: NotificationChannel
   notify_channel_interest_reminder: NotificationChannel
   notify_channel_seat_alert: NotificationChannel
+  notify_channel_sold_out: NotificationChannel
+  notify_channel_showtime_reminder: NotificationChannel
   letterboxd_username: string | null
   watchlist_count: number
   watched_count: number
@@ -1015,9 +1083,6 @@ export type UserMe = {
   watchlist_sync_cooldown_ends_at?: string | null
   watched_sync_cooldown_ends_at?: string | null
   notify_watchlist_digest_enabled: boolean
-  notify_watchlist_digest_frequency: DigestFrequency
-  notify_watchlist_digest_list_id: string | null
-  notify_watchlist_digest_cinema_preset_id: string | null
   can_report: boolean
   can_watch_sold_out: boolean
   has_password: boolean
@@ -1096,18 +1161,24 @@ export type UserUpdate = {
   email?: string | null
   letterboxd_username?: string | null
   incognito_mode?: boolean | null
+  default_visibility_mode?: VisibilityMode | null
+  apply_default_visibility_to_existing?: boolean | null
   notify_on_friend_showtime_match?: boolean | null
   notify_on_friend_requests?: boolean | null
   notify_on_showtime_ping?: boolean | null
   notify_on_invite_response?: boolean | null
   notify_on_interest_reminder?: boolean | null
   notify_on_seat_alert?: boolean | null
+  notify_on_sold_out?: boolean | null
+  notify_on_showtime_reminder?: boolean | null
   notify_channel_friend_showtime_match?: NotificationChannel | null
   notify_channel_friend_requests?: NotificationChannel | null
   notify_channel_showtime_ping?: NotificationChannel | null
   notify_channel_invite_response?: NotificationChannel | null
   notify_channel_interest_reminder?: NotificationChannel | null
   notify_channel_seat_alert?: NotificationChannel | null
+  notify_channel_sold_out?: NotificationChannel | null
+  notify_channel_showtime_reminder?: NotificationChannel | null
   notify_watchlist_digest_enabled?: boolean | null
   notify_watchlist_digest_frequency?: DigestFrequency | null
   notify_watchlist_digest_list_id?: string | null
@@ -1140,6 +1211,12 @@ export type ValidationError = {
  *
  * Stored per showtime on ShowtimeVisibilitySetting.
  *
+ * - FRIENDS_OF_FRIENDS: every friend you haven't opted out of sharing with,
+ * plus every friend of a friend who is themself GOING/INTERESTED on this
+ * showtime — the friend-of-friend need not be attending. See
+ * `crud.showtime_visibility._friends_of_friends_ids_for_showtime` for the
+ * exact bridging rules (opt-outs run in both directions, gating
+ * different things).
  * - ALL_FRIENDS: every friend you haven't opted out of sharing with.
  * - INVITED_ONLY: nobody by default.
  *
@@ -1147,7 +1224,42 @@ export type ValidationError = {
  * invited, friends who invited you, and friends co-invited by the same person
  * who invited you.
  */
-export type VisibilityMode = "ALL_FRIENDS" | "INVITED_ONLY"
+export type VisibilityMode =
+  | "FRIENDS_OF_FRIENDS"
+  | "ALL_FRIENDS"
+  | "INVITED_ONLY"
+
+export type WatchlistDigestSourceCreate = {
+  frequency?: DigestFrequency
+  list_id?: string | null
+  cinema_preset_id?: string | null
+  custom_cinema_ids?: Array<number> | null
+}
+
+export type WatchlistDigestSourcePublic = {
+  id: string
+  frequency: DigestFrequency
+  list_id: string | null
+  cinema_preset_id: string | null
+  custom_cinema_ids: Array<number> | null
+  created_at: string
+}
+
+/**
+ * Every field is a partial update (PATCH semantics, `exclude_unset`).
+ *
+ * Switching the cinema selection from a preset to a custom list (or back)
+ * is done by sending both fields explicitly in the same request — e.g.
+ * `{"cinema_preset_id": "<id>", "custom_cinema_ids": null}` — the service
+ * also clears the other field itself if only one is sent, so a client never
+ * has to.
+ */
+export type WatchlistDigestSourceUpdate = {
+  frequency?: DigestFrequency | null
+  list_id?: string | null
+  cinema_preset_id?: string | null
+  custom_cinema_ids?: Array<number> | null
+}
 
 export type AdminSimulateSeatAvailabilityData = {
   requestBody: SimulateSeatAvailability
@@ -1402,6 +1514,28 @@ export type MeSetFavoriteCinemaPresetData = {
 
 export type MeSetFavoriteCinemaPresetResponse = CinemaPresetPublic
 
+export type MeGetWatchlistDigestSourcesResponse =
+  Array<WatchlistDigestSourcePublic>
+
+export type MeCreateWatchlistDigestSourceData = {
+  requestBody: WatchlistDigestSourceCreate
+}
+
+export type MeCreateWatchlistDigestSourceResponse = WatchlistDigestSourcePublic
+
+export type MeUpdateWatchlistDigestSourceData = {
+  requestBody: WatchlistDigestSourceUpdate
+  sourceId: string
+}
+
+export type MeUpdateWatchlistDigestSourceResponse = WatchlistDigestSourcePublic
+
+export type MeDeleteWatchlistDigestSourceData = {
+  sourceId: string
+}
+
+export type MeDeleteWatchlistDigestSourceResponse = Message
+
 export type MeResendEmailVerificationResponse = Message
 
 export type MeUpdatePasswordMeData = {
@@ -1411,11 +1545,19 @@ export type MeUpdatePasswordMeData = {
 export type MeUpdatePasswordMeResponse = Message
 
 export type MeCountMyShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   query?: string | null
   /**
@@ -1463,11 +1605,19 @@ export type MeCountMyShowtimesData = {
 export type MeCountMyShowtimesResponse = number
 
 export type MeGetMyShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   limit?: number
   offset?: number
@@ -1629,11 +1779,19 @@ export type MeRecordEventData = {
 export type MeRecordEventResponse = void
 
 export type MoviesCountMoviesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   query?: string | null
   /**
@@ -1681,11 +1839,19 @@ export type MoviesCountMoviesData = {
 export type MoviesCountMoviesResponse = number
 
 export type MoviesReadMoviesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   limit?: number
   offset?: number
@@ -1736,11 +1902,19 @@ export type MoviesReadMoviesData = {
 export type MoviesReadMoviesResponse = Array<MovieSummaryPublic>
 
 export type MoviesReadMovieShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   id: number
   limit?: number
@@ -1791,11 +1965,19 @@ export type MoviesReadMovieShowtimesData = {
 export type MoviesReadMovieShowtimesResponse = Array<ShowtimeInMoviePublic>
 
 export type MoviesReadMovieData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   id: number
   query?: string | null
@@ -1896,6 +2078,13 @@ export type ShowtimesUninviteFriendFromShowtimeData = {
 
 export type ShowtimesUninviteFriendFromShowtimeResponse = Message
 
+export type ShowtimesSendShowtimeReminderData = {
+  friendId: string
+  showtimeId: number
+}
+
+export type ShowtimesSendShowtimeReminderResponse = Message
+
 export type ShowtimesCreateShowtimePingLinkTokenData = {
   showtimeId: number
 }
@@ -1943,6 +2132,13 @@ export type ShowtimesGetSeatAvailabilityData = {
 export type ShowtimesGetSeatAvailabilityResponse =
   ShowtimeSeatAvailabilityPublic | null
 
+export type ShowtimesRequestSeatAvailabilityCheckData = {
+  showtimeId: number
+}
+
+export type ShowtimesRequestSeatAvailabilityCheckResponse =
+  ShowtimeSeatAvailabilityPublic | null
+
 export type ShowtimesGetSoldOutWatchResponse = SoldOutWatchPublic | null
 
 export type ShowtimesStopSoldOutWatchResponse = Message
@@ -1980,12 +2176,27 @@ export type ShowtimesGetUninvitedSelectedFriendsForShowtimeData = {
 export type ShowtimesGetUninvitedSelectedFriendsForShowtimeResponse =
   UninvitedSelectedFriendsPublic
 
+export type ShowtimesGetHiddenAttendingFriendsForShowtimeData = {
+  showtimeId: number
+}
+
+export type ShowtimesGetHiddenAttendingFriendsForShowtimeResponse =
+  UninvitedSelectedFriendsPublic
+
 export type ShowtimesCountMainPageShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   query?: string | null
   /**
@@ -2033,11 +2244,19 @@ export type ShowtimesCountMainPageShowtimesData = {
 export type ShowtimesCountMainPageShowtimesResponse = number
 
 export type ShowtimesGetMainPageShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   limit?: number
   offset?: number
@@ -2150,11 +2369,19 @@ export type UsersGetUserData = {
 export type UsersGetUserResponse = UserPublic
 
 export type UsersGetUserSelectedShowtimesData = {
+  /**
+   * Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   */
+  allCinemas?: boolean
   days?: Array<string> | null
   /**
    * Hide movies on any of these Letterboxd lists
    */
   excludeListIds?: Array<string> | null
+  /**
+   * With selected_statuses, match only friends' selections, not the viewer's own
+   */
+  friendsOnly?: boolean
   hideWatched?: boolean
   limit?: number
   offset?: number

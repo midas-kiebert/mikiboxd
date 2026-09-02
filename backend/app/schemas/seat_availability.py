@@ -16,13 +16,18 @@ class ShowtimeSeatAvailabilityPublic(SQLModel):
 
     The same for everyone — this is a fact about the screening, not about who
     asked — which is what lets it be cached per showtime and prefetched for a
-    whole list at once. A showtime with no usable reading and no read pending
-    is simply absent from the response rather than present with a null level,
-    so the client never has to tell "empty" from "unknown". A showtime whose
-    reading has not landed yet, but is expected soon, is the one exception: it
-    is present with `checking` set — with a level if it has ever had one, and
-    without if this is its first — so the client can say a number is coming
-    instead of showing nothing or a stale one with no explanation.
+    whole list at once.
+
+    A showtime is absent from the response only when there is nothing to say
+    about it *and never will be*: no reading, none pending, and a ticket shop
+    nothing here can read. That absence is what the client hides the whole
+    "Available seats" block on, so it has to mean "not a thing here", not
+    "not known yet" — the two get very different treatment, and a row of
+    dashes where an answer never appears is worse than no row at all.
+    Everything else comes back present: with a level once one has been read,
+    with `checking` while one is on its way, and with neither (but
+    `trackable` set) for a screening whose count could be read and has not
+    been.
     """
 
     showtime_id: int
@@ -46,6 +51,21 @@ class ShowtimeSeatAvailabilityPublic(SQLModel):
     # number, and the client shows both ("31/312 · checking…") rather than
     # blanking a perfectly good answer while a fresher one is fetched.
     checking: bool = False
+    # Whether a seat count can be read for this screening at all — i.e. whether
+    # its ticket shop is one of the platforms `scraping.seat_availability` knows
+    # how to read. False for most cinemas, and the client hides the availability
+    # block outright for them rather than showing a permanent "unknown".
+    #
+    # Deliberately independent of whether anything *has* been read: a screening
+    # holding an old reading from a ticket link that has since moved to a
+    # platform we can't read still shows the number it has.
+    trackable: bool = False
+    # Whether the viewer can ask for a first reading by hand. True only for a
+    # trackable screening that has never been read and has no read pending —
+    # the same one-shot rule `services.seat_availability.should_check_immediately`
+    # enforces, mirrored here so the button can disappear the moment it stops
+    # being possible rather than on tap.
+    can_request_check: bool = False
 
 
 class SoldOutWatchPublic(SQLModel):

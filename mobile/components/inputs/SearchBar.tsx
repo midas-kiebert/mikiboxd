@@ -7,10 +7,9 @@
  * instead, because a dropdown attaches to its bottom edge and a pill cannot
  * line up with a list of rows.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Animated,
-  BackHandler,
   Easing,
   LayoutChangeEvent,
   Modal,
@@ -28,6 +27,7 @@ import { useIsFocused } from "@react-navigation/native";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useAndroidBackHandler } from "@/utils/android-back";
 import { useIsSignedIn } from "@/utils/auth-session";
 import type { SearchField } from "shared/client";
 
@@ -38,6 +38,12 @@ type SearchBarProps = {
   searchField?: SearchField;
   onChangeSearchField?: (searchField: SearchField) => void;
   /**
+   * Search fields to leave out of the dropdown, for screens where one of them
+   * has no meaning — the cinema page is already a single cinema, so searching
+   * by cinema there could only ever return the same list or nothing.
+   */
+  hiddenSearchFields?: readonly SearchField[];
+  /**
    * Overrides the full-bleed chrome this carries by default (a screen's search
    * bar sits edge to edge under a header, and owns that inset itself). Pass a
    * transparent, unpadded style when the parent already has its own gutter, so
@@ -45,6 +51,11 @@ type SearchBarProps = {
    * side.
    */
   containerStyle?: StyleProp<ViewStyle>;
+  /**
+   * Rendered to the left of the search field, in the same row and stretched to
+   * its height (the Filters button on the feeds that have one).
+   */
+  leftSlot?: ReactNode;
   /**
    * Android hardware back empties the field instead of leaving the screen,
    * while there is anything in it. Opt-in, and only correct for a search bar
@@ -68,27 +79,40 @@ type SearchBarProps = {
 function AndroidBackClear({ onClear }: { onClear: () => void }) {
   const isFocused = useIsFocused();
 
-  useEffect(() => {
-    if (!isFocused) return;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      onClear();
-      // Handled: the press is spent on the field, and the next one — with
-      // nothing left to clear — navigates as usual.
-      return true;
-    });
-    return () => subscription.remove();
-  }, [isFocused, onClear]);
+  // Shared stack, so a sheet opened over the screen still wins the press even
+  // though this subscribed first — see `utils/android-back.ts`.
+  useAndroidBackHandler(isFocused, () => {
+    onClear();
+    // Handled: the press is spent on the field, and the next one — with
+    // nothing left to clear — navigates as usual.
+    return true;
+  });
 
   return null;
 }
 
-const SEARCH_FIELD_OPTIONS: { id: SearchField; label: string }[] = [
-  { id: "title", label: "Title" },
-  { id: "director", label: "Director" },
-  { id: "actor", label: "Actor" },
-  { id: "cinema", label: "Cinema" },
-  { id: "friend", label: "Friends" },
+const SEARCH_FIELD_OPTIONS: {
+  id: SearchField;
+  label: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
+}[] = [
+  { id: "title", label: "Title", icon: "movie" },
+  // A camera for the person behind it, drama masks for the ones in front:
+  // three of these five options are film-related, so they need distinct
+  // silhouettes rather than three variations of a film reel. Not
+  // `movie-creation` — Material draws that as the same clapperboard as
+  // `movie`, despite the separate codepoint.
+  { id: "director", label: "Director", icon: "videocam" },
+  { id: "actor", label: "Actor", icon: "theater-comedy" },
+  // The pin `TopBar` already uses for a cinema's location, rather than another
+  // film-adjacent glyph: this option searches for a venue, not for a film.
+  { id: "cinema", label: "Cinema", icon: "place" },
+  { id: "friend", label: "Friends", icon: "group" },
 ];
+
+/** The dropdown's own wording for a field, reused wherever one is named. */
+export const getSearchFieldLabel = (field: SearchField): string =>
+  SEARCH_FIELD_OPTIONS.find((option) => option.id === field)?.label ?? field;
 
 const SEARCH_FIELD_PLACEHOLDER: Record<SearchField, string> = {
   title: "Search title",
@@ -99,14 +123,28 @@ const SEARCH_FIELD_PLACEHOLDER: Record<SearchField, string> = {
 };
 
 const OPTION_HEIGHT = 46;
+const OPTION_ICON_SIZE = 18;
 /** Searching by friend needs friends, which needs an account. */
 const ACCOUNT_ONLY_SEARCH_FIELDS: ReadonlySet<SearchField> = new Set(["friend"]);
+/** Stable default for `hiddenSearchFields`, so the options memo isn't rebuilt every render. */
+const NO_HIDDEN_SEARCH_FIELDS: readonly SearchField[] = [];
 const OPEN_DURATION_MS = 220;
 const CLOSE_DURATION_MS = 170;
-/** Corner radius of the standalone pill; half its height or more reads as round. */
-const PILL_RADIUS = 26;
-/** Corner radius when a dropdown has to attach flush to the bottom edge. */
-const ATTACHED_RADIUS = 14;
+/**
+ * Corner radius of the standalone pill; half its height or more reads as round.
+ * Exported so anything sharing the row (the Filters button in `leftSlot`) can
+ * be cut to the same shape.
+ */
+export const SEARCH_FIELD_RADIUS = 26;
+
+/** The field's own type size, shared with whatever sits beside it. */
+export const SEARCH_FIELD_FONT_SIZE = 16;
+/**
+ * Corner radius when a dropdown has to attach flush to the bottom edge — which
+ * is what the field rests at on every screen carrying the mode selector.
+ * Exported for the same reason as {@link SEARCH_FIELD_RADIUS}.
+ */
+export const SEARCH_FIELD_ATTACHED_RADIUS = 14;
 /** Fixed slot for the clear button, reserved so the box never resizes as you type. */
 const TRAILING_SLOT_WIDTH = 34;
 
@@ -116,8 +154,10 @@ export default function SearchBar({
   placeholder = "Search",
   searchField,
   onChangeSearchField,
+  hiddenSearchFields = NO_HIDDEN_SEARCH_FIELDS,
   containerStyle,
   clearOnAndroidBack = false,
+  leftSlot,
 }: SearchBarProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   // Theme-aware colors keep this input readable in both light and dark modes.
@@ -142,10 +182,12 @@ export default function SearchBar({
   const isSignedIn = useIsSignedIn();
   const searchFieldOptions = useMemo(
     () =>
-      isSignedIn
-        ? SEARCH_FIELD_OPTIONS
-        : SEARCH_FIELD_OPTIONS.filter((option) => !ACCOUNT_ONLY_SEARCH_FIELDS.has(option.id)),
-    [isSignedIn]
+      SEARCH_FIELD_OPTIONS.filter(
+        (option) =>
+          !hiddenSearchFields.includes(option.id) &&
+          (isSignedIn || !ACCOUNT_ONLY_SEARCH_FIELDS.has(option.id))
+      ),
+    [hiddenSearchFields, isSignedIn]
   );
   const dropdownContentHeight = OPTION_HEIGHT * searchFieldOptions.length;
 
@@ -154,7 +196,7 @@ export default function SearchBar({
   const effectivePlaceholder = showModeSelector
     ? SEARCH_FIELD_PLACEHOLDER[activeSearchField]
     : placeholder;
-  const restingRadius = showModeSelector ? ATTACHED_RADIUS : PILL_RADIUS;
+  const restingRadius = showModeSelector ? SEARCH_FIELD_ATTACHED_RADIUS : SEARCH_FIELD_RADIUS;
   const hasValue = value.length > 0;
 
   useEffect(() => {
@@ -198,6 +240,9 @@ export default function SearchBar({
   };
 
   const handleToggleDropdown = () => {
+    // Fired before the measure() round trip below, so the tap is felt the
+    // instant it lands rather than one frame later with the dropdown.
+    triggerSelectionHaptic();
     if (isOpen) {
       setIsOpen(false);
       return;
@@ -213,6 +258,8 @@ export default function SearchBar({
   };
 
   const handleSelectSearchField = (optionId: SearchField) => {
+    // Ahead of the mode change, which refetches the search on the screen below.
+    triggerSelectionHaptic();
     onChangeSearchField?.(optionId);
     setIsOpen(false);
   };
@@ -237,70 +284,78 @@ export default function SearchBar({
       {clearOnAndroidBack && hasValue && Platform.OS === "android" ? (
         <AndroidBackClear onClear={handleClearFromBack} />
       ) : null}
-      <View ref={boxRef} collapsable={false} onLayout={handleBoxLayout} style={styles.inputBoxWrap}>
-        <Animated.View
-          style={[
-            styles.inputBox,
-            {
-              borderTopLeftRadius: restingRadius,
-              borderTopRightRadius: restingRadius,
-              borderBottomLeftRadius: boxBottomRadius,
-              borderBottomRightRadius: boxBottomRadius,
-            },
-            // Only the colour changes on focus — a thicker border would nudge
-            // everything inside the box by a pixel on every tap.
-            isFocused && styles.inputBoxFocused,
-          ]}
+      <View style={styles.searchRow}>
+        {leftSlot}
+        <View
+          ref={boxRef}
+          collapsable={false}
+          onLayout={handleBoxLayout}
+          style={styles.inputBoxWrap}
         >
-          <MaterialIcons
-            name="search"
-            size={20}
-            color={isFocused ? colors.tint : colors.textSecondary}
-            style={styles.searchIcon}
-          />
-          <TextInput
-            ref={inputRef}
-            style={styles.input}
-            // Placeholder reflects the active search mode (title/director/actor/cinema/friends).
-            placeholder={effectivePlaceholder}
-            placeholderTextColor={colors.textSecondary}
-            value={value}
-            onChangeText={onChangeText}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            selectionColor={colors.tint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-          />
-          {/* Always occupies its slot so the field does not resize when the
-              first character is typed. */}
-          <View style={styles.trailingSlot}>
-            {hasValue ? (
+          <Animated.View
+            style={[
+              styles.inputBox,
+              {
+                borderTopLeftRadius: restingRadius,
+                borderTopRightRadius: restingRadius,
+                borderBottomLeftRadius: boxBottomRadius,
+                borderBottomRightRadius: boxBottomRadius,
+              },
+              // Only the colour changes on focus — a thicker border would nudge
+              // everything inside the box by a pixel on every tap.
+              isFocused && styles.inputBoxFocused,
+            ]}
+          >
+            <MaterialIcons
+              name="search"
+              size={20}
+              color={isFocused ? colors.tint : colors.textSecondary}
+              style={styles.searchIcon}
+            />
+            <TextInput
+              ref={inputRef}
+              style={styles.input}
+              // Placeholder reflects the active search mode (title/director/actor/cinema/friends).
+              placeholder={effectivePlaceholder}
+              placeholderTextColor={colors.textSecondary}
+              value={value}
+              onChangeText={onChangeText}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              selectionColor={colors.tint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+            {/* Always occupies its slot so the field does not resize when the
+                first character is typed. */}
+            <View style={styles.trailingSlot}>
+              {hasValue ? (
+                <TouchableOpacity
+                  onPress={handleClear}
+                  activeOpacity={0.6}
+                  hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                >
+                  <MaterialIcons name="cancel" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            {showModeSelector ? (
               <TouchableOpacity
-                onPress={handleClear}
+                style={styles.caretButton}
+                onPress={handleToggleDropdown}
                 activeOpacity={0.6}
-                hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-                accessibilityRole="button"
-                accessibilityLabel="Clear search"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <MaterialIcons name="cancel" size={18} color={colors.textSecondary} />
+                <Animated.View style={{ transform: [{ rotate: caretSpin }] }}>
+                  <MaterialIcons name="expand-more" size={20} color={colors.textSecondary} />
+                </Animated.View>
               </TouchableOpacity>
             ) : null}
-          </View>
-          {showModeSelector ? (
-            <TouchableOpacity
-              style={styles.caretButton}
-              onPress={handleToggleDropdown}
-              activeOpacity={0.6}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Animated.View style={{ transform: [{ rotate: caretSpin }] }}>
-                <MaterialIcons name="expand-more" size={20} color={colors.textSecondary} />
-              </Animated.View>
-            </TouchableOpacity>
-          ) : null}
-        </Animated.View>
+          </Animated.View>
+        </View>
       </View>
 
       {renderDropdown && dropdownLayout && (
@@ -347,12 +402,19 @@ export default function SearchBar({
                   onPress={() => handleSelectSearchField(option.id)}
                   activeOpacity={0.8}
                 >
-                  <ThemedText
-                    style={[styles.optionLabel, isActive && styles.optionLabelActive]}
-                    numberOfLines={1}
-                  >
-                    {option.label}
-                  </ThemedText>
+                  <View style={styles.optionMain}>
+                    <MaterialIcons
+                      name={option.icon}
+                      size={OPTION_ICON_SIZE}
+                      color={isActive ? colors.pillActiveText : colors.pillText}
+                    />
+                    <ThemedText
+                      style={[styles.optionLabel, isActive && styles.optionLabelActive]}
+                      numberOfLines={1}
+                    >
+                      {option.label}
+                    </ThemedText>
+                  </View>
                   {isActive && (
                     <MaterialIcons name="check" size={16} color={colors.pillActiveText} />
                   )}
@@ -373,7 +435,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingVertical: 12,
       backgroundColor: colors.background,
     },
-    inputBoxWrap: {},
+    searchRow: {
+      flexDirection: "row",
+      // Stretch, so anything in `rightSlot` comes out exactly as tall as the
+      // search field without either side hardcoding a height.
+      alignItems: "stretch",
+      gap: 10,
+    },
+    inputBoxWrap: { flex: 1 },
     inputBox: {
       flexDirection: "row",
       alignItems: "center",
@@ -391,7 +460,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flex: 1,
       paddingHorizontal: 10,
       paddingVertical: 12,
-      fontSize: 16,
+      fontSize: SEARCH_FIELD_FONT_SIZE,
       color: colors.text,
     },
     trailingSlot: {
@@ -407,9 +476,15 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       position: "absolute",
       borderTopLeftRadius: 0,
       borderTopRightRadius: 0,
-      borderBottomLeftRadius: ATTACHED_RADIUS,
-      borderBottomRightRadius: ATTACHED_RADIUS,
+      borderBottomLeftRadius: SEARCH_FIELD_ATTACHED_RADIUS,
+      borderBottomRightRadius: SEARCH_FIELD_ATTACHED_RADIUS,
       backgroundColor: colors.searchBackground,
+      // Continues the field's own outline down the list. No top edge: the
+      // dropdown is positioned flush under the box, whose bottom border already
+      // draws the seam between them.
+      borderWidth: 1,
+      borderTopWidth: 0,
+      borderColor: colors.cardBorder,
       shadowColor: "#000",
       shadowOpacity: 0.16,
       shadowRadius: 14,
@@ -430,11 +505,18 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderTopWidth: 0,
     },
     optionRowLast: {
-      borderBottomLeftRadius: ATTACHED_RADIUS,
-      borderBottomRightRadius: ATTACHED_RADIUS,
+      borderBottomLeftRadius: SEARCH_FIELD_ATTACHED_RADIUS,
+      borderBottomRightRadius: SEARCH_FIELD_ATTACHED_RADIUS,
     },
     optionRowActive: {
       backgroundColor: colors.pillActiveBackground,
+    },
+    optionMain: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      // Lets a long label truncate instead of pushing the check mark out.
+      flexShrink: 1,
     },
     optionLabel: {
       fontSize: 14,

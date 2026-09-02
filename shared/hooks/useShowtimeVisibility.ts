@@ -2,11 +2,15 @@
  * Reads of a showtime's visibility mode ("who can see your status").
  *
  * The showtime sheet has to paint its mode pill the moment it opens, from
- * wherever it was opened. Screens that can open the sheet therefore prefetch
- * the modes of the showtimes they render: ids queued within the same short
- * window are coalesced into a single batched request and seeded straight into
- * the react-query cache under the per-showtime key the sheet reads. The sheet
- * still revalidates on open — the seeded value only removes the loading state.
+ * wherever it was opened, so the mode is cached per showtime before then.
+ *
+ * Normally it comes with the showtime itself: every list payload carries the
+ * viewer's mode for each screening, and the fetch hooks seed it on arrival
+ * (`seedShowtimeVisibility`). The batched request is the fallback for
+ * showtimes no such payload covered — ids queued within the same short window
+ * are coalesced into one request and written under the same keys. The sheet
+ * still revalidates on open either way; the cached value only removes the
+ * loading state.
  */
 import { useEffect } from "react";
 import {
@@ -15,9 +19,23 @@ import {
   type QueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { ShowtimesService, type ShowtimeVisibilityPublic } from "../client";
+import {
+  ShowtimesService,
+  type ShowtimeVisibilityPublic,
+  type VisibilityMode,
+} from "../client";
 
-const SHOWTIME_VISIBILITY_QUERY_KEY_PREFIX = ["showtimes", "visibility"] as const;
+/**
+ * A showtime as a list returns it. `movie` is absent on the shape nested under
+ * a movie, which is why the movie id can also be supplied by the caller.
+ */
+type VisibilityCarrier = {
+  id: number;
+  movie?: { id: number };
+  viewer?: { visibility_mode?: VisibilityMode | null } | null;
+};
+
+export const SHOWTIME_VISIBILITY_QUERY_KEY_PREFIX = ["showtimes", "visibility"] as const;
 
 export const showtimeVisibilityQueryKey = (showtimeId: number | null) =>
   [...SHOWTIME_VISIBILITY_QUERY_KEY_PREFIX, showtimeId] as const;
@@ -93,6 +111,35 @@ function flushBatch(queryClient: QueryClient): void {
       state,
       showtimeIds.slice(start, start + MAX_IDS_PER_REQUEST)
     );
+  }
+}
+
+/**
+ * Cache the modes a list of showtimes already told us about.
+ *
+ * Every showtime carries the viewer's own mode for it (`viewer.visibility_mode`
+ * — see `ShowtimeInMovieViewerState` in `backend/app/schemas/showtime.py`), so
+ * a list arrives with the answer the sheet needs. Seeding from the fetch hooks
+ * as the page lands means the mode pill is there the instant the sheet opens,
+ * rather than after the batched request below has had time to come back.
+ *
+ * A showtime with no viewer state (a guest, or an older backend) is skipped:
+ * there is no mode to speak of, and the prefetch remains the fallback.
+ */
+export function seedShowtimeVisibility(
+  queryClient: QueryClient,
+  showtimes: readonly VisibilityCarrier[],
+  { movieId }: { movieId?: number } = {}
+): void {
+  for (const showtime of showtimes) {
+    const mode = showtime.viewer?.visibility_mode;
+    const resolvedMovieId = showtime.movie?.id ?? movieId;
+    if (!mode || resolvedMovieId === undefined) continue;
+    queryClient.setQueryData(showtimeVisibilityQueryKey(showtime.id), {
+      showtime_id: showtime.id,
+      movie_id: resolvedMovieId,
+      mode,
+    } satisfies ShowtimeVisibilityPublic);
   }
 }
 

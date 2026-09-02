@@ -17,6 +17,8 @@ import { useFetchLetterboxdLists } from "shared/hooks/useLetterboxdLists";
 import { ThemedText } from "@/components/themed-text";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { serializeCinemaIds } from "@/components/filters/cinema-grouping";
+import { useCinemaPresets } from "@/components/filters/cinema-presets";
 import { type PageFilterPresetState } from "@/components/filters/filter-preset-utils";
 import {
   buildSavedPresetCreate,
@@ -55,6 +57,18 @@ export default function SavePresetDialog({
   const { bottom: bottomInset } = useSafeAreaInsets();
 
   const { data: letterboxdLists = [] } = useFetchLetterboxdLists(canUseWatchlistFilter);
+  // Detects whether the current cinema selection is exactly one of the
+  // user's saved cinema presets, so the filter preset can reference it (see
+  // `buildSavedPresetCreate`) instead of freezing a raw copy of it.
+  const { data: cinemaPresets = [] } = useCinemaPresets({ enabled: cinemaActive });
+  const matchedCinemaPresetId = useMemo(() => {
+    const currentSignature = serializeCinemaIds(cinemaIds);
+    return (
+      cinemaPresets.find(
+        (preset) => serializeCinemaIds(preset.cinema_ids) === currentSignature
+      )?.id ?? null
+    );
+  }, [cinemaPresets, cinemaIds]);
   const lists = useMemo<PresetListSummary[]>(
     () =>
       letterboxdLists.map((list) => ({
@@ -112,6 +126,7 @@ export default function SavePresetDialog({
           includeCinemas: included.has("cinemas"),
           currentFilters,
           cinemaIds,
+          matchedCinemaPresetId,
         }),
       });
       return created;

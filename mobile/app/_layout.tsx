@@ -47,6 +47,7 @@ import SignInNoticeHost from '@/components/auth/SignInNoticeHost';
 import { savePendingDeepLink, takePendingDeepLink } from '@/utils/pending-deep-link';
 import { getInstallReferrerPath } from '@/utils/install-referrer';
 import AppSplash, { SPLASH_FADE_DURATION_MS } from '@/components/layout/AppSplash';
+import ThemeSwitchOverlay from '@/components/layout/ThemeSwitchOverlay';
 import {
   displayPresetOrderQueryKey,
   displayPresetsQueryKey,
@@ -524,7 +525,7 @@ function RootLayourContent() {
     // handled by the effect below, which shows a guest the screening and leaves
     // accepting it to the sheet's own gate.
     const browseRoutes = new Set(['(tabs)', 'movie', 'cinema-showtimes', 'ping'])
-    const accountRoutes = new Set(['friend-showtimes', 'add-friend', 'blocked-users'])
+    const accountRoutes = new Set(['friend-showtimes', 'add-friend', 'blocked-users', 'default-visibility'])
     const signedOutRoutes = new Set(['login', 'signup', 'recover-password'])
     // Protected in release builds — the real flow only ever arrives already
     // signed in. In dev it stays neutral so the login screen's "Preview
@@ -845,6 +846,7 @@ function RootLayourContent() {
         <JsStack.Screen name="cinema-showtimes/[id]" />
         <JsStack.Screen name="add-friend/[receiverId]" />
         <JsStack.Screen name="blocked-users" />
+        <JsStack.Screen name="default-visibility" />
         {/* Renders nothing and pops itself the moment it is handled, so it must
             never animate: sliding an empty card in and back out again was the
             whole of the invite link's "glitchy" open, and it happens over a
@@ -874,6 +876,10 @@ function RootLayourContent() {
           }}
         />
       )}
+      {/* Last child, so the curtain over a theme change covers everything the
+          re-render is visibly working through. Renders nothing until there is
+          a switch to cover. */}
+      <ThemeSwitchOverlay />
     </View>
   )
 }

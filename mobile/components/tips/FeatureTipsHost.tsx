@@ -82,7 +82,7 @@ export default function FeatureTipsHost() {
 
   // The tip nudges the user to set their cinemas, so it asks whether that row
   // exists — not whether the list is empty. The list never is: the backend
-  // always prepends a synthetic "All Cinemas" entry, which made the old
+  // always prepends a synthetic "All cinemas" entry, which made the old
   // `length === 0` test permanently false and the tip unreachable.
   // Once set, the user has found the feature; that stays true even if they
   // later clear everything, so this never re-checks after the first save (see

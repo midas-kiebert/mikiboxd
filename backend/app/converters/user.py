@@ -6,6 +6,7 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.core.config import settings
 from app.crud import friendship as friendship_crud
+from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.crud import watched as watched_crud
 from app.crud import watchlist as watchlist_crud
@@ -103,18 +104,26 @@ def to_me(user: User, *, session: Session) -> UserMe:
         ),
         is_superuser=user.is_superuser,
         incognito_mode=user.incognito_mode,
+        default_visibility_mode=user.default_visibility_mode,
+        has_selected_showtimes=showtime_visibility_crud.has_selected_showtimes(
+            session=session, owner_id=user.id
+        ),
         notify_on_friend_showtime_match=user.notify_on_friend_showtime_match,
         notify_on_friend_requests=user.notify_on_friend_requests,
         notify_on_showtime_ping=user.notify_on_showtime_ping,
         notify_on_invite_response=user.notify_on_invite_response,
         notify_on_interest_reminder=user.notify_on_interest_reminder,
         notify_on_seat_alert=user.notify_on_seat_alert,
+        notify_on_sold_out=user.notify_on_sold_out,
+        notify_on_showtime_reminder=user.notify_on_showtime_reminder,
         notify_channel_friend_showtime_match=user.notify_channel_friend_showtime_match,
         notify_channel_friend_requests=user.notify_channel_friend_requests,
         notify_channel_showtime_ping=user.notify_channel_showtime_ping,
         notify_channel_invite_response=user.notify_channel_invite_response,
         notify_channel_interest_reminder=user.notify_channel_interest_reminder,
         notify_channel_seat_alert=user.notify_channel_seat_alert,
+        notify_channel_sold_out=user.notify_channel_sold_out,
+        notify_channel_showtime_reminder=user.notify_channel_showtime_reminder,
         letterboxd_username=user.letterboxd_username,
         watchlist_count=watchlist_count,
         watched_count=watched_count,
@@ -135,11 +144,6 @@ def to_me(user: User, *, session: Session) -> UserMe:
             last_sync=watched_last_synced, last_attempt=watched_last_attempt
         ),
         notify_watchlist_digest_enabled=user.notify_watchlist_digest_enabled,
-        notify_watchlist_digest_frequency=user.notify_watchlist_digest_frequency,
-        notify_watchlist_digest_list_id=user.notify_watchlist_digest_list_id,
-        notify_watchlist_digest_cinema_preset_id=(
-            user.notify_watchlist_digest_cinema_preset_id
-        ),
         can_report=not is_report_banned(user),
         can_watch_sold_out=user.is_pro,
         has_password=user.hashed_password is not None,
@@ -230,19 +234,26 @@ def to_with_showtimes_public(
     filters.snapshot_time = now
 
     User.model_validate(user)
+    selected_showtimes = user_crud.get_selected_showtimes(
+        session=session,
+        user_id=user.id,
+        viewer_id=user.id,
+        limit=limit,
+        offset=offset,
+        filters=filters,
+        letterboxd_username=user.letterboxd_username,
+    )
+    visibility_modes = showtime_converters.viewer_visibility_modes(
+        session=session, showtimes=selected_showtimes, user_id=user.id
+    )
     showtimes = [
         showtime_converters.to_public(
-            showtime=showtime, session=session, user_id=user.id
-        )
-        for showtime in user_crud.get_selected_showtimes(
+            showtime=showtime,
             session=session,
             user_id=user.id,
-            viewer_id=user.id,
-            limit=limit,
-            offset=offset,
-            filters=filters,
-            letterboxd_username=user.letterboxd_username,
+            visibility_modes=visibility_modes,
         )
+        for showtime in selected_showtimes
     ]
 
     return UserWithShowtimesPublic(

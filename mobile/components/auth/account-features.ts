@@ -12,7 +12,7 @@
 import type MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 export type AccountFeature =
-  | "agenda"
+  | "activity"
   | "friends"
   | "going"
   | "invite"
@@ -20,7 +20,8 @@ export type AccountFeature =
   | "notifications"
   | "presets"
   | "profile"
-  | "report";
+  | "report"
+  | "seats";
 
 type AccountFeatureCopy = {
   icon: keyof typeof MaterialIcons.glyphMap;
@@ -31,11 +32,11 @@ type AccountFeatureCopy = {
 };
 
 export const ACCOUNT_FEATURE_COPY: Record<AccountFeature, AccountFeatureCopy> = {
-  agenda: {
-    icon: "event-available",
-    title: "Your agenda",
+  activity: {
+    icon: "bolt",
+    title: "Activity",
     message:
-      "Keep every screening you're going to in one place, and see who else is coming along.",
+      "See every screening your friends are going to or interested in, plus your own agenda — invites included.",
   },
   friends: {
     icon: "people",
@@ -83,5 +84,11 @@ export const ACCOUNT_FEATURE_COPY: Record<AccountFeature, AccountFeatureCopy> = 
     title: "Report a problem",
     message:
       "Tell us when a screening's details are wrong so we can get it fixed.",
+  },
+  seats: {
+    icon: "event-seat",
+    title: "Check the seat count",
+    message:
+      "Ask us to look up how many seats a screening has left, so you know whether it is still worth heading over.",
   },
 };

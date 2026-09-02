@@ -10,7 +10,12 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.converters import user as user_converters
 from app.core import apple_auth
-from app.core.enums import NotificationChannel, NotificationType, ShowtimePingSort
+from app.core.enums import (
+    DigestFrequency,
+    NotificationChannel,
+    NotificationType,
+    ShowtimePingSort,
+)
 from app.core.security import verify_password
 from app.core.username_filter import assert_display_name_allowed
 from app.crud import cinema as cinemas_crud
@@ -23,6 +28,8 @@ from app.crud import showtime as showtimes_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as users_crud
+from app.crud import watchlist_digest_source as watchlist_digest_source_crud
+from app.crud.cinema_scope import infer_cinema_scope, parse_cinema_scope
 from app.exceptions.base import AppError
 from app.exceptions.cinema_preset_exceptions import (
     CinemaPresetNameRequired,
@@ -71,6 +78,7 @@ _NOTIFICATION_FEED_TYPES: dict[NotificationType, NotificationFeedType] = {
     NotificationType.FRIEND_REQUEST_ACCEPTED: "friend_request_accepted",
     NotificationType.SEATS_RELEASED: "seats_released",
     NotificationType.SEATS_RUNNING_OUT: "seats_running_out",
+    NotificationType.SOLD_OUT: "sold_out",
 }
 
 
@@ -85,6 +93,8 @@ _EMAIL_DELIVERY_FIELDS: tuple[str, ...] = (
     "notify_channel_invite_response",
     "notify_channel_interest_reminder",
     "notify_channel_seat_alert",
+    "notify_channel_sold_out",
+    "notify_channel_showtime_reminder",
 )
 
 
@@ -98,6 +108,71 @@ def _wants_email_delivery(user_data: dict[str, Any]) -> bool:
     )
 
 
+# Legacy compat only — see `UserUpdate.notify_watchlist_digest_frequency` in
+# models/user.py. Ordered because the mapped kwarg each drives on
+# WatchlistDigestSource matters below.
+_LEGACY_DIGEST_FIELDS: tuple[str, ...] = (
+    "notify_watchlist_digest_frequency",
+    "notify_watchlist_digest_list_id",
+    "notify_watchlist_digest_cinema_preset_id",
+)
+
+
+def _apply_legacy_digest_fields(
+    *, session: Session, current_user: User, user_data: dict[str, Any]
+) -> None:
+    """Redirect a pre-rework client's direct writes onto a real digest source.
+
+    Popped out of `user_data` before it ever reaches `UserUpdate.model_validate`
+    / `users_crud.update_user`, since `User` no longer has these columns at
+    all — left in, they'd be handed to `db_user.sqlmodel_update(...)` for
+    attributes the table model doesn't declare. Targets the account's oldest
+    source (creating one if it has none): an app old enough to still write
+    these fields predates the multi-source UI, so it can never have created
+    any of the newer ones itself.
+    """
+    legacy_data = {
+        field: user_data.pop(field)
+        for field in _LEGACY_DIGEST_FIELDS
+        if field in user_data
+    }
+    if not legacy_data:
+        return
+
+    existing_sources = watchlist_digest_source_crud.list_user_sources(
+        session=session, user_id=current_user.id
+    )
+    if existing_sources:
+        target = existing_sources[0]
+        if "notify_watchlist_digest_frequency" in legacy_data:
+            target.frequency = legacy_data["notify_watchlist_digest_frequency"]
+        if "notify_watchlist_digest_list_id" in legacy_data:
+            target.list_id = legacy_data["notify_watchlist_digest_list_id"]
+        if "notify_watchlist_digest_cinema_preset_id" in legacy_data:
+            cinema_preset_id = legacy_data["notify_watchlist_digest_cinema_preset_id"]
+            target.cinema_preset_id = cinema_preset_id
+            # At most one of {preset, custom} may be set on a source — a
+            # legacy write only ever knows about the preset side, so setting
+            # it must clear a custom selection the new UI may have made.
+            if cinema_preset_id is not None:
+                target.custom_cinema_ids = None
+        session.add(target)
+    else:
+        watchlist_digest_source_crud.create_source(
+            session=session,
+            user_id=current_user.id,
+            frequency=legacy_data.get(
+                "notify_watchlist_digest_frequency", DigestFrequency.WEEKLY_OR_URGENT
+            ),
+            list_id=legacy_data.get("notify_watchlist_digest_list_id"),
+            cinema_preset_id=legacy_data.get(
+                "notify_watchlist_digest_cinema_preset_id"
+            ),
+            custom_cinema_ids=None,
+            now=now_amsterdam_naive(),
+        )
+
+
 def update_me(
     *,
     session: Session,
@@ -105,10 +180,44 @@ def update_me(
     current_user: User,
 ) -> UserMe:
     user_data = user_in.model_dump(exclude_unset=True)
+    _apply_legacy_digest_fields(
+        session=session, current_user=current_user, user_data=user_data
+    )
     incognito_mode_changed = False
     if "incognito_mode" in user_data and user_data["incognito_mode"] is not None:
         incognito_mode_changed = (
             user_data["incognito_mode"] != current_user.incognito_mode
+        )
+
+    # Every showtime without its own override tracks this default live per
+    # `get_owner_default_mode_for_showtime` — but `ShowtimeVisibilityEffective`
+    # is a materialized cache, not a live view, so nothing re-reads that
+    # default until something rebuilds it. Without this, changing it here
+    # would flip what a fresh `to_public()` computes going forward while every
+    # already-cached row (and everyone reading through it, like a friend on
+    # the activity feed) kept showing the old mode indefinitely.
+    default_visibility_mode_changed = False
+    if (
+        "default_visibility_mode" in user_data
+        and user_data["default_visibility_mode"] is not None
+    ):
+        default_visibility_mode_changed = (
+            user_data["default_visibility_mode"] != current_user.default_visibility_mode
+        )
+
+    # ...and that live tracking is exactly what the user may not want: changing
+    # the default would otherwise re-open (or close off) every showtime they
+    # already picked. When they say the new default is for new showtimes only,
+    # the mode each already-selected showtime is running under right now is
+    # written out as an explicit per-showtime setting first, so the default
+    # moves out from under it without moving it. An absent flag means "apply",
+    # which is what clients predating the prompt expect.
+    apply_to_existing = user_data.pop("apply_default_visibility_to_existing", None)
+    if default_visibility_mode_changed and apply_to_existing is False:
+        showtime_visibility_crud.pin_current_modes_for_selected_showtimes(
+            session=session,
+            owner_id=current_user.id,
+            now=now_amsterdam_naive(),
         )
 
     # Nothing may route mail to an address nobody has proven belongs to this
@@ -262,7 +371,7 @@ def update_me(
     except Exception as e:
         raise AppError() from e
 
-    if incognito_mode_changed:
+    if incognito_mode_changed or default_visibility_mode_changed:
         showtime_visibility_crud.rebuild_effective_visibility_for_owner(
             session=session,
             owner_id=current_user.id,
@@ -344,7 +453,9 @@ def delete_push_token_for_user(
     return True
 
 
-def _to_saved_preset_public(preset: SavedPreset) -> SavedPresetPublic:
+def _to_saved_preset_public(
+    *, session: Session, preset: SavedPreset
+) -> SavedPresetPublic:
     return SavedPresetPublic.model_validate(
         {
             "id": preset.id,
@@ -352,7 +463,11 @@ def _to_saved_preset_public(preset: SavedPreset) -> SavedPresetPublic:
             "is_favorite": preset.is_favorite,
             "untouched_fields": preset.untouched_fields,
             "filters": preset.filters,
-            "cinema_ids": preset.cinema_ids,
+            "cinema_ids": saved_presets_crud.resolve_preset_cinema_ids(
+                session=session, preset=preset
+            ),
+            "cinema_scope": parse_cinema_scope(preset.cinema_scope),
+            "cinema_preset_id": preset.cinema_preset_id,
             "created_at": preset.created_at,
             "updated_at": preset.updated_at,
         }
@@ -368,7 +483,9 @@ def list_saved_presets(
         session=session,
         user_id=user_id,
     )
-    return [_to_saved_preset_public(preset) for preset in presets]
+    return [
+        _to_saved_preset_public(session=session, preset=preset) for preset in presets
+    ]
 
 
 def save_saved_preset(
@@ -380,7 +497,29 @@ def save_saved_preset(
     now = now_amsterdam_naive()
     preset_name = payload.name.strip()
     filters = payload.filters.model_dump(mode="json")
-    cinema_ids = list(payload.cinema_ids) if payload.cinema_ids is not None else None
+    cinema_preset_id = payload.cinema_preset_id
+    cinema_ids: list[int] | None
+    if cinema_preset_id is not None:
+        # A cinema preset was active, not just a raw selection: store the
+        # reference so this follows the preset if it's later renamed/edited,
+        # plus a raw snapshot of its cinemas today as the fallback used if the
+        # preset is ever deleted (see `resolve_preset_cinema_ids`).
+        linked_preset = cinema_presets_crud.get_user_preset_by_id(
+            session=session, user_id=user_id, preset_id=cinema_preset_id
+        )
+        if linked_preset is None:
+            raise CinemaPresetNotFound()
+        cinema_ids = (
+            cinema_presets_crud.resolve_preset_cinema_ids(
+                session=session, preset=linked_preset
+            )
+            or []
+        )
+    else:
+        cinema_ids = (
+            list(payload.cinema_ids) if payload.cinema_ids is not None else None
+        )
+    cinema_scope = _scope_for_selection(session=session, cinema_ids=cinema_ids)
     should_set_favorite = payload.is_favorite is True
     existing = saved_presets_crud.get_user_preset_by_name(
         session=session,
@@ -402,6 +541,8 @@ def save_saved_preset(
             untouched_fields=payload.untouched_fields,
             filters=filters,
             cinema_ids=cinema_ids,
+            cinema_scope=cinema_scope,
+            cinema_preset_id=cinema_preset_id,
             is_favorite=should_set_favorite,
             now=now,
         )
@@ -412,12 +553,14 @@ def save_saved_preset(
             untouched_fields=payload.untouched_fields,
             filters=filters,
             cinema_ids=cinema_ids,
+            cinema_scope=cinema_scope,
+            cinema_preset_id=cinema_preset_id,
             is_favorite=payload.is_favorite,
             now=now,
         )
 
     session.commit()
-    return _to_saved_preset_public(preset)
+    return _to_saved_preset_public(session=session, preset=preset)
 
 
 def delete_saved_preset(
@@ -447,7 +590,7 @@ def get_favorite_saved_preset(
     )
     if preset is None:
         return None
-    return _to_saved_preset_public(preset)
+    return _to_saved_preset_public(session=session, preset=preset)
 
 
 def set_favorite_saved_preset(
@@ -476,7 +619,7 @@ def set_favorite_saved_preset(
         now=now,
     )
     session.commit()
-    return _to_saved_preset_public(favorite)
+    return _to_saved_preset_public(session=session, preset=favorite)
 
 
 def clear_favorite_saved_preset(
@@ -491,13 +634,18 @@ def clear_favorite_saved_preset(
     session.commit()
 
 
-def _to_cinema_preset_public(preset: CinemaPreset) -> CinemaPresetPublic:
+def _to_cinema_preset_public(
+    *, session: Session, preset: CinemaPreset
+) -> CinemaPresetPublic:
     return CinemaPresetPublic.model_validate(
         {
             "id": preset.id,
             "name": preset.name,
             "is_default": False,
-            "cinema_ids": preset.cinema_ids,
+            "cinema_ids": cinema_presets_crud.resolve_preset_cinema_ids(
+                session=session, preset=preset
+            ),
+            "cinema_scope": parse_cinema_scope(preset.cinema_scope),
             "is_favorite": preset.is_favorite,
             "created_at": preset.created_at,
             "updated_at": preset.updated_at,
@@ -507,6 +655,22 @@ def _to_cinema_preset_public(preset: CinemaPreset) -> CinemaPresetPublic:
 
 def _normalize_cinema_ids(cinema_ids: list[int]) -> list[int]:
     return sorted(set(cinema_ids))
+
+
+def _scope_for_selection(
+    *,
+    session: Session,
+    cinema_ids: list[int] | None,
+) -> dict[str, Any] | None:
+    """The rule to store alongside a selection the client just sent.
+
+    Clients send ticked ids and nothing else, so the rule is read off the
+    selection here — once, on the way in — and every read expands it again.
+    """
+    if cinema_ids is None:
+        return None
+    scope = infer_cinema_scope(session=session, cinema_ids=cinema_ids)
+    return scope.model_dump(mode="json")
 
 
 def _get_all_cinema_ids(*, session: Session) -> list[int]:
@@ -564,7 +728,9 @@ def list_cinema_presets(
         session=session,
         user_id=user_id,
     )
-    public_presets = [_to_cinema_preset_public(preset) for preset in presets]
+    public_presets = [
+        _to_cinema_preset_public(session=session, preset=preset) for preset in presets
+    ]
     has_default = any(
         preset.id == DEFAULT_CINEMA_PRESET_ID for preset in public_presets
     )
@@ -590,6 +756,7 @@ def save_cinema_preset(
     now = now_amsterdam_naive()
     preset_name = payload.name.strip()
     cinema_ids = _normalize_cinema_ids(payload.cinema_ids)
+    cinema_scope = _scope_for_selection(session=session, cinema_ids=cinema_ids)
     should_set_favorite = payload.is_favorite is True
     existing = cinema_presets_crud.get_user_preset_by_name(
         session=session,
@@ -611,6 +778,7 @@ def save_cinema_preset(
             user_id=user_id,
             name=preset_name,
             cinema_ids=cinema_ids,
+            cinema_scope=cinema_scope,
             is_favorite=should_set_favorite,
             now=now,
         )
@@ -619,12 +787,13 @@ def save_cinema_preset(
             session=session,
             preset=existing,
             cinema_ids=cinema_ids,
+            cinema_scope=cinema_scope,
             is_favorite=payload.is_favorite,
             now=now,
         )
 
     session.commit()
-    return _to_cinema_preset_public(preset)
+    return _to_cinema_preset_public(session=session, preset=preset)
 
 
 def rename_cinema_preset(
@@ -633,12 +802,16 @@ def rename_cinema_preset(
     user_id: UUID,
     preset_id: UUID,
     name: str,
+    cinema_ids: list[int] | None = None,
 ) -> CinemaPresetPublic:
-    """Rename a saved preset, including the favorite one.
+    """Rename a saved preset, including the favorite one, and optionally edit
+    its cinemas in the same call (the manage-presets page's "Edit" action).
 
     The favorite is identified by its flag, never by its name, so the user is
     free to call their cinemas whatever they like without any of the code that
-    reads the favorite losing track of it.
+    reads the favorite losing track of it. A `SavedPreset` following this
+    cinema preset (see `crud.saved_preset.resolve_preset_cinema_ids`) picks up
+    an edited cinema selection automatically, since it reads this row live.
     """
     now = now_amsterdam_naive()
     preset_name = name.strip()
@@ -661,6 +834,17 @@ def rename_cinema_preset(
     if clashing is not None and clashing.id != preset.id:
         raise CinemaPresetNameTaken()
 
+    if cinema_ids is not None:
+        cinema_scope = _scope_for_selection(session=session, cinema_ids=cinema_ids)
+        preset = cinema_presets_crud.update_preset(
+            session=session,
+            preset=preset,
+            cinema_ids=cinema_ids,
+            cinema_scope=cinema_scope,
+            is_favorite=None,
+            now=now,
+        )
+
     renamed = cinema_presets_crud.rename_preset(
         session=session,
         preset=preset,
@@ -668,7 +852,7 @@ def rename_cinema_preset(
         now=now,
     )
     session.commit()
-    return _to_cinema_preset_public(renamed)
+    return _to_cinema_preset_public(session=session, preset=renamed)
 
 
 def delete_cinema_preset(
@@ -680,6 +864,11 @@ def delete_cinema_preset(
     if preset_id == DEFAULT_CINEMA_PRESET_ID:
         return False
 
+    # Any saved (filter) preset following this cinema preset converts to its
+    # own raw snapshot before the row it was following disappears.
+    saved_presets_crud.clear_cinema_preset_link(
+        session=session, user_id=user_id, cinema_preset_id=preset_id
+    )
     deleted = cinema_presets_crud.delete_preset(
         session=session,
         user_id=user_id,
@@ -701,7 +890,7 @@ def get_favorite_cinema_preset(
     )
     if favorite is None:
         return None
-    return _to_cinema_preset_public(favorite)
+    return _to_cinema_preset_public(session=session, preset=favorite)
 
 
 def apply_cinema_preset_as_favorite(
@@ -710,13 +899,14 @@ def apply_cinema_preset_as_favorite(
     user_id: UUID,
     preset_id: UUID,
 ) -> CinemaPresetPublic | None:
-    """Point "my cinemas" at what a saved preset covers.
+    """Swap "my cinemas" with what a saved preset covers.
 
-    Copies the cinemas across rather than moving the favorite flag onto the
-    preset. Moving it would leave the row the user thinks of as "my cinemas"
-    sitting in the list as an ordinary preset under that same name, and would
-    quietly turn a preset they saved for one purpose into the thing applied on
-    every startup. One row is the favorite, always, and it keeps its identity.
+    The favorite flag moves onto the promoted preset — its own name and
+    cinemas now show as the preferred cinemas — and the row that held the
+    flag before becomes an ordinary saved preset, under its own name, with
+    the cinemas it already had. Nothing about either row's content changes;
+    only which one is marked as applied on startup. Promoting the same row
+    that used to be favorite un-swaps it, so this is its own undo.
     """
     preset = cinema_presets_crud.get_user_preset_by_id(
         session=session,
@@ -725,12 +915,15 @@ def apply_cinema_preset_as_favorite(
     )
     if preset is None:
         return None
+    if preset.is_favorite:
+        # Already the preferred selection; nothing to swap it with.
+        return get_favorite_cinema_preset(session=session, user_id=user_id)
 
-    set_favorite_cinema_ids(
-        session=session,
-        user_id=user_id,
-        cinema_ids=list(preset.cinema_ids),
-    )
+    cinema_presets_crud.clear_user_favorite_preset(session=session, user_id=user_id)
+    preset.is_favorite = True
+    preset.updated_at = now_amsterdam_naive()
+    session.add(preset)
+    session.commit()
     return get_favorite_cinema_preset(session=session, user_id=user_id)
 
 
@@ -756,7 +949,12 @@ def get_favorite_cinema_ids(
         user_id=user_id,
     )
     if favorite is not None:
-        return list(favorite.cinema_ids)
+        return (
+            cinema_presets_crud.resolve_preset_cinema_ids(
+                session=session, preset=favorite
+            )
+            or []
+        )
 
     # Compatibility fallback for existing web users until they save a cinema preset.
     legacy_cinema_ids = users_crud.get_selected_cinemas_ids(
@@ -774,6 +972,7 @@ def set_favorite_cinema_ids(
 ) -> None:
     now = now_amsterdam_naive()
     normalized_ids = _normalize_cinema_ids(cinema_ids)
+    cinema_scope = _scope_for_selection(session=session, cinema_ids=normalized_ids)
     favorite = cinema_presets_crud.get_user_favorite_preset(
         session=session,
         user_id=user_id,
@@ -788,6 +987,7 @@ def set_favorite_cinema_ids(
                 base_name=FAVORITE_CINEMA_PRESET_NAME,
             ),
             cinema_ids=normalized_ids,
+            cinema_scope=cinema_scope,
             is_favorite=True,
             now=now,
         )
@@ -796,6 +996,7 @@ def set_favorite_cinema_ids(
             session=session,
             preset=favorite,
             cinema_ids=normalized_ids,
+            cinema_scope=cinema_scope,
             is_favorite=True,
             now=now,
         )
@@ -893,11 +1094,15 @@ def get_agenda_showtimes(
         limit=limit,
         offset=offset,
     )
+    visibility_modes = showtime_converters.viewer_visibility_modes(
+        session=session, showtimes=showtimes, user_id=user_id
+    )
     return [
         showtime_converters.to_public(
             showtime=showtime,
             session=session,
             user_id=user_id,
+            visibility_modes=visibility_modes,
         )
         for showtime in showtimes
     ]

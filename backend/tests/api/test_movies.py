@@ -1,6 +1,16 @@
 from fastapi.testclient import TestClient
+from sqlmodel import Session, select
 
 from app.core.config import settings
+from app.crud import user as user_crud
+from app.models.user import User
+from app.services import share_preview as share_preview_service
+
+
+def _normal_user_id(db_transaction: Session):
+    return db_transaction.exec(
+        select(User.id).where(User.email == settings.EMAIL_TEST_USER)
+    ).one()
 
 
 def test_share_preview_returns_og_tags_with_poster(
@@ -52,7 +62,7 @@ def test_share_preview_falls_back_to_static_logo_without_poster(
     )
 
     assert response.status_code == 200
-    expected_fallback = f"{settings.FRONTEND_HOST}/assets/images/mikino-logo.png"
+    expected_fallback = share_preview_service.DEFAULT_SHARE_PREVIEW_IMAGE
     body = response.text
     assert f'property="og:image" content="{expected_fallback}"' in body
     assert f'name="twitter:image" content="{expected_fallback}"' in body
@@ -89,3 +99,41 @@ def test_share_preview_returns_404_for_nonexistent_movie(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Movie not found"
+
+
+def test_cinema_search_reaches_cinemas_outside_the_saved_selection(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    """Group-by-movie searches cinemas the same way the showtime feed does.
+
+    Same bug, second endpoint: with no cinema ids sent, the account's saved
+    cinemas were filled in and a cinema search could not leave them.
+    """
+    saved = showtime_factory(cinema__name="Plaza")
+    unsaved = showtime_factory(cinema__name="The Grand Picture House")
+    # Read off before the commit: the request below runs on its own session,
+    # and touching a factory instance again afterwards re-reads it through a
+    # session it is no longer attached to.
+    saved_cinema_id = saved.cinema_id
+    saved_movie_id = saved.movie_id
+    unsaved_movie_id = unsaved.movie_id
+    user_crud.set_cinema_selections(
+        session=db_transaction,
+        user_id=_normal_user_id(db_transaction),
+        cinema_ids=[saved_cinema_id],
+    )
+    db_transaction.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/movies/",
+        params={"query": "grand", "search_field": "cinema"},
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    returned_ids = {movie["id"] for movie in response.json()}
+    assert unsaved_movie_id in returned_ids
+    assert saved_movie_id not in returned_ids

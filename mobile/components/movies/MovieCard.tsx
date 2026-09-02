@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 
 import { DateTime } from "luxon";
 import type { MovieSummaryPublic } from "shared";
@@ -29,6 +29,14 @@ type MovieCardProps = {
 
 const MAX_SHOWTIMES = 5;
 const POSTER_HEIGHT = 150;
+const CARD_GAP = 16;
+/**
+ * What one row of a movie feed occupies, top to top. Fixed, because the card
+ * is: the poster sets its height and nothing inside can push it taller.
+ * Exported so a list can work out how many rows a screen holds without
+ * measuring one first — see `feeds/feed-paging`.
+ */
+export const MOVIE_ROW_HEIGHT = POSTER_HEIGHT + CARD_GAP;
 const COMPACT_BADGE_ROW_HEIGHT = 14;
 const COMPACT_BADGE_ROW_GAP = 2;
 const COMPACT_BADGE_TOP_PADDING = 3;
@@ -46,11 +54,28 @@ const getCompactBadgeRowsForHeight = (height: number) => {
   return Math.max(1, Math.min(MAX_COMPACT_BADGE_ROWS, rows));
 };
 
-export default function MovieCard({ movie, onPress, showCinema = true }: MovieCardProps) {
+function MovieCard({ movie, onPress, showCinema = true }: MovieCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const colors = useThemeColors();
-  const styles = createStyles(colors);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [friendBadgeAreaHeight, setFriendBadgeAreaHeight] = useState(0);
+  // Widest weekday/day/month and widest date+time block across this card's
+  // own showtime rows, fed back into each row so each date segment and the
+  // cinema pill's left edge line up with the others.
+  const [dateColumnWidths, setDateColumnWidths] = useState<{
+    weekday: number;
+    day: number;
+    month: number;
+  }>({ weekday: 0, day: 0, month: 0 });
+  const [leadingColumnWidth, setLeadingColumnWidth] = useState(0);
+  const handleMeasureDateColumnWidth = (segment: "weekday" | "day" | "month", width: number) => {
+    setDateColumnWidths((prev) =>
+      width > prev[segment] ? { ...prev, [segment]: width } : prev
+    );
+  };
+  const handleMeasureLeadingWidth = (width: number) => {
+    setLeadingColumnWidth((prev) => (width > prev ? width : prev));
+  };
   // Use backend totals when available so collapsed rows still show accurate "+N more" text.
   const showtimes = movie.showtimes || [];
   const totalShowtimes = movie.total_showtimes ?? showtimes.length;
@@ -125,7 +150,13 @@ export default function MovieCard({ movie, onPress, showCinema = true }: MovieCa
                       subtitlesAfterCinema
                       isSyntheticMovie={isSynthetic}
                       showCinema={showCinema}
+                      showEndTime={false}
                       seatAvailabilityIconOnly
+                      seatAvailabilityUrgentOnly
+                      dateColumnWidths={dateColumnWidths}
+                      leadingColumnWidth={leadingColumnWidth || undefined}
+                      onMeasureDateColumnWidth={handleMeasureDateColumnWidth}
+                      onMeasureLeadingWidth={handleMeasureLeadingWidth}
                     />
                   ))}
                 </View>
@@ -164,7 +195,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
   const glowStyles = createShowtimeStatusGlowStyles(colors);
   return StyleSheet.create({
     movieCardGlow: {
-      marginBottom: 16,
+      marginBottom: CARD_GAP,
       borderRadius: 12,
       backgroundColor: colors.cardBackground,
     },
@@ -243,3 +274,6 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
   });
 };
+
+/** Memoised for the same reason as `ShowtimeCard` — see its note. */
+export default memo(MovieCard);

@@ -1,0 +1,25 @@
+# Which end of a room's stored seat geometry the screen is at, for the rooms
+# where the platform does not say.
+#
+# Only Tricket (Cinecenter, Studio/K) states it outright — its seat map draws
+# the screen line as part of the layout — and those rooms are read from the
+# plan itself and never need an entry here. Eagerly and ActiveTickets hand
+# back seats and nothing else, so their rooms default to `top` and are
+# corrected here when that turns out to be wrong.
+#
+# It cannot be inferred from the seats. Row 1 is usually the row nearest the
+# screen, but Filmhuis Alkmaar numbers its rows from the back — its row 1 sits
+# at the bottom of a plan whose screen is at the top — so a rule reading "put
+# the screen at whichever end row 1 is" would get it exactly backwards there.
+#
+# Keyed by `Cinema.key` from data/cinemas.yaml, then by the room name exactly
+# as that cinema's scraper writes `Showtime.room` (the same keying as
+# seat_capacity_overrides.yaml). Values: `top` or `bottom`. A key that matches
+# nothing is silently ignored, so a typo shows up as a room still rendering
+# the old way rather than as an error.
+#
+# Read once at startup and applied by the floor-plan ingest, not by the
+# poller — re-run `backend/scripts/ingest-seat-floor-plans.py --force` after
+# editing.
+
+overrides: {}

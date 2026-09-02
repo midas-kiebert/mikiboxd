@@ -1,6 +1,7 @@
 /**
  * Utility helper for mobile feature logic: Reset infinite query.
  */
+import { useCallback, useEffect, useState } from "react";
 import { DateTime } from "luxon";
 import type { InfiniteData, QueryClient, QueryKey } from "@tanstack/react-query";
 
@@ -48,9 +49,58 @@ export async function refreshInfiniteQueryWithFreshSnapshot({
   // previous render's snapshot and the list came back showing showtimes that
   // had already started.
   setSnapshotTime(nextSnapshotTime);
-  // The list draws skeletons while the new snapshot's first page is in flight
-  // (see ShowtimesScreen), so all this has to do is keep the pull-to-refresh
-  // spinner up long enough to be seen when the response is instant.
+  // A floor, not the whole wait — see `useSnapshotRefresh`, which holds the
+  // refresh open until the new snapshot's page has actually landed. This only
+  // keeps the spinner up long enough to be seen when the response is instant.
   await new Promise<void>((resolve) => setTimeout(resolve, MIN_REFRESH_VISIBLE_MS));
   return nextSnapshotTime;
+}
+
+/**
+ * Owns the `refreshing` flag behind a pull-to-refresh, for the feeds whose
+ * refresh is a new snapshot.
+ *
+ * Held for as long as the refresh really lasts, which is the point of it.
+ * Publishing a snapshot moves the query to a key with nothing cached, so for
+ * the whole of the refetch the list is *empty* and the query reports
+ * `isLoading` — indistinguishable, from the outside, from a cold first load.
+ * Every "don't do this during a refresh" rule in the app keys off `refreshing`
+ * (above all: never put the loading panel up for one — see `ListLoadingLogo`),
+ * and when this flag dropped at a fixed 450ms those rules came off while the
+ * refresh was still visibly running. A slow feed then flashed the panel up
+ * mid-refresh.
+ *
+ * `isFetching` is the whole query's flag, so a `fetchNextPage` racing a
+ * refresh would extend it. That needs a list to be paginated while it is
+ * empty, which is not a thing the user can do.
+ */
+export function useSnapshotRefresh({
+  setSnapshotTime,
+  isFetching,
+}: {
+  setSnapshotTime: (snapshotTime: string) => void;
+  /** The refreshed query's own fetching flag. */
+  isFetching: boolean;
+}) {
+  const [refreshing, setRefreshing] = useState(false);
+  // Cleared at the *start* of every refresh, which is what stops the effect
+  // below ending one before the floor has passed — that floor is also the
+  // window the new snapshot key needs to be picked up, before `isFetching`
+  // has had any chance to go true. Its initial value is never read: nothing
+  // is refreshing at mount, so the effect's `!refreshing` guard wins.
+  const [minVisibleElapsed, setMinVisibleElapsed] = useState(true);
+
+  const handleRefresh = useCallback(async () => {
+    setMinVisibleElapsed(false);
+    setRefreshing(true);
+    await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
+    setMinVisibleElapsed(true);
+  }, [setSnapshotTime]);
+
+  useEffect(() => {
+    if (!refreshing || !minVisibleElapsed || isFetching) return;
+    setRefreshing(false);
+  }, [refreshing, minVisibleElapsed, isFetching]);
+
+  return { refreshing, handleRefresh };
 }

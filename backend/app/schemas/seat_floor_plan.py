@@ -2,6 +2,8 @@ from datetime import datetime
 
 from sqlmodel import SQLModel
 
+from app.core.enums import ScreenSide
+
 __all__ = ["SeatFloorPlanPublic", "SeatFloorPlanSeatPublic"]
 
 
@@ -40,8 +42,16 @@ class SeatFloorPlanPublic(SQLModel):
     """A room's seat map for one showtime, merged with polled + personal state."""
 
     showtime_id: int
-    room: str
+    # Null where the room has no name anyone publishes — most Ticketlab shops
+    # identify a room by number internally and never print it. The plan is
+    # still complete; it just has nothing to be called.
+    room: str | None
     seats: list[SeatFloorPlanSeatPublic]
+    # Which end of the geometry above to draw the screen at. Stored per room
+    # because it cannot be worked out from the seats — row 1 is usually the
+    # row nearest the screen, but Filmhuis Alkmaar numbers from the back, and
+    # Cinecenter's own map puts the screen below every seat.
+    screen_side: ScreenSide = ScreenSide.TOP
     # When the `taken` flags were read, so the client can say how old they are
     # rather than implying a seat map is live. None when no reading exists yet,
     # which is the same condition that leaves every `taken` at None.

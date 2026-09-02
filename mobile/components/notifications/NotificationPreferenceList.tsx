@@ -9,26 +9,20 @@
  *
  * Presentational: all state and writes live in `useNotificationPreferences`.
  */
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { useMemo } from "react";
+import { StyleSheet, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
 import EmailVerificationRequiredDialog from "@/components/ui/EmailVerificationRequiredDialog";
+import SegmentedControl, { type SegmentedOption } from "@/components/ui/SegmentedControl";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import type {
   NotificationDelivery,
-  NotificationPreferenceKey,
   NotificationPreferencesController,
 } from "@/hooks/useNotificationPreferences";
-import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
-
-const DELIVERY_OPTIONS: readonly { value: NotificationDelivery; label: string }[] = [
-  { value: "off", label: "Off" },
-  { value: "push", label: "Push" },
-  { value: "email", label: "Email" },
-];
 
 type NotificationPreferenceListProps = {
   controller: NotificationPreferencesController;
@@ -39,6 +33,21 @@ export default function NotificationPreferenceList({
 }: NotificationPreferenceListProps) {
   const colors = useThemeColors();
   const styles = createStyles(colors);
+  // "Off" is the one selected state that should not read as "on", so it takes
+  // the neutral thumb rather than the tint.
+  const deliveryOptions = useMemo<readonly SegmentedOption<NotificationDelivery>[]>(
+    () => [
+      {
+        value: "off",
+        label: "Off",
+        activeBackground: colors.cardBackground,
+        activeForeground: colors.text,
+      },
+      { value: "push", label: "Push" },
+      { value: "email", label: "Email" },
+    ],
+    [colors]
+  );
   const {
     toggles,
     isReady,
@@ -47,11 +56,6 @@ export default function NotificationPreferenceList({
     isEmailVerificationRequired,
     dismissEmailVerificationRequired,
   } = controller;
-
-  const handlePress = (key: NotificationPreferenceKey, delivery: NotificationDelivery) => {
-    triggerSelectionHaptic();
-    void setDelivery(key, delivery);
-  };
 
   return (
     <View style={styles.card}>
@@ -75,39 +79,13 @@ export default function NotificationPreferenceList({
             <ThemedText style={[styles.label, isOff && styles.labelOff]} numberOfLines={1}>
               {toggle.label}
             </ThemedText>
-            <View style={styles.segmentedControl}>
-              {DELIVERY_OPTIONS.map((option) => {
-                const isActive = toggle.delivery === option.value;
-                // Off is the one active state that should not read as "on", so
-                // it gets the neutral thumb rather than the tint.
-                const isActiveOff = isActive && option.value === "off";
-                return (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.segment,
-                      isActive && (isActiveOff ? styles.segmentActiveOff : styles.segmentActiveOn),
-                    ]}
-                    onPress={() => handlePress(toggle.key, option.value)}
-                    disabled={isDisabled}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isActive, disabled: isDisabled }}
-                    accessibilityLabel={`${toggle.label}: ${option.label}`}
-                  >
-                    <ThemedText
-                      style={[
-                        styles.segmentText,
-                        isActive &&
-                          (isActiveOff ? styles.segmentTextActiveOff : styles.segmentTextActiveOn),
-                      ]}
-                    >
-                      {option.label}
-                    </ThemedText>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <SegmentedControl
+              options={deliveryOptions}
+              value={toggle.delivery}
+              onChange={(delivery) => void setDelivery(toggle.key, delivery)}
+              accessibilityLabelPrefix={toggle.label}
+              disabled={isDisabled}
+            />
           </View>
         );
       })}
@@ -147,34 +125,5 @@ const createStyles = (colors: ThemeColors) =>
     },
     labelOff: {
       color: colors.textSecondary,
-    },
-    segmentedControl: {
-      flexDirection: "row",
-      alignItems: "center",
-      borderRadius: 999,
-      backgroundColor: colors.surfaceMuted,
-      padding: 2,
-    },
-    segment: {
-      paddingHorizontal: 9,
-      paddingVertical: 4,
-      borderRadius: 999,
-    },
-    segmentActiveOn: {
-      backgroundColor: colors.tint,
-    },
-    segmentActiveOff: {
-      backgroundColor: colors.cardBackground,
-    },
-    segmentText: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: colors.textSecondary,
-    },
-    segmentTextActiveOn: {
-      color: colors.pillActiveText,
-    },
-    segmentTextActiveOff: {
-      color: colors.text,
     },
   });

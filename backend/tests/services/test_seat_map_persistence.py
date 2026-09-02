@@ -35,7 +35,8 @@ def _store_floor_plan(session: Session, *, cinema_id: int) -> None:
     session.add(
         CinemaRoomFloorPlan(
             cinema_id=cinema_id,
-            room=ROOM,
+            room_key=ROOM,
+            room_name=ROOM,
             seats=[
                 {
                     "row_name": "1",
@@ -73,6 +74,7 @@ def _store_floor_plan(session: Session, *, cinema_id: int) -> None:
 def _polled_showtime(showtime_factory, db_transaction: Session) -> Showtime:
     showtime = showtime_factory(
         room=ROOM,
+        room_key=ROOM,
         datetime=NOW + timedelta(days=3),
         ticket_link="https://www.kinorotterdam.nl/tickets/126995",
     )

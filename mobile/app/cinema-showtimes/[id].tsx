@@ -1,25 +1,43 @@
 /**
  * Expo Router screen/module for cinema-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { FlatList, Linking, StyleSheet, View } from "react-native";
-import { ThemedRefreshControl } from "@/components/themed-refresh-control";
+import {
+  pullToRefreshContentStyle,
+  pullToRefreshScrollProps,
+  ThemedRefreshControl,
+} from "@/components/themed-refresh-control";
 import { DateTime } from "luxon";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchMovies } from "shared/hooks/useFetchMovies";
+import type { SearchField } from "shared/client";
 import useAuth from "shared/hooks/useAuth";
 
-import ShowtimesScreen, { ShowtimesScreenSkeleton } from "@/components/showtimes/ShowtimesScreen";
+import ShowtimesScreen, {
+  ShowtimesScreenSkeleton,
+} from "@/components/showtimes/ShowtimesScreen";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
-import FiltersButtonRow from "@/components/filters/FiltersButtonRow";
+import FiltersButton from "@/components/filters/FiltersButton";
 import FiltersModal from "@/components/filters/FiltersModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
+import SearchFieldFallback from "@/components/inputs/SearchFieldFallback";
 import MovieCard from "@/components/movies/MovieCard";
-import { SkeletonRows } from "@/components/ui/SkeletonRows";
+import type { MovieSummaryPublic } from "shared";
+import {
+  byIdKeyExtractor,
+  MOVIES_FIRST_PAGE_LIMIT,
+  SHOWTIMES_FIRST_PAGE_LIMIT,
+  useScrollTriggeredLoadMore,
+} from "@/components/feeds/feed-paging";
+import ListLoadingLogo from "@/components/layout/ListLoadingLogo";
+import { useDelayedTrue } from "@/hooks/useDelayedTrue";
+import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from "@/constants/loading-logo";
+import { FeedItemEntrance } from "@/components/ui/FeedItemEntrance";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { ThemedText } from "@/components/themed-text";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
@@ -30,13 +48,17 @@ import {
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { buildSnapshotTime, refreshInfiniteQueryWithFreshSnapshot } from "@/utils/reset-infinite-query";
+import { buildSnapshotTime, useSnapshotRefresh } from "@/utils/reset-infinite-query";
 import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
 import { getCinemaColorPalette } from "@/utils/cinema-color";
 
 // One request per pause in typing, not one per keystroke — see
 // useDebouncedValue and (tabs)/index.tsx's identical guard.
 const SEARCH_DEBOUNCE_MS = 280;
+
+// Searching by cinema inside a single cinema's page could only ever return
+// that same cinema's showtimes or nothing at all, so the option is dropped.
+const HIDDEN_SEARCH_FIELDS: readonly SearchField[] = ["cinema"];
 
 const EMPTY_DAYS: string[] = [];
 const EMPTY_TIME_RANGES: string[] = [];
@@ -86,6 +108,11 @@ const buildCinemaHeaderProps = ({
  * part of what it loads, so they live above the deferred-mount split and are
  * live on the first frame. Their state is owned here too, so a query typed (or
  * a filter sheet opened) before the content mounts is still there afterwards.
+ *
+ * The row itself is the main feed's: the Filters button sits inside the search
+ * row rather than on a row of its own, and the field carries the same
+ * Title/Director/Actor/Friends selector — minus Cinema, see
+ * {@link HIDDEN_SEARCH_FIELDS}.
  */
 export default function CinemaShowtimesScreen() {
   const { name, city, badgeBgColor, url } = useLocalSearchParams<{
@@ -97,10 +124,11 @@ export default function CinemaShowtimesScreen() {
   const cinemaKey = `cinema:${Array.isArray(name) ? name[0] : name}:${Array.isArray(city) ? city[0] : city}`;
   const ready = useDeferredMount(cinemaKey);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchField, setSearchField] = useState<SearchField>("title");
   const [filtersModalVisible, setFiltersModalVisible] = useState(false);
   const colors = useThemeColors();
 
-  const filtersButtonRow = <FiltersButtonRow onPress={() => setFiltersModalVisible(true)} />;
+  const filtersButton = <FiltersButton onPress={() => setFiltersModalVisible(true)} />;
 
   if (!ready) {
     const routeCinemaName = getRouteParam(name)?.trim() ?? "";
@@ -124,10 +152,16 @@ export default function CinemaShowtimesScreen() {
         topBarLinkUrl={topBarLinkUrl}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        searchField={searchField}
+        onChangeSearchField={setSearchField}
+        hiddenSearchFields={HIDDEN_SEARCH_FIELDS}
+        searchLeftSlot={filtersButton}
         // No chips placeholder here: this screen's ActiveFilterChips renders
         // nothing at all when no filter is set, so reserving a row for it would
-        // more often than not leave an empty band that vanishes on mount.
-        filterRow={filtersButtonRow}
+        // more often than not leave an empty band that vanishes on mount. The
+        // Filters button lives in the search row above, so `false` (not
+        // omitted) — omitting it would bring back the placeholder pills.
+        filterRow={false}
       />
     );
   }
@@ -135,7 +169,9 @@ export default function CinemaShowtimesScreen() {
     <CinemaShowtimesContent
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
-      filtersButtonRow={filtersButtonRow}
+      searchField={searchField}
+      onChangeSearchField={setSearchField}
+      filtersButton={filtersButton}
       filtersModalVisible={filtersModalVisible}
       setFiltersModalVisible={setFiltersModalVisible}
     />
@@ -145,13 +181,17 @@ export default function CinemaShowtimesScreen() {
 function CinemaShowtimesContent({
   searchQuery,
   onSearchChange,
-  filtersButtonRow,
+  searchField,
+  onChangeSearchField,
+  filtersButton,
   filtersModalVisible,
   setFiltersModalVisible,
 }: {
   searchQuery: string;
   onSearchChange: (value: string) => void;
-  filtersButtonRow: ReactElement;
+  searchField: SearchField;
+  onChangeSearchField: (searchField: SearchField) => void;
+  filtersButton: ReactElement;
   filtersModalVisible: boolean;
   setFiltersModalVisible: (visible: boolean) => void;
 }) {
@@ -180,7 +220,6 @@ function CinemaShowtimesContent({
   // the cinemas list finishes fetching.
   const routeBadgeBgColor = useMemo(() => getRouteParam(badgeBgColor)?.trim() ?? "", [badgeBgColor]);
   const routeUrl = useMemo(() => getRouteParam(url)?.trim() ?? "", [url]);
-  const [refreshing, setRefreshing] = useState(false);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
   const {
@@ -198,6 +237,7 @@ function CinemaShowtimesContent({
     watchedOnly,
     setWatchedOnly,
     groupByMovie,
+    appliedGroupByMovie,
     setGroupByMovie,
     selectedDays: sharedSelectedDays,
     setSelectedDays,
@@ -276,6 +316,7 @@ function CinemaShowtimesContent({
   // ─── Showtimes query ─────────────────────────────────────────────────────────
   const showtimesFilters = useMemo(() => ({
     query: effectiveSearchQuery || undefined,
+    searchField,
     selectedCinemaIds: [cinemaId],
     days: resolvedApiDays,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
@@ -292,6 +333,7 @@ function CinemaShowtimesContent({
   }), [
     cinemaId,
     effectiveSearchQuery,
+    searchField,
     resolvedApiDays,
     appliedShowtimeFilter,
     selectedTimeRanges,
@@ -315,9 +357,10 @@ function CinemaShowtimesContent({
     fetchNextPage: showtimesFetchNextPage,
   } = useFetchMainPageShowtimes({
     limit: 20,
+    firstPageLimit: SHOWTIMES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters: showtimesFilters,
-    enabled: isFocused && !groupByMovie,
+    enabled: isFocused && !appliedGroupByMovie,
   });
 
   const showtimes = useMemo(() => showtimesData?.pages.flat() ?? [], [showtimesData]);
@@ -325,6 +368,7 @@ function CinemaShowtimesContent({
   // ─── Movies query (Group by Movie mode) ──────────────────────────────────────
   const moviesFilters = useMemo(() => ({
     query: effectiveSearchQuery || undefined,
+    searchField,
     selectedCinemaIds: [cinemaId],
     days: resolvedApiDays,
     timeRanges: selectedTimeRanges.length > 0 ? selectedTimeRanges : undefined,
@@ -341,6 +385,7 @@ function CinemaShowtimesContent({
   }), [
     cinemaId,
     effectiveSearchQuery,
+    searchField,
     resolvedApiDays,
     appliedShowtimeFilter,
     selectedTimeRanges,
@@ -364,24 +409,45 @@ function CinemaShowtimesContent({
     fetchNextPage: moviesFetchNextPage,
   } = useFetchMovies({
     limit: 20,
+    firstPageLimit: MOVIES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters: moviesFilters,
-    enabled: isFocused && groupByMovie,
+    enabled: isFocused && appliedGroupByMovie,
   });
 
   const movies = useMemo(() => moviesData?.pages.flat() ?? [], [moviesData]);
 
+  // Stable across renders: it reaches every card through the list's
+  // `renderItem`, and a new object there re-renders all of them.
+  const showtimeModalOptions = useMemo(() => ({ openedFrom: { cinemaId } }), [cinemaId]);
+
+  // One identity for the life of the list: a new `renderItem` re-renders every
+  // cell, which would undo `MovieCard`'s memo.
+  const openMovie = useCallback(
+    (movie: { id: number }) => goToMovieFromCard(movie.id),
+    [goToMovieFromCard]
+  );
+  const renderMovie = useCallback(
+    ({ item, index }: { item: MovieSummaryPublic; index: number }) => (
+      <FeedItemEntrance index={index}>
+        <MovieCard movie={item} onPress={openMovie} showCinema={false} />
+      </FeedItemEntrance>
+    ),
+    [openMovie]
+  );
+
+  const loadMoreMovies = useScrollTriggeredLoadMore(() => {
+    if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
+  });
+
   // ─── Handlers ────────────────────────────────────────────────────────────────
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      // One snapshot drives both the showtimes and movies queries, so which
-      // mode is on screen no longer changes what a refresh has to do.
-      await refreshInfiniteQueryWithFreshSnapshot({ setSnapshotTime });
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  // One snapshot drives both the showtimes and movies queries, so which mode
+  // is on screen no longer changes what a refresh has to do — and the refresh
+  // is not over until whichever of them is on screen has its rows back.
+  const { refreshing, handleRefresh } = useSnapshotRefresh({
+    setSnapshotTime,
+    isFetching: showtimesFetching || moviesFetching,
+  });
 
   const handleLoadMore = () => {
     if (showtimesHasNextPage && !showtimesFetchingNextPage) {
@@ -404,45 +470,89 @@ function CinemaShowtimesContent({
     setSelectedLanguages([]);
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────────
-  const isLoading = groupByMovie ? moviesLoading : showtimesLoading;
-  const isFetching = groupByMovie ? moviesFetching : showtimesFetching;
-  const resultCount = groupByMovie ? movies.length : showtimes.length;
-
-  // Clear the list while refreshing so pull-to-refresh visibly reloads, even
-  // when the refetched data is unchanged.
-  const visibleMovies = refreshing ? [] : movies;
-
-  const moviesContent = groupByMovie ? (
-    <FlatList
-      style={styles.flex}
-      data={visibleMovies}
-      renderItem={({ item }) => (
-        <MovieCard
-          movie={item}
-          onPress={(movie) => goToMovieFromCard(movie.id)}
-          showCinema={false}
-        />
-      )}
-      keyExtractor={(item) => item.id.toString()}
-      contentContainerStyle={styles.movieFeed}
-      showsVerticalScrollIndicator={false}
-      ListEmptyComponent={
-        moviesLoading || moviesFetching || refreshing ? (
-          <SkeletonRows height={150} />
-        ) : (
-          <View style={styles.centerContainer}>
-            <ThemedText style={styles.emptyText}>No movies found</ThemedText>
-          </View>
-        )
-      }
-      ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} size="small" />}
-      onEndReached={() => {
-        if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
-      }}
-      onEndReachedThreshold={2}
-      refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+  // Same notice under either feed's empty state: the search field is shared by
+  // both, and so is the reason an unexpected empty result turns up.
+  const searchFieldFallback = (
+    <SearchFieldFallback
+      searchField={searchField}
+      query={effectiveSearchQuery}
+      onSearchByTitle={() => onChangeSearchField("title")}
     />
+  );
+
+  // ─── Render ───────────────────────────────────────────────────────────────────
+  // The applied value, not the chip's: it is what decides which feed is
+  // mounted, and it lands a frame after the tap so that swapping the feed
+  // never happens in the frame the chip's own animation starts. See
+  // `useSharedTabFilters`.
+  const isLoading = appliedGroupByMovie ? moviesLoading : showtimesLoading;
+  const isFetching = appliedGroupByMovie ? moviesFetching : showtimesFetching;
+  const resultCount = appliedGroupByMovie ? movies.length : showtimes.length;
+
+  // Pull-to-refresh no longer clears the list: RefreshControl's own spinner
+  // at the top already says a reload is happening, so the old cards just
+  // stay up and get swapped for the fresh ones once they land — no separate
+  // "reload" state needed, and nothing for the loading panel to do here.
+  const visibleMovies = movies;
+
+  // `!refreshing`: RefreshControl's own spinner already covers a
+  // pull-to-refresh, so the panel has nothing to do for one even on an
+  // already-empty list. Both a genuine first load and a background refetch
+  // go through the same delay+cooldown — a preset or filter combo that's
+  // been used before (or just hits a nearby cache entry) very often resolves
+  // faster than LOADING_LOGO_DELAY_MS even with nothing cached yet, so
+  // showing `moviesLoading` immediately just moved the flash from "quick
+  // filter taps" to "quick presets" instead of removing it.
+  const isMoviesEmptyLoading =
+    (moviesLoading || moviesFetching) && !refreshing && movies.length === 0;
+  const showMoviesLoadingLogo = useDelayedTrue(
+    isMoviesEmptyLoading,
+    LOADING_LOGO_DELAY_MS,
+    LOADING_LOGO_COOLDOWN_MS
+  );
+
+  const moviesContent = appliedGroupByMovie ? (
+    <View style={styles.flex}>
+      <FlatList
+        style={styles.flex}
+        data={visibleMovies}
+        renderItem={renderMovie}
+        keyExtractor={byIdKeyExtractor}
+        contentContainerStyle={[styles.movieFeed, pullToRefreshContentStyle]}
+        {...pullToRefreshScrollProps}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          // The loading panel is a fixed overlay (below), not part of the
+          // list's own content, so there's nothing to render here while it's
+          // up. And never the "nothing found" copy while a refresh is in
+          // flight either — the pull gesture's own spinner already covers
+          // that, and this would otherwise flash up for an already-empty list
+          // mid-refresh even though the loading panel is deliberately skipped
+          // for that case.
+          isMoviesEmptyLoading || refreshing ? null : (
+            <View style={styles.centerContainer}>
+              <ThemedText style={styles.emptyText}>No movies found</ThemedText>
+              {searchFieldFallback}
+            </View>
+          )
+        }
+        ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} size="small" />}
+        onScrollBeginDrag={loadMoreMovies.onScrollBeginDrag}
+        onEndReached={loadMoreMovies.onEndReached}
+        onEndReachedThreshold={2}
+        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      />
+      {/* An overlay, not the list's ListEmptyComponent: that content scrolls
+          and shifts with RefreshControl's pull, which read as the logo
+          drifting down the screen. Sitting outside the FlatList keeps it
+          fixed in place and (via pointerEvents="none") never intercepts the
+          pull-to-refresh gesture underneath it. */}
+      {showMoviesLoadingLogo ? (
+        <View style={styles.loadingOverlay} pointerEvents="none">
+          <ListLoadingLogo />
+        </View>
+      ) : null}
+    </View>
   ) : undefined;
 
   return (
@@ -464,43 +574,45 @@ function CinemaShowtimesContent({
         onRefresh={handleRefresh}
         searchQuery={searchQuery}
         onSearchChange={onSearchChange}
+        searchField={searchField}
+        onChangeSearchField={onChangeSearchField}
+        hiddenSearchFields={HIDDEN_SEARCH_FIELDS}
+        searchLeftSlot={filtersButton}
         filterRow={
-          <>
-            {filtersButtonRow}
-            <ActiveFilterChips
-              groupByMovie={groupByMovie}
-              setGroupByMovie={setGroupByMovie}
-              watchlistOnly={effectiveWatchlistOnly}
-              setWatchlistOnly={setWatchlistOnly}
-              watchlistExclude={effectiveWatchlistExclude}
-              setWatchlistExclude={setWatchlistExclude}
-              hideWatched={effectiveHideWatched}
-              setHideWatched={setHideWatched}
-              watchedOnly={effectiveWatchedOnly}
-              setWatchedOnly={setWatchedOnly}
-              canUseWatchlistFilter={hasLetterboxdUsername}
-              selectedShowtimeFilter={selectedShowtimeFilter}
-              setSelectedShowtimeFilter={setSelectedShowtimeFilter}
-              showStatusFilter={isSignedIn}
-              selectedDays={selectedDays}
-              setSelectedDays={setSelectedDays}
-              selectedTimeRanges={selectedTimeRanges}
-              setSelectedTimeRanges={setSelectedTimeRanges}
-              selectedRuntimeRanges={selectedRuntimeRanges}
-              setSelectedRuntimeRanges={setSelectedRuntimeRanges}
-              selectedListIds={selectedListIds}
-              setSelectedListIds={setSelectedListIds}
-              excludeListIds={excludeListIds}
-              setExcludeListIds={setExcludeListIds}
-              selectedLanguages={selectedLanguages}
-              setSelectedLanguages={setSelectedLanguages}
-              onClearAll={handleClearAll}
-            />
-          </>
+          <ActiveFilterChips
+            groupByMovie={groupByMovie}
+            setGroupByMovie={setGroupByMovie}
+            watchlistOnly={effectiveWatchlistOnly}
+            setWatchlistOnly={setWatchlistOnly}
+            watchlistExclude={effectiveWatchlistExclude}
+            setWatchlistExclude={setWatchlistExclude}
+            hideWatched={effectiveHideWatched}
+            setHideWatched={setHideWatched}
+            watchedOnly={effectiveWatchedOnly}
+            setWatchedOnly={setWatchedOnly}
+            canUseWatchlistFilter={hasLetterboxdUsername}
+            selectedShowtimeFilter={selectedShowtimeFilter}
+            setSelectedShowtimeFilter={setSelectedShowtimeFilter}
+            showStatusFilter={isSignedIn}
+            selectedDays={selectedDays}
+            setSelectedDays={setSelectedDays}
+            selectedTimeRanges={selectedTimeRanges}
+            setSelectedTimeRanges={setSelectedTimeRanges}
+            selectedRuntimeRanges={selectedRuntimeRanges}
+            setSelectedRuntimeRanges={setSelectedRuntimeRanges}
+            selectedListIds={selectedListIds}
+            setSelectedListIds={setSelectedListIds}
+            excludeListIds={excludeListIds}
+            setExcludeListIds={setExcludeListIds}
+            selectedLanguages={selectedLanguages}
+            setSelectedLanguages={setSelectedLanguages}
+            onClearAll={handleClearAll}
+          />
         }
         listContent={moviesContent}
         emptyText="No showtimes for this cinema"
-        openModalOptions={{ openedFrom: { cinemaId } }}
+        emptyExtra={searchFieldFallback}
+        openModalOptions={showtimeModalOptions}
       />
       <FiltersModal
         visible={filtersModalVisible}
@@ -544,6 +656,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
   StyleSheet.create({
     flex: { flex: 1 },
     movieFeed: { padding: 16 },
+    loadingOverlay: { ...StyleSheet.absoluteFillObject },
     centerContainer: { paddingVertical: 40, alignItems: "center" },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });

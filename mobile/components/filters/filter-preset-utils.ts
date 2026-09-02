@@ -1,6 +1,6 @@
 /**
  * Shared utilities for filter preset matching and serialization, used by
- * FiltersModal, FiltersRow, and the saved-presets feature.
+ * FiltersModal, PresetsRow, and the saved-presets feature.
  */
 import type { Language, SavedPresetFilters } from "shared";
 import { canonicalizeDaySelections } from "@/components/filters/day-filter-utils";

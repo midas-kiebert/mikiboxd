@@ -7,7 +7,7 @@ from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlmodel import Session
 
-from app.core.enums import GoingStatus, Language
+from app.core.enums import GoingStatus, Language, SearchField
 from app.core.security import verify_password
 from app.crud import friendship as friendship_crud
 from app.crud import showtime as showtime_crud
@@ -715,6 +715,127 @@ def test_get_selected_showtimes_filters_by_selected_languages(
 
     assert showtime_dutch in selected_showtimes
     assert showtime_french not in selected_showtimes
+
+
+def test_get_selected_showtimes_searches_by_director(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    showtime_factory: Callable[..., Showtime],
+    movie_factory: Callable[..., Movie],
+):
+    """An agenda honours `search_field`, rather than always matching titles.
+
+    The friend-agenda query used to run a title-only LIKE of its own, so the
+    screen's Director/Actor/Cinema options silently searched titles instead.
+    """
+    snapshot_time = now_amsterdam_naive() - timedelta(minutes=1)
+    user = user_factory()
+
+    movie_by_target = movie_factory(title="Unrelated Title", directors=["Chantal Akerman"])
+    movie_named_target = movie_factory(title="Akerman Remembered", directors=["Someone Else"])
+
+    showtime_by_target = showtime_factory(movie=movie_by_target)
+    showtime_named_target = showtime_factory(movie=movie_named_target)
+
+    for showtime in (showtime_by_target, showtime_named_target):
+        showtime_crud.add_showtime_selection(
+            session=db_transaction,
+            showtime_id=showtime.id,
+            user_id=user.id,
+            going_status=GoingStatus.GOING,
+        )
+
+    selected_showtimes = user_crud.get_selected_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        viewer_id=user.id,
+        limit=10,
+        offset=0,
+        filters=Filters(
+            snapshot_time=snapshot_time,
+            query="Akerman",
+            search_field=SearchField.DIRECTOR,
+        ),
+    )
+
+    assert showtime_by_target in selected_showtimes
+    # The title match is exactly what the old title-only LIKE would have
+    # returned, and is the wrong answer to "search by director".
+    assert showtime_named_target not in selected_showtimes
+
+
+def test_get_selected_showtimes_searches_by_title_by_default(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    showtime_factory: Callable[..., Showtime],
+    movie_factory: Callable[..., Movie],
+):
+    snapshot_time = now_amsterdam_naive() - timedelta(minutes=1)
+    user = user_factory()
+
+    movie_match = movie_factory(title="Jeanne Dielman", directors=["Someone Else"])
+    movie_other = movie_factory(title="Unrelated Title", directors=["Jeanne Dielman"])
+
+    showtime_match = showtime_factory(movie=movie_match)
+    showtime_other = showtime_factory(movie=movie_other)
+
+    for showtime in (showtime_match, showtime_other):
+        showtime_crud.add_showtime_selection(
+            session=db_transaction,
+            showtime_id=showtime.id,
+            user_id=user.id,
+            going_status=GoingStatus.GOING,
+        )
+
+    selected_showtimes = user_crud.get_selected_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        viewer_id=user.id,
+        limit=10,
+        offset=0,
+        filters=Filters(snapshot_time=snapshot_time, query="Jeanne"),
+    )
+
+    assert showtime_match in selected_showtimes
+    assert showtime_other not in selected_showtimes
+
+
+def test_count_selected_showtimes_searches_by_director(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+    showtime_factory: Callable[..., Showtime],
+    movie_factory: Callable[..., Movie],
+):
+    snapshot_time = now_amsterdam_naive() - timedelta(minutes=1)
+    user = user_factory()
+
+    movie_by_target = movie_factory(title="Unrelated Title", directors=["Chantal Akerman"])
+    movie_named_target = movie_factory(title="Akerman Remembered", directors=["Someone Else"])
+
+    for movie in (movie_by_target, movie_named_target):
+        showtime = showtime_factory(movie=movie)
+        showtime_crud.add_showtime_selection(
+            session=db_transaction,
+            showtime_id=showtime.id,
+            user_id=user.id,
+            going_status=GoingStatus.GOING,
+        )
+
+    count = user_crud.count_selected_showtimes(
+        session=db_transaction,
+        user_id=user.id,
+        viewer_id=user.id,
+        filters=Filters(
+            snapshot_time=snapshot_time,
+            query="Akerman",
+            search_field=SearchField.DIRECTOR,
+        ),
+    )
+
+    assert count == 1
 
 
 def test_count_selected_showtimes_filters_by_selected_languages(

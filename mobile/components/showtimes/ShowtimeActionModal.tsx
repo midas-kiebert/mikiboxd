@@ -21,7 +21,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  BackHandler,
   Image,
   Keyboard,
   LayoutAnimation,
@@ -53,7 +52,9 @@ import {
   type MeGetCurrentUserResponse,
   type SentShowtimePingPublic,
   type ShowtimePublic,
+  type ShowtimeSeatAvailabilityPublic,
   type UserPublic,
+  type UserWithFriendStatus,
   type VisibilityMode,
 } from "shared";
 import useAuth from "shared/hooks/useAuth";
@@ -93,6 +94,7 @@ import {
   getFriendWatchKindMeta,
   type FriendWatchKind,
 } from "@/components/friends/friend-watch-kind";
+import FriendOfFriendPopup from "@/components/friends/FriendOfFriendPopup";
 import InlineFriendRequestButtons from "@/components/friends/InlineFriendRequestButtons";
 import { ThemedText } from "@/components/themed-text";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
@@ -110,12 +112,15 @@ import { useSignInGate } from "@/components/auth/SignInGateProvider";
 import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
 import { EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
+import { useAndroidBackHandler } from "@/utils/android-back";
 import { Skeleton } from "@/components/ui/Skeleton";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
 import { formatLanguageCode } from "@/utils/language";
 import { measureForSpotlight } from "@/utils/spotlight-measure";
 import * as Clipboard from "expo-clipboard";
 import { loadCinevilleCardDigits } from "@/utils/cineville-card";
+import { isCinevilleAutoCopyEnabled } from "@/utils/cineville-auto-copy";
 
 export type ShowtimeInvite = {
   senders: UserPublic[];
@@ -188,6 +193,13 @@ type ShowtimeActionModalProps = {
 const CLOSE_BUTTON_SIZE = 30;
 const CLOSE_BUTTON_TOP = -10;
 const WATCH_MARKER_GAP = 8;
+// Poster geometry, shared with the Report link that is pinned relative to it.
+const POSTER_HEIGHT = 105;
+const POSTER_COLUMN_GAP = 4;
+// The Report link's own footprint (its text's lineHeight plus its padding) and
+// the breathing room it keeps from the watch markers stacked above it.
+const REPORT_LINK_HEIGHT = 15;
+const REPORT_LINK_GAP = 6;
 // The bell that starts a returned-ticket watch is a bare 20px glyph in a dense
 // header row, so it borrows the surrounding padding to reach a tappable size.
 const SEAT_WATCH_BELL_HIT_SLOP = 10;
@@ -317,7 +329,7 @@ export default function ShowtimeActionModal({
   // ShowtimeModalProvider's gate), and the screening itself — film, cinema,
   // time, ticket link — is public and unchanged.
   const isSignedIn = useIsSignedIn();
-  const { promptForAccount } = useSignInGate();
+  const { promptForAccount, requireAccount } = useSignInGate();
 
   // A guest sees the header, the status buttons and the ticket row — roughly
   // half of what a signed-in sheet holds — so it opens at half the height
@@ -365,6 +377,16 @@ export default function ShowtimeActionModal({
     UserPublic[]
   >([]);
   const [isInviteBeforePrivateVisible, setIsInviteBeforePrivateVisible] = useState(false);
+  // Same pattern, other direction: friends already going/interested who
+  // won't see the viewer's status once the viewer marks going/interested,
+  // because of the viewer's own visibility mode or per-friend opt-out.
+  const [hiddenAttendingFriendsCandidates, setHiddenAttendingFriendsCandidates] = useState<
+    UserPublic[]
+  >([]);
+  const [isHiddenAttendingFriendsVisible, setIsHiddenAttendingFriendsVisible] = useState(false);
+  // The status the user tapped, held while the hidden-friends dialog is up
+  // so it can be applied once they've decided whether to invite anyone.
+  const [pendingGoingStatus, setPendingGoingStatus] = useState<GoingStatus | null>(null);
   // Same custom fade, plus a subtle scale-in for the confirm card.
   const dismissDialogAnim = useRef(new Animated.Value(0)).current;
   const dismissDialogScale = useMemo(
@@ -495,14 +517,12 @@ export default function ShowtimeActionModal({
     presentTimeoutRef.current = setTimeout(presentSheet, PRESENT_CONTENT_TIMEOUT_MS);
   }, [visible, presentSheet]);
 
-  useEffect(() => {
-    if (!visible) return;
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      onClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [visible, onClose]);
+  // Shared stack, so a sheet opened from this one takes the press first — see
+  // `utils/android-back.ts`.
+  useAndroidBackHandler(visible, () => {
+    onClose();
+    return true;
+  });
 
   // Held in a ref so re-measuring depends on which target the tour is on, not
   // on the identity of the callback that receives it.
@@ -586,6 +606,27 @@ export default function ShowtimeActionModal({
     gcTime: 5 * 60 * 1000,
   });
 
+  // Friends already going/interested who can't see the viewer's own status
+  // (their visibility mode or a per-friend opt-out hides it) — only relevant
+  // once the viewer is actually going, and used to hide the remind bell for
+  // those friends: nudging someone about a showtime they can't see you're
+  // attending would out that attendance without the viewer having chosen to
+  // share it.
+  const { data: hiddenAttendingFriendsData } = useQuery({
+    queryKey: ["showtimes", "hiddenAttendingFriends", selectedShowtimeId],
+    enabled: sheetDataEnabled && showtime?.viewer?.going === "GOING",
+    queryFn: () =>
+      ShowtimesService.getHiddenAttendingFriendsForShowtime({
+        showtimeId: selectedShowtimeId as number,
+      }),
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
+  });
+  const hiddenFromFriendIds = useMemo(
+    () => new Set((hiddenAttendingFriendsData?.friends ?? []).map((friend) => friend.id)),
+    [hiddenAttendingFriendsData]
+  );
+
   const { mutate: pingFriendForShowtime, isPending: isPingingFriend } = useMutation({
     mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
       ShowtimesService.pingFriendForShowtime({ showtimeId, friendId }),
@@ -612,6 +653,11 @@ export default function ShowtimeActionModal({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sentPingsQueryKey });
+      // Being invited grants visibility regardless of mode, so a freshly
+      // invited friend must drop out of the hidden set right away.
+      queryClient.invalidateQueries({
+        queryKey: ["showtimes", "hiddenAttendingFriends", selectedShowtimeId],
+      });
       trackEvent("invite_sent");
     },
     onError: (error, _variables, context) => {
@@ -626,6 +672,59 @@ export default function ShowtimeActionModal({
       Alert.alert("Error", detail ?? "Could not send invite.");
     },
   });
+
+  // Friends reminded this session — a reminder has no persisted state to read
+  // back (unlike an invite), so "Sent" is purely local and resets the next
+  // time this sheet opens for a showtime.
+  const [remindedFriendIds, setRemindedFriendIds] = useState<Set<string>>(new Set());
+  // The friend awaiting confirmation in the "Remind X?" dialog below — a
+  // notification is easy to fire by accident on a small badge icon, so the
+  // tap only opens this rather than sending right away. Kept populated while
+  // the dialog closes (only `remindDialogVisible` drops) so its closing fade
+  // doesn't flash the "friend" fallback in place of the name.
+  const [remindDialogFriend, setRemindDialogFriend] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [remindDialogVisible, setRemindDialogVisible] = useState(false);
+  // Local-only state must not survive into a reused sheet showing a
+  // different showtime.
+  useEffect(() => {
+    setRemindedFriendIds(new Set());
+    setRemindDialogFriend(null);
+    setRemindDialogVisible(false);
+  }, [selectedShowtimeId]);
+
+  const { mutate: remindFriendForShowtime, isPending: isRemindingFriend } = useMutation({
+    mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
+      ShowtimesService.sendShowtimeReminder({ showtimeId, friendId }),
+    onSuccess: (_message, variables) => {
+      setRemindedFriendIds((previous) => new Set(previous).add(variables.friendId));
+    },
+    onError: (error) => {
+      const detail =
+        typeof error === "object" &&
+        error !== null &&
+        "body" in error &&
+        typeof (error as { body?: { detail?: unknown } }).body?.detail === "string"
+          ? (error as { body?: { detail?: string } }).body?.detail
+          : undefined;
+      Alert.alert("Error", detail ?? "Could not send reminder. Please try again.");
+    },
+  });
+
+  const handleRemindFriend = (friendId: string, name: string) => {
+    if (!showtime || isRemindingFriend) return;
+    setRemindDialogFriend({ id: friendId, name });
+    setRemindDialogVisible(true);
+  };
+
+  const handleConfirmRemindFriend = () => {
+    if (!showtime || !remindDialogFriend || isRemindingFriend) return;
+    triggerImpactHaptic();
+    remindFriendForShowtime({ showtimeId: showtime.id, friendId: remindDialogFriend.id });
+    setRemindDialogVisible(false);
+  };
 
   const { mutate: reportShowtimeIssue, isPending: isSubmittingReport } = useMutation({
     mutationFn: ({
@@ -691,6 +790,10 @@ export default function ShowtimeActionModal({
       queryClient.invalidateQueries({ queryKey: ["showtimes"] });
       queryClient.invalidateQueries({ queryKey: ["movie"] });
       queryClient.invalidateQueries({ queryKey: ["movies"] });
+      // The mode just changed who can see the viewer's status.
+      queryClient.invalidateQueries({
+        queryKey: ["showtimes", "hiddenAttendingFriends", updated.showtime_id],
+      });
     },
     onError: (_error, _variables, context) => {
       // Roll back — otherwise the sheet keeps showing the mode the user
@@ -849,18 +952,60 @@ export default function ShowtimeActionModal({
   const seatCheckedLabelShort = seatAvailability
     ? formatCheckedAtShort(seatAvailability.checked_at)
     : null;
-  // A genuinely unknown reading — no level ever recorded, and none pending —
-  // as opposed to `seatAvailability` simply not having loaded yet. Only this
-  // settled "nothing to say" state gets the question-mark treatment; a query
-  // still in flight renders nothing until it resolves one way or the other.
-  const isSeatAvailabilityUnknown =
-    !seatMeta && !isCheckingSeatAvailability && seatAvailability !== undefined;
-  // Whether the card has a busyness reading (real, pending, or settled-unknown)
-  // to show at all. False only while the query is still loading, in which case
-  // a ticket link alone can still justify the card, but not a premature "we
-  // don't know" claim above it.
+  // Whether a seat count is readable here at all — a fact about the cinema's
+  // ticket shop, and false for most of them. It is what separates "we don't
+  // know yet" from "nobody will ever know": the latter gets no availability
+  // row, because a permanent shrug next to a real ticket link is worse than
+  // the card simply being the ticket (and seat) actions it can act on.
+  const isSeatTrackable = Boolean(seatAvailability?.trackable);
+  // ...and whether a first reading can still be asked for by hand. The server
+  // owns the rule (never read, nothing already on its way); the button just
+  // stops rendering when it goes false, including the moment the tap lands.
+  const canRequestSeatCheck = Boolean(seatAvailability?.can_request_check);
+  // Whether the card has a busyness reading (real, pending, or askable) to
+  // show at all. False while the query is still loading too, in which case a
+  // ticket link alone can still justify the card, but not a premature claim
+  // above it.
   const showSeatBusynessInfo =
-    isCheckingSeatAvailability || Boolean(seatMeta) || isSeatAvailabilityUnknown;
+    isCheckingSeatAvailability || Boolean(seatMeta) || isSeatTrackable;
+
+  const { mutate: requestSeatCheck } = useMutation({
+    mutationFn: (showtimeId: number) =>
+      ShowtimesService.requestSeatAvailabilityCheck({ showtimeId }),
+    onSuccess: (availability, showtimeId) => {
+      queryClient.setQueryData(
+        showtimeSeatAvailabilityQueryKey(showtimeId),
+        availability ?? null
+      );
+    },
+    onError: (_error, showtimeId) => {
+      // Nothing to roll back by hand: the optimistic "checking" below is only
+      // ever a guess at what the server is about to say, so re-asking it is
+      // both the undo and the retry.
+      queryClient.invalidateQueries({
+        queryKey: showtimeSeatAvailabilityQueryKey(showtimeId),
+      });
+    },
+  });
+
+  const handleRequestSeatCheck = useCallback(() => {
+    if (selectedShowtimeId === null) return;
+    if (!requireAccount("seats")) return;
+    triggerSelectionHaptic();
+    // Painted before the request, not after it: the reading itself takes a few
+    // seconds at the ticket shop, and a button that looks untouched for that
+    // long reads as broken. The server says the same thing back a moment later
+    // (the due time it writes is what `checking` is derived from), so this is
+    // the real answer arriving early rather than a placeholder for it.
+    queryClient.setQueryData<ShowtimeSeatAvailabilityPublic | null>(
+      showtimeSeatAvailabilityQueryKey(selectedShowtimeId),
+      (previous) =>
+        previous
+          ? { ...previous, checking: true, can_request_check: false }
+          : previous
+    );
+    requestSeatCheck(selectedShowtimeId);
+  }, [selectedShowtimeId, requireAccount, queryClient, requestSeatCheck]);
 
   // ─── Waiting for a returned ticket ─────────────────────────────────────────
   // The account either has this or it doesn't; there is no tier to show, no
@@ -984,6 +1129,10 @@ export default function ShowtimeActionModal({
   // through to the existing text-input dialog / hides the preview tap target.
   const seatFloorPlanQuery = useShowtimeSeatFloorPlan({
     showtimeId: showtime?.id ?? null,
+    // Keyed on the reading, so pressing "Check" pulls the map in behind the
+    // count it just produced instead of leaving the header untappable until
+    // the sheet is closed and opened again.
+    readingAt: seatAvailability?.checked_at ?? null,
     enabled: shouldShowSeatButton || showSeatBusynessInfo,
   });
   const seatFloorPlan = seatFloorPlanQuery.data ?? null;
@@ -1022,11 +1171,87 @@ export default function ShowtimeActionModal({
     }).start();
   }, [isDismissInviteDialogVisible, dismissDialogAnim]);
 
-  const handleStatusPress = (going: GoingStatus) => {
+  const handleStatusPress = async (going: GoingStatus) => {
     if (!showtime || isUpdatingStatus) return;
     triggerSelectionHaptic();
+
+    // Only relevant when the viewer isn't already going/interested — the
+    // switch between those two doesn't change who can see them, so there's
+    // nothing new to warn about.
+    const wasAlreadyAttending =
+      showtime.viewer?.going === "GOING" || showtime.viewer?.going === "INTERESTED";
+    if ((going === "GOING" || going === "INTERESTED") && !wasAlreadyAttending) {
+      try {
+        const { friends } = await queryClient.fetchQuery({
+          queryKey: ["showtimes", "hiddenAttendingFriends", showtime.id],
+          queryFn: () =>
+            ShowtimesService.getHiddenAttendingFriendsForShowtime({ showtimeId: showtime.id }),
+        });
+        if (friends.length > 0) {
+          setPendingGoingStatus(going);
+          setHiddenAttendingFriendsCandidates(friends);
+          setIsHiddenAttendingFriendsVisible(true);
+          return;
+        }
+      } catch {
+        // If the lookup fails, fall through and apply the status as normal
+        // rather than blocking the user on an unrelated request.
+      }
+    }
+
     onUpdateStatus(going);
   };
+
+  const handleHiddenAttendingFriendsSkip = useCallback(() => {
+    setIsHiddenAttendingFriendsVisible(false);
+    setPendingGoingStatus((going) => {
+      if (going) onUpdateStatus(going);
+      return null;
+    });
+  }, [onUpdateStatus]);
+
+  const handleHiddenAttendingFriendsConfirm = useCallback(
+    async (selectedIds: string[]) => {
+      setIsHiddenAttendingFriendsVisible(false);
+      const going = pendingGoingStatus;
+      setPendingGoingStatus(null);
+      if (showtime) {
+        const showtimeId = showtime.id;
+        // Same best-effort, sequential-to-avoid-deadlock approach as
+        // handleInviteBeforePrivateConfirm — see the comment there.
+        queryClient.setQueryData<SentShowtimePingPublic[]>(sentPingsQueryKey, (prev) => [
+          ...(prev ?? []),
+          ...selectedIds.map((friendId, index): SentShowtimePingPublic => ({
+            id: -Date.now() - index,
+            receiver_id: friendId,
+            receiver_name:
+              hiddenAttendingFriendsCandidates.find((friend) => friend.id === friendId)
+                ?.display_name?.trim() || "Friend",
+            created_at: new Date().toISOString(),
+            seen_at: null,
+            dismissed_at: null,
+          })),
+        ]);
+        for (const friendId of selectedIds) {
+          try {
+            await ShowtimesService.pingFriendForShowtime({ showtimeId, friendId });
+          } catch {
+            // Best-effort, see comment above.
+          }
+        }
+        queryClient.invalidateQueries({ queryKey: sentPingsQueryKey });
+      }
+      if (going) onUpdateStatus(going);
+    },
+    [
+      showtime,
+      queryClient,
+      sentPingsQueryKey,
+      onUpdateStatus,
+      hiddenAttendingFriendsCandidates,
+      pendingGoingStatus,
+    ]
+  );
 
   const handleNotGoingPress = () => {
     if (notGoingActsAsDismiss) {
@@ -1060,7 +1285,7 @@ export default function ShowtimeActionModal({
   const handleOpenTicketLink = async () => {
     const ticketLink = showtime?.ticket_link;
     if (!ticketLink) return;
-    if (showtime?.cinema?.cineville) {
+    if (showtime?.cinema?.cineville && (await isCinevilleAutoCopyEnabled())) {
       const digits = await loadCinevilleCardDigits();
       if (digits) {
         await Clipboard.setStringAsync(digits);
@@ -1450,7 +1675,14 @@ export default function ShowtimeActionModal({
   // status — so audience visibility is based on going/interested only.
   const hasAudience =
     (showtime?.viewer?.friends_going?.length ?? 0) > 0 ||
-    (showtime?.viewer?.friends_interested?.length ?? 0) > 0;
+    (showtime?.viewer?.friends_interested?.length ?? 0) > 0 ||
+    (showtime?.viewer?.friends_of_friends_going?.length ?? 0) > 0 ||
+    (showtime?.viewer?.friends_of_friends_interested?.length ?? 0) > 0;
+
+  // The friend-request popup for a "+" tapped on a friend-of-friend badge —
+  // these people aren't the viewer's own friends yet, see `FriendBadges`'
+  // `onAddFriend`.
+  const [addFriendTarget, setAddFriendTarget] = useState<UserWithFriendStatus | null>(null);
 
   const statusOptions = [
     {
@@ -1651,7 +1883,12 @@ export default function ShowtimeActionModal({
                   button: high up where there is room to spare, above where the
                   report link sits lower down (see reportLink). */}
               {watchMarkers.length > 0 ? (
-                <View style={styles.watchMarkersColumn}>
+                <View
+                  style={[
+                    styles.watchMarkersColumn,
+                    canReport && disableMovieNavigation && styles.watchMarkersColumnReportReserve,
+                  ]}
+                >
                   {watchMarkers.map((marker) => (
                     <TouchableOpacity
                       key={marker.kind}
@@ -1688,13 +1925,20 @@ export default function ShowtimeActionModal({
               >
                 <MaterialIcons name="close" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
-              {/* Pinned to summaryRow's own top edge (see reportLink's `top`)
-                  rather than floating off audienceBox below, so it lines up
-                  with "More info" regardless of how tall the title/audience
-                  box end up being. */}
+              {/* Pinned to summaryRow's own edges rather than floating off
+                  audienceBox below: to the top edge so it lines up with "More
+                  info" regardless of how tall the title/audience box end up
+                  being, or — with no "More info" to line up with — to the
+                  bottom edge, which is as low as it can go without crossing the
+                  audience divider. */}
               {canReport && (
                 <TouchableOpacity
-                  style={styles.reportLink}
+                  style={[
+                    styles.reportLink,
+                    disableMovieNavigation
+                      ? styles.reportLinkAtRowBottom
+                      : styles.reportLinkAlignedWithMoreInfo,
+                  ]}
                   onPress={() => setIsReportDialogVisible(true)}
                   hitSlop={8}
                   activeOpacity={0.6}
@@ -1711,10 +1955,21 @@ export default function ShowtimeActionModal({
                 <FriendBadges
                   friendsGoing={showtime.viewer?.friends_going}
                   friendsInterested={showtime.viewer?.friends_interested}
+                  friendsOfFriendsGoing={showtime.viewer?.friends_of_friends_going}
+                  friendsOfFriendsInterested={showtime.viewer?.friends_of_friends_interested}
                   variant="default"
                   maxVisible={30}
                   disabledUserId={disabledUserId}
                   onNavigate={onClose}
+                  onRemindFriend={
+                    isGoingSelected && user?.notify_on_showtime_reminder
+                      ? handleRemindFriend
+                      : undefined
+                  }
+                  remindedFriendIds={remindedFriendIds}
+                  remindDisabled={isRemindingFriend}
+                  hiddenFromFriendIds={hiddenFromFriendIds}
+                  onAddFriend={setAddFriendTarget}
                 />
               ) : (
                 <ThemedText style={styles.audienceEmptyText}>
@@ -1723,6 +1978,12 @@ export default function ShowtimeActionModal({
               )}
             </View>
             ) : null}
+
+            <FriendOfFriendPopup
+              user={addFriendTarget}
+              onClose={() => setAddFriendTarget(null)}
+              onNavigate={onClose}
+            />
 
             {/* Optional "X invited you." banner */}
             {invitedYouLabel ? (
@@ -1799,17 +2060,7 @@ export default function ShowtimeActionModal({
                 there. */}
             {showSeatBusynessInfo || hasTicketLink || shouldShowSeatButton ? (
               <View style={styles.seatInfoSection}>
-                {!showSeatBusynessInfo ? null : isCheckingSeatAvailability && !seatMeta ? (
-                  <View style={styles.seatInfoHeader}>
-                    <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
-                    <View style={styles.seatInfoCheckingRow}>
-                      <ActivityIndicator size="small" color={colors.textSecondary} />
-                      <ThemedText style={styles.seatInfoCheckingText}>
-                        Checking availability…
-                      </ThemedText>
-                    </View>
-                  </View>
-                ) : seatMeta ? (
+                {!showSeatBusynessInfo ? null : seatMeta ? (
                   <TouchableOpacity
                     style={styles.seatInfoHeader}
                     onPress={handleOpenSeatFloorPlanPreview}
@@ -1827,12 +2078,9 @@ export default function ShowtimeActionModal({
                           fetched is worse than showing it a few seconds stale —
                           and says so where the timestamp normally sits. */}
                       {isCheckingSeatAvailability ? (
-                        <View style={styles.seatInfoCheckingRow}>
-                          <ActivityIndicator size="small" color={colors.textSecondary} />
-                          <ThemedText style={styles.seatInfoCheckingText}>
-                            Checking now…
-                          </ThemedText>
-                        </View>
+                        <ThemedText style={styles.seatInfoCheckingText}>
+                          Checking now…
+                        </ThemedText>
                       ) : seatCheckedLabelShort ? (
                         <ThemedText style={styles.seatInfoCheckedAt}>
                           {seatCheckedLabelShort}
@@ -1880,19 +2128,55 @@ export default function ShowtimeActionModal({
                     ) : null}
                   </TouchableOpacity>
                 ) : (
-                  // Genuinely unknown: no reading has ever come back and none
-                  // is pending, distinct from the "checking" state above,
-                  // which knows an answer is on its way. Only shown at all
-                  // because a ticket link still gives the card something to
-                  // do — otherwise this case renders nothing, same as before.
+                  // Readable here, just not read: no reading has come back and
+                  // none is pending. Distinct from the "checking" state above,
+                  // which knows an answer is on its way, and from a cinema we
+                  // cannot read at all, which never reaches this card. "Yet"
+                  // is the whole point of the wording — the count is one tap
+                  // away, and the tap is right next to it.
                   <View style={styles.seatInfoHeader}>
                     <View style={styles.seatInfoTextColumn}>
                       <ThemedText style={styles.seatInfoHeaderLabel}>Available seats</ThemedText>
-                      <ThemedText style={styles.seatInfoCheckedAt}>Not tracked</ThemedText>
+                      <ThemedText style={styles.seatInfoCheckedAt}>
+                        {isCheckingSeatAvailability
+                          ? "Checking now…"
+                          : canRequestSeatCheck
+                            ? "Not tracked yet"
+                            : "No count available"}
+                      </ThemedText>
                     </View>
-                    <View style={[styles.seatInfoValue, styles.seatInfoValueUnknown]}>
-                      <MaterialIcons name="help-outline" size={13} color={colors.textSecondary} />
-                    </View>
+                    {isCheckingSeatAvailability ? (
+                      // Same footprint as the Check button below, so the row
+                      // doesn't reflow the moment the tap lands — just its
+                      // "tap me" fill swapped for a disabled, working one.
+                      <View
+                        style={[
+                          styles.seatInfoValue,
+                          styles.seatInfoCheckButton,
+                          styles.seatInfoCheckButtonDisabled,
+                        ]}
+                      >
+                        <ActivityIndicator size="small" color={colors.pillActiveText} />
+                      </View>
+                    ) : canRequestSeatCheck ? (
+                      <TouchableOpacity
+                        style={[styles.seatInfoValue, styles.seatInfoCheckButton]}
+                        onPress={handleRequestSeatCheck}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel="Check how many seats are left"
+                      >
+                        <MaterialIcons name="search" size={13} color={colors.pillActiveText} />
+                        <ThemedText style={styles.seatInfoCheckButtonText}>Check</ThemedText>
+                      </TouchableOpacity>
+                    ) : (
+                      // Read once, and the ticket shop had nothing usable to
+                      // say. Nothing to offer here — asking again is what the
+                      // poller is for.
+                      <View style={[styles.seatInfoValue, styles.seatInfoValueUnknown]}>
+                        <MaterialIcons name="help-outline" size={13} color={colors.textSecondary} />
+                      </View>
+                    )}
                   </View>
                 )}
                 {/* Get ticket first — it's an outside link, styled and
@@ -2041,6 +2325,21 @@ export default function ShowtimeActionModal({
                       </TouchableOpacity>
                     );
                   })}
+                  <TouchableOpacity
+                    style={styles.visibilityDefaultLink}
+                    onPress={() => {
+                      onClose();
+                      router.push("/default-visibility");
+                    }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Change your default status visibility"
+                  >
+                    <MaterialIcons name="tune" size={14} color={colors.textSecondary} />
+                    <ThemedText style={styles.visibilityDefaultLinkText}>
+                      Change your default
+                    </ThemedText>
+                  </TouchableOpacity>
                 </View>
               ) : null}
             </View>
@@ -2185,6 +2484,10 @@ export default function ShowtimeActionModal({
                           const isHighlighted =
                             friend.id === firstEligibleFriendId &&
                             pingSearchQuery.trim().length > 0;
+                          // Going/interested friends can still be invited here —
+                          // it's visibility-only and sends no notification. The
+                          // notify-them "remind" action lives with the audience
+                          // badges instead, see `FriendBadges`'s `onRemindFriend`.
                           return (
                             <FriendListRow
                               key={friend.id}
@@ -2227,6 +2530,7 @@ export default function ShowtimeActionModal({
         ref={seatSheetsRef}
         room={seatFloorPlan?.room ?? null}
         seats={seatFloorPlan?.seats ?? null}
+        screenSide={seatFloorPlan?.screen_side ?? "top"}
         isLoadingFloorPlan={seatFloorPlanQuery.isLoading}
         isFloorPlanError={seatFloorPlanQuery.isError}
         cinemaName={showtime?.cinema.name ?? null}
@@ -2339,6 +2643,19 @@ export default function ShowtimeActionModal({
         </View>
       </Modal>
 
+      {/* Confirm sending a friend a reminder about this showtime. */}
+      <ConfirmDialog
+        visible={remindDialogVisible}
+        icon="notifications-active"
+        tone="primary"
+        title={`Remind ${remindDialogFriend?.name ?? "friend"}?`}
+        message="They'll get a notification nudging them about this showtime."
+        confirmLabel="Remind"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmRemindFriend}
+        onCancel={() => setRemindDialogVisible(false)}
+      />
+
       {/* Friends who watchlisted / watched this film. The rows drop the per-friend
           watch icon — the popup as a whole already says which list this is. */}
       <FriendWatchListModal
@@ -2411,6 +2728,17 @@ export default function ShowtimeActionModal({
         onConfirm={handleInviteBeforePrivateConfirm}
         onSkip={handleInviteBeforePrivateSkip}
       />
+
+      <InviteBeforePrivateDialog
+        visible={isHiddenAttendingFriendsVisible}
+        friends={hiddenAttendingFriendsCandidates}
+        onConfirm={handleHiddenAttendingFriendsConfirm}
+        onSkip={handleHiddenAttendingFriendsSkip}
+        title="Let these friends know?"
+        message={`These friends are already going or interested, but won't be able to see that you're ${
+          pendingGoingStatus === "GOING" ? "going" : "interested"
+        } unless you invite them.`}
+      />
       </QueryClientProvider>
     </BottomSheetModal>
   );
@@ -2458,14 +2786,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     // posterColumn below.
     poster: {
       width: 70,
-      height: 105,
+      height: POSTER_HEIGHT,
       borderRadius: 8,
       backgroundColor: colors.posterPlaceholder,
     },
     // Poster + "More info" stacked as one unit: the link sits right under the
     // thing it's more info about, instead of competing with the title/badges
     // for space in the text column beside it.
-    posterColumn: { gap: 4 },
+    posterColumn: { gap: POSTER_COLUMN_GAP },
     // `minWidth: 0` so a long unbroken title or director credit shrinks and
     // ellipsises instead of pushing the watch-marker column out of the row.
     summaryInfo: { flex: 1, minWidth: 0, gap: 1 },
@@ -2527,12 +2855,12 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
       textAlign: "center",
     },
-    // Pinned to summaryRow's top edge (poster height + posterColumn's gap) so
-    // it lands at the same height as "More info" under the poster, without
-    // claiming space of its own in the row's flow.
+    // Never in the row's flow: it would either steal width from the title or
+    // push the row taller for one 10pt line. Where it hangs depends on whether
+    // "More info" is there to line up with (see reportLinkAlignedWithMoreInfo /
+    // reportLinkAtRowBottom).
     reportLink: {
       position: "absolute",
-      top: 109,
       right: 0,
       flexDirection: "row",
       alignItems: "center",
@@ -2540,6 +2868,17 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingVertical: 1,
       paddingHorizontal: 4,
     },
+    // Pinned to summaryRow's top edge (poster height + posterColumn's gap) so
+    // it lands at the same height as "More info" under the poster, without
+    // claiming space of its own in the row's flow.
+    reportLinkAlignedWithMoreInfo: { top: POSTER_HEIGHT + POSTER_COLUMN_GAP },
+    // No "More info" (the sheet was opened from the movie page): there is
+    // nothing to line up with, and the old fixed `top` then dangled the link
+    // past the row and over the audience divider below it. Sitting on the row's
+    // own bottom edge keeps it inside the row whatever the row's height is; the
+    // watch markers reserve the space it lands in (see watchMarkersColumn), so
+    // it can't ride up into them either.
+    reportLinkAtRowBottom: { bottom: 0 },
     reportLinkText: {
       fontSize: 10.5,
       lineHeight: 13,
@@ -2560,6 +2899,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       // whole point of the column, and half a pill is worse than a truncated
       // director credit.
       flexShrink: 0,
+    },
+    // Holds the row open under the markers so the Report link, pinned to the
+    // row's bottom edge, has somewhere to land that isn't on top of them. Only
+    // needed when the link is bottom-pinned; when it lines up with "More info"
+    // the poster column already makes the row tall enough.
+    watchMarkersColumnReportReserve: {
+      paddingBottom: REPORT_LINK_HEIGHT + REPORT_LINK_GAP,
     },
     // Neutral pill; only the icon carries the watchlisted/watched colour, so the
     // markers read as a quiet aside next to the title rather than a call to act.
@@ -2692,13 +3038,33 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     seatInfoValueUnknown: {
       backgroundColor: colors.surfaceMuted,
     },
-    seatInfoCheckingRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
+    // The one thing in this card that is an action rather than a reading, so
+    // it borrows the busyness pill's geometry (it sits in that column) but not
+    // its filled look: a solid tint fill reads as a clear tap target, the
+    // same way the busyness pill's own fill reads as a clear reading.
+    seatInfoCheckButton: {
+      backgroundColor: colors.tint,
+      // Fixed footprint so the disabled/loading fill below can swap in
+      // without the row reflowing — wide and tall enough for the icon+label
+      // to sit centered rather than pressed against the edges.
+      minWidth: 68,
+      minHeight: 26,
+      justifyContent: "center",
     },
-    seatInfoCheckingText: {
+    seatInfoCheckButtonDisabled: {
+      opacity: 0.7,
+    },
+    seatInfoCheckButtonText: {
       fontSize: 12,
+      fontWeight: "700",
+      color: colors.pillActiveText,
+    },
+    // Same metrics as `seatInfoCheckedAt`, which it stands in for: the two
+    // swap in the same slot, and ThemedText's default lineHeight would make
+    // the row jump a few pixels every time they did.
+    seatInfoCheckingText: {
+      fontSize: 11,
+      lineHeight: 13,
       color: colors.textSecondary,
     },
     seatInfoValueText: {
@@ -2801,6 +3167,18 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     visibilityOptionDescription: {
       fontSize: 12,
+      color: colors.textSecondary,
+    },
+    visibilityDefaultLink: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      paddingVertical: 8,
+    },
+    visibilityDefaultLinkText: {
+      fontSize: 12,
+      fontWeight: "600",
       color: colors.textSecondary,
     },
     invitedSection: { gap: 8 },

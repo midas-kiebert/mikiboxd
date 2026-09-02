@@ -15,6 +15,7 @@ from app.api.deps import (
     CurrentUser,
     CurrentViewer,
     SessionDep,
+    get_current_user,
     get_db_context,
 )
 from app.core.config import settings
@@ -187,6 +188,30 @@ def ping_friend_for_showtime(
             showtime_id=showtime_id,
         )
     return message
+
+
+@router.post("/{showtime_id}/remind/{friend_id}", response_model=Message)
+def send_showtime_reminder(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    friend_id: UUID,
+    current_user: CurrentUser,
+) -> Message:
+    """Nudge a friend already going/interested, or invited and not dismissed.
+
+    Never errors when the friend has reminders turned off — see
+    `services.showtimes.send_showtime_reminder` — so the response always
+    reads as "sent" from the caller's side, whether or not anything actually
+    reached the friend's device.
+    """
+    showtimes_service.send_showtime_reminder(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+        friend_id=friend_id,
+    )
+    return Message(message="Reminder sent")
 
 
 @router.post("/{showtime_id}/ping-link-token", response_model=ShowtimePingLinkToken)
@@ -430,6 +455,52 @@ def get_seat_availability(
     )
 
 
+# Signed in only, but the handler has no use for *which* account it is — the
+# reading it asks for is the same public fact for everyone. Declared as a route
+# dependency rather than an unused parameter, same as the superuser-only routes.
+@router.post(
+    "/{showtime_id}/seat-availability/check",
+    response_model=ShowtimeSeatAvailabilityPublic | None,
+    dependencies=[Depends(get_current_user)],
+)
+def request_seat_availability_check(
+    *,
+    session: SessionDep,
+    background_tasks: BackgroundTasks,
+    showtime_id: int,
+) -> ShowtimeSeatAvailabilityPublic | None:
+    """Ask for this screening's first seat reading.
+
+    From here on it is exactly the path selecting a showtime already takes: the
+    read is queued for the poller, with every cap it has, and attempted straight
+    away in the background under the same concurrency and per-host guards. What
+    bounds it is `should_check_immediately` — true only for a showtime that has
+    never been read at all — so a screening can cost at most one hand-requested
+    request in its life, however many people tap the button.
+
+    Signed in only. Reading the answer is public (see `get_seat_availability`);
+    *causing* a request at a small cinema's ticket shop is not, and an account
+    is what stops the button being an anonymous way to walk the catalogue.
+
+    Already-read showtimes are not an error — the caller wanted a number and
+    there is one, so it comes back as-is.
+    """
+    if seat_availability_service.should_check_immediately(
+        session=session, showtime_id=showtime_id
+    ):
+        seat_availability_service.request_reading_on_interest(
+            session=session, showtime_id=showtime_id
+        )
+        # Committed before the response is built, so the availability returned
+        # below already reads as "checking" and the client can say so without
+        # waiting for its next poll.
+        session.commit()
+        background_tasks.add_task(_check_seat_availability_now, showtime_id)
+    return seat_availability_service.get_seat_availability(
+        session=session, showtime_id=showtime_id
+    )
+
+
 @router.get("/sold-out-watch", response_model=SoldOutWatchPublic | None)
 def get_sold_out_watch(
     *,
@@ -517,6 +588,29 @@ def get_uninvited_selected_friends_for_showtime(
     friends who would otherwise silently lose visibility into their status.
     """
     return showtimes_service.get_uninvited_selected_friends_for_showtime(
+        session=session,
+        showtime_id=showtime_id,
+        actor_id=current_user.id,
+    )
+
+
+@router.get(
+    "/{showtime_id}/visibility/hidden-attending-friends",
+    response_model=UninvitedSelectedFriendsPublic,
+)
+def get_hidden_attending_friends_for_showtime(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> UninvitedSelectedFriendsPublic:
+    """Friends already going/interested who won't see the actor's status.
+
+    Used to prompt the actor, before marking going/interested, to invite
+    friends who are already visibly attending but whom the actor's current
+    visibility mode or per-friend opt-out would otherwise hide from.
+    """
+    return showtimes_service.get_hidden_attending_friends_for_showtime(
         session=session,
         showtime_id=showtime_id,
         actor_id=current_user.id,

@@ -11,12 +11,25 @@
  * blue when you have an open invite).
  *
  * It is mounted once by ShowtimeModalProvider and driven by the controlled
- * `visible` prop; screens open it through the useShowtimeModal() hook. Opening
- * waits for the showtime's content to have reached the sheet before raising it,
- * so it never rises showing the showtime it was opened with last time — see
- * `CommittedShowtimeReporter`.
+ * **This sheet does not use the app's shared loading panel**, unlike every
+ * other one (see `AppBottomSheet` / `useSheetContentReady`). It builds its
+ * content and rises with it already there — which it can afford because it is
+ * always handed the whole `ShowtimePublic` by the list it was tapped in, so
+ * there is nothing to fetch and the body is the only cost. Rising on a panel
+ * instead was tried across a long session and rejected: a logo between the tap
+ * and the data is worse here than a slightly later sheet, because the sheet's
+ * whole subject is the thing the panel would be hiding. What it does need is
+ * `CommittedShowtimeReporter`, below.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -90,6 +103,8 @@ import InviteBeforePrivateDialog from "@/components/showtimes/InviteBeforePrivat
 import SeatSheets, { type SeatSheetsHandle } from "@/components/showtimes/SeatSheets";
 import { getSeatFieldMaxLength, getSeatInputConfig, validateSeatFieldValue } from "@/components/showtimes/seat-input";
 import SheetBackdrop from "@/components/sheets/SheetBackdrop";
+import { useSheetWarmUp } from "@/components/sheets/sheet-warm-up";
+import { SHEET_OPEN_DURATION_MS } from "@/components/sheets/sheet-timing";
 import {
   getFriendWatchKindMeta,
   type FriendWatchKind,
@@ -204,10 +219,16 @@ const REPORT_LINK_GAP = 6;
 // header row, so it borrows the surrounding padding to reach a tappable size.
 const SEAT_WATCH_BELL_HIT_SLOP = 10;
 
+/** The app's one sheet speed, so this sheet rises exactly like every other. */
+const SHEET_ANIMATION_CONFIG = { duration: SHEET_OPEN_DURATION_MS } as const;
+
+/** The warm-up's open and close, which nobody is meant to see. */
+const INSTANT_ANIMATION_CONFIG = { duration: 1 } as const;
+
 /**
  * How long the tour waits before reading its first target's position: long
- * enough for the sheet's entry animation (`animationConfigs` below is 220ms)
- * to have finished, with a small safety margin. Only applies to the very
+ * enough for the sheet's entry animation (`SHEET_OPEN_DURATION_MS`) and the
+ * content gate that follows it to have finished, with a small safety margin. Only applies to the very
  * first step after the sheet opens — see `SUBSEQUENT_TOUR_MEASURE_DELAYS_MS`
  * for every step after that, where the sheet is already open and there is no
  * entry animation left to wait out.
@@ -252,6 +273,44 @@ function CommittedShowtimeReporter({
   }, [showtimeId, onCommitted]);
   return null;
 }
+
+/** Nothing is pinned yet. One identity for all of them, so a render that has no
+ * pings is not mistaken for a render whose pings changed: the query's `= []`
+ * default used to hand out a fresh array every render, which invalidated
+ * `pingedReceiverIds` and `friendsForPing` on every single one. */
+const NO_SENT_PINGS: SentShowtimePingPublic[] = [];
+
+type SheetBlockingOverlayHandle = {
+  setPresented: (isPresented: boolean) => void;
+};
+
+/**
+ * Registers the sheet as a blocking overlay, and owns the flag that says so.
+ *
+ * Registered for as long as the sheet is actually on screen — including
+ * mid-close-animation. Driven off gorhom's own index rather than the `visible`
+ * prop: `visible` flips false the instant a close is requested, but the sheet
+ * keeps sliding down for a couple hundred ms after that, and anything gating on
+ * "is a blocking overlay open" (e.g. the intro's filters spotlight) must not
+ * treat the sheet as gone until it truly is, or it ends up highlighting the
+ * Filters button over a sheet that's still visibly there.
+ *
+ * It lives in its own component because of *where* that flag is set. It used to
+ * be `useState` on the sheet, so `present()` re-rendered all 3,400 lines of body
+ * — measured at 67ms, landing a third of the way through the rise, the single
+ * worst-placed render in the whole open. Nothing is rendered from the flag, so
+ * it belongs somewhere that renders nothing: this re-renders alone, and the
+ * sheet never hears about it.
+ */
+const SheetBlockingOverlay = forwardRef<SheetBlockingOverlayHandle, { onClose: () => void }>(
+  function SheetBlockingOverlay({ onClose }, ref) {
+    const [isPresented, setIsPresented] = useState(false);
+    // Stable: the setter is, so the handle never needs rebuilding.
+    useImperativeHandle(ref, () => ({ setPresented: setIsPresented }), []);
+    useRegisterBlockingOverlay(isPresented, onClose);
+    return null;
+  }
+);
 
 const getUniqueSenderNames = (senders: UserPublic[]): string[] =>
   senders
@@ -418,7 +477,18 @@ export default function ShowtimeActionModal({
   // The tour runs on mock data: every request it could make would be about a
   // showtime that does not exist, and the answers are already invented.
   const isTour = tour !== null;
-  const sheetDataEnabled = visible && selectedShowtimeId !== null && !isTour && isSignedIn;
+  // Flipped one frame *after* `present()`, not when the sheet becomes visible.
+  //
+  // The sheet's five queries used to dispatch inside the effects of the commit
+  // that opens it, and that dispatch — axios setup, the auth header, react-query
+  // bookkeeping — measured 52ms sitting between the sheet's own commit and the
+  // portal's, on the critical path, before anything had moved on screen. A frame
+  // later it is free: the rise animates on the UI thread, and that thread was
+  // measured idle (0ms stalled) through opens where JS stalled for 187ms, so JS
+  // work during the animation costs nothing anyone can see.
+  const [isSheetDataEnabled, setIsSheetDataEnabled] = useState(false);
+  const sheetDataEnabled =
+    isSheetDataEnabled && visible && selectedShowtimeId !== null && !isTour && isSignedIn;
 
   // Window positions of the controls the tour explains, read on demand rather
   // than on layout: layout fires while the sheet is still rising, so it would
@@ -431,21 +501,40 @@ export default function ShowtimeActionModal({
   const tourTarget = tour?.target ?? null;
   const onTourTargetRect = tour?.onTargetRect;
 
-  // Registered as a blocking overlay for as long as the sheet is actually on
-  // screen — including mid-close-animation. Driven off gorhom's own index
-  // rather than the `visible` prop: `visible` flips false the instant a close
-  // is requested, but the sheet keeps sliding down for a couple hundred ms
-  // after that, and anything gating on "is a blocking overlay open" (e.g. the
-  // intro's filters spotlight) must not treat the sheet as gone until it
-  // truly is, or it ends up highlighting the Filters button over a sheet
-  // that's still visibly there.
-  const [isPresented, setIsPresented] = useState(false);
+  // See `SheetBlockingOverlay`: the flag lives there, not here, so setting it
+  // does not re-render this component in the middle of the rise.
+  const blockingOverlayRef = useRef<SheetBlockingOverlayHandle>(null);
+  // Invalidates the deferred work below when the sheet closes, or when a second
+  // open supersedes the first, so a frame that arrives late cannot announce a
+  // sheet that is already on its way down.
+  const presentGenerationRef = useRef(0);
+
+  // A present-and-close at startup, so this sheet's node — the largest in the
+  // app — exists before anyone taps, rather than being built inside the first
+  // open. `AppBottomSheet` does this for every other sheet; this one drives its
+  // own BottomSheetModal, so it wires the same hook up by hand. Its nested seat
+  // sheets are deliberately *not* warmed: they live inside this component, so
+  // React would run their effects first and register their portals behind this
+  // one's — see `sheet-warm-up`.
+  const { isWarmingUp, onSheetChange: onWarmUpSheetChange } = useSheetWarmUp(
+    bottomSheetModalRef,
+    true
+  );
+  const isWarmingUpRef = useRef(isWarmingUp);
+  isWarmingUpRef.current = isWarmingUp;
 
   const handleSheetChange = useCallback(
     (index: number) => {
+      // The warm-up's own open and close drive it to completion, and must reach
+      // neither `onClose` nor the blocking-overlay registration.
+      if (isWarmingUpRef.current) {
+        onWarmUpSheetChange(index);
+        return;
+      }
       if (index === -1) {
         closedByGorhomRef.current = true;
-        setIsPresented(false);
+        presentGenerationRef.current += 1;
+        blockingOverlayRef.current?.setPresented(false);
         onClose();
         return;
       }
@@ -461,10 +550,8 @@ export default function ShowtimeActionModal({
         });
       }
     },
-    [onClose, tourTarget]
+    [onClose, tourTarget, onWarmUpSheetChange]
   );
-
-  useRegisterBlockingOverlay(isPresented, onClose);
 
   const presentSheet = useCallback(() => {
     isPresentPendingRef.current = false;
@@ -474,8 +561,26 @@ export default function ShowtimeActionModal({
     }
     hasEverPresentedRef.current = true;
     closedByGorhomRef.current = false;
-    setIsPresented(true);
+    const generation = ++presentGenerationRef.current;
     bottomSheetModalRef.current?.present();
+    // Everything that is not the rise itself happens *after* it, two frames out.
+    //
+    // gorhom starts the rise from inside its own `requestAnimationFrame`, queued
+    // during the call above, so anything queued before it runs first and delays
+    // the movement rather than following it. Both of these were doing exactly
+    // that: the overlay registration notifies a module store that re-renders the
+    // showtimes tab, and enabling the data dispatches five fetches — together
+    // 72ms between `present()` and the sheet actually moving. Neither is
+    // observable in that window: nothing can consult the overlay registry before
+    // the sheet is up, and the queries have hundreds of ms of network ahead of
+    // them regardless.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (presentGenerationRef.current !== generation) return;
+        blockingOverlayRef.current?.setPresented(true);
+        setIsSheetDataEnabled(true);
+      });
+    });
   }, []);
 
   // Reported from inside the portal: if the sheet was waiting for this showtime
@@ -491,7 +596,11 @@ export default function ShowtimeActionModal({
   );
 
   useEffect(() => {
+    // A tap during the warm-up would only be closed again a frame later. The
+    // warm-up finishing re-runs this effect, which then opens it for real.
+    if (isWarmingUp) return;
     if (!visible) {
+      presentGenerationRef.current += 1;
       isPresentPendingRef.current = false;
       if (presentTimeoutRef.current !== null) {
         clearTimeout(presentTimeoutRef.current);
@@ -502,20 +611,24 @@ export default function ShowtimeActionModal({
       }
       return;
     }
-    // Nothing has been rendered into the portal yet (first open of the app's
-    // session), or it already holds this showtime (re-opening the same one):
-    // either way there is no stale content to wait out.
-    if (
-      !hasEverPresentedRef.current ||
-      committedShowtimeIdRef.current === selectedShowtimeIdRef.current
-    ) {
+    // The portal already holds this showtime (re-opening the same one, or an
+    // open-by-id that has nothing to show yet either way): nothing stale to
+    // wait out, so rise now.
+    //
+    // This used to skip the wait for the first open of the session too, on the
+    // grounds that nothing had been rendered into the portal yet. The startup
+    // warm-up made that false: it presents the sheet once, invisibly, which
+    // commits a body with no showtime in it — so the first real open rose with
+    // *that* on screen for a frame or two. What is committed is the only thing
+    // that can answer this, never whether we have presented before.
+    if (committedShowtimeIdRef.current === selectedShowtimeIdRef.current) {
       presentSheet();
       return;
     }
     pendingPresentShowtimeIdRef.current = selectedShowtimeIdRef.current;
     isPresentPendingRef.current = true;
     presentTimeoutRef.current = setTimeout(presentSheet, PRESENT_CONTENT_TIMEOUT_MS);
-  }, [visible, presentSheet]);
+  }, [visible, isWarmingUp, presentSheet]);
 
   // Shared stack, so a sheet opened from this one takes the press first — see
   // `utils/android-back.ts`.
@@ -567,6 +680,7 @@ export default function ShowtimeActionModal({
   // Reset transient UI when the sheet closes or switches showtime.
   useEffect(() => {
     if (!visible) {
+      setIsSheetDataEnabled(false);
       setShowInviteFriends(false);
       setInviteListReady(false);
       setPingSearchQuery("");
@@ -597,7 +711,7 @@ export default function ShowtimeActionModal({
     () => ["showtimes", "sentPings", selectedShowtimeId] as const,
     [selectedShowtimeId]
   );
-  const { data: sentPings = [] } = useQuery<SentShowtimePingPublic[], Error>({
+  const { data: sentPings = NO_SENT_PINGS } = useQuery<SentShowtimePingPublic[], Error>({
     queryKey: sentPingsQueryKey,
     enabled: sheetDataEnabled,
     queryFn: () =>
@@ -688,11 +802,15 @@ export default function ShowtimeActionModal({
   } | null>(null);
   const [remindDialogVisible, setRemindDialogVisible] = useState(false);
   // Local-only state must not survive into a reused sheet showing a
-  // different showtime.
+  // different showtime. Each updater returns the *same* value when there is
+  // nothing to clear, which is what lets React drop the update entirely: a
+  // plain `setRemindedFriendIds(new Set())` is a new object every time, so it
+  // re-rendered the whole sheet on every open to replace an empty set with an
+  // empty set — and it did it between the tap and the rise.
   useEffect(() => {
-    setRemindedFriendIds(new Set());
-    setRemindDialogFriend(null);
-    setRemindDialogVisible(false);
+    setRemindedFriendIds((previous) => (previous.size === 0 ? previous : new Set()));
+    setRemindDialogFriend((previous) => (previous === null ? previous : null));
+    setRemindDialogVisible((previous) => (previous ? false : previous));
   }, [selectedShowtimeId]);
 
   const { mutate: remindFriendForShowtime, isPending: isRemindingFriend } = useMutation({
@@ -930,7 +1048,9 @@ export default function ShowtimeActionModal({
   // it's still worth going.
   const { data: seatAvailability } = useShowtimeSeatAvailability({
     showtimeId: selectedShowtimeId,
-    enabled: visible && selectedShowtimeId !== null && !isTour,
+    // Deferred past the rise like the rest — see `isSheetDataEnabled`. The list
+    // that opened the sheet already seeded this, so the pill has its value.
+    enabled: isSheetDataEnabled && visible && selectedShowtimeId !== null && !isTour,
   });
   const seatMeta = seatAvailability?.level
     ? getSeatAvailabilityMeta(seatAvailability.level, colors)
@@ -1133,7 +1253,11 @@ export default function ShowtimeActionModal({
     // count it just produced instead of leaving the header untappable until
     // the sheet is closed and opened again.
     readingAt: seatAvailability?.checked_at ?? null,
-    enabled: shouldShowSeatButton || showSeatBusynessInfo,
+    // `isSheetDataEnabled` as well as the two flags: a disabled query still hands
+    // back its cached data, so `showSeatBusynessInfo` is already true from what
+    // the list seeded — which left this one query still dispatching inside the
+    // opening commit while the other five had been moved out of it.
+    enabled: isSheetDataEnabled && (shouldShowSeatButton || showSeatBusynessInfo),
   });
   const seatFloorPlan = seatFloorPlanQuery.data ?? null;
   const hasSeatFloorPlanPreview = Boolean(seatFloorPlan && seatFloorPlan.seats.length > 0);
@@ -1726,14 +1850,23 @@ export default function ShowtimeActionModal({
   );
 
   return (
+    <>
+    <SheetBlockingOverlay ref={blockingOverlayRef} onClose={onClose} />
     <BottomSheetModal
       ref={bottomSheetModalRef}
       snapPoints={snapPoints}
       enablePanDownToClose={!isTour}
       enableDismissOnClose={false}
       enableDynamicSizing={false}
-      animationConfigs={{ duration: 220 }}
-      backdropComponent={renderBackdrop}
+      animationConfigs={isWarmingUp ? INSTANT_ANIMATION_CONFIG : SHEET_ANIMATION_CONFIG}
+      // `containerStyle`, not `style`: gorhom composes its own animated style
+      // *after* the `style` prop and hard-sets `opacity: 1` on it whenever the
+      // sheet is not at index -1 (BottomSheetBody), so `style` cannot hide a
+      // sheet that is open — which is exactly what a warm-up is. The hosting
+      // container above it composes the provided style first and never touches
+      // opacity, so this one holds.
+      containerStyle={isWarmingUp ? styles.warmingUp : undefined}
+      backdropComponent={isWarmingUp ? null : renderBackdrop}
       handleComponent={null}
       backgroundStyle={styles.sheetBackground}
       topInset={topInset}
@@ -1780,7 +1913,16 @@ export default function ShowtimeActionModal({
         </View>
         {!showtime ? (
           <View style={styles.loadingState}>
-            {isLoadingShowtime ? (
+            {/* "Unavailable" is a verdict, and it may only be given about a
+                showtime somebody actually asked for. With no sheet open there
+                is no such showtime — and this body is what the *next* open
+                rises with, because @gorhom/portal commits sheet content a
+                render late and the rise does not wait past
+                `PRESENT_CONTENT_TIMEOUT_MS` for it. The warm-up at startup
+                leaves exactly this state committed, so the first sheet of the
+                session came up reading "Showtime unavailable." for a frame or
+                two before its own content landed. Closed, it says nothing. */}
+            {!visible ? null : isLoadingShowtime ? (
               <ActivityIndicator size="large" color={colors.tint} />
             ) : (
               <ThemedText style={styles.loadingErrorText}>Showtime unavailable.</ThemedText>
@@ -2741,6 +2883,7 @@ export default function ShowtimeActionModal({
       />
       </QueryClientProvider>
     </BottomSheetModal>
+    </>
   );
 }
 
@@ -2757,6 +2900,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 999,
       backgroundColor: colors.divider,
     },
+    // The warm-up: mounted and laid out, but neither on screen nor able to take
+    // a touch — it covers most of the screen while it runs, and it runs during
+    // startup, which is exactly when someone is already tapping.
+    warmingUp: { opacity: 0, pointerEvents: "none" },
     sheetBackground: {
       backgroundColor: colors.background,
       borderTopLeftRadius: 16,

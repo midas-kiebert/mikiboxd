@@ -156,19 +156,24 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     setCinemaEditPresetId(null);
   }, []);
   const handleCloseFiltersModal = useCallback(() => setVisible(false), []);
+
+  // Memoised, so opening or closing either sheet doesn't hand every consumer of
+  // this context a new object and re-render the tab screens behind the sheet in
+  // the same commit the sheet is trying to rise in.
+  const value = useMemo(
+    () => ({ openFiltersModal, openCinemaModal }),
+    [openFiltersModal, openCinemaModal]
+  );
   // Only show the back button (→ step back to Filters) when Filters is also open.
   const cinemaModalBack = visible ? handleCloseCinemaModal : undefined;
 
   return (
-    <FiltersModalContext.Provider value={{ openFiltersModal, openCinemaModal }}>
+    <FiltersModalContext.Provider value={value}>
       {children}
-      <CinemaFilterModal
-        visible={cinemaModalVisible}
-        onClose={handleCloseCinemaModal}
-        onBack={cinemaModalBack}
-        initialPage="selection"
-        initialEditPresetId={cinemaEditPresetId}
-      />
+      {/* Order matters and is load-bearing: both sheets warm their portals at
+          mount, in mount order, and the cinema sheet has to draw in front of
+          the filters sheet it opens from — so it must stay below it here. See
+          `components/sheets/sheet-warm-up.ts`. */}
       <FiltersModal
         visible={visible}
         onClose={handleCloseFiltersModal}
@@ -202,6 +207,13 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         setWatchedOnly={setWatchedOnly}
         showLists
         resultCount={resultCount}
+      />
+      <CinemaFilterModal
+        visible={cinemaModalVisible}
+        onClose={handleCloseCinemaModal}
+        onBack={cinemaModalBack}
+        initialPage="selection"
+        initialEditPresetId={cinemaEditPresetId}
       />
     </FiltersModalContext.Provider>
   );

@@ -73,6 +73,12 @@ type LoadingLogoProps = {
    */
   fadeIn?: boolean;
   style?: StyleProp<ViewStyle>;
+  /**
+   * Fired once this has been laid out — i.e. once its views actually exist.
+   * A caller that has to sequence something behind this panel appearing waits
+   * on it; see `useSheetPanelReady` in `sheets/use-sheet-content-ready`.
+   */
+  onLayout?: () => void;
 };
 
 export default function LoadingLogo({
@@ -83,6 +89,7 @@ export default function LoadingLogo({
   hideSpinner = false,
   fadeIn = false,
   style,
+  onLayout,
 }: LoadingLogoProps) {
   const opacity = useRef(new Animated.Value(fadeIn ? 0 : 1)).current;
   const breathe = useRef(new Animated.Value(0)).current;
@@ -122,7 +129,7 @@ export default function LoadingLogo({
   });
 
   return (
-    <Animated.View style={[styles.container, style, { opacity }]}>
+    <Animated.View style={[styles.container, style, { opacity }]} onLayout={onLayout}>
       <Animated.Image
         source={require("../../assets/images/splash-icon.png")}
         style={{ width: logoSize, height: logoSize, transform: [{ scale }] }}

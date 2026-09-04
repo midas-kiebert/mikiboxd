@@ -4,7 +4,6 @@
  */
 import { useMemo } from "react";
 import {
-  ActivityIndicator,
   Alert,
   StyleSheet,
   TouchableOpacity,
@@ -77,12 +76,13 @@ export default function ManagePresetsModal({
       onBack={onClose}
       title="Manage presets"
       backgroundColor={colors.nestedModalBackground}
+      contentReady={!isLoading}
+      loadingLabel="Loading presets…"
+      // A handful of preset cards — nothing that could stall the rise — so they
+      // go up the moment the fetch lands rather than waiting out the animation.
+      deferContent={false}
     >
-        {isLoading ? (
-          <View style={styles.center}>
-            <ActivityIndicator size="large" color={colors.tint} />
-          </View>
-        ) : presets.length === 0 ? (
+        {presets.length === 0 ? (
           <View style={styles.center}>
             <ThemedText style={styles.empty}>
               No presets yet. Save your filters as a preset to reuse them in one tap.

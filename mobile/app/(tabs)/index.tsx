@@ -9,10 +9,11 @@ import {
   ThemedRefreshControl,
 } from '@/components/themed-refresh-control';
 import { DateTime } from 'luxon';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
 import { tabContentHoldMs } from '@/components/tab-bar';
 import { useDeferredMount } from '@/utils/use-deferred-mount';
+import { useSettledFocus } from '@/utils/use-settled-focus';
 import { useRouter } from 'expo-router';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
@@ -124,7 +125,7 @@ function MainShowtimesScreen() {
   const [feedHoldUntil, setFeedHoldUntil] = useState(0);
   const { openFiltersModal } = useFiltersModal();
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
-  const isFocused = useIsFocused();
+  const isFocused = useSettledFocus();
   // Typed by hand: `preload` belongs to the tab navigator this screen sits in,
   // and the generic `useNavigation()` result cannot know which navigator that
   // is without the app declaring its whole route map.
@@ -309,6 +310,16 @@ function MainShowtimesScreen() {
     fetchNextPage: moviesFetchNextPage,
   } = moviesQuery;
 
+  // A focus-gated query that has not been switched on yet is neither loading nor
+  // empty as far as react-query is concerned: no data, no fetch in flight. It is
+  // loading — the fetch is owed — and saying otherwise renders the empty state
+  // for the beat between the tab appearing and `useSettledFocus` letting the
+  // query go, with the loading panel arriving after it. `data === undefined`
+  // rather than an empty list, because a query that fetched and came back with
+  // nothing really is empty and must go on saying so from the background.
+  const isAwaitingShowtimes = !isFocused && showtimesData === undefined;
+  const isAwaitingMovies = !isFocused && moviesData === undefined;
+
   // One identity for the life of the list: a new `renderItem` re-renders every
   // cell, which would undo `MovieCard`'s memo.
   const openMovie = useCallback(
@@ -479,7 +490,9 @@ function MainShowtimesScreen() {
   // showing `moviesLoading` immediately just moved the flash from "quick
   // filter taps" to "quick presets" instead of removing it.
   const isMoviesFetchEmptyLoading =
-    (moviesLoading || moviesFetching) && !refreshing && visibleMovies.length === 0;
+    (moviesLoading || moviesFetching || isAwaitingMovies) &&
+    !refreshing &&
+    visibleMovies.length === 0;
   const showMoviesFetchLoadingLogo = useDelayedTrue(
     isMoviesFetchEmptyLoading,
     LOADING_LOGO_DELAY_MS,
@@ -562,7 +575,7 @@ function MainShowtimesScreen() {
       ) : (
         <ShowtimesListContent
           showtimes={visibleShowtimes}
-          isLoading={showtimesLoading}
+          isLoading={showtimesLoading || isAwaitingShowtimes}
           isFetching={showtimesFetching}
           immediateEmptyLoading={isFilterTransitionLoading}
           isFetchingNextPage={showtimesFetchingNextPage}

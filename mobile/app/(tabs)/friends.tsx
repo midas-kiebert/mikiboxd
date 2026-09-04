@@ -189,10 +189,15 @@ function FriendsScreen() {
   // Not gated on the mode any more: the two modes are pages of one pager, and
   // the Friends page has to already hold its rows when the finger drags it into
   // view rather than filling in behind the swipe.
-  const { data: friendsData, isFetching: isFetchingFriends } = useFetchFriends({
+  // `isLoading`, never `isFetching`: react-query only re-renders for the result
+  // fields a component actually reads, and `isFetching` moves on every fetch of
+  // these shared queries — including the ones other screens start. Reading it
+  // here re-rendered this whole screen twice on each showtime-sheet open, from
+  // behind the sheet. `isLoading` only moves while there is no data yet.
+  const { data: friendsData, isLoading: isLoadingFriends } = useFetchFriends({
     enabled: isSignedIn,
   });
-  const { data: receivedRequests, isFetching: isFetchingReceived } = useFetchReceivedRequests({
+  const { data: receivedRequests, isLoading: isLoadingReceived } = useFetchReceivedRequests({
     enabled: isSignedIn,
   });
   const { data: sentRequests } = useFetchSentRequests({
@@ -260,7 +265,7 @@ function FriendsScreen() {
     hasUserSearch && sections.every((section) => section.data.length === 0);
 
   const isLoadingFriendsView =
-    (isFetchingFriends || isFetchingReceived) && friends.length === 0 && received.length === 0;
+    (isLoadingFriends || isLoadingReceived) && friends.length === 0 && received.length === 0;
 
   // Whichever list is on screen, waiting on its first rows. `refreshing` is
   // deliberately not in here: ThemedRefreshControl's own spinner already says

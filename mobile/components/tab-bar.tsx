@@ -25,10 +25,10 @@
  *   clock started right there, and nothing it draws is derived from anything
  *   that has to load: a band of light out of the middle of the button, opening
  *   to the edges and gone. It runs whether or not the press turns into a
- *   navigation, and it is the same length every time. The navigation itself is
- *   held back until it has had the UI thread to itself — see `NAV_HOLD_MS`,
- *   which is the difference between a fixed animation and one that stutters
- *   wherever the next screen happens to land in it.
+ *   navigation, and it is the same length every time. It does not hold the
+ *   navigation up: the switch is dispatched in the same handler, and what
+ *   keeps out of the flash's way is the one part that is actually expensive —
+ *   a first visit's screen build, see {@link tabContentHoldMs}.
  *
  *   The lit state says *this is the tab you are on*. That one waits for the
  *   press to actually complete, since a press dragged off and cancelled must
@@ -39,7 +39,7 @@
  * copies are faded past each other. Cheaper than it sounds (two glyphs), and
  * it needs nothing to support animated colour values.
  */
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useRef } from 'react';
 import { StyleSheet, View, type TextStyle } from 'react-native';
 import { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 import { PlatformPressable } from '@react-navigation/elements';
@@ -81,28 +81,6 @@ const HIGHLIGHT_SCALE_FROM = 0.94;
  */
 const FLASH_MS = 260;
 /**
- * How long the UI thread is kept clear for the flash, measured from touch-down.
- *
- * This is the fix for the stall, and it is worth stating plainly: Reanimated
- * animates on the UI thread, and the UI thread is also what commits the next
- * screen's native views. Nothing on the animation side can survive that — an
- * animation asked to run while the thread is busy does not degrade, it simply
- * does not get frames, which is exactly the "lags in the middle" that being
- * early (`onPressIn`) and being short only ever half-fixed, because the commit
- * landed *inside* the window either way.
- *
- * So the order is reversed instead: the press animates first and navigates
- * afterwards. Up to this mark the thread belongs to the flash and the
- * navigation waits; past it the flash is down to the tail of its fade, dim
- * enough that a stalled frame there does not read as one.
- *
- * It costs the tab switch this much latency on paper and none of it in
- * practice — the screens already sat behind a skeleton for about this long
- * (see {@link tabContentHoldMs}), so the wait has moved from a shell that says
- * nothing to a movement that answers the tap.
- */
-const NAV_HOLD_MS = 170;
-/**
  * The flash's clock, driven linearly so that every channel below can shape its
  * own curve out of it with `interpolate` and they all stay in step. Anything
  * eased here would skew all of them at once.
@@ -136,7 +114,22 @@ const litTab = makeMutable('');
 let flashStartedAt = 0;
 
 /**
- * How much longer the flash needs the UI thread, from right now.
+ * Nothing is kept back from the navigation any more, and that is the point.
+ *
+ * There used to be a hold here: the press animated first and navigated
+ * afterwards, on the theory that the next screen's commit would otherwise take
+ * the UI thread off the flash mid-movement. It cost every tab press that much
+ * latency before anything happened — including the presses where there was
+ * nothing to commit, because the tab was already built and mounted and the
+ * switch is only a change of which screen is on top. A wait that shows the tab
+ * you are leaving is worse than a wait that shows the tab you asked for, and a
+ * built tab was spending the whole hold showing the wrong one.
+ *
+ * What is left protecting the flash is the only thing that was ever expensive:
+ * a first visit's screen build, which waits behind this function with a
+ * skeleton already up. The switch itself commits immediately.
+ *
+ * So: how much longer the flash needs the UI thread, from right now.
  *
  * The tab screens hold their skeleton for this, so that the mount they were
  * always going to do lands after the movement instead of inside it. Read at
@@ -249,16 +242,6 @@ export function HapticTab({
   // the button sitting still and nothing has to be reset between presses.
   const flash = useSharedValue(0);
 
-  // The held-back navigation (see the press handler). Cleared if the tab bar
-  // goes away first, so a dispatch cannot land on a torn-down navigator.
-  const navTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (navTimer.current) clearTimeout(navTimer.current);
-    },
-    []
-  );
-
   // The band of light: narrow and bright in the middle of the button, opening
   // out to its edges and thinning as it goes. Its own stops are transparent at
   // both ends, so reaching the edge *is* the fade — there is nothing to clip.
@@ -305,21 +288,11 @@ export function HapticTab({
         // only part of the press that is free.
         litTab.value = tabKey;
 
-        // The navigator waits. `props.onPress` is what commits the next
-        // screen, so calling it here would take the UI thread back off the
-        // flash mid-movement; it goes at the end of {@link NAV_HOLD_MS}
-        // instead, or straight away if the press was long enough that the
-        // flash has already had its window.
-        if (navTimer.current) clearTimeout(navTimer.current);
-        const hold = Math.max(0, flashStartedAt + NAV_HOLD_MS - Date.now());
-        if (hold === 0) {
-          props.onPress?.(ev);
-          return;
-        }
-        navTimer.current = setTimeout(() => {
-          navTimer.current = null;
-          props.onPress?.(ev);
-        }, hold);
+        // And so does the navigator, in the same handler: `props.onPress` is
+        // what commits the next screen, and the tab the user asked for is the
+        // one thing that must not wait on an animation. See the note above
+        // {@link tabContentHoldMs} for what still does.
+        props.onPress?.(ev);
       }}
     >
       <Animated.View

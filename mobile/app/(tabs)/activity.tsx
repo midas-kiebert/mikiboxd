@@ -34,7 +34,6 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useIsFocused } from "@react-navigation/native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MeService } from "shared";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
@@ -46,6 +45,7 @@ import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import TabScreenSkeleton from "@/components/layout/TabScreenSkeleton";
 import { tabContentHoldMs } from "@/components/tab-bar";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
+import { useSettledFocus } from "@/utils/use-settled-focus";
 import TopBar from "@/components/layout/TopBar";
 import { ThemedText } from "@/components/themed-text";
 import SignedOutPanel from "@/components/auth/SignedOutPanel";
@@ -86,7 +86,7 @@ function ActivityScreen() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const queryClient = useQueryClient();
-  const isFocused = useIsFocused();
+  const isFocused = useSettledFocus();
   const { width: pageWidth } = useWindowDimensions();
   // A feed of who's doing what is a feed about accounts, so there is nothing
   // here for a guest — same shape as Friends, which stays in the bar and
@@ -279,7 +279,18 @@ function ActivityPage({
     () => (isYou ? agendaQuery.data : mainQuery.data)?.pages.flat() ?? [],
     [isYou, agendaQuery.data, mainQuery.data]
   );
-  const isLoading = isYou ? agendaQuery.isLoading : mainQuery.isLoading;
+  // A query that has not been switched on yet is neither loading nor empty as
+  // far as react-query is concerned: it has no data and no fetch in flight. It
+  // is loading — the fetch is owed. Without this the page renders its "nothing
+  // lined up" copy for the beat between the tab appearing and `useSettledFocus`
+  // letting the query go, and the loading panel arrives *after* the empty
+  // state, which reads as the screen changing its mind.
+  //
+  // `data === undefined`, not an empty list: a query that has fetched and come
+  // back with nothing really is empty, and must keep saying so while the tab is
+  // in the background rather than flashing the panel on the way back to it.
+  const isAwaitingFocus = !isFocused && (isYou ? agendaQuery.data : mainQuery.data) === undefined;
+  const isLoading = (isYou ? agendaQuery.isLoading : mainQuery.isLoading) || isAwaitingFocus;
   const isFetching = isYou ? agendaQuery.isFetching : mainQuery.isFetching;
   const isFetchingNextPage = isYou ? agendaQuery.isFetchingNextPage : mainQuery.isFetchingNextPage;
   const hasNextPage = isYou ? agendaQuery.hasNextPage : mainQuery.hasNextPage;
@@ -290,9 +301,15 @@ function ActivityPage({
   // Distinguishes "you have no friends yet" from "your friends have nothing
   // on right now" — the empty state and its CTA differ between the two. Not
   // needed for "You", which has its own, friend-independent empty state.
-  const { data: friends, isFetching: isFetchingFriends } = useFetchFriends({ enabled: !isYou });
+  // `isLoading`, never `isFetching`: react-query only re-renders for the result
+  // fields a component actually reads, and `isFetching` moves on *every* fetch of
+  // the shared friends query — including the one the showtime sheet starts when
+  // it opens, which re-rendered all three pages of this pager twice per open for
+  // ~400ms of work behind a sheet nobody was looking at. `isLoading` is
+  // `isFetching && data === undefined`, which is exactly what this needed
+  // anyway, and it does not move on a background refetch.
+  const { data: friends, isLoading: isLoadingFriends } = useFetchFriends({ enabled: !isYou });
   const hasFriends = (friends?.length ?? 0) > 0;
-  const isLoadingFriends = isFetchingFriends && friends === undefined;
 
   const goToAddFriends = () => {
     triggerSelectionHaptic();

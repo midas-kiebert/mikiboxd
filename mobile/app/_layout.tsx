@@ -304,18 +304,139 @@ Notifications.setNotificationHandler({
 
 
 
-function RootLayourContent() {
-  // Current route segments let us detect whether the user is in a protected area.
-  const segments = useSegments();
-  const pathname = usePathname();
-  // Router instance used for in-app navigation actions.
-  const router = useRouter();
+/**
+ * The route guard, and nothing else.
+ *
+ * A component of its own because of what it reads: `useSegments` and
+ * `usePathname` subscribe to the router store, so whatever renders them
+ * re-renders on **every** navigation — a tab switch included. Held inside
+ * `RootLayourContent` that meant the whole shell (the stack navigator and all
+ * its descriptors, the intro and notice hosts, the theme curtain) re-rendered
+ * in the same commit that switches tabs, and the switch is only on screen once
+ * that commit has landed. Out here it renders `null`, so the same subscription
+ * costs one React element.
+ *
+ * Its inputs are read again rather than passed down for the same reason: a prop
+ * would put the subscription back in the parent.
+ */
+function RouteGuard() {
+  const segments = useSegments()
+  const pathname = usePathname()
+  const router = useRouter()
   // `key` is null until the navigator has actually mounted; on a fast cold
   // start `!rootSegment` below isn't enough on its own to catch this, since
   // useSegments() can already report a non-empty path before the Root Layout
   // has finished its first mount, and router.replace() throws if called
   // before then ("Attempted to navigate before mounting the Root Layout").
-  const navigationState = useRootNavigationState();
+  const navigationState = useRootNavigationState()
+  const authStatus = useAuthStatus()
+  const isChecking = authStatus === 'unknown'
+  const isAuthenticated = authStatus === 'signed-in'
+  const isGuest = authStatus === 'guest'
+  const user = useCurrentUser()
+  const owesUsername = useIsUsernameRequired() || isMissingUsername(user)
+
+  // `useSegments` hands back a fresh array every render, so the guard below re-runs
+  // on every render — not just when the route actually changed. A redirect takes a
+  // few renders to land, and each of those renders used to fire the same
+  // `router.replace` again, stacking two or three login screens on top of each other.
+  const issuedRedirectRef = useRef<string | null>(null)
+  const redirectTo = useCallback(
+    (href: '/login' | '/(tabs)' | '/pick-username') => {
+      if (issuedRedirectRef.current === href) return
+      issuedRedirectRef.current = href
+      // Deferred a frame: `navigationState?.key` above can already be
+      // non-null while the native navigator is still mid-mount, and
+      // router.replace() called synchronously in that window throws
+      // "Attempted to navigate before mounting the Root Layout component"
+      // — confirmed reproducing on every cold launch even with that guard
+      // in place. Pushing past the current commit gives it time to finish.
+      requestAnimationFrame(() => router.replace(href))
+    },
+    [router]
+  )
+
+  useEffect(() => {
+    if (isChecking) return
+    // Belt-and-suspenders with the `!rootSegment` check below: `key` is null
+    // until the navigator has actually finished mounting, which is the
+    // precise condition `router.replace` itself cares about — segments can
+    // report a non-empty path slightly before that on a fast cold start.
+    if (!navigationState?.key) return
+
+    const segmentPath = segments as unknown as string[]
+    const rootSegment = segmentPath[0]
+    // No segment means the navigator has not mounted yet, so there is no route
+    // to classify — and nothing may navigate before the root layout is up
+    // (`router.replace` throws outright). This used to be unreachable only by
+    // luck: the session was resolved by an async token read, which always landed
+    // a tick or two after mount. It is read once at module load now, so on a
+    // fast start this effect runs in the very same commit the navigator is
+    // still rendering in, and the "authenticated but not in an auth route"
+    // branch below fired against a navigator that did not exist.
+    if (!rootSegment) return
+
+    // Three explicit lists rather than one and its inverse. A route that is in
+    // none is left alone, which is what `pick-username` needs: it is reached
+    // *while* signing in, so it must neither demand a session it is halfway to
+    // establishing nor be treated as a signed-out screen to be redirected away
+    // from once one exists.
+    //
+    // `browseRoutes` is the catalogue — what is playing, where, and when. It is
+    // the same for everyone and needs no account to be worth reading, so a guest
+    // is let in. `accountRoutes` are the ones *about* a person: they cannot be
+    // rendered for nobody, so they still send a guest to the login screen.
+    //
+    // `ping` sits with the browse routes despite being an invite link, because
+    // the route itself does nothing but bow out (see its screen); the invite is
+    // handled by the effect below, which shows a guest the screening and leaves
+    // accepting it to the sheet's own gate.
+    const browseRoutes = new Set(['(tabs)', 'movie', 'cinema-showtimes', 'ping'])
+    const accountRoutes = new Set(['friend-showtimes', 'add-friend', 'blocked-users', 'default-visibility'])
+    const signedOutRoutes = new Set(['login', 'signup', 'recover-password'])
+    // Protected in release builds — the real flow only ever arrives already
+    // signed in. In dev it stays neutral so the login screen's "Preview
+    // pick-username screen" shortcut, taken while signed out, is not bounced
+    // straight back to /login.
+    if (!__DEV__) accountRoutes.add('pick-username')
+
+    const isBlockedRoute = accountRoutes.has(rootSegment) || (!isGuest && browseRoutes.has(rootSegment))
+
+    if (!isAuthenticated && isBlockedRoute) {
+      // Not signed in, on a route that needs an account.
+      // Remember the deep link (everything except the plain tabs home) so the
+      // login flow can resume it after the user signs in.
+      if (rootSegment !== '(tabs)') {
+        void savePendingDeepLink(pathname)
+      }
+      redirectTo('/login')
+    } else if (isAuthenticated && owesUsername && rootSegment !== 'pick-username') {
+      // The one rule with no exceptions: an account without a username gets no
+      // further than the screen that asks for one — no tabs, no deep link, no
+      // intro. Enforced here rather than only where a social sign-in navigates,
+      // because that is a single decision taken once, and it only has to lose a
+      // race with another redirect (or be force-quit on the way) for an account
+      // to exist that can never be found or recognised by anyone.
+      redirectTo('/pick-username')
+    } else if (isAuthenticated && signedOutRoutes.has(rootSegment)) {
+      redirectTo('/(tabs)')
+    } else {
+      // Landed somewhere this guard is happy with, so the next redirect (a
+      // logout, say) starts from a clean slate.
+      issuedRedirectRef.current = null
+    }
+  }, [isAuthenticated, isGuest, owesUsername, router, segments, pathname, isChecking, navigationState, redirectTo])
+
+  return null
+}
+
+function RootLayourContent() {
+  // Where the route is — segments, pathname, whether the navigator is up — is
+  // deliberately *not* read here. Those subscribe to the router store, so this
+  // component would re-render on every navigation, tab switches included, and
+  // it renders the whole shell. It all lives in `RouteGuard` below instead.
+  // Router instance used for in-app navigation actions.
+  const router = useRouter();
   const colorScheme = useColorScheme();
   const palette = Colors[colorScheme ?? 'light'];
   // Single source of truth for "is there a session", shared with the screens
@@ -469,96 +590,6 @@ function RootLayourContent() {
     if (hasUsername(user)) markUsernameResolved()
   }, [user])
 
-  // `useSegments` hands back a fresh array every render, so the guard below re-runs
-  // on every render — not just when the route actually changed. A redirect takes a
-  // few renders to land, and each of those renders used to fire the same
-  // `router.replace` again, stacking two or three login screens on top of each other.
-  const issuedRedirectRef = useRef<string | null>(null)
-  const redirectTo = useCallback(
-    (href: '/login' | '/(tabs)' | '/pick-username') => {
-      if (issuedRedirectRef.current === href) return
-      issuedRedirectRef.current = href
-      // Deferred a frame: `navigationState?.key` above can already be
-      // non-null while the native navigator is still mid-mount, and
-      // router.replace() called synchronously in that window throws
-      // "Attempted to navigate before mounting the Root Layout component"
-      // — confirmed reproducing on every cold launch even with that guard
-      // in place. Pushing past the current commit gives it time to finish.
-      requestAnimationFrame(() => router.replace(href))
-    },
-    [router]
-  )
-
-  useEffect(() => {
-    if (isChecking) return
-    // Belt-and-suspenders with the `!rootSegment` check below: `key` is null
-    // until the navigator has actually finished mounting, which is the
-    // precise condition `router.replace` itself cares about — segments can
-    // report a non-empty path slightly before that on a fast cold start.
-    if (!navigationState?.key) return
-
-    const segmentPath = segments as unknown as string[]
-    const rootSegment = segmentPath[0]
-    // No segment means the navigator has not mounted yet, so there is no route
-    // to classify — and nothing may navigate before the root layout is up
-    // (`router.replace` throws outright). This used to be unreachable only by
-    // luck: the session was resolved by an async token read, which always landed
-    // a tick or two after mount. It is read once at module load now, so on a
-    // fast start this effect runs in the very same commit the navigator is
-    // still rendering in, and the "authenticated but not in an auth route"
-    // branch below fired against a navigator that did not exist.
-    if (!rootSegment) return
-
-    // Three explicit lists rather than one and its inverse. A route that is in
-    // none is left alone, which is what `pick-username` needs: it is reached
-    // *while* signing in, so it must neither demand a session it is halfway to
-    // establishing nor be treated as a signed-out screen to be redirected away
-    // from once one exists.
-    //
-    // `browseRoutes` is the catalogue — what is playing, where, and when. It is
-    // the same for everyone and needs no account to be worth reading, so a guest
-    // is let in. `accountRoutes` are the ones *about* a person: they cannot be
-    // rendered for nobody, so they still send a guest to the login screen.
-    //
-    // `ping` sits with the browse routes despite being an invite link, because
-    // the route itself does nothing but bow out (see its screen); the invite is
-    // handled by the effect below, which shows a guest the screening and leaves
-    // accepting it to the sheet's own gate.
-    const browseRoutes = new Set(['(tabs)', 'movie', 'cinema-showtimes', 'ping'])
-    const accountRoutes = new Set(['friend-showtimes', 'add-friend', 'blocked-users', 'default-visibility'])
-    const signedOutRoutes = new Set(['login', 'signup', 'recover-password'])
-    // Protected in release builds — the real flow only ever arrives already
-    // signed in. In dev it stays neutral so the login screen's "Preview
-    // pick-username screen" shortcut, taken while signed out, is not bounced
-    // straight back to /login.
-    if (!__DEV__) accountRoutes.add('pick-username')
-
-    const isBlockedRoute = accountRoutes.has(rootSegment) || (!isGuest && browseRoutes.has(rootSegment))
-
-    if (!isAuthenticated && isBlockedRoute) {
-      // Not signed in, on a route that needs an account.
-      // Remember the deep link (everything except the plain tabs home) so the
-      // login flow can resume it after the user signs in.
-      if (rootSegment !== '(tabs)') {
-        void savePendingDeepLink(pathname)
-      }
-      redirectTo('/login')
-    } else if (isAuthenticated && owesUsername && rootSegment !== 'pick-username') {
-      // The one rule with no exceptions: an account without a username gets no
-      // further than the screen that asks for one — no tabs, no deep link, no
-      // intro. Enforced here rather than only where a social sign-in navigates,
-      // because that is a single decision taken once, and it only has to lose a
-      // race with another redirect (or be force-quit on the way) for an account
-      // to exist that can never be found or recognised by anyone.
-      redirectTo('/pick-username')
-    } else if (isAuthenticated && signedOutRoutes.has(rootSegment)) {
-      redirectTo('/(tabs)')
-    } else {
-      // Landed somewhere this guard is happy with, so the next redirect (a
-      // logout, say) starts from a clean slate.
-      issuedRedirectRef.current = null
-    }
-  }, [isAuthenticated, isGuest, owesUsername, router, segments, pathname, isChecking, navigationState, redirectTo])
 
   const handleNotificationResponse = useCallback(
     async (response: Notifications.NotificationResponse) => {
@@ -856,6 +887,10 @@ function RootLayourContent() {
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
         </>
       )}
+      {/* Renders nothing — it only watches the route and redirects. Out here
+          rather than inline above so that reading the route does not re-render
+          this whole component on every navigation. */}
+      <RouteGuard />
       {/* Deliberately not gated on the splash being gone. The intro is a Modal,
           so it draws above the splash overlay rather than below it — which is
           the point: on a launch that owes the intro it goes up while the splash

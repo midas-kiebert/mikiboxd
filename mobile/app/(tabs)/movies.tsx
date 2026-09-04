@@ -13,8 +13,8 @@ import {
   ThemedRefreshControl,
 } from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
+import { useSettledFocus } from '@/utils/use-settled-focus';
 import { useRouter } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import type { SearchField } from 'shared/client';
 import type { MovieSummaryPublic } from 'shared';
@@ -73,7 +73,7 @@ export default function MovieScreen() {
   // debounce to remove what the user just deleted would feel broken.
   const effectiveSearchQuery = searchQuery.trim().length > 0 ? debouncedSearchQuery : '';
   const { openFiltersModal } = useFiltersModal();
-  const isFocused = useIsFocused();
+  const isFocused = useSettledFocus();
   // A preset can write `watchlistOnly`/`hideWatched` alone, which reach the
   // query a frame late (see useSharedTabFilters' rAF-deferred "applied"
   // values) — for that one frame `movieFilters` hasn't moved yet, so if the

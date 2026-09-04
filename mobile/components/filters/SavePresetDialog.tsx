@@ -167,6 +167,10 @@ export default function SavePresetDialog({
       title="Save filter preset"
       backgroundColor={colors.nestedModalBackground}
       enablePanDownToClose={!isPending}
+      // One text field and two buttons — cheap enough that the mount cannot
+      // cost the sheet its rise, and the field autoFocuses, so deferring it
+      // would only mean the keyboard arrives a beat after the sheet.
+      deferContent={false}
       backdropPressBehavior={isPending ? "none" : "close"}
       keyboardBehavior="extend"
     >

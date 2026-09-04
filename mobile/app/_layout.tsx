@@ -28,7 +28,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage, setStorage } from 'shared/storage';
 import * as SecureStore from 'expo-secure-store';
-import * as Notifications from 'expo-notifications';
+import { Notifications } from '@/utils/notifications-module';
+import type * as NotificationsTypes from 'expo-notifications';
 import * as SystemUI from 'expo-system-ui';
 import * as SplashScreen from 'expo-splash-screen';
 import Constants from 'expo-constants';
@@ -608,7 +609,7 @@ function RootLayourContent() {
 
 
   const handleNotificationResponse = useCallback(
-    async (response: Notifications.NotificationResponse) => {
+    async (response: NotificationsTypes.NotificationResponse) => {
       const responseKey = `${response.notification.request.identifier}:${response.actionIdentifier}`
       if (handledNotificationResponsesRef.current.has(responseKey)) {
         return

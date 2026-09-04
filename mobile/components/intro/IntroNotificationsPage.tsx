@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import * as Notifications from "expo-notifications";
+import { Notifications } from '@/utils/notifications-module';
 import useAuth from "shared/hooks/useAuth";
 
 import IntroPageShell from "@/components/intro/IntroPageShell";

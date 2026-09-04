@@ -6,7 +6,7 @@ import React, { useEffect, useRef } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 
 import { useQueryClient } from '@tanstack/react-query';
-import * as Notifications from 'expo-notifications';
+import { Notifications } from '@/utils/notifications-module';
 import { ApiError, MeService } from 'shared';
 import { useFetchReceivedRequests } from 'shared/hooks/useFetchReceivedRequests';
 import { useFetchUnseenShowtimePingCount } from 'shared/hooks/useFetchUnseenShowtimePingCount';

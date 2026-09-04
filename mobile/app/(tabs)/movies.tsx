@@ -421,7 +421,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     listWrapper: { flex: 1 },
-    loadingOverlay: { ...StyleSheet.absoluteFillObject },
+    loadingOverlay: { ...StyleSheet.absoluteFill },
     movieFeed: { ...tabletCappedContentStyle, padding: 16 },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },

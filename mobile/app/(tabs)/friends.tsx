@@ -584,7 +584,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     // has to clip it — on Android nothing else does.
     listWrapper: { flex: 1, overflow: 'hidden' },
     pager: { flex: 1, flexDirection: 'row' },
-    loadingOverlay: { ...StyleSheet.absoluteFillObject },
+    loadingOverlay: { ...StyleSheet.absoluteFill },
     modeRow: {
       paddingHorizontal: 16,
       paddingTop: 12,

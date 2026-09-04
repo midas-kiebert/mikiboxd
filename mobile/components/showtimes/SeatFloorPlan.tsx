@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
   body: { flex: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   // Centers the room within whatever `body` was measured at; see its usage.
   gridLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },

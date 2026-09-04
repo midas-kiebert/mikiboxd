@@ -656,7 +656,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
   StyleSheet.create({
     flex: { flex: 1 },
     movieFeed: { padding: 16 },
-    loadingOverlay: { ...StyleSheet.absoluteFillObject },
+    loadingOverlay: { ...StyleSheet.absoluteFill },
     centerContainer: { paddingVertical: 40, alignItems: "center" },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });

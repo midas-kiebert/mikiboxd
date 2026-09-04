@@ -287,7 +287,7 @@ export default function CinemaFilterChip({
           onRequestClose={closeDropdown}
         >
           <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
             activeOpacity={1}
             onPress={closeDropdown}
           />

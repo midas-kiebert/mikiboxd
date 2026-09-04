@@ -1290,7 +1290,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       justifyContent: "center",
       paddingHorizontal: 20,
     },
-    dialogBackdropPressable: { ...StyleSheet.absoluteFillObject },
+    dialogBackdropPressable: { ...StyleSheet.absoluteFill },
     dialogCard: {
       borderRadius: 16,
       borderWidth: 1,

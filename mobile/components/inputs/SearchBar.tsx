@@ -367,7 +367,7 @@ export default function SearchBar({
           onRequestClose={() => setIsOpen(false)}
         >
           <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
             activeOpacity={1}
             onPress={() => setIsOpen(false)}
           />

@@ -490,7 +490,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     // content) so it stays fixed instead of moving with RefreshControl's pull
     // or the content's own scroll offset.
     loadingOverlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
     },
     // listHeader supplies its own horizontal padding/divider (it's a full-width
     // section like the card list rows above it), so cancel out listContent's

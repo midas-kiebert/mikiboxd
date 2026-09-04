@@ -358,7 +358,7 @@ export default function SpotlightOverlay({
           ) : null}
         </>
       ) : (
-        <View style={[styles.dim, StyleSheet.absoluteFillObject]} />
+        <View style={[styles.dim, StyleSheet.absoluteFill]} />
       )}
 
       {isCaptionReady ? (

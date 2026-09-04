@@ -443,7 +443,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flex: 1,
     },
     backdrop: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: "transparent",
     },
     card: {

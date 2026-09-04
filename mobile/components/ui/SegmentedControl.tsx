@@ -284,7 +284,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
     // Absolute inside the segment, so it fills exactly the segment's content
     // box and needs no padding of its own to line up with the copy beneath.
     selectedCopy: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",

@@ -49,7 +49,7 @@ import FilterMoviesSection from "@/components/filters/FilterMoviesSection";
 import FilterSection, { FilterInlineRow, FilterNavRow, FilterSubLabel } from "@/components/filters/FilterSection";
 import SegmentedControl, { type SegmentedOption } from "@/components/ui/SegmentedControl";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
-import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
+import { useFiltersModal } from "@/components/filters/filters-modal-context";
 import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterModal";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 

@@ -35,7 +35,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import Constants from 'expo-constants';
 import { getGoogleSignin, isGoogleSignInAvailable } from '@/utils/google-signin';
 import * as Sentry from '@sentry/react-native';
-import { initSentry, reportError } from '@/utils/sentry';
+import { initSentry, isSentryEnabled, reportError } from '@/utils/sentry';
+import { quietKnownWarnings } from '@/utils/quiet-known-warnings';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -113,9 +114,14 @@ const INSTANT_SCREEN_OPTIONS = {
   },
 } as const;
 
-// Before any of the module-scope work below, so a failure in it is reported
-// rather than lost — this file's startup path is the one place that reaches
-// into Play Services without a user action behind it.
+// First of all the module-scope work here, so it is in place before anything
+// below can warn. Drops a named handful of third-party messages and nothing
+// else — see the list in the module itself.
+quietKnownWarnings();
+
+// Before the rest of the module-scope work below, so a failure in it is
+// reported rather than lost — this file's startup path is the one place that
+// reaches into Play Services without a user action behind it.
 initSentry();
 
 // Configured once at startup so GoogleSignin.signIn() is ready wherever a
@@ -1010,5 +1016,8 @@ function RootLayout() {
 }
 
 // Adds the error boundary that catches render-phase crashes anywhere in the
-// tree. No-op when initSentry() found no DSN.
-export default Sentry.wrap(RootLayout);
+// tree. Only when Sentry was actually initialised: `Sentry.wrap` without a
+// preceding `Sentry.init` cannot close the app-start span it opens, and says so
+// on every launch. Without a DSN — Expo Go, local builds, anyone without Sentry
+// credentials — there is nothing for it to wrap around anyway.
+export default isSentryEnabled ? Sentry.wrap(RootLayout) : RootLayout;

@@ -2,7 +2,7 @@
  * Layout-level provider that keeps one FiltersModal instance permanently mounted.
  * Screens call openFiltersModal() via the context hook to open it.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { DateTime } from 'luxon';
 import { useQuery } from '@tanstack/react-query';
@@ -18,22 +18,12 @@ import { getSelectedStatusesFromShowtimeFilter } from '@/components/filters/shar
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 import { useRegisterBlockingOverlay } from '@/utils/blocking-overlays';
+import { FiltersModalContext, type OpenConfig } from '@/components/filters/filters-modal-context';
 
-type OpenConfig = { showGroupByMovie?: boolean; showPresets?: boolean };
-
-type FiltersModalContextValue = {
-  openFiltersModal: (config?: OpenConfig) => void;
-  openCinemaModal: (options?: OpenCinemaModalOptions) => void;
-};
-
-const FiltersModalContext = createContext<FiltersModalContextValue>({
-  openFiltersModal: () => {},
-  openCinemaModal: () => {},
-});
-
-export function useFiltersModal() {
-  return useContext(FiltersModalContext);
-}
+// Re-exported so the many screens that already import the hook from here keep
+// working; the context itself lives in its own module to break the
+// Provider -> FiltersModal -> Provider require cycle.
+export { useFiltersModal } from '@/components/filters/filters-modal-context';
 
 export function FiltersModalProvider({ children }: { children: ReactNode }) {
   const [visible, setVisible] = useState(false);

@@ -171,9 +171,9 @@ export default function TabLayout() {
     const maybePromptForNotificationPermission = async () => {
       const currentUserId = String(user.id);
       const hasSwitchedAccount = lastRegisteredUserIdRef.current !== currentUserId;
-      const storageKey = `${NOTIFICATION_PERMISSION_PROMPTED_KEY}:${user.id}`;
+      const storageKey = `${NOTIFICATION_PERMISSION_PROMPTED_KEY}.${user.id}`;
       try {
-        const prefsStorageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}:${user.id}`;
+        const prefsStorageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}.${user.id}`;
 
         if (hasSwitchedAccount) {
           await storage.removeItem(storageKey);
@@ -221,7 +221,7 @@ export default function TabLayout() {
     if (!user) return;
 
     const maybeInitializeNotificationPreferences = async () => {
-      const storageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}:${user.id}`;
+      const storageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}.${user.id}`;
       try {
         const alreadyInitialized = await storage.getItem(storageKey);
         if (alreadyInitialized === '1') return;

@@ -1,21 +1,19 @@
 /**
  * `expo-notifications`, imported in a way that cannot take the app down.
  *
- * **Importing `expo-notifications` throws in Expo Go on Android.** Its index
- * re-exports `./topicSubscription`, whose Android implementation is
+ * **Importing `expo-notifications` throws in Expo Go on Android**, with the
+ * package's own "Android Push notifications (remote notifications) ... was
+ * removed from Expo Go with the release of SDK 53" error. Something reached
+ * during the package's module evaluation calls its internal
+ * `warnOfExpoGoPushUsage()`, which on Android throws rather than warning. The
+ * exact statement was never pinned down — every call site of that guard reads
+ * as being inside a function — so treat the mechanism as observed rather than
+ * fully explained, and do not "simplify" this module on the assumption that a
+ * plain import is safe.
  *
- * ```js
- * export default requireNativeModule('ExpoTopicSubscriptionModule');
- * ```
- *
- * at module scope — and `requireNativeModule` throws when the native module is
- * absent, which is why Expo's own `isRunningInExpoGo` wraps its equivalent call
- * in a try/catch. Expo Go dropped Android remote push in SDK 53 and does not
- * ship that module, so the whole package fails to evaluate.
- *
- * This is new in SDK 55: `topicSubscription` does not exist in SDK 54's
- * expo-notifications, which is why Expo Go worked before the upgrade and then
- * stopped.
+ * It is new since SDK 54: Expo Go ran this app fine then, and the package's
+ * index gained `./topicSubscription` (Android-only, remote-push-only) in
+ * SDK 55, which is the most likely thing to have introduced it.
  *
  * The failure is silent and very misleading. expo-router loads routes with
  * `ignoreRequireErrors`, so the throw is swallowed by a bare `catch {}` and
@@ -35,9 +33,14 @@
  * Companion to {@link ./google-signin}, which does the same for a native module
  * Expo Go also lacks.
  */
+import { isRunningInExpoGo } from "expo";
+import { Platform } from "react-native";
 import type * as NotificationsModule from "expo-notifications";
 
 type Notifications = typeof NotificationsModule;
+
+/** The one environment where failing to load this is normal, not a fault. */
+const isExpectedToBeMissing = isRunningInExpoGo() && Platform.OS === "android";
 
 /** A subscription that is already, permanently, doing nothing. */
 const inertSubscription = { remove: () => {} };
@@ -96,11 +99,17 @@ function load(): Notifications | null {
     cached = require("expo-notifications") as Notifications;
   } catch (error) {
     loadFailed = true;
-    console.warn(
-      "[notifications] expo-notifications could not be loaded — running without notifications. " +
-        "Expected in Expo Go on Android; anywhere else this is a real problem.",
-      error
-    );
+    // Silent where it is expected. In Expo Go on Android this failure is the
+    // documented state of the world, not news, and it fires on every launch —
+    // a warning there is noise that trains you to ignore the console. Anywhere
+    // else it means notifications are silently off in a build that should have
+    // them, which is worth shouting about.
+    if (!isExpectedToBeMissing) {
+      console.warn(
+        "[notifications] expo-notifications could not be loaded — running without notifications.",
+        error
+      );
+    }
   }
   return cached;
 }

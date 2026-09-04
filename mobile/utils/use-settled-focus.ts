@@ -22,7 +22,7 @@
  */
 import { useEffect, useState } from 'react';
 import { InteractionManager } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from "expo-router/react-navigation";
 
 /**
  * A backstop on the wait. `runAfterInteractions` only runs once every

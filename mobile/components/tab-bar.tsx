@@ -41,8 +41,8 @@
  */
 import { type ReactNode, useRef } from 'react';
 import { StyleSheet, View, type TextStyle } from 'react-native';
-import { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
-import { PlatformPressable } from '@react-navigation/elements';
+import { BottomTabBarButtonProps } from "expo-router/js-tabs";
+import { PlatformPressable } from "expo-router/react-navigation";
 import Animated, {
   Easing,
   interpolate,

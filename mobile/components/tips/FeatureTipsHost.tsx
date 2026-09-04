@@ -16,7 +16,7 @@
  * to the candidate list in priority order, and render its component below.
  */
 import { useEffect, useState } from "react";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router/react-navigation";
 import { useQuery } from "@tanstack/react-query";
 import useAuth from "shared/hooks/useAuth";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";

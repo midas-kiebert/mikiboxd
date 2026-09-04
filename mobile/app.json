@@ -66,6 +66,7 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
+      "expo-image",
       [
         "expo-splash-screen",
         {

@@ -10,7 +10,7 @@ import {
 } from "@/components/themed-refresh-control";
 import { DateTime } from "luxon";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router/react-navigation";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchMovies } from "shared/hooks/useFetchMovies";

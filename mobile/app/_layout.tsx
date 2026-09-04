@@ -1,9 +1,20 @@
 /**
  * Expo Router root layout. It wires global providers, auth-based redirects, and app-wide API config.
  */
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useRouter, useSegments, usePathname, useRootNavigationState, withLayoutContext } from 'expo-router';
-import { CardStyleInterpolators, createStackNavigator, TransitionPresets, TransitionSpecs } from '@react-navigation/stack';
+import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
+import { useRouter, useSegments, usePathname, useRootNavigationState } from 'expo-router';
+import { Stack as JsStack } from 'expo-router/js-stack';
+// `expo-router/js-stack` is the documented SDK 56 replacement for
+// `@react-navigation/stack`, but it exports only the navigator — the transition
+// configs below are not re-exported from it. They come from the copy of the
+// classic stack that expo-router vendors and that this navigator itself runs
+// on; importing them from a standalone `@react-navigation/stack` would pull a
+// second copy of the library SDK 56 exists to remove.
+import {
+  CardStyleInterpolators,
+  TransitionPresets,
+  TransitionSpecs,
+} from 'expo-router/build/react-navigation/stack';
 import { Appearance, Easing, Linking, LogBox, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
@@ -76,14 +87,18 @@ export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-// JavaScript-driven stack (react-navigation's classic Stack) instead of the
-// native stack. The native stack on Android drops the leaving screen's content
-// a frame before its exit animation runs, producing a blank-then-slide flash on
-// back (react-native-screens #489). The JS stack runs the iOS-style card slide
-// and the previous-screen parallax entirely in JS/Reanimated, so content is
-// never cleared early — no blank, identical on iOS and Android.
-const { Navigator: JsStackNavigator } = createStackNavigator();
-const JsStack = withLayoutContext(JsStackNavigator);
+// `JsStack` above is the JavaScript-driven stack (react-navigation's classic
+// Stack) rather than the native one. The native stack on Android drops the
+// leaving screen's content a frame before its exit animation runs, producing a
+// blank-then-slide flash on back (react-native-screens #489). The JS stack runs
+// the iOS-style card slide and the previous-screen parallax entirely in
+// JS/Reanimated, so content is never cleared early — no blank, identical on iOS
+// and Android.
+//
+// Until SDK 56 this had to be built by hand with
+// `withLayoutContext(createStackNavigator().Navigator)`. expo-router now ships
+// exactly that as `Stack` from `expo-router/js-stack` — same navigator, same
+// `Screen`/`Protected` statics — so the hand-rolled version is gone.
 
 // For screens that must appear and leave with no transition at all. Both the
 // interpolator and the spec have to be given: the stack's screenOptions set each

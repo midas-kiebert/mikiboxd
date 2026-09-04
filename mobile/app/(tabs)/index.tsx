@@ -9,7 +9,7 @@ import {
   ThemedRefreshControl,
 } from '@/components/themed-refresh-control';
 import { DateTime } from 'luxon';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from "expo-router/react-navigation";
 import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
 import { tabContentHoldMs } from '@/components/tab-bar';
 import { useDeferredMount } from '@/utils/use-deferred-mount';

@@ -10,7 +10,7 @@ on:
 
 jobs:
   screenshots:
-    runs-on: macos-15
+    runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
@@ -24,12 +24,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode 16
+      - name: Select Xcode 26
         run: |
           set -euo pipefail
-          XCODE_PATH=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n1)
+          XCODE_PATH=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n1)
           if [ -z "$XCODE_PATH" ]; then
-            echo "No Xcode 16.x found on this runner image. Available Xcode installs:"
+            echo "No Xcode 26.x found on this runner image. Available Xcode installs:"
             ls -d /Applications/Xcode*.app
             exit 1
           fi
@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20.18.0"
+          node-version: "24.20.0"
 
       - uses: pnpm/action-setup@v4
         with:
@@ -95,7 +95,7 @@ jobs:
         working-directory: mobile/ios
         env:
           CI: "1"
-        # `expo run:ios` wraps exactly this, but on this Xcode 16/macOS 15
+        # `expo run:ios` wraps exactly this, but on this Xcode 26/macOS 26
         # runner combo it consistently misroutes through a signed
         # physical-device build path even when pointed at a simulator UDID
         # (see two failed attempts this replaced). Driving xcodebuild and

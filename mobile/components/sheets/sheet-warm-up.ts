@@ -62,13 +62,26 @@ function drain(): void {
   }
   isDraining = true;
   let hasReleased = false;
-  // Each warm-up finishes before the next one starts, so the portals register
-  // in queue order rather than in whatever order their animations happen to
-  // complete in.
-  next(() => {
-    if (hasReleased) return;
-    hasReleased = true;
-    drain();
+  // On the next frame rather than right here. `release()` is called from
+  // `finish()`, immediately after that sheet's own `setPhase("done")` — so
+  // draining synchronously meant one sheet's state update reached straight
+  // into the next sheet and called `present()` on it, and `present()` is a
+  // `setState` of gorhom's. React warns about exactly that ("Can't perform a
+  // React state update on a component that hasn't mounted yet"), and it is
+  // right to: the update lands on a component in the middle of being mounted.
+  //
+  // A frame costs nothing here — this is startup work on invisible sheets with
+  // their animations set to instant — and ordering is untouched, because the
+  // queue is still FIFO and still runs strictly one at a time.
+  requestAnimationFrame(() => {
+    // Each warm-up finishes before the next one starts, so the portals register
+    // in queue order rather than in whatever order their animations happen to
+    // complete in.
+    next(() => {
+      if (hasReleased) return;
+      hasReleased = true;
+      drain();
+    });
   });
 }
 

@@ -76,6 +76,7 @@ import {
   handleNotificationQuickAction,
   resolveNotificationRoute,
   registerPushTokenForCurrentDevice,
+  isRemotePushAvailable,
 } from '@/utils/push-notifications';
 
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
@@ -828,6 +829,10 @@ function RootLayourContent() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
+    // Expo Go on Android throws from this rather than returning nothing, and
+    // an effect in the root layout throwing takes the whole app down before it
+    // paints — see `isRemotePushAvailable`.
+    if (!isRemotePushAvailable) return;
 
     const pushTokenListener = Notifications.addPushTokenListener(() => {
       void registerPushTokenForCurrentDevice({ userId }).catch((error) => {

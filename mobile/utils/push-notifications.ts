@@ -1,11 +1,33 @@
 /**
  * Utility helper for mobile feature logic: Push notifications.
  */
+import { isRunningInExpoGo } from "expo";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import type { Href } from "expo-router";
 import { Platform } from "react-native";
 import { MeService, ShowtimesService } from "shared";
+
+/**
+ * Whether this build can hold a remote push token at all.
+ *
+ * Expo Go on Android dropped remote notifications in SDK 53, and
+ * expo-notifications does not degrade quietly there: `getDevicePushTokenAsync`,
+ * `getExpoPushTokenAsync` and `addPushTokenListener` *throw*. Thrown from one of
+ * the root layout's effects, that takes the whole app down before it paints —
+ * every route then reports itself as having no default export and expo-router
+ * dies looking for an `ErrorBoundary` on a module that never finished.
+ *
+ * So every remote-token path is gated on this rather than wrapped in a
+ * try/catch: there is no token to be had, and asking is fatal. Local
+ * notifications, channels, categories and the response listeners are all
+ * unaffected and stay on in Expo Go.
+ *
+ * Same shape as `isGoogleSignInAvailable` in {@link ./google-signin}, for the
+ * same reason: the app is meant to stay usable in Expo Go, minus the pieces
+ * Expo Go cannot provide.
+ */
+export const isRemotePushAvailable = !(isRunningInExpoGo() && Platform.OS === "android");
 
 type PushTokenRegistrationState = {
   token: string;
@@ -303,6 +325,13 @@ export async function registerPushTokenForCurrentDevice(
       return null;
     }
 
+    // Everything above still works in Expo Go — the channel, the permission and
+    // the prompt — so the guard sits here rather than at the top of the
+    // function: only the token itself is unavailable, and every call below
+    // would throw rather than return nothing. Reads as a device that cannot
+    // hold a token, which is exactly what it is.
+    if (!isRemotePushAvailable) return null;
+
     const projectId = await getProjectId();
     if (!projectId) {
       throw new Error("Missing Expo project ID for push token registration");
@@ -409,6 +438,9 @@ export const clearPushTokenRegistrationStateForCurrentUser = (userId?: string): 
 };
 
 export async function unregisterPushTokenForCurrentDevice(): Promise<void> {
+  // No token was ever registered from this build, and reading one would throw.
+  if (!isRemotePushAvailable) return;
+
   try {
     const projectId = await getProjectId();
     if (!projectId) {

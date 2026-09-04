@@ -39,7 +39,7 @@
  * copies are faded past each other. Cheaper than it sounds (two glyphs), and
  * it needs nothing to support animated colour values.
  */
-import { type ReactNode, useRef } from 'react';
+import { type ReactNode, useLayoutEffect, useRef } from 'react';
 import { StyleSheet, View, type TextStyle } from 'react-native';
 import { BottomTabBarButtonProps } from "expo-router/js-tabs";
 import { PlatformPressable } from "expo-router/react-navigation";
@@ -229,14 +229,20 @@ export function HapticTab({
   // Watched as an edge rather than asserted every render — between the press
   // and the navigator catching up, the tab bar still believes the *old* tab is
   // selected, and any re-render in that gap would otherwise snap it back.
+  // In a layout effect rather than in the render body: Reanimated 4 warns on
+  // reading a shared value while rendering, and it is right to — under
+  // concurrent rendering a render may be thrown away, and this one both reads
+  // and writes. A layout effect still runs before the frame is shown, so the
+  // "no gap where the wrong tab is lit" property this relies on is unchanged.
   const wasSelected = useRef<boolean | null>(null);
-  if (wasSelected.current !== isSelected) {
+  useLayoutEffect(() => {
+    if (wasSelected.current === isSelected) return;
     const isFirstRender = wasSelected.current === null;
     wasSelected.current = isSelected;
     if (isSelected && (isFirstRender || litTab.value !== tabKey)) {
       litTab.value = tabKey;
     }
-  }
+  }, [isSelected, tabKey]);
 
   // 0 at rest and after the flash has finished, so both ends of the clock are
   // the button sitting still and nothing has to be reset between presses.
@@ -270,6 +276,16 @@ export function HapticTab({
   return (
     <PlatformPressable
       {...props}
+      // No platform ripple. `PlatformPressable` gives Android an unbounded one
+      // — it passes neither `radius` nor `borderless` — so it renders as a
+      // circle that grows past the button and, at this size, past the bar. The
+      // press already has an answer here, and a deliberate one: the flash band
+      // below, shaped to the pill. Two overlapping press effects would be wrong
+      // even if the ripple were bounded.
+      //
+      // Android-only in effect: `pressColor` feeds `android_ripple.color` and
+      // is read nowhere else, so iOS keeps `pressOpacity` exactly as it was.
+      pressColor="transparent"
       onPressIn={(ev) => {
         // Touch-down, before anything else in this file and long before the
         // navigator hears about it: this is the whole reason the flash is on

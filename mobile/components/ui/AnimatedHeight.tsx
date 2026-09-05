@@ -22,6 +22,7 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 const DEFAULT_DURATION_MS = 240;
 
@@ -38,7 +39,7 @@ export default function AnimatedHeight({
   style,
 }: AnimatedHeightProps) {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
-  const height = useRef(new Animated.Value(0)).current;
+  const height = useAnimatedValue(0);
   // The first measurement is the starting point, not a change to animate from.
   const hasSettledOnceRef = useRef(false);
 

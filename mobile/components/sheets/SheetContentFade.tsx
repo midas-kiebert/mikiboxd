@@ -10,12 +10,13 @@
  * The panel is kept mounted underneath and faded out rather than dropped,
  * because content fading up from an empty sheet is the thing being avoided.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Animated, Easing, StyleSheet } from "react-native";
 
 import SheetLoadingPanel from "@/components/sheets/SheetLoadingPanel";
 import { SHEET_CONTENT_FADE_MS } from "@/components/sheets/sheet-timing";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 export default function SheetContentFade({
   label,
@@ -25,8 +26,8 @@ export default function SheetContentFade({
   label?: string;
   children: ReactNode;
 }) {
-  const contentOpacity = useRef(new Animated.Value(0)).current;
-  const panelOpacity = useRef(new Animated.Value(1)).current;
+  const contentOpacity = useAnimatedValue(0);
+  const panelOpacity = useAnimatedValue(1);
   const [isPanelMounted, setIsPanelMounted] = useState(true);
 
   useEffect(() => {

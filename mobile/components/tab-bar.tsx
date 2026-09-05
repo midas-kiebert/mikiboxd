@@ -239,8 +239,8 @@ export function HapticTab({
     if (wasSelected.current === isSelected) return;
     const isFirstRender = wasSelected.current === null;
     wasSelected.current = isSelected;
-    if (isSelected && (isFirstRender || litTab.value !== tabKey)) {
-      litTab.value = tabKey;
+    if (isSelected && (isFirstRender || litTab.get() !== tabKey)) {
+      litTab.set(tabKey);
     }
   }, [isSelected, tabKey]);
 
@@ -291,8 +291,8 @@ export function HapticTab({
         // navigator hears about it: this is the whole reason the flash is on
         // its own clock rather than following the lit tab.
         flashStartedAt = Date.now();
-        flash.value = 0;
-        flash.value = withTiming(1, FLASH_TIMING);
+        flash.set(0);
+        flash.set(withTiming(1, FLASH_TIMING));
         // On touch-down with the flash, not on the navigation that follows it:
         // the press is answered by the bar, and the haptic is part of that
         // answer rather than a report that the screen has changed.
@@ -302,7 +302,7 @@ export function HapticTab({
       onPress={(ev) => {
         // The bar answers now — it owes the navigator nothing, and this is the
         // only part of the press that is free.
-        litTab.value = tabKey;
+        litTab.set(tabKey);
 
         // And so does the navigator, in the same handler: `props.onPress` is
         // what commits the next screen, and the tab the user asked for is the

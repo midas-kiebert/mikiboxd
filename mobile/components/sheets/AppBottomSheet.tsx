@@ -186,7 +186,9 @@ export default function AppBottomSheet({
   // Read from `handleSheetChange`, which gorhom holds by identity — a ref so
   // the warm-up ending does not hand it a new callback.
   const isWarmingUpRef = useRef(isWarmingUp);
-  isWarmingUpRef.current = isWarmingUp;
+  useEffect(() => {
+    isWarmingUpRef.current = isWarmingUp;
+  });
 
   const handleSheetChange = useCallback(
     (index: number) => {
@@ -259,7 +261,7 @@ export default function AppBottomSheet({
       // container above it composes the provided style first and never touches
       // opacity, so this one holds.
       containerStyle={isWarmingUp ? styles.warmingUp : undefined}
-      backdropComponent={isWarmingUp ? null : renderBackdrop}
+      backdropComponent={isWarmingUp ? undefined : renderBackdrop}
       backgroundStyle={[styles.sheetBackground, backgroundColor ? { backgroundColor } : null]}
       handleIndicatorStyle={styles.handleIndicator}
       topInset={topInset}

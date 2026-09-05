@@ -46,9 +46,17 @@ export default function LetterboxdSection() {
   const { user } = useAuth();
 
   const [username, setUsername] = useState('');
-  useEffect(() => {
+  // Seeded with `undefined` rather than the live value — if the currentUser
+  // query has already resolved by mount (common on a release build), starting
+  // from `user?.letterboxd_username` would make it equal on the very first
+  // render and the sync below would never fire, leaving the field blank.
+  const [lastSyncedUsername, setLastSyncedUsername] = useState<
+    string | null | undefined
+  >(undefined);
+  if (user?.letterboxd_username !== lastSyncedUsername) {
+    setLastSyncedUsername(user?.letterboxd_username);
     setUsername(user?.letterboxd_username ?? '');
-  }, [user?.letterboxd_username]);
+  }
 
   // Local rather than the shared `useSaveLetterboxdUsername` hook: that hook
   // only accepts a non-empty username, but Settings is also where an existing

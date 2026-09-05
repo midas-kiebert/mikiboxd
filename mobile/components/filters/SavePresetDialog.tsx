@@ -103,12 +103,14 @@ export default function SavePresetDialog({
 
   useEffect(() => {
     if (!visible) return;
-    setName("");
-    nameInputRef.current?.clear();
-    setSaveAsDefault(false);
-    setError(null);
-    setPartialOpen(false);
-    setIncluded(new Set(summaries.map((row) => row.dimension)));
+    queueMicrotask(() => {
+      setName("");
+      nameInputRef.current?.clear();
+      setSaveAsDefault(false);
+      setError(null);
+      setPartialOpen(false);
+      setIncluded(new Set(summaries.map((row) => row.dimension)));
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 

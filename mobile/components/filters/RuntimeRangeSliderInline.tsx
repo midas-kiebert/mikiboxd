@@ -97,9 +97,11 @@ export default function RuntimeRangeSliderInline({ selectedRuntimeRanges, onChan
     const parsed = parseRangeToSlots(normalizedRange);
     startSlotRef.current = parsed.startSlot;
     endSlotRef.current = parsed.endSlot;
-    setStartSlot(parsed.startSlot);
-    setEndSlot(parsed.endSlot);
-    setActiveBoundary(null);
+    queueMicrotask(() => {
+      setStartSlot(parsed.startSlot);
+      setEndSlot(parsed.endSlot);
+      setActiveBoundary(null);
+    });
   }, [normalizedRange]);
 
   useEffect(() => { startSlotRef.current = startSlot; }, [startSlot]);
@@ -141,6 +143,10 @@ export default function RuntimeRangeSliderInline({ selectedRuntimeRanges, onChan
   // drag in any direction grabs a boundary and blocks the parent scroll until release.
   // A stationary tap produces no movement, so the pan never activates — the Tap gesture
   // below handles that case and snaps the nearest boundary to the tapped point.
+  // The gesture builder's callbacks fire later, on gesture events — never
+  // during this render — but the compiler can't see through the
+  // react-native-gesture-handler builder API to know that.
+  /* eslint-disable react-hooks/refs */
   const pan = useMemo(() => Gesture.Pan()
     .minDistance(0)
     .runOnJS(true)
@@ -178,6 +184,7 @@ export default function RuntimeRangeSliderInline({ selectedRuntimeRanges, onChan
       onChange(buildRanges(startSlotRef.current, endSlotRef.current));
     }),
   [pickBoundary, setBoundarySlot, slotFromPageX, onChange]);
+  /* eslint-enable react-hooks/refs */
 
   const gesture = useMemo(() => Gesture.Race(pan, tap), [pan, tap]);
 

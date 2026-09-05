@@ -15,11 +15,12 @@
  * native-driven timings, marked `isInteraction: false` so they do not hold the
  * interaction handle the store waits on to decide the app has settled.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet } from 'react-native';
 
 import LoadingLogo from '@/components/layout/LoadingLogo';
 import { Colors } from '@/constants/theme';
+import { useAnimatedValue } from '@/hooks/useAnimatedValue';
 import {
   getPendingScheme,
   useIsThemeSwitching,
@@ -32,11 +33,13 @@ export default function ThemeSwitchOverlay() {
   // The scheme being switched to, captured when the curtain goes up. Null while
   // there is nothing to cover, which is nearly always.
   const [cover, setCover] = useState<'light' | 'dark' | null>(null);
-  const opacity = useRef(new Animated.Value(0)).current;
+  if (isSwitching && cover === null) {
+    setCover(getPendingScheme());
+  }
+  const opacity = useAnimatedValue(0);
 
   useEffect(() => {
     if (isSwitching) {
-      setCover(getPendingScheme());
       const fadeIn = Animated.timing(opacity, {
         toValue: 1,
         duration: THEME_SWITCH_FADE_IN_MS,

@@ -67,12 +67,14 @@ export default function AddFriendScreen() {
     hasAttemptedRef.current = true;
 
     if (!UUID_PATTERN.test(normalizedReceiverId)) {
-      setErrorMessage("Invalid invite link.");
-      setState("error");
+      queueMicrotask(() => {
+        setErrorMessage("Invalid invite link.");
+        setState("error");
+      });
       return;
     }
 
-    setState("loading");
+    queueMicrotask(() => setState("loading"));
     requestMutation.mutate(normalizedReceiverId);
   }, [normalizedReceiverId, requestMutation]);
 

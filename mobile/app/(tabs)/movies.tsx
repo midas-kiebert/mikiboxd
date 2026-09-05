@@ -116,6 +116,7 @@ export default function MovieScreen() {
     setWatchlistExclude,
     watchedOnly,
     setWatchedOnly,
+    isHydrated,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -206,7 +207,11 @@ export default function MovieScreen() {
       firstPageLimit: MOVIES_FIRST_PAGE_LIMIT,
       snapshotTime,
       filters: movieFilters,
-      enabled: isFocused,
+      // `isHydrated`: see `useSharedTabFilters` — starting this query before
+      // the session's cinema selection is seeded risks the query key changing
+      // out from under an in-flight "load more" once seeding lands, which can
+      // permanently strand scroll-triggered pagination (`feed-paging.ts`).
+      enabled: isFocused && isHydrated,
     });
 
   const movies = moviesData?.pages.flat() || [];
@@ -237,7 +242,8 @@ export default function MovieScreen() {
   );
 
   const loadMore = useScrollTriggeredLoadMore(() => {
-    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+    if (!hasNextPage || isFetchingNextPage) return false;
+    return fetchNextPage();
   });
 
   // Always mounted: the footer collapses instead of vanishing, so a loaded
@@ -261,8 +267,11 @@ export default function MovieScreen() {
   // faster than LOADING_LOGO_DELAY_MS even with nothing cached yet, so
   // showing `isLoading` immediately just moved the flash from "quick filter
   // taps" to "quick presets" instead of removing it.
+  // `!isHydrated`: the query above is held off until the session's cinema
+  // selection is seeded, and that wait is exactly as "loading" as a genuine
+  // fetch is — see `isLoading`/`isFetching` treatment above.
   const isFetchEmptyLoading =
-    (isLoading || isFetching) && !refreshing && visibleMovies.length === 0;
+    (isLoading || isFetching || !isHydrated) && !refreshing && visibleMovies.length === 0;
   const showFetchLoadingLogo = useDelayedTrue(
     isFetchEmptyLoading,
     LOADING_LOGO_DELAY_MS,

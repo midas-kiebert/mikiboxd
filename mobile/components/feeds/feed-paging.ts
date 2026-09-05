@@ -7,7 +7,7 @@
  * mid-range phone wondering why a filter change stutters.
  */
 import { Dimensions } from "react-native";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { MOVIE_ROW_HEIGHT } from "@/components/movies/MovieCard";
 import { SHOWTIME_ROW_HEIGHT } from "@/components/showtimes/ShowtimeCard";
@@ -75,35 +75,84 @@ export const byIdKeyExtractor = (item: { id: number }) => item.id.toString();
  * length it last fired at and will not fire again until that length changes —
  * so a call that is dropped on the floor disarms the list for good: nothing
  * loads, the content never grows, and `onEndReached` is never called again.
- * The first drag therefore hands back whatever was swallowed.
+ *
+ * Which is why `loadMore` has to answer whether it actually started a fetch,
+ * and why a debt is only cleared when it did. The first version of this
+ * cleared it on the first drag regardless, and that was the whole bug: the
+ * guard every caller writes (`hasNextPage && !isFetchingNextPage`) can be
+ * false at that exact moment — a page already in flight, a query that has not
+ * settled, a list just reset by a pull-to-refresh or a filter change back to
+ * the same length it had before. The replay then did nothing, the debt was
+ * gone, `onEndReached` stayed disarmed because the content length never
+ * changed, and the feed sat on page one for the rest of the session with no
+ * spinner and no way back. A debt that survives a failed attempt costs one
+ * boolean per drag; the alternative costs the whole list.
  *
  * `onScrollBeginDrag` rather than `onScroll`: it is the finger going down, it
- * fires once, and it costs no per-frame JS.
+ * fires once per drag, and it costs no per-frame JS.
+ *
+ * `loadMore` returns `false` when it declined to start a fetch (no next page,
+ * or one already in flight), or the promise of the fetch it did start —
+ * callers hand back whatever `fetchNextPage()` gives them. That promise is
+ * what lets a *failed* attempt re-arm the debt: `fetchNextPage` settles back
+ * to `isFetchingNextPage: false` once its retries are exhausted exactly the
+ * way a successful page does, and produces no growth in the list either way.
+ * Without inspecting the settled result, a failed attempt looks identical to
+ * a successful one to this hook — the debt would stay spent, and nothing
+ * would ever ask again: `onEndReached` needs the content length to change to
+ * refire, and a failed page never grows it.
  */
-export function useScrollTriggeredLoadMore(loadMore: () => void) {
+export function useScrollTriggeredLoadMore(
+  loadMore: () => false | Promise<{ isError?: boolean } | unknown>
+) {
   const hasScrolled = useRef(false);
-  /** An `onEndReached` that arrived before the user had touched the list. */
+  /**
+   * An `onEndReached` that has not yet been turned into a fetch — either it
+   * arrived before the user had touched the list, it was attempted and the
+   * caller was not in a position to act on it, or it was attempted and the
+   * fetch that started came back empty-handed.
+   */
   const owed = useRef(false);
   // Held in a ref so both handlers keep one identity for the life of the list:
   // callers pass an inline closure over `hasNextPage` and friends, which is a
-  // new function every render.
+  // new function every render. Written in an effect rather than in render:
+  // both handlers only ever run from a touch, which is long after the commit.
   const latest = useRef(loadMore);
-  latest.current = loadMore;
+  useEffect(() => {
+    latest.current = loadMore;
+  });
+
+  /** Tries to spend the debt, and keeps it if the caller could not — or reopens it if the fetch that started came back failed. */
+  const attempt = useCallback(() => {
+    const result = latest.current();
+    if (result === false) {
+      owed.current = true;
+      return;
+    }
+    owed.current = false;
+    void Promise.resolve(result)
+      .then((value) => {
+        if (value && typeof value === "object" && (value as { isError?: boolean }).isError) {
+          owed.current = true;
+        }
+      })
+      .catch(() => {
+        owed.current = true;
+      });
+  }, []);
 
   const onScrollBeginDrag = useCallback(() => {
     hasScrolled.current = true;
-    if (!owed.current) return;
-    owed.current = false;
-    latest.current();
-  }, []);
+    if (owed.current) attempt();
+  }, [attempt]);
 
   const onEndReached = useCallback(() => {
     if (!hasScrolled.current) {
       owed.current = true;
       return;
     }
-    latest.current();
-  }, []);
+    attempt();
+  }, [attempt]);
 
   return { onScrollBeginDrag, onEndReached };
 }

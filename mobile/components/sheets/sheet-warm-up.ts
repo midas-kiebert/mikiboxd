@@ -54,6 +54,22 @@ import { SHEET_OPEN_DURATION_MS } from "@/components/sheets/sheet-timing";
 const queue: ((release: () => void) => void)[] = [];
 let isDraining = false;
 
+/**
+ * How long the queue will wait for one warm-up to report itself finished
+ * before moving on without it.
+ *
+ * The per-warm-up timeout below cannot cover this, because it is armed *inside*
+ * the drained callback: a warm-up that never starts — the frame it is waiting
+ * for never arriving, the sheet ref still null, anything throwing on the way in
+ * — has no timer of its own, and the queue is strictly one-at-a-time, so it
+ * would hold every sheet behind it un-warmed for the rest of the session. For
+ * `ShowtimeActionModal` that is not a slow first open but a dead one: it
+ * refuses to present at all while it believes it is still warming, so the
+ * symptom is a showtime sheet that never opens again. Generous enough never to
+ * cut a real warm-up short, and it only ever runs at startup.
+ */
+const QUEUE_STALL_TIMEOUT_MS = 8000;
+
 function drain(): void {
   const next = queue.shift();
   if (!next) {
@@ -62,6 +78,14 @@ function drain(): void {
   }
   isDraining = true;
   let hasReleased = false;
+  // Armed here rather than inside the callback below, and therefore outside
+  // the frame it waits for: this is the backstop for a warm-up that never
+  // begins, where the callback's own timeout would never be set at all.
+  const stallTimer = setTimeout(() => {
+    if (hasReleased) return;
+    hasReleased = true;
+    drain();
+  }, QUEUE_STALL_TIMEOUT_MS);
   // On the next frame rather than right here. `release()` is called from
   // `finish()`, immediately after that sheet's own `setPhase("done")` — so
   // draining synchronously meant one sheet's state update reached straight
@@ -80,6 +104,7 @@ function drain(): void {
     next(() => {
       if (hasReleased) return;
       hasReleased = true;
+      clearTimeout(stallTimer);
       drain();
     });
   });
@@ -117,8 +142,18 @@ export function useSheetWarmUp(
   enabled: boolean
 ): { isWarmingUp: boolean; onSheetChange: (index: number) => void } {
   const [phase, setPhase] = useState<WarmUpPhase>(enabled ? "presenting" : "done");
+  /**
+   * The phase, moved in the same tick as the decision that changes it.
+   *
+   * Emphatically not a render-phase mirror of the state above, which is what
+   * this was. `onSheetChange` runs from gorhom's own `onChange`, and with the
+   * warm-up's instant animations that can land in the same tick as the
+   * `setPhase` before it — so the ref still said "presenting" when the close
+   * reported `index === -1`, which matches *neither* branch below. The warm-up
+   * then sat in "presenting" for good, and a sheet that believes it is still
+   * warming never opens.
+   */
   const phaseRef = useRef(phase);
-  phaseRef.current = phase;
   const releaseRef = useRef<(() => void) | null>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -127,14 +162,20 @@ export function useSheetWarmUp(
     timersRef.current = [];
   }, []);
 
+  /** Moves the phase, ref first so nothing can read a stale one. */
+  const advance = useCallback((next: WarmUpPhase) => {
+    phaseRef.current = next;
+    setPhase(next);
+  }, []);
+
   const finish = useCallback(() => {
     // Before anything else: a timer left running would fire minutes later and
     // `close()` a sheet the user had since opened for real.
     clearTimers();
-    setPhase("done");
+    advance("done");
     releaseRef.current?.();
     releaseRef.current = null;
-  }, [clearTimers]);
+  }, [clearTimers, advance]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -173,7 +214,7 @@ export function useSheetWarmUp(
   const onSheetChange = useCallback(
     (index: number) => {
       if (phaseRef.current === "presenting" && index >= 0) {
-        setPhase("closing");
+        advance("closing");
         // Out of gorhom's own callback before driving it again.
         requestAnimationFrame(() => sheetRef.current?.close());
         return;
@@ -182,7 +223,7 @@ export function useSheetWarmUp(
         finish();
       }
     },
-    [sheetRef, finish]
+    [sheetRef, finish, advance]
   );
 
   return { isWarmingUp: phase !== "done", onSheetChange };

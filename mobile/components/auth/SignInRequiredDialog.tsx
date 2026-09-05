@@ -9,7 +9,7 @@
  * Same fade/scale timing as the app's other dialogs, so an intercepted tap
  * feels like the rest of the app rather than like being stopped.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Animated, Modal, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
@@ -17,6 +17,7 @@ import { ThemedText } from "@/components/themed-text";
 import { ACCOUNT_FEATURE_COPY, type AccountFeature } from "@/components/auth/account-features";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 const FADE_IN_MS = 140;
 const FADE_OUT_MS = 120;
@@ -41,7 +42,10 @@ export default function SignInRequiredDialog({
   // Kept mounted one beat longer than `feature` so the closing fade can play out,
   // and so the copy doesn't blank out halfway through it.
   const [shownFeature, setShownFeature] = useState(feature);
-  const anim = useRef(new Animated.Value(0)).current;
+  if (feature && feature !== shownFeature) {
+    setShownFeature(feature);
+  }
+  const anim = useAnimatedValue(0);
   const scale = useMemo(
     () => anim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
     [anim]
@@ -49,7 +53,6 @@ export default function SignInRequiredDialog({
 
   useEffect(() => {
     if (feature) {
-      setShownFeature(feature);
       anim.setValue(0);
       Animated.timing(anim, {
         toValue: 1,

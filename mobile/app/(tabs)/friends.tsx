@@ -151,11 +151,13 @@ function FriendsScreen() {
   // Friends first: it is what almost every visit is for, and it is where a
   // pending request now surfaces without having to be looked for.
   const [mode, setMode] = useState<FriendsMode>(requestedMode ?? 'friends');
-
-  useEffect(() => {
-    if (requestedMode === null) return;
-    setMode(requestedMode);
-  }, [requestedMode]);
+  const [prevRequestedMode, setPrevRequestedMode] = useState(requestedMode);
+  if (requestedMode !== prevRequestedMode) {
+    setPrevRequestedMode(requestedMode);
+    if (requestedMode !== null) {
+      setMode(requestedMode);
+    }
+  }
 
   const isDiscovering = mode === 'discover';
   const modeIndex = Math.max(
@@ -282,9 +284,10 @@ function FriendsScreen() {
   );
 
   const searchPlaceholder = isDiscovering ? 'Search everyone' : 'Search your friends';
+  const currentUserId = currentUser?.id;
   const inviteUrl = useMemo(
-    () => (currentUser?.id ? buildFriendInviteUrl(currentUser.id) : null),
-    [currentUser?.id]
+    () => (currentUserId ? buildFriendInviteUrl(currentUserId) : null),
+    [currentUserId]
   );
   const inviteUsername = useMemo(
     () => currentUser?.display_name?.trim() || null,
@@ -351,7 +354,9 @@ function FriendsScreen() {
     onIndexChange: handleChangeIndex,
     pageWidth,
   });
-  goToPageRef.current = goTo;
+  useEffect(() => {
+    goToPageRef.current = goTo;
+  });
 
   const pagerStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: -progress.value * pageWidth }],
@@ -554,6 +559,7 @@ function FriendsScreen() {
         <GestureDetector gesture={panGesture}>
           <Animated.View
             style={[styles.pager, { width: pageWidth * MODE_OPTIONS.length }, pagerStyle]}
+            renderToHardwareTextureAndroid
           >
             <View style={{ width: pageWidth }}>{friendsPage}</View>
             <View style={{ width: pageWidth }}>{discoverPage}</View>

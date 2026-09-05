@@ -87,6 +87,29 @@ const TAB_PRELOAD_GAP_MS = 600;
 /** Every tab in the bar except this one. `movies` has no button. */
 const PRELOADED_TABS = ['activity', 'friends', 'settings'] as const;
 
+/** Only the parts of the tab navigator's state the preload guard below reads. */
+type TabNavigatorState = {
+  index: number;
+  routes: { key: string; name: string }[];
+  /** TabRouter's visit log: one record per tab that has been focused. */
+  history?: { key?: string }[];
+};
+
+/**
+ * Whether the user has already been to this tab, so preloading it would be
+ * both pointless and harmful — see the preload effect.
+ *
+ * Focused *now* counts as visited, and so does anything in the navigator's
+ * history, which is where TabRouter records every tab that has been focused.
+ */
+const hasVisitedTab = (state: TabNavigatorState | undefined, name: string): boolean => {
+  if (!state) return false;
+  const route = state.routes.find((candidate) => candidate.name === name);
+  if (!route) return false;
+  if (state.routes[state.index]?.key === route.key) return true;
+  return Boolean(state.history?.some((record) => record.key === route.key));
+};
+
 /**
  * Hoisted so the feed is handed the same object every render: it reaches
  * `ShowtimeCard` through the list's `renderItem`, and a new object there
@@ -129,16 +152,35 @@ function MainShowtimesScreen() {
   // Typed by hand: `preload` belongs to the tab navigator this screen sits in,
   // and the generic `useNavigation()` result cannot know which navigator that
   // is without the app declaring its whole route map.
-  const tabNavigation = useNavigation<{ preload: (name: string) => void }>();
+  const tabNavigation = useNavigation<{
+    preload: (name: string) => void;
+    // Read, never subscribed to: `useNavigationState` would re-render this
+    // screen inside every tab switch, which is the one thing the tab work has
+    // been spent avoiding.
+    getState: () => TabNavigatorState | undefined;
+  }>();
 
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     PRELOADED_TABS.forEach((name, index) => {
       timers.push(
-        setTimeout(
-          () => tabNavigation.preload(name),
-          TAB_PRELOAD_START_MS + index * TAB_PRELOAD_GAP_MS
-        )
+        setTimeout(() => {
+          // Never preload a tab the user has already reached. A preload is only
+          // ever meant to build a screen nobody has opened yet, and preloading
+          // one that is already open is not the no-op it looks like: the
+          // navigator keeps the route in `preloadedRouteKeys` from then on, and
+          // nothing takes it out again. That list is what decides whether a
+          // blurred screen may be frozen and detached
+          // (`shouldFreeze: activityState === STATE_INACTIVE && !isPreloaded`
+          // in BottomTabView) — so a tab preloaded while it was in front stops
+          // being detachable for the rest of the session, and can be left
+          // painted over the tab you actually switched to.
+          //
+          // These timers land 2.5-3.7s after launch, which is comfortably
+          // inside the time it takes someone to open the app and press a tab.
+          if (hasVisitedTab(tabNavigation.getState(), name)) return;
+          tabNavigation.preload(name);
+        }, TAB_PRELOAD_START_MS + index * TAB_PRELOAD_GAP_MS)
       );
     });
     return () => timers.forEach(clearTimeout);
@@ -179,6 +221,7 @@ function MainShowtimesScreen() {
     setWatchlistExclude,
     watchedOnly,
     setWatchedOnly,
+    isHydrated,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -255,7 +298,7 @@ function MainShowtimesScreen() {
     firstPageLimit: SHOWTIMES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters: showtimesFilters,
-    enabled: isFocused && !appliedGroupByMovie,
+    enabled: isFocused && !appliedGroupByMovie && isHydrated,
   });
 
   // ─── Movies query (Group by Movie mode) ─────────────────────────────────────
@@ -288,7 +331,7 @@ function MainShowtimesScreen() {
     firstPageLimit: MOVIES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters: movieFilters,
-    enabled: isFocused && appliedGroupByMovie,
+    enabled: isFocused && appliedGroupByMovie && isHydrated,
   });
 
   // ─── Active query ────────────────────────────────────────────────────────────
@@ -317,8 +360,11 @@ function MainShowtimesScreen() {
   // query go, with the loading panel arriving after it. `data === undefined`
   // rather than an empty list, because a query that fetched and came back with
   // nothing really is empty and must go on saying so from the background.
-  const isAwaitingShowtimes = !isFocused && showtimesData === undefined;
-  const isAwaitingMovies = !isFocused && moviesData === undefined;
+  // `!isHydrated` gets the same treatment: the feed is held off it too (see
+  // `useSharedTabFilters`), and that wait is exactly as "loading" as the focus
+  // one is.
+  const isAwaitingShowtimes = (!isFocused || !isHydrated) && showtimesData === undefined;
+  const isAwaitingMovies = (!isFocused || !isHydrated) && moviesData === undefined;
 
   // One identity for the life of the list: a new `renderItem` re-renders every
   // cell, which would undo `MovieCard`'s memo.
@@ -336,7 +382,8 @@ function MainShowtimesScreen() {
   );
 
   const loadMoreMovies = useScrollTriggeredLoadMore(() => {
-    if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
+    if (!moviesHasNextPage || moviesFetchingNextPage) return false;
+    return moviesFetchNextPage();
   });
 
   const isAppliedFilterTransitionPending =
@@ -581,7 +628,8 @@ function MainShowtimesScreen() {
           isFetchingNextPage={showtimesFetchingNextPage}
           hasNextPage={showtimesHasNextPage}
           onLoadMore={() => {
-            if (showtimesHasNextPage && !showtimesFetchingNextPage) showtimesFetchNextPage();
+            if (!showtimesHasNextPage || showtimesFetchingNextPage) return false;
+            return showtimesFetchNextPage();
           }}
           refreshing={refreshing}
           onRefresh={handleRefresh}

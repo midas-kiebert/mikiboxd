@@ -27,6 +27,7 @@ import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { type FeatureTipId, trackTipReaction } from "@/utils/feature-tips";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 const FADE_IN_MS = 160;
 const FADE_OUT_MS = 130;
@@ -92,7 +93,7 @@ export default function FeatureTipModal({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const isCompact = density === "compact";
-  const anim = useRef(new Animated.Value(0)).current;
+  const anim = useAnimatedValue(0);
   const scale = useMemo(
     () => anim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
     [anim]

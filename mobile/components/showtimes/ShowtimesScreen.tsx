@@ -45,7 +45,12 @@ type ShowtimesListContentProps = {
   isFetching: boolean;
   isFetchingNextPage: boolean;
   hasNextPage?: boolean;
-  onLoadMore: () => void;
+  /**
+   * `false` if it declined to start a fetch (no next page, or one already in
+   * flight), or the `fetchNextPage()` promise it started — so a failed page
+   * can re-arm the scroll debt. See `useScrollTriggeredLoadMore`.
+   */
+  onLoadMore: () => false | Promise<unknown>;
   refreshing: boolean;
   onRefresh: () => void | Promise<void>;
   emptyText?: string;
@@ -114,7 +119,16 @@ export function ShowtimesListContent({
 
   // Always mounted at a fixed height: it doubles as the list's end spacer, so
   // reaching the bottom never changes the layout under the user's scroll.
-  const renderFooter = () => <LoadMoreFooter loading={isFetchingNextPage} />;
+  //
+  // Passed to `ListFooterComponent` as an element, not a function returning
+  // one: a function identity is fresh every render, and `FlatList` treats a
+  // changed `ListFooterComponent` function as a different component type,
+  // unmounting and remounting it. `LoadMoreFooter` seeds its fade animation
+  // from `loading` only at mount, so a remount landing in the same instant a
+  // fast (already-cached) page resolves could mount straight into
+  // `loading={false}` and never animate the spinner in at all, even though
+  // the page really did load.
+  const footer = <LoadMoreFooter loading={isFetchingNextPage} />;
 
   // One identity each, for the life of the list. A `FlatList` re-renders every
   // cell when `renderItem` changes, which undoes `ShowtimeCard`'s memo — and
@@ -124,9 +138,21 @@ export function ShowtimesListContent({
     (showtime: ShowtimePublic) => openShowtimeModal(showtime, openModalOptions),
     [openShowtimeModal, openModalOptions]
   );
+  // How many rows belonged to the list's current *initial* load — the
+  // baseline `renderItem` checks a row's index against to decide whether it
+  // gets the fill-in stagger (see `FeedItemEntrance`'s doc comment). Reset
+  // whenever the list shrinks, since that means a fresh load replaced it
+  // (a filter/search change) rather than a page being appended to it.
+  const initialRowCountRef = React.useRef(0);
+  if (showtimes.length < initialRowCountRef.current) {
+    initialRowCountRef.current = 0;
+  }
+  if (initialRowCountRef.current === 0 && showtimes.length > 0) {
+    initialRowCountRef.current = showtimes.length;
+  }
   const renderItem = React.useCallback(
     ({ item, index }: { item: ShowtimePublic; index: number }) => (
-      <FeedItemEntrance index={index}>
+      <FeedItemEntrance index={index} stagger={index < initialRowCountRef.current}>
         <ShowtimeCard showtime={item} onPress={openModal} onLongPress={goToMovieFromLongPress} />
       </FeedItemEntrance>
     ),
@@ -178,8 +204,12 @@ export function ShowtimesListContent({
     );
   };
 
+  // Reports whether the page was actually asked for, and hands back its
+  // promise: a debt this cannot spend has to stay owed, and one whose fetch
+  // fails has to become owed again — see `feed-paging`.
   const loadMore = useScrollTriggeredLoadMore(() => {
-    if (hasNextPage && !isFetchingNextPage) onLoadMore();
+    if (!hasNextPage || isFetchingNextPage) return false;
+    return onLoadMore();
   });
 
   return (
@@ -195,7 +225,7 @@ export function ShowtimesListContent({
           listHeader ? <View style={styles.listHeaderWrapper}>{listHeader}</View> : undefined
         }
         ListEmptyComponent={renderEmpty}
-        ListFooterComponent={renderFooter}
+        ListFooterComponent={footer}
         onScrollBeginDrag={loadMore.onScrollBeginDrag}
         onEndReached={loadMore.onEndReached}
         onEndReachedThreshold={2}
@@ -238,7 +268,8 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   isFetching: boolean;
   isFetchingNextPage: boolean;
   hasNextPage?: boolean;
-  onLoadMore: () => void;
+  /** See `ShowtimesListContent`'s `onLoadMore` — same contract, forwarded straight through. */
+  onLoadMore: () => false | Promise<unknown>;
   refreshing: boolean;
   onRefresh: () => void;
   searchQuery: string;

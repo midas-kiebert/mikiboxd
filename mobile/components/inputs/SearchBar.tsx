@@ -29,6 +29,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import { useAndroidBackHandler } from "@/utils/android-back";
 import { useIsSignedIn } from "@/utils/auth-session";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 import type { SearchField } from "shared/client";
 
 type SearchBarProps = {
@@ -176,8 +177,8 @@ export default function SearchBar({
     left: number;
     width: number;
   } | null>(null);
-  const openProgress = useRef(new Animated.Value(0)).current;
-  const caretRotation = useRef(new Animated.Value(0)).current;
+  const openProgress = useAnimatedValue(0);
+  const caretRotation = useAnimatedValue(0);
 
   const isSignedIn = useIsSignedIn();
   const searchFieldOptions = useMemo(

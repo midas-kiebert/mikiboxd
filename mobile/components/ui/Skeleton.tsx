@@ -28,12 +28,14 @@ const SHINE_RATIO = 0.7;
 // parked off the right edge) for REST_MS, then withRepeat snaps back to 0 (band
 // parked off the left edge) — both ends are invisible, so there is no jump.
 const sweep = makeMutable(0);
-sweep.value = withRepeat(
-  withSequence(
-    withTiming(1, { duration: SWEEP_MS, easing: Easing.inOut(Easing.ease) }),
-    withTiming(1, { duration: REST_MS })
-  ),
-  -1
+sweep.set(
+  withRepeat(
+    withSequence(
+      withTiming(1, { duration: SWEEP_MS, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: REST_MS })
+    ),
+    -1
+  )
 );
 
 /**
@@ -50,7 +52,7 @@ export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
 
   const onLayout = useCallback(
     (e: LayoutChangeEvent) => {
-      width.value = e.nativeEvent.layout.width;
+      width.set(e.nativeEvent.layout.width);
     },
     [width]
   );

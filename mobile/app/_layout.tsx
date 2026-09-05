@@ -580,7 +580,7 @@ function RootLayourContent() {
     // already in cache by the time the picker mounts.
     void prefetchCinemas(queryClient);
     if (!isAuthenticated) {
-      setWarmupDone(true);
+      queueMicrotask(() => setWarmupDone(true));
       return;
     }
     let cancelled = false;
@@ -982,9 +982,9 @@ function RootLayout() {
     // carets, RefreshControl, etc.) follow the app's theme instead of the
     // device's system appearance. Without this, forcing dark mode on a
     // light-mode device leaves those widgets rendering in light mode (a dark,
-    // near-invisible spinner on a dark background). `null` restores following
-    // the system when the user picks "system".
-    Appearance.setColorScheme(themePreference === 'system' ? null : themePreference);
+    // near-invisible spinner on a dark background). `'unspecified'` restores
+    // following the system when the user picks "system".
+    Appearance.setColorScheme(themePreference === 'system' ? 'unspecified' : themePreference);
   }, [themePreference]);
 
   // Render/output using the state and derived values prepared above.

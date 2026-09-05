@@ -214,19 +214,23 @@ export default function CinemaFilterModal({
       editOpenedFromShortcutRef.current = false;
       return;
     }
-    setPresetError(null);
-    setPresetName("");
-    setIsSavePresetDialogVisible(false);
-    setIsReplacingNamedPreset(false);
-    setPresetPendingDeletion(null);
-    setSavedMyCinemasSignature(null);
+    queueMicrotask(() => {
+      setPresetError(null);
+      setPresetName("");
+      setIsSavePresetDialogVisible(false);
+      setIsReplacingNamedPreset(false);
+      setPresetPendingDeletion(null);
+      setSavedMyCinemasSignature(null);
+    });
     // An edit already under way owns the picker and the page; this effect
     // re-runs whenever the cinema list settles, which would otherwise wipe it.
     if (autoEditStartedRef.current) return;
-    setLocalSelectedCinemaSet(new Set(selectedCinemas));
-    setPresetBeingEdited(null);
-    setEditNameError(null);
-    setPage(initialPage);
+    queueMicrotask(() => {
+      setLocalSelectedCinemaSet(new Set(selectedCinemas));
+      setPresetBeingEdited(null);
+      setEditNameError(null);
+      setPage(initialPage);
+    });
   }, [visible, selectedCinemas, initialPage]);
 
   const { data: presets = [], isLoading: isPresetsLoading } = useCinemaPresets({
@@ -365,7 +369,7 @@ export default function CinemaFilterModal({
     const trimmedOrder = presetOrderIds.filter((id) => presetIdSet.has(id));
     if (trimmedOrder.length === presetOrderIds.length) return;
     const normalizedOrder = sanitizeCinemaPresetOrderIds(trimmedOrder);
-    setPresetOrderIds(normalizedOrder);
+    queueMicrotask(() => setPresetOrderIds(normalizedOrder));
     saveCinemaPresetOrder(normalizedOrder).catch(() => undefined);
   }, [presetOrderIds, namedPresets]);
 
@@ -509,7 +513,7 @@ export default function CinemaFilterModal({
     if (!target) return;
     autoEditStartedRef.current = true;
     editOpenedFromShortcutRef.current = true;
-    handleStartEditPreset(target);
+    queueMicrotask(() => handleStartEditPreset(target));
   }, [visible, initialEditPresetId, presets, handleStartEditPreset]);
 
   const persistPresetOrder = useCallback((orderedIds: readonly string[]) => {

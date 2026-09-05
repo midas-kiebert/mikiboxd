@@ -433,8 +433,8 @@ export default function SeatFloorPlan({
             ) : null}
 
             <ThemedText style={[styles.explanation, { color: colors.textSecondary }]}>
-              This shows your seat to friends going to this screening. This doesn't book
-              anything, you'll still need to get your own ticket separately.
+              This shows your seat to friends going to this screening. This doesn&apos;t book
+              anything, you&apos;ll still need to get your own ticket separately.
             </ThemedText>
 
             <View

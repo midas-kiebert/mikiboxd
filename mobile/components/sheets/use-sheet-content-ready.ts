@@ -31,12 +31,12 @@ import { SHEET_CONTENT_MOUNT_DELAY_MS } from "@/components/sheets/sheet-timing";
 
 export function useSheetContentReady(visible: boolean): boolean {
   const [isContentReady, setIsContentReady] = useState(false);
+  if (!visible && isContentReady) {
+    setIsContentReady(false);
+  }
 
   useEffect(() => {
-    if (!visible) {
-      setIsContentReady(false);
-      return;
-    }
+    if (!visible) return;
     const timer = setTimeout(() => setIsContentReady(true), SHEET_CONTENT_MOUNT_DELAY_MS);
     return () => clearTimeout(timer);
   }, [visible]);
@@ -75,12 +75,12 @@ export function useSheetPanelReady(visible: boolean): {
   onPanelLayout: () => void;
 } {
   const [isPanelReady, setIsPanelReady] = useState(false);
+  if (!visible && isPanelReady) {
+    setIsPanelReady(false);
+  }
 
   useEffect(() => {
-    if (!visible) {
-      setIsPanelReady(false);
-      return;
-    }
+    if (!visible) return;
     const timer = setTimeout(() => setIsPanelReady(true), PANEL_LAYOUT_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [visible]);

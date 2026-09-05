@@ -71,6 +71,7 @@ import { PRIVACY_POLICY_URL, SUPPORT_PAGE_URL } from '@/constants/legal-links';
 import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
 import { tabContentHoldMs } from '@/components/tab-bar';
 import { useDeferredMount } from '@/utils/use-deferred-mount';
+import { useAnimatedValue } from '@/hooks/useAnimatedValue';
 
 // Placeholder for the danger zone card's height until it has been measured
 // once. Sized from the card's own styles (18pt padding top and bottom, roughly
@@ -194,7 +195,7 @@ function SettingsScreen() {
   // The danger zone is collapsed by default so it takes an extra, deliberate
   // tap to reach account deletion.
   const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
-  const dangerCaretRotation = useRef(new Animated.Value(0)).current;
+  const dangerCaretRotation = useAnimatedValue(0);
   // The ScrollView is scrolled to the end once the danger zone expands, so the
   // newly revealed card is never left cut off below the fold.
   const scrollViewRef = useRef<ScrollView>(null);
@@ -243,22 +244,34 @@ function SettingsScreen() {
   // Whether the account already has a password set (false for social-only sign-in).
   const hasPassword = user?.has_password ?? true;
 
-  // Populate editable form state once user data has loaded.
-  useEffect(() => {
-    if (!user) return;
-    // Preserves whatever's currently typed into current_password — this
-    // effect also re-fires on unrelated user-cache refreshes, and clearing a
-    // field mid-edit that the user didn't just submit would be its own bug.
+  // Populate editable form state once user data has loaded. Seeded with
+  // `undefined` rather than `user` itself — if the currentUser query has
+  // already resolved by the time this mounts (common on a release build),
+  // starting from the live value would make it equal to `user` on the very
+  // first render and the sync below would never fire, leaving the fields
+  // permanently blank.
+  const [lastSyncedUser, setLastSyncedUser] = useState<typeof user>(undefined);
+  if (user && user !== lastSyncedUser) {
+    setLastSyncedUser(user);
+    // Preserves whatever's currently typed into current_password — this also
+    // re-fires on unrelated user-cache refreshes, and clearing a field
+    // mid-edit that the user didn't just submit would be its own bug.
     setProfile((prev) => ({
       ...prev,
       display_name: user.display_name ?? '',
       email: user.email ?? '',
     }));
-  }, [user]);
+  }
 
-  useEffect(() => {
+  // Same seeding fix as lastSyncedUser above: `undefined`, not the live
+  // value, so an already-resolved user on mount still triggers the sync.
+  const [lastSyncedDigestEnabled, setLastSyncedDigestEnabled] = useState<
+    boolean | undefined
+  >(undefined);
+  if (user?.notify_watchlist_digest_enabled !== lastSyncedDigestEnabled) {
+    setLastSyncedDigestEnabled(user?.notify_watchlist_digest_enabled);
     setDigestEnabled(!!user?.notify_watchlist_digest_enabled);
-  }, [user?.notify_watchlist_digest_enabled]);
+  }
 
   // Load the saved Cineville card digits from device storage.
   useEffect(() => {

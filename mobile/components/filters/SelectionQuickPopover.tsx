@@ -12,6 +12,7 @@ import {
 import { ThemedText } from "@/components/themed-text";
 import { type FilterPillLongPressPosition } from "@/components/filters/FilterPills";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 export type QuickSelectionPopoverOption = {
   id: string;
@@ -56,7 +57,7 @@ export default function SelectionQuickPopover({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const modalRootRef = useRef<View | null>(null);
-  const cardOpenProgress = useRef(new Animated.Value(0)).current;
+  const cardOpenProgress = useAnimatedValue(0);
   const [modalRootTop, setModalRootTop] = useState(0);
 
   const updateModalRootTop = useCallback(() => {

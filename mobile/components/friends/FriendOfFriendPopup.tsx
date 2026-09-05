@@ -7,7 +7,7 @@
  * Block/Report) — those stay reachable from the person's full profile once
  * one exists; this popup does exactly what was asked: send or accept.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Animated, Easing, Modal, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -19,6 +19,7 @@ import { useFriendStatus } from "@/hooks/useFriendStatus";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 const FADE_IN_MS = 190;
 const FADE_OUT_MS = 130;
@@ -46,18 +47,19 @@ export default function FriendOfFriendPopup({
   // so the closing fade can play out without the content popping empty first.
   const [isMounted, setIsMounted] = useState(visible);
   const [lastUser, setLastUser] = useState(user);
+  if (user && user !== lastUser) {
+    setLastUser(user);
+  }
+  if (visible && !isMounted) {
+    setIsMounted(true);
+  }
   // Opacity and scale run on separate curves: the backdrop wants an even fade,
   // the card a spring that settles. One shared value could only do both badly.
-  const opacity = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(0.9)).current;
-
-  useEffect(() => {
-    if (user) setLastUser(user);
-  }, [user]);
+  const opacity = useAnimatedValue(0);
+  const scale = useAnimatedValue(0.9);
 
   useEffect(() => {
     if (visible) {
-      setIsMounted(true);
       opacity.setValue(0);
       scale.setValue(0.9);
       // Started on the next frame rather than in this commit: the native Modal

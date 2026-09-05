@@ -6,7 +6,7 @@
  * The value lives here: callers get the trimmed name on confirm and never have
  * to hold draft text of their own.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -22,6 +22,7 @@ import {
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 const FADE_IN_MS = 140;
 const FADE_OUT_MS = 120;
@@ -58,7 +59,11 @@ export default function NamePromptDialog({
   // Kept mounted one beat longer than `visible` so the closing fade can play out.
   const [isMounted, setIsMounted] = useState(visible);
   const [name, setName] = useState("");
-  const anim = useRef(new Animated.Value(0)).current;
+  if (visible && !isMounted) {
+    setIsMounted(true);
+    setName("");
+  }
+  const anim = useAnimatedValue(0);
   const scale = useMemo(
     () => anim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
     [anim]
@@ -66,8 +71,6 @@ export default function NamePromptDialog({
 
   useEffect(() => {
     if (visible) {
-      setIsMounted(true);
-      setName("");
       anim.setValue(0);
       Animated.timing(anim, {
         toValue: 1,

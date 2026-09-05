@@ -17,7 +17,7 @@
  * Nothing here keeps a removed chip alive either — Reanimated holds it on
  * screen for its exit, which is why the row above can just stop rendering it.
  */
-import { useRef } from "react";
+import { useState } from "react";
 import { StyleSheet, TouchableOpacity } from "react-native";
 import Animated from "react-native-reanimated";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -75,8 +75,16 @@ export default function ActiveFilterChip({
   // Frozen at mount. Both describe the moment this chip appeared, and the row
   // goes on changing around it afterwards — a later pass must not be able to
   // rewrite what its arrival was.
-  const arrival = useRef({ flash: flashOnEnter, delayMs: waitForBeatOne ? PHASE_ONE_MS : 0 });
-  const entering = useChipEntering(arrival.current.flash, arrival.current.delayMs);
+  //
+  // A lazy `useState` rather than a ref, which is the same "built once, never
+  // rebuilt" and is what the previous spelling meant. Reading `.current` in
+  // render made the React Compiler skip this component, and a chip in the
+  // active-filter row is one of the most re-rendered things in the app.
+  const [arrival] = useState(() => ({
+    flash: flashOnEnter,
+    delayMs: waitForBeatOne ? PHASE_ONE_MS : 0,
+  }));
+  const entering = useChipEntering(arrival.flash, arrival.delayMs);
 
   return (
     <Animated.View

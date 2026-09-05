@@ -117,12 +117,37 @@ export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
   const presetApply = usePresetApply();
   const seenApplyCountRef = useRef(presetApply.count);
 
+  const applyContext = useMemo<PresetApplyContext>(
+    () => ({
+      currentFilters,
+      // The pill's own resolution order: the session selection, else the
+      // account's, else none.
+      currentCinemaIds: sessionCinemaIds ?? preferredCinemaIds ?? [],
+      hasLetterboxdUsername: Boolean(user?.letterboxd_username?.trim()),
+    }),
+    [currentFilters, sessionCinemaIds, preferredCinemaIds, user?.letterboxd_username]
+  );
+
+  // Read from the settle timer below, which runs long after the render that
+  // made them — so an effect is soon enough, and is the only place a ref may
+  // be written. Assigning them in the render body instead made the React
+  // Compiler skip this component outright, which for a row of animated
+  // buttons is the one thing it cannot afford; and they are declared above
+  // their reader for the same reason, since a ref written after the closure
+  // that captures it is the same complaint by another route.
+  const applyContextRef = useRef(applyContext);
+  const presetsRef = useRef(presets);
+  useEffect(() => {
+    applyContextRef.current = applyContext;
+    presetsRef.current = presets;
+  }, [applyContext, presets]);
+
   useEffect(() => {
     if (presetApply.count === seenApplyCountRef.current) return;
     seenApplyCountRef.current = presetApply.count;
     const { presetId } = presetApply;
     if (!presetId) return;
-    setSettlingPresetId(presetId);
+    queueMicrotask(() => setSettlingPresetId(presetId));
     // From the tap, and not restarted by anything: the hold only has to
     // outlast the apply's own writes, and a hold that a later edit could
     // extend is a button that a later edit could freeze.
@@ -144,24 +169,6 @@ export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
     }, APPLY_SETTLE_MS);
     return () => clearTimeout(timer);
   }, [presetApply]);
-
-  const applyContext = useMemo<PresetApplyContext>(
-    () => ({
-      currentFilters,
-      // The pill's own resolution order: the session selection, else the
-      // account's, else none.
-      currentCinemaIds: sessionCinemaIds ?? preferredCinemaIds ?? [],
-      hasLetterboxdUsername: Boolean(user?.letterboxd_username?.trim()),
-    }),
-    [currentFilters, sessionCinemaIds, preferredCinemaIds, user?.letterboxd_username]
-  );
-
-  // Read from the settle timer above, which runs long after the render that
-  // made them.
-  const applyContextRef = useRef(applyContext);
-  applyContextRef.current = applyContext;
-  const presetsRef = useRef(presets);
-  presetsRef.current = presets;
 
   // The button paints its own confirmation; the row forwards the apply and
   // announces it, so the active-filter chips can show what it changed. Both

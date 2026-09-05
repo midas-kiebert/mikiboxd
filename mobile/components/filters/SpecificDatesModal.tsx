@@ -192,7 +192,9 @@ export default function SpecificDatesModal({
 
   useEffect(() => {
     if (!visible) return;
-    setLocalSelectedDaySet(new Set(canonicalizeDaySelections(selectedDays) ?? []));
+    queueMicrotask(() =>
+      setLocalSelectedDaySet(new Set(canonicalizeDaySelections(selectedDays) ?? []))
+    );
   }, [visible, selectedDays]);
 
   const selectedCalendarDaySet = useMemo(() => {

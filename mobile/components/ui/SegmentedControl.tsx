@@ -133,7 +133,19 @@ export default function SegmentedControl<T extends string>({
       {/* The thumb is positioned against this inner row, which carries no
           padding of its own, so a segment's measured x is the thumb's x. */}
       <View style={[styles.inner, stretch && styles.innerStretch]}>
-        <Animated.View style={[styles.thumb, thumbStyle]} pointerEvents="none" />
+        {/* `renderToHardwareTextureAndroid`: this view's only animating
+            property is `opacity`/position driven straight from the UI thread
+            with no other prop changes alongside it, and on Android that
+            combination can get stuck un-repainted — visually frozen even
+            though the underlying shared values are already correct — until
+            something unrelated forces a fresh layout pass. Promoting it to
+            its own hardware layer makes Android redraw it on every change
+            instead of skipping it. */}
+        <Animated.View
+          style={[styles.thumb, thumbStyle]}
+          pointerEvents="none"
+          renderToHardwareTextureAndroid
+        />
         {options.map((option, index) => (
           <Segment
             key={option.value}
@@ -224,9 +236,16 @@ function Segment<T extends string>({
       {renderContent(colors.pillText)}
       {/* Laid over the resting copy, in the same content box, so the two are
           measured and truncated identically. */}
+      {/* Same `renderToHardwareTextureAndroid` reasoning as the thumb pill:
+          this copy's only animating property is `opacity`, driven straight
+          from the UI thread, and that combination is the one that got stuck
+          un-repainted on Android — the selected label reading as the
+          resting, unselected colour even though `selectedCopyStyle` was
+          already computing opacity 1 underneath. */}
       <Animated.View
         style={[styles.selectedCopy, isLarge && styles.selectedCopyLarge, selectedCopyStyle]}
         pointerEvents="none"
+        renderToHardwareTextureAndroid
       >
         {renderContent(option.activeForeground ?? colors.pillActiveText)}
       </Animated.View>

@@ -476,6 +476,17 @@ export default function ActiveFilterChips({
   // own edit back at them.
   const presetApply = usePresetApply();
 
+  // The two-beat animation below reads and writes several refs during render
+  // on purpose, not from effects — see the comments throughout this section
+  // (and `filter-change-animation.ts`) for why: an effect is a second trip
+  // through the JS thread, and that delay is exactly what this row is built
+  // to avoid. The React Compiler's ref rule doesn't know that these reads
+  // never drive what gets rendered *this* pass, only how the next change is
+  // staged, so it can't be satisfied without reintroducing that delay. Same
+  // reasoning for the `Date.now()` reads: they stamp a deadline into a ref,
+  // not into anything rendered.
+  /* eslint-disable react-hooks/refs, react-hooks/purity */
+
   // ─── What a preset re-asserts ────────────────────────────────────────────
   // A preset writing a dimension is making a claim about it, and the row shows
   // the claim rather than the difference: the chip goes in beat one and comes
@@ -563,7 +574,7 @@ export default function ActiveFilterChips({
     const pending = [...dismissedKeys].filter((key) => present.has(key));
     if (pending.length !== dismissedKeys.size) {
       // At least one write has landed; the row no longer has to pretend.
-      setDismissedKeys(new Set(pending));
+      queueMicrotask(() => setDismissedKeys(new Set(pending)));
       return;
     }
     const timer = setTimeout(() => setDismissedKeys(new Set()), DISMISS_FALLBACK_MS);
@@ -726,6 +737,7 @@ export default function ActiveFilterChips({
     const timer = setTimeout(() => setReservedWidth(0), SCROLL_SETTLE_MS);
     return () => clearTimeout(timer);
   }, [reservedWidth]);
+  /* eslint-enable react-hooks/refs, react-hooks/purity */
 
   // Don't render if there's nothing to show (no cinema chip and no filter chips)
   if (!onOpenFilters && orderedChips.length === 0) return null;

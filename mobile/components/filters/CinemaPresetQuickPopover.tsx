@@ -23,6 +23,7 @@ import { loadCinemaPresetOrder, sortCinemaPresetsByOrder } from "@/components/fi
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useCinemaSelection } from "@/hooks/useCinemaSelection";
 import { useIsSignedIn } from "@/utils/auth-session";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 type CinemaPresetQuickPopoverProps = {
   visible: boolean;
@@ -58,7 +59,7 @@ export default function CinemaPresetQuickPopover({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const modalRootRef = useRef<View | null>(null);
-  const cardOpenProgress = useRef(new Animated.Value(0)).current;
+  const cardOpenProgress = useAnimatedValue(0);
   const [modalRootTop, setModalRootTop] = useState(0);
 
   const updateModalRootTop = useCallback(() => {

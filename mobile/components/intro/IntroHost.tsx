@@ -63,7 +63,7 @@ export default function IntroHost() {
   useEffect(() => {
     if (isNavigationReady) return;
     if (navigationRef?.isReady()) {
-      setIsNavigationReady(true);
+      queueMicrotask(() => setIsNavigationReady(true));
       return;
     }
     return navigationRef?.addListener("state", () => {

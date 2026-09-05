@@ -25,7 +25,7 @@
  * breathing existed: it is unambiguous progress, where the swell is only
  * atmosphere. Callers that already have their own spinner drop it.
  */
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -35,6 +35,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 /** Short enough that a wait which never happens is never seen. */
 export const LOADING_LOGO_FADE_IN_MS = 140;
@@ -91,8 +92,8 @@ export default function LoadingLogo({
   style,
   onLayout,
 }: LoadingLogoProps) {
-  const opacity = useRef(new Animated.Value(fadeIn ? 0 : 1)).current;
-  const breathe = useRef(new Animated.Value(0)).current;
+  const opacity = useAnimatedValue(fadeIn ? 0 : 1);
+  const breathe = useAnimatedValue(0);
 
   useEffect(() => {
     const animation = Animated.loop(

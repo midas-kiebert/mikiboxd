@@ -44,6 +44,7 @@ import CinevilleCardButton from "@/components/cineville/CinevilleCardButton";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import TabScreenSkeleton from "@/components/layout/TabScreenSkeleton";
 import { tabContentHoldMs } from "@/components/tab-bar";
+import { SHOWTIMES_FIRST_PAGE_LIMIT } from "@/components/feeds/feed-paging";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
 import { useSettledFocus } from "@/utils/use-settled-focus";
 import TopBar from "@/components/layout/TopBar";
@@ -92,7 +93,6 @@ function ActivityScreen() {
   // here for a guest — same shape as Friends, which stays in the bar and
   // explains itself instead of disappearing.
   const isSignedIn = useIsSignedIn();
-  const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
   const { mode: deepLinkMode } = useLocalSearchParams<{ mode?: string | string[] }>();
   const requestedMode = useMemo((): ActivityMode | null => {
@@ -102,11 +102,13 @@ function ActivityScreen() {
       : null;
   }, [deepLinkMode]);
   const [mode, setMode] = useState<ActivityMode>(requestedMode ?? "all");
-
-  useEffect(() => {
-    if (requestedMode === null) return;
-    setMode(requestedMode);
-  }, [requestedMode]);
+  const [prevRequestedMode, setPrevRequestedMode] = useState(requestedMode);
+  if (requestedMode !== prevRequestedMode) {
+    setPrevRequestedMode(requestedMode);
+    if (requestedMode !== null) {
+      setMode(requestedMode);
+    }
+  }
 
   const modeIndex = Math.max(
     0,
@@ -161,7 +163,9 @@ function ActivityScreen() {
     onIndexChange: handleChangeIndex,
     pageWidth,
   });
-  goToPageRef.current = goTo;
+  useEffect(() => {
+    goToPageRef.current = goTo;
+  });
 
   const pagerStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: -progress.value * pageWidth }],
@@ -195,14 +199,13 @@ function ActivityScreen() {
         <GestureDetector gesture={panGesture}>
           <Animated.View
             style={[styles.pager, { width: pageWidth * MODE_OPTIONS.length }, pagerStyle]}
+            renderToHardwareTextureAndroid
           >
             {MODE_OPTIONS.map((option) => (
               <View key={option.value} style={{ width: pageWidth }}>
                 <ActivityPage
                   mode={option.value}
                   isFocused={isFocused}
-                  snapshotTime={snapshotTime}
-                  setSnapshotTime={setSnapshotTime}
                   colors={colors}
                   styles={styles}
                 />
@@ -220,8 +223,6 @@ function ActivityScreen() {
 type ActivityPageProps = {
   mode: ActivityMode;
   isFocused: boolean;
-  snapshotTime: string;
-  setSnapshotTime: (snapshotTime: string) => void;
   colors: ThemeColors;
   styles: ReturnType<typeof createStyles>;
 };
@@ -234,18 +235,18 @@ type ActivityPageProps = {
  * concerned — a page being dragged into view has to already hold its own feed.
  * The two `useFetch…` hooks are called unconditionally and one of them is left
  * disabled, since which page this is never changes for the life of the mount.
+ *
+ * `snapshotTime` lives here rather than on the screen above for the same
+ * reason: all three pages are mounted at once, and it is part of every query
+ * key. A snapshot shared across pages would mean a pull-to-refresh on one
+ * moving the other two's queries to an empty key too — reloading all three
+ * feeds for a refresh of one.
  */
-function ActivityPage({
-  mode,
-  isFocused,
-  snapshotTime,
-  setSnapshotTime,
-  colors,
-  styles,
-}: ActivityPageProps) {
+function ActivityPage({ mode, isFocused, colors, styles }: ActivityPageProps) {
   const router = useRouter();
   const isYou = mode === "you";
   const isFriendsOnly = mode === "friends";
+  const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
   const filters = useMemo(
     () => ({
@@ -258,6 +259,7 @@ function ActivityPage({
 
   const mainQuery = useFetchMainPageShowtimes({
     limit: 20,
+    firstPageLimit: SHOWTIMES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters,
     enabled: isFocused && !isYou,
@@ -269,6 +271,7 @@ function ActivityPage({
   // no toggle for it any more.
   const agendaQuery = useFetchAgenda({
     limit: 20,
+    firstPageLimit: SHOWTIMES_FIRST_PAGE_LIMIT,
     snapshotTime,
     includeInterested: true,
     includeInvited: true,
@@ -354,14 +357,14 @@ function ActivityPage({
   const emptyExtra = isYou ? (
     <View style={styles.emptyActionRow}>
       <ThemedText style={styles.emptyExtraText}>
-        See what's playing and mark something you're going to.
+        See what&apos;s playing and mark something you&apos;re going to.
       </ThemedText>
       {browseShowtimesButton}
     </View>
   ) : isLoadingFriends ? null : hasFriends ? (
     <View style={styles.emptyActionRow}>
       <ThemedText style={styles.emptyExtraText}>
-        Nobody's marked a screening going or interested yet.
+        Nobody&apos;s marked a screening going or interested yet.
       </ThemedText>
       <View style={styles.emptyActionButtonRow}>
         {mode === "all" ? browseShowtimesButton : null}
@@ -371,7 +374,7 @@ function ActivityPage({
   ) : (
     <View style={styles.emptyActionRow}>
       <ThemedText style={styles.emptyExtraText}>
-        Add friends to see what they're going to.
+        Add friends to see what they&apos;re going to.
       </ThemedText>
       <View style={styles.emptyActionButtonRow}>
         {mode === "all" ? browseShowtimesButton : null}
@@ -388,7 +391,8 @@ function ActivityPage({
       isFetchingNextPage={isFetchingNextPage}
       hasNextPage={hasNextPage}
       onLoadMore={() => {
-        if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        if (!hasNextPage || isFetchingNextPage) return false;
+        return fetchNextPage();
       }}
       refreshing={refreshing}
       onRefresh={handleRefresh}

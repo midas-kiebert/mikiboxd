@@ -136,6 +136,7 @@ import { measureForSpotlight } from "@/utils/spotlight-measure";
 import * as Clipboard from "expo-clipboard";
 import { loadCinevilleCardDigits } from "@/utils/cineville-card";
 import { isCinevilleAutoCopyEnabled } from "@/utils/cineville-auto-copy";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 export type ShowtimeInvite = {
   senders: UserPublic[];
@@ -447,20 +448,20 @@ export default function ShowtimeActionModal({
   // so it can be applied once they've decided whether to invite anyone.
   const [pendingGoingStatus, setPendingGoingStatus] = useState<GoingStatus | null>(null);
   // Same custom fade, plus a subtle scale-in for the confirm card.
-  const dismissDialogAnim = useRef(new Animated.Value(0)).current;
+  const dismissDialogAnim = useAnimatedValue(0);
   const dismissDialogScale = useMemo(
     () => dismissDialogAnim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
     [dismissDialogAnim]
   );
 
   // Caret rotation for the invite-friends toggle (native thread, like FiltersModal).
-  const caretRotation = useRef(new Animated.Value(0)).current;
+  const caretRotation = useAnimatedValue(0);
   const caretSpin = useMemo(
     () => caretRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }),
     [caretRotation]
   );
   // Same native-thread caret rotation for the visibility dropdown toggle.
-  const visibilityCaretRotation = useRef(new Animated.Value(0)).current;
+  const visibilityCaretRotation = useAnimatedValue(0);
   const visibilityCaretSpin = useMemo(
     () =>
       visibilityCaretRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }),
@@ -521,7 +522,20 @@ export default function ShowtimeActionModal({
     true
   );
   const isWarmingUpRef = useRef(isWarmingUp);
-  isWarmingUpRef.current = isWarmingUp;
+  useEffect(() => {
+    isWarmingUpRef.current = isWarmingUp;
+  });
+
+  // Held in a ref so re-measuring depends on which target the tour is on, not
+  // on the identity of the callback that receives it.
+  //
+  // Declared above the callbacks that read it: a ref written after the closure
+  // that captures it reads to the React Compiler as a render-phase mutation,
+  // and it skips the whole component over it.
+  const onTourTargetRectRef = useRef(onTourTargetRect);
+  useEffect(() => {
+    onTourTargetRectRef.current = onTourTargetRect;
+  }, [onTourTargetRect]);
 
   const handleSheetChange = useCallback(
     (index: number) => {
@@ -637,13 +651,6 @@ export default function ShowtimeActionModal({
     return true;
   });
 
-  // Held in a ref so re-measuring depends on which target the tour is on, not
-  // on the identity of the callback that receives it.
-  const onTourTargetRectRef = useRef(onTourTargetRect);
-  useEffect(() => {
-    onTourTargetRectRef.current = onTourTargetRect;
-  }, [onTourTargetRect]);
-
   // Whether this presentation of the sheet has already measured a target
   // once: false right after the sheet opens (so the first step waits out its
   // entry animation), true from then on (so later steps don't).
@@ -680,24 +687,28 @@ export default function ShowtimeActionModal({
   // Reset transient UI when the sheet closes or switches showtime.
   useEffect(() => {
     if (!visible) {
-      setIsSheetDataEnabled(false);
-      setShowInviteFriends(false);
-      setInviteListReady(false);
-      setPingSearchQuery("");
-      setIsSeatDialogVisible(false);
-      seatSheetsRef.current?.close();
-      setIsReportDialogVisible(false);
-      setWatchModalKind(null);
-      setIsVisibilityExpanded(false);
-      caretRotation.setValue(0);
-      visibilityCaretRotation.setValue(0);
+      queueMicrotask(() => {
+        setIsSheetDataEnabled(false);
+        setShowInviteFriends(false);
+        setInviteListReady(false);
+        setPingSearchQuery("");
+        setIsSeatDialogVisible(false);
+        seatSheetsRef.current?.close();
+        setIsReportDialogVisible(false);
+        setWatchModalKind(null);
+        setIsVisibilityExpanded(false);
+        caretRotation.setValue(0);
+        visibilityCaretRotation.setValue(0);
+      });
     }
   }, [visible, caretRotation, visibilityCaretRotation]);
 
 
   useEffect(() => {
-    setSeatRowDraft(showtime?.viewer?.seat_row ?? "");
-    setSeatNumberDraft(showtime?.viewer?.seat_number ?? "");
+    queueMicrotask(() => {
+      setSeatRowDraft(showtime?.viewer?.seat_row ?? "");
+      setSeatNumberDraft(showtime?.viewer?.seat_number ?? "");
+    });
   }, [showtime?.id, showtime?.viewer?.seat_row, showtime?.viewer?.seat_number]);
 
   // ─── Friends + invite data ─────────────────────────────────────────────────
@@ -807,11 +818,13 @@ export default function ShowtimeActionModal({
   // plain `setRemindedFriendIds(new Set())` is a new object every time, so it
   // re-rendered the whole sheet on every open to replace an empty set with an
   // empty set — and it did it between the tap and the rise.
-  useEffect(() => {
+  const [lastSelectedShowtimeId, setLastSelectedShowtimeId] = useState(selectedShowtimeId);
+  if (selectedShowtimeId !== lastSelectedShowtimeId) {
+    setLastSelectedShowtimeId(selectedShowtimeId);
     setRemindedFriendIds((previous) => (previous.size === 0 ? previous : new Set()));
     setRemindDialogFriend((previous) => (previous === null ? previous : null));
     setRemindDialogVisible((previous) => (previous ? false : previous));
-  }, [selectedShowtimeId]);
+  }
 
   const { mutate: remindFriendForShowtime, isPending: isRemindingFriend } = useMutation({
     mutationFn: ({ showtimeId, friendId }: { showtimeId: number; friendId: string }) =>
@@ -1273,10 +1286,9 @@ export default function ShowtimeActionModal({
   const colorScheme = useColorScheme();
   const tintOpacity = colorScheme === "dark" ? 0.45 : 0.8;
 
-  useEffect(() => {
-    if (shouldShowSeatButton || !isSeatDialogVisible) return;
+  if (!shouldShowSeatButton && isSeatDialogVisible) {
     setIsSeatDialogVisible(false);
-  }, [isSeatDialogVisible, shouldShowSeatButton]);
+  }
 
   // Whatever seat sheet is open stops being valid the moment its reason to
   // exist does — the viewer is no longer going, or the floor plan went away.
@@ -1866,7 +1878,7 @@ export default function ShowtimeActionModal({
       // container above it composes the provided style first and never touches
       // opacity, so this one holds.
       containerStyle={isWarmingUp ? styles.warmingUp : undefined}
-      backdropComponent={isWarmingUp ? null : renderBackdrop}
+      backdropComponent={isWarmingUp ? undefined : renderBackdrop}
       handleComponent={null}
       backgroundStyle={styles.sheetBackground}
       topInset={topInset}

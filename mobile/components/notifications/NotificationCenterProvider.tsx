@@ -66,9 +66,11 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
   // sitting there, revealed once the intro ends instead of closed like it was.
   const isIntroActive = useIsIntroActive();
   const isIntroActiveRef = useRef(isIntroActive);
+  if (isIntroActive) {
+    setVisible(false);
+  }
   useEffect(() => {
     isIntroActiveRef.current = isIntroActive;
-    if (isIntroActive) setVisible(false);
   }, [isIntroActive]);
 
   const { data: notifications, isLoading } = useFetchNotifications({ enabled: visible });

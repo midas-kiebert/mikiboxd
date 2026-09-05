@@ -51,6 +51,12 @@ const SESSION_WATCHED_ONLY_KEY = ["session", "watched_only"] as const;
 const SESSION_SELECTED_LIST_IDS_KEY = ["session", "selected_list_ids"] as const;
 const SESSION_EXCLUDE_LIST_IDS_KEY = ["session", "exclude_list_ids"] as const;
 const SESSION_GROUP_BY_MOVIE_KEY = ["session", "group_by_movie"] as const;
+// A ceiling on how long a feed waits for the seeding below, not a target: the
+// two requests it depends on are small and normally settle well inside this.
+// Only a stalled/offline account query would ever hit it, and at that point
+// the feed's own fetch is about to fail for the same reason — better that
+// than leaving the feed gated forever on a query that never settles.
+const FILTER_HYDRATION_FALLBACK_MS = 4000;
 
 export function useSharedTabFilters() {
   const queryClient = useQueryClient();
@@ -95,6 +101,25 @@ export function useSharedTabFilters() {
   const guestCinemaIds = useGuestCinemaSelection();
   const { data: allCinemas } = useFetchCinemas();
   const hasCinemaList = (allCinemas?.length ?? 0) > 0;
+
+  // Whether the one-time seeding effect below has settled — same conditions
+  // it gates on. A feed that starts fetching before this is true risks
+  // starting under placeholder filters (no cinema selection yet) and then
+  // having `setSessionCinemaIds` change them a beat later once the seeding
+  // effect actually runs: the query key changes out from under an in-flight
+  // fetch, which can permanently strand a scroll-triggered "load more" (see
+  // `feed-paging.ts`'s `useScrollTriggeredLoadMore`). Callers that page a
+  // feed off `sessionCinemaIds` should hold their query's `enabled` on this.
+  const [hydrationFallback, setHydrationFallback] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setHydrationFallback(true), FILTER_HYDRATION_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  const isHydrated =
+    hydrationFallback ||
+    (!isSignedIn
+      ? guestCinemaIds !== undefined && (guestCinemaIds.length > 0 || hasCinemaList)
+      : favoriteSavedPresetQuery.isFetched && favoriteCinemasQuery.isFetched);
 
   const initialShowtimeFilter = toSharedTabShowtimeFilter(sessionShowtimeFilter);
   const initialWatchlistOnly = Boolean(sessionWatchlistOnly);
@@ -431,6 +456,7 @@ export function useSharedTabFilters() {
     groupByMovie,
     appliedGroupByMovie,
     setGroupByMovie,
+    isHydrated,
   };
 }
 

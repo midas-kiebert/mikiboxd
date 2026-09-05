@@ -62,7 +62,7 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
   // Paints the tapped value immediately; debounces and serializes the write.
   const { sharesStatus, change: changeStatusSharing } = useFriendStatusSharing(
     user.id,
-    user.shares_status
+    user.shares_status ?? true
   );
 
   const friendName = getFriendName(user);

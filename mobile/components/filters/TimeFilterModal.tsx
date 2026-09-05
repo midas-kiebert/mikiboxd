@@ -127,11 +127,13 @@ export default function TimeFilterModal({
 
   useEffect(() => {
     if (!visible) return;
-    setLocalSelectedTimeRanges(selectedTimeRanges);
-    setStartSlot(null);
-    setEndSlot(null);
-    setActiveBoundary(null);
-    setInputError(null);
+    queueMicrotask(() => {
+      setLocalSelectedTimeRanges(selectedTimeRanges);
+      setStartSlot(null);
+      setEndSlot(null);
+      setActiveBoundary(null);
+      setInputError(null);
+    });
   }, [visible, selectedTimeRanges]);
 
   const handleToggleRange = useCallback((range: string) => {

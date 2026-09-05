@@ -14,10 +14,11 @@
  * The reserved row doubles as the list's end spacer, so callers don't need a
  * separate one.
  */
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { ActivityIndicator, Animated, Easing, StyleSheet } from "react-native";
 
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 /** The row each spinner size occupies: the indicator (36 / 20pt) plus padding. */
 const FOOTER_HEIGHT: Record<"small" | "large", number> = { small: 56, large: 76 };
@@ -34,7 +35,7 @@ type LoadMoreFooterProps = {
 
 export default function LoadMoreFooter({ loading, size = "large" }: LoadMoreFooterProps) {
   const colors = useThemeColors();
-  const opacity = useRef(new Animated.Value(loading ? 1 : 0)).current;
+  const opacity = useAnimatedValue(loading ? 1 : 0);
 
   useEffect(() => {
     const animation = Animated.timing(opacity, {

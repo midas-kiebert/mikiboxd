@@ -20,6 +20,7 @@ import {
   useImmediateFlashTint,
 } from "@/components/filters/filter-change-animation";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 type CinemaFilterChipProps = {
   /** Opens the full Filters modal. */
@@ -59,7 +60,7 @@ const DROPDOWN_WIDTH = 252;
  * and it gates nothing: opacity is a style, and the rows underneath it are
  * hittable from the first frame.
  */
-const DROPDOWN_FADE_MS = 110;
+const DROPDOWN_FADE_MS = 160;
 
 /**
  * The caret belongs to the dropdown, not to the pill: it says whether the list
@@ -95,7 +96,7 @@ export default function CinemaFilterChip({
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
 
   // Caret rotation: 0 = closed (0°), 1 = open (180°)
-  const caretRotation = useRef(new Animated.Value(0)).current;
+  const caretRotation = useAnimatedValue(0);
   const caretSpin = caretRotation.interpolate({
     inputRange: [0, 1],
     outputRange: ["0deg", "180deg"],
@@ -113,7 +114,7 @@ export default function CinemaFilterChip({
     Animated.timing(caretRotation, {
       toValue: open ? 1 : 0,
       duration: CARET_SPIN_MS,
-      easing: Easing.linear,
+      easing: Easing.out(Easing.quad),
       useNativeDriver: true,
     }).start();
   };

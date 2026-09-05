@@ -437,7 +437,8 @@ function CinemaShowtimesContent({
   );
 
   const loadMoreMovies = useScrollTriggeredLoadMore(() => {
-    if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
+    if (!moviesHasNextPage || moviesFetchingNextPage) return false;
+    return moviesFetchNextPage();
   });
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
@@ -450,9 +451,8 @@ function CinemaShowtimesContent({
   });
 
   const handleLoadMore = () => {
-    if (showtimesHasNextPage && !showtimesFetchingNextPage) {
-      showtimesFetchNextPage();
-    }
+    if (!showtimesHasNextPage || showtimesFetchingNextPage) return false;
+    return showtimesFetchNextPage();
   };
 
   const handleClearAll = () => {
